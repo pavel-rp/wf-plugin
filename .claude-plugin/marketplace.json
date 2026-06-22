@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "vmg-marketplace",
+  "version": "0.3.0",
+  "description": "Internal marketplace for the VMG team's Claude Code plugins.",
+  "owner": {
+    "name": "VMG",
+    "url": "https://github.com/pavel-rp"
+  },
+  "plugins": [
+    {
+      "name": "wf",
+      "source": "./plugins/wf",
+      "version": "0.3.0",
+      "description": "wf:* skill chain for ADO-tracked tasks: spec/plan/implement, verify, QA (gen/run/auto/host/followup), classify, triage, branch/commit/pr, and migration-map helpers.",
+      "author": {
+        "name": "VMG"
+      },
+      "category": "development"
+    }
+  ]
+}
