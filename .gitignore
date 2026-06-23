@@ -5,3 +5,8 @@ _local/
 .DS_Store
 Thumbs.db
 *.swp
+
+# wf plugin
+wf.config.js
+.tmp/
+docs/wf-plans/
