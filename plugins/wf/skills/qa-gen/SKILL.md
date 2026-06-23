@@ -1,6 +1,6 @@
 ---
 name: qa-gen
-description: Generates a test plan for an ADO task — classifies each spec success criterion by verification method (build/static, automated test, manual-browser, or API endpoint-exercise), then writes 06_qa.md with scoped, spec-traced scenarios. UI criteria become browser scenarios a human or agent runs in the running app; backend criteria become API scenarios that exercise the endpoint (or a temporarily-wired service) over HTTP with a real token. Use when a task is implemented (or nearly so) and you want a QA pass tied to spec criteria before opening a PR or handing the plan to a run-assistant — including backend-only tasks that have no UI.
+description: Generates a test plan for an ADO task — classifies each spec success criterion by verification method (build/static, automated test, manual-browser, or API endpoint-exercise), then writes 06_qa.md with scoped, spec-traced scenarios. UI criteria become browser scenarios a human or agent runs in the running app; backend criteria become API scenarios that exercise the endpoint (or a temporarily-wired service) over HTTP with a real token. For a migration task it additionally emits a Migration parity suite that checks the migrated Angular part against its legacy C#/MVC counterpart for functional and visual parity. Use when a task is implemented (or nearly so) and you want a QA pass tied to spec criteria before opening a PR or handing the plan to a run-assistant — including backend-only tasks that have no UI.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
@@ -11,6 +11,8 @@ Generates a structured manual test plan for an ADO task. Reads `00_reqs.md` (sou
 This skill produces **prose, not code**. The output is a plan a tester (human or agent) executes against the running app. Most scenarios are **browser** scenarios — clicks, typed values, observed UI changes, network calls visible in devtools. For a **backend** task (a controller endpoint, a service method, a ported repository method) it instead writes **API** scenarios that exercise the endpoint over HTTP with a real token and assert status + response shape; when the deliverable is a service with no endpoint yet, the scenario carries a `Backend host required:` precondition the runner satisfies by temporarily wiring the service to a controller (then reverting it). The full API-scenario rules live in [`references/api-scenarios.md`](references/api-scenarios.md). For automated unit tests scaffold via `/wf:test-page` (Angular DI-level, sandbox component) or `/wf:test-node` (pure helpers, Node runner) — those siblings cover what this skill deliberately doesn't.
 
 A backend-only task is therefore **never** a stub PASS: its behavioral criteria become runnable API scenarios, and its Baseline-health suite targets the primary endpoint instead of being marked N/A.
+
+When the task is a **migration** (a legacy C#/MVC unit ported to Angular/TypeScript), the plan also carries a **Migration parity suite** — scenarios that check the migrated part against its legacy counterpart for **functional parity** (same inputs → same observable behavior) and **visual parity** (the migrated view preserves the legacy DOM ids/classes/labels and layout). Every CRA→Angular migration in this repo is a strict 1:1 copy, so parity is the standing bar a migration must clear regardless of how its individual criteria classify. The full parity rules live in [`references/parity-scenarios.md`](references/parity-scenarios.md). See Phase 3.6.
 
 To run the plan, use the family's run-assistant skills:
 
@@ -115,6 +117,13 @@ Run these reads in parallel where the tools allow:
 
    For each automated test file, note which assertions it makes — the coverage matrix needs to know what's already verified by code so manual scenarios don't duplicate.
 
+6. **Detect whether this is a migration task.** A migration ports a legacy C#/MVC unit to an Angular/TypeScript counterpart, and gets a parity suite in Phase 3.6. Treat the task as a migration when **any** of these hold:
+   - `01_spec.md` / `02_plan.md` metadata carries `**Type:** migration` (persisted by `/wf:classify`).
+   - A `03_migration-map.md` exists in the task folder (output of `/wf:migration-map`) — the strongest signal and the richest input for parity assertions.
+   - The Phase 2 step 4 diff has Angular target files **and** those targets carry `//MIGRATION NOTE` / `//MIGRATION TODO` comments naming a legacy `.cs` / `.cshtml` source, **or** `00_reqs.md` cites a legacy source file.
+
+   When it is a migration, identify the legacy source unit(s) and the migrated target(s) — read `03_migration-map.md` if present (it already pairs them 1:1 with `file:line` evidence), otherwise infer the pairing from the `//MIGRATION NOTE` comments and the reqs citation, as `/wf:migration-map` does. Record the pairing for Phase 3.6. The detail rules are in [`references/parity-scenarios.md`](references/parity-scenarios.md).
+
 ---
 
 ## Phase 3: Classify criteria
@@ -180,6 +189,21 @@ Independent of the criteria and the scope, **every** `06_qa.md` ends with a `## 
 
 Number them in sequence after the spec scenarios (Baseline health is the last suite). Don't invent extra baseline scenarios beyond these two — keep the standing bar small and stable. If the task has no reachable route but has a callable endpoint/service, emit the **API baseline** scenario described above instead of these two. Only when the task has *no runnable surface of any kind* (pure library/helper work — no route, no endpoint, no service) emit the suite with a single scenario marked `[N/A: no runnable surface on this task]` and explain in one line, rather than omitting it.
 
+---
+
+## Phase 3.6: Add the Migration parity suite (migration tasks only)
+
+**Run this phase only when Phase 2 step 6 flagged the task as a migration.** For a non-migration task, skip it entirely — emit no parity suite.
+
+Every CRA → Angular migration in this repo is a strict 1:1 copy (property names preserved, enum integers round-trip, DOM ids/classes preserved verbatim, method signatures preserved). Parity scenarios assert the migrated part matches its legacy counterpart along two dimensions, **in addition to** the normal spec-traced suites:
+
+- **Functional parity** — same inputs produce the same observable behavior (endpoint contract, slice round-trip, form validation, list filtering, enum round-trip).
+- **Visual parity** — the migrated rendered view preserves the legacy DOM ids/classes/labels (always) and the legacy layout (at `full` scope).
+
+For each migrated unit recorded in Phase 2 step 6, decide which dimensions apply (a rendered `partial`/`viewmodel` gets both; a pure `poco`/`enum`/`slice`/`service` gets functional only), pick the **legacy oracle** mode (side-by-side when the legacy app is reachable, otherwise captured — default captured), and write scenarios per the rules and template in [`references/parity-scenarios.md`](references/parity-scenarios.md). When `03_migration-map.md` exists, derive assertions directly from its rows — each mapped property/enum/id/class/method becomes one parity assertion; each `[MISSING]` / `[⚠ UNMAPPED TYPE]` / `[FORMAT]` flag becomes a `[BLOCKED BY MAP FLAG]` scenario listed under the coverage matrix's **Parity blockers** sub-list — a category distinct from the SC-N "no coverage" Gaps (a parity blocker is a scenario that can't pass until the map is reconciled, not an uncovered criterion).
+
+Parity scenarios carry `**Type:** parity` and `**Parity:** functional | visual` lines, respect the scope filter (Phase 3's `smoke`/`happy`/`full`), and go in their own `## Suite: Migration parity` section — numbered in the global `TC-NNN` sequence, placed **after** the spec suites and **before** Baseline health. A migrated unit with no own success criterion uses `**Validates:** — (migration parity, not spec-traced)`; this is the second sanctioned exception (alongside Baseline health) to "untraceable scenarios don't ship."
+
 Write to `{task-root}/{wi-prefix}-{id}/06_qa.md`. Overwrite if it exists — git history (well, the in-folder backup if any) preserves prior versions; the task folder is gitignored, so there's no git history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
 
 Use the template in the next section verbatim. Substitute placeholders. Don't invent extra sections.
@@ -228,9 +252,22 @@ This plan is executed manually in a browser against the running app. Each scenar
 
 Not spec-traced — these assert a standing quality bar, not an `SC-N`. Known-benign noise is filtered via `{qa-baseline-ignore}`.
 
+### Migration parity (migration tasks only — omit this section otherwise)
+
+| Migrated unit | Legacy source | Parity | Scenarios | Oracle |
+|---|---|---|---|---|
+| `cra-shared-state.models.ts` (`slice`) | `ReportCookie.cs` | functional | TC-NNN | captured (`03_migration-map.md`) |
+| `provider-filter.component` (`partial`) | `_ProviderFilter.cshtml` | visual + functional | TC-NNN, TC-NNN | side-by-side |
+
+Parity checks the migrated part against its legacy counterpart. Derived from `03_migration-map.md` where present. Omit this whole section for non-migration tasks.
+
 ### Gaps
 
 <List any criterion with no coverage — neither manual nor automated. Should be empty. If non-empty, flag prominently and explain why the gap exists.>
+
+**Parity blockers** (migration tasks only — omit otherwise):
+
+<List any `[BLOCKED BY MAP FLAG: <flag>]` parity scenarios — migration-map flags ([MISSING] / [⚠ UNMAPPED TYPE] / [FORMAT]) that must be reconciled before parity can pass. These are a distinct category from the uncovered-SC-N gaps above: a parity blocker is a scenario that exists but can't pass until the map is fixed, not a criterion with no scenario.>
 
 ---
 
@@ -269,6 +306,8 @@ Not spec-traced — these assert a standing quality bar, not an `SC-N`. Known-be
 ---
 
 > **API scenarios** use the same outer block (`Validates` / `Priority` / `Preconditions` / `Teardown`) but carry a `**Type:** API` line and replace the **Steps** table with a **Request** block + an **Assertions** table. Service-only criteria add a `Backend host required: <Service>.<method>` precondition. Copy the exact shape from [`references/api-scenarios.md` § API scenario template](references/api-scenarios.md#api-scenario-template) — don't improvise it, the runners parse it. Browser scenarios need no `**Type:**` line (absence means browser).
+
+> **Parity scenarios** (migration tasks, Phase 3.6) use the same outer block plus a `**Type:** parity` line, a `**Parity:** functional | visual` line, and a `Legacy reference:` (side-by-side) or `Legacy oracle: captured (...)` precondition. The **Steps** table's Expected Result column carries the legacy oracle values. They sit in a `## Suite: Migration parity` section after the spec suites and before Baseline health. Copy the exact shape from [`references/parity-scenarios.md` § Parity scenario template](references/parity-scenarios.md#parity-scenario-template).
 
 ---
 
@@ -353,7 +392,7 @@ Default `full`. The same skill at the same scope on the same spec should produce
 
 ## Phase 5: Index update + report
 
-1. **Invoke `/wf:index` for the `qa` slot.** Pass a one-line summary: `06_qa.md · <scope> · <N> scenarios · <M>/<K> criteria mapped`. Substitute the scope, the count of `TC-NNN` scenarios, the count of criteria with coverage (manual or automated), and the total criteria count.
+1. **Invoke `/wf:index` for the `qa` slot.** Pass a one-line summary: `06_qa.md · <scope> · <N> scenarios · <M>/<K> criteria mapped`. Substitute the scope, the count of `TC-NNN` scenarios, the count of criteria with coverage (manual or automated), and the total criteria count. For a migration task, append ` · <P> parity` with the parity-scenario count.
 
 2. **Emit the final-output block** (next section) with the path, scope, scenario count, coverage stats, and any gaps.
 
@@ -365,6 +404,7 @@ Default `full`. The same skill at the same scope on the same spec should produce
 - **Implementation isn't done yet.** Allowed. Mark scenarios that depend on unimplemented behavior with `[PENDING IMPLEMENTATION]` in the title and a `<!-- BLOCKED BY: <missing-behavior> -->` comment. The black-box rule means this still works — scenarios were derived from the spec, not the missing code.
 - **All criteria are Build/static or Automated.** First make sure they really are — a criterion describing what an endpoint or service method *returns/filters/persists* is **API**, not Build/static, and the most common cause of a wrongly-empty plan is mis-binning backend behavior as "it compiles." Once that's checked: write `06_qa.md` with a populated coverage matrix and no spec-derived suites, plus a one-paragraph note: "All criteria are verified by build or existing automation. No spec-traced runnable scenarios required at scope `<scope>`." The **Baseline health suite is still emitted** (browser baseline if there's a route, API baseline if there's an endpoint/service) — so the plan is never empty of runnable scenarios. Valid output, not a stop condition.
 - **Backend-only task (all behavior is `.cs`, no UI).** Not a stop condition and not a stub. Behavioral criteria classify as **API**; service-only ones get `Backend host required:`; the Baseline-health suite uses the API baseline. The plan is fully runnable by `/wf:qa-auto`.
+- **Migration task.** Detected in Phase 2 step 6. In addition to the normal spec-traced suites, emit the `## Suite: Migration parity` section (Phase 3.6) with functional/visual parity scenarios per [`references/parity-scenarios.md`](references/parity-scenarios.md). Not a stop condition — parity is additive. If the task looks like a migration but no `03_migration-map.md` exists, still emit parity from the spec + a signature-only legacy read, and recommend `/wf:migration-map {id}` in the `Next:` line so a future run can derive richer assertions.
 - **`06_qa.md` already exists with annotated run results** (PASS/FAIL markers from a prior run). Stop and ask: "Existing `06_qa.md` has run annotations. Overwrite (loses results), append a new section, or rename the existing file as `06_qa.<timestamp>.md` first?" Default to renaming the prior file.
 - **Multiple scenarios collapse onto the same criterion at scope `smoke`.** Smoke is one-per-criterion. If you find yourself writing two smoke scenarios for the same `SC-N`, pick the one with the highest priority and drop the other. The coverage matrix shows one `TC-NNN` per criterion at `smoke`.
 - **Cross-feature dependencies.** If TC-005 requires TC-003 to have run successfully (e.g., "open the period created in TC-003"), state that as a precondition: `Depends on: TC-003 PASS`. Don't duplicate steps.
@@ -379,7 +419,8 @@ QA-GEN — Complete
 
 Task:      {wi-prefix}-{id}
 Scope:     <smoke | happy | full>
-Scenarios: <N> in <S> suites (incl. <b> Baseline health) — <br> browser · <api> API
+Migration: <yes — <P> parity scenarios | no>
+Scenarios: <N> in <S> suites (incl. <b> Baseline health<, <p> Migration parity if migration>) — <br> browser · <api> API · <par> parity
 Coverage:  <M>/<K> criteria mapped (<M-browser> browser · <M-api> API · <M-auto> automated · <M-static> build/static)
 
 File:      {task-root}/{wi-prefix}-{id}/06_qa.md
@@ -388,6 +429,8 @@ Gaps:      <list of uncovered SC-N, or "none">
 
 Next:      /wf:qa-auto {id}    — autonomous run, subagent drives the browser (default)
            /wf:qa-run {id}     — or drive it yourself, one step at a time
+           <migration + no 03_migration-map.md: /wf:migration-map {id} — derive richer parity assertions>
+
 ```
 
 **The final output block must always be the very last thing output to chat.**

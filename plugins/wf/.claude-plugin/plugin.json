@@ -1,6 +1,6 @@
 {
   "name": "wf",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "wf:* skill chain for ADO-tracked tasks: spec/plan/implement plus verify, QA (gen/run/auto/host/followup), classify, triage, branch/commit/pr, and migration-map helpers — built for the C# / ASP.NET MVC -> Angular / TypeScript migration.",
   "author": {
     "name": "Pavel Kalabin",
