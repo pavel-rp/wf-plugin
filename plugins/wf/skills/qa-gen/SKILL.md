@@ -200,7 +200,7 @@ Every CRA → Angular migration in this repo is a strict 1:1 copy (property name
 - **Functional parity** — same inputs produce the same observable behavior (endpoint contract, slice round-trip, form validation, list filtering, enum round-trip).
 - **Visual parity** — the migrated rendered view preserves the legacy DOM ids/classes/labels (always) and the legacy layout (at `full` scope).
 
-For each migrated unit recorded in Phase 2 step 6, decide which dimensions apply (a rendered `partial`/`viewmodel` gets both; a pure `poco`/`enum`/`slice`/`service` gets functional only), pick the **legacy oracle** mode (side-by-side when the legacy app is reachable, otherwise captured — default captured), and write scenarios per the rules and template in [`references/parity-scenarios.md`](references/parity-scenarios.md). When `03_migration-map.md` exists, derive assertions directly from its rows — each mapped property/enum/id/class/method becomes one parity assertion; each `[MISSING]` / `[⚠ UNMAPPED TYPE]` / `[FORMAT]` flag becomes a `[BLOCKED BY MAP FLAG]` scenario surfaced in Gaps.
+For each migrated unit recorded in Phase 2 step 6, decide which dimensions apply (a rendered `partial`/`viewmodel` gets both; a pure `poco`/`enum`/`slice`/`service` gets functional only), pick the **legacy oracle** mode (side-by-side when the legacy app is reachable, otherwise captured — default captured), and write scenarios per the rules and template in [`references/parity-scenarios.md`](references/parity-scenarios.md). When `03_migration-map.md` exists, derive assertions directly from its rows — each mapped property/enum/id/class/method becomes one parity assertion; each `[MISSING]` / `[⚠ UNMAPPED TYPE]` / `[FORMAT]` flag becomes a `[BLOCKED BY MAP FLAG]` scenario listed under the coverage matrix's **Parity blockers** sub-list — a category distinct from the SC-N "no coverage" Gaps (a parity blocker is a scenario that can't pass until the map is reconciled, not an uncovered criterion).
 
 Parity scenarios carry `**Type:** parity` and `**Parity:** functional | visual` lines, respect the scope filter (Phase 3's `smoke`/`happy`/`full`), and go in their own `## Suite: Migration parity` section — numbered in the global `TC-NNN` sequence, placed **after** the spec suites and **before** Baseline health. A migrated unit with no own success criterion uses `**Validates:** — (migration parity, not spec-traced)`; this is the second sanctioned exception (alongside Baseline health) to "untraceable scenarios don't ship."
 
@@ -264,6 +264,10 @@ Parity checks the migrated part against its legacy counterpart. Derived from `03
 ### Gaps
 
 <List any criterion with no coverage — neither manual nor automated. Should be empty. If non-empty, flag prominently and explain why the gap exists.>
+
+**Parity blockers** (migration tasks only — omit otherwise):
+
+<List any `[BLOCKED BY MAP FLAG: <flag>]` parity scenarios — migration-map flags ([MISSING] / [⚠ UNMAPPED TYPE] / [FORMAT]) that must be reconciled before parity can pass. These are a distinct category from the uncovered-SC-N gaps above: a parity blocker is a scenario that exists but can't pass until the map is fixed, not a criterion with no scenario.>
 
 ---
 

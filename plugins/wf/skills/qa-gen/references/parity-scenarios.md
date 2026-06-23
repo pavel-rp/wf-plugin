@@ -47,7 +47,7 @@ Parity needs a reference for "what the legacy did/looked like." Two oracle modes
    Legacy reference: <legacy route or view — e.g. ComplianceRisk.WebUI `/Review/ProviderFilter`>
    ```
 
-   This is the parity analog of `Host required:` / `Backend host required:`. `/wf:qa-auto` resolves whether the legacy surface is reachable; if it isn't, the scenario degrades to captured mode (below) and the runner records that it could not run the live legacy side.
+   This is the parity analog of `Host required:` / `Backend host required:`. **The scenario author chooses the oracle mode up front** (see the default rule below) and encodes it here — the runners execute the Steps table as written and do **not** auto-detect legacy reachability or switch modes (they only special-case `Type: API`; everything else runs the steps verbatim). If a side-by-side step's legacy surface turns out to be unreachable at run time, the runner marks that step BLOCKED; the scenario should then be re-generated in captured mode.
 
 2. **Captured (when the legacy app is not runnable side-by-side).** The legacy behavior/appearance is captured *ahead of time* as the expected oracle — from the spec, from the `03_migration-map.md` evidence, or from a one-time read of the legacy source's *public surface* (the same signature-only, black-box allowance the rest of the skill uses — DOM ids/classes in `.cshtml`, property names in the POCO, the enum's integer values; never the method bodies). Emit the precondition:
 
@@ -57,7 +57,7 @@ Parity needs a reference for "what the legacy did/looked like." Two oracle modes
 
    The expected values are baked into the scenario's **Expected Result** column as concrete strings/ids/numbers, so the runner asserts the migrated side against a fixed oracle with no live legacy needed.
 
-Default to **captured** unless the spec or `wf-qa.md` states the legacy app is runnable in the dev environment — most migration verification happens with only the new app live. State the chosen mode in the precondition either way.
+Default to **captured** unless `00_reqs.md` / `01_spec.md` (or `_local/config.md`) states the legacy app is runnable in the dev environment — most migration verification happens with only the new app live. State the chosen mode in the precondition either way.
 
 ---
 
@@ -97,7 +97,7 @@ When `03_migration-map.md` exists, it is the primary input — it already did th
 - Each **`enum` value row** → one assertion that the integer value round-trips unchanged.
 - Each **`partial` id/class/label row** → one DOM-structure visual parity assertion.
 - Each **`service` method row** → one functional parity scenario (verb/route/contract match).
-- Each **`[MISSING]` / `[⚠ UNMAPPED TYPE]` / `[FORMAT]` flag** in the map → a parity scenario marked `[BLOCKED BY MAP FLAG: <flag>]`; the migration map must be reconciled before parity can pass. Surface these in the coverage-matrix Gaps section.
+- Each **`[MISSING]` / `[⚠ UNMAPPED TYPE]` / `[FORMAT]` flag** in the map → a parity scenario marked `[BLOCKED BY MAP FLAG: <flag>]`; the migration map must be reconciled before parity can pass. Surface these under the coverage matrix's **Parity blockers** sub-list — a category **distinct from** the SC-N "no coverage" Gaps (a parity blocker is a scenario that exists but cannot pass until the map is fixed, not a criterion with no scenario). Don't mix the two.
 
 Don't re-derive the mapping from source — trust the map (it's grep-verified). If no `03_migration-map.md` exists, suggest running `/wf:migration-map {id}` first in the final-output `Next:` line, and derive parity from the spec + a signature-only legacy read instead.
 
