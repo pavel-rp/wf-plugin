@@ -3,7 +3,7 @@
 **Version:** 2.0.0 (WF-21)
 **Status:** authoritative source of truth for the core↔capability boundary semantics
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
-**Runtime half:** generalised separately by WF-22 (`invocation-mechanism.contract.md`, v1.0.0/WF-10 — kept as the N=1 substrate)
+**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.0.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 
@@ -49,7 +49,8 @@ The committed boundary is **v1**, frozen across two contracts:
 - `invocation-mechanism.contract.md` (v1.0.0, WF-10) — the **runtime**: config
   read → manifest read → per-seam `inline:` / `subagent:` dispatch → no-op path.
   Its v2 generalisation (iterate the registry, inject fragments per phase,
-  aggregate per policy) is owned by **WF-22**; this contract does not reopen it.
+  aggregate per policy) is owned by **WF-22** (`invocation-runtime.contract.md`,
+  v2.0.0); this contract does not reopen it.
 
 **v1 is the N=1 case, not throwaway.** A registry with exactly one row reduces to
 v1's single active capability; the empty registry generalises v1's absent-state
