@@ -45,6 +45,11 @@ Read off the columns: the v1 `rule-audit` seam becomes a `finding` contribution 
 (the `finding` kind aggregates with provenance, so it carries no ownership scope token). At
 N=1 this is exactly the existing behaviour, re-expressed in the v2 shape.
 
+The v2 **runtime** that resolves this N=1 example — iterating the registry, reading this
+manifest, collecting the `verify` fragment, and rendering its provenance-tagged `finding` —
+is `plugins/wf/skills/_contracts/invocation-runtime.contract.md` (v2.0.0, WF-22), which
+supersedes `invocation-mechanism.contract.md` (v1.0.0, WF-10) referenced above.
+
 **Not authored here.** The rest of this capability's v2 fragments — a `scenario` at
 `qa-generation` (from the absent `parity-suite` seam), an `artifact` at `plan` with a
 `source→target` ownership scope (from the absent `mapping` seam), and the new authoring
