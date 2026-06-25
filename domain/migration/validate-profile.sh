@@ -43,15 +43,19 @@ fi
 errors=0
 warnings=0
 
-err()  { echo -e "${RED}ERROR:${NC} $*";   errors=$((errors + 1)); }
-warn() { echo -e "${YELLOW}WARNING:${NC} $*"; warnings=$((warnings + 1)); }
-ok()   { echo -e "${GREEN}OK:${NC} $*"; }
+# `printf '%b' "$COLOR"` renders the color escape; `%s "$*"` emits the message
+# VERBATIM — unlike `echo -e`, which would interpret backslash escapes in
+# user-controlled values (a Windows path like `C:\tmp\x`, a value with `\t`),
+# corrupting or truncating diagnostics.
+err()  { printf '%bERROR:%b %s\n'   "$RED"    "$NC" "$*"; errors=$((errors + 1)); }
+warn() { printf '%bWARNING:%b %s\n' "$YELLOW" "$NC" "$*"; warnings=$((warnings + 1)); }
+ok()   { printf '%bOK:%b %s\n'      "$GREEN"  "$NC" "$*"; }
 
 # ---------------------------------------------------------------------------
 # Preconditions.
 # ---------------------------------------------------------------------------
 if ! command -v jq >/dev/null 2>&1; then
-  echo -e "${RED}ERROR:${NC} jq is required but not found on PATH." >&2
+  printf '%bERROR:%b jq is required but not found on PATH.\n' "$RED" "$NC" >&2
   exit 2
 fi
 
@@ -61,11 +65,11 @@ if [ -z "$PROFILE" ]; then
   exit 2
 fi
 if [ ! -f "$PROFILE" ]; then
-  echo -e "${RED}ERROR:${NC} profile not found: $PROFILE" >&2
+  printf '%bERROR:%b profile not found: %s\n' "$RED" "$NC" "$PROFILE" >&2
   exit 2
 fi
 if [ ! -f "$CONTRACT" ]; then
-  echo -e "${RED}ERROR:${NC} contract not found: $CONTRACT" >&2
+  printf '%bERROR:%b contract not found: %s\n' "$RED" "$NC" "$CONTRACT" >&2
   exit 2
 fi
 
@@ -84,11 +88,11 @@ SCHEMA="$(awk '
 ' "$CONTRACT")"
 
 if [ -z "$SCHEMA" ]; then
-  echo -e "${RED}ERROR:${NC} could not extract a json fence from $CONTRACT" >&2
+  printf '%bERROR:%b could not extract a json fence from %s\n' "$RED" "$NC" "$CONTRACT" >&2
   exit 2
 fi
 if ! echo "$SCHEMA" | jq empty >/dev/null 2>&1; then
-  echo -e "${RED}ERROR:${NC} extracted schema fence is not valid JSON" >&2
+  printf '%bERROR:%b extracted schema fence is not valid JSON\n' "$RED" "$NC" >&2
   exit 2
 fi
 
@@ -109,8 +113,8 @@ if ! jq empty "$PROFILE" >/dev/null 2>&1; then
   err "profile is not valid JSON — $(jq empty "$PROFILE" 2>&1 | head -1)"
   echo ""
   echo "=== Summary ==="
-  echo -e "${RED}Errors: $errors${NC}"
-  echo "Validation FAILED."
+  printf '%bErrors: %s%b\n' "$RED" "$errors" "$NC"
+  printf '%bValidation FAILED.%b\n' "$RED" "$NC"
   exit 1
 fi
 ok "profile JSON syntax"
@@ -218,8 +222,10 @@ for slot in $all_slots; do
   while [ "$idx" -lt "$count" ]; do
     p="$(prof_q ".\"$slot\"[$idx].path // empty")"
     if [ -n "$p" ]; then
-      if [ ! -e "$REPO_ROOT/$p" ] && [ ! -e "$p" ]; then
-        err "slot \`$slot\` entry $idx has a dangling \`path\`: \`$p\` (not found relative to repo root \`$REPO_ROOT\`)."
+      # `-f` (regular file), not `-e`: hook paths point at committed docs/scripts,
+      # so a directory at that path is not a valid target.
+      if [ ! -f "$REPO_ROOT/$p" ] && [ ! -f "$p" ]; then
+        err "slot \`$slot\` entry $idx has a dangling \`path\`: \`$p\` (no regular file at that path relative to repo root \`$REPO_ROOT\`)."
       fi
     fi
     idx=$((idx + 1))
@@ -264,16 +270,16 @@ done
 echo ""
 echo "=== Summary ==="
 if [ "$errors" -gt 0 ]; then
-  echo -e "${RED}Errors: $errors${NC}"
+  printf '%bErrors: %s%b\n' "$RED" "$errors" "$NC"
 fi
 if [ "$warnings" -gt 0 ]; then
-  echo -e "${YELLOW}Warnings: $warnings${NC}"
+  printf '%bWarnings: %s%b\n' "$YELLOW" "$warnings" "$NC"
 fi
 
 if [ "$errors" -gt 0 ]; then
-  echo -e "${RED}Validation FAILED.${NC}"
+  printf '%bValidation FAILED.%b\n' "$RED" "$NC"
   exit 1
 fi
 
-echo -e "${GREEN}Validation passed${NC} (warnings: $warnings)."
+printf '%bValidation passed%b (warnings: %s).\n' "$GREEN" "$NC" "$warnings"
 exit 0
