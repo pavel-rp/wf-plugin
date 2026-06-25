@@ -1,0 +1,14 @@
+{
+  "stack": {
+    "source-root": "src/Legacy.Web",
+    "target-root": "src/app",
+    "source-exts": [".cs", ".cshtml"],
+    "target-exts": [".ts", ".html", ".scss"]
+  },
+  "type-map": [
+    { "source-type": "int", "target-type": "number" }
+  ],
+  "invariants": [
+    { "id": "names-preserved", "statement": "Property names are preserved under the casing rule." }
+  ]
+}
