@@ -26,3 +26,29 @@ WF-10 prototype (WF-6 wires `mapping`; WF-8 wires `parity-suite`). Per the invoc
 mechanism's no-op path, a hook with no manifest row no-ops cleanly: a core skill firing
 `mapping` or `parity-suite` while `{domain}: migration` is active proceeds exactly as if the
 hook were absent, until a later task adds its row here. Absence is not an error.
+
+## v2 schema correspondence (N=1 example — note only)
+
+`capability-registry.contract.md` (v2.0.0, WF-21) supersedes the v1 single-`{domain}` /
+three-named-hook port with a **capability registry**, named **SDD phases**, and a generic
+**contribution taxonomy**. Its v2 manifest shape is a fragments table —
+`phase | contribution-kind | dispatch | scope` — and this manifest is the worked **N=1
+example** that contract resolves *to*. The existing v1 row maps onto the v2 columns like
+this:
+
+| v1 manifest row | → v2 fragment row (`phase | contribution-kind | dispatch | scope`) |
+|-----------------|-------------------------------------------------------------------|
+| `rule-audit → inline: hooks/rule-audit.md` | `verify | finding | inline: hooks/rule-audit.md | —` |
+
+Read off the columns: the v1 `rule-audit` seam becomes a `finding` contribution at the
+`verify` phase, dispatched `inline:` to the same `hooks/rule-audit.md` doc, with no `scope`
+(the `finding` kind aggregates with provenance, so it carries no ownership scope token). At
+N=1 this is exactly the existing behaviour, re-expressed in the v2 shape.
+
+**Not authored here.** The rest of this capability's v2 fragments — a `scenario` at
+`qa-generation` (from the absent `parity-suite` seam), an `artifact` at `plan` with a
+`source→target` ownership scope (from the absent `mapping` seam), and the new authoring
+`guidance` / `task-list` fragments at `spec` / `implement` / `tasks` — are **deferred** to
+WF-3 (profile authoring) and the per-phase wiring issues (WF-6 / WF-7 / WF-8). This note
+only records the schema correspondence so the v2 contract's manifest-schema claim has its
+reference example; it adds no new fragment rows to the table above.

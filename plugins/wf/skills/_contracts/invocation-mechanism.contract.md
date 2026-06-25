@@ -4,6 +4,7 @@
 **Status:** authoritative source of truth for HOW a core skill invokes a domain hook
 **Fills:** the runtime gap deferred by `core-extension.contract.md` ("the mechanism that makes a hook actually return its empty result at runtime … is owned by a separate downstream task")
 **Composes with:** `plugins/wf/skills/_contracts/core-extension.contract.md` (the port — hook names and `<none>` semantics)
+**v2 generalisation:** the registry-iterating, per-phase-injecting runtime is owned by **WF-22**; this v1 substrate is kept as the N=1 base it generalises (see `capability-registry.contract.md`, v2.0.0/WF-21, for the v2 port).
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (domain-agnostic; ships inside the plugin)
 
