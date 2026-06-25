@@ -1,6 +1,8 @@
-# wf — wf:* Skills for ADO Task Workflow
+# wf — Spec-Driven Development harness for ADO tasks
 
-A Claude Code plugin for working on ADO-tracked tasks, primarily the **Compliance Risk** repo (C# / ASP.NET MVC → Angular / TypeScript migration). Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
+A Claude Code plugin for working on ADO-tracked tasks. It runs a gated **Spec-Driven Development** chain — spec → plan → implement → verify → QA — over each work item. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
+
+Today the skills carry the **Compliance Risk** migration knowledge (C# / ASP.NET MVC → Angular / TypeScript) directly. That knowledge is being generalised into a pluggable **capability** so the core becomes stack- and domain-free — see [Direction](#direction) and [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
 
 ## Install
 
@@ -112,6 +114,12 @@ _local/
 
 `00_reqs.md` is the **only authoritative spec**. `01_spec.md` and `02_plan.md` are derived artifacts; `/wf:verify-spec` deliberately audits against `00_reqs.md`, not the LLM spec, to catch drift.
 
+## Direction
+
+`wf` is being reshaped into a **domain-free SDD engine**: a fixed phase spine (`spec → plan → tasks → implement → verify → qa`), a **capability registry** in the downstream `_local/config.md`, and a composed **constitution** — with all stack/domain/project knowledge moving out of core into composable **capabilities** (migration as an `adapter`, browser-automation QA and the Angular stack as their own capabilities). Composition is runtime inline-prose injection — no codegen.
+
+The skills above describe the plugin **as it ships today** (v1). The `tasks` and `constitution` phases, the registry, and the capability split are in progress — track them in Linear (team `WF`) and read the model in [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
+
 ## Authoring
 
-See the repo-root **[CLAUDE.md](../../CLAUDE.md)** for conventions when adding or editing skills and agents.
+See the repo-root **[CLAUDE.md](../../CLAUDE.md)** for conventions when adding or editing skills and agents, and [`docs/ROADMAP.md`](../../docs/ROADMAP.md) for the target architecture.
