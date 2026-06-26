@@ -124,8 +124,8 @@ Reshaped from the original v1 extraction plan (`WF-1`…`WF-10`) to the v2 regis
 
 | Issue | What |
 |---|---|
-| `WF-6` | Wire `migration-map` to the `plan` phase — mapping `artifact`, partition-by-ownership |
-| `WF-7` | Make `verify-spec` capability-agnostic — aggregate `finding`s at `verify` (also the constitution's enforcement point) |
+| `WF-6` | Re-home `migration-map` to `wf-caps` (relocation done). NOTE: it's a `verify` `finding` — an audit of an *implemented* migration — **not** a `plan` `artifact`; the phase-wiring folds into WF-7 |
+| `WF-7` | Make `verify-spec` capability-agnostic — aggregate `finding`s at `verify` (migration's rule-audit **and** migration-map; also the constitution's enforcement point) |
 | `WF-8` | Make `qa-gen` capability-agnostic — `qa-generation` aggregates `scenario`s (absorbs the QA split) |
 | `WF-23` | Adopt the `tasks` SDD phase (decomposition gate between `plan` and `implement`) |
 | `WF-24` | Add the `wf:constitution` skill — composed, auto-invoked by `init`, enforced at `verify` |

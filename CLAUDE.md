@@ -139,7 +139,7 @@ Two composition mechanisms, kept separate: **features compose natively** (instal
 - `requires:` satisfied, `conflicts:` not both active;
 - every fragment row names a phase **and** contribution kind that core actually defines.
 
-**Migration is the reference `adapter` capability.** Its v1 hooks map to v2 fragments: `rule-audit` → `finding` at `verify` (+ constitution `article`s); `parity-suite` → `scenario` at `qa-generation`; `mapping` → `artifact` at `plan` (`csharp→ts`); and it **gains** authoring `guidance` at `spec`/`implement` and a `task-list` at `tasks`.
+**Migration is the reference `adapter` capability.** Its v1 hooks map to v2 fragments: `rule-audit` → `finding` at `verify` (+ constitution `article`s); `parity-suite` → `scenario` at `qa-generation`; `mapping` (the migration-map 1:1 audit) → a second `finding` at `verify` — it audits an *implemented* migration against the legacy source (reads the migrated diff; stops if no target exists), so it is verify-time conformance, **not** a `plan` artifact; and it **gains** authoring `guidance` at `spec`/`implement` and a `task-list` at `tasks`.
 
 ---
 
@@ -149,7 +149,7 @@ The current skills are v1-shaped. Their v2 homes:
 
 | Stays **core** (generic) | Extracts to a **capability** |
 |---|---|
-| `spec`, `plan`, `tasks` (new), `implement`, `run` | `migration-map` → `migration` (adapter): `plan` `artifact` |
+| `spec`, `plan`, `tasks` (new), `implement`, `run` | `migration-map` → `migration` (adapter): `verify` `finding` (1:1 audit of an *implemented* migration — not a `plan` artifact) |
 | `verify-spec`, `qa-gen`, `qa-run`, `qa-followup` (orchestration only) | `rule-audit` parity logic → `migration`: `verify` `finding` + constitution `article`s |
 | `init`, `constitution` (new), `branch`, `commit`, `pr` | parity-suite → `migration`: `qa-generation` `scenario` |
 | `classify`, `triage`, `index`, `lite` | `qa-auto` browser driving → `browser-qa` (feature): `qa-execution` `provider` |
