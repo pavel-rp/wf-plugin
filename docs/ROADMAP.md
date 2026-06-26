@@ -50,6 +50,8 @@ The lifecycle phases are the canonical SDD set (GitHub Spec Kit: **Specify → P
 
 **Aggregate** = follow every contributor in registry order (general → specific, so the most-specific wins last on additive `guidance`). **Partition** = only the owning capability applies; overlapping ownership is a registry-validation error.
 
+> **Reserved:** the `artifact` kind at `plan` has **no active instance** — it was modeled on the migration mapping, which is actually a `verify` `finding`. The slot stays for a future *forward* `plan`-correspondence fragment (authored from spec + source before code), not a post-implementation audit.
+
 **The constitution** — non-negotiable principles, **composed not authored**. Established by a `wf:constitution` skill auto-invoked by `init` (records the project's clauses + the active registry), consulted as guidance at `spec`, and enforced as `finding`s at `verify`. Core contributes domain-free **process** articles; each capability contributes its own non-negotiables. **Project clauses override capability clauses;** a contradiction between two capabilities' articles is a registry-validation error.
 
 ---

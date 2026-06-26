@@ -89,6 +89,7 @@ Phases are the **injection points**. A capability touches only the phases it has
 - **aggregate** — follow every contributor, in **registry order** (general → specific, so the most-specific wins last on additive `guidance`).
 - **partition** — only the *owning* capability applies; overlapping ownership is a registry-validation error. `artifact` partitions by a `source→target` token pair (e.g. `csharp→ts`); `provider` partitions by a `surface` token (`engine`, `host`, …).
 - `finding`/`scenario`/`article` carry **provenance**, so order is cosmetic for them.
+- **Reserved — `artifact` at `plan` has no active instance.** It was modeled on the migration mapping, which is actually a `verify` `finding` (it audits *implemented* code). The slot is kept for a future **forward** `plan`-correspondence fragment — one authored from spec + source *before* code exists — **not** a post-implementation audit. Don't wire an audit skill here.
 
 **The constitution** — non-negotiable principles, **composed not authored**:
 
