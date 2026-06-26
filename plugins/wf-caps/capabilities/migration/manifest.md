@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0 (WF-10 — kept `rule-audit` prototype)
 **Conforms to:** `plugins/wf/skills/_contracts/invocation-mechanism.contract.md` (manifest schema)
-**Capability:** migration (`{domain}: migration`, `{domain-path}: domain/migration`)
+**Capability:** migration (`{domain}: migration`, `{domain-path}: plugins/wf-caps/capabilities/migration`)
 **Model:** claude-opus-4-8
 
 ---
@@ -13,7 +13,7 @@ resolves `{domain-path}` from `_local/config.md`; it does not hardcode this path
 
 Each row maps a hook frozen by `core-extension.contract.md` to exactly one dispatch kind.
 Inline paths are forward-slash, **relative to `{domain-path}`** (so `hooks/rule-audit.md`
-resolves to `domain/migration/hooks/rule-audit.md`).
+resolves to `plugins/wf-caps/capabilities/migration/hooks/rule-audit.md`).
 
 | Hook | Dispatch |
 |------|----------|
@@ -24,7 +24,7 @@ resolves to `domain/migration/hooks/rule-audit.md`).
 This capability ships a human-fillable **profile seed template** declared via the v2
 manifest `profile-template:` field (`capability-registry.contract.md` §"Manifest schema v2").
 The path is forward-slash, **relative to `{domain-path}`** (so it resolves to
-`domain/migration/profile.template.json`):
+`plugins/wf-caps/capabilities/migration/profile.template.json`):
 
 ```
 profile-template: profile.template.json
@@ -40,7 +40,7 @@ worked instance for the validator; the template is the blank a project fills in.
 ## Unwired hooks
 
 `mapping` and `parity-suite` are **intentionally absent** — they are out of scope for the
-WF-10 prototype (WF-6 wires `mapping`; WF-8 wires `parity-suite`). Per the invocation
+WF-10 prototype (WF-7 wires `mapping` as a `verify` finding; WF-8 wires `parity-suite`). Per the invocation
 mechanism's no-op path, a hook with no manifest row no-ops cleanly: a core skill firing
 `mapping` or `parity-suite` while `{domain}: migration` is active proceeds exactly as if the
 hook were absent, until a later task adds its row here. Absence is not an error.
@@ -69,9 +69,10 @@ is `plugins/wf/skills/_contracts/invocation-runtime.contract.md` (v2.0.0, WF-22)
 supersedes `invocation-mechanism.contract.md` (v1.0.0, WF-10) referenced above.
 
 **Not authored here.** The rest of this capability's v2 fragments — a `scenario` at
-`qa-generation` (from the absent `parity-suite` seam), an `artifact` at `plan` with a
-`source→target` ownership scope (from the absent `mapping` seam), and the new authoring
+`qa-generation` (from the absent `parity-suite` seam), a second `finding` at `verify`
+(the migration-map 1:1 audit, from the absent `mapping` seam — it checks an *implemented*
+migration, so it is verify-time, **not** a `plan` artifact), and the new authoring
 `guidance` / `task-list` fragments at `spec` / `implement` / `tasks` — are **deferred** to
-WF-3 (profile authoring) and the per-phase wiring issues (WF-6 / WF-7 / WF-8). This note
+WF-3 (profile authoring) and the per-phase wiring issues (WF-7 / WF-8; WF-6 was relocation only). This note
 only records the schema correspondence so the v2 contract's manifest-schema claim has its
 reference example; it adds no new fragment rows to the table above.

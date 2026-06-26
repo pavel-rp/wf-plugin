@@ -24,12 +24,12 @@
 set -u
 
 # ---------------------------------------------------------------------------
-# Paths. The script lives in domain/migration/; resolve the contract relative
-# to its own location and the repo root two levels up.
+# Paths. The script lives in plugins/wf-caps/capabilities/migration/; resolve
+# the contract relative to its own location and the repo root four levels up.
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONTRACT="$SCRIPT_DIR/migration.contract.md"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 # ---------------------------------------------------------------------------
 # Colors (suppressed when stdout is not a TTY).

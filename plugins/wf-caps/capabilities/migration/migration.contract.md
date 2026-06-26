@@ -4,9 +4,8 @@
 **Status:** authoritative source of truth for the migration capability's slot schema
 **Fills:** the core extension interface — `plugins/wf/skills/_contracts/core-extension.contract.md`
 **Model:** claude-opus-4-8
-**Location:** `domain/migration/` — a transitional in-repo domain folder at the
-repository top level, deliberately **outside** `plugins/wf/`. It foreshadows the
-future standalone add-on plugin; the core plugin stays domain-free.
+**Location:** ships in the `wf-caps` capability plugin (`plugins/wf-caps/capabilities/migration/`),
+beside core in this marketplace — **outside** the core `wf` plugin, which stays domain-free.
 
 ---
 
@@ -122,7 +121,7 @@ validator consumes to check a downstream profile; it is not run or wired here.
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "domain/migration/migration.contract.md#slots",
+  "$id": "plugins/wf-caps/capabilities/migration/migration.contract.md#slots",
   "title": "Migration capability profile",
   "type": "object",
   "required": ["stack", "type-map", "invariants", "rule-checks"],
@@ -235,5 +234,5 @@ them.
 - It does **not** modify or move any existing skill. The inline domain knowledge
   in the core skills stays where it is; relocating it into a profile that fills
   these slots is owned by later tasks.
-- It does **not** ship inside the core plugin. It lives under `domain/migration/`
+- It does **not** ship inside the core plugin. It lives under `plugins/wf-caps/capabilities/migration/`
   precisely so the core stays domain-free.

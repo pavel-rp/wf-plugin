@@ -29,7 +29,7 @@
 | Tier | Owns | Examples | Hard rule |
 |---|---|---|---|
 | **Core engine** (the `wf` plugin) | the SDD phase spine, the capability registry + the runtime compose/aggregate mechanism, the contribution taxonomy, and domain-free workflow skills | `spec`, `plan`, `tasks`, `implement`, `verify-spec`, `qa-gen`, `run`, `init`, `constitution`, `branch`, `commit`, `pr`, `classify`, `triage`, `index` | **Zero stack / domain / project knowledge.** Iterates the registry; assumes nothing about which capabilities exist or how many. |
-| **Capabilities** (any granularity) | reusable stack / domain / feature / project knowledge — phase fragments and/or their own skills | `migration` (adapter: mapping, parity, rule-audit, type-map); `angular` (stack: test-host scaffolding, stack idioms); `browser-qa` (feature: browser engine); a whole-project bundle (may wrap external skills, e.g. Zach's) | Provide fragments + their own contract/profile. Staged in transitional in-repo folders now → standalone plugins later. **Never inside core.** |
+| **Capabilities** (any granularity) | reusable stack / domain / feature / project knowledge — phase fragments and/or their own skills | `migration` (adapter: mapping, parity, rule-audit, type-map); `angular` (stack: test-host scaffolding, stack idioms); `browser-qa` (feature: browser engine); a whole-project bundle (may wrap external skills, e.g. Zach's) | Provide fragments + their own contract/profile. Shipped as capability **plugins** alongside core in this marketplace — an interim `wf-caps` bundle now → per-capability plugins later. **Never inside core.** |
 | **Project `_local/`** | this repo's instance values | the active `## Capabilities` registry, each capability's filled profile, per-repo paths, per-task artifacts | Gitignored. Downstream; never committed by the plugin. |
 
 ---
@@ -49,6 +49,8 @@ The lifecycle phases are the canonical SDD set (GitHub Spec Kit: **Specify → P
 | `qa-execution` | the execution engine + environment | `provider` | partition by surface (`engine`/`host`); subagent dispatch |
 
 **Aggregate** = follow every contributor in registry order (general → specific, so the most-specific wins last on additive `guidance`). **Partition** = only the owning capability applies; overlapping ownership is a registry-validation error.
+
+> **Reserved:** the `artifact` kind at `plan` has **no active instance** — it was modeled on the migration mapping, which is actually a `verify` `finding`. The slot stays for a future *forward* `plan`-correspondence fragment (authored from spec + source before code), not a post-implementation audit.
 
 **The constitution** — non-negotiable principles, **composed not authored**. Established by a `wf:constitution` skill auto-invoked by `init` (records the project's clauses + the active registry), consulted as guidance at `spec`, and enforced as `finding`s at `verify`. Core contributes domain-free **process** articles; each capability contributes its own non-negotiables. **Project clauses override capability clauses;** a contradiction between two capabilities' articles is a registry-validation error.
 
@@ -93,11 +95,10 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 
 ## Milestones
 
-1. **Extraction → v2.** Reshape core to the registry + SDD-phase + taxonomy model, make it stack- and domain-free, and stage the migration / Angular / browser-QA knowledge out of core as capabilities wired through phase fragments.
+1. **Extraction → v2 (straight to capability plugins).** Reshape core to the registry + SDD-phase + taxonomy model, make it stack- and domain-free, and extract the migration / Angular / browser-QA knowledge out of core **directly into capability plugins** wired through phase fragments. The non-core skills move first into a single interim **`wf-caps`** default-capabilities plugin (hosted beside core in this private marketplace), then fragment into per-capability plugins. We ship as plugins from the start — no transitional in-repo-folder stage to redo later. *(Absorbs the former "Add-on plugins" milestone.)*
 2. **Adopt Zach — upstream consume seam.** `/wf:spec` and `/wf:plan` consume Zach's committed Design / Backlog Decomposition (via the root ADO work item's attachment + a read-only parent-chain walk) as scope input; `00_reqs.md` stays the verification source of truth. Read-only, additive, no-op when absent.
-3. **Add-on plugins.** Promote the transitional in-repo capability folders into standalone plugins the generic core discovers and composes — single-concern, multi-concern, or whole-project bundles (incl. wrapping external skills like Zach's).
 
-> **Known follow-on:** even after core is domain-free, QA orchestration stays core while the browser engine (`browser-qa` feature) and Angular test-host (`angular` stack) become capabilities — tracked as WF-25 / WF-26.
+> **Known follow-on:** even after core is domain-free, QA orchestration stays core while the browser engine (`browser-qa` feature) and Angular test-host (`angular` stack) become capabilities — tracked as WF-25 / WF-26. The marketplace is multi-plugin: core (`wf`) + the interim `wf-caps` bundle now, fragmenting into per-capability plugins as each extraction lands.
 
 ---
 
@@ -125,8 +126,8 @@ Reshaped from the original v1 extraction plan (`WF-1`…`WF-10`) to the v2 regis
 
 | Issue | What |
 |---|---|
-| `WF-6` | Wire `migration-map` to the `plan` phase — mapping `artifact`, partition-by-ownership |
-| `WF-7` | Make `verify-spec` capability-agnostic — aggregate `finding`s at `verify` (also the constitution's enforcement point) |
+| `WF-6` | Re-home `migration-map` to `wf-caps` (relocation done). NOTE: it's a `verify` `finding` — an audit of an *implemented* migration — **not** a `plan` `artifact`; the phase-wiring folds into WF-7 |
+| `WF-7` | Make `verify-spec` capability-agnostic — aggregate `finding`s at `verify` (migration's rule-audit **and** migration-map; also the constitution's enforcement point) |
 | `WF-8` | Make `qa-gen` capability-agnostic — `qa-generation` aggregates `scenario`s (absorbs the QA split) |
 | `WF-23` | Adopt the `tasks` SDD phase (decomposition gate between `plan` and `implement`) |
 | `WF-24` | Add the `wf:constitution` skill — composed, auto-invoked by `init`, enforced at `verify` |

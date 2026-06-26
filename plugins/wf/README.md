@@ -71,9 +71,7 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 | Skill | What it does |
 |---|---|
 | `/wf:verify-spec` | Strict, evidence-based audit of the current branch vs. `00_reqs.md`. Use before opening a PR. |
-| `/wf:verify-fix` | Reads `04_verify.md`, auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous findings as open questions. Run after `/wf:verify-spec` to clear the obvious stuff. |
-| `/wf:migration-map` | 1:1 mapping table between a C# source and its TS target (POCO, enum, viewmodel, partial, service, slice). `file:line` evidence, grep-verified counts. |
-| `/wf:classify` | Classifies an ADO task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
+| `/wf:verify-fix` | Reads `04_verify.md`, auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous findings as open questions. Run after `/wf:verify-spec` to clear the obvious stuff. || `/wf:classify` | Classifies an ADO task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
 | `/wf:index` | Updates one row in the per-task `index.md` manifest. Other skills call it after writing any artifact so the index stays in sync. Lean. |
 | `/wf:test-node` | Scaffold and run Node unit tests for pure TypeScript helpers. No Angular runtime. |
 | `/wf:test-page` | Scaffold black-box Angular runtime tests; inject into the `CodeTrakkerModuleTestComponent` sandbox page. |
@@ -84,6 +82,8 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 | `/wf:qa-followup` | Follows up a QA report: triages every non-PASS scenario, unblocks harness blocks, root-causes FAIL defects, writes a checkbox remediation plan (`08_qa-fix.md`), gates on a single approval, applies fixes, and recommends a fresh QA pass. The QA chain's plan-then-implement defect-fixer. |
 
 All default to zero-argument invocation — they infer context from the current branch.
+
+> **Moved:** `migration-map` now ships in the **wf-caps** plugin as `/wf-caps:migration-map` — see [`plugins/wf-caps/README.md`](../wf-caps/README.md). Install `wf-caps` to use it.
 
 ## Per-task artifacts
 

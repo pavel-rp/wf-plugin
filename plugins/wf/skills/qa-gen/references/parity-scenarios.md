@@ -23,7 +23,7 @@ These scenarios are **in addition to** the normal spec-traced suites, not a repl
 A task is a **migration** when any of these hold (checked in Phase 2):
 
 1. **Type metadata says so.** `01_spec.md` / `02_plan.md` carries `**Type:** migration` (persisted by `/wf:classify`).
-2. **A migration map exists.** `03_migration-map.md` is present in the task folder (output of `/wf:migration-map`). This is the strongest signal *and* the richest input — it already enumerates every 1:1 unit with `file:line` evidence.
+2. **A migration map exists.** `03_migration-map.md` is present in the task folder (output of `/wf-caps:migration-map`). This is the strongest signal *and* the richest input — it already enumerates every 1:1 unit with `file:line` evidence.
 3. **The diff is shaped like a migration.** `git diff --name-only main...HEAD` has Angular target files (`.ts` / `.html` / `.scss` under `AuditTrakker.Web/`) **and** the target files carry `//MIGRATION NOTE` / `//MIGRATION TODO` comments naming a legacy `.cs` / `.cshtml` source, **or** `00_reqs.md` cites a legacy source file (`ReportCookie.cs`, `ReviewController.cs`, `_ProviderFilter.cshtml`, …).
 
 When none hold, the task is not a migration — skip Phase 3.6 entirely and emit no parity suite.
@@ -99,7 +99,7 @@ When `03_migration-map.md` exists, it is the primary input — it already did th
 - Each **`service` method row** → one functional parity scenario (verb/route/contract match).
 - Each **`[MISSING]` / `[⚠ UNMAPPED TYPE]` / `[FORMAT]` flag** in the map → a parity scenario marked `[BLOCKED BY MAP FLAG: <flag>]`; the migration map must be reconciled before parity can pass. Surface these under the coverage matrix's **Parity blockers** sub-list — a category **distinct from** the SC-N "no coverage" Gaps (a parity blocker is a scenario that exists but cannot pass until the map is fixed, not a criterion with no scenario). Don't mix the two.
 
-Don't re-derive the mapping from source — trust the map (it's grep-verified). If no `03_migration-map.md` exists, suggest running `/wf:migration-map {id}` first in the final-output `Next:` line, and derive parity from the spec + a signature-only legacy read instead.
+Don't re-derive the mapping from source — trust the map (it's grep-verified). If no `03_migration-map.md` exists, suggest running `/wf-caps:migration-map {id}` first in the final-output `Next:` line, and derive parity from the spec + a signature-only legacy read instead.
 
 ---
 

@@ -140,7 +140,7 @@ The three **API** keys are used only by the backend-exercise path (`Type: API` s
 | **Domain** (`{domain}`) | `<none>` |
 | **Domain Path** (`{domain-path}`) | `<none>` |
 
-The domain capability seam (see `plugins/wf/skills/_contracts/invocation-mechanism.contract.md`). `{domain}` names the active capability and `{domain-path}` is the repo-relative folder holding its manifest. `<none>` disables the seam — no domain hook fires, and core runs domain-free. Set both (e.g. `{domain}: migration`, `{domain-path}: domain/migration`) to activate a capability.
+The domain capability seam (see `plugins/wf/skills/_contracts/invocation-mechanism.contract.md`). `{domain}` names the active capability and `{domain-path}` is the repo-relative folder holding its manifest. `<none>` disables the seam — no domain hook fires, and core runs domain-free. Set both (e.g. `{domain}: migration`, `{domain-path}: plugins/wf-caps/capabilities/migration`) to activate a capability.
 ```
 
 After writing, tell the user to review `_local/config.md` — especially the detected `Verify Command` — and edit values for the current project if they differ from the defaults. The keys must not change — only the values.

@@ -47,17 +47,22 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships the wf plugin)
-├── plugins/wf/                # THE PLUGIN
+│   └── marketplace.json       # marketplace manifest (ships the wf + wf-caps plugins)
+├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
 │   ├── README.md              # user-facing skill catalogue
-│   ├── skills/<name>/SKILL.md # one folder per skill (auto-discovered)
-│   │   └── _contracts/        # v1 frozen foundation (being generalised to v2)
+│   ├── skills/                # one folder per skill (auto-discovered)
+│   │   ├── <name>/SKILL.md
+│   │   └── _contracts/        # v1 frozen foundation — sibling of the skill folders
 │   └── agents/<name>.md       # subagent companions (auto-discovered)
-├── domain/migration/          # the migration capability (v1 home; an `adapter` capability)
-│   ├── manifest.md            # how it attaches to the spine
-│   └── hooks/                 # v1 hook prose → becomes v2 fragments
+├── plugins/wf-caps/           # DEFAULT-CAPABILITIES PLUGIN — non-core stack/domain skills + capabilities
+│   ├── .claude-plugin/plugin.json
+│   ├── skills/<name>/SKILL.md # e.g. migration-map (auto-discovered → /wf-caps:*)
+│   ├── agents/<name>.md
+│   └── capabilities/migration/ # the migration capability: manifest + fragments + profile
+│       ├── manifest.md         # how it attaches to the spine
+│       └── hooks/              # v1 hook prose → becomes v2 fragments
 ├── docs/ROADMAP.md            # committed grounding doc
 └── _local/                    # gitignored: research notes, working tracking
 ```
@@ -85,6 +90,7 @@ Phases are the **injection points**. A capability touches only the phases it has
 - **aggregate** — follow every contributor, in **registry order** (general → specific, so the most-specific wins last on additive `guidance`).
 - **partition** — only the *owning* capability applies; overlapping ownership is a registry-validation error. `artifact` partitions by a `source→target` token pair (e.g. `csharp→ts`); `provider` partitions by a `surface` token (`engine`, `host`, …).
 - `finding`/`scenario`/`article` carry **provenance**, so order is cosmetic for them.
+- **Reserved — `artifact` at `plan` has no active instance.** It was modeled on the migration mapping, which is actually a `verify` `finding` (it audits *implemented* code). The slot is kept for a future **forward** `plan`-correspondence fragment — one authored from spec + source *before* code exists — **not** a post-implementation audit. Don't wire an audit skill here.
 
 **The constitution** — non-negotiable principles, **composed not authored**:
 
@@ -104,8 +110,8 @@ Phases are the **injection points**. A capability touches only the phases it has
 
 | Capability | Path                    |
 |------------|-------------------------|
-| migration  | domain/migration        |
-| browser-qa | capabilities/browser-qa |
+| migration  | plugins/wf-caps/capabilities/migration |
+| browser-qa | capabilities/browser-qa                |
 ```
 
 Empty table = fully generic core. Name is decoupled from path so the binding survives a capability moving to a standalone plugin. Table order = deterministic injection order (general → specific).
@@ -135,7 +141,7 @@ Two composition mechanisms, kept separate: **features compose natively** (instal
 - `requires:` satisfied, `conflicts:` not both active;
 - every fragment row names a phase **and** contribution kind that core actually defines.
 
-**Migration is the reference `adapter` capability.** Its v1 hooks map to v2 fragments: `rule-audit` → `finding` at `verify` (+ constitution `article`s); `parity-suite` → `scenario` at `qa-generation`; `mapping` → `artifact` at `plan` (`csharp→ts`); and it **gains** authoring `guidance` at `spec`/`implement` and a `task-list` at `tasks`.
+**Migration is the reference `adapter` capability.** Its v1 hooks map to v2 fragments: `rule-audit` → `finding` at `verify` (+ constitution `article`s); `parity-suite` → `scenario` at `qa-generation`; `mapping` (the migration-map 1:1 audit) → a second `finding` at `verify` — it audits an *implemented* migration against the legacy source (reads the migrated diff; stops if no target exists), so it is verify-time conformance, **not** a `plan` artifact; and it **gains** authoring `guidance` at `spec`/`implement` and a `task-list` at `tasks`.
 
 ---
 
@@ -145,7 +151,7 @@ The current skills are v1-shaped. Their v2 homes:
 
 | Stays **core** (generic) | Extracts to a **capability** |
 |---|---|
-| `spec`, `plan`, `tasks` (new), `implement`, `run` | `migration-map` → `migration` (adapter): `plan` `artifact` |
+| `spec`, `plan`, `tasks` (new), `implement`, `run` | `migration-map` → `migration` (adapter): `verify` `finding` (1:1 audit of an *implemented* migration — not a `plan` artifact) |
 | `verify-spec`, `qa-gen`, `qa-run`, `qa-followup` (orchestration only) | `rule-audit` parity logic → `migration`: `verify` `finding` + constitution `article`s |
 | `init`, `constitution` (new), `branch`, `commit`, `pr` | parity-suite → `migration`: `qa-generation` `scenario` |
 | `classify`, `triage`, `index`, `lite` | `qa-auto` browser driving → `browser-qa` (feature): `qa-execution` `provider` |
@@ -247,13 +253,12 @@ Default to **B** for read-only reasoning, **C** for action-oriented gates, **D**
 
 **Manifests.** `plugins/wf/.claude-plugin/plugin.json` carries `name` (`wf`), `version`, `description`, `author`, `repository`, `license`, `keywords`. `.claude-plugin/marketplace.json` carries the marketplace metadata and a `plugins[]` entry (`name`, `source: ./plugins/wf`, `version`, …). Run `claude plugin validate` before publishing; unrecognised fields warn, type mismatches fail.
 
-**Versioning — three fields, always identical:**
+**Versioning — multi-plugin marketplace.** The marketplace hosts more than one plugin (`wf` core + `wf-caps`), each versioned independently. Two invariants:
 
-- `plugins/wf/.claude-plugin/plugin.json` → `version`
-- `.claude-plugin/marketplace.json` → top-level `version`
-- `.claude-plugin/marketplace.json` → the `wf` entry's `version`
+- **Per plugin:** `plugins/<plugin>/.claude-plugin/plugin.json` → `version` **equals** that plugin's `version` in the `.claude-plugin/marketplace.json` `plugins[]` entry. Bump both together when that plugin changes.
+- **Marketplace:** `.claude-plugin/marketplace.json` → top-level `version` bumps on **any** change (a bump to any plugin, an added/removed plugin).
 
-The plugin is consumed straight from the marketplace, so **every PR to `main` is a release — bump all three on every merged change.** Pick the tier by what changed:
+Plugins are consumed straight from the marketplace, so **every PR to `main` is a release — bump the touched plugin's two fields plus the marketplace top-level on every merged change** (a change spanning both plugins bumps each plugin's pair + the top-level). Pick the tier by what changed:
 
 - **PATCH** (`0.5.0 → 0.5.1`) — no change to the invocation contract: a bug fix, reworded description, fixed URL, internal refinement, a `references/` edit, or **any docs-only change** (README, this file).
 - **MINOR** (`0.5.0 → 0.6.0`) — a backward-compatible capability change: a new skill/agent, a whole new **family** (one bump for the batch), a new subcommand/argument, a new config key or contribution kind. **Pre-1.0, breaking changes also bump MINOR** — renaming/removing a skill, changing an argument, or changing a final-output block shape that downstream skills grep.
