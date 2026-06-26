@@ -4,7 +4,7 @@ description: Produces a deterministic 1:1 migration mapping table between a C#/M
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
-# /wf:migration-map — Deterministic 1:1 migration mapping table
+# /wf-caps:migration-map — Deterministic 1:1 migration mapping table
 
 Produce a deterministic 1:1 migration mapping table between a C# / MVC source and its Angular / TypeScript target. Works for POCOs (C# class → TS interface), enums, ViewModels, MVC partial views (`.cshtml` → Angular component `.html` + `.ts`), controller/service methods, and cookie-slice state. Every row is backed by `file:line` evidence and counts are verified via `grep`/`awk`, not eyeballed. Use when the user asks to "map this 1:1", "produce a migration table", "diff the POCO against the TS interface", "map all migrated stuff in this branch", or wants a coverage report before finalizing a migration.
 
@@ -210,7 +210,7 @@ lines were counted and catch false positives.
 Produce one markdown section per pairing kind. Standard shape:
 
 ```markdown
-# /wf:migration-map — <source-basename> ↔ <target-basename>
+# /wf-caps:migration-map — <source-basename> ↔ <target-basename>
 
 **Source:** `<path>` (<LOC>)
 **Target:** `<path>` (<LOC>)
@@ -376,7 +376,7 @@ Next:     <branched on the result — see below>
 
 The `Next:` line branches on the result:
 
-- **flagged or missing rows** → `address the rows in "Missing / extra / flagged", then re-run /wf:migration-map`.
+- **flagged or missing rows** → `address the rows in "Missing / extra / flagged", then re-run /wf-caps:migration-map`.
 - **clean** → `/wf:verify-spec <id>` — its migration-rule audit re-checks conformance (omit when the map landed at the no-task fallback path).
 
 **The final-output block must always be the very last thing output to chat.**

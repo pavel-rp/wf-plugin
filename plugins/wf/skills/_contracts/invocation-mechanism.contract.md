@@ -43,7 +43,7 @@ two dispatch kinds, and dispatches per hook. Absence (`{domain}: <none>`) no-ops
 hook cleanly.
 
 This document defines **semantics and procedure**, not behavior of any one capability. It
-names zero domains. The worked demonstration below references the kept `domain/migration/`
+names zero domains. The worked demonstration below references the kept `plugins/wf-caps/capabilities/migration/`
 prototype by path only — as an example a core skill resolves *to*, never as something the
 core depends on.
 
@@ -197,18 +197,18 @@ so most core code need not branch at all.
 
 ## Worked demonstration: `rule-audit`, active vs. `<none>`
 
-This traces the kept `domain/migration/` prototype (committed under this task) through the
+This traces the kept `plugins/wf-caps/capabilities/migration/` prototype (committed under this task) through the
 two resolutions. It is an **example a core skill resolves to** — the core depends on none
 of these paths; it depends only on the two config keys and the fixed manifest path.
 
 ### Active — `{domain}: migration`
 
 1. **Folder resolution.** Core reads `_local/config.md`: `{domain}: migration`,
-   `{domain-path}: domain/migration`. Domain is active.
-2. **Manifest read.** Core reads `domain/migration/manifest.md` and parses it. The
+   `{domain-path}: plugins/wf-caps/capabilities/migration`. Domain is active.
+2. **Manifest read.** Core reads `plugins/wf-caps/capabilities/migration/manifest.md` and parses it. The
    manifest row reads `| rule-audit | inline: hooks/rule-audit.md |`.
 3. **Per-hook dispatch.** The kind is `inline`, so core reads
-   `domain/migration/hooks/rule-audit.md` and follows it in-context: it asserts the
+   `plugins/wf-caps/capabilities/migration/hooks/rule-audit.md` and follows it in-context: it asserts the
    migration `rule-checks` (which enforce the `invariants`, per `migration.contract.md`)
    against the work under review.
 4. **Result.** Core returns conformance findings shaped per the `rule-audit` generic
@@ -232,7 +232,7 @@ of these paths; it depends only on the two config keys and the fixed manifest pa
 - **Result shapes** are the generic shapes those hooks declare; the manifest binds a kind,
   never a shape.
 - The migration prototype's `rule-audit` is backed by the **`rule-checks`** and
-  **`invariants`** slots declared in `domain/migration/migration.contract.md` — the
+  **`invariants`** slots declared in `plugins/wf-caps/capabilities/migration/migration.contract.md` — the
   slot→hook table there maps `rule-audit → rule-checks, invariants`. This mechanism does
   not redefine that mapping; it only specifies how core reaches it at runtime.
 
@@ -248,7 +248,7 @@ between them — discovery, read, dispatch, no-op — with no new vocabulary.
   existing substrate primitives: config read, file read, Task-tool subagent invocation.
 - It is **not** a validator. Checking that a manifest maps only frozen hook names, or that
   a capability's slots are well-formed, is WF-2's concern.
-- It is **not** a capability. It names zero domains. The `domain/migration/` references are
+- It is **not** a capability. It names zero domains. The `plugins/wf-caps/capabilities/migration/` references are
   a worked example, not a dependency.
 - It does **not** rewire any consumer skill. Making `verify-spec` fire `rule-audit`,
   `migration-map` fire `mapping`, or `qa-gen` fire `parity-suite` is owned by WF-7/WF-6/WF-8

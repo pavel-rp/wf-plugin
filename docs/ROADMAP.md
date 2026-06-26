@@ -29,7 +29,7 @@
 | Tier | Owns | Examples | Hard rule |
 |---|---|---|---|
 | **Core engine** (the `wf` plugin) | the SDD phase spine, the capability registry + the runtime compose/aggregate mechanism, the contribution taxonomy, and domain-free workflow skills | `spec`, `plan`, `tasks`, `implement`, `verify-spec`, `qa-gen`, `run`, `init`, `constitution`, `branch`, `commit`, `pr`, `classify`, `triage`, `index` | **Zero stack / domain / project knowledge.** Iterates the registry; assumes nothing about which capabilities exist or how many. |
-| **Capabilities** (any granularity) | reusable stack / domain / feature / project knowledge — phase fragments and/or their own skills | `migration` (adapter: mapping, parity, rule-audit, type-map); `angular` (stack: test-host scaffolding, stack idioms); `browser-qa` (feature: browser engine); a whole-project bundle (may wrap external skills, e.g. Zach's) | Provide fragments + their own contract/profile. Staged in transitional in-repo folders now → standalone plugins later. **Never inside core.** |
+| **Capabilities** (any granularity) | reusable stack / domain / feature / project knowledge — phase fragments and/or their own skills | `migration` (adapter: mapping, parity, rule-audit, type-map); `angular` (stack: test-host scaffolding, stack idioms); `browser-qa` (feature: browser engine); a whole-project bundle (may wrap external skills, e.g. Zach's) | Provide fragments + their own contract/profile. Shipped as capability **plugins** alongside core in this marketplace — an interim `wf-caps` bundle now → per-capability plugins later. **Never inside core.** |
 | **Project `_local/`** | this repo's instance values | the active `## Capabilities` registry, each capability's filled profile, per-repo paths, per-task artifacts | Gitignored. Downstream; never committed by the plugin. |
 
 ---
@@ -93,11 +93,10 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 
 ## Milestones
 
-1. **Extraction → v2.** Reshape core to the registry + SDD-phase + taxonomy model, make it stack- and domain-free, and stage the migration / Angular / browser-QA knowledge out of core as capabilities wired through phase fragments.
+1. **Extraction → v2 (straight to capability plugins).** Reshape core to the registry + SDD-phase + taxonomy model, make it stack- and domain-free, and extract the migration / Angular / browser-QA knowledge out of core **directly into capability plugins** wired through phase fragments. The non-core skills move first into a single interim **`wf-caps`** default-capabilities plugin (hosted beside core in this private marketplace), then fragment into per-capability plugins. We ship as plugins from the start — no transitional in-repo-folder stage to redo later. *(Absorbs the former "Add-on plugins" milestone.)*
 2. **Adopt Zach — upstream consume seam.** `/wf:spec` and `/wf:plan` consume Zach's committed Design / Backlog Decomposition (via the root ADO work item's attachment + a read-only parent-chain walk) as scope input; `00_reqs.md` stays the verification source of truth. Read-only, additive, no-op when absent.
-3. **Add-on plugins.** Promote the transitional in-repo capability folders into standalone plugins the generic core discovers and composes — single-concern, multi-concern, or whole-project bundles (incl. wrapping external skills like Zach's).
 
-> **Known follow-on:** even after core is domain-free, QA orchestration stays core while the browser engine (`browser-qa` feature) and Angular test-host (`angular` stack) become capabilities — tracked as WF-25 / WF-26.
+> **Known follow-on:** even after core is domain-free, QA orchestration stays core while the browser engine (`browser-qa` feature) and Angular test-host (`angular` stack) become capabilities — tracked as WF-25 / WF-26. The marketplace is multi-plugin: core (`wf`) + the interim `wf-caps` bundle now, fragmenting into per-capability plugins as each extraction lands.
 
 ---
 

@@ -72,7 +72,7 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 |---|---|
 | `/wf:verify-spec` | Strict, evidence-based audit of the current branch vs. `00_reqs.md`. Use before opening a PR. |
 | `/wf:verify-fix` | Reads `04_verify.md`, auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous findings as open questions. Run after `/wf:verify-spec` to clear the obvious stuff. |
-| `/wf:migration-map` | 1:1 mapping table between a C# source and its TS target (POCO, enum, viewmodel, partial, service, slice). `file:line` evidence, grep-verified counts. |
+| `/wf-caps:migration-map` | 1:1 mapping table between a C# source and its TS target (POCO, enum, viewmodel, partial, service, slice). `file:line` evidence, grep-verified counts. |
 | `/wf:classify` | Classifies an ADO task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
 | `/wf:index` | Updates one row in the per-task `index.md` manifest. Other skills call it after writing any artifact so the index stays in sync. Lean. |
 | `/wf:test-node` | Scaffold and run Node unit tests for pure TypeScript helpers. No Angular runtime. |

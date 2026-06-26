@@ -119,10 +119,10 @@ Run these reads in parallel where the tools allow:
 
 6. **Detect whether this is a migration task.** A migration ports a legacy C#/MVC unit to an Angular/TypeScript counterpart, and gets a parity suite in Phase 3.6. Treat the task as a migration when **any** of these hold:
    - `01_spec.md` / `02_plan.md` metadata carries `**Type:** migration` (persisted by `/wf:classify`).
-   - A `03_migration-map.md` exists in the task folder (output of `/wf:migration-map`) — the strongest signal and the richest input for parity assertions.
+   - A `03_migration-map.md` exists in the task folder (output of `/wf-caps:migration-map`) — the strongest signal and the richest input for parity assertions.
    - The Phase 2 step 4 diff has Angular target files **and** those targets carry `//MIGRATION NOTE` / `//MIGRATION TODO` comments naming a legacy `.cs` / `.cshtml` source, **or** `00_reqs.md` cites a legacy source file.
 
-   When it is a migration, identify the legacy source unit(s) and the migrated target(s) — read `03_migration-map.md` if present (it already pairs them 1:1 with `file:line` evidence), otherwise infer the pairing from the `//MIGRATION NOTE` comments and the reqs citation, as `/wf:migration-map` does. Record the pairing for Phase 3.6. The detail rules are in [`references/parity-scenarios.md`](references/parity-scenarios.md).
+   When it is a migration, identify the legacy source unit(s) and the migrated target(s) — read `03_migration-map.md` if present (it already pairs them 1:1 with `file:line` evidence), otherwise infer the pairing from the `//MIGRATION NOTE` comments and the reqs citation, as `/wf-caps:migration-map` does. Record the pairing for Phase 3.6. The detail rules are in [`references/parity-scenarios.md`](references/parity-scenarios.md).
 
 ---
 
@@ -404,7 +404,7 @@ Default `full`. The same skill at the same scope on the same spec should produce
 - **Implementation isn't done yet.** Allowed. Mark scenarios that depend on unimplemented behavior with `[PENDING IMPLEMENTATION]` in the title and a `<!-- BLOCKED BY: <missing-behavior> -->` comment. The black-box rule means this still works — scenarios were derived from the spec, not the missing code.
 - **All criteria are Build/static or Automated.** First make sure they really are — a criterion describing what an endpoint or service method *returns/filters/persists* is **API**, not Build/static, and the most common cause of a wrongly-empty plan is mis-binning backend behavior as "it compiles." Once that's checked: write `06_qa.md` with a populated coverage matrix and no spec-derived suites, plus a one-paragraph note: "All criteria are verified by build or existing automation. No spec-traced runnable scenarios required at scope `<scope>`." The **Baseline health suite is still emitted** (browser baseline if there's a route, API baseline if there's an endpoint/service) — so the plan is never empty of runnable scenarios. Valid output, not a stop condition.
 - **Backend-only task (all behavior is `.cs`, no UI).** Not a stop condition and not a stub. Behavioral criteria classify as **API**; service-only ones get `Backend host required:`; the Baseline-health suite uses the API baseline. The plan is fully runnable by `/wf:qa-auto`.
-- **Migration task.** Detected in Phase 2 step 6. In addition to the normal spec-traced suites, emit the `## Suite: Migration parity` section (Phase 3.6) with functional/visual parity scenarios per [`references/parity-scenarios.md`](references/parity-scenarios.md). Not a stop condition — parity is additive. If the task looks like a migration but no `03_migration-map.md` exists, still emit parity from the spec + a signature-only legacy read, and recommend `/wf:migration-map {id}` in the `Next:` line so a future run can derive richer assertions.
+- **Migration task.** Detected in Phase 2 step 6. In addition to the normal spec-traced suites, emit the `## Suite: Migration parity` section (Phase 3.6) with functional/visual parity scenarios per [`references/parity-scenarios.md`](references/parity-scenarios.md). Not a stop condition — parity is additive. If the task looks like a migration but no `03_migration-map.md` exists, still emit parity from the spec + a signature-only legacy read, and recommend `/wf-caps:migration-map {id}` in the `Next:` line so a future run can derive richer assertions.
 - **`06_qa.md` already exists with annotated run results** (PASS/FAIL markers from a prior run). Stop and ask: "Existing `06_qa.md` has run annotations. Overwrite (loses results), append a new section, or rename the existing file as `06_qa.<timestamp>.md` first?" Default to renaming the prior file.
 - **Multiple scenarios collapse onto the same criterion at scope `smoke`.** Smoke is one-per-criterion. If you find yourself writing two smoke scenarios for the same `SC-N`, pick the one with the highest priority and drop the other. The coverage matrix shows one `TC-NNN` per criterion at `smoke`.
 - **Cross-feature dependencies.** If TC-005 requires TC-003 to have run successfully (e.g., "open the period created in TC-003"), state that as a precondition: `Depends on: TC-003 PASS`. Don't duplicate steps.
@@ -429,7 +429,7 @@ Gaps:      <list of uncovered SC-N, or "none">
 
 Next:      /wf:qa-auto {id}    — autonomous run, subagent drives the browser (default)
            /wf:qa-run {id}     — or drive it yourself, one step at a time
-           <migration + no 03_migration-map.md: /wf:migration-map {id} — derive richer parity assertions>
+           <migration + no 03_migration-map.md: /wf-caps:migration-map {id} — derive richer parity assertions>
 
 ```
 

@@ -47,17 +47,21 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships the wf plugin)
-├── plugins/wf/                # THE PLUGIN
+│   └── marketplace.json       # marketplace manifest (ships the wf + wf-caps plugins)
+├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
 │   ├── README.md              # user-facing skill catalogue
 │   ├── skills/<name>/SKILL.md # one folder per skill (auto-discovered)
 │   │   └── _contracts/        # v1 frozen foundation (being generalised to v2)
 │   └── agents/<name>.md       # subagent companions (auto-discovered)
-├── domain/migration/          # the migration capability (v1 home; an `adapter` capability)
-│   ├── manifest.md            # how it attaches to the spine
-│   └── hooks/                 # v1 hook prose → becomes v2 fragments
+├── plugins/wf-caps/           # DEFAULT-CAPABILITIES PLUGIN — non-core stack/domain skills + capabilities
+│   ├── .claude-plugin/plugin.json
+│   ├── skills/<name>/SKILL.md # e.g. migration-map (auto-discovered → /wf-caps:*)
+│   ├── agents/<name>.md
+│   └── capabilities/migration/ # the migration capability: manifest + fragments + profile
+│       ├── manifest.md         # how it attaches to the spine
+│       └── hooks/              # v1 hook prose → becomes v2 fragments
 ├── docs/ROADMAP.md            # committed grounding doc
 └── _local/                    # gitignored: research notes, working tracking
 ```
@@ -104,8 +108,8 @@ Phases are the **injection points**. A capability touches only the phases it has
 
 | Capability | Path                    |
 |------------|-------------------------|
-| migration  | domain/migration        |
-| browser-qa | capabilities/browser-qa |
+| migration  | plugins/wf-caps/capabilities/migration |
+| browser-qa | capabilities/browser-qa                |
 ```
 
 Empty table = fully generic core. Name is decoupled from path so the binding survives a capability moving to a standalone plugin. Table order = deterministic injection order (general → specific).
@@ -247,13 +251,12 @@ Default to **B** for read-only reasoning, **C** for action-oriented gates, **D**
 
 **Manifests.** `plugins/wf/.claude-plugin/plugin.json` carries `name` (`wf`), `version`, `description`, `author`, `repository`, `license`, `keywords`. `.claude-plugin/marketplace.json` carries the marketplace metadata and a `plugins[]` entry (`name`, `source: ./plugins/wf`, `version`, …). Run `claude plugin validate` before publishing; unrecognised fields warn, type mismatches fail.
 
-**Versioning — three fields, always identical:**
+**Versioning — multi-plugin marketplace.** The marketplace hosts more than one plugin (`wf` core + `wf-caps`), each versioned independently. Two invariants:
 
-- `plugins/wf/.claude-plugin/plugin.json` → `version`
-- `.claude-plugin/marketplace.json` → top-level `version`
-- `.claude-plugin/marketplace.json` → the `wf` entry's `version`
+- **Per plugin:** `plugins/<plugin>/.claude-plugin/plugin.json` → `version` **equals** that plugin's `version` in the `.claude-plugin/marketplace.json` `plugins[]` entry. Bump both together when that plugin changes.
+- **Marketplace:** `.claude-plugin/marketplace.json` → top-level `version` bumps on **any** change (a bump to any plugin, an added/removed plugin).
 
-The plugin is consumed straight from the marketplace, so **every PR to `main` is a release — bump all three on every merged change.** Pick the tier by what changed:
+Plugins are consumed straight from the marketplace, so **every PR to `main` is a release — bump the touched plugin's two fields plus the marketplace top-level on every merged change** (a change spanning both plugins bumps each plugin's pair + the top-level). Pick the tier by what changed:
 
 - **PATCH** (`0.5.0 → 0.5.1`) — no change to the invocation contract: a bug fix, reworded description, fixed URL, internal refinement, a `references/` edit, or **any docs-only change** (README, this file).
 - **MINOR** (`0.5.0 → 0.6.0`) — a backward-compatible capability change: a new skill/agent, a whole new **family** (one bump for the batch), a new subcommand/argument, a new config key or contribution kind. **Pre-1.0, breaking changes also bump MINOR** — renaming/removing a skill, changing an argument, or changing a final-output block shape that downstream skills grep.

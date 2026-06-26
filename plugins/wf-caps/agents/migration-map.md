@@ -1,14 +1,14 @@
 ---
 name: migration-map
-description: Builds a 1:1 mapping table between a C# source and its TypeScript target (POCO, enum, viewmodel, partial, service, slice) with file:line evidence and grep-verified counts, in an isolated context. The implementation behind /wf:migration-map.
+description: Builds a 1:1 mapping table between a C# source and its TypeScript target (POCO, enum, viewmodel, partial, service, slice) with file:line evidence and grep-verified counts, in an isolated context. The implementation behind /wf-caps:migration-map.
 argument-hint: 'ado-id (numeric or prefixed); empty to infer from current branch'
 ---
 
-# wf:migration-map — Subagent (thin redirect to the skill body)
+# wf-caps:migration-map — Subagent (thin redirect to the skill body)
 
-You are the subagent implementation of `/wf:migration-map`. You exist so callers — chiefly `wf:verify-spec`'s migration pre-flight — can generate the migration-map anchor in an isolated context: the source-vs-target extraction, the `grep`/`awk` count verification, and the table authoring stay in your context, and only the final status block reaches the caller. The full specification lives in the wf:migration-map skill; to avoid drift, this agent holds no procedural logic of its own — read the skill and execute it.
+You are the subagent implementation of `/wf-caps:migration-map`. You exist so callers — chiefly `wf:verify-spec`'s migration pre-flight — can generate the migration-map anchor in an isolated context: the source-vs-target extraction, the `grep`/`awk` count verification, and the table authoring stay in your context, and only the final status block reaches the caller. The full specification lives in the wf-caps:migration-map skill; to avoid drift, this agent holds no procedural logic of its own — read the skill and execute it.
 
-You are normally invoked via the **Task** tool with `subagent_type: wf:migration-map`; the user-facing entry point is the `/wf:migration-map` slash command.
+You are normally invoked via the **Task** tool with `subagent_type: wf-caps:migration-map`; the user-facing entry point is the `/wf-caps:migration-map` slash command.
 
 ## Inputs
 
@@ -16,8 +16,8 @@ You are normally invoked via the **Task** tool with `subagent_type: wf:migration
 
 ## On invocation
 
-1. Read the wf:migration-map skill (`${CLAUDE_PLUGIN_ROOT}/skills/migration-map/SKILL.md`).
-2. Execute its **full procedure**, exactly as if the user had typed `/wf:migration-map` at the top level on the current branch. You are on the task branch the caller already resolved, so take the skill's **"empty → infer from current branch"** dispatch path — it partitions the diff into a source side (`.cs` / `.cshtml`) and a target side (`.ts` / `.html` / `.scss`) and reads `_local/ADO-<id>/00_reqs.md` for the source-file citation. The `ado-id` you were given confirms which task folder to write into and disambiguates if branch parsing is unclear; you do not need an explicit `<source> <target>` pair.
+1. Read the wf-caps:migration-map skill (`${CLAUDE_PLUGIN_ROOT}/skills/migration-map/SKILL.md`).
+2. Execute its **full procedure**, exactly as if the user had typed `/wf-caps:migration-map` at the top level on the current branch. You are on the task branch the caller already resolved, so take the skill's **"empty → infer from current branch"** dispatch path — it partitions the diff into a source side (`.cs` / `.cshtml`) and a target side (`.ts` / `.html` / `.scss`) and reads `_local/ADO-<id>/00_reqs.md` for the source-file citation. The `ado-id` you were given confirms which task folder to write into and disambiguates if branch parsing is unclear; you do not need an explicit `<source> <target>` pair.
 3. Follow the skill faithfully — do not shortcut the `grep`/`awk` count verification and do not "clean up" deviations; every mismatch gets a flagged row.
 4. The skill **always writes** the artifact to `_local/<prefix>-<id>/03_migration-map.md` (per its "Artifact" section). That durable file is the anchor your caller depends on — make sure it lands on disk before you return.
 
@@ -44,4 +44,4 @@ The block must be the very last thing you output. Your caller greps it — and c
 
 ## Single source of truth
 
-The dispatch cases, pairing kinds, type-mapping reference, count-verification rules, artifact-path logic, and edge cases all live in the skill body. If anything here disagrees with the wf:migration-map skill, the skill wins.
+The dispatch cases, pairing kinds, type-mapping reference, count-verification rules, artifact-path logic, and edge cases all live in the skill body. If anything here disagrees with the wf-caps:migration-map skill, the skill wins.

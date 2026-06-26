@@ -1,0 +1,20 @@
+{
+  "name": "wf-caps",
+  "version": "0.2.0",
+  "description": "wf default-capabilities pack — the non-core, stack/domain-specific skills extracted from the wf core plugin: migration-map (C#/MVC -> Angular/TS mapping), the QA providers (qa-auto, qa-host), and the stack test-hosts (test-node, test-page). Composes with wf core via the capability registry.",
+  "author": {
+    "name": "Pavel Kalabin",
+    "url": "https://github.com/pavel-rp"
+  },
+  "repository": "https://github.com/pavel-rp/wf-plugin",
+  "license": "UNLICENSED",
+  "keywords": [
+    "wf",
+    "capabilities",
+    "migration",
+    "angular",
+    "typescript",
+    "qa",
+    "agent-skills"
+  ]
+}

@@ -54,7 +54,7 @@ The committed boundary is **v1**, frozen across two contracts:
 
 **v1 is the N=1 case, not throwaway.** A registry with exactly one row reduces to
 v1's single active capability; the empty registry generalises v1's absent-state
-Null Object. The kept v1 reference capability under `domain/migration/` survives
+Null Object. The kept v1 reference capability under `plugins/wf-caps/capabilities/migration/` survives
 only as the worked single-row **example this contract resolves *to*** (see "Worked
 single-row example") — never a core dependency. Everything below is the v2
 generalisation of a shape v1 already proved at N=1.
@@ -323,14 +323,14 @@ downstream-visible contract, like a phase name).
 
 ## Worked single-row example (what core resolves *to* at N=1)
 
-This traces the kept v1 reference capability under `domain/migration/` as the
+This traces the kept v1 reference capability under `plugins/wf-caps/capabilities/migration/` as the
 worked **N=1** registry — an **example a core skill resolves to**, never a
 dependency. With a single registry row, the v2 port reduces to v1:
 
 - Its existing single v1 seam (`rule-audit`, **superseded here**) maps onto the v2
   shape as a `finding` contribution at the `verify` phase (the **example** the
   taxonomy resolves *to*). Core fires the `verify` phase, walks the one-row
-  registry, reads the example manifest at `domain/migration/manifest.md`, and
+  registry, reads the example manifest at `plugins/wf-caps/capabilities/migration/manifest.md`, and
   renders that capability's `finding` output — provenance-tagged to it.
 - The other two superseded v1 seams (`parity-suite`, `mapping`) map onto a
   `scenario` at `qa-generation` and an `artifact` at `plan` respectively — the

@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0 (WF-10 — kept `rule-audit` prototype)
 **Conforms to:** `plugins/wf/skills/_contracts/invocation-mechanism.contract.md` (manifest schema)
-**Capability:** migration (`{domain}: migration`, `{domain-path}: domain/migration`)
+**Capability:** migration (`{domain}: migration`, `{domain-path}: plugins/wf-caps/capabilities/migration`)
 **Model:** claude-opus-4-8
 
 ---
@@ -13,7 +13,7 @@ resolves `{domain-path}` from `_local/config.md`; it does not hardcode this path
 
 Each row maps a hook frozen by `core-extension.contract.md` to exactly one dispatch kind.
 Inline paths are forward-slash, **relative to `{domain-path}`** (so `hooks/rule-audit.md`
-resolves to `domain/migration/hooks/rule-audit.md`).
+resolves to `plugins/wf-caps/capabilities/migration/hooks/rule-audit.md`).
 
 | Hook | Dispatch |
 |------|----------|
@@ -24,7 +24,7 @@ resolves to `domain/migration/hooks/rule-audit.md`).
 This capability ships a human-fillable **profile seed template** declared via the v2
 manifest `profile-template:` field (`capability-registry.contract.md` §"Manifest schema v2").
 The path is forward-slash, **relative to `{domain-path}`** (so it resolves to
-`domain/migration/profile.template.json`):
+`plugins/wf-caps/capabilities/migration/profile.template.json`):
 
 ```
 profile-template: profile.template.json

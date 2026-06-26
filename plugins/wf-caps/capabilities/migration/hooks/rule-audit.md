@@ -1,8 +1,8 @@
 # `rule-audit` hook — migration capability (inline reference doc)
 
 **Version:** 1.0.0 (WF-10 — kept prototype)
-**Wired by:** `domain/migration/manifest.md` (`rule-audit → inline: hooks/rule-audit.md`)
-**Backed by:** the `rule-checks` and `invariants` slots of `domain/migration/migration.contract.md`
+**Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`rule-audit → inline: hooks/rule-audit.md`)
+**Backed by:** the `rule-checks` and `invariants` slots of `plugins/wf-caps/capabilities/migration/migration.contract.md`
 **Fills:** the `rule-audit` hook of `plugins/wf/skills/_contracts/core-extension.contract.md`
 **Model:** claude-opus-4-8
 

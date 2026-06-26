@@ -11,7 +11,7 @@
 # Model: claude-opus-4-8
 #
 # Usage:
-#   bash domain/migration/fixtures/run.sh
+#   bash plugins/wf-caps/capabilities/migration/fixtures/run.sh
 
 set -u
 
