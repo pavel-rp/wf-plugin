@@ -52,8 +52,9 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
 │   ├── README.md              # user-facing skill catalogue
-│   ├── skills/<name>/SKILL.md # one folder per skill (auto-discovered)
-│   │   └── _contracts/        # v1 frozen foundation (being generalised to v2)
+│   ├── skills/                # one folder per skill (auto-discovered)
+│   │   ├── <name>/SKILL.md
+│   │   └── _contracts/        # v1 frozen foundation — sibling of the skill folders
 │   └── agents/<name>.md       # subagent companions (auto-discovered)
 ├── plugins/wf-caps/           # DEFAULT-CAPABILITIES PLUGIN — non-core stack/domain skills + capabilities
 │   ├── .claude-plugin/plugin.json

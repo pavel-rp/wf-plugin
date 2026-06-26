@@ -22,7 +22,7 @@
       "name": "wf-caps",
       "source": "./plugins/wf-caps",
       "version": "0.2.0",
-      "description": "wf default-capabilities pack: the non-core, stack/domain-specific skills extracted from wf core — migration-map, the QA providers (qa-auto, qa-host), and the stack test-hosts (test-node, test-page).",
+      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability today (migration-map); QA and stack capabilities land as they are extracted from core.",
       "author": {
         "name": "Pavel Kalabin"
       },
