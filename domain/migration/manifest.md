@@ -19,6 +19,24 @@ resolves to `domain/migration/hooks/rule-audit.md`).
 |------|----------|
 | rule-audit | `inline: hooks/rule-audit.md` |
 
+## Profile seed template
+
+This capability ships a human-fillable **profile seed template** declared via the v2
+manifest `profile-template:` field (`capability-registry.contract.md` §"Manifest schema v2").
+The path is forward-slash, **relative to `{domain-path}`** (so it resolves to
+`domain/migration/profile.template.json`):
+
+```
+profile-template: profile.template.json
+```
+
+`init` (WF-9) stamps it per the contract's capability-agnostic seeding convention to
+`_local/profiles/migration.profile.json`, where a downstream project fills the four required
+slots (`stack`, `type-map`, `invariants`, `rule-checks`). The template's placeholder values
+point at the worked example, `fixtures/valid-profile.json` — the validator's known-passing
+input. The template is distinct in purpose from that fixture: the fixture is a complete
+worked instance for the validator; the template is the blank a project fills in.
+
 ## Unwired hooks
 
 `mapping` and `parity-suite` are **intentionally absent** — they are out of scope for the
