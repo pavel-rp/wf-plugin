@@ -120,7 +120,6 @@ Reshaped from the original v1 extraction plan (`WF-1`…`WF-10`) to the v2 regis
 | `WF-21` | Reshape the core contract — capability registry + SDD phases + contribution taxonomy (supersedes `WF-1`) |
 | `WF-22` | Generalise the invocation mechanism — iterate the registry, inject per phase, aggregate per policy (supersedes `WF-10`) |
 | `WF-3` | Author per-capability profiles + seed templates (registry-aware) |
-| `WF-4` | Behavioural eval baselines for the capability-coupled phases — **must precede the wiring issues** |
 
 **Wire the phases (each renders a contribution kind by injecting active capabilities' fragments):**
 
@@ -147,14 +146,14 @@ Reshaped from the original v1 extraction plan (`WF-1`…`WF-10`) to the v2 regis
 | `WF-9` | Wire `init` (write the registry + auto-invoke `wf:constitution`) + version bump + docs |
 | `WF-20` | CI: gate each capability's fixture suite + registry validation on PRs |
 
-*(`WF-5` canceled — Angular stack paths absorbed into `WF-26`. `WF-11`…`WF-19` are the spec/plan/impl sub-issues of `WF-1`/`WF-2`/`WF-10`, all done except the `WF-2` registry pass.)*
+*(`WF-4` canceled — a standalone eval-baseline task proved over-engineered; the no-regression floor is intrinsic to each wiring PR's diff plus a preserve-these-behaviours note in `WF-6/7/8/23`. `WF-5` canceled — Angular stack paths absorbed into `WF-26`. `WF-11`…`WF-19` are the spec/plan/impl sub-issues of `WF-1`/`WF-2`/`WF-10`, all done except the `WF-2` registry pass.)*
 
 ---
 
 ## Working principles for the dev agent (guardrails)
 
 - **Stage, don't big-bang.** This is prompt text with no compiler — a one-shot refactor fails *silently* (a worse QA plan, a false-positive verdict on the next real task). One issue = one branch/PR with its own acceptance check.
-- **Evals between stages.** Baseline behaviour with the `skill-creator` eval harness (`WF-4`) *before* migrating; a migration is "done" only when its eval is **no worse than baseline**.
+- **No regression between stages.** Each wiring issue records the v1 behaviours it must preserve and checks the rewrite against them; the regression floor is the wiring PR's own diff — the inline logic it deletes must reappear, now sourced from a registry fragment. (A standalone eval-baseline task, `WF-4`, was tried and canceled as over-engineered — no eval harness exists and the floor is intrinsic to each PR's diff.)
 - **Core stays stack- AND domain-free — verify it.** After each migration, grep the core skill for stack/domain strings (`AuditTrakker.Web`, `ComplianceRisk`, `CRA`, `Angular`, parity invariants); **zero hits is part of Done**.
 - **Design for arbitrary capabilities.** Never special-case the migration domain or assume one active capability — core composes whatever the registry lists (narrow, multiple, or a whole-project bundle).
 - **Reference the contract by slot / contribution-kind name — never read a profile or fragment "by heading".** If the shape must change, change the contract **and** its validator together.
