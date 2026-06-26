@@ -242,6 +242,15 @@ contract and the runtime own the rest):
 
 - **`skills:`** — for `feature` / `both` kinds, where the capability's skills live
   (documentation only; native plugin composition handles loading).
+- **`profile-template:`** — **optional.** A capability that fills contract slots
+  with concrete project values may ship a human-fillable **profile seed template**
+  and name it here: a single path, forward-slash, **relative to the capability's
+  folder** (e.g. `profile.template.json`). The template is the DATA leg of the
+  port — the concrete values the phase fragments later consume — distinct from any
+  test fixture the capability also ships. A manifest **without** this field is
+  still valid: the capability simply seeds no profile (see the seeding convention
+  below). This field is additive and backward-compatible — every pre-existing
+  manifest stays conformant.
 - **`requires:` / `conflicts:`** — optional; resolved at registry validation
   (`requires:` satisfied; `conflicts:` not both active).
 
@@ -249,6 +258,60 @@ A capability attaches only the fragments it provides; an unattached phase no-ops
 for that capability. Two composition mechanisms stay separate: **features compose
 natively** (install N plugins → their skills are all discoverable, no custom
 machinery), while **phase fragments compose via the registry** at runtime.
+
+---
+
+## The profile-seeding convention (capability-agnostic)
+
+A capability's contract slots are filled by a downstream **profile** — the
+concrete project values, distinct from the capability's behaviour. So that any
+capability can ship a starter for that profile without core naming it, this
+contract defines a single capability-agnostic seeding convention. The convention
+declares **where** a profile is stamped and **how** the stamp behaves;
+**executing** it is owned by `init` (WF-9) — this contract only defines the
+interface.
+
+1. **Stamp destination — deterministic, keyed by capability name.** A capability
+   declaring a `profile-template:` is seeded to a deterministic path under the
+   downstream `_local/`:
+
+   ```
+   _local/profiles/<capability-name>.profile.json
+   ```
+
+   `<capability-name>` is the registry's `Capability` column — the capability's
+   stable identity, **not** its `Path` — so the profile location survives the
+   capability moving folders or into a standalone add-on plugin. The path is
+   derived the same way for every capability; core names no concrete capability.
+
+2. **Placeholder syntax — every unfilled value is angle-bracketed.** A seeded-but-
+   unfilled value is an **angle-bracketed token**, in one of three forms:
+   `<UPPER_SNAKE>` for a bare value to replace (e.g. `<SOURCE_ROOT>`);
+   `<UPPER_SNAKE: inline guidance>` to name the value and carry its fill direction in
+   one token (e.g. `<SOURCE_ROOT: repo-relative source root, forward slashes>`); or
+   `<FILL: guidance>` where no value-name is needed. A value is **filled** once it
+   contains no `<…>` placeholder. Templates whose data format forbids comments carry
+   their fill guidance **inside** these angle-bracketed tokens — **including any
+   guidance placed in a schema-permitted note field, which must itself be an
+   angle-bracketed `<…>` token** — never as out-of-band comments. This keeps the
+   seeded file parseable, keeps the "no `<…>` ⇒ filled" rule total (no guidance
+   escapes detection), and keeps a filled copy schema-conformant.
+
+3. **Idempotency — a re-run never overwrites.** Seeding is safe to re-run: if the
+   destination already exists, the convention **leaves it untouched** (it never
+   overwrites a partially- or fully-filled profile). Re-seeding only ever creates
+   a missing destination — mirroring `init`'s existing skip-if-present behaviour
+   for `_local/config.md`.
+
+4. **No-op when absent.** A capability that declares **no** `profile-template:`
+   seeds nothing — no destination is created, no placeholder is written. This
+   mirrors the empty-registry / inert-phase no-op: a capability contributes a
+   profile seed exactly when it opts in, and its silence is not an error.
+
+The convention names **no** concrete capability, stack, or project value; it is the
+generic shape every capability's seed template plugs into. The destination-path
+convention is fixed here; any later change to it is a separate decision (it is a
+downstream-visible contract, like a phase name).
 
 ---
 
