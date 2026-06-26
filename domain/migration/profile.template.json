@@ -10,7 +10,7 @@
       "source-type": "<SOURCE_TYPE: a source-language type token, e.g. int>",
       "target-type": "<TARGET_TYPE: its target-language counterpart, e.g. number>",
       "nullable": false,
-      "note": "<FILL: add one row per mappable source type; set nullable:true for the nullable form; use this note for round-trip / collection behaviour. Worked example: domain/migration/fixtures/valid-profile.json>"
+      "note": "<FILL: add one row per mappable source type; set nullable:true for the nullable form; use this note for round-trip / collection behaviour. Worked example (relative to this capability folder): fixtures/valid-profile.json>"
     }
   ],
   "invariants": [

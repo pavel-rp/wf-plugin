@@ -283,6 +283,12 @@ interface.
    stable identity, **not** its `Path` — so the profile location survives the
    capability moving folders or into a standalone add-on plugin. The path is
    derived the same way for every capability; core names no concrete capability.
+   Because the name is used **verbatim as the filename stem**, it must be a
+   **filesystem-safe token** — lowercase letters, digits, and hyphens (the same
+   shape as a skill slug), with no path separator, `..` segment, or whitespace —
+   so the derived path is unambiguous and cannot traverse outside
+   `_local/profiles/`. Registry validation (WF-2's registry pass / WF-28) rejects
+   any name that is not a safe token, before `init` ever derives a path from it.
 
 2. **Placeholder syntax — every unfilled value is angle-bracketed.** A seeded-but-
    unfilled value is an **angle-bracketed token**, in one of three forms:
@@ -342,9 +348,10 @@ new vocabulary.
 - It is **not** a runtime. No registry iteration, fragment injection, per-policy
   aggregation, or subagent dispatch is defined or implied here — that runtime
   generalisation is owned by **WF-22** (generalising the v1 substrate).
-- It is **not** a validator. The registry-level checks (unique names, paths exist
-  and carry a manifest, no overlapping ownership scopes, no contradictory articles,
-  valid phase/kind references) are owned by **WF-2's registry pass / WF-28**. The
+- It is **not** a validator. The registry-level checks (unique names, names are
+  filesystem-safe tokens, paths exist and carry a manifest, no overlapping ownership
+  scopes, no contradictory articles, valid phase/kind references) are owned by
+  **WF-2's registry pass / WF-28**. The
   per-capability profile check (a profile vs its contract) is unchanged.
 - It is **not** a capability. It names zero stack/domain/project concerns. Every
   concrete vocabulary, value, or example belongs in a capability's own contract,
