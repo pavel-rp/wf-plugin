@@ -377,6 +377,6 @@ Next:     <branched on the result — see below>
 The `Next:` line branches on the result:
 
 - **flagged or missing rows** → `address the rows in "Missing / extra / flagged", then re-run /wf-caps:migration-map`.
-- **clean** → `/wf:verify-spec <id>` — its migration-rule audit re-checks conformance (omit when the map landed at the no-task fallback path).
+- **clean** → `/wf:verify-spec <id>` — re-checks conformance via the migration capability's `verify` `finding` (rule-audit) aggregated at the verify phase (omit when the map landed at the no-task fallback path).
 
 **The final-output block must always be the very last thing output to chat.**

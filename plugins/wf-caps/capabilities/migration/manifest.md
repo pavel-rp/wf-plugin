@@ -1,30 +1,69 @@
 # Migration capability manifest
 
-**Version:** 1.0.0 (WF-10 — kept `rule-audit` prototype)
-**Conforms to:** `plugins/wf/skills/_contracts/invocation-mechanism.contract.md` (manifest schema)
-**Capability:** migration (`{domain}: migration`, `{domain-path}: plugins/wf-caps/capabilities/migration`)
+**Version:** 2.0.0 (WF-7 — v2 fragments table; `mapping` wired as a second `verify` finding)
+**Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
+**Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md` (v2.0.0, WF-22)
+**Capability:** migration (registered in the downstream `_local/config.md` `## Capabilities` table)
+**Kind:** adapter (attaches phase fragments via the registry; ships no skills of its own through this manifest)
 **Model:** claude-opus-4-8
 
 ---
 
-This is the migration capability's **hook→dispatch manifest** — the file a core skill reads
-at `{domain-path}/manifest.md` to learn how this capability fills each core hook. Core
-resolves `{domain-path}` from `_local/config.md`; it does not hardcode this path.
+This is the migration capability's **fragments manifest** — the file a core skill reads
+at `<path>/manifest.md` (when iterating the `## Capabilities` registry) to learn which
+fragments this capability attaches to which SDD phases. Core resolves `<path>` from the
+registry row in `_local/config.md`; it does not hardcode this path.
 
-Each row maps a hook frozen by `core-extension.contract.md` to exactly one dispatch kind.
-Inline paths are forward-slash, **relative to `{domain-path}`** (so `hooks/rule-audit.md`
-resolves to `plugins/wf-caps/capabilities/migration/hooks/rule-audit.md`).
+## Fragments
 
-| Hook | Dispatch |
-|------|----------|
-| rule-audit | `inline: hooks/rule-audit.md` |
+Each row attaches one fragment to one phase, typed by the contribution taxonomy. The
+schema is the v2 shape fixed by `capability-registry.contract.md`:
+`phase | contribution-kind | dispatch | scope`. Inline paths are forward-slash,
+**relative to this capability's registry path** (so `hooks/rule-audit.md` resolves to
+`plugins/wf-caps/capabilities/migration/hooks/rule-audit.md`). `subagent:` dispatch
+names a registered subagent invoked via the Task tool. `scope` is empty (`—`) for
+aggregate kinds; `finding` aggregates **with provenance**, so it carries no ownership
+scope token.
+
+| phase  | contribution-kind | dispatch                          | scope |
+|--------|-------------------|-----------------------------------|-------|
+| verify | finding           | `inline: hooks/rule-audit.md`     | —     |
+| verify | finding           | `subagent: wf-caps:migration-map` | —     |
+
+Read off the columns:
+
+- **rule-audit** (`verify | finding | inline: hooks/rule-audit.md`) — the mechanical
+  invariant audit: core reads `hooks/rule-audit.md` and follows it in-context, asserting
+  the migration `rule-checks` against the diff and returning findings in the generic
+  finding shape.
+- **migration-map** (`verify | finding | subagent: wf-caps:migration-map`) — the 1:1
+  audit of an *implemented* migration against the legacy source. It is wired at
+  **`verify`-time**, not at `plan`: it reads the migrated diff, compares it
+  source-vs-target with grep-verified counts, and self-stops if no target exists.
+  `subagent:` dispatch because migration-map ships an `agents/migration-map.md` companion
+  for the heavy isolated audit; only its final status block returns to the core firing
+  the phase. The migration-map writes a durable mapping table (`03_migration-map.md`).
+  Authoring migration-map's native `finding`-shape output is **deferred** to the
+  per-phase wiring work. Core dispatches this row and supplies the generic finding shape, but
+  it never parses migration-map's status block or its written artifact to synthesize
+  findings (that would be a capability-specific parse, forbidden to domain-free core).
+  So until migration-map emits the generic finding shape, this row yields **nothing to
+  aggregate**; this row wires the dispatch now, and its flagged rows become aggregated
+  `finding`s once migration-map emits the finding shape.
+
+Both fragments fire at `verify` under the `finding` kind: a core skill firing the
+`verify` phase dispatches **both** rows. Aggregation is provenance-tagged, in registry
+order (cosmetic for `finding`). Today only **rule-audit** yields a rendered finding;
+migration-map is wired but yields nothing to aggregate until it emits the generic
+finding shape (deferred to the per-phase wiring work), at which point both contribute.
+Neither is spawned by name from core — both are reached only through these registry rows.
 
 ## Profile seed template
 
 This capability ships a human-fillable **profile seed template** declared via the v2
 manifest `profile-template:` field (`capability-registry.contract.md` §"Manifest schema v2").
-The path is forward-slash, **relative to `{domain-path}`** (so it resolves to
-`plugins/wf-caps/capabilities/migration/profile.template.json`):
+The path is forward-slash, **relative to this capability's registry path** (so it resolves
+to `plugins/wf-caps/capabilities/migration/profile.template.json`):
 
 ```
 profile-template: profile.template.json
@@ -37,42 +76,14 @@ point at the worked example, `fixtures/valid-profile.json` — the validator's k
 input. The template is distinct in purpose from that fixture: the fixture is a complete
 worked instance for the validator; the template is the blank a project fills in.
 
-## Unwired hooks
+## Unwired fragments
 
-`mapping` and `parity-suite` are **intentionally absent** — they are out of scope for the
-WF-10 prototype (WF-7 wires `mapping` as a `verify` finding; WF-8 wires `parity-suite`). Per the invocation
-mechanism's no-op path, a hook with no manifest row no-ops cleanly: a core skill firing
-`mapping` or `parity-suite` while `{domain}: migration` is active proceeds exactly as if the
-hook were absent, until a later task adds its row here. Absence is not an error.
+`parity-suite` is **intentionally absent** — a `scenario` at `qa-generation`, deferred to
+WF-8. Per the invocation runtime's no-op path, a phase with no matching fragment row no-ops
+cleanly: a core skill firing `qa-generation` while migration is active proceeds exactly as
+if nothing were attached, until WF-8 adds its row here. Absence is not an error.
 
-## v2 schema correspondence (N=1 example — note only)
-
-`capability-registry.contract.md` (v2.0.0, WF-21) supersedes the v1 single-`{domain}` /
-three-named-hook port with a **capability registry**, named **SDD phases**, and a generic
-**contribution taxonomy**. Its v2 manifest shape is a fragments table —
-`phase | contribution-kind | dispatch | scope` — and this manifest is the worked **N=1
-example** that contract resolves *to*. The existing v1 row maps onto the v2 columns like
-this:
-
-| v1 manifest row | → v2 fragment row (`phase | contribution-kind | dispatch | scope`) |
-|-----------------|-------------------------------------------------------------------|
-| `rule-audit → inline: hooks/rule-audit.md` | `verify | finding | inline: hooks/rule-audit.md | —` |
-
-Read off the columns: the v1 `rule-audit` seam becomes a `finding` contribution at the
-`verify` phase, dispatched `inline:` to the same `hooks/rule-audit.md` doc, with no `scope`
-(the `finding` kind aggregates with provenance, so it carries no ownership scope token). At
-N=1 this is exactly the existing behaviour, re-expressed in the v2 shape.
-
-The v2 **runtime** that resolves this N=1 example — iterating the registry, reading this
-manifest, collecting the `verify` fragment, and rendering its provenance-tagged `finding` —
-is `plugins/wf/skills/_contracts/invocation-runtime.contract.md` (v2.0.0, WF-22), which
-supersedes `invocation-mechanism.contract.md` (v1.0.0, WF-10) referenced above.
-
-**Not authored here.** The rest of this capability's v2 fragments — a `scenario` at
-`qa-generation` (from the absent `parity-suite` seam), a second `finding` at `verify`
-(the migration-map 1:1 audit, from the absent `mapping` seam — it checks an *implemented*
-migration, so it is verify-time, **not** a `plan` artifact), and the new authoring
-`guidance` / `task-list` fragments at `spec` / `implement` / `tasks` — are **deferred** to
-WF-3 (profile authoring) and the per-phase wiring issues (WF-7 / WF-8; WF-6 was relocation only). This note
-only records the schema correspondence so the v2 contract's manifest-schema claim has its
-reference example; it adds no new fragment rows to the table above.
+The authoring `guidance` (at `spec` / `implement`) and `task-list` (at `tasks`) fragments
+this capability will gain are likewise **deferred** to the per-phase wiring issues; this
+manifest adds only the two `verify` `finding` rows above. `mapping` is **now wired** (the
+migration-map row), absorbing WF-6: it is a verify-time `finding`, not a `plan` artifact.

@@ -70,8 +70,9 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 
 | Skill | What it does |
 |---|---|
-| `/wf:verify-spec` | Strict, evidence-based audit of the current branch vs. `00_reqs.md`. Use before opening a PR. |
-| `/wf:verify-fix` | Reads `04_verify.md`, auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous findings as open questions. Run after `/wf:verify-spec` to clear the obvious stuff. || `/wf:classify` | Classifies an ADO task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
+| `/wf:verify-spec` | Strict, evidence-based audit of the current branch against the task spec, aggregating any capability `finding`s at the `verify` phase. Use before opening a PR. |
+| `/wf:verify-fix` | Reads `04_verify.md`, auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous findings as open questions. Run after `/wf:verify-spec` to clear the obvious stuff. |
+| `/wf:classify` | Classifies an ADO task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
 | `/wf:index` | Updates one row in the per-task `index.md` manifest. Other skills call it after writing any artifact so the index stays in sync. Lean. |
 | `/wf:test-node` | Scaffold and run Node unit tests for pure TypeScript helpers. No Angular runtime. |
 | `/wf:test-page` | Scaffold black-box Angular runtime tests; inject into the `CodeTrakkerModuleTestComponent` sandbox page. |
@@ -112,7 +113,7 @@ _local/
     └── artifacts/            # diffs, screenshots, API responses from /wf:qa-auto captures
 ```
 
-`00_reqs.md` is the **only authoritative spec**. `01_spec.md` and `02_plan.md` are derived artifacts; `/wf:verify-spec` deliberately audits against `00_reqs.md`, not the LLM spec, to catch drift.
+`00_reqs.md` is the **only authoritative spec**. `01_spec.md` and `02_plan.md` are derived artifacts; `/wf:verify-spec` deliberately audits the branch against the task spec — not a derived plan — to catch drift, and aggregates any capability `finding`s at the `verify` phase.
 
 ## Direction
 

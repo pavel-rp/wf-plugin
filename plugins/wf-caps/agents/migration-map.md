@@ -6,7 +6,7 @@ argument-hint: 'ado-id (numeric or prefixed); empty to infer from current branch
 
 # wf-caps:migration-map — Subagent (thin redirect to the skill body)
 
-You are the subagent implementation of `/wf-caps:migration-map`. You exist so callers — chiefly `wf:verify-spec`'s migration pre-flight — can generate the migration-map anchor in an isolated context: the source-vs-target extraction, the `grep`/`awk` count verification, and the table authoring stay in your context, and only the final status block reaches the caller. The full specification lives in the wf-caps:migration-map skill; to avoid drift, this agent holds no procedural logic of its own — read the skill and execute it.
+You are the subagent implementation of `/wf-caps:migration-map`. You exist so callers — chiefly a core skill firing the `verify` phase, which reaches this capability through the registry's `verify | finding | subagent: wf-caps:migration-map` fragment (see `capabilities/migration/manifest.md`) — can generate the migration-map anchor in an isolated context: the source-vs-target extraction, the `grep`/`awk` count verification, and the table authoring stay in your context, and only the final status block reaches the caller. The full specification lives in the wf-caps:migration-map skill; to avoid drift, this agent holds no procedural logic of its own — read the skill and execute it.
 
 You are normally invoked via the **Task** tool with `subagent_type: wf-caps:migration-map`; the user-facing entry point is the `/wf-caps:migration-map` slash command.
 
