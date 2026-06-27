@@ -42,16 +42,21 @@ Read off the columns:
   source-vs-target with grep-verified counts, and self-stops if no target exists.
   `subagent:` dispatch because migration-map ships an `agents/migration-map.md` companion
   for the heavy isolated audit; only its final status block returns to the core firing
-  the phase. The migration-map writes a durable mapping table (`03_migration-map.md`);
-  the core consumes its flagged rows (deviations, count mismatches) as verify-time
-  `finding` evidence. (Authoring migration-map's full native `finding`-shape output is
-  deferred — WF-3 / per-phase work; this row wires the dispatch and its mapping is the
-  evidence today.)
+  the phase. The migration-map writes a durable mapping table (`03_migration-map.md`).
+  Authoring migration-map's native `finding`-shape output is **deferred** to the
+  per-phase wiring work. Core dispatches this row and supplies the generic finding shape, but
+  it never parses migration-map's status block or its written artifact to synthesize
+  findings (that would be a capability-specific parse, forbidden to domain-free core).
+  So until migration-map emits the generic finding shape, this row yields **nothing to
+  aggregate**; this row wires the dispatch now, and its flagged rows become aggregated
+  `finding`s once migration-map emits the finding shape.
 
-Both fragments fire at `verify` under the `finding` kind, so a core skill firing the
-`verify` phase aggregates **both**, provenance-tagged, in registry order (cosmetic for
-`finding`). Neither is spawned by name from core — both are reached only through these
-registry rows.
+Both fragments fire at `verify` under the `finding` kind: a core skill firing the
+`verify` phase dispatches **both** rows. Aggregation is provenance-tagged, in registry
+order (cosmetic for `finding`). Today only **rule-audit** yields a rendered finding;
+migration-map is wired but yields nothing to aggregate until it emits the generic
+finding shape (deferred to the per-phase wiring work), at which point both contribute.
+Neither is spawned by name from core — both are reached only through these registry rows.
 
 ## Profile seed template
 

@@ -41,8 +41,10 @@ Parse the first token. Recognized forms:
 ### empty → infer from current branch
 
 1. Run `git branch --show-current`. Expect something like
-   `feat/<id>-<slug>` or `fix/<id>-<slug>`.
-2. Extract the task id from the branch name (the id segment after the type prefix).
+   `feat/<id>-<slug>`, `fix/<id>-<slug>`, or any `<type>/<id>-<slug>` form
+   (`feature/`, `chore/`, … — the `wf:branch` prefix taxonomy).
+2. Extract the task id from the branch name — the first 3+-digit run after the type
+   prefix (e.g. `feature/6396-…` → `6396`).
 3. Locate the task folder at `{task-root}/{wi-prefix}-{id}/`. Confirm its requirements
    artifact (`00_reqs.md`) exists. If not, stop and ask the user to either pass the id
    explicitly or point at a requirements path.
@@ -171,7 +173,12 @@ capability invocation runtime
      capability's registry path**) and **follow it in-context**, producing findings in
      the generic finding shape.
    - `subagent: <agent>` → invoke the **Task** tool with `subagent_type: <agent>`,
-     passing the work under review; only its final block returns. Use its findings.
+     passing the work under review **and the generic finding shape** (the "Capability
+     findings" report shape below — the `finding` kind fixed by
+     `plugins/wf/skills/_contracts/capability-registry.contract.md`); only its final
+     block returns. Aggregate the findings it returns in that shape. Core never parses
+     a capability-specific output format to extract findings — a capability that has not
+     yet emitted the generic finding shape simply yields nothing to aggregate.
 5. **Aggregate provenance-tagged.** `finding` aggregates **with provenance**: render
    every contributor's findings, each tagged with its **source capability** (the
    registry row's name). Because attribution is explicit, registry order is **cosmetic**
@@ -225,7 +232,7 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 ### Full report shape (`04_verify.md`)
 
 ```
-# verify-spec: <task-id>
+# verify-spec: {wi-prefix}-{id}
 
 **Source:** `<path to 00_reqs.md>`
 **Branch:** `<branch name>`
@@ -349,7 +356,7 @@ End the chat reply with this fenced block, after the chat summary:
 ```
 VERIFY — <PASS | FAIL | PARTIAL>
 
-<task-id>: <passed>/<total> requirements, capability findings <none | N across M capabilities>
+{wi-prefix}-{id}: <passed>/<total> requirements, capability findings <none | N across M capabilities>
 Report: <task-folder>/04_verify.md
 Next: <branched on the verdict — see below>
 ```
