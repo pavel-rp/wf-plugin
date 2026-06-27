@@ -1,6 +1,6 @@
 # Migration capability manifest
 
-**Version:** 2.0.0 (WF-7 — v2 fragments table; `mapping` wired as a second `verify` finding)
+**Version:** 2.1.0 (WF-8 — `parity-suite` wired as a `qa-generation` scenario fragment)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md` (v2.0.0, WF-22)
 **Capability:** migration (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -25,10 +25,11 @@ names a registered subagent invoked via the Task tool. `scope` is empty (`—`) 
 aggregate kinds; `finding` aggregates **with provenance**, so it carries no ownership
 scope token.
 
-| phase  | contribution-kind | dispatch                          | scope |
-|--------|-------------------|-----------------------------------|-------|
-| verify | finding           | `inline: hooks/rule-audit.md`     | —     |
-| verify | finding           | `subagent: wf-caps:migration-map` | —     |
+| phase          | contribution-kind | dispatch                          | scope |
+|----------------|-------------------|-----------------------------------|-------|
+| verify         | finding           | `inline: hooks/rule-audit.md`     | —     |
+| verify         | finding           | `subagent: wf-caps:migration-map` | —     |
+| qa-generation  | scenario          | `inline: hooks/parity-suite.md`   | —     |
 
 Read off the columns:
 
@@ -50,13 +51,23 @@ Read off the columns:
   So until migration-map emits the generic finding shape, this row yields **nothing to
   aggregate**; this row wires the dispatch now, and its flagged rows become aggregated
   `finding`s once migration-map emits the finding shape.
+- **parity-suite** (`qa-generation | scenario | inline: hooks/parity-suite.md`) — the
+  migration **parity** QA layer: core reads `hooks/parity-suite.md` and follows it
+  in-context when firing the `qa-generation` phase, emitting functional- and
+  visual-parity scenarios that exercise each migrated unit against its legacy counterpart
+  (1:1 names, integer round-trip, verbatim DOM ids/classes, preserved signatures) in the
+  generic `scenario` shape. `scenario` aggregates **with provenance**, so the row carries
+  no ownership scope; when the work under review contains no migration, the fragment
+  returns an empty scenario list (the no-op).
 
-Both fragments fire at `verify` under the `finding` kind: a core skill firing the
-`verify` phase dispatches **both** rows. Aggregation is provenance-tagged, in registry
-order (cosmetic for `finding`). Today only **rule-audit** yields a rendered finding;
-migration-map is wired but yields nothing to aggregate until it emits the generic
-finding shape (deferred to the per-phase wiring work), at which point both contribute.
-Neither is spawned by name from core — both are reached only through these registry rows.
+The two `verify` `finding` rows fire at `verify`; the `parity-suite` `scenario` row fires
+at `qa-generation`. A core skill firing `verify` dispatches **both** finding rows; a core
+skill firing `qa-generation` dispatches the parity-suite row. Aggregation is
+provenance-tagged, in registry order (cosmetic for `finding` / `scenario`). Today only
+**rule-audit** yields a rendered finding; migration-map is wired but yields nothing to
+aggregate until it emits the generic finding shape (deferred to the per-phase wiring work);
+**parity-suite** yields parity scenarios whenever the work under review is a migration.
+None is spawned by name from core — each is reached only through these registry rows.
 
 ## Profile seed template
 
@@ -78,12 +89,15 @@ worked instance for the validator; the template is the blank a project fills in.
 
 ## Unwired fragments
 
-`parity-suite` is **intentionally absent** — a `scenario` at `qa-generation`, deferred to
-WF-8. Per the invocation runtime's no-op path, a phase with no matching fragment row no-ops
-cleanly: a core skill firing `qa-generation` while migration is active proceeds exactly as
-if nothing were attached, until WF-8 adds its row here. Absence is not an error.
+`parity-suite` is **now wired** (WF-8) — the `qa-generation | scenario | inline:
+hooks/parity-suite.md` row above. A core skill firing `qa-generation` while migration is
+active reads `hooks/parity-suite.md` and aggregates the parity scenarios it returns
+(provenance-tagged); when the work under review is not a migration, that fragment returns
+the empty scenario list (the no-op path), so the firing skill proceeds with its generic
+plan alone.
 
 The authoring `guidance` (at `spec` / `implement`) and `task-list` (at `tasks`) fragments
-this capability will gain are likewise **deferred** to the per-phase wiring issues; this
-manifest adds only the two `verify` `finding` rows above. `mapping` is **now wired** (the
-migration-map row), absorbing WF-6: it is a verify-time `finding`, not a `plan` artifact.
+this capability will gain remain **deferred** to the per-phase wiring issues; this manifest
+adds the two `verify` `finding` rows and the one `qa-generation` `scenario` row above.
+`mapping` is **wired** (the migration-map row), absorbing WF-6: it is a verify-time
+`finding`, not a `plan` artifact.
