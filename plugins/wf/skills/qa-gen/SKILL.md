@@ -186,9 +186,11 @@ Number them in sequence after the spec scenarios (Baseline health is the last su
 
 ## Phase 3.6: Fire the `qa-generation` phase (aggregate capability scenarios)
 
-After the generic spec-traced suites and the Baseline-health suite, fire the
+After generating the generic spec-traced suites and the Baseline-health suite, fire the
 **`qa-generation`** phase and aggregate any **`scenario`** contributions the registered
-capabilities attach to it. Execute the capability invocation runtime
+capabilities attach to it. This phase runs *after* Baseline health, but the suites it
+produces are **placed before** Baseline health — which always stays the last suite (see
+step 5 below). Execute the capability invocation runtime
 (`plugins/wf/skills/_contracts/invocation-runtime.contract.md`, which executes the port
 `plugins/wf/skills/_contracts/capability-registry.contract.md`), referencing it by
 **phase name / contribution-kind name** — never by heading:
