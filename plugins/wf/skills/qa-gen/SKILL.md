@@ -1,18 +1,18 @@
 ---
 name: qa-gen
-description: Generates a test plan for an ADO task — classifies each spec success criterion by verification method (build/static, automated test, manual-browser, or API endpoint-exercise), then writes 06_qa.md with scoped, spec-traced scenarios. UI criteria become browser scenarios a human or agent runs in the running app; backend criteria become API scenarios that exercise the endpoint (or a temporarily-wired service) over HTTP with a real token. For a migration task it additionally emits a Migration parity suite that checks the migrated Angular part against its legacy C#/MVC counterpart for functional and visual parity. Use when a task is implemented (or nearly so) and you want a QA pass tied to spec criteria before opening a PR or handing the plan to a run-assistant — including backend-only tasks that have no UI.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+description: Generates a test plan for an ADO task — classifies each spec success criterion by verification method (build/static, automated test, manual-browser, or API endpoint-exercise), then writes 06_qa.md with scoped, spec-traced scenarios. UI criteria become browser scenarios a human or agent runs in the running app; backend criteria become API scenarios that exercise the endpoint (or a temporarily-wired service) over HTTP with a real token. On top of that generic plan it fires the qa-generation phase, aggregating any scenarios contributed by whatever capabilities the project has registered — without naming or assuming any of them. Use when a task is implemented (or nearly so) and you want a QA pass tied to spec criteria before opening a PR or handing the plan to a run-assistant — including backend-only tasks that have no UI.
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:qa-gen — Manual browser-test plan generator
 
 Generates a structured manual test plan for an ADO task. Reads `00_reqs.md` (source of truth), classifies each success criterion by how it can be verified, designs scenarios for the criteria that need a human in a browser, and writes `06_qa.md` in the task folder. Every spec-derived scenario traces back to a numbered spec criterion; untraceable spec scenarios don't ship. The one deliberate exception is the **Baseline health suite** — a small standing set of measurable checks (no console errors, no failed network requests, the view renders) that every plan carries regardless of scope or criteria. See Phase 3.5.
 
-This skill produces **prose, not code**. The output is a plan a tester (human or agent) executes against the running app. Most scenarios are **browser** scenarios — clicks, typed values, observed UI changes, network calls visible in devtools. For a **backend** task (a controller endpoint, a service method, a ported repository method) it instead writes **API** scenarios that exercise the endpoint over HTTP with a real token and assert status + response shape; when the deliverable is a service with no endpoint yet, the scenario carries a `Backend host required:` precondition the runner satisfies by temporarily wiring the service to a controller (then reverting it). The full API-scenario rules live in [`references/api-scenarios.md`](references/api-scenarios.md). For automated unit tests scaffold via `/wf:test-page` (Angular DI-level, sandbox component) or `/wf:test-node` (pure helpers, Node runner) — those siblings cover what this skill deliberately doesn't.
+This skill produces **prose, not code**. The output is a plan a tester (human or agent) executes against the running app. Most scenarios are **browser** scenarios — clicks, typed values, observed UI changes, network calls visible in devtools. For a **backend** task (a controller endpoint, a service method, a repository method) it instead writes **API** scenarios that exercise the endpoint over HTTP with a real token and assert status + response shape; when the deliverable is a service with no endpoint yet, the scenario carries a `Backend host required:` precondition the runner satisfies by temporarily wiring the service to a controller (then reverting it). The full API-scenario rules live in [`references/api-scenarios.md`](references/api-scenarios.md). For automated unit tests scaffold via `/wf:test-page` (component/DI-level, sandbox host) or `/wf:test-node` (pure helpers, Node runner) — those siblings cover what this skill deliberately doesn't.
 
 A backend-only task is therefore **never** a stub PASS: its behavioral criteria become runnable API scenarios, and its Baseline-health suite targets the primary endpoint instead of being marked N/A.
 
-When the task is a **migration** (a legacy C#/MVC unit ported to Angular/TypeScript), the plan also carries a **Migration parity suite** — scenarios that check the migrated part against its legacy counterpart for **functional parity** (same inputs → same observable behavior) and **visual parity** (the migrated view preserves the legacy DOM ids/classes/labels and layout). Every CRA→Angular migration in this repo is a strict 1:1 copy, so parity is the standing bar a migration must clear regardless of how its individual criteria classify. The full parity rules live in [`references/parity-scenarios.md`](references/parity-scenarios.md). See Phase 3.6.
+This skill is **capability-agnostic**. Its default is the generic spec-traced plan above. On top of that default it **fires the `qa-generation` phase**, aggregating any `scenario`s contributed by whatever capabilities the project has registered — without naming, requiring, or assuming any of them. With no capability registered, the generic plan stands alone. See Phase 3.6.
 
 To run the plan, use the family's run-assistant skills:
 
@@ -106,23 +106,16 @@ Run these reads in parallel where the tools allow:
 
 4. **Inspect what changed.** Run `git diff --name-only main...HEAD` to list files modified on this branch. For each file, do a *signature-only* read (component selectors, route paths, public method names, template button labels) so scenarios can name real UI elements. **Stop reading at the first method body.** This is the same black-box rule `/wf:test-page` enforces.
 
-   For each new `*.component.ts` under `AuditTrakker.Web/`, also check whether the component is routed: grep `AuditTrakker.Web/src/app/code-trakker/code-trakker-routing.module.ts` for the component's kebab-name. If absent AND no `<kebab>-test/` folder exists either, the target is **host-missing** — record this so Phase 4 can emit a `Host required: <component-path>` precondition on scenarios that interact with it. `/wf:qa-auto` invokes `/wf:qa-host` to scaffold a routed test-host on demand.
+   For each new UI component in the diff, also check whether it is reachable by a route in the running app (grep the project's routing configuration for the component's selector / kebab-name). If it is not routed and no test-host for it exists either, the target is **host-missing** — record this so Phase 4 can emit a `Host required: <component-path>` precondition on scenarios that interact with it. `/wf:qa-auto` invokes `/wf:qa-host` to scaffold a routed test-host on demand.
 
-   **Backend surfaces.** Apply the same signature-only read to `.cs` files in the diff — controllers, services, repositories, and the DTOs they return — following [`references/api-scenarios.md` § Backend-diff signals](references/api-scenarios.md#backend-diff-signals-phase-2). For each new/changed `*Controller.cs` action, record its verb + route + params + return type (an **endpoint** surface). For each new/changed public method on a `*Service.cs` / `*Repository.cs` with no controller action calling it, record it as a **service-only** surface so Phase 4 can emit a `Backend host required: <Service>.<method>` precondition. A diff that is entirely `.cs` data-layer files with no Angular target is a **backend-only** task — its behavioral criteria classify as **API** in Phase 3.
+   **Backend surfaces.** Apply the same signature-only read to backend source files in the diff — controllers, services, repositories, and the DTOs they return — following [`references/api-scenarios.md` § Backend-diff signals](references/api-scenarios.md#backend-diff-signals-phase-2). For each new/changed controller action, record its verb + route + params + return type (an **endpoint** surface). For each new/changed public method on a service/repository with no controller action calling it, record it as a **service-only** surface so Phase 4 can emit a `Backend host required: <Service>.<method>` precondition. A diff that is entirely backend data-layer files with no UI target is a **backend-only** task — its behavioral criteria classify as **API** in Phase 3.
 
 5. **Catalog existing automated coverage.** Look under:
    - `_local/{wi-prefix}-{id}/tests/` — `/wf:test-node` output.
-   - `AuditTrakker.Web/src/app/code-trakker/code-trakker-module-test/_page-tests/` — `/wf:test-page` output (filename hints carry the suite name; the file is git-excluded but local).
+   - The project's page-test location — `/wf:test-page` output (filename hints carry the suite name; the file may be git-excluded but local).
    - Any pre-existing test files referenced in `02_plan.md`.
 
    For each automated test file, note which assertions it makes — the coverage matrix needs to know what's already verified by code so manual scenarios don't duplicate.
-
-6. **Detect whether this is a migration task.** A migration ports a legacy C#/MVC unit to an Angular/TypeScript counterpart, and gets a parity suite in Phase 3.6. Treat the task as a migration when **any** of these hold:
-   - `01_spec.md` / `02_plan.md` metadata carries `**Type:** migration` (persisted by `/wf:classify`).
-   - A `03_migration-map.md` exists in the task folder (output of `/wf-caps:migration-map`) — the strongest signal and the richest input for parity assertions.
-   - The Phase 2 step 4 diff has Angular target files **and** those targets carry `//MIGRATION NOTE` / `//MIGRATION TODO` comments naming a legacy `.cs` / `.cshtml` source, **or** `00_reqs.md` cites a legacy source file.
-
-   When it is a migration, identify the legacy source unit(s) and the migrated target(s) — read `03_migration-map.md` if present (it already pairs them 1:1 with `file:line` evidence), otherwise infer the pairing from the `//MIGRATION NOTE` comments and the reqs citation, as `/wf-caps:migration-map` does. Record the pairing for Phase 3.6. The detail rules are in [`references/parity-scenarios.md`](references/parity-scenarios.md).
 
 ---
 
@@ -191,20 +184,50 @@ Number them in sequence after the spec scenarios (Baseline health is the last su
 
 ---
 
-## Phase 3.6: Add the Migration parity suite (migration tasks only)
+## Phase 3.6: Fire the `qa-generation` phase (aggregate capability scenarios)
 
-**Run this phase only when Phase 2 step 6 flagged the task as a migration.** For a non-migration task, skip it entirely — emit no parity suite.
+After the generic spec-traced suites and the Baseline-health suite, fire the
+**`qa-generation`** phase and aggregate any **`scenario`** contributions the registered
+capabilities attach to it. Execute the capability invocation runtime
+(`plugins/wf/skills/_contracts/invocation-runtime.contract.md`, which executes the port
+`plugins/wf/skills/_contracts/capability-registry.contract.md`), referencing it by
+**phase name / contribution-kind name** — never by heading:
 
-Every CRA → Angular migration in this repo is a strict 1:1 copy (property names preserved, enum integers round-trip, DOM ids/classes preserved verbatim, method signatures preserved). Parity scenarios assert the migrated part matches its legacy counterpart along two dimensions, **in addition to** the normal spec-traced suites:
+1. **Read `_local/config.md`** and locate its `## Capabilities` registry. Iterate the
+   rows **in registry order** (general → specific).
+2. **Per row, read the manifest** at `<path>/manifest.md` (the path is fixed by the
+   contract; do not glob or guess). Parse its fragments table by the fixed columns
+   (`phase | contribution-kind | dispatch | scope`).
+3. **Collect** only the fragment rows whose `phase` is `qa-generation` and whose
+   `contribution-kind` is `scenario`. All other rows are ignored for this firing.
+4. **Dispatch each collected fragment** on its `dispatch` kind:
+   - `inline: <rel-path>` → read `<path>/<rel-path>` (forward-slash, **relative to the
+     capability's registry path**) and **follow it in-context**, producing scenarios in
+     the generic `scenario` shape (the same `TC-NNN` / `Validates:` contract as Phase 3,
+     numbered in the global sequence).
+   - `subagent: <agent>` → invoke the **Task** tool with `subagent_type: <agent>`,
+     passing the work under review **and the generic `scenario` shape**; only its final
+     block returns. Aggregate the scenarios it returns in that shape. Core never parses
+     a capability-specific output format to extract scenarios — a capability that has not
+     yet emitted the generic `scenario` shape simply yields nothing to aggregate.
+5. **Aggregate provenance-tagged.** `scenario` aggregates **with provenance**: render
+   every contributor's scenarios in their own suite, each tagged with its **source
+   capability** (the registry row's name). Because attribution is explicit, registry
+   order is **cosmetic** for scenarios. Place the aggregated capability suites **after**
+   the spec suites and **before** Baseline health, numbered in the global `TC-NNN`
+   sequence.
 
-- **Functional parity** — same inputs produce the same observable behavior (endpoint contract, slice round-trip, form validation, list filtering, enum round-trip).
-- **Visual parity** — the migrated rendered view preserves the legacy DOM ids/classes/labels (always) and the legacy layout (at `full` scope).
+**No-op (the only permitted branch is "zero `qa-generation` `scenario` fragments" vs "one
+or more"):** if the registry is empty or absent, a manifest is missing, no fragment row
+matches the `qa-generation` phase under the `scenario` kind, a dispatched fragment returns
+an empty list, or a `dispatch` is malformed (neither `inline:` nor `subagent:`), that
+contributor — or the whole phase — produces **nothing**. The generic plan then stands
+alone: no capability-scenarios section, no capability/stack/domain term surfaced, no broken
+subagent reference, no STOP. **Never** name a concrete capability, count the registry, or
+carry a per-capability code path. An aggregated scenario rolls up into the plan and the
+coverage matrix on the same footing as a spec-traced scenario, carrying its provenance tag.
 
-For each migrated unit recorded in Phase 2 step 6, decide which dimensions apply (a rendered `partial`/`viewmodel` gets both; a pure `poco`/`enum`/`slice`/`service` gets functional only), pick the **legacy oracle** mode (side-by-side when the legacy app is reachable, otherwise captured — default captured), and write scenarios per the rules and template in [`references/parity-scenarios.md`](references/parity-scenarios.md). When `03_migration-map.md` exists, derive assertions directly from its rows — each mapped property/enum/id/class/method becomes one parity assertion; each `[MISSING]` / `[⚠ UNMAPPED TYPE]` / `[FORMAT]` flag becomes a `[BLOCKED BY MAP FLAG]` scenario listed under the coverage matrix's **Parity blockers** sub-list — a category distinct from the SC-N "no coverage" Gaps (a parity blocker is a scenario that can't pass until the map is reconciled, not an uncovered criterion).
-
-Parity scenarios carry `**Type:** parity` and `**Parity:** functional | visual` lines, respect the scope filter (Phase 3's `smoke`/`happy`/`full`), and go in their own `## Suite: Migration parity` section — numbered in the global `TC-NNN` sequence, placed **after** the spec suites and **before** Baseline health. A migrated unit with no own success criterion uses `**Validates:** — (migration parity, not spec-traced)`; this is the second sanctioned exception (alongside Baseline health) to "untraceable scenarios don't ship."
-
-Write to `{task-root}/{wi-prefix}-{id}/06_qa.md`. Overwrite if it exists — git history (well, the in-folder backup if any) preserves prior versions; the task folder is gitignored, so there's no git history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
+Write to `{task-root}/{wi-prefix}-{id}/06_qa.md`. Overwrite if it exists — the task folder is gitignored, so there's no git history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
 
 Use the template in the next section verbatim. Substitute placeholders. Don't invent extra sections.
 
@@ -239,9 +262,9 @@ This plan is executed manually in a browser against the running app. Each scenar
 
 | Criterion (SC-N) | Wording (abbreviated) | Verification |
 |---|---|---|
-| SC-2 | <abbreviated criterion> | TypeScript compilation (`tsc --noEmit`) |
-| SC-4 | <abbreviated criterion> | `_page-tests/cra-shared-state.page-test.ts` → `setSkipEmptyCategories(true) is visible via getSkipEmptyCategories()` |
-| SC-5 | <abbreviated criterion> | File existence: `AuditTrakker.Web/src/app/state/cra-shared-state.service.ts` |
+| SC-2 | <abbreviated criterion> | Type/compile check (the project's typecheck command) |
+| SC-4 | <abbreviated criterion> | `<existing test file>` → `<the specific test name that asserts it>` |
+| SC-5 | <abbreviated criterion> | File existence: `<path to the expected artifact>` |
 
 ### Baseline health (always present)
 
@@ -252,22 +275,21 @@ This plan is executed manually in a browser against the running app. Each scenar
 
 Not spec-traced — these assert a standing quality bar, not an `SC-N`. Known-benign noise is filtered via `{qa-baseline-ignore}`.
 
-### Migration parity (migration tasks only — omit this section otherwise)
+### Capability scenarios (present only when one or more capabilities contributed — omit otherwise)
 
-| Migrated unit | Legacy source | Parity | Scenarios | Oracle |
-|---|---|---|---|---|
-| `cra-shared-state.models.ts` (`slice`) | `ReportCookie.cs` | functional | TC-NNN | captured (`03_migration-map.md`) |
-| `provider-filter.component` (`partial`) | `_ProviderFilter.cshtml` | visual + functional | TC-NNN, TC-NNN | side-by-side |
+| Source capability | Scenarios | Notes |
+|---|---|---|
+| <source capability> | TC-NNN, TC-NNN | <one-line summary of what the capability's scenarios assert> |
 
-Parity checks the migrated part against its legacy counterpart. Derived from `03_migration-map.md` where present. Omit this whole section for non-migration tasks.
+Scenarios aggregated from registered capabilities at the `qa-generation` phase, grouped by their provenance tag (the registry row's name). Registry order is cosmetic. Omit this whole section when no capability contributed.
 
 ### Gaps
 
 <List any criterion with no coverage — neither manual nor automated. Should be empty. If non-empty, flag prominently and explain why the gap exists.>
 
-**Parity blockers** (migration tasks only — omit otherwise):
+**Capability blockers** (present only when a capability scenario can't pass yet — omit otherwise):
 
-<List any `[BLOCKED BY MAP FLAG: <flag>]` parity scenarios — migration-map flags ([MISSING] / [⚠ UNMAPPED TYPE] / [FORMAT]) that must be reconciled before parity can pass. These are a distinct category from the uncovered-SC-N gaps above: a parity blocker is a scenario that exists but can't pass until the map is fixed, not a criterion with no scenario.>
+<List any aggregated capability scenario a contributor marked as blocked (e.g. a `[BLOCKED BY ...]` scenario whose precondition the capability flagged as unmet). These are a distinct category from the uncovered-SC-N gaps above: a capability blocker is a scenario that exists but can't pass until its blocker is reconciled, not a criterion with no scenario. Carry the provenance tag.>
 
 ---
 
@@ -283,7 +305,7 @@ Parity checks the migrated part against its legacy counterpart. Derived from `03
 - <Browser / app state — e.g., "Logged in as `admin@example.com`. Entity `Acme Corp` selected. On `/code-trakker/dashboard`.">
 - <Data state — e.g., "At least one open audit exists in the current entity.">
 - <Environment — e.g., "API server running. Network throttling off.">
-- <Host requirement, only when target was flagged host-missing in Phase 2 step 4 — e.g., "Host required: `AuditTrakker.Web/src/app/.../level-and-period-picker/level-and-period-picker.component.ts`. `/wf:qa-auto` will scaffold or look up the route via `/wf:qa-host`.">
+- <Host requirement, only when target was flagged host-missing in Phase 2 step 4 — e.g., "Host required: `<path to the un-routed component>`. `/wf:qa-auto` will scaffold or look up the route via `/wf:qa-host`.">
 
 **Steps:**
 
@@ -307,7 +329,7 @@ Parity checks the migrated part against its legacy counterpart. Derived from `03
 
 > **API scenarios** use the same outer block (`Validates` / `Priority` / `Preconditions` / `Teardown`) but carry a `**Type:** API` line and replace the **Steps** table with a **Request** block + an **Assertions** table. Service-only criteria add a `Backend host required: <Service>.<method>` precondition. Copy the exact shape from [`references/api-scenarios.md` § API scenario template](references/api-scenarios.md#api-scenario-template) — don't improvise it, the runners parse it. Browser scenarios need no `**Type:**` line (absence means browser).
 
-> **Parity scenarios** (migration tasks, Phase 3.6) use the same outer block plus a `**Type:** parity` line, a `**Parity:** functional | visual` line, and a `Legacy reference:` (side-by-side) or `Legacy oracle: captured (...)` precondition. The **Steps** table's Expected Result column carries the legacy oracle values. They sit in a `## Suite: Migration parity` section after the spec suites and before Baseline health. Copy the exact shape from [`references/parity-scenarios.md` § Parity scenario template](references/parity-scenarios.md#parity-scenario-template).
+> **Capability scenarios** (Phase 3.6) use the same outer `scenario` shape (`Validates` / `Priority` / `Preconditions` / `Steps` / `Teardown`, a `TC-NNN` id numbered in the global sequence). A contributing capability may add its own marker lines and preconditions; core follows the fragment's inline reference doc (or the subagent's returned block) verbatim and does not improvise their shape. Each aggregated suite sits after the spec suites and before Baseline health, tagged with its source-capability provenance. The dispatch and aggregation procedure is the invocation runtime fired in Phase 3.6.
 
 ---
 
@@ -392,7 +414,7 @@ Default `full`. The same skill at the same scope on the same spec should produce
 
 ## Phase 5: Index update + report
 
-1. **Invoke `/wf:index` for the `qa` slot.** Pass a one-line summary: `06_qa.md · <scope> · <N> scenarios · <M>/<K> criteria mapped`. Substitute the scope, the count of `TC-NNN` scenarios, the count of criteria with coverage (manual or automated), and the total criteria count. For a migration task, append ` · <P> parity` with the parity-scenario count.
+1. **Invoke `/wf:index` for the `qa` slot.** Pass a one-line summary: `06_qa.md · <scope> · <N> scenarios · <M>/<K> criteria mapped`. Substitute the scope, the count of `TC-NNN` scenarios, the count of criteria with coverage (manual or automated), and the total criteria count. When one or more capabilities contributed scenarios, append ` · <P> capability` with the aggregated capability-scenario count.
 
 2. **Emit the final-output block** (next section) with the path, scope, scenario count, coverage stats, and any gaps.
 
@@ -403,8 +425,8 @@ Default `full`. The same skill at the same scope on the same spec should produce
 - **Spec has no enumerated criteria.** Stop: "`00_reqs.md` has no testable success criteria. Update the spec with numbered criteria before generating QA scenarios." Don't invent criteria from the implementation.
 - **Implementation isn't done yet.** Allowed. Mark scenarios that depend on unimplemented behavior with `[PENDING IMPLEMENTATION]` in the title and a `<!-- BLOCKED BY: <missing-behavior> -->` comment. The black-box rule means this still works — scenarios were derived from the spec, not the missing code.
 - **All criteria are Build/static or Automated.** First make sure they really are — a criterion describing what an endpoint or service method *returns/filters/persists* is **API**, not Build/static, and the most common cause of a wrongly-empty plan is mis-binning backend behavior as "it compiles." Once that's checked: write `06_qa.md` with a populated coverage matrix and no spec-derived suites, plus a one-paragraph note: "All criteria are verified by build or existing automation. No spec-traced runnable scenarios required at scope `<scope>`." The **Baseline health suite is still emitted** (browser baseline if there's a route, API baseline if there's an endpoint/service) — so the plan is never empty of runnable scenarios. Valid output, not a stop condition.
-- **Backend-only task (all behavior is `.cs`, no UI).** Not a stop condition and not a stub. Behavioral criteria classify as **API**; service-only ones get `Backend host required:`; the Baseline-health suite uses the API baseline. The plan is fully runnable by `/wf:qa-auto`.
-- **Migration task.** Detected in Phase 2 step 6. In addition to the normal spec-traced suites, emit the `## Suite: Migration parity` section (Phase 3.6) with functional/visual parity scenarios per [`references/parity-scenarios.md`](references/parity-scenarios.md). Not a stop condition — parity is additive. If the task looks like a migration but no `03_migration-map.md` exists, still emit parity from the spec + a signature-only legacy read, and recommend `/wf-caps:migration-map {id}` in the `Next:` line so a future run can derive richer assertions.
+- **Backend-only task (all behavior in backend source, no UI).** Not a stop condition and not a stub. Behavioral criteria classify as **API**; service-only ones get `Backend host required:`; the Baseline-health suite uses the API baseline. The plan is fully runnable by `/wf:qa-auto`.
+- **A registered capability contributes scenarios.** Detected by firing the `qa-generation` phase in Phase 3.6. In addition to the normal spec-traced suites, the aggregated capability scenarios are rendered in their own provenance-tagged suite(s) after the spec suites and before Baseline health. Not a stop condition — capability scenarios are additive. With no capability registered (or none contributing at `qa-generation`), the generic plan stands alone and no capability term surfaces.
 - **`06_qa.md` already exists with annotated run results** (PASS/FAIL markers from a prior run). Stop and ask: "Existing `06_qa.md` has run annotations. Overwrite (loses results), append a new section, or rename the existing file as `06_qa.<timestamp>.md` first?" Default to renaming the prior file.
 - **Multiple scenarios collapse onto the same criterion at scope `smoke`.** Smoke is one-per-criterion. If you find yourself writing two smoke scenarios for the same `SC-N`, pick the one with the highest priority and drop the other. The coverage matrix shows one `TC-NNN` per criterion at `smoke`.
 - **Cross-feature dependencies.** If TC-005 requires TC-003 to have run successfully (e.g., "open the period created in TC-003"), state that as a precondition: `Depends on: TC-003 PASS`. Don't duplicate steps.
@@ -419,8 +441,8 @@ QA-GEN — Complete
 
 Task:      {wi-prefix}-{id}
 Scope:     <smoke | happy | full>
-Migration: <yes — <P> parity scenarios | no>
-Scenarios: <N> in <S> suites (incl. <b> Baseline health<, <p> Migration parity if migration>) — <br> browser · <api> API · <par> parity
+Capability scenarios: <none | <N> across <M> capabilities>
+Scenarios: <N> in <S> suites (incl. <b> Baseline health<, <c> capability scenarios if any>) — <br> browser · <api> API · <cap> capability
 Coverage:  <M>/<K> criteria mapped (<M-browser> browser · <M-api> API · <M-auto> automated · <M-static> build/static)
 
 File:      {task-root}/{wi-prefix}-{id}/06_qa.md
@@ -429,7 +451,6 @@ Gaps:      <list of uncovered SC-N, or "none">
 
 Next:      /wf:qa-auto {id}    — autonomous run, subagent drives the browser (default)
            /wf:qa-run {id}     — or drive it yourself, one step at a time
-           <migration + no 03_migration-map.md: /wf-caps:migration-map {id} — derive richer parity assertions>
 
 ```
 

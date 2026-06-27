@@ -1,6 +1,6 @@
 {
   "name": "wf-caps",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "wf default-capabilities pack — non-core, stack/domain-specific capabilities for the wf workflow, composed with wf core via the capability registry. Ships the migration capability today (migration-map: C#/MVC -> Angular/TS mapping); QA and stack capabilities land as they are extracted from core.",
   "author": {
     "name": "Pavel Kalabin",
