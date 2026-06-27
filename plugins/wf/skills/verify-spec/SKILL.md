@@ -201,7 +201,7 @@ generic verdict then stands alone: no capability findings section, no
 capability/stack/domain term surfaced, no broken subagent reference, no STOP. **Never**
 name a concrete capability, count the registry, or carry a per-capability code path. A
 capability's findings feed the verdict on the same footing as generic requirements
-(a `fail`-severity finding is a FAIL).
+(a finding that asserts non-conformance is a FAIL, exactly like a failed requirement).
 
 ---
 
