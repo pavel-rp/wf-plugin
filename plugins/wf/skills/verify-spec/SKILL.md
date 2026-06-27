@@ -49,11 +49,20 @@ Parse the first token. Recognized forms:
    artifact (`00_reqs.md`) exists. If not, stop and ask the user to either pass the id
    explicitly or point at a requirements path.
 
-### `<task-id>` (e.g. `WF-7`, `ENG-123`, `T001`)
+### `<task-id>` (e.g. `7`, `WF-7`, `6396`, `ENG-123`)
 
-Resolve to the task folder `{task-root}/{wi-prefix}-{id}/`. If the folder or its
-`00_reqs.md` is missing, stop and tell the user; do not fall back to the derived
-`01_spec.md` as the source of truth.
+**Normalize the argument to `{id}` before resolving any path.** The user may type the
+id bare (`7`, `6396`) or prefixed (`WF-7`, `ENG_123`). Strip a leading
+`<prefix>-` / `<prefix>_` segment — whether it matches `{wi-prefix}` or any other token
+— to obtain `{id}`; the remainder is the id used everywhere below. Do **not** substitute
+the raw argument into `{wi-prefix}-{id}`: with `{wi-prefix}` already `WF`, the raw arg
+`WF-7` would resolve to `{task-root}/WF-WF-7/`, and a downstream `/wf:index WF-7 …` would
+miss its `3+-digit / {wi-prefix}-NNN` disambiguation. So `WF-7` → `{id}` = `7`,
+`6396` → `{id}` = `6396`, `7` → `{id}` = `7`.
+
+Resolve to the task folder `{task-root}/{wi-prefix}-{id}/` using the **normalized** `{id}`.
+If the folder or its `00_reqs.md` is missing, stop and tell the user; do not fall back to
+the derived `01_spec.md` as the source of truth.
 
 ### `<path-to-00_reqs.md>`
 
