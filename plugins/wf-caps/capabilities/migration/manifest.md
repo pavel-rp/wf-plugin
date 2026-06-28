@@ -1,6 +1,6 @@
 # Migration capability manifest
 
-**Version:** 2.1.0 (WF-8 — `parity-suite` wired as a `qa-generation` scenario fragment)
+**Version:** 2.2.0 (WF-23 — `task-list` wired as a `tasks` decomposition fragment)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md` (v2.0.0, WF-22)
 **Capability:** migration (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -27,12 +27,20 @@ scope token.
 
 | phase          | contribution-kind | dispatch                          | scope |
 |----------------|-------------------|-----------------------------------|-------|
+| tasks          | task-list         | `inline: hooks/task-list.md`      | —     |
 | verify         | finding           | `inline: hooks/rule-audit.md`     | —     |
 | verify         | finding           | `subagent: wf-caps:migration-map` | —     |
 | qa-generation  | scenario          | `inline: hooks/parity-suite.md`   | —     |
 
 Read off the columns:
 
+- **task-list** (`tasks | task-list | inline: hooks/task-list.md`) — the migration
+  **decomposition** layer: core reads `hooks/task-list.md` and follows it in-context when
+  firing the `tasks` phase, emitting migration-shaped tasks (one increment per ported
+  construct, scaffold-then-component, each independently testable) in the generic
+  `task-list` shape. `task-list` aggregates **additively in registry order**, so the row
+  carries no provenance tag and no ownership scope; when the work under review contains no
+  migration, the fragment returns an empty task list (the no-op).
 - **rule-audit** (`verify | finding | inline: hooks/rule-audit.md`) — the mechanical
   invariant audit: core reads `hooks/rule-audit.md` and follows it in-context, asserting
   the migration `rule-checks` against the diff and returning findings in the generic
@@ -87,7 +95,7 @@ point at the worked example, `fixtures/valid-profile.json` — the validator's k
 input. The template is distinct in purpose from that fixture: the fixture is a complete
 worked instance for the validator; the template is the blank a project fills in.
 
-## Unwired fragments
+## Fragment wiring status
 
 `parity-suite` is **now wired** (WF-8) — the `qa-generation | scenario | inline:
 hooks/parity-suite.md` row above. A core skill firing `qa-generation` while migration is
@@ -96,8 +104,15 @@ active reads `hooks/parity-suite.md` and aggregates the parity scenarios it retu
 the empty scenario list (the no-op path), so the firing skill proceeds with its generic
 plan alone.
 
-The authoring `guidance` (at `spec` / `implement`) and `task-list` (at `tasks`) fragments
-this capability will gain remain **deferred** to the per-phase wiring issues; this manifest
-adds the two `verify` `finding` rows and the one `qa-generation` `scenario` row above.
-`mapping` is **wired** (the migration-map row), absorbing WF-6: it is a verify-time
-`finding`, not a `plan` artifact.
+`task-list` is **now wired** (WF-23) — the `tasks | task-list | inline: hooks/task-list.md`
+row above. A core skill firing the `tasks` phase while migration is active reads
+`hooks/task-list.md` and appends the migration-shaped tasks it returns (additive, in
+registry order); when the work under review is not a migration, that fragment returns the
+empty task list (the no-op path), so the firing skill proceeds with its generic
+decomposition alone.
+
+The authoring `guidance` (at `spec` / `implement`) fragments this capability will gain
+remain **deferred** to the per-phase wiring issues; this manifest adds the `tasks`
+`task-list` row, the two `verify` `finding` rows, and the one `qa-generation` `scenario`
+row above. `mapping` is **wired** (the migration-map row), absorbing WF-6: it is a
+verify-time `finding`, not a `plan` artifact.

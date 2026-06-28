@@ -1,6 +1,6 @@
 # wf — Spec-Driven Development harness for ADO tasks
 
-A Claude Code plugin for working on ADO-tracked tasks. It runs a gated **Spec-Driven Development** chain — spec → plan → implement → verify → QA — over each work item. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
+A Claude Code plugin for working on ADO-tracked tasks. It runs a gated **Spec-Driven Development** chain — spec → plan → tasks → implement → verify → QA — over each work item. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
 
 Today the skills carry the **Compliance Risk** migration knowledge (C# / ASP.NET MVC → Angular / TypeScript) directly. That knowledge is being generalised into a pluggable **capability** so the core becomes stack- and domain-free — see [Direction](#direction) and [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
 
@@ -47,12 +47,15 @@ A state-aware dispatcher over the chain below. It reads the task folder's artifa
 ```
 /wf:spec <ado-id>      # fetch ADO requirements + write grounded spec
 /wf:plan <ado-id>      # build checkbox-driven implementation plan
+/wf:tasks <ado-id>     # decompose the plan into small, independently testable units
 /wf:implement <ado-id> # execute the plan step by step — does not commit
 /wf:commit <ado-id>    # commit current changes, terse auto-message (--push to push)
 /wf:pr <ado-id>        # commit+push, then open a GitHub PR from the wf artifacts
 
 /wf:branch <ado-id>    # create task branch (auto-invoked by the others)
 ```
+
+`/wf:tasks` is the **decomposition gate** between `plan` and `implement` — the canonical Spec-Driven Development `tasks` phase. It reads the approved plan and writes `03_tasks.md`: an ordered list of small, independently testable units, each one a TDD-sized increment with its own way to prove it done. Because decomposition is gated separately from strategy, a task list can be regenerated without re-planning. It's optional on the standard chain (`/wf:implement` reads the plan directly) but recommended for larger items where the breakdown wants its own review. On top of the generic decomposition it **fires the `tasks` phase**, appending any task-list contributions the project's registered capabilities attach (additive, in registry order) — with none registered, the generic decomposition stands alone.
 
 `/wf:commit` authors the message in an isolated subagent (the diff never hits the main context): the first commit on the branch is `<id>: <task name>`, every later commit `<id>: <concise summary>` plus a bulleted what-changed body. `/wf:pr` first runs `/wf:commit --push` (a no-op when the tree is clean), then composes a PR body from the task's artifacts (reqs, spec, plan resolution, verify, QA), links the work item via `AB#<id>`, and opens the PR with `gh`.
 
@@ -100,6 +103,7 @@ _local/
     ├── 00_reqs.md            # auto-fetched from ADO — source of truth
     ├── 01_spec.md            # LLM-authored spec (interpretation, may drift)
     ├── 02_plan.md            # checkbox-driven implementation plan
+    ├── 03_tasks.md           # /wf:tasks decomposition — small, independently testable units
     ├── 03_migration-map.md   # optional — mapping table output
     ├── 04_verify.md          # /wf:verify-spec audit report — latest run
     ├── 05_verify-fix.md      # /wf:verify-fix log of auto-fixed findings + open questions
