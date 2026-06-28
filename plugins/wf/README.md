@@ -70,6 +70,7 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 
 | Skill | What it does |
 |---|---|
+| `/wf:constitution` | Establishes and re-runnably updates the project's composed constitution (core process articles + each capability's non-negotiables + project clauses, provenance-tagged, project clauses winning). Writes `_local/constitution.md` and maintains the `## Capabilities` registry; auto-invoked by `/wf:init`. |
 | `/wf:verify-spec` | Strict, evidence-based audit of the current branch against the task spec, aggregating any capability `finding`s at the `verify` phase. Use before opening a PR. |
 | `/wf:verify-fix` | Reads `04_verify.md`, auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous findings as open questions. Run after `/wf:verify-spec` to clear the obvious stuff. |
 | `/wf:classify` | Classifies an ADO task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
