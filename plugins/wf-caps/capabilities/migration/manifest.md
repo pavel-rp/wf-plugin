@@ -111,7 +111,7 @@ registry order); when the work under review is not a migration, that fragment re
 empty task list (the no-op path), so the firing skill proceeds with its generic
 decomposition alone.
 
-The authoring `guidance` (at `spec` / `implement`) fragments this capability will gain
+The authoring `guidance` (at `spec` / `implement`) fragments that this capability will gain
 remain **deferred** to the per-phase wiring issues; this manifest adds the `tasks`
 `task-list` row, the two `verify` `finding` rows, and the one `qa-generation` `scenario`
 row above. `mapping` is **wired** (the migration-map row), absorbing WF-6: it is a

@@ -1,7 +1,7 @@
 ---
 name: tasks
 description: Decomposes an approved implementation plan (02_plan.md) into an ordered list of small, independently testable units (03_tasks.md) — the last reviewable artifact before code exists. Gates decomposition separately from strategy, so a task list can be regenerated without re-planning. Use after /wf:plan and before /wf:implement.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:tasks — Decomposition gate between plan and implement
