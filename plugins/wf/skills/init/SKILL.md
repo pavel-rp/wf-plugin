@@ -133,14 +133,12 @@ The three **API** keys are used only by the backend-exercise path (`Type: API` s
 | **Migration Pattern** | `ComplianceRisk####-##.sql` |
 | **History Table** | `dbo.scripthistory` |
 
-## Domain
+## Capabilities
 
-| Key | Value |
-|-----|-------|
-| **Domain** (`{domain}`) | `<none>` |
-| **Domain Path** (`{domain-path}`) | `<none>` |
+| Capability | Path                   |
+|------------|------------------------|
 
-The domain capability seam (see `plugins/wf/skills/_contracts/invocation-mechanism.contract.md`). `{domain}` names the active capability and `{domain-path}` is the repo-relative folder holding its manifest. `<none>` disables the seam — no domain hook fires, and core runs domain-free. Set both (e.g. `{domain}: migration`, `{domain-path}: plugins/wf-caps/capabilities/migration`) to activate a capability.
+The capability registry (see `plugins/wf/skills/_contracts/capability-registry.contract.md`). Each row activates one capability: `Capability` is its name (its identity, decoupled from where it lives) and `Path` is the repo-relative folder (forward slashes) holding its `manifest.md`. **An empty (header-only) table = fully generic core** — no capability fires and every capability-aware phase runs inert. **One row per active capability.** **Table order = injection order** (general → specific): for additive guidance the most-specific capability is injected last and wins; for provenance-tagged contributions order is cosmetic. Add a row to register a capability (e.g. `migration | plugins/wf-caps/capabilities/migration`).
 ```
 
 After writing, tell the user to review `_local/config.md` — especially the detected `Verify Command` — and edit values for the current project if they differ from the defaults. The keys must not change — only the values.
@@ -240,6 +238,20 @@ The `/wf:test-page` skill writes into `AuditTrakker.Web/src/app/code-trakker/cod
 
 ---
 
+## Phase 7: Establish the constitution
+
+After `_local/config.md` exists (Phase 2) and the registry table is in place,
+**unconditionally** invoke `/wf:constitution` with no arguments so a fresh repo gets a
+constitution record — the same slash-invocation `plan`/`spec`/`lite` use for `/wf:classify`.
+`init` carries **no existence check of its own**: the skill's **establish-or-update default**
+handles both cases — it establishes when `_local/constitution.md` is absent (writing a
+core-only constitution when the `## Capabilities` registry is empty, the inert path) and
+updates idempotently when the file already exists (an unchanged project produces no diff, so
+re-running `init` is safe). If invocation is unavailable, skip with a one-line note in the
+chat summary telling the user to run `/wf:constitution` manually — never STOP `init` on it.
+
+---
+
 ## Edge Cases
 
 - **Not a git repository:** Stop in Phase 0 with the init instruction. Never run `git init` automatically.
@@ -262,6 +274,7 @@ Actions:
 - _local/config.md — <created | kept | overwritten>
 - _local/README.md — <created | kept | overwritten>
 - _local/_testkit/run.mjs — <created | kept>
+- _local/constitution.md — <established | updated | unchanged | skipped — run /wf:constitution>
 - .gitignore entry for _local/ — <appended | already present>
 - .git/info/exclude entry for _page-tests/ — <appended | already present | skipped>
 
