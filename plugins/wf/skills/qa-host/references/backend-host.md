@@ -38,7 +38,7 @@ Steps:
 
 4. **Idempotence.** If an ephemeral block for this target already exists (grep the sentinel with the target name), don't add a second — return the existing `__qa` route.
 
-`api-probe` writes no `index.md` row — the temporary endpoint is a within-run fixture, like the DB fixtures in `wf:qa-auto/references/preconditions.md`, not a lasting artifact.
+`api-probe` writes no `index.md` row — the temporary endpoint is a within-run fixture, like a per-scenario DB fixture, not a lasting artifact.
 
 ---
 
@@ -107,7 +107,7 @@ The runner calls `api-revert <target>` in fixture teardown for every host it sca
 
 A `.cs` controller edit is not live until the API recompiles. Two cases:
 
-- **Hot reload on** (`dotnet watch run`, or VS "Hot Reload"): the endpoint appears within a few seconds. The runner polls the `__qa` route until it stops returning 404 (bounded — see `wf:qa-auto/references/backend.md`).
+- **Hot reload on** (`dotnet watch run`, or VS "Hot Reload"): the endpoint appears within a few seconds. The runner polls the `__qa` route until it stops returning 404 (bounded — ~6 tries, a couple seconds apart).
 - **No hot reload:** the endpoint won't exist until the API is restarted. The runner can't restart the API itself. It marks the scenario `BLOCKED · setup: backend host wired but API not rebuilt — restart the API (or run dotnet watch) and re-run` and leaves the wiring in place so the restart picks it up. The wiring is still reverted at end of run.
 
 `api-probe`'s output always states "the API must rebuild/hot-reload for this route to respond" so neither a human nor the runner mistakes a fresh-wired 404 for a defect.
