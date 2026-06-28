@@ -21,8 +21,9 @@ those skills. It is **not a per-ticket phase**: you run it once at setup (auto-i
 This skill is **capability-agnostic**. With no capability registered, it writes a
 **core-only** constitution — the inert path, no stack/domain/project term surfaced. When
 capabilities are registered, it composes their articles on top of the core articles, in
-registry order, each provenance-tagged. It never names, requires, counts, or special-cases
-any concrete capability.
+registry order, each provenance-tagged. It never **hardcodes**, requires, counts, or
+special-cases any concrete capability; capability names appear only as provenance tags read
+from the registry.
 
 ---
 
@@ -92,8 +93,9 @@ default detects the right one.
   compiled artifact — composition is the runtime record itself, there is no compile step.
 - Author a capability's articles. This skill *composes* (reads and aggregates) what each
   capability's `manifest.md` declares; it never writes a capability's non-negotiables for it.
-- Name, require, count, or special-case any concrete stack, domain, or capability in its
-  own behaviour.
+- Hardcode, require, count, or special-case any concrete stack, domain, or capability in its
+  own behaviour (capability names may still be recorded as provenance tags read from the
+  registry — that is composition, not hardcoding).
 - Run builds, tests, installs, or any destructive git operation.
 
 ---
@@ -148,8 +150,10 @@ composition rule + manifest schema):
 **No-op (the only permitted branch is "zero capability articles" vs "one or more"):** if the
 registry is empty or absent, a manifest is missing, or a capability declares no `article`, that
 contributor — or the whole group — produces **nothing**. The constitution is then **core-only**:
-no capability section, no capability/stack/domain term surfaced, no STOP. Never name a concrete
-capability, count the registry, or carry a per-capability code path.
+no capability section, no capability/stack/domain term surfaced, no STOP. Never hardcode or
+special-case a concrete capability, count the registry, or carry a per-capability code path
+(a capability's name still appears as a provenance tag when it contributes articles — that is
+the registry-driven composition, not a hardcoded branch).
 
 ### 3. Project clauses — user-authored (distinct section)
 
@@ -239,7 +243,7 @@ shape if needed. Never invent capability rows.
 
 **Composed:** <YYYY-MM-DD HH:mm>
 **Model:** <model identifier>
-**Registry:** <N capabilities registered — comma-separated names | none (core-only)>
+**Registry:** <comma-separated capability names | none (core-only)>
 
 The non-negotiable principles this project's workflow holds itself to. **Composed, not
 baked** — core process articles + each registered capability's non-negotiables + the
@@ -312,7 +316,7 @@ End the chat reply with this fenced block, as the very last thing emitted:
 ```
 CONSTITUTION — <established | updated | unchanged>
 
-Articles: <8 core> + <N capability across M capabilities | 0 capability (core-only)> + <project section: seeded | preserved>
+Articles: <8 core> + <capability articles present | none (core-only)> + <project section: seeded | preserved>
 Registry: <comma-separated capability names | none (core-only)>
 File:     _local/constitution.md
 Next:     review _local/constitution.md and add any project clauses; then /wf:spec <id> to start a task (the constitution is consulted at spec and enforced at verify).

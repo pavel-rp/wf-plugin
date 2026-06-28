@@ -240,15 +240,15 @@ The `/wf:test-page` skill writes into `AuditTrakker.Web/src/app/code-trakker/cod
 
 ## Phase 7: Establish the constitution
 
-After `_local/config.md` exists (Phase 2) and the registry table is in place, auto-invoke
-`/wf:constitution` with no arguments so a fresh repo gets a constitution record (its
-establish-or-update default writes a core-only constitution when the `## Capabilities`
-registry is empty, the inert path) — the same slash-invocation `plan`/`spec`/`lite` use for
-`/wf:classify`. If invocation is unavailable, skip with a one-line note in the chat summary
-telling the user to run `/wf:constitution` manually — never STOP `init` on it. The constitution is established once here and re-run by the user only when the
-registry or the project's own clauses change; `init` does not re-establish it on an
-idempotent re-run if `_local/constitution.md` already exists (the skill's update mode
-produces no diff on an unchanged project).
+After `_local/config.md` exists (Phase 2) and the registry table is in place,
+**unconditionally** invoke `/wf:constitution` with no arguments so a fresh repo gets a
+constitution record — the same slash-invocation `plan`/`spec`/`lite` use for `/wf:classify`.
+`init` carries **no existence check of its own**: the skill's **establish-or-update default**
+handles both cases — it establishes when `_local/constitution.md` is absent (writing a
+core-only constitution when the `## Capabilities` registry is empty, the inert path) and
+updates idempotently when the file already exists (an unchanged project produces no diff, so
+re-running `init` is safe). If invocation is unavailable, skip with a one-line note in the
+chat summary telling the user to run `/wf:constitution` manually — never STOP `init` on it.
 
 ---
 
