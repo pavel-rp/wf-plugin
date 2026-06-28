@@ -168,7 +168,15 @@ If the test is genuinely about offline behavior, that's a category the browser-a
 
 Apply to every browser-storage setup and teardown:
 
-1. **Production guard.** Before any storage write, parse the `App base URL` from `_local/qa-creds.md`. If it looks production-shaped (no `localhost`, no `dev`, no `staging`, no `qa`, no `test` in the host), refuse: `BLOCKED · refused to seed: app URL "<url>" looks like production`. The user can override with explicit creds pointing at a known dev/staging environment.
+1. **Production guard (fail-closed).** Before any storage write, parse the `App base URL` from `_local/qa-creds.md` and extract its **host** (authority only — never match against the path, query, or fragment). Normalize the host first: lowercase it and strip any single trailing dot (so a rooted FQDN like `mybank.qa.` keeps `qa` as its true TLD). Treat the host as non-production only when it matches a **recognized non-prod indicator**:
+
+   - a loopback or local address — `localhost`, `127.0.0.1`, `::1`, or a host whose final dot-delimited label is `local` (e.g. `app.local`);
+   - a private-range IP — `10.x.x.x`, `172.16–31.x.x`, `192.168.x.x`;
+   - a host with a **non-final** dot-delimited label (a subdomain, never the trailing TLD label) *equal to* `dev`, `staging`, `qa`, `test`, or `preview` (e.g. `qa.example.com`, `app.staging.example.com`). Match whole labels in a subdomain position, not substrings and not the TLD — `mybank.qa` (`qa` is the TLD), `myapp.dev` (`dev` is the TLD), `developer.apple.com`, and `latest.myapp.com` are **not** non-prod.
+
+   `.internal` is **not** auto-treated as non-prod — production cloud services routinely resolve at `*.internal`. Reach such a host only via an explicit allowed-host entry in the creds.
+
+   Any host that matches none of these is treated as production-shaped — **refuse**: `BLOCKED · refused to seed: app URL "<url>" looks like production`. The guard fails closed: an unrecognized host is always refused, never seeded. The user can override with explicit creds pointing at a known dev/staging environment, and a project with a non-prod host outside these patterns (e.g. a custom review-app domain like `pr-42.app.example`) can set an explicit allowed-host entry in its creds rather than loosening the heuristic.
 
 2. **Capture before modify.** Every storage write captures the prior value *before* writing, so teardown can restore it (or remove a key that didn't exist before).
 
