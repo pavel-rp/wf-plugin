@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Commits the current task changes with a terse, auto-authored message — the first commit on the branch gets subject `<id>: <task name>`, every later commit `<id>: <concise summary>`, followed by a bulleted what-changed body. Diff reading and message authoring happen inside an isolated subagent so the main agent's context never sees the diff. Optional --push (off by default). Use to commit work on an ADO task branch — between implementation steps, once at the end, or whenever; safe to re-run (no-ops when there is nothing to commit).
+description: Commits the current task changes with a terse, auto-authored message — the first commit on the branch gets a subject of the id then the task name, every later commit the id then a concise summary, followed by a bulleted what-changed body. Diff reading and message authoring happen inside an isolated subagent so the main agent's context never sees the diff. Optional --push (off by default). Use to commit work on an ADO task branch — between implementation steps, once at the end, or whenever; safe to re-run (no-ops when there is nothing to commit).
 allowed-tools: [Bash]
 ---
 
