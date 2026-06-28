@@ -95,9 +95,20 @@ file every `wf:*` skill reads first) and walks its rows in order. The registry s
 and column meaning are fixed by `capability-registry.contract.md`; this runtime
 **executes** them:
 
-- Each row carries a `Capability` **name** and a repo-relative `Path`. Core uses the
+- Each row carries a `Capability` **name** and a `Path`. Core uses the
   path to locate the manifest; it **never** hardcodes a folder, and it **never** uses
   the name to key a code path (see "Generic-only branch rule").
+- **`Path` resolution — repo-relative only today.** The port
+  (`capability-registry.contract.md`) defines `Path` as accepting two shapes: a
+  repo-relative folder and a plugin-anchored token `plugin:<plugin-name>/<rel-path>`.
+  This runtime resolves the **repo-relative form only**; the plugin-anchored token is
+  recognized registry vocabulary whose **runtime resolution is deferred** (see the
+  port's "The two `Path` shapes"). The deferral reason is the same:
+  `${CLAUDE_PLUGIN_ROOT}` resolves only to the **executing** plugin's install root, so
+  a sibling-plugin capability path cannot be resolved from it without a
+  `<plugin-name>` → install-root mapping that does not yet exist. Existing
+  repo-relative resolution behaviour is **unchanged** — this is an additive deferral
+  note, not a change to how a repo-relative `Path` resolves.
 - **Registry order is the injection order** — general → specific. Core walks the rows
   top to bottom and preserves that order through aggregation.
 
@@ -123,7 +134,10 @@ path under that row's path:
 
 Core reads `<path>/manifest.md` to learn which fragments this capability attaches to
 which phases. It does **not** scan, glob, or guess — the path is fixed by the port
-contract, so each read is a single deterministic read.
+contract, so each read is a single deterministic read. Here `<path>` is the
+registry row's **repo-relative** `Path` — the only form this runtime resolves today
+(the plugin-anchored `plugin:<plugin-name>/<rel-path>` token's resolution is deferred,
+per §1).
 
 The manifest's **fragments table** has the v2 schema fixed by
 `capability-registry.contract.md`:
