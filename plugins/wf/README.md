@@ -82,8 +82,8 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 | `/wf:test-page` | Scaffold black-box Angular runtime tests; inject into the `CodeTrakkerModuleTestComponent` sandbox page. |
 | `/wf:qa-gen` | Generate a QA plan for the task (`06_qa.md`). UI criteria become **browser** scenarios; backend criteria become **API** scenarios that exercise the endpoint over HTTP with a real token. On top of the generic plan it **fires the `qa-generation` phase**, aggregating any scenarios contributed by the project's registered capabilities (provenance-tagged) — with none registered, the generic plan stands alone. Every plan ends with a standing **Baseline health** suite. A backend-only task is never a stub PASS. |
 | `/wf:qa-run` | Interactive walkthrough of `06_qa.md` — prompts the tester step by step for browser scenarios, presents `Type: API` scenarios as a request + ready curl command, then writes `07_qa-report.md`. Use when a human is the tester. |
-| `/wf:qa-auto` | Autonomous QA run. Drives a browser in-thread — logs in, picks an entity, **reaches preconditions** (clears storage, seeds test data via `mssql_*`, scaffolds test-hosts via `/wf:qa-host`), runs the steps, reverts fixtures, screenshots on FAIL. For `Type: API` scenarios it captures the session token and exercises the endpoint. Writes `07_qa-report.md`. Use `--batch <N>` + `--resume` to chunk long runs across context windows. |
-| `/wf:qa-host` | Scaffolds a routed Angular test-host for a component that doesn't yet have one. The `augment` mode retrofits input controls / output observation onto an *existing* host; `api-probe` / `api-revert` are the backend analog. Auto-invoked by `/wf:qa-auto` and `/wf:qa-followup` to unblock scenarios. |
+| `/wf:qa-auto` | Autonomous QA run **orchestrator**. Resolves the task/plan, enforces the branch gate, manages run lifecycle (resume / `--batch` / `--only`), and **dispatches the per-scenario drive to the `qa-execution` engine** registered in the capability registry — it names no stack and drives no browser itself. Assembles `07_qa-report.md` with the Summary, traceability matrix, and full-run console/network rollup. Requires a registered execution capability (e.g. `wf-caps` browser-qa); stops cleanly if none is active. Use `--batch <N>` + `--resume` to chunk long runs across context windows. |
+| `/wf:qa-host` | Scaffolds a routed Angular test-host for a component that doesn't yet have one. The `augment` mode retrofits input controls / output observation onto an *existing* host; `api-probe` / `api-revert` are the backend analog. Auto-invoked by `/wf:qa-followup` to unblock scenarios. |
 | `/wf:qa-followup` | Follows up a QA report: triages every non-PASS scenario, unblocks harness blocks, root-causes FAIL defects, writes a checkbox remediation plan (`08_qa-fix.md`), gates on a single approval, applies fixes, and recommends a fresh QA pass. The QA chain's plan-then-implement defect-fixer. |
 
 All default to zero-argument invocation — they infer context from the current branch.
@@ -97,7 +97,7 @@ Each ADO ticket gets a folder under `_local/` in the downstream repo. The whole 
 ```
 _local/
 ├── config.md             # /wf:init project config — {wi-prefix}, {task-root}, {ado-project}, {verify-command}, etc.
-├── qa-creds.md           # /wf:qa-auto test credentials (per-project, shared across tasks)
+├── qa-creds.md           # /wf-caps:qa-engine test credentials (per-project, shared across tasks)
 └── ADO-<id>/             # one folder per task
     ├── index.md              # per-task manifest — every wf:* skill updates a row here
     ├── 00_reqs.md            # auto-fetched from ADO — source of truth
