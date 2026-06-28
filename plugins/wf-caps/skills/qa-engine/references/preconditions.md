@@ -78,6 +78,10 @@ Precondition prose containing any of: `fresh session`, `cleared localStorage`, `
 Run via `run_playwright_code`:
 
 ```js
+// Capture prior state for the audit BEFORE clearing (post-clear lengths are always 0)
+const hadLocalStorage = localStorage.length > 0;
+const hadSession = sessionStorage.length > 0;
+const hadCookies = document.cookie.length > 0;
 // Clear browser storage
 localStorage.clear();
 sessionStorage.clear();
@@ -90,8 +94,9 @@ document.cookie.split(';').forEach(c => {
 // Report what existed before clearing for audit
 ({
   cleared: true,
-  hadLocalStorage: localStorage.length === 0,  // post-clear; true means we did clear something
-  hadSession: sessionStorage.length === 0,
+  hadLocalStorage,  // captured pre-clear; true means storage held something
+  hadSession,
+  hadCookies,
 });
 ```
 

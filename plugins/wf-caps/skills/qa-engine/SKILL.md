@@ -10,7 +10,7 @@ The browser-driving **execution surface** for QA. It loads the browser-automatio
 
 This skill is the dispatch target of the **browser-qa** capability's `qa-execution | provider | surface: engine` fragment. A core orchestrator (today `wf:qa-auto`) owns the run lifecycle — task/plan resolution, resume/batch, report rollup — and dispatches the per-scenario drive here via the **Task** tool (`subagent_type: wf-caps:qa-engine`). The engine drives the browser in an isolated context so the orchestrator's context stays small. It can also be invoked directly (`/wf-caps:qa-engine`) to drive scenarios against a running app.
 
-The engine **reaches preconditions, not just observes them**. If a scenario asserts "cleared localStorage" or "fresh session", the engine clears the browser storage to that state, runs the test, then reverts every write before moving on. Recipes per precondition shape live in [`references/preconditions.md`](references/preconditions.md). Default disposition: reach the state and run; mark BLOCKED only when a precondition genuinely cannot be reached (e.g., network throttling, which the browser-automation tools don't expose). The engine reaches **browser-level** state only — storage, URL, viewport. Anything that needs a database or backend-host write is out of this engine's scope (a separate stack capability owns those).
+The engine **reaches preconditions, not just observes them**. If a scenario asserts "cleared localStorage" or "fresh session", the engine clears the browser storage to that state and runs the test. Selective writes (a seeded key, a single removed key) are reverted before moving on; a full storage clear becomes the new baseline rather than being reverted. Recipes per precondition shape live in [`references/preconditions.md`](references/preconditions.md). Default disposition: reach the state and run; mark BLOCKED only when a precondition genuinely cannot be reached (e.g., network throttling, which the browser-automation tools don't expose). The engine reaches **browser-level** state only — storage, URL, viewport. Anything that needs a database or backend-host write is out of this engine's scope (a separate stack capability owns those).
 
 ---
 
@@ -139,7 +139,7 @@ Disambiguation: a 3+-digit numeric or prefixed token is the id; `--`-prefixed to
 
 ## Phase 3: Browser-tool preflight
 
-1. Confirm the browser-automation tools (`open_browser_page`, `click_element`, `type_in_page`, `read_page`, `screenshot_page`, `run_playwright_code`, `navigate_page`, `handle_dialog`) are available.
+1. Confirm the browser-automation tools (`open_browser_page`, `click_element`, `type_in_page`, `read_page`, `screenshot_page`, `run_playwright_code`, `navigate_page`, `hover_element`, `handle_dialog`) are available.
 2. If any tool is unavailable, stop with: "Browser tools unavailable in this runtime. Use a manual walkthrough instead."
 3. Call `open_browser_page(<base URL from creds>)`.
 4. Call `read_page` once. If the response is a network error or the document is empty, stop: "App not reachable at `<URL>`. Make sure the dev server is running, then re-run."
