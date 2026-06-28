@@ -78,7 +78,7 @@ row per active capability:
 | Column | Meaning |
 |--------|---------|
 | `Capability` | The capability's **name** — its identity, decoupled from where it lives so the binding survives the capability moving into a standalone add-on plugin. Used to locate config, never to key a core code path. |
-| `Path` | The repo-relative **folder** (forward slashes) holding the capability's `manifest.md` and reference docs. Core reads the manifest at `<path>/manifest.md`; it never hardcodes a folder. |
+| `Path` | The location of the capability's `manifest.md` and reference docs, in **one of two accepted shapes** (forward slashes in both): (a) a **repo-relative folder** — the path relative to the marketplace repo root (e.g. `plugins/wf-caps/capabilities/migration`); or (b) a **plugin-anchored token** of the shape `plugin:<plugin-name>/<rel-path>`, naming a capability that lives *inside* an installed plugin (`<plugin-name>` is the plugin's manifest name; `<rel-path>` is forward-slash, relative to that plugin's install root). Core reads the manifest at `<path>/manifest.md`; it never hardcodes a folder. See "The two `Path` shapes" below for which shape is runtime-resolved today. |
 
 Registry semantics:
 
@@ -105,6 +105,30 @@ Registry semantics:
 4. **N=1 reduces to v1.** A single-row registry is exactly v1's single active
    capability; the empty registry is exactly v1's absent state. Backward
    compatibility is structural, not bolted on.
+
+### The two `Path` shapes (one runtime-resolved today, one forward-looking)
+
+The `Path` column accepts two token shapes, but only one is resolved at runtime today:
+
+1. **Repo-relative folder — the only form resolved at runtime today.** A path
+   relative to the marketplace repo root (forward slashes). This is the form to use
+   for any capability registered today; it resolves in the marketplace checkout
+   exactly as v1's selector did. An existing repo-relative registry resolves with no
+   change — the second shape is **purely additive and backward-compatible.**
+
+2. **Plugin-anchored token — `plugin:<plugin-name>/<rel-path>` — forward-looking,
+   runtime resolution deferred.** This shape names a capability living *inside* an
+   installed plugin, whose on-disk install root varies per machine. It is **recognized
+   registry vocabulary** so a registry can be authored against the multi-plugin future,
+   but its **runtime resolution is deferred to a follow-up issue** — core does not
+   resolve a plugin-anchored `Path` today.
+
+   The reason resolution is deferred: `${CLAUDE_PLUGIN_ROOT}` resolves only to the
+   **executing** plugin's own install root, so a capability path inside a *sibling*
+   plugin (e.g. `wf` core reaching a capability that ships in `wf-caps`) cannot be
+   resolved from it. Cross-plugin resolution needs a `<plugin-name>` → install-root
+   mapping that does not yet exist; until that mapping lands, only the repo-relative
+   form is runtime-resolved.
 
 ---
 
