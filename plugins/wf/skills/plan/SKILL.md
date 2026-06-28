@@ -296,7 +296,7 @@ Steps: <N>
 Folder: {task-root}/{wi-prefix}-{id}/
 Spec: {task-root}/{wi-prefix}-{id}/01_spec.md (or "none")
 Plan: {task-root}/{wi-prefix}-{id}/02_plan.md
-Next: /wf:implement {id}
+Next: /wf:tasks {id}      — decompose the plan into small, independently testable units (or /wf:implement {id} to skip straight to execution)
 ```
 
 **The final output block must always be the very last thing output to chat.**

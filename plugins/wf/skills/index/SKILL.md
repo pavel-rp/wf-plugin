@@ -96,6 +96,7 @@ Documentation for callers. Pass one of these slot keys (or any other alphanumeri
 | `reqs`          | file   | `00_reqs.md`            |
 | `spec`          | file   | `01_spec.md`            |
 | `plan`          | file   | `02_plan.md`            |
+| `tasks`         | file   | `03_tasks.md`           |
 | `migration-map` | file   | `03_migration-map.md`   |
 | `verify`        | file   | `04_verify.md`          |
 | `verify-fix`    | file   | `05_verify-fix.md`      |
@@ -164,6 +165,7 @@ Catalog of artifacts and small results for this task. Every `wf:*` skill updates
 | `reqs`          | N/A    | —       |
 | `spec`          | N/A    | —       |
 | `plan`          | N/A    | —       |
+| `tasks`         | N/A    | —       |
 | `migration-map` | N/A    | —       |
 | `verify`        | N/A    | —       |
 | `verify-fix`    | N/A    | —       |

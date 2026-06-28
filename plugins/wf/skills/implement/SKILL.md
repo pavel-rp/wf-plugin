@@ -16,6 +16,8 @@ Execute a task's implementation plan step by step. Accepts an ADO work item ID, 
 
 **Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}`, `{ado-project}`, and `{wi-prefix}` below come from that file. Never hardcode these values.
 
+`02_plan.md` is the authoritative input this skill executes. When the upstream `tasks` phase has run, a `03_tasks.md` decomposition also exists in the task folder — read it for the finer-grained, independently-testable ordering and let it guide how each plan step is carried out; the plan's checkboxes remain the units this skill ticks. When `03_tasks.md` is absent, execute the plan directly — the `tasks` phase is optional on the chain.
+
 ---
 
 ## Command Syntax
