@@ -1,6 +1,6 @@
 # wf — Spec-Driven Development harness for ADO tasks
 
-A Claude Code plugin for working on ADO-tracked tasks. It runs a gated **Spec-Driven Development** chain — spec → plan → tasks → implement → verify → QA — over each work item. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
+A Claude Code plugin for working on ADO-tracked tasks. It runs a gated **Spec-Driven Development** chain — spec → plan → tasks → implement → verify → qa — over each work item. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
 
 Today the skills carry the **Compliance Risk** migration knowledge (C# / ASP.NET MVC → Angular / TypeScript) directly. That knowledge is being generalised into a pluggable **capability** so the core becomes stack- and domain-free — see [Direction](#direction) and [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
 
