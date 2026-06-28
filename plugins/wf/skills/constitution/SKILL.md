@@ -13,10 +13,13 @@ registered capability contributes its own non-negotiables, and the project contr
 own clauses. They are recorded together with **provenance** (which source each article came
 from) and a fixed **precedence rule**: project clauses override capability clauses.
 
-This skill **establishes the record**. It does not enforce it — the constitution is
-**consulted as guidance at `spec`** and **enforced as `finding`s at `verify`**, wired by
-those skills. It is **not a per-ticket phase**: you run it once at setup (auto-invoked by
-`/wf:init`) and re-run it only when the registry or the project's own clauses change.
+This skill **establishes the record**; it does not consume or enforce it. The constitution is
+**intended to be consulted as guidance at `spec`** and **enforced as `finding`s at `verify`**
+— but that consumption wiring is owned by **other tasks** (spec-consultation by the runtime /
+`spec` phase, WF-22; verify enforcement via the `verify` finding-aggregation, WF-7) and is
+**not yet active**. This skill only writes the record. It is **not a per-ticket phase**: you
+run it once at setup (auto-invoked by `/wf:init`) and re-run it only when the registry or the
+project's own clauses change.
 
 This skill is **capability-agnostic**. With no capability registered, it writes a
 **core-only** constitution — the inert path, no stack/domain/project term surfaced. When
@@ -38,8 +41,8 @@ from the registry.
 
 **Don't use it when:**
 
-- You want to *check* code against the constitution — that's the `verify` phase
-  (`/wf:verify-spec`), not this skill.
+- You want to *check* code against the constitution — that belongs to the `verify` phase
+  (`/wf:verify-spec`), not this skill (that consumption wiring is future work, see the intro).
 - You're working a single ticket — the constitution is established once, not per-task.
 
 ---
@@ -247,9 +250,9 @@ shape if needed. Never invent capability rows.
 
 The non-negotiable principles this project's workflow holds itself to. **Composed, not
 baked** — core process articles + each registered capability's non-negotiables + the
-project's own clauses, each tagged with its source. Consulted as guidance at `spec`;
-enforced as findings at `verify`. Re-run `/wf:constitution` to refresh after a registry or
-project-clause change.
+project's own clauses, each tagged with its source. Intended to be consulted as guidance at
+`spec` and enforced as findings at `verify` once that consumption wiring lands (owned by
+other tasks). Re-run `/wf:constitution` to refresh after a registry or project-clause change.
 
 ## Precedence
 
@@ -319,7 +322,7 @@ CONSTITUTION — <established | updated | unchanged>
 Articles: <8 core> + <capability articles present | none (core-only)> + <project section: seeded | preserved>
 Registry: <comma-separated capability names | none (core-only)>
 File:     _local/constitution.md
-Next:     review _local/constitution.md and add any project clauses; then /wf:spec <id> to start a task (the constitution is consulted at spec and enforced at verify).
+Next:     review _local/constitution.md and add any project clauses; then /wf:spec <id> to start a task (the constitution is intended for consultation at spec and enforcement at verify once that wiring lands).
 ```
 
 **The final output block must always be the very last thing output to chat.**
