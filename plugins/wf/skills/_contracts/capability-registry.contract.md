@@ -63,9 +63,28 @@ generalisation of a shape v1 already proved at N=1.
 
 ## The `## Capabilities` registry (the selector)
 
-Core reads a **registry** of active capabilities — a `## Capabilities` table in
-the downstream `_local/config.md` — in place of the single selector v1 read. One
-row per active capability:
+Core reads a **registry** of active capabilities — a `## Capabilities` table at a
+**configurable location**, resolved from the repo-root `wf.config.js` `registryPath`
+key and **defaulting to the downstream `_local/config.md`** when that key is absent —
+in place of the single selector v1 read. The default-absent location is exactly
+`_local/config.md`, so the indirection is additive and backward-compatible: an existing
+repo with no `registryPath` resolves to the same file as before. (Executing this
+resolution is owned by `init`, WF-9; this contract fixes the indirection and its
+default.)
+
+**Valid `registryPath` values.** When set, `registryPath` is a **repo-relative file
+path** written with **forward slashes**, resolved against the repo root —
+the same shape as the `Path` column's **repo-relative folder** form (shape (a) in "The
+two `Path` shapes"), except it names a **file** rather than a folder, **resolves
+against the repo root rather than the marketplace repo root**, and **never**
+accepts the plugin-anchored `plugin:<plugin-name>/<rel-path>` token (shape (b)). It
+**must not** be an absolute path (no leading `/`, no drive prefix such as `C:`) and
+**must not** contain a `..` segment, so the resolved location can never escape the repo
+root.
+A value violating this shape is a **registry-validation error** (WF-2's registry pass /
+WF-28), rejected before `init` resolves a location from it.
+
+One row per active capability:
 
 ```markdown
 ## Capabilities
@@ -296,14 +315,21 @@ declares **where** a profile is stamped and **how** the stamp behaves;
 interface.
 
 1. **Stamp destination — deterministic, keyed by capability name.** A capability
-   declaring a `profile-template:` is seeded to a deterministic path under the
-   downstream `_local/`:
+   declaring a `profile-template:` ships that template as its **authoritative default
+   template** — the baseline shape (which may carry angle-bracketed placeholder slots,
+   per the placeholder syntax below) that a project overrides; `init` seeds a downstream
+   **override** at a deterministic path under the downstream `_local/`:
 
    ```
    _local/profiles/<capability-name>.profile.json
    ```
 
-   `<capability-name>` is the registry's `Capability` column — the capability's
+   **Hybrid precedence — downstream override > capability default.** The override is
+   seeded **only when the project's values diverge** from the capability's shipped
+   default; where the project does not diverge, no override is written and the
+   capability default applies. (So a fully-default project keeps an empty
+   `_local/profiles/` and the capability default stands.) `<capability-name>` is the
+   registry's `Capability` column — the capability's
    stable identity, **not** its `Path` — so the profile location survives the
    capability moving folders or into a standalone add-on plugin. The path is
    derived the same way for every capability; core names no concrete capability.
@@ -329,9 +355,10 @@ interface.
 
 3. **Idempotency — a re-run never overwrites.** Seeding is safe to re-run: if the
    destination already exists, the convention **leaves it untouched** (it never
-   overwrites a partially- or fully-filled profile). Re-seeding only ever creates
-   a missing destination — mirroring `init`'s existing skip-if-present behaviour
-   for `_local/config.md`.
+   overwrites a partially- or fully-filled override). Re-seeding only ever creates a
+   **missing** override, and only on divergence — mirroring `init`'s existing
+   skip-if-present behaviour for `_local/config.md`. A non-divergent re-run writes
+   nothing.
 
 4. **No-op when absent.** A capability that declares **no** `profile-template:`
    seeds nothing — no destination is created, no placeholder is written. This
@@ -373,7 +400,8 @@ new vocabulary.
   aggregation, or subagent dispatch is defined or implied here — that runtime
   generalisation is owned by **WF-22** (generalising the v1 substrate).
 - It is **not** a validator. The registry-level checks (unique names, names are
-  filesystem-safe tokens, paths exist and carry a manifest, no overlapping ownership
+  filesystem-safe tokens, `registryPath` is a forward-slash repo-relative path with no
+  `..`/absolute prefix, paths exist and carry a manifest, no overlapping ownership
   scopes, no contradictory articles, valid phase/kind references) are owned by
   **WF-2's registry pass / WF-28**. The
   per-capability profile check (a profile vs its contract) is unchanged.

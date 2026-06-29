@@ -28,7 +28,7 @@ It introduces **no new runtime.** The procedure is built entirely from the three
 primitives every `wf:*` skill already uses — the exact three the superseded v1
 substrate used, generalised from one manifest to N:
 
-1. read `_local/config.md` (the same file every skill reads as its first step);
+1. read the registry at its `registryPath`-resolved location (default `_local/config.md` — the same file every skill reads as its first step; see § "1. Registry iteration");
 2. read a file at a contracted, forward-slash path;
 3. invoke a subagent by `subagent_type` via the Task tool (the established Pattern C delegation).
 
@@ -80,7 +80,7 @@ is **exactly v1's `<none>`** absent state. Backward compatibility is structural.
 A core skill firing a phase performs these steps, in order. Each is a distinct,
 greppable section below.
 
-1. **Registry iteration** — walk the `## Capabilities` rows from `_local/config.md`, in registry order (general → specific).
+1. **Registry iteration** — walk the `## Capabilities` rows at the `registryPath`-resolved location (default `_local/config.md`), in registry order (general → specific).
 2. **Per-capability manifest read** — for each row, read the contracted manifest at `<path>/manifest.md`.
 3. **Per-phase fragment collection** — select the manifest's fragment rows whose `phase` equals the firing phase.
 4. **Per-fragment dispatch** — for each collected fragment, dispatch on its `dispatch` kind: `inline: <rel-path>` (read-and-follow) or `subagent: <agent>` (Task tool).
@@ -90,10 +90,13 @@ greppable section below.
 
 ## 1. Registry iteration
 
-Core reads the **`## Capabilities` registry** from `_local/config.md` (the same
-file every `wf:*` skill reads first) and walks its rows in order. The registry shape
-and column meaning are fixed by `capability-registry.contract.md`; this runtime
-**executes** them:
+Core reads the **`## Capabilities` registry** from its **configurable location** —
+resolved from the repo-root `wf.config.js` `registryPath` key, **defaulting to
+`_local/config.md`** (the same file every `wf:*` skill reads first) when the key is
+absent. The default-absent location is exactly `_local/config.md`, so existing
+repo-relative behaviour is **unchanged** — this is an additive indirection note, not a
+change to how the registry is read. The registry shape and column meaning are fixed by
+`capability-registry.contract.md`; this runtime **executes** them:
 
 - Each row carries a `Capability` **name** and a `Path`. Core uses the
   path to locate the manifest; it **never** hardcodes a folder, and it **never** uses

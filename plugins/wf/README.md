@@ -96,7 +96,8 @@ Each ADO ticket gets a folder under `_local/` in the downstream repo. The whole 
 
 ```
 _local/
-├── config.md             # /wf:init project config — {wi-prefix}, {task-root}, {ado-project}, {verify-command}, etc.
+├── config.md             # /wf:init project config — {wi-prefix}, {task-root}, {ado-project}, {verify-command}, the ## Capabilities registry, etc. (registry location is configurable via wf.config.js registryPath; defaults here)
+├── profiles/             # /wf:init capability profile overrides — <capability>.profile.json, seeded on divergence from the capability's shipped default
 ├── qa-creds.md           # /wf-caps:qa-engine test credentials (per-project, shared across tasks)
 └── ADO-<id>/             # one folder per task
     ├── index.md              # per-task manifest — every wf:* skill updates a row here
@@ -122,7 +123,7 @@ _local/
 
 ## Direction
 
-`wf` is being reshaped into a **domain-free SDD engine**: a fixed phase spine (`spec → plan → tasks → implement → verify → qa`), a **capability registry** in the downstream `_local/config.md`, and a composed **constitution** — with all stack/domain/project knowledge moving out of core into composable **capabilities** (migration as an `adapter`, browser-automation QA and the Angular stack as their own capabilities). Composition is runtime inline-prose injection — no codegen.
+`wf` is being reshaped into a **domain-free SDD engine**: a fixed phase spine (`spec → plan → tasks → implement → verify → qa`), a **capability registry** at a configurable location (`wf.config.js` `registryPath`, default `_local/config.md`), and a composed **constitution** — with all stack/domain/project knowledge moving out of core into composable **capabilities** (migration as an `adapter`, browser-automation QA and the Angular stack as their own capabilities). On `/wf:init`, each registered capability that ships a profile template gets a downstream **override** seeded into `_local/profiles/` **only when the project diverges** from the capability's shipped default template — the baseline shape, which may carry placeholder slots (hybrid precedence: downstream override > capability default). Composition is runtime inline-prose injection — no codegen.
 
 The skills above describe the plugin **as it ships today** (v1). The `tasks` and `constitution` phases, the registry, and the capability split are in progress — track them in Linear (team `WF`) and read the model in [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
 

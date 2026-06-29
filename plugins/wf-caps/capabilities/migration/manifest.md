@@ -88,12 +88,19 @@ to `plugins/wf-caps/capabilities/migration/profile.template.json`):
 profile-template: profile.template.json
 ```
 
-`init` (WF-9) stamps it per the contract's capability-agnostic seeding convention to
-`_local/profiles/migration.profile.json`, where a downstream project fills the four required
-slots (`stack`, `type-map`, `invariants`, `rule-checks`). The template's placeholder values
-point at the worked example, `fixtures/valid-profile.json` — the validator's known-passing
-input. The template is distinct in purpose from that fixture: the fixture is a complete
-worked instance for the validator; the template is the blank a project fills in.
+This capability ships the template as its **authoritative default template** — the baseline
+shape a project overrides; it carries angle-bracketed placeholder slots for the four sections
+(per the contract's placeholder syntax), not concrete filled values. `init` (WF-9)
+seeds a downstream **override** per the contract's capability-agnostic seeding convention at
+`_local/profiles/migration.profile.json` **only when the project diverges** from that
+default template — it does not stamp unconditionally. Precedence is **downstream override > capability
+default**: where a project sets no override, the capability default applies; where it
+diverges, the project fills the four slots (`stack`, `type-map`, `invariants`, `rule-checks`)
+in the override. Seeding is idempotent (skip-if-present, never overwrites). The template's
+placeholder values point at the worked example, `fixtures/valid-profile.json` — the
+validator's known-passing input. The template is distinct in purpose from that fixture: the
+fixture is a complete worked instance for the validator; the template is the default a project
+overrides on divergence.
 
 ## Fragment wiring status
 

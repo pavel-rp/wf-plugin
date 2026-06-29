@@ -30,7 +30,7 @@
 |---|---|---|---|
 | **Core engine** (the `wf` plugin) | the SDD phase spine, the capability registry + the runtime compose/aggregate mechanism, the contribution taxonomy, and domain-free workflow skills | `spec`, `plan`, `tasks`, `implement`, `verify-spec`, `qa-gen`, `run`, `init`, `constitution`, `branch`, `commit`, `pr`, `classify`, `triage`, `index` | **Zero stack / domain / project knowledge.** Iterates the registry; assumes nothing about which capabilities exist or how many. |
 | **Capabilities** (any granularity) | reusable stack / domain / feature / project knowledge — phase fragments and/or their own skills | `migration` (adapter: mapping, parity, rule-audit, type-map); `angular` (stack: test-host scaffolding, stack idioms); `browser-qa` (feature: browser engine); a whole-project bundle (may wrap external skills, e.g. Zach's) | Provide fragments + their own contract/profile. Shipped as capability **plugins** alongside core in this marketplace — an interim `wf-caps` bundle now → per-capability plugins later. **Never inside core.** |
-| **Project `_local/`** | this repo's instance values | the active `## Capabilities` registry, each capability's filled profile, per-repo paths, per-task artifacts | Gitignored. Downstream; never committed by the plugin. |
+| **Project `_local/`** | this repo's instance values | the active `## Capabilities` registry (at a **configurable location** — `wf.config.js` `registryPath`, default `_local/config.md`), each capability's **profile override** (seeded by `init` on divergence from the capability's shipped default — hybrid precedence: downstream override > capability default), per-repo paths, per-task artifacts | Gitignored. Downstream; never committed by the plugin. |
 
 ---
 
@@ -72,7 +72,7 @@ Two composition mechanisms, kept separate: **features compose natively** (instal
 
 The boundary is the decoupling. Three parts:
 
-- **Core extension interface** *(capability-agnostic; prose)* — the `## Capabilities` **registry** selector + the named **SDD phases** + the **contribution taxonomy** (`article`/`finding`/`scenario`/`artifact`/`provider` + authoring guidance). Names no stack/domain; ships in core. Empty registry → fully generic core.
+- **Core extension interface** *(capability-agnostic; prose)* — the `## Capabilities` **registry** selector (at a configurable location — `wf.config.js` `registryPath`, default `_local/config.md`) + the named **SDD phases** + the **contribution taxonomy** (`article`/`finding`/`scenario`/`artifact`/`provider` + authoring guidance). Names no stack/domain; ships in core. Empty registry → fully generic core.
 - **Capability contract + manifest** *(per capability; prose + a JSON-Schema-over-YAML schema for data slots)* — the capability's `manifest.md` (its `kind` + a fragments table: `phase | contribution-kind | dispatch | scope`) and its profile slots (e.g. migration's `type-map`, `invariants`). Lives **with the capability**, never in core. The schema makes the profile *validatable* — prose-only re-introduces the silent-misread coupling this whole effort removes.
 - **Validation** — two layers, fail-fast with actionable messages: per-capability (a profile vs its contract) **and** registry-level (unique names, paths exist + carry a manifest, no overlapping ownership scopes, no contradictory `article` clauses, valid phase/kind references). This is the **reliability leg** — do not defer it.
 
@@ -144,7 +144,7 @@ Reshaped from the original v1 extraction plan (`WF-1`…`WF-10`) to the v2 regis
 | Issue | What |
 |---|---|
 | `WF-27` | Naming pass — `domain`→`capability`, `hook`→`phase`/`contribution kind` |
-| `WF-9` | Wire `init` (write the registry + auto-invoke `wf:constitution`) + version bump + docs |
+| `WF-9` | **Done** — Wire `init` (write the registry at the configurable `registryPath` + seed capability profile overrides on divergence + auto-invoke `wf:constitution`) + version bump + docs |
 | `WF-20` | CI: gate each capability's fixture suite + registry validation on PRs |
 
 *(`WF-4` canceled — a standalone eval-baseline task proved over-engineered; the no-regression floor is intrinsic to each wiring PR's diff plus a preserve-these-behaviours note in `WF-6/7/8/23`. `WF-5` canceled — Angular stack paths absorbed into `WF-26`. `WF-11`…`WF-19` are the spec/plan/impl sub-issues of `WF-1`/`WF-2`/`WF-10`, all done except the `WF-2` registry pass.)*
