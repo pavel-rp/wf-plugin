@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+#
+# run.sh — fixture test runner for validate-registry.sh.
+#
+# Runs the registry validator against every fixture in this directory and
+# asserts each one's exit code and that its output names the specific offending
+# capability / name / path / scope / clause / fragment. The fixtures ARE the
+# test suite for the validator (this repo has no unit/integration harness), and
+# this script makes that suite reproducible: it exits 0 only when every case
+# behaves as specified, non-zero otherwise.
+#
+# Each fixture registry uses FULL repo-relative paths into this fixtures tree, so
+# the validator resolves them against the real repo root exactly as it would in
+# production — fixture resolution is byte-identical to a real run.
+#
+# Model: claude-opus-4-8
+#
+# Usage:
+#   bash plugins/wf/skills/_contracts/registry-fixtures/run.sh
+
+set -u
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VALIDATOR="$DIR/../validate-registry.sh"
+
+pass=0
+fail=0
+
+# assert <name> <fixture> <registry-path-override|-> <expected-exit> [required-substring ...]
+#
+# Runs the validator on <fixture>. When <registry-path-override> is not `-`, it
+# is passed as the validator's 2nd arg (the registryPath shape-check seam);
+# `-` means "read registryPath from wf.config.js as in a real run." Then checks
+# the exit code matches and that every required substring appears in the output.
+# Output is captured (not a TTY), so the validator emits no color codes — plain-
+# text matching is exact.
+assert() {
+  local name="$1" fixture="$2" override="$3" want_exit="$4"; shift 4
+  local out got_exit ok=1 sub
+
+  if [ "$override" = "-" ]; then
+    out="$(bash "$VALIDATOR" "$DIR/$fixture" 2>&1)"
+  else
+    out="$(bash "$VALIDATOR" "$DIR/$fixture" "$override" 2>&1)"
+  fi
+  got_exit=$?
+
+  if [ "$got_exit" -ne "$want_exit" ]; then
+    ok=0
+    printf 'FAIL: %s — expected exit %s, got %s\n' "$name" "$want_exit" "$got_exit"
+  fi
+  for sub in "$@"; do
+    case "$out" in
+      *"$sub"*) ;;
+      *) ok=0; printf 'FAIL: %s — output missing expected text: %s\n' "$name" "$sub" ;;
+    esac
+  done
+
+  if [ "$ok" -eq 1 ]; then
+    printf 'PASS: %s\n' "$name"
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+  fi
+}
+
+# --- Passing cases -----------------------------------------------------------
+assert "single-row registry passes"   pass-single.md - 0 "Validation passed"
+assert "multi-row non-overlap passes" pass-multi.md  - 0 "Validation passed"
+
+# --- Failing cases (one per check) -------------------------------------------
+assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
+assert "unsafe name named"            fail-unsafe-name.md   - 1 "not filesystem-safe" "Solo_Cap"
+assert "bad registryPath (absolute)"  pass-single.md "/etc/registry.md"  1 "registryPath" "/etc/registry.md"
+assert "bad registryPath (drive)"     pass-single.md "C:/x/registry.md"  1 "registryPath" "drive-prefixed"
+assert "bad registryPath (dotdot)"    pass-single.md "../escape.md"      1 "registryPath" "'..'"
+assert "bad registryPath (backslash)" pass-single.md "a\\b/registry.md"  1 "registryPath" "backslash"
+assert "missing path named"           fail-missing-path.md  - 1 "ghost" "does not exist"
+assert "missing manifest named"       fail-no-manifest.md   - 1 "no-manifest" "manifest.md"
+assert "provider overlap named"       fail-provider-overlap.md - 1 "engine-owner" "engine-owner-2" "provider surface" "must not overlap"
+assert "artifact overlap named"       fail-artifact-overlap.md - 1 "artifact-owner" "artifact-owner-2" "csharp→ts"
+assert "bad phase named"              fail-bad-phase.md     - 1 "bad-phase" "unknown phase" "deploy"
+assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unknown contribution-kind" "assertion"
+assert "unsatisfied requires named"   fail-requires.md      - 1 "needs-dep" "absent-dep"
+assert "co-active conflicts named"    fail-conflicts.md     - 1 "conflicter" "solo" "declares a conflict"
+assert "article contradiction named"  fail-article.md       - 1 "article-yes" "article-no" "commit-signing"
+
+echo ""
+printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
+[ "$fail" -eq 0 ]
