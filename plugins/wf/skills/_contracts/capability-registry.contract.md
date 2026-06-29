@@ -73,9 +73,10 @@ resolution is owned by `init`, WF-9; this contract fixes the indirection and its
 default.)
 
 **Valid `registryPath` values.** When set, `registryPath` is a **repo-relative file
-path** written with **forward slashes**, resolved against the marketplace repo root —
+path** written with **forward slashes**, resolved against the repo root —
 the same shape as the `Path` column's **repo-relative folder** form (shape (a) in "The
-two `Path` shapes"), except it names a **file** rather than a folder and **never**
+two `Path` shapes"), except it names a **file** rather than a folder, **resolves
+against the repo root rather than the marketplace repo root**, and **never**
 accepts the plugin-anchored `plugin:<plugin-name>/<rel-path>` token (shape (b)). It
 **must not** be an absolute path (no leading `/`, no drive prefix such as `C:`) and
 **must not** contain a `..` segment, so the resolved location can never escape the repo
