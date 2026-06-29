@@ -42,11 +42,12 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 - Read/write files under `_local/`
 - Append (not rewrite) `.gitignore`
 - Append (not rewrite) `.git/info/exclude`
+- Write the `## Capabilities` registry table to a **configured `registryPath`** location when `wf.config.js` sets one (a repo-relative file path that passes the Phase 0 defensive check) — this is the one sanctioned write outside `_local/`, since relocating the registry is the feature's whole purpose
 - Read-only git commands (`git rev-parse`, `git remote get-url`)
 
 **Forbidden:**
 
-- Modify any source file outside `_local/` and the two exclude files above
+- Modify any source file outside `_local/`, the two exclude files above, and a configured `registryPath` registry location
 - Run builds, tests, linters, installs
 - Any destructive git operation
 - Initialize a git repo — if none exists, stop and ask the user
@@ -58,7 +59,9 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 1. Confirm the current directory is a git working tree: `git rev-parse --git-dir`.
    - If not, stop: "wf:init must run inside a git repository. Run `git init` first, then rerun."
 2. Record the repo root: `git rev-parse --show-toplevel`. All paths below are relative to it.
-3. **Resolve the registry location.** Read `wf.config.js` at the repo root (if present) and resolve the registry's `## Capabilities` table location from its optional `registryPath` key, **defaulting to `_local/config.md` when the key (or the file) is absent**. Use this resolved location everywhere this skill writes or reads the registry — the Phase 2 table write and the Phase 2.5 seeding iteration below. When `registryPath` is absent the resolved location is `_local/config.md`, so default behaviour is byte-identical to before this key existed. Record whether the location came from the default or a configured key for the Final Output.
+3. **Resolve the registry location.** Read `wf.config.js` at the repo root (if present) and resolve the registry's `## Capabilities` table location from its optional `registryPath` key, **defaulting to `_local/config.md` when the key (or the file) is absent**. Use this resolved location everywhere this skill writes or reads the registry — the Phase 2 table write and the Phase 2.5 seeding iteration below. When `registryPath` is absent the resolved location is `_local/config.md`, so default behaviour is byte-identical to before this key existed. Record the registry-location state for the Final Output — `default` (no key), `configured` (a key that passed the defensive check below), or `rejected → fell back to default` (a key that failed it).
+
+   **Defensive `registryPath` check (fallback).** When `registryPath` is set, before resolving a write location from it confirm it is a **repo-relative, forward-slash file path** with **no** `..` segment and **no** absolute/drive prefix (no leading `/`, no `C:`-style prefix) — the shape the contract requires. If it violates that shape, do **not** resolve or write to it: fall back to the default `_local/config.md`, record the `rejected → fell back to default` state, and flag the rejected value loudly in the chat summary. Registry validation (WF-2's registry pass / WF-28) should reject such a value upstream; this is a defensive fallback so a configured `registryPath` can never make `init` write outside the repo root even if that validation has not run — mirroring the Phase 2.5 defensive token check. (A passing `registryPath` may resolve outside `_local/` — that relocated registry write is the sanctioned exception in the Safety Rules above.)
 
 ---
 
@@ -74,7 +77,11 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 
 > The config template below carries the `## Capabilities` registry table. By default that table lives in `_local/config.md` (the Phase 0 resolved location when `registryPath` is absent). If `wf.config.js` sets a non-default `registryPath`, write the `## Capabilities` table at that resolved location instead — the rest of the config template still goes to `_local/config.md`. **Default-absent ⇒ the registry stays in `_local/config.md`, byte-identical to before.**
 
-- If `_local/config.md` exists and `--force` is not set, skip. Report "config.md already present — left untouched."
+> **The two writes skip independently.** The config-template write and the registry-table write are guarded by **separate** skip-if-present checks, each keyed on **its own** destination — so re-running after the registry was pointed elsewhere still creates the registry where it now belongs:
+> - **Registry in `_local/config.md`** (default-absent `registryPath`): the table rides inside the config template, so the single `_local/config.md` skip below covers it — byte-identical to before.
+> - **Registry at a configured `registryPath`** (non-default): the registry table is written to that resolved location guarded by its **own** skip-if-present check on **that file** — independent of whether `_local/config.md` exists. If the resolved location is absent (or `--force` is set), write/refresh the `## Capabilities` table there even when `_local/config.md` already exists; if it is already present and `--force` is not set, skip it and report "registry already present at `<resolved location>` — left untouched."
+
+- If `_local/config.md` exists and `--force` is not set, skip the config-template write (this also covers the registry table **only** in the default-absent case, where it lives inside this file). Report "config.md already present — left untouched." The configured-`registryPath` registry write is guarded separately, per the note above.
 - Otherwise:
   1. **Ask for the Azure DevOps Organization.** Prompt the user for their ADO org slug — the `<org>` segment in `dev.azure.com/<org>`. There is no sensible default, so don't invent one. If the user can't supply it yet, write `<your-ado-org>` into the **ADO Organization** row and flag it in the chat summary so they fix it before `/wf:spec`.
   2. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on an Angular project) misses the very errors the skills exist to catch.
@@ -204,7 +211,9 @@ Iterate the registry rows at the Phase 0 resolved location and, for each row, ap
    _local/profiles/<Capability>.profile.json
    ```
 
-   The `<Capability>` value is used verbatim as the filename stem; the convention requires it to be a filesystem-safe token (lowercase letters, digits, hyphens — no separators or `..`), which registry validation enforces before this phase runs. Create `_local/profiles/` on demand.
+   The `<Capability>` value is used verbatim as the filename stem; the convention requires it to be a filesystem-safe token (lowercase letters, digits, hyphens — no separators or `..`), which registry validation enforces before this phase runs.
+
+   **Defensive token check (fallback).** Before deriving the destination, confirm `<Capability>` is a filesystem-safe token — lowercase letters, digits, and hyphens only, with **no** path separator (`/` or `\`), **no** `..` segment, and **no** whitespace. If it is not, **skip this row** (write nothing, derive no path) and record `skipped — unsafe capability name`. Registry validation (WF-2's registry pass / WF-28) should reject such a name upstream; this check is a defensive fallback so the path can never traverse outside `_local/profiles/` even if that validation has not run. Create `_local/profiles/` on demand.
 
 4. **Seed an override only on divergence; never overwrite.** The capability ships a filled authoritative **default** (its `profile-template:`); seed a downstream **override** at the destination **only when the project's values diverge** from that default. Precedence is **downstream override > capability default**. State that hybrid precedence in the seeded file, and use the convention's angle-bracketed placeholder syntax for every divergent (unfilled) slot. **Idempotent — if the destination already exists, leave it untouched** (skip-if-present; never clobber a partially- or fully-filled override). Record `seeded override` when written, or `default in use` when no override was needed.
 
@@ -310,9 +319,9 @@ Actions:
 - .gitignore entry for _local/ — <appended | already present>
 - .git/info/exclude entry for _page-tests/ — <appended | already present | skipped>
 
-Registry: <resolved registry location> (<default | configured>)
+Registry: <resolved registry location> (<default | configured | rejected → fell back to default>)
 Capability profiles:
-- <capability-name> — <seeded override | default in use | skipped — no template>
+- <capability-name> — <seeded override | default in use | skipped — no template | skipped — unsafe capability name>
   (repeat one line per registered capability; "none" when the registry is empty)
 
 Verify Command: <detected command>
