@@ -81,6 +81,12 @@ assert "provider overlap named"       fail-provider-overlap.md - 1 "engine-owner
 assert "artifact overlap named"       fail-artifact-overlap.md - 1 "artifact-owner" "artifact-owner-2" "csharp→ts"
 assert "bad phase named"              fail-bad-phase.md     - 1 "bad-phase" "unknown phase" "deploy"
 assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unknown contribution-kind" "assertion"
+# Glob metacharacters must NOT bypass the phase/kind allowlist. The interpolated
+# value is quoted inside the case pattern (`*" $f_phase "*`), so `*` matches
+# literally and is rejected — these guard that quoting against an un-quoting
+# refactor that would reintroduce a glob-bypass.
+assert "glob phase rejected"          fail-glob-phase.md    - 1 "glob-phase" "unknown phase" "*"
+assert "glob kind rejected"           fail-glob-kind.md     - 1 "glob-kind" "unknown contribution-kind" "*"
 assert "unsatisfied requires named"   fail-requires.md      - 1 "needs-dep" "absent-dep"
 assert "co-active conflicts named"    fail-conflicts.md     - 1 "conflicter" "solo" "declares a conflict"
 assert "article contradiction named"  fail-article.md       - 1 "article-yes" "article-no" "commit-signing"
