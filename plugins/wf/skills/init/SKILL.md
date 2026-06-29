@@ -58,6 +58,7 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 1. Confirm the current directory is a git working tree: `git rev-parse --git-dir`.
    - If not, stop: "wf:init must run inside a git repository. Run `git init` first, then rerun."
 2. Record the repo root: `git rev-parse --show-toplevel`. All paths below are relative to it.
+3. **Resolve the registry location.** Read `wf.config.js` at the repo root (if present) and resolve the registry's `## Capabilities` table location from its optional `registryPath` key, **defaulting to `_local/config.md` when the key (or the file) is absent**. Use this resolved location everywhere this skill writes or reads the registry — the Phase 2 table write and the Phase 2.5 seeding iteration below. When `registryPath` is absent the resolved location is `_local/config.md`, so default behaviour is byte-identical to before this key existed. Record whether the location came from the default or a configured key for the Final Output.
 
 ---
 
@@ -70,6 +71,8 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 ---
 
 ## Phase 2: Write `_local/config.md`
+
+> The config template below carries the `## Capabilities` registry table. By default that table lives in `_local/config.md` (the Phase 0 resolved location when `registryPath` is absent). If `wf.config.js` sets a non-default `registryPath`, write the `## Capabilities` table at that resolved location instead — the rest of the config template still goes to `_local/config.md`. **Default-absent ⇒ the registry stays in `_local/config.md`, byte-identical to before.**
 
 - If `_local/config.md` exists and `--force` is not set, skip. Report "config.md already present — left untouched."
 - Otherwise:
@@ -180,6 +183,35 @@ The goal is a single shell command that exits 0 when the whole project typecheck
 
 Record the chosen rule (and the rejected candidates, if any) in the chat summary so the user can see the reasoning without reading config.md.
 
+> **Registry location is configurable.** The `## Capabilities` table location is resolved in Phase 0 from `wf.config.js`'s optional `registryPath` key, defaulting to `_local/config.md`. To point the registry elsewhere, set `registryPath` (forward-slash, repo-relative) in `wf.config.js` — leaving it unset keeps the registry in `_local/config.md` exactly as before.
+
+---
+
+## Phase 2.5: Seed capability profiles
+
+After the `## Capabilities` registry table exists (Phase 2) and before the constitution is established (Phase 7), execute the **profile-seeding convention** defined in `plugins/wf/skills/_contracts/capability-registry.contract.md` (§"The profile-seeding convention"). Do **not** re-derive its rules here — follow the convention **by name**; this phase only invokes it for every registered capability.
+
+Iterate the registry rows at the Phase 0 resolved location and, for each row, apply the convention:
+
+1. **Read the registry rows.** Open the `## Capabilities` table at the resolved registry location and read its rows in order. Each row carries a `Capability` name and a `Path`.
+   - **Empty (header-only) or absent table ⇒ seed nothing** — no destination is created. This is the inert no-op; report "none" in the Final Output. (Matches the contract's no-op-when-absent rule.)
+
+2. **Per row, read the manifest.** Read `<Path>/manifest.md` (forward-slash, repo-relative — the only `Path` shape resolved at runtime today). If the manifest does **not** declare a `profile-template:` field, **no-op** for this capability (skip — no destination, no placeholder) and record `skipped — no template`.
+
+3. **Per declaring capability, derive the deterministic destination.** When the manifest declares `profile-template:`, derive the destination **keyed on the registry `Capability` column** (its stable identity — never the `Path`):
+
+   ```
+   _local/profiles/<Capability>.profile.json
+   ```
+
+   The `<Capability>` value is used verbatim as the filename stem; the convention requires it to be a filesystem-safe token (lowercase letters, digits, hyphens — no separators or `..`), which registry validation enforces before this phase runs. Create `_local/profiles/` on demand.
+
+4. **Seed an override only on divergence; never overwrite.** The capability ships a filled authoritative **default** (its `profile-template:`); seed a downstream **override** at the destination **only when the project's values diverge** from that default. Precedence is **downstream override > capability default**. State that hybrid precedence in the seeded file, and use the convention's angle-bracketed placeholder syntax for every divergent (unfilled) slot. **Idempotent — if the destination already exists, leave it untouched** (skip-if-present; never clobber a partially- or fully-filled override). Record `seeded override` when written, or `default in use` when no override was needed.
+
+5. **Model attribution.** Every seeded file carries the model-attribution convention — include a `**Model:** <current model id>` line (or, for a comment-forbidding format like JSON, an angle-bracketed model token in a schema-permitted note slot, per the convention's placeholder rule).
+
+**Domain-free guard:** this phase names **no** concrete capability — capability names appear only as the path-deriving `Capability` value read from the registry. Core iterates and derives; it never tests for or hardcodes a specific capability.
+
 ---
 
 ## Phase 3: Ensure `_local/` is gitignored
@@ -277,6 +309,11 @@ Actions:
 - _local/constitution.md — <established | updated | unchanged | skipped — run /wf:constitution>
 - .gitignore entry for _local/ — <appended | already present>
 - .git/info/exclude entry for _page-tests/ — <appended | already present | skipped>
+
+Registry: <resolved registry location> (<default | configured>)
+Capability profiles:
+- <capability-name> — <seeded override | default in use | skipped — no template>
+  (repeat one line per registered capability; "none" when the registry is empty)
 
 Verify Command: <detected command>
   Rule: <which detection rule matched — e.g. "rule 2: typecheck script in AuditTrakker.Web/package.json">

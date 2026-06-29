@@ -103,7 +103,7 @@ Phases are the **injection points**. A capability touches only the phases it has
 
 ## 5. Capabilities — how knowledge attaches
 
-**The registry** lives in the downstream `_local/config.md`:
+**The registry** lives at a configurable location — `wf.config.js` `registryPath`, **defaulting to the downstream `_local/config.md`** when unset (default-absent path byte-identical to before the key existed):
 
 ```markdown
 ## Capabilities
@@ -276,6 +276,6 @@ One bump per PR; on a mixed PR use the **highest** applicable tier. The contract
 
 **New skill:** ① bare `<name>` slug (no `wf-`). ② `skills/<name>/SKILL.md` with frontmatter (`name` = folder; third-person `description` with what + when; tailored `allowed-tools`). ③ H1 `# /wf:<name> — <tagline>`. ④ body from the closest existing skill template. ⑤ define the zero-argument default. ⑥ `## Edge Cases`. ⑦ Final-output block ending in `Next:`. ⑧ if it reads config, point missing-file users to `/wf:init`. ⑨ if it warrants isolation, add `agents/<name>.md` (pick pattern B/C/D — §8). ⑩ if it produces a per-task artifact, call `/wf:index`. ⑪ update `plugins/wf/README.md`. ⑫ bump the version (§11).
 
-**New capability:** ① choose `kind` (adapter/feature/both). ② create `{path}/manifest.md` with the fragments table (`phase | contribution-kind | dispatch | scope`). ③ author each fragment as prose at the path its row names. ④ for partitioned kinds, declare a non-overlapping `scope` (`surface` token / `source→target` pair). ⑤ add constitution `article`s if it has non-negotiables. ⑥ for `feature` kinds, ship skills/agents as a normal plugin and document them under `skills:`. ⑦ register it in the downstream `_local/config.md` `## Capabilities` table. ⑧ ensure registry validation passes (§5).
+**New capability:** ① choose `kind` (adapter/feature/both). ② create `{path}/manifest.md` with the fragments table (`phase | contribution-kind | dispatch | scope`). ③ author each fragment as prose at the path its row names. ④ for partitioned kinds, declare a non-overlapping `scope` (`surface` token / `source→target` pair). ⑤ add constitution `article`s if it has non-negotiables. ⑥ for `feature` kinds, ship skills/agents as a normal plugin and document them under `skills:`. ⑦ if it fills contract slots with project values, ship a filled authoritative default and declare it via `profile-template:` — `init` seeds a downstream override at `_local/profiles/<name>.profile.json` only on divergence (hybrid precedence: override > default). ⑧ register it in the `## Capabilities` registry (at the `registryPath`-resolved location, default `_local/config.md`). ⑨ ensure registry validation passes (§5).
 
 **Editing rules:** edit `SKILL.md` in place — renaming/moving breaks invocation and existing task artifacts. Never hardcode project constants (add a config key instead). Preserve final-output block shapes. After editing a core skill, grep it for stack/domain strings — zero hits.
