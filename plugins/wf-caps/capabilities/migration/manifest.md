@@ -88,10 +88,12 @@ to `plugins/wf-caps/capabilities/migration/profile.template.json`):
 profile-template: profile.template.json
 ```
 
-This capability ships the template as a **filled authoritative default**. `init` (WF-9)
+This capability ships the template as its **authoritative default template** — the baseline
+shape a project overrides; it carries angle-bracketed placeholder slots for the four sections
+(per the contract's placeholder syntax), not concrete filled values. `init` (WF-9)
 seeds a downstream **override** per the contract's capability-agnostic seeding convention at
 `_local/profiles/migration.profile.json` **only when the project diverges** from that
-default — it does not stamp unconditionally. Precedence is **downstream override > capability
+default template — it does not stamp unconditionally. Precedence is **downstream override > capability
 default**: where a project sets no override, the capability default applies; where it
 diverges, the project fills the four slots (`stack`, `type-map`, `invariants`, `rule-checks`)
 in the override. Seeding is idempotent (skip-if-present, never overwrites). The template's

@@ -315,9 +315,10 @@ declares **where** a profile is stamped and **how** the stamp behaves;
 interface.
 
 1. **Stamp destination — deterministic, keyed by capability name.** A capability
-   declaring a `profile-template:` ships that template as its **filled authoritative
-   default**; `init` seeds a downstream **override** at a deterministic path under the
-   downstream `_local/`:
+   declaring a `profile-template:` ships that template as its **authoritative default
+   template** — the baseline shape (which may carry angle-bracketed placeholder slots,
+   per the placeholder syntax below) that a project overrides; `init` seeds a downstream
+   **override** at a deterministic path under the downstream `_local/`:
 
    ```
    _local/profiles/<capability-name>.profile.json
