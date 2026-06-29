@@ -75,13 +75,15 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 
 ## Phase 2: Write `_local/config.md`
 
-> The config template below carries the `## Capabilities` registry table. By default that table lives in `_local/config.md` (the Phase 0 resolved location when `registryPath` is absent). If `wf.config.js` sets a non-default `registryPath`, write the `## Capabilities` table at that resolved location instead — the rest of the config template still goes to `_local/config.md`. **Default-absent ⇒ the registry stays in `_local/config.md`, byte-identical to before.**
+> The config template below carries the `## Capabilities` registry table. Its destination is the **Phase 0 resolved registry location**, not whether `registryPath` is set. When the resolved location **is** `_local/config.md` (the `default`, the `rejected → fell back to default`, **and** a `configured` value that points back at `_local/config.md`), the table rides inside the config template. When the resolved location is a **different** file, write the `## Capabilities` table at that resolved location instead — the rest of the config template still goes to `_local/config.md`. **Resolved location == `_local/config.md` ⇒ the registry stays there, byte-identical to before.**
 
-> **The two writes skip independently.** The config-template write and the registry-table write are guarded by **separate** skip-if-present checks, each keyed on **its own** destination — so re-running after the registry was pointed elsewhere still creates the registry where it now belongs:
-> - **Registry in `_local/config.md`** (default-absent `registryPath`): the table rides inside the config template, so the single `_local/config.md` skip below covers it — byte-identical to before.
-> - **Registry at a configured `registryPath`** (non-default): the registry table is written to that resolved location guarded by its **own** skip-if-present check on **that file** — independent of whether `_local/config.md` exists. If the resolved location is absent (or `--force` is set), write/refresh the `## Capabilities` table there even when `_local/config.md` already exists; if it is already present and `--force` is not set, skip it and report "registry already present at `<resolved location>` — left untouched."
+> **The two writes skip independently.** The config-template write and the registry-table write are guarded by **separate** skip-if-present checks, each keyed on **its own** resolved destination — so re-running after the registry was pointed elsewhere still creates the registry where it now belongs:
+> - **Resolved location == `_local/config.md`** (`default`, `rejected → fell back to default`, or a `configured` value pointing back at it): the table rides inside the config template, so the single `_local/config.md` skip below covers it — byte-identical to before.
+> - **Resolved location is a different file** (a `configured` `registryPath` that resolves elsewhere): the registry table is written to that resolved location guarded by its **own** skip-if-present check on **that file** — independent of whether `_local/config.md` exists. If the resolved location is absent (or `--force` is set), write/refresh the `## Capabilities` table there even when `_local/config.md` already exists; if it is already present and `--force` is not set, skip it and report "registry already present at `<resolved location>` — left untouched."
 
-- If `_local/config.md` exists and `--force` is not set, skip the config-template write (this also covers the registry table **only** in the default-absent case, where it lives inside this file). Report "config.md already present — left untouched." The configured-`registryPath` registry write is guarded separately, per the note above.
+- If `_local/config.md` exists and `--force` is not set, skip the config-template write (this also covers the registry table **only** when the resolved registry location is `_local/config.md`, where it lives inside this file). Report "config.md already present — left untouched." A registry write whose resolved location is a different file is guarded separately, per the note above.
+- **One registry, never two.** The `## Capabilities` section in the "Default content" template below belongs to **exactly one** destination — the **Phase 0 resolved registry location**, not whether `registryPath` is set. When the resolved location **is** `_local/config.md` (the `default`, `rejected → fell back to default`, **and** a `configured` value pointing back at `_local/config.md` cases), keep `## Capabilities` inside `_local/config.md`. When the resolved location is a **different** file, **omit the `## Capabilities` section from the `_local/config.md` write entirely** and write that section **only** to the resolved registry file — never emit it in both places, so a user can't edit the wrong copy (runtime reads only the resolved location).
+- **Strip the authoring aid.** The `<!-- … -->` HTML comment above the `## Capabilities` table in the template is a build-time directive **for `init` only** — it must **never** reach a written file. Drop it in both branches: write only the `## Capabilities` heading, table, and explanatory prose to the Phase 0 resolved registry location (which is `_local/config.md` itself when the resolved location equals it). Every "write the template" instruction below means the template **minus** this comment.
 - Otherwise:
   1. **Ask for the Azure DevOps Organization.** Prompt the user for their ADO org slug — the `<org>` segment in `dev.azure.com/<org>`. There is no sensible default, so don't invent one. If the user can't supply it yet, write `<your-ado-org>` into the **ADO Organization** row and flag it in the chat summary so they fix it before `/wf:spec`.
   2. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on an Angular project) misses the very errors the skills exist to catch.
@@ -144,6 +146,11 @@ The three **API** keys are used only by the backend-exercise path (`Type: API` s
 | **History Table** | `dbo.scripthistory` |
 
 ## Capabilities
+
+<!-- init directive (strip before writing — never emit this comment to any file):
+     This `## Capabilities` section goes to the Phase 0 RESOLVED registry location only.
+     Resolved location == `_local/config.md` → keep this section here. Resolved location is a
+     different file → write this section only to that file, NOT here. See Phase 2 "One registry, never two". -->
 
 | Capability | Path                   |
 |------------|------------------------|
@@ -217,7 +224,7 @@ Iterate the registry rows at the Phase 0 resolved location and, for each row, ap
 
 4. **Seed an override only on divergence; never overwrite.** The capability ships a filled authoritative **default** (its `profile-template:`); seed a downstream **override** at the destination **only when the project's values diverge** from that default. Precedence is **downstream override > capability default**. State that hybrid precedence in the seeded file, and use the convention's angle-bracketed placeholder syntax for every divergent (unfilled) slot. **Idempotent — if the destination already exists, leave it untouched** (skip-if-present; never clobber a partially- or fully-filled override). Record `seeded override` when written, or `default in use` when no override was needed.
 
-5. **Model attribution.** Every seeded file carries the model-attribution convention — include a `**Model:** <current model id>` line (or, for a comment-forbidding format like JSON, an angle-bracketed model token in a schema-permitted note slot, per the convention's placeholder rule).
+5. **Model attribution.** Every seeded file carries the model-attribution convention **where its data format provides a place for it** — include a `**Model:** <current model id>` line for a prose/markdown profile, or, for a comment-forbidding format like JSON, an angle-bracketed model token in a **schema-permitted** note slot, per the convention's placeholder rule. **A JSON schema that forbids extra fields (`additionalProperties: false`) and defines no dedicated metadata/note slot for attribution has no place to carry it** — do **not** add a non-schema field (that would make the seeded file fail its own validator). In that case **omit** the in-file attribution and instead record the seeding model in the Phase 2.5 outcome line (and the `index.md` summary), so attribution is preserved without breaking schema conformance. (The migration profile's schema is `additionalProperties: false` with no metadata slot, so its seed omits the in-file token.)
 
 **Domain-free guard:** this phase names **no** concrete capability — capability names appear only as the path-deriving `Capability` value read from the registry. Core iterates and derives; it never tests for or hardcodes a specific capability.
 
@@ -321,8 +328,8 @@ Actions:
 
 Registry: <resolved registry location> (<default | configured | rejected → fell back to default>)
 Capability profiles:
-- <capability-name> — <seeded override | default in use | skipped — no template | skipped — unsafe capability name>
-  (repeat one line per registered capability; "none" when the registry is empty)
+- <capability-name> — <seeded override [seeded by <model id>] | default in use | skipped — no template | skipped — unsafe capability name>
+  (repeat one line per registered capability; "none" when the registry is empty. Append `seeded by <model id>` **only** to a `seeded override` row whose profile format has no schema-permitted attribution slot — see Phase 2.5 step 5; every other outcome carries no separate seeding-model stamp (a seeded markdown/prose profile records its model in its own in-file `**Model:**` line).)
 
 Verify Command: <detected command>
   Rule: <which detection rule matched — e.g. "rule 2: typecheck script in AuditTrakker.Web/package.json">
