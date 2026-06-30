@@ -33,7 +33,7 @@ Invoke with `/wf-caps:test-page backend-smoke <ado-id> [suite-name]`.
 
 6. **Inject into the component** — same as the `new` subcommand (see parent SKILL.md).
 
-7. **Typecheck before handoff.** Run `{verify-command}` from `_local/config.md` and confirm exit 0. This catches the common failure modes for this flow: a typo in the new service method's return type, an `HttpService` method signature drift, or a mismatched DTO shape in the page-test's assertions. If errors reference the new service file, the new page-test, or the component's `PAGE-TEST-HARNESS-*` markers, do not report success — show the TSC output and offer to fix the error or roll back (delete both new files + `/wf-caps:test-page clean` the markers). Errors outside these files get flagged as pre-existing.
+7. **Typecheck before handoff.** Run `{verify-command}` (from the `angular` profile — see SKILL.md "Stack profile") and confirm exit 0. This catches the common failure modes for this flow: a typo in the new service method's return type, an `HttpService` method signature drift, or a mismatched DTO shape in the page-test's assertions. If errors reference the new service file, the new page-test, or the component's `PAGE-TEST-HARNESS-*` markers, do not report success — show the TSC output and offer to fix the error or roll back (delete both new files + `/wf-caps:test-page clean` the markers). Errors outside these files get flagged as pre-existing.
 
 8. **Report** the new/modified service file, the page-test file, the component injection, and `Typecheck: PASS`. Remind the user the API backend must be running for these tests to pass.
 

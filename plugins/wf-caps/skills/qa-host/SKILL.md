@@ -254,7 +254,7 @@ Steps:
 
    Use `Edit` with exact-string matches. If any of the three is already present, leave it alone (idempotent).
 
-8. **Add navigation link in the sandbox module-test component's template** (`{test-host-root}/code-trakker-module-test/code-trakker-module-test.component.html`)**:**
+8. **Add navigation link in the sandbox module-test component's template** — `{test-host-root}/code-trakker-module-test/code-trakker-module-test.component.html`:
 
    Append a link to the new test host in the Test Area card body. Example:
    ```html
@@ -267,11 +267,11 @@ Steps:
 
    This makes the test page discoverable from the module-test hub page.
 
-9. **Typecheck.** Run `{verify-command}` from `_local/config.md`. On exit-0, continue. On errors touching the new files or the routing module's three markers, do NOT report success — show the TSC output, identify likely cause, offer to fix or roll back (delete the new folder + reverse the routing edits). Errors only in untouched files are flagged as pre-existing.
+9. **Typecheck.** Run `{verify-command}` (from the `angular` profile — see "Stack profile"). On exit-0, continue. On errors touching the new files or the routing module's three markers, do NOT report success — show the TSC output, identify likely cause, offer to fix or roll back (delete the new folder + reverse the routing edits). Errors only in untouched files are flagged as pre-existing.
 
 10. **Report:** new folder + files, the route URL (`/code-trakker/<kebab>-test` relative to the app root), `Typecheck: PASS`, login+entity reminder.
 
-After typecheck passes, invoke `/wf:index <ado-id> qa-host "<kebab>-test · /<kebab>-test"` (string slot — file lives in source tree, not under `_local/`).
+After typecheck passes, invoke `/wf:index <ado-id> qa-host "<kebab>-test · /code-trakker/<kebab>-test"` (string slot — file lives in source tree, not under `_local/`).
 
 ### `augment <component>` → add controls / observation to an EXISTING host
 
@@ -412,7 +412,7 @@ QA-HOST — Complete
 Task:        {wi-prefix}-{id}
 Target:      <component-path>
 Host:        {test-host-root}/<kebab>-test/
-Route:       /<kebab>-test (under the stack's test-host route prefix)
+Route:       /code-trakker/<kebab>-test (the stack's test-host route prefix + <kebab>-test)
 Edits:       <kebab>-test/<kebab>-test.component.ts (new)
              <kebab>-test/<kebab>-test.component.html (new)
              {routing-module} (3 edits: import, route, static-components)

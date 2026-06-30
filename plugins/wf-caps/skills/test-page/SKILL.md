@@ -229,7 +229,7 @@ Steps:
    server watching the files will hot-reload the error into the user's
    browser.
 
-   Run `{verify-command}` from `_local/config.md`.
+   Run `{verify-command}` (from the `angular` profile — see "Stack profile").
 
    - **Exit 0** → continue to Report.
    - **Errors touching the new `_page-tests/<suite-name>.page-test.ts`
