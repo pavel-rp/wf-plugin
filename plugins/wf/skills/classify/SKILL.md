@@ -124,7 +124,7 @@ Pick exactly one:
 
 1. **Explicit type in title.** If the title or description explicitly names a type tag (`[Refactor] …`, `Migration:`, `Hotfix:`, `Chore:`, `Docs:`), use it.
 2. **Urgent production fix** → `hotfix`. Signals: "urgent prod", "production outage", "emergency fix", "P0", "live site broken".
-3. **Schema/data/version migration** → `migration`. Signals: "migration", "migrate", "schema change", "alter table", "backfill", "upgrade Angular to N", "upgrade EF", "rename column".
+3. **Schema/data/version migration** → `migration`. Signals: "migration", "migrate", "schema change", "alter table", "backfill", "upgrade framework to N", "upgrade ORM", "rename column".
 4. **Fix broken behavior** → `fix`. Signals: "fix", "bug", "broken", "error", "crash", "fails to", "wrong output", "regression".
 5. **Internal restructure, no behavior change** → `refactor`. Signals: "refactor", "restructure", "extract", "rename method", "consolidate", "no behavior change", "cleanup".
 6. **Docs only** → `docs`. Signals: "documentation", "README", "comments", "design doc", "ADR", "wiki update".

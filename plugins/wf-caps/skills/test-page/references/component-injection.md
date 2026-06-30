@@ -1,6 +1,6 @@
-# wf:test-page — component injection
+# wf-caps:test-page — component injection
 
-Target file: `AuditTrakker.Web/src/app/code-trakker/code-trakker-module-test/code-trakker-module-test.component.ts`.
+Target file: `{test-host-root}/code-trakker-module-test/code-trakker-module-test.component.ts` (the `{test-host-root}` slot from the `angular` profile — see SKILL.md "Stack profile").
 
 Two edits, both marker-wrapped so the `clean` subcommand can reverse them surgically.
 
@@ -9,7 +9,7 @@ Two edits, both marker-wrapped so the `clean` subcommand can reverse them surgic
 The component's ctor takes an `Injector` and passes it to `super(injector)` but doesn't store it. Add a field initialized via `inject(Injector)` so tests can reach DI from `ngOnInit`. Put this among the existing class fields, above the ctor:
 
 ```ts
-  // PAGE-TEST-HARNESS-INJECTOR-BEGIN — managed by /wf:test-page; do not edit
+  // PAGE-TEST-HARNESS-INJECTOR-BEGIN — managed by /wf-caps:test-page; do not edit
   private readonly _pageTestInjector = inject(Injector);
   // PAGE-TEST-HARNESS-INJECTOR-END
 ```
@@ -21,7 +21,7 @@ Update the `@angular/core` import to include `inject` if missing.
 Inside `async ngOnInit`, immediately BEFORE `this.endLoad();`:
 
 ```ts
-    // PAGE-TEST-HARNESS-BEGIN — managed by /wf:test-page; do not edit
+    // PAGE-TEST-HARNESS-BEGIN — managed by /wf-caps:test-page; do not edit
     try {
       const mod = await import('./_page-tests/<suite-name>.page-test');
       await mod.run(this._pageTestInjector);

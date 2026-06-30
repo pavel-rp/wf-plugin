@@ -67,6 +67,9 @@ assert() {
 # --- Passing cases -----------------------------------------------------------
 assert "single-row registry passes"   pass-single.md - 0 "Validation passed"
 assert "multi-row non-overlap passes" pass-multi.md  - 0 "Validation passed"
+# WF-26: angular (provider surface: host) + node-ts (skills-only) compose with
+# browser-qa (provider surface: engine) — different surfaces, no partition collision.
+assert "stack caps compose passes"    pass-stack.md  - 0 "Validation passed" "angular" "node-ts"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"

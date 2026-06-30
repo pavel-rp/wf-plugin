@@ -1,6 +1,6 @@
 # wf:qa-gen — API (endpoint-exercise) scenarios
 
-How `/wf:qa-gen` covers a **backend task** — one whose deliverable is a controller endpoint, a service method, or a repository method rather than an Angular view. Loaded from `SKILL.md` Phase 3 when a criterion classifies as **API**.
+How `/wf:qa-gen` covers a **backend task** — one whose deliverable is a controller endpoint, a service method, or a repository method rather than a frontend view. Loaded from `SKILL.md` Phase 3 when a criterion classifies as **API**.
 
 The point: a backend task is not "verified by build." A type that compiles is not a method that returns the right rows. The `API` category exists so backend criteria get *exercised over HTTP with a real token*, not stamped PASS because they typecheck. This is the fix for the failure mode where a pure data-layer task produced a stub PASS report.
 
@@ -40,7 +40,7 @@ For each API criterion, decide how the behavior is reachable:
    Backend host required: <Service-or-Repository>.<method>
    ```
 
-   This is the backend analog of `Host required:` for an un-routed Angular component. `/wf:qa-auto` resolves it via `/wf:qa-host api-probe` (scaffold-or-locate); the temporary endpoint is an ephemeral run fixture, reverted in teardown. Set the scenario's `Route:` to `via backend host` — the runner substitutes the real route after `api-probe` returns it.
+   This is the backend analog of `Host required:` for an un-routed frontend component. `/wf:qa-auto` resolves it via `/wf-caps:qa-host api-probe` (scaffold-or-locate); the temporary endpoint is an ephemeral run fixture, reverted in teardown. Set the scenario's `Route:` to `via backend host` — the runner substitutes the real route after `api-probe` returns it.
 
 Determining which: grep the branch diff and the controllers root (`{api-controllers-root}` from config, or auto-detect `*Controller.cs`) for an action that calls the target service method. If one is found, it's case 1; otherwise case 2.
 
@@ -85,7 +85,7 @@ Same outer shape as a browser scenario (`Validates` / `Priority` / `Precondition
 Writing rules specific to API scenarios:
 
 - **One assertion per row.** Status is its own row; each shape/value check is its own row. A partial pass is then legible.
-- **Assert the contract, not the data.** Status code, array-ness vs object, presence and type of spec-named fields, and spec-stated edge behavior ("empty array when none match — use an id unlikely to have data, e.g. `0` or `-1`"). **Never assert exact row counts or specific values** — those depend on the database, exactly as `wf:test-page backend-smoke` already cautions.
+- **Assert the contract, not the data.** Status code, array-ness vs object, presence and type of spec-named fields, and spec-stated edge behavior ("empty array when none match — use an id unlikely to have data, e.g. `0` or `-1`"). **Never assert exact row counts or specific values** — those depend on the database, exactly as `wf-caps:test-page backend-smoke` already cautions.
 - **Negative/error cases at `full` scope.** Bad input → 400, missing/forbidden → 401/403, not-found → 404 — when the spec defines them. These are first-class API scenarios, not afterthoughts.
 - **Route is real.** Use the actual route template from the controller's `[Route]`/`[HttpGet("…")]` attributes (signature read). Placeholder `via backend host` is allowed *only* for the service-only case, where the route doesn't exist until `api-probe` makes it.
 
@@ -132,4 +132,4 @@ When inspecting `git diff --name-only main...HEAD` in Phase 2, flag a file as a 
 - `*Service.cs` / `*Repository.cs` / `*Provider.cs` (or files matching the project's data-layer naming) — read public method signatures. A new/changed public method with no controller action calling it is a **service-only** API surface (case 2 → `Backend host required:`).
 - DTO / model / `*Dto.cs` / record types referenced by the above — read property names + types to derive expected response shape.
 
-A task whose entire diff is `.cs` data-layer files with no Angular target is the canonical **backend-only** task: classify its behavioral criteria as **API**, emit `Backend host required:` for the service-only ones, and give it the API baseline.
+A task whose entire diff is backend data-layer files with no frontend target is the canonical **backend-only** task: classify its behavioral criteria as **API**, emit `Backend host required:` for the service-only ones, and give it the API baseline.
