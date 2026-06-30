@@ -1,0 +1,56 @@
+name: CI
+
+# Gate the validator-fixture suites on every PR (and on push to main as a
+# backstop). The gate is capability-agnostic: it runs the registry-level suite
+# explicitly and then discovers every capability profile-fixtures suite by the
+# convention `plugins/*/capabilities/*/fixtures/run.sh` — it never names a
+# specific capability, so any future capability that ships a fixtures run.sh is
+# gated automatically.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  fixtures:
+    name: Validator fixture suites
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure jq is present
+        # validate-profile.sh exits 2 when jq is absent. ubuntu-latest ships jq,
+        # but confirm it rather than assume — a future runner-image change must
+        # not silently regress the profile suite into an exit-2 environment
+        # error masquerading as a validation failure.
+        run: command -v jq >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y jq; }
+
+      - name: Registry-level validation suite
+        # Run verbatim. A non-zero exit fails this step (and the job).
+        run: bash plugins/wf/skills/_contracts/registry-fixtures/run.sh
+
+      - name: Each capability's fixture suite
+        # Discover every capability fixtures suite by convention — never name a
+        # specific capability. Zero matches fails explicitly (a silent pass would
+        # mask a broken glob or a moved fixtures tree).
+        run: |
+          shopt -s nullglob
+          suites=(plugins/*/capabilities/*/fixtures/run.sh)
+          if [ ${#suites[@]} -eq 0 ]; then
+            echo "ERROR: no capability fixture suites matched 'plugins/*/capabilities/*/fixtures/run.sh'." >&2
+            exit 1
+          fi
+          failed=0
+          for suite in "${suites[@]}"; do
+            echo "=== Running $suite ==="
+            if ! bash "$suite"; then
+              echo "FAILED: $suite" >&2
+              failed=$((failed + 1))
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "$failed capability fixture suite(s) failed." >&2
+            exit 1
+          fi
