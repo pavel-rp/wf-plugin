@@ -35,6 +35,10 @@ jobs:
         # Discover every capability fixtures suite by convention — never name a
         # specific capability. Zero matches fails explicitly (a silent pass would
         # mask a broken glob or a moved fixtures tree).
+        # `shell: bash` is explicit: the step relies on bash-only features
+        # (`shopt -s nullglob`, arrays). ubuntu-latest defaults `run:` to bash,
+        # but pinning it guards against a default fallback to sh.
+        shell: bash
         run: |
           shopt -s nullglob
           suites=(plugins/*/capabilities/*/fixtures/run.sh)
