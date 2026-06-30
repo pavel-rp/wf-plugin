@@ -145,7 +145,7 @@ Everything not AUTO and not SKIP is ASK. In particular:
 - Fix would require a new file, new component, new import graph, or cross-file changes.
 - Multiple plausible fixes (e.g., "rename to match source" — the "correct" name might not be obvious from the report alone).
 - STOP-AND-ESCALATE gate triggers flagged in the report.
-- Migration-rule audit hits where the mechanical remedy is unclear (e.g., `window.location` used where the Angular equivalent depends on context).
+- Migration-rule audit hits where the mechanical remedy is unclear (e.g., `window.location` used where the target-framework equivalent depends on context).
 - Any fix that would reverse a deliberate design choice visible in the surrounding code.
 
 When in doubt, classify as ASK. Over-fixing silently is worse than asking.

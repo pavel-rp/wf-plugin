@@ -273,7 +273,7 @@ Rule: all dimensions low, total ≤ 8.
 Scope 2, Clarity 2, Design 2, Risk 2, Deps 1 → total 9 → `full`
 Rule: total > 8; one dimension above the lite threshold (Design 2 is on the edge; total tips it to full).
 
-**"Refactor the entire Review module from MVC to Angular"**
+**"Refactor the entire Review module from the legacy stack to the target framework"**
 Scope 5 → `split`
 Rule: Scope = 5 triggers split before anything else is considered.
 

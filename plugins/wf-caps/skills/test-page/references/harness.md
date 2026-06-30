@@ -1,4 +1,4 @@
-# wf:test-page — the harness (`_page-tests/harness.ts`)
+# wf-caps:test-page — the harness (`_page-tests/harness.ts`)
 
 Shared runner + assertion helpers. Minimal — no framework. Created on first run; reused thereafter. Keep it framework-free — no imports beyond `@angular/core` types (and those are type-only — the runner doesn't need DI).
 

@@ -4,7 +4,7 @@ description: Scaffolds and runs Node-based unit tests for pure TypeScript helper
 allowed-tools: [Read, Write, Edit, Glob, Bash]
 ---
 
-# /wf:test-node — Node test harness for pure helpers
+# /wf-caps:test-node — Node test harness for pure helpers
 
 Scaffold and run lightweight Node-based unit tests for pure TypeScript helpers in this repo, using the `_local/_testkit` harness. Use when the user asks to "test this helper locally", "add a local test for X", "run the local tests", or wants to exercise a pure function without spinning up Karma/Angular. Not for code that needs the Angular runtime (DI, zone.js, templates, RxJS-with-NgZone).
 
@@ -151,7 +151,7 @@ Next:    <branched on the result — see below>
 
 The `Next:` line branches on the result:
 
-- **pass** → `none — utility. Add DI-level coverage with /wf:test-page <id> <component>, or more cases via /wf:test-node new <id> <src>.`
-- **fail** → `fix the source, then /wf:test-node run <path> to re-check.`
+- **pass** → `none — utility. Add DI-level coverage with /wf-caps:test-page <id> <component>, or more cases via /wf-caps:test-node new <id> <src>.`
+- **fail** → `fix the source, then /wf-caps:test-node run <path> to re-check.`
 
 **The final-output block must always be the very last thing output to chat.**

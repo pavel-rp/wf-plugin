@@ -78,17 +78,14 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 | `/wf:verify-fix` | Reads `04_verify.md`, auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous findings as open questions. Run after `/wf:verify-spec` to clear the obvious stuff. |
 | `/wf:classify` | Classifies an ADO task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
 | `/wf:index` | Updates one row in the per-task `index.md` manifest. Other skills call it after writing any artifact so the index stays in sync. Lean. |
-| `/wf:test-node` | Scaffold and run Node unit tests for pure TypeScript helpers. No Angular runtime. |
-| `/wf:test-page` | Scaffold black-box Angular runtime tests; inject into the `CodeTrakkerModuleTestComponent` sandbox page. |
 | `/wf:qa-gen` | Generate a QA plan for the task (`06_qa.md`). UI criteria become **browser** scenarios; backend criteria become **API** scenarios that exercise the endpoint over HTTP with a real token. On top of the generic plan it **fires the `qa-generation` phase**, aggregating any scenarios contributed by the project's registered capabilities (provenance-tagged) — with none registered, the generic plan stands alone. Every plan ends with a standing **Baseline health** suite. A backend-only task is never a stub PASS. |
 | `/wf:qa-run` | Interactive walkthrough of `06_qa.md` — prompts the tester step by step for browser scenarios, presents `Type: API` scenarios as a request + ready curl command, then writes `07_qa-report.md`. Use when a human is the tester. |
 | `/wf:qa-auto` | Autonomous QA run **orchestrator**. Resolves the task/plan, enforces the branch gate, manages run lifecycle (resume / `--batch` / `--only`), and **dispatches the per-scenario drive to the `qa-execution` engine** registered in the capability registry — it names no stack and drives no browser itself. Assembles `07_qa-report.md` with the Summary, traceability matrix, and full-run console/network rollup. Requires a registered execution capability (e.g. `wf-caps` browser-qa); stops cleanly if none is active. Use `--batch <N>` + `--resume` to chunk long runs across context windows. |
-| `/wf:qa-host` | Scaffolds a routed Angular test-host for a component that doesn't yet have one. The `augment` mode retrofits input controls / output observation onto an *existing* host; `api-probe` / `api-revert` are the backend analog. Auto-invoked by `/wf:qa-followup` to unblock scenarios. |
 | `/wf:qa-followup` | Follows up a QA report: triages every non-PASS scenario, unblocks harness blocks, root-causes FAIL defects, writes a checkbox remediation plan (`08_qa-fix.md`), gates on a single approval, applies fixes, and recommends a fresh QA pass. The QA chain's plan-then-implement defect-fixer. |
 
 All default to zero-argument invocation — they infer context from the current branch.
 
-> **Moved:** `migration-map` now ships in the **wf-caps** plugin as `/wf-caps:migration-map` — see [`plugins/wf-caps/README.md`](../wf-caps/README.md). Install `wf-caps` to use it.
+> **Moved:** `migration-map` (→ `/wf-caps:migration-map`), `qa-host` (→ `/wf-caps:qa-host`), `test-page` (→ `/wf-caps:test-page`), and `test-node` (→ `/wf-caps:test-node`) now ship in the **wf-caps** plugin — `qa-host`/`test-page` as the `angular` stack capability (the `qa-execution` `surface: host` provider, composing with browser-qa's `surface: engine`), `test-node` as the `node-ts` capability. See [`plugins/wf-caps/README.md`](../wf-caps/README.md). Install `wf-caps` to use them.
 
 ## Per-task artifacts
 
@@ -113,7 +110,7 @@ _local/
     ├── 08_qa-fix.md          # /wf:qa-followup remediation plan + fix log
     ├── triage.md             # /wf:triage advisor output
     ├── lite.md               # /wf:lite fast-path output
-    ├── tests/                # /wf:test-node Node test files (.test.ts)
+    ├── tests/                # /wf-caps:test-node Node test files (.test.ts)
     ├── research/             # exploration notes
     ├── assets/               # mockups, screenshots, traces
     └── artifacts/            # diffs, screenshots, API responses from /wf:qa-auto captures

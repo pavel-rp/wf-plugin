@@ -18,19 +18,13 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 |---|---|---|
 | `/wf-caps:migration-map` | migration | 1:1 C#/MVC -> Angular/TS mapping table |
 | `/wf-caps:qa-engine` | browser-qa | stack-agnostic browser-automation QA engine — the `qa-execution` provider core's `/wf:qa-auto` dispatches to |
+| `/wf-caps:qa-host` | angular | routed Angular test-host scaffolder (+ ephemeral backend-controller analog) — the `qa-execution` `surface: host` provider |
+| `/wf-caps:test-page` | angular | browser-run black-box DI-level tests injected into the Angular sandbox page |
+| `/wf-caps:test-node` | node-ts | Node unit-test harness for pure TS helpers (no Angular runtime) |
 
-**Planned** — still in `wf` core until extracted (WF-26):
-
-| Skill | Capability | What it will be |
-|---|---|---|
-| `qa-host` | stack (Angular) | QA test-host scaffolding |
-| `test-page` | stack (Angular) | Angular runtime test page scaffolding |
-| `test-node` | stack (Node/TS) | Node unit-test host for pure helpers |
-
-> **Status — staged build.** This pack is being populated one slice per PR (migration first,
-> then the QA cluster). Until a skill's slice lands, its command still lives in `wf` core.
-> Later, this single pack will be **fragmented** into proper per-capability packs (migration,
-> browser-qa, the Angular stack). See `CLAUDE.md` and `docs/ROADMAP.md`.
+> **Status — staged build.** This pack is populated one slice per PR (migration → browser-qa →
+> the Angular/Node-TS stack cluster). Later, this single pack will be **fragmented** into proper
+> per-capability packs. See `CLAUDE.md` and `docs/ROADMAP.md`.
 
 ## Capabilities
 
@@ -38,6 +32,8 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 |---|---|---|---|---|
 | migration | adapter | `plugins/wf-caps/capabilities/migration` | `tasks` task-list; `verify` findings; `qa-generation` scenarios | phase fragments (the `/wf-caps:migration-map` skill ships natively) |
 | browser-qa | feature | `plugins/wf-caps/capabilities/browser-qa` | `qa-execution` provider (`surface: engine`) | the `/wf-caps:qa-engine` browser-automation engine, dispatched by core's `/wf:qa-auto` |
+| angular | feature | `plugins/wf-caps/capabilities/angular` | `qa-execution` provider (`surface: host`) | the `/wf-caps:qa-host` + `/wf-caps:test-page` Angular test-host skills; ships a `profile-template:` (web-root, routing-module, test-host-root, verify-command) seeded downstream on divergence |
+| node-ts | feature | `plugins/wf-caps/capabilities/node-ts` | — (skills-only; no phase fragments) | the `/wf-caps:test-node` pure-helper Node test harness |
 
 ### Registering a capability downstream
 
@@ -57,6 +53,16 @@ owning `surface: engine` and dispatches the per-scenario browser drive to `/wf-c
 With no engine provider registered, `/wf:qa-auto` stops with a clear "no qa-execution engine
 registered" message rather than faking a run. (No `_local/config.md` lives in this plugin
 repo — registration is a downstream step; this repo only ships the capability + docs.)
+
+The `angular` and `node-ts` stack capabilities register the same way (each on its own
+repo-relative path row). `angular` owns the `qa-execution` `surface: host` — it **composes
+with** `browser-qa`'s `surface: engine` (different surfaces, no partition collision): the
+engine drives the browser, the host scaffolds the runnable surface. Registering `angular`
+also seeds an `_local/profiles/angular.profile.json` override on `init` **when the project
+diverges** from the capability's default `profile.template.json` (the four Angular stack paths
+— web-root, routing-module, test-host-root, verify-command); `qa-host`/`test-page` read those
+paths from the profile, so a different Angular project retargets them without editing the
+skills. `node-ts` is skills-only — it attaches no phase fragment and ships no profile.
 
 ## How it composes
 

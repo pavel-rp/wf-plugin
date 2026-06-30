@@ -11,9 +11,9 @@ Bootstrap the current git repository for the wf:* skill suite. Creates and/or up
 - `_local/` — task root (per-ticket artifacts)
 - `_local/config.md` — project-specific values consumed by every wf:* skill
 - `_local/README.md` — short note explaining the folder's purpose
-- `_local/_testkit/run.mjs` — Node test runner used by `/wf:test-node`
+- `_local/_testkit/run.mjs` — Node test runner used by `/wf-caps:test-node`
 - `.gitignore` — ensures `_local/` is never committed
-- `.git/info/exclude` — adds the Compliance-Risk `_page-tests/` path if that path exists in the checkout
+- `.git/info/exclude` — adds a frontend test-host `_page-tests/` path when the `angular` capability's test-host root exists in the checkout
 
 > Plugin agents (the `*.md` companions in the plugin's `agents/` folder) are auto-discovered by Claude Code once the `wf` plugin is installed — no per-machine setup is needed, and nested subagent delegation (e.g. `wf:branch`→`wf:index`) works out of the box.
 
@@ -86,7 +86,7 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 - **Strip the authoring aid.** The `<!-- … -->` HTML comment above the `## Capabilities` table in the template is a build-time directive **for `init` only** — it must **never** reach a written file. Drop it in both branches: write only the `## Capabilities` heading, table, and explanatory prose to the Phase 0 resolved registry location (which is `_local/config.md` itself when the resolved location equals it). Every "write the template" instruction below means the template **minus** this comment.
 - Otherwise:
   1. **Ask for the Azure DevOps Organization.** Prompt the user for their ADO org slug — the `<org>` segment in `dev.azure.com/<org>`. There is no sensible default, so don't invent one. If the user can't supply it yet, write `<your-ado-org>` into the **ADO Organization** row and flag it in the chat summary so they fix it before `/wf:spec`.
-  2. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on an Angular project) misses the very errors the skills exist to catch.
+  2. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on a framework project needing template/metadata checks) misses the very errors the skills exist to catch.
   3. Write the template below, substituting the org into the `ADO Organization` row and the detected command into the `Verify Command` row. If either falls back to a placeholder, flag it prominently in the chat summary so the user fixes it before running any other skill.
 
 ### Default content
@@ -117,7 +117,7 @@ Project-specific values used by all `wf:*` skills. Skills MUST read this file at
 |-----|-------|
 | **Verify Command** | `<detected by wf:init — see note below>` |
 
-Must exit 0 when the project typechecks (including framework-level checks: Angular templates, metadata, decorators) and non-zero on any error. `wf:init` infers this from your project's `package.json` scripts and framework signals — review the value after running and adjust if the detection picked the wrong script or directory. Used by `wf:plan`, `wf:lite`, `wf:implement`, and `wf:test-page` before they hand off a diff.
+Must exit 0 when the project typechecks (including framework-level checks: templates, metadata, decorators) and non-zero on any error. `wf:init` infers this from your project's `package.json` scripts and framework signals — review the value after running and adjust if the detection picked the wrong script or directory. Used by `wf:plan`, `wf:lite`, and `wf:implement` before they hand off a diff.
 
 ## QA
 
@@ -133,7 +133,7 @@ Must exit 0 when the project typechecks (including framework-level checks: Angul
 The three **API** keys are used only by the backend-exercise path (`Type: API` scenarios) — leave the defaults unless your project differs:
 
 - **API Base Path** — prefix the dev proxy forwards to the API, joined to the app base URL when a scenario route omits it. Default `/api`.
-- **API Controllers Root** — directory (relative to repo root) where ASP.NET `*Controller.cs` files live, used by `/wf:qa-host api-probe` to find a host controller. `<auto-detect>` globs `**/*Controller.cs` (skipping `bin/`/`obj/`).
+- **API Controllers Root** — directory (relative to repo root) where ASP.NET `*Controller.cs` files live, used by `/wf-caps:qa-host api-probe` to find a host controller. `<auto-detect>` globs `**/*Controller.cs` (skipping `bin/`/`obj/`).
 - **API Auth Token Source** — where the app keeps the bearer the runner reuses. `<auto-discover>` scans `localStorage`/`sessionStorage` for a JWT-shaped value; override with an exact storage key (e.g. `localStorage:access_token`) if discovery picks wrong, or `cookie` for httpOnly-cookie auth.
 
 ## Database
@@ -171,7 +171,7 @@ The goal is a single shell command that exits 0 when the whole project typecheck
    (cd <dir> && npm run <script>)       # drop the cd wrapper if <dir> is the repo root
    ```
 
-3. **Angular project.** If no script matched but the candidate dir has `angular.json`, OR its `package.json` lists `@angular/cli` under `devDependencies`, use the AoT dev build — it's the canonical way to catch template, metadata, and TS errors together:
+3. **Framework AoT build.** If no script matched but the candidate dir has `angular.json`, OR its `package.json` lists `@angular/cli` under `devDependencies`, use the AoT dev build — it's the canonical way to catch template, metadata, and TS errors together:
    ```
    (cd <dir> && npx ng build --configuration=development --output-hashing=none)
    ```
@@ -187,7 +187,7 @@ The goal is a single shell command that exits 0 when the whole project typecheck
    ```
    Warn in the chat summary that this catches only plain-TS errors; it's fine for pure-TS libraries, not for framework projects.
 
-6. **Multi-candidate tie-break.** If multiple dirs produce different commands, pick in this order: any Angular one > any with an explicit typecheck/check script > the shallowest dir. List the others in the chat summary so the user can override.
+6. **Multi-candidate tie-break.** If multiple dirs produce different commands, pick in this order: any framework-build one > any with an explicit typecheck/check script > the shallowest dir. List the others in the chat summary so the user can override.
 
 7. **Nothing found.** Write:
    ```
@@ -268,7 +268,7 @@ If the file already exists and `--force` is not set, skip. Otherwise write:
 Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
 
 - `ADO-<id>/` — task folders (requirements, spec, plan, research, artifacts)
-- `_testkit/` — Node test runner for `/wf:test-node`
+- `_testkit/` — Node test runner for `/wf-caps:test-node`
 - `config.md` — project-specific values consumed by every wf:* skill
 
 Safe to nuke if you want a clean slate. Nothing here is version-controlled.
@@ -278,11 +278,12 @@ Safe to nuke if you want a clean slate. Nothing here is version-controlled.
 
 ## Phase 6: Append the page-test exclude (conditional)
 
-The `/wf:test-page` skill writes into `AuditTrakker.Web/src/app/code-trakker/code-trakker-module-test/_page-tests/`. That path is Compliance-Risk-specific.
+The `/wf-caps:test-page` skill (the `angular` capability) writes its `_page-tests/` harness under the stack's test-host root. That root is project-specific — it comes from the `angular` capability's profile (`test-host-root`), not from core.
 
-1. Check whether `AuditTrakker.Web/src/app/code-trakker/code-trakker-module-test/` exists in the repo.
-2. If yes, ensure `.git/info/exclude` contains a line matching `AuditTrakker.Web/src/app/code-trakker/code-trakker-module-test/_page-tests/`. Append only if missing.
-3. If no, skip silently — this isn't a Compliance Risk checkout. The `/wf:test-page` skill bootstraps the same entry on its own first run anyway.
+1. If the `angular` capability is **not** registered (no `angular` row in the `## Capabilities` table) or its profile resolves no `test-host-root`, skip silently.
+2. Otherwise resolve `{test-host-root}` from the `angular` profile (override `_local/profiles/angular.profile.json` > capability default template) and the sandbox module-test folder under it. Check whether that folder exists in the repo.
+3. If yes, ensure `.git/info/exclude` contains a line matching the capability's `_page-tests/` path under `{test-host-root}` (the moved `/wf-caps:test-page` skill defines the exact sandbox folder). Append only if missing.
+4. If no, skip silently — this isn't a checkout of that project. The `/wf-caps:test-page` skill bootstraps the same entry on its own first run anyway.
 
 ---
 
@@ -332,7 +333,7 @@ Capability profiles:
   (repeat one line per registered capability; "none" when the registry is empty. Append `seeded by <model id>` **only** to a `seeded override` row whose profile format has no schema-permitted attribution slot — see Phase 2.5 step 5; every other outcome carries no separate seeding-model stamp (a seeded markdown/prose profile records its model in its own in-file `**Model:**` line).)
 
 Verify Command: <detected command>
-  Rule: <which detection rule matched — e.g. "rule 2: typecheck script in AuditTrakker.Web/package.json">
+  Rule: <which detection rule matched — e.g. "rule 2: typecheck script in web/package.json">
   Rejected candidates: <list any other project roots that could have been picked, or "none">
 
 Next: review `_local/config.md` — confirm the Verify Command matches what you actually run to typecheck the project. Then `/wf:spec <ado-id>`.

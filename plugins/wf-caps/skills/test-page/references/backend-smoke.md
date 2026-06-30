@@ -1,12 +1,12 @@
-# wf:test-page — `backend-smoke` subcommand
+# wf-caps:test-page — `backend-smoke` subcommand
 
-Smoke-test a newly added .NET controller endpoint by adding a thin Angular service method and wiring it into the wf:test-page harness.
+Smoke-test a newly added .NET controller endpoint by adding a thin Angular service method and wiring it into the wf-caps:test-page harness.
 
 ## When to use
 
 Some ADO tasks are pure backend — a new controller endpoint, a ported repository method, etc. There's no Angular target to test yet, but the endpoint can be smoke-tested from the browser by adding a thin service method to the **closest existing Angular service** and wiring it into the page-test harness.
 
-Invoke with `/wf:test-page backend-smoke <ado-id> [suite-name]`.
+Invoke with `/wf-caps:test-page backend-smoke <ado-id> [suite-name]`.
 
 ## Arguments
 
@@ -17,7 +17,7 @@ Invoke with `/wf:test-page backend-smoke <ado-id> [suite-name]`.
 
 1. **Read the spec.** Open `_local/<ADO-id>/00_reqs.md` (fall back to `01_spec.md`). Identify the endpoint(s) added: route, HTTP method, query/body parameters, expected response shape.
 
-2. **Find the closest Angular service.** Convention: for `SomethingController` at route `api/something`, look for `something.service.ts` or `something-shared.service.ts` under `AuditTrakker.Web/src/app/`. If none exists, create one following the nearest sibling pattern (e.g., `CptSharedService` for `CraSharedController`). New services go in the same folder as their sibling and must be `providedIn: 'root'`.
+2. **Find the closest Angular service.** Convention: for `SomethingController` at route `api/something`, look for `something.service.ts` or `something-shared.service.ts` under the stack's web source root (the parent of the `angular` profile's `{web-root}`, e.g. `AuditTrakker.Web/src/app/`). If none exists, create one following the nearest sibling pattern (e.g., `CptSharedService` for `CraSharedController`). New services go in the same folder as their sibling and must be `providedIn: 'root'`.
 
 3. **Add the service method.** Mirror the endpoint signature. Mark the method with `//MIGRATION NOTE: Added for ADO-<id> endpoint smoke test` so it's clear this is forward work. The method is real production code — it will be used by the downstream Angular feature — so follow existing service patterns (use `HttpService`, `firstValueFrom`, `catchError(this.handleError)`). **The new service file is NOT git-excluded** — it's a legitimate deliverable, same as the backend endpoint itself.
 
@@ -33,7 +33,7 @@ Invoke with `/wf:test-page backend-smoke <ado-id> [suite-name]`.
 
 6. **Inject into the component** — same as the `new` subcommand (see parent SKILL.md).
 
-7. **Typecheck before handoff.** Run `{verify-command}` from `_local/config.md` and confirm exit 0. This catches the common failure modes for this flow: a typo in the new service method's return type, an `HttpService` method signature drift, or a mismatched DTO shape in the page-test's assertions. If errors reference the new service file, the new page-test, or the component's `PAGE-TEST-HARNESS-*` markers, do not report success — show the TSC output and offer to fix the error or roll back (delete both new files + `/wf:test-page clean` the markers). Errors outside these files get flagged as pre-existing.
+7. **Typecheck before handoff.** Run `{verify-command}` from `_local/config.md` and confirm exit 0. This catches the common failure modes for this flow: a typo in the new service method's return type, an `HttpService` method signature drift, or a mismatched DTO shape in the page-test's assertions. If errors reference the new service file, the new page-test, or the component's `PAGE-TEST-HARNESS-*` markers, do not report success — show the TSC output and offer to fix the error or roll back (delete both new files + `/wf-caps:test-page clean` the markers). Errors outside these files get flagged as pre-existing.
 
 8. **Report** the new/modified service file, the page-test file, the component injection, and `Typecheck: PASS`. Remind the user the API backend must be running for these tests to pass.
 
