@@ -143,7 +143,7 @@ Escalate (<e>):
 
 Skip this phase if the UNBLOCK bucket is empty.
 
-1. **Apply harness fixes.** (Read `../../../wf-caps/skills/qa-host/SKILL.md` once when first needed.)
+1. **Apply harness fixes.** (Read `plugins/wf-caps/skills/qa-host/SKILL.md` once when first needed.)
    - **Host capability gap** → invoke `/wf-caps:qa-host augment <component>` with the gaps mapped to flags: `--control <input>` for each pinned/undriveable input the scenario must vary, `--observe <output>` for each output it must watch, `--show <input>` for each value it must read. Read the target's `@Input`/`@Output` surface to translate the block reason into the right flags — e.g. "hardcoded `showLabel=true`" → `--control showLabel`; "no control to set `selectedReportPeriodIds`" → `--control selectedReportPeriodIds`; "`userAccessLevelChanged` not observed" → `--observe userAccessLevelChanged`. If `augment` reports an input/output it can't find, or the host fails to typecheck afterward, move that scenario to ESCALATE.
    - **`Host required` not scaffolded** → `/wf-caps:qa-host route <component>` first (cheap, no writes); if it reports "not scaffolded", `/wf-caps:qa-host new <component>`.
    - **`Backend host required:` (API scenario)** → `/wf-caps:qa-host api-probe <Service>.<method>`. It resolves the real endpoint or re-wires the ephemeral one; the re-run (`/wf:qa-auto --only`) reverts it again in teardown. If the block was `API not rebuilt`, surface to the user that the API must be restarted (or run under `dotnet watch`) before the re-run will reach the endpoint — that part the skill can't do for them.
