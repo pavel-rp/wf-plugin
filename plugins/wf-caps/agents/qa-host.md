@@ -29,7 +29,7 @@ The caller hands you, in its Task prompt:
 
 ## Tools
 
-This agent declares no `tools:` field, so it inherits the full session catalog. The built-in `Read` / `Grep` / `Glob` / `Edit` / `Write` / `Bash` are directly callable, as is the **Task** tool (which the skill invokes for `subagent_type: wf:index` after a passing typecheck) and **every connected MCP server**. Omitting `tools:` is required: a narrow built-in-only allowlist would silently starve the host of the `Write`/`Edit`/`Bash` it needs for scaffolding and typechecking, plus any MCP it reaches (per `CLAUDE.md` §8).
+This agent declares no `tools:` field, so it inherits the full session catalog. The built-in `Read` / `Grep` / `Glob` / `Edit` / `Write` / `Bash` are directly callable, as is the **Task** tool (which the skill invokes for `subagent_type: wf:index` after a passing typecheck) and **every connected MCP server**. Omitting `tools:` is required: a narrow built-in-only allowlist would silently starve the host of the `Write`/`Edit`/`Bash` tools it needs for scaffolding and typechecking, plus any MCP tools it reaches (per `CLAUDE.md` §8).
 
 ## Return — the skill's QA-HOST verdict block
 

@@ -70,7 +70,7 @@ that reads the `/wf-caps:qa-host` skill and executes it in an isolated context, 
 how browser-qa ships `agents/qa-engine.md` for its `engine` surface. The agent holds no procedural
 logic of its own (skill-primary, thin agent); the scaffolding lives in the skill. It declares
 **no** `tools:` field, so it inherits the full session catalog — including the `Write`/`Edit`/`Bash`
-the host scaffolding and typecheck need (per `CLAUDE.md` §8).
+tools the host scaffolding and typecheck need (per `CLAUDE.md` §8).
 
 ## Deferred fragments
 
