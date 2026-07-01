@@ -26,8 +26,9 @@ extractions fill. **No skill body is moved or modified by this contract** — it
 the frozen interface, not the migration of the content.
 
 This is a contract, not a runtime. The embedded slot schema is JSON-Schema-*style*
-— a frozen, machine-readable shape meant to feed a validator directly — but no
-validator is run or wired here.
+— a frozen, machine-readable shape that feeds a validator directly: `validate-profile.sh`
+(with `fixtures/run.sh`) ships as a sibling and consumes this schema. The contract
+*file* is that validator's input, not itself a runtime.
 
 ---
 
@@ -116,8 +117,9 @@ migration contribution is left unfilled.
 
 ## Embedded slot schema (JSON-Schema-style)
 
-Frozen machine-readable shape covering all six slots. This is the input a future
-validator consumes to check a downstream profile; it is not run or wired here.
+Frozen machine-readable shape covering all six slots. This is the input the shipped
+`validate-profile.sh` consumes to check a downstream profile; the contract document
+itself does not execute it.
 
 ```json
 {
@@ -230,8 +232,9 @@ only when its stack needs them.
 
 - It is **not** a profile. It declares the slot schema; the concrete project
   values that fill the slots live in a downstream profile, owned by a later task.
-- It is **not** a validator. The schema above is the validator's *input*; running
-  it against a profile is a separate concern.
+- It is **not** a validator. The schema above is the validator's *input*; the
+  validator itself — `validate-profile.sh`, with `fixtures/run.sh` — ships alongside
+  this contract and runs the schema against a profile as a separate concern.
 - It does **not** modify or move any existing skill. The inline domain knowledge
   in the core skills stays where it is; relocating it into a profile that fills
   these slots is owned by later tasks.

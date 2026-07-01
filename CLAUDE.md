@@ -18,7 +18,7 @@ Read this top-to-bottom once, then use it as a lookup. The two rules that govern
 - A composed **constitution** of non-negotiable principles, established at setup and enforced at `verify`.
 - Composition is **runtime inline-prose injection — no codegen, no compile step.** Core re-reads the registry every run; edit a fragment once and every project picks it up next run.
 
-> **Status: v1 → v2 in flight.** The committed code is still **v1** — single `{domain}`, three named hooks (`rule-audit`/`parity-suite`/`mapping`), frozen contracts in `plugins/wf/skills/_contracts/`. This guide describes the **v2 target**. When you add something new, build it to the v2 shape below. When you touch v1 code, generalise it toward v2 — **staged, never big-bang** (§10). Full rationale: `_local/research/capability-registry-v2-design-2026-06-25.md` (gitignored — may be absent on a fresh clone, so the essentials are carried here). Roadmap grounding: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status: v1 → v2 in flight.** The v2 composition mechanism has **shipped** — the frozen contracts in `plugins/wf/skills/_contracts/` (`capability-registry`/`invocation-runtime`), `validate-registry.sh` with its registry-fixtures, and several v2-wired skills (`verify-spec`, `qa-gen`, `qa-auto`, `tasks`, `constitution`, `run`); residual v1 skill bodies are still migrating toward it (e.g. the single `{domain}` assumption still baked into unextracted skill bodies). This guide describes the **v2 target**. When you add something new, build it to the v2 shape below. When you touch v1 code, generalise it toward v2 — **staged, never big-bang** (§10). Full rationale: `_local/research/capability-registry-v2-design-2026-06-25.md` (gitignored — may be absent on a fresh clone, so the essentials are carried here). Roadmap grounding: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
@@ -62,7 +62,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── agents/<name>.md
 │   └── capabilities/migration/ # the migration capability: manifest + fragments + profile
 │       ├── manifest.md         # how it attaches to the spine
-│       └── hooks/              # v1 hook prose → becomes v2 fragments
+│       └── fragments/          # v2 fragment prose the migration capability attaches to the spine
 ├── docs/ROADMAP.md            # committed grounding doc
 └── _local/                    # gitignored: research notes, working tracking
 ```
