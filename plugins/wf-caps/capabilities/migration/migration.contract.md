@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0 (frozen — WF-1)
 **Status:** authoritative source of truth for the migration capability's slot schema
-**Fills:** the core extension interface — `plugins/wf/skills/_contracts/core-extension.contract.md`
+**Composes onto:** the SDD phases + contribution taxonomy — `plugins/wf/skills/_contracts/capability-registry.contract.md`
 **Model:** claude-opus-4-8
 **Location:** ships in the `wf-caps` capability plugin (`plugins/wf-caps/capabilities/migration/`),
 beside core in this marketplace — **outside** the core `wf` plugin, which stays domain-free.
@@ -11,11 +11,11 @@ beside core in this marketplace — **outside** the core `wf` plugin, which stay
 
 ## Purpose
 
-This document is the **adapter side** of the core↔domain port. It declares the
-slots a migration capability provides and shows how each slot composes with the
-generic hooks the core extension interface defines. A downstream profile fills
-these slots with concrete project values; this contract only freezes the slot
-schema and the slot→hook mapping.
+This document is the **adapter side** of the core↔capability port. It declares the
+slots a migration capability provides and shows how each slot composes onto the SDD
+phases and contribution kinds `capability-registry.contract.md` defines. A downstream
+profile fills these slots with concrete project values; this contract only freezes the
+slot schema and the slot → phase/contribution-kind mapping.
 
 The migration domain this capability externalizes is a strict 1:1 source→target
 port (a legacy C#/MVC unit ported to an Angular/TypeScript counterpart) in which
@@ -34,8 +34,8 @@ validator is run or wired here.
 ## The six slots
 
 A migration capability provides six slots. Four are **data/policy** slots; two
-are **hook** slots (explicit extension points the profile points at a script or
-playbook for).
+are **extension-point** slots (explicit extension points the profile points at a
+script or playbook for).
 
 ### `stack` (data)
 
@@ -52,7 +52,7 @@ The ordered list of source-type → target-type correspondence rules, one row pe
 mappable type, including nullability and collection handling. This is the
 authoritative table that decides, for any source type, what the target type must
 be (and flags any source type absent from the table as an escalation). It is the
-data a `mapping` invocation consults to fill the type column of a correspondence
+data the migration-map audit consults to fill the type column of its correspondence
 artifact.
 
 ### `invariants` (data)
@@ -71,45 +71,46 @@ mechanical assertions that the `invariants` hold in the actual changed code
 `rule-check` is the executable/checkable counterpart of an `invariant`: the
 invariant states the rule, the rule-check asserts it against a concrete diff.
 
-### `playbooks` (hook)
+### `playbooks` (extension-point)
 
 An extension-point slot: an ordered set of pointers to capability-defined
 procedure documents (the "how to port this class of unit" guides) that core loads
 conditionally when a task touches the relevant area. The profile points this slot
-at the procedure documents; core never embeds the procedures. This slot fills an
-explicit extension hook with **no core counterpart** — core does not define a
-generic hook for procedure loading; the capability declares it.
+at the procedure documents; core never embeds the procedures. This slot is an
+explicit **declared extension point** with **no core counterpart** — core defines
+no SDD phase for procedure loading; the capability declares it.
 
-### `extraction-overrides` (hook)
+### `extraction-overrides` (extension-point)
 
 An extension-point slot: optional pointers to capability-defined scripts or
 alternate grammars that replace the default source→target extraction for stacks
 whose shape the default grammar does not fit. When present, the override fills the
-extraction step the `mapping` hook would otherwise drive with its built-in
-grammar. This slot, like `playbooks`, fills an explicit extension hook with **no
-core counterpart** — it is a declared capability extension, not a core seam.
+extraction step the migration-map audit would otherwise drive with its built-in
+grammar. This slot, like `playbooks`, is an explicit **declared extension point**
+with **no core counterpart** — it is a declared capability extension, not a core seam.
 
 ---
 
-## Slot → hook composition
+## Slot → phase/contribution-kind composition
 
-Every core hook named in the core extension interface is filled by one or more of
-the slots above, and every slot either fills a core hook or is an explicitly
-declared extension hook with no core counterpart.
+Each SDD phase / contribution kind this capability attaches to (named in
+`capability-registry.contract.md`) is filled by one or more of the slots above, and
+every slot either feeds such a contribution or is an explicitly declared extension
+point with no core counterpart.
 
-| Core hook (from the core extension interface) | Filled by slot(s) | Composition |
-|------------------------------------------------|-------------------|-------------|
-| `rule-audit` | `rule-checks`, `invariants` | Core fires `rule-audit`; the capability runs its `rule-checks` (which assert the `invariants`) against the work under review and returns conformance findings. |
-| `mapping` | `type-map`, `stack` | Core fires `mapping`; the capability uses `stack` to locate the source/target pair and `type-map` to decide each correspondence row, returning the correspondence artifact. |
-| `parity-suite` | `invariants` (the parity-relevant subset) | Core fires `parity-suite`; the capability contributes equivalence-checking scenarios asserting the migrated unit matches its legacy oracle, derived from the 1:1 `invariants`. |
-| *(no core counterpart)* | `playbooks` | Explicit declared extension hook — capability-defined procedure pointers loaded conditionally. Core defines no generic hook for it. |
-| *(no core counterpart)* | `extraction-overrides` | Explicit declared extension hook — capability-defined extraction replacement. Core defines no generic hook for it. |
+| Contribution (phase · kind, per `capability-registry.contract.md`) | Filled by slot(s) | Composition |
+|--------------------------------------------------------------------|-------------------|-------------|
+| `rule-audit` — a `finding` at `verify` | `rule-checks`, `invariants` | Core fires `verify`; the capability runs its `rule-checks` (which assert the `invariants`) against the work under review and returns conformance findings. |
+| `migration-map` — a `finding` at `verify` | `type-map`, `stack` | Core fires `verify`; the capability uses `stack` to locate the source/target pair and `type-map` to decide each correspondence row, returning the correspondence artifact and its findings. |
+| `parity-suite` — a `scenario` at `qa-generation` | `invariants` (the parity-relevant subset) | Core fires `qa-generation`; the capability contributes equivalence-checking scenarios asserting the migrated unit matches its legacy oracle, derived from the 1:1 `invariants`. |
+| *(no core counterpart)* | `playbooks` | Explicit declared extension point — capability-defined procedure pointers loaded conditionally. Core defines no SDD phase for it. |
+| *(no core counterpart)* | `extraction-overrides` | Explicit declared extension point — capability-defined extraction replacement. Core defines no SDD phase for it. |
 
-This mapping is mutually consistent with the core extension interface: the three
-core hooks (`rule-audit`, `parity-suite`, `mapping`) each have a filling slot, and
-the two hook slots (`playbooks`, `extraction-overrides`) are declared extension
-hooks with no core counterpart. No slot is left unmapped; no core hook is left
-unfilled.
+This mapping is mutually consistent with `capability-registry.contract.md`: the three
+migration contributions (`rule-audit`, `parity-suite`, `migration-map`) each have a
+filling slot, and the two extension-point slots (`playbooks`, `extraction-overrides`)
+are declared extension points with no core counterpart. No slot is left unmapped; no
+migration contribution is left unfilled.
 
 ---
 
@@ -129,7 +130,7 @@ validator consumes to check a downstream profile; it is not run or wired here.
   "properties": {
     "stack": {
       "type": "object",
-      "description": "Source and target stack coordinates. Fills the core 'mapping' hook (with type-map).",
+      "description": "Source and target stack coordinates. Feeds the migration-map finding at verify (with type-map).",
       "required": ["source-root", "target-root", "source-exts", "target-exts"],
       "additionalProperties": false,
       "properties": {
@@ -141,7 +142,7 @@ validator consumes to check a downstream profile; it is not run or wired here.
     },
     "type-map": {
       "type": "array",
-      "description": "Ordered source-type to target-type correspondence rules. Fills the core 'mapping' hook (with stack).",
+      "description": "Ordered source-type to target-type correspondence rules. Feeds the migration-map finding at verify (with stack).",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -157,7 +158,7 @@ validator consumes to check a downstream profile; it is not run or wired here.
     },
     "invariants": {
       "type": "array",
-      "description": "Cross-cutting properties every migrated unit must hold. Fills the core 'rule-audit' hook (asserted via rule-checks) and seeds 'parity-suite'.",
+      "description": "Cross-cutting properties every migrated unit must hold. Feeds the rule-audit finding at verify (asserted via rule-checks) and seeds the parity-suite scenario at qa-generation.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -172,7 +173,7 @@ validator consumes to check a downstream profile; it is not run or wired here.
     },
     "rule-checks": {
       "type": "array",
-      "description": "Ticket-agnostic conformance checks asserting the invariants against the changed code. Fills the core 'rule-audit' hook.",
+      "description": "Ticket-agnostic conformance checks asserting the invariants against the changed code. Feeds the rule-audit finding at verify.",
       "minItems": 1,
       "items": {
         "type": "object",
@@ -188,7 +189,7 @@ validator consumes to check a downstream profile; it is not run or wired here.
     },
     "playbooks": {
       "type": "array",
-      "description": "Declared extension hook (no core counterpart). Pointers to capability-defined procedure documents loaded conditionally.",
+      "description": "Declared extension point (no core counterpart). Pointers to capability-defined procedure documents loaded conditionally.",
       "items": {
         "type": "object",
         "required": ["id", "path"],
@@ -202,7 +203,7 @@ validator consumes to check a downstream profile; it is not run or wired here.
     },
     "extraction-overrides": {
       "type": "array",
-      "description": "Declared extension hook (no core counterpart). Optional script/grammar pointers replacing the default extraction for unsupported stacks.",
+      "description": "Declared extension point (no core counterpart). Optional script/grammar pointers replacing the default extraction for unsupported stacks.",
       "items": {
         "type": "object",
         "required": ["match", "path"],
@@ -218,10 +219,10 @@ validator consumes to check a downstream profile; it is not run or wired here.
 ```
 
 The four data/policy slots (`stack`, `type-map`, `invariants`, `rule-checks`) are
-**required** — a migration capability that does not provide them cannot fill the
-core hooks it claims. The two hook slots (`playbooks`, `extraction-overrides`) are
-**optional** — they are extension points a profile fills only when its stack needs
-them.
+**required** — a migration capability that does not provide them cannot feed the
+contributions it claims. The two extension-point slots (`playbooks`,
+`extraction-overrides`) are **optional** — they are extension points a profile fills
+only when its stack needs them.
 
 ---
 
