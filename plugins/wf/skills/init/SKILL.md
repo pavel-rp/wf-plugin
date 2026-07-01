@@ -13,7 +13,7 @@ Bootstrap the current git repository for the wf:* skill suite. Creates and/or up
 - `_local/README.md` — short note explaining the folder's purpose
 - `_local/_testkit/run.mjs` — Node test runner used by `/wf-caps:test-node`
 - `.gitignore` — ensures `_local/` is never committed
-- `.git/info/exclude` — adds a frontend test-host `_page-tests/` path when the `angular` capability's test-host root exists in the checkout
+- `.git/info/exclude` — adds a `_page-tests/` path when a registered capability's test-host root exists in the checkout
 
 > Plugin agents (the `*.md` companions in the plugin's `agents/` folder) are auto-discovered by Claude Code once the `wf` plugin is installed — no per-machine setup is needed, and nested subagent delegation (e.g. `wf:branch`→`wf:index`) works out of the box.
 
@@ -100,7 +100,7 @@ Project-specific values used by all `wf:*` skills. Skills MUST read this file at
 
 | Key | Value |
 |-----|-------|
-| **ADO Project** | `Compliance Risk` |
+| **ADO Project** | `<ADO_PROJECT: the Azure DevOps project name>` |
 | **ADO Organization** | `<asked by wf:init — see Phase 2>` |
 | **Work Item ID Prefix** | `ADO` |
 
@@ -133,17 +133,17 @@ Must exit 0 when the project typechecks (including framework-level checks: templ
 The three **API** keys are used only by the backend-exercise path (`Type: API` scenarios) — leave the defaults unless your project differs:
 
 - **API Base Path** — prefix the dev proxy forwards to the API, joined to the app base URL when a scenario route omits it. Default `/api`.
-- **API Controllers Root** — directory (relative to repo root) where ASP.NET `*Controller.cs` files live, used by `/wf-caps:qa-host api-probe` to find a host controller. `<auto-detect>` globs `**/*Controller.cs` (skipping `bin/`/`obj/`).
+- **API Controllers Root** — directory (relative to repo root) that contains the project's API controller source, used by `/wf-caps:qa-host api-probe` to find a host controller. `<auto-detect>` globs the project's controller-source pattern (skipping compiled-output directories).
 - **API Auth Token Source** — where the app keeps the bearer the runner reuses. `<auto-discover>` scans `localStorage`/`sessionStorage` for a JWT-shaped value; override with an exact storage key (e.g. `localStorage:access_token`) if discovery picks wrong, or `cookie` for httpOnly-cookie auth.
 
 ## Database
 
 | Key | Value |
 |-----|-------|
-| **Database Name** | `ComplianceRisk` |
-| **Migration Path** | `ComplianceRisk.Sql/Sequence/` |
-| **Migration Pattern** | `ComplianceRisk####-##.sql` |
-| **History Table** | `dbo.scripthistory` |
+| **Database Name** | `<DATABASE_NAME: the project's database name>` |
+| **Migration Path** | `<MIGRATION_PATH: repo-relative folder holding SQL migration scripts, forward slashes>` |
+| **Migration Pattern** | `<MIGRATION_PATTERN: filename glob for migration scripts>` |
+| **History Table** | `<HISTORY_TABLE: schema-qualified migration history table>` |
 
 ## Capabilities
 
@@ -164,16 +164,16 @@ After writing, tell the user to review `_local/config.md` — especially the det
 
 The goal is a single shell command that exits 0 when the whole project typechecks. Detect in this order — stop at the first rule that produces a concrete command:
 
-1. **Find project roots.** `Glob` for `**/package.json` and `**/angular.json` (skip `node_modules/`, `.git/`, `dist/`, `bin/`, `obj/`). Record each containing directory, relative to repo root.
+1. **Find project roots.** `Glob` for `**/package.json` plus any framework project manifests (skip `node_modules/`, `.git/`, `dist/`, `bin/`, `obj/`). Record each containing directory, relative to repo root.
 
 2. **Prefer explicit scripts.** For each `package.json`, parse `scripts` and look for a verification-ish script in this priority: `typecheck` > `check` > `verify` > `build:check` > `lint:types`. First hit wins:
    ```
    (cd <dir> && npm run <script>)       # drop the cd wrapper if <dir> is the repo root
    ```
 
-3. **Framework AoT build.** If no script matched but the candidate dir has `angular.json`, OR its `package.json` lists `@angular/cli` under `devDependencies`, use the AoT dev build — it's the canonical way to catch template, metadata, and TS errors together:
+3. **Framework AoT build.** If no script matched but the candidate dir's `package.json` lists a framework CLI under `devDependencies` whose canonical verification is an ahead-of-time / production build, use that CLI's AoT/production build — it's the canonical way to catch template, metadata, and TS errors together. Derive the exact command from the detected CLI at runtime (its AoT/production build invocation, e.g. a development-configuration build with output hashing disabled):
    ```
-   (cd <dir> && npx ng build --configuration=development --output-hashing=none)
+   (cd <dir> && <framework CLI's AoT/production build command>)
    ```
 
 4. **Generic `build` script.** If a `build` script exists in `package.json`, use it as a last resort — it almost always includes typechecking as a side effect:
@@ -278,12 +278,38 @@ Safe to nuke if you want a clean slate. Nothing here is version-controlled.
 
 ## Phase 6: Append the page-test exclude (conditional)
 
-The `/wf-caps:test-page` skill (the `angular` capability) writes its `_page-tests/` harness under the stack's test-host root. That root is project-specific — it comes from the `angular` capability's profile (`test-host-root`), not from core.
+A capability may ship a page-test harness that writes its `_page-tests/` files under a
+project-specific **test-host root**. That root comes from the capability's profile
+(`test-host-root`), not from core. This phase derives the exclude **generically from the
+`## Capabilities` registry + capability profiles** — it **keys on the presence of the
+`test-host-root` profile field, never on any capability name.** Model the loop shape and
+the no-name discipline on Phase 2.5 above and `verify-spec`'s registry iteration.
 
-1. If the `angular` capability is **not** registered (no `angular` row in the `## Capabilities` table) or its profile resolves no `test-host-root`, skip silently.
-2. Otherwise resolve `{test-host-root}` from the `angular` profile (override `_local/profiles/angular.profile.json` > capability default template) and the sandbox module-test folder under it. Check whether that folder exists in the repo.
-3. If yes, ensure `.git/info/exclude` contains a line matching the capability's `_page-tests/` path under `{test-host-root}` (the moved `/wf-caps:test-page` skill defines the exact sandbox folder). Append only if missing.
-4. If no, skip silently — this isn't a checkout of that project. The `/wf-caps:test-page` skill bootstraps the same entry on its own first run anyway.
+1. **Read the `## Capabilities` registry** at the Phase 0 resolved location and iterate its
+   rows **in order**. **Empty (header-only) or absent table ⇒ skip silently** (the inert
+   no-op — nothing is appended).
+2. **Per row, read `<Path>/manifest.md`** (forward-slash, repo-relative — the only `Path`
+   shape resolved at runtime today) and **resolve that capability's profile** via the
+   profile-seeding convention defined in
+   `plugins/wf/skills/_contracts/capability-registry.contract.md` — override
+   `_local/profiles/<Capability>.profile.json` > the capability's default template — keyed
+   on the registry `Capability` column. Do **not** re-derive the convention here; follow it
+   by name.
+3. **For any capability whose resolved profile declares a `test-host-root`**, resolve
+   `{test-host-root}` and check whether the conventional sandbox module-test folder under it
+   exists in the checkout. (A capability whose profile declares no `test-host-root`
+   contributes nothing here — skip it.)
+4. **If the folder exists**, ensure `.git/info/exclude` contains a line matching that
+   capability's `_page-tests/` path under `{test-host-root}` (the capability's page-test
+   skill defines the exact sandbox folder). Append only if missing — idempotent,
+   skip-if-present, append-only, so a clean re-run produces no diff.
+5. **If no registered capability declares a `test-host-root`, or the folder is absent, skip
+   silently** — this isn't a checkout of that project. The capability's page-test skill
+   bootstraps the same entry on its own first run anyway.
+
+**Domain-free guard:** this phase names **no** concrete capability. It iterates the registry
+and keys the exclude on the *presence of the `test-host-root` profile field*, so onboarding a
+different stack's test-host needs no core edit.
 
 ---
 
@@ -342,7 +368,7 @@ Next: review `_local/config.md` — confirm the Verify Command matches what you 
 If detection fell back to rule 7 (TODO placeholder), replace the `Verify Command` line with:
 ```
 Verify Command: ⚠ NOT DETECTED — edit _local/config.md before running any other wf:* skill
-  Scanned: <list of package.json / angular.json paths found, or "none">
+  Scanned: <list of package.json / framework-manifest paths found, or "none">
 ```
 
 **The final output block must always be the very last thing output to chat.**
