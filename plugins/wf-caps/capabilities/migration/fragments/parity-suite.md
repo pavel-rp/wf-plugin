@@ -1,7 +1,7 @@
-# `parity-suite` hook — migration capability (inline reference doc)
+# `parity-suite` fragment — migration capability (inline reference doc)
 
 **Version:** 1.0.0 (WF-8 — relocated from core `qa-gen/references/parity-scenarios.md`)
-**Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`parity-suite → inline: hooks/parity-suite.md`)
+**Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`parity-suite → inline: fragments/parity-suite.md`)
 **Backed by:** the `invariants` slot (the parity-relevant subset) of `plugins/wf-caps/capabilities/migration/migration.contract.md`
 **Model:** claude-opus-4-8
 
@@ -12,11 +12,11 @@
 This is the **inline reference doc** the core reads and follows in-context when it fires the
 `qa-generation` phase with the migration capability active. The invocation runtime
 (`plugins/wf/skills/_contracts/invocation-runtime.contract.md`) resolves
-`qa-generation | scenario | inline: hooks/parity-suite.md` from the manifest and reads this
+`qa-generation | scenario | inline: fragments/parity-suite.md` from the manifest and reads this
 file; the core then performs the procedure below and returns scenarios in the phase's generic
 `scenario` shape, provenance-tagged to this capability.
 
-It introduces **no new slots or hooks.** The parity bar below is the migration capability's
+It introduces **no new slots or fragments.** The parity bar below is the migration capability's
 standing `invariants` (a faithful 1:1 port preserves names, integer values, DOM ids/classes,
 and signatures) re-expressed as runnable QA scenarios. Concrete per-project values (the actual
 legacy source units, the paired migrated targets) come from the work under review and a
@@ -177,5 +177,5 @@ migration the same way baseline-health is for any change, the sanctioned excepti
 
 When **no** unit in the work under review is a migration (no map, no migration-note pairing, no
 legacy-source citation), this fragment contributes an **empty scenario list** — the same empty
-shape the no-op produces. The core proceeds with its generic plan either way; this hook
+shape the no-op produces. The core proceeds with its generic plan either way; this fragment
 contributes scenarios, it does not halt the skeleton or force a suite.

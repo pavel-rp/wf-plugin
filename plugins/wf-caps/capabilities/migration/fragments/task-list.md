@@ -1,7 +1,7 @@
-# `task-list` hook — migration capability (inline reference doc)
+# `task-list` fragment — migration capability (inline reference doc)
 
 **Version:** 1.0.0 (WF-23 — the migration `tasks`-phase decomposition fragment)
-**Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`task-list → inline: hooks/task-list.md`)
+**Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`task-list → inline: fragments/task-list.md`)
 **Backed by:** the `type-map` and `invariants` slots of `plugins/wf-caps/capabilities/migration/migration.contract.md`
 **Model:** claude-opus-4-8
 
@@ -12,11 +12,11 @@
 This is the **inline reference doc** the core reads and follows in-context when it fires the
 `tasks` phase with the migration capability active. The invocation runtime
 (`plugins/wf/skills/_contracts/invocation-runtime.contract.md`) resolves
-`tasks | task-list | inline: hooks/task-list.md` from the manifest and reads this file; the
+`tasks | task-list | inline: fragments/task-list.md` from the manifest and reads this file; the
 core then performs the procedure below and returns tasks in the phase's generic `task-list`
 shape, appended after the generic decomposition in registry order.
 
-It introduces **no new slots or hooks.** The decomposition shape below re-expresses the
+It introduces **no new slots or fragments.** The decomposition shape below re-expresses the
 migration capability's standing `type-map` and `invariants` (a faithful 1:1 port preserves
 names, integer values, DOM ids/classes, and signatures) as an ordered list of small,
 independently testable porting increments. Concrete per-project values (the actual legacy
@@ -120,5 +120,5 @@ oracle:
 
 When **no** construct in the work under review is a migration (no map, no plan/spec pairing to
 a legacy source), this fragment contributes an **empty task list** — the same empty shape the
-no-op produces. The core proceeds with its generic decomposition either way; this hook
+no-op produces. The core proceeds with its generic decomposition either way; this fragment
 contributes tasks, it does not halt the skeleton or force a section.

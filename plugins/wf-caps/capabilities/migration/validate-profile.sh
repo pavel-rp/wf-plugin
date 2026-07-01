@@ -208,8 +208,8 @@ for slot in $all_slots; do
 done
 
 # ---------------------------------------------------------------------------
-# Hook-slot on-disk path checks. Any slot whose items declare a `path` field
-# (discovered from the schema, not hardcoded) has each present entry's path
+# Extension-point-slot on-disk path checks. Any slot whose items declare a `path`
+# field (discovered from the schema, not hardcoded) has each present entry's path
 # checked for existence relative to the repo root.
 # ---------------------------------------------------------------------------
 for slot in $all_slots; do
@@ -222,8 +222,8 @@ for slot in $all_slots; do
   while [ "$idx" -lt "$count" ]; do
     p="$(prof_q ".\"$slot\"[$idx].path // empty")"
     if [ -n "$p" ]; then
-      # `-f` (regular file), not `-e`: hook paths point at committed docs/scripts,
-      # so a directory at that path is not a valid target.
+      # `-f` (regular file), not `-e`: extension-point paths point at committed
+      # docs/scripts, so a directory at that path is not a valid target.
       if [ ! -f "$REPO_ROOT/$p" ] && [ ! -f "$p" ]; then
         err "slot \`$slot\` entry $idx has a dangling \`path\`: \`$p\` (no regular file at that path relative to repo root \`$REPO_ROOT\`)."
       fi

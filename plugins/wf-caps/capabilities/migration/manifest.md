@@ -19,30 +19,30 @@ registry row in `_local/config.md`; it does not hardcode this path.
 Each row attaches one fragment to one phase, typed by the contribution taxonomy. The
 schema is the v2 shape fixed by `capability-registry.contract.md`:
 `phase | contribution-kind | dispatch | scope`. Inline paths are forward-slash,
-**relative to this capability's registry path** (so `hooks/rule-audit.md` resolves to
-`plugins/wf-caps/capabilities/migration/hooks/rule-audit.md`). `subagent:` dispatch
+**relative to this capability's registry path** (so `fragments/rule-audit.md` resolves to
+`plugins/wf-caps/capabilities/migration/fragments/rule-audit.md`). `subagent:` dispatch
 names a registered subagent invoked via the Task tool. `scope` is empty (`—`) for
 aggregate kinds; `finding` aggregates **with provenance**, so it carries no ownership
 scope token.
 
 | phase          | contribution-kind | dispatch                          | scope |
 |----------------|-------------------|-----------------------------------|-------|
-| tasks          | task-list         | `inline: hooks/task-list.md`      | —     |
-| verify         | finding           | `inline: hooks/rule-audit.md`     | —     |
-| verify         | finding           | `subagent: wf-caps:migration-map` | —     |
-| qa-generation  | scenario          | `inline: hooks/parity-suite.md`   | —     |
+| tasks          | task-list         | `inline: fragments/task-list.md`      | —     |
+| verify         | finding           | `inline: fragments/rule-audit.md`     | —     |
+| verify         | finding           | `subagent: wf-caps:migration-map`     | —     |
+| qa-generation  | scenario          | `inline: fragments/parity-suite.md`   | —     |
 
 Read off the columns:
 
-- **task-list** (`tasks | task-list | inline: hooks/task-list.md`) — the migration
-  **decomposition** layer: core reads `hooks/task-list.md` and follows it in-context when
+- **task-list** (`tasks | task-list | inline: fragments/task-list.md`) — the migration
+  **decomposition** layer: core reads `fragments/task-list.md` and follows it in-context when
   firing the `tasks` phase, emitting migration-shaped tasks (one increment per ported
   construct, scaffold-then-component, each independently testable) in the generic
   `task-list` shape. `task-list` aggregates **additively in registry order**, so the row
   carries no provenance tag and no ownership scope; when the work under review contains no
   migration, the fragment returns an empty task list (the no-op).
-- **rule-audit** (`verify | finding | inline: hooks/rule-audit.md`) — the mechanical
-  invariant audit: core reads `hooks/rule-audit.md` and follows it in-context, asserting
+- **rule-audit** (`verify | finding | inline: fragments/rule-audit.md`) — the mechanical
+  invariant audit: core reads `fragments/rule-audit.md` and follows it in-context, asserting
   the migration `rule-checks` against the diff and returning findings in the generic
   finding shape.
 - **migration-map** (`verify | finding | subagent: wf-caps:migration-map`) — the 1:1
@@ -59,8 +59,8 @@ Read off the columns:
   So until migration-map emits the generic finding shape, this row yields **nothing to
   aggregate**; this row wires the dispatch now, and its flagged rows become aggregated
   `finding`s once migration-map emits the finding shape.
-- **parity-suite** (`qa-generation | scenario | inline: hooks/parity-suite.md`) — the
-  migration **parity** QA layer: core reads `hooks/parity-suite.md` and follows it
+- **parity-suite** (`qa-generation | scenario | inline: fragments/parity-suite.md`) — the
+  migration **parity** QA layer: core reads `fragments/parity-suite.md` and follows it
   in-context when firing the `qa-generation` phase, emitting functional- and
   visual-parity scenarios that exercise each migrated unit against its legacy counterpart
   (1:1 names, integer round-trip, verbatim DOM ids/classes, preserved signatures) in the
@@ -105,15 +105,15 @@ overrides on divergence.
 ## Fragment wiring status
 
 `parity-suite` is **now wired** (WF-8) — the `qa-generation | scenario | inline:
-hooks/parity-suite.md` row above. A core skill firing `qa-generation` while migration is
-active reads `hooks/parity-suite.md` and aggregates the parity scenarios it returns
+fragments/parity-suite.md` row above. A core skill firing `qa-generation` while migration is
+active reads `fragments/parity-suite.md` and aggregates the parity scenarios it returns
 (provenance-tagged); when the work under review is not a migration, that fragment returns
 the empty scenario list (the no-op path), so the firing skill proceeds with its generic
 plan alone.
 
-`task-list` is **now wired** (WF-23) — the `tasks | task-list | inline: hooks/task-list.md`
+`task-list` is **now wired** (WF-23) — the `tasks | task-list | inline: fragments/task-list.md`
 row above. A core skill firing the `tasks` phase while migration is active reads
-`hooks/task-list.md` and appends the migration-shaped tasks it returns (additive, in
+`fragments/task-list.md` and appends the migration-shaped tasks it returns (additive, in
 registry order); when the work under review is not a migration, that fragment returns the
 empty task list (the no-op path), so the firing skill proceeds with its generic
 decomposition alone.

@@ -1,9 +1,9 @@
-# `rule-audit` hook — migration capability (inline reference doc)
+# `rule-audit` fragment — migration capability (inline reference doc)
 
 **Version:** 1.0.0 (WF-10 — kept prototype)
-**Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`rule-audit → inline: hooks/rule-audit.md`)
+**Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`rule-audit → inline: fragments/rule-audit.md`)
 **Backed by:** the `rule-checks` and `invariants` slots of `plugins/wf-caps/capabilities/migration/migration.contract.md`
-**Fills:** the `rule-audit` hook of `plugins/wf/skills/_contracts/core-extension.contract.md`
+**Contributes:** a `finding` at the `verify` phase, per `plugins/wf/skills/_contracts/capability-registry.contract.md`
 **Model:** claude-opus-4-8
 
 ---
@@ -11,12 +11,13 @@
 ## What this doc is
 
 This is the **inline reference doc** the core reads and follows in-context when it fires the
-`rule-audit` hook with the migration capability active. The invocation mechanism
-(`invocation-mechanism.contract.md`) resolves `rule-audit → inline: hooks/rule-audit.md`
-from the manifest and reads this file; the core then performs the procedure below and
-returns findings in the hook's generic finding shape.
+`verify` phase with the migration capability active. The invocation runtime
+(`plugins/wf/skills/_contracts/invocation-runtime.contract.md`) resolves
+`verify | finding | inline: fragments/rule-audit.md` from the manifest and reads this file;
+the core then performs the procedure below and returns findings in the phase's generic
+`finding` shape, provenance-tagged to this capability.
 
-It introduces **no new slots or hooks**. Every check below is the migration capability's
+It introduces **no new slots or fragments**. Every check below is the migration capability's
 `rule-checks` slot asserting the `invariants` slot, exactly as
 `migration.contract.md` declares (`rule-audit ← rule-checks, invariants`). Concrete
 per-project values (the actual forbidden APIs, the casing rule specifics) come from a
@@ -29,8 +30,8 @@ not the populated profile.
 
 - **The work under review** — the changed code / artifact the core is auditing (the diff,
   the ported unit).
-- **The generic finding shape** — from the `rule-audit` hook contract: each finding carries
-  the rule it asserts, a severity, and a concrete location/evidence.
+- **The generic `finding` shape** — the `verify` phase's `finding` contribution kind: each
+  finding carries the rule it asserts, a severity, and a concrete location/evidence.
 
 ## What the core does (follow in-context)
 
@@ -57,7 +58,7 @@ A unit that violates a `fail`-severity invariant is **non-conformant**.
 
 ## Output the core returns
 
-A list of conformance findings in the `rule-audit` generic finding shape — one entry per
+A list of conformance findings in the `verify` phase's generic `finding` shape — one entry per
 tripped rule-check:
 
 ```
@@ -69,4 +70,4 @@ tripped rule-check:
 
 If every rule-check passes, return an **empty findings list** — the same empty shape the
 `<none>` no-op produces, signalling a conformant unit. The core proceeds with its workflow
-either way; this hook contributes findings, it does not halt the skeleton.
+either way; this fragment contributes findings, it does not halt the skeleton.
