@@ -61,16 +61,16 @@ for reference:
 skills:
   - plugins/wf-caps/skills/qa-host/    # /wf-caps:qa-host — routed Angular test-host scaffolder (the host provider dispatch target)
   - plugins/wf-caps/skills/test-page/  # /wf-caps:test-page — browser-run black-box DI-level tests for Angular targets
+agents:
+  - plugins/wf-caps/agents/qa-host.md  # wf-caps:qa-host — the host scaffolder's subagent companion (the qa-execution host-provider dispatch target)
 ```
 
-The fragment row names `subagent: wf-caps:qa-host` as the `qa-execution` host-provider dispatch
-target. Today the capability ships **no** dedicated `agents/qa-host.md` companion (unlike
-browser-qa, which ships `agents/qa-engine.md`); the `qa-host` host-scaffolding work is reached
-through the skill. A dedicated subagent companion for the isolated heavy scaffold is
-**deferred** to the per-phase wiring work; until it ships, treat this row as wiring the host
-provider's dispatch identity, with the scaffolding performed by the `/wf-caps:qa-host` skill.
-Per `CLAUDE.md` §8, the eventual companion declares **no** `tools:` field, so it inherits the
-full session catalog.
+The fragment row's `subagent: wf-caps:qa-host` resolves to that companion — a thin redirect
+that reads the `/wf-caps:qa-host` skill and executes it in an isolated context, mirroring
+how browser-qa ships `agents/qa-engine.md` for its `engine` surface. The agent holds no procedural
+logic of its own (skill-primary, thin agent); the scaffolding lives in the skill. It declares
+**no** `tools:` field, so it inherits the full session catalog — including the `Write`/`Edit`/`Bash`
+the host scaffolding and typecheck need (per `CLAUDE.md` §8).
 
 ## Deferred fragments
 
