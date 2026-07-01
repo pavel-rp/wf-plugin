@@ -277,6 +277,8 @@ After typecheck passes, invoke `/wf:index <ado-id> qa-host "<kebab>-test · /cod
 
 Used when a host already exists but a QA scenario can't run because the host **pins an `@Input` the scenario must vary**, **lacks a control to reach a required state**, or **doesn't surface an `@Output` the scenario must observe**. This is the retrofit path: `new` scaffolds a minimal host; `augment` grows it per scenario need *without* re-scaffolding or clobbering hand edits. `/wf:qa-followup` drives this automatically when it triages a host-capability block — it is the primary way the harness gets unblocked.
 
+This provider owns the stack-specific mapping from a `/wf:qa-followup` host-gap block to the augment flags. Worked examples of that mapping: a host that hardcodes `showLabel=true` → `--control showLabel`; "no control to set `selectedReportPeriodIds`" → `--control selectedReportPeriodIds`; "`userAccessLevelChanged` never observed" → `--observe userAccessLevelChanged`. The block reasons are capability-neutral (a pinned value, a missing control, an unwired observation); translating them to the target's concrete `@Input`/`@Output` names is this provider's job, not the caller's.
+
 ```
 /wf-caps:qa-host augment <component> [--control <input>]... [--observe <output>]... [--show <input>]...
 ```

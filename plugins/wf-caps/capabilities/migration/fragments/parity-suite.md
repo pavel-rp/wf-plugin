@@ -1,6 +1,6 @@
 # `parity-suite` fragment — migration capability (inline reference doc)
 
-**Version:** 1.0.0 (WF-8 — relocated from core `qa-gen/references/parity-scenarios.md`)
+**Version:** 1.1.0 (WF-82 — absorbed the C#/.NET backend-surface file-pattern examples re-sourced from core's `qa-gen/references/api-scenarios.md`)
 **Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`parity-suite → inline: fragments/parity-suite.md`)
 **Backed by:** the `invariants` slot (the parity-relevant subset) of `plugins/wf-caps/capabilities/migration/migration.contract.md`
 **Model:** claude-opus-4-8
@@ -94,6 +94,24 @@ environment. State the chosen mode in the precondition either way.
 
 Side-by-side: each row becomes "do X on legacy, do X on migrated, outputs match." Captured:
 the legacy output is the fixed expected value and only the migrated side is driven.
+
+#### Backend-surface file patterns (this capability's stack specifics)
+
+Core's generic API-scenario reference (`plugins/wf/skills/qa-gen/references/api-scenarios.md`)
+names backend surfaces by **role** — *endpoint / route-handler*, *service / data-layer*, and
+*response-shape type* — and defers the concrete file-name patterns and route-declaration syntax
+to the active backend capability. For this C#→TS migration capability, those stack specifics are:
+
+| Role (core's generic term) | Concrete pattern this capability recognizes |
+|----------------------------|---------------------------------------------|
+| endpoint / route-handler | `*Controller.cs` — read each action's `[HttpGet/Post/Put/Delete]` verb, `[Route]`/route template, parameters, and return type (signature-only). New/changed actions are **endpoint** surfaces. |
+| service / data-layer | `*Service.cs` / `*Repository.cs` / `*Provider.cs` — read public method signatures. A new/changed public method with no controller action calling it is a **service-only** surface (→ `Backend host required:`). |
+| response-shape type | `*Dto.cs` / model / record types referenced by the above — read property names + types to derive the expected response shape. Legacy ASP.NET framework nouns stay on the source side of the port. |
+
+When deriving parity scenarios for a migrated backend unit (functional-parity `service`/endpoint
+rows above, and the map-driven derivation in §5), use these patterns to locate the source and
+migrated handlers. They are the migration-capability home for the backend-API examples core no
+longer carries — core names the role, this fragment names the C#/.NET pattern.
 
 ### 4. Visual parity — migrated rendered surface matches the legacy view
 
