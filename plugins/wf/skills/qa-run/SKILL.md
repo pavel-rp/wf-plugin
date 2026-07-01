@@ -1,6 +1,6 @@
 ---
 name: qa-run
-description: Walks a human tester through 06_qa.md one step at a time, recording verdicts, notes, and observations via interactive prompts. Writes 07_qa-report.md with the full results matrix and traceability back to spec criteria. Browser scenarios are driven step-by-step in a real browser; Type:API scenarios are presented as a request + ready curl command for the tester to run, asserting status and response shape. Use when a tester wants to execute the QA plan themselves — the skill is the test lead, the user is the tester.
+description: Walks a human tester through 06_qa.md one step at a time, recording verdicts, notes, and observations via interactive prompts. Writes 07_qa-report.md with the full results matrix and traceability back to spec criteria. Browser scenarios are driven step-by-step in a real browser; Type:API scenarios are presented as a request block + a ready-to-run HTTP request (a copy-paste curl command) for the tester to run, asserting status and response shape. Use when a tester wants to execute the QA plan themselves — the skill is the test lead, the user is the tester.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
@@ -10,7 +10,7 @@ Reads `06_qa.md` (from `/wf:qa-gen`), presents each scenario step-by-step via th
 
 **The skill is the test lead. The user is the tester. One step at a time.**
 
-Scenarios carry a `Type:` — `browser` (default) or `API`. Browser scenarios are walked step-by-step in the running app. **API** scenarios (backend tasks) are presented as a request block plus a ready-to-paste curl command; the tester runs it and reports the status code and response, which the skill checks against the scenario's assertions. When an API scenario needs an endpoint that doesn't exist yet (`Backend host required:`), the skill tells the tester to wire it first with `/wf-caps:qa-host api-probe <Service>.<method>` (and revert with `api-revert` after) — the manual analog of what `/wf:qa-auto` does automatically.
+Scenarios carry a `Type:` — `browser` (default) or `API`. Browser scenarios are walked step-by-step in the running app. **API** scenarios (backend tasks) are presented as a request block plus a ready-to-paste HTTP request; the tester runs it and reports the status code and response, which the skill checks against the scenario's assertions. When an API scenario needs an endpoint that doesn't exist yet (`Backend host required:`), the skill tells the tester to wire it first with `/wf-caps:qa-host api-probe <Service>.<method>` (and revert with `api-revert` after) — the manual analog of what `/wf:qa-auto` does automatically.
 
 For an autonomous run (no human in the loop), use `/wf:qa-auto` instead. The two write the same report file in the same format — only the `Mode` and `Tester` fields differ.
 
@@ -126,7 +126,7 @@ Ask the tester to confirm preconditions are set. Options via the question tool: 
 
 ### 3b. Walk steps one at a time
 
-**API scenarios (`Type: API`) are presented as one request, not a step sequence.** If the scenario has a `**Type:** API` line, skip the per-step walk and instead present the request plus a ready curl command, then collect the result:
+**API scenarios (`Type: API`) are presented as one request, not a step sequence.** If the scenario has a `**Type:** API` line, skip the per-step walk and instead present the request plus a ready-to-run HTTP request (given below as a copy-paste `curl` command; any REST client works), then collect the result:
 
 ```
 TC-NNN (API) — <title>
@@ -145,7 +145,7 @@ Assertions:
   2. <assertion> → <expected>
 ```
 
-If a precondition is `Backend host required: <Service>.<method>`, tell the tester to run `/wf-caps:qa-host api-probe <Service>.<method>` first (it prints the route to call; ephemeral routes need the API rebuilt), and to run `/wf-caps:qa-host api-revert <Service>.<method>` when done. Ask the tester to paste the status code and response, then judge each assertion **Pass**/**Fail** from what they report (same verdict rules as below). Record the observed status/response on FAIL.
+If a precondition is `Backend host required: <Service>.<method>`, tell the tester to run `/wf-caps:qa-host api-probe <Service>.<method>` first (it prints the route to call; ephemeral routes need the backend host rebuilt before they respond, as the provider notes), and to run `/wf-caps:qa-host api-revert <Service>.<method>` when done. Ask the tester to paste the status code and response, then judge each assertion **Pass**/**Fail** from what they report (same verdict rules as below). Record the observed status/response on FAIL.
 
 For **browser** scenarios, walk one step at a time. For each step, present:
 
@@ -212,7 +212,7 @@ If the run was aborted, the block lists `Status: INCOMPLETE` and notes how to re
 - **`--resume` but the underlying `06_qa.md` has changed since the run started.** Stop with: "Plan changed since the run began. Resuming would mix verdicts against different scenarios. Start a fresh run." Compare by file mtime or by hashing TC-NNN headings.
 - **No P0 scenarios in `06_qa.md`.** Warn at preflight: "No P0 (release-blocking) scenarios. Consider re-generating with `/wf:qa-gen <id> full`." Continue if tester says ready.
 - **Single scenario.** Run normally — no special handling. Pre-flight overview still applies; "scenarios: 1" is fine.
-- **No runnable scenarios of any kind** (no browser *and* no `Type: API` scenarios — only Build/static / Automated rows). Tell the tester there's nothing to run, write a stub report status PASS, exit. **A plan with API scenarios is runnable** — present them as curl requests per 3b; don't stub a backend task. If the plan looks empty but the task's deliverable is a `.cs` endpoint/service, the plan was mis-generated — point the tester to re-run `/wf:qa-gen`.
+- **No runnable scenarios of any kind** (no browser *and* no `Type: API` scenarios — only Build/static / Automated rows). Tell the tester there's nothing to run, write a stub report status PASS, exit. **A plan with API scenarios is runnable** — present them as HTTP requests per 3b; don't stub a backend task. If the plan looks empty but the task's deliverable is a backend endpoint or service method, the plan was mis-generated — point the tester to re-run `/wf:qa-gen`.
 
 ---
 

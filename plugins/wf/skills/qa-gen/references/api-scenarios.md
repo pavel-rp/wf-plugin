@@ -1,6 +1,6 @@
 # wf:qa-gen — API (endpoint-exercise) scenarios
 
-How `/wf:qa-gen` covers a **backend task** — one whose deliverable is a controller endpoint, a service method, or a repository method rather than a frontend view. Loaded from `SKILL.md` Phase 3 when a criterion classifies as **API**.
+How `/wf:qa-gen` covers a **backend task** — one whose deliverable is a backend endpoint, a service method, or a data-layer (repository/provider) method rather than a frontend view. Loaded from `SKILL.md` Phase 3 when a criterion classifies as **API**.
 
 The point: a backend task is not "verified by build." A type that compiles is not a method that returns the right rows. The `API` category exists so backend criteria get *exercised over HTTP with a real token*, not stamped PASS because they typecheck. This is the fix for the failure mode where a pure data-layer task produced a stub PASS report.
 
@@ -25,7 +25,7 @@ The line is **existence/shape (static)** vs **behavior through a call (API)**.
 
 Split a straddling criterion the same way Phase 3 already splits wiring-vs-behavior: "the service is registered in DI **and** its method returns the right shape" → registration half is **Build/static**, the returns-the-right-shape half is **API**. Don't double-count.
 
-**Black-box still holds.** You read the controller's route attribute, HTTP verb, parameters, and return type, and the DTO's property names/types — those are the *public signature*, the same allowance the browser path has for selectors and labels. Stop at the first `{` of any method body. Derive the *expected* response shape from the spec's DTO definition, not from how the repository builds it. If the spec doesn't pin a shape, assert the contract you can (status, array-ness, presence of the spec-named fields) and add a `<!-- AMBIGUOUS: <criterion> · response shape not pinned in spec -->` comment.
+**Black-box still holds.** You read the endpoint's route declaration, HTTP verb, parameters, and return type, and the response/DTO type's field names/types — those are the *public signature*, the same allowance the browser path has for selectors and labels. Stop at the first `{` of any method body. Derive the *expected* response shape from the spec's response-shape definition, not from how the data layer builds it. If the spec doesn't pin a shape, assert the contract you can (status, array-ness, presence of the spec-named fields) and add a `<!-- AMBIGUOUS: <criterion> · response shape not pinned in spec -->` comment.
 
 ---
 
@@ -33,8 +33,8 @@ Split a straddling criterion the same way Phase 3 already splits wiring-vs-behav
 
 For each API criterion, decide how the behavior is reachable:
 
-1. **An endpoint already exists** — a controller action on the branch (or pre-existing) exposes the behavior. The scenario names the real `Method` + `Route`. No host needed.
-2. **Service/repository method only, no endpoint** — the deliverable is a service or repository method the task did not (yet) expose over HTTP. The behavior is still testable: the runner temporarily wires the method to the most appropriate controller, exercises it, and reverts the wiring before anything is committed. Emit a precondition:
+1. **An endpoint already exists** — an endpoint/route-handler on the branch (or pre-existing) exposes the behavior. The scenario names the real `Method` + `Route`. No host needed.
+2. **Service/data-layer method only, no endpoint** — the deliverable is a service or data-layer method the task did not (yet) expose over HTTP. The behavior is still testable: the runner temporarily wires the method to the most appropriate endpoint/route-handler (the active backend capability names the concrete handler type), exercises it, and reverts the wiring before anything is committed. Emit a precondition:
 
    ```
    Backend host required: <Service-or-Repository>.<method>
@@ -42,7 +42,7 @@ For each API criterion, decide how the behavior is reachable:
 
    This is the backend analog of `Host required:` for an un-routed frontend component. `/wf:qa-auto` resolves it via `/wf-caps:qa-host api-probe` (scaffold-or-locate); the temporary endpoint is an ephemeral run fixture, reverted in teardown. Set the scenario's `Route:` to `via backend host` — the runner substitutes the real route after `api-probe` returns it.
 
-Determining which: grep the branch diff and the controllers root (`{api-controllers-root}` from config, or auto-detect `*Controller.cs`) for an action that calls the target service method. If one is found, it's case 1; otherwise case 2.
+Determining which: grep the branch diff and the project's endpoint/route-handler root (`{api-controllers-root}` from config, or the stack's endpoint files as the active capability's backend material names them) for a handler that calls the target service method. If one is found, it's case 1; otherwise case 2. The concrete file-name patterns and route-declaration syntax are stack-specific — they live in the active backend capability's material, not here.
 
 ---
 
@@ -87,7 +87,7 @@ Writing rules specific to API scenarios:
 - **One assertion per row.** Status is its own row; each shape/value check is its own row. A partial pass is then legible.
 - **Assert the contract, not the data.** Status code, array-ness vs object, presence and type of spec-named fields, and spec-stated edge behavior ("empty array when none match — use an id unlikely to have data, e.g. `0` or `-1`"). **Never assert exact row counts or specific values** — those depend on the database, exactly as `wf-caps:test-page backend-smoke` already cautions.
 - **Negative/error cases at `full` scope.** Bad input → 400, missing/forbidden → 401/403, not-found → 404 — when the spec defines them. These are first-class API scenarios, not afterthoughts.
-- **Route is real.** Use the actual route template from the controller's `[Route]`/`[HttpGet("…")]` attributes (signature read). Placeholder `via backend host` is allowed *only* for the service-only case, where the route doesn't exist until `api-probe` makes it.
+- **Route is real.** Use the actual route template from the endpoint's route/verb declaration (signature read — the stack's route-declaration syntax, whatever the active backend capability names it). Placeholder `via backend host` is allowed *only* for the service-only case, where the route doesn't exist until `api-probe` makes it.
 
 ---
 
@@ -126,10 +126,12 @@ Keep the standing bar small — this one API baseline scenario, no more. Only fa
 
 ## Backend-diff signals (Phase 2)
 
-When inspecting `git diff --name-only main...HEAD` in Phase 2, flag a file as a backend surface (signature-only read, per the black-box rule) when it is:
+When inspecting `git diff --name-only main...HEAD` in Phase 2, flag a file as a backend surface (signature-only read, per the black-box rule) by its **role**, not its stack-specific file-name pattern. The three roles:
 
-- `*Controller.cs` — read each action's `[HttpGet/Post/Put/Delete]` verb, `[Route]`/template, parameters, and return type. New or changed actions are **endpoint** API surfaces (case 1).
-- `*Service.cs` / `*Repository.cs` / `*Provider.cs` (or files matching the project's data-layer naming) — read public method signatures. A new/changed public method with no controller action calling it is a **service-only** API surface (case 2 → `Backend host required:`).
-- DTO / model / `*Dto.cs` / record types referenced by the above — read property names + types to derive expected response shape.
+- **Endpoint / route-handler files** — read each handler's HTTP verb, route template, parameters, and return type. New or changed handlers are **endpoint** API surfaces (case 1).
+- **Service / data-layer files** (service, repository, provider, or whatever the stack calls its business- and data-access layer) — read public method signatures. A new/changed public method with no endpoint handler calling it is a **service-only** API surface (case 2 → `Backend host required:`).
+- **Response-shape types** (DTO, model, or record types referenced by the above) — read field names + types to derive the expected response shape.
+
+The concrete file-name patterns, route/verb declaration syntax, and data-layer naming that identify each role are **stack-specific** — they live in the active backend capability's material (for a source→target migration, the migration capability's parity-suite fragment carries the concrete endpoint/service/data-layer/response-type file patterns and route-attribute read examples). This reference names the role; the capability names the pattern.
 
 A task whose entire diff is backend data-layer files with no frontend target is the canonical **backend-only** task: classify its behavioral criteria as **API**, emit `Backend host required:` for the service-only ones, and give it the API baseline.

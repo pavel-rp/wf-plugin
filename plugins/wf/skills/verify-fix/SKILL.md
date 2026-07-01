@@ -15,8 +15,8 @@ Read the audit report at `_local/ADO-<id>/04_verify.md`, sort FAIL/PARTIAL/UNVER
 ## When to use this
 
 Fit:
-- `/wf:verify-spec` just ran and came back FAIL or PARTIAL with at least one mechanical finding (wrong enum value, missing property, missing `//MIGRATION NOTE` marker, forbidden pattern at a cited `file:line`).
-- The report's migration-rule audit has hits with mechanical remedies (commenting out `CacheUtility.*`, wrapping a jQuery call with a `//MIGRATION TODO`).
+- `/wf:verify-spec` just ran and came back FAIL or PARTIAL with at least one mechanical finding (wrong enum value, missing property, a missing marker the finding names, a forbidden pattern at a cited `file:line`).
+- The report has findings that carry a concrete mechanical **remedy** — a bounded edit the finding itself describes (comment out a forbidden line, wrap a call with a marker, insert a literal value). The remedy detail comes from whichever capability produced the finding; this skill applies it, it doesn't know the recipe.
 - You want the obvious stuff cleared before escalating the hard findings to a human.
 
 Not fit:
@@ -88,12 +88,14 @@ Rationale: the audit's evidence lines (`file:line`) are only meaningful on the b
 
 ## Phase 2: Load and Parse the Report
 
-Read `04_verify.md` in full. Extract the header metadata and three lists, preserving order and each finding's identifier (the numbered requirement, or `MIG-<n>` for migration-rule audit items).
+Read `04_verify.md` in full. Extract the header metadata and three lists, preserving order and each finding's identifier (the numbered requirement, or the capability finding's own id — e.g. `MIG-<n>` for a migration-capability finding).
 
 1. **Header metadata** — capture `Branch:`, `Commit:` (HEAD SHA the audit ran against), base SHA, and `Tree:` (clean or dirty). These may be absent on reports produced before the header was extended — treat as unknown and skip the staleness check below.
-2. **Requirements list** — each numbered `[PASS | FAIL | PARTIAL | N/A | UNVERIFIABLE]` item. Capture verdict, requirement text, `Expected`, `Found`, `Location` / `Evidence`.
-3. **Migration-rule audit** — each `[PASS | FAIL]` line. Capture the rule, file:line, and the snippet.
+2. **Requirements list** — each numbered `[PASS | FAIL | PARTIAL | N/A | UNVERIFIABLE]` item. Capture verdict, requirement text, `Expected`, `Found`, `Location` / `Evidence`, and a `remedy` (the concrete bounded edit the finding names) when the report carries one.
+3. **Capability-finding audit** — each `[PASS | FAIL]` line a capability's `verify` `finding` fragment contributed. Capture the rule, file:line, the snippet, and a `remedy` when present. (A capability that produces mechanical-remedy findings — e.g. the migration capability — carries the concrete edit in the finding's `remedy`; this skill applies it, it doesn't know the recipe.)
 4. **Deviations from `01_spec.md`** — informational only; do not act on these.
+
+> **Remedy carrier — deferred.** The `verify` `finding` shape a capability emits carries a `remedy` field, but `/wf:verify-spec`'s report schema does not yet render it as a structured field in `04_verify.md`. Until it does, the concrete edit reaches this skill through the finding's `Expected`/`Evidence` text; capture a structured `remedy` when the report carries one and otherwise fall back to the `Expected` state (Phase 5). Wiring the structured `remedy` through the report schema is deferred to the per-phase report-schema work — not this skill.
 
 If the report is malformed (no `## Requirements` heading, no verdict lines), stop and ask the user to re-run `/wf:verify-spec`.
 
@@ -127,12 +129,15 @@ A finding is AUTO only when **all** of these hold:
 - Verdict is `FAIL` or `PARTIAL`.
 - The report names a specific `file:line`.
 - The `Expected` value is concrete and literal — a specific value, symbol, enum member, or comment marker. Not "matches the spec" or "follows the pattern".
-- The fix is one or two mechanical edits at the cited location:
+- The fix is one or two mechanical edits at the cited location. The finding names the concrete edit; this skill applies whatever the finding's **remedy** describes. The remedy is always one of a small set of bounded shapes:
   - Change a literal value (`= 2` → `= 1`, `number` → `number | null`).
-  - Insert a missing enum member at the right position in an enum body.
+  - Insert a missing member at the right position in an enum or type body.
   - Insert a missing property in an interface or class body.
-  - Prepend or replace a `//MIGRATION NOTE (XX):` / `//MIGRATION TODO (XX):` / `//MIGRATION QUESTION (XX):` marker on a cited line. Use `XX` unchanged if the file already has a consistent initials tag; otherwise use `XX` as a placeholder and flag it in the open questions.
-  - Comment out a forbidden line that the migration rules say must be commented, not translated (e.g., `CacheUtility.*` calls, PDF render-mode branches).
+  - Prepend or replace a marker comment the finding specifies on a cited line (the finding gives the exact marker text; apply it verbatim, and flag any placeholder token it leaves for you to fill in the open questions).
+  - Comment out (rather than translate) a forbidden line the finding says must be commented.
+  - Apply any other bounded, literal edit the finding's remedy spells out at the cited location.
+
+  This skill does **not** carry the recipes — the concrete remedy for each finding comes from the capability that produced it (e.g. the migration capability's `verify` `finding` fragment carries its own remedy detail). Core applies the remedy the finding names; it never infers a stack-specific fix the report didn't state.
 - Applying the fix touches only the cited file, at or adjacent to the cited line.
 - The fix does not require choosing between plausible alternatives.
 
@@ -145,7 +150,7 @@ Everything not AUTO and not SKIP is ASK. In particular:
 - Fix would require a new file, new component, new import graph, or cross-file changes.
 - Multiple plausible fixes (e.g., "rename to match source" — the "correct" name might not be obvious from the report alone).
 - STOP-AND-ESCALATE gate triggers flagged in the report.
-- Migration-rule audit hits where the mechanical remedy is unclear (e.g., `window.location` used where the target-framework equivalent depends on context).
+- A finding whose remedy is context-dependent — the finding flags a violation but its remedy isn't a single bounded edit (the right replacement depends on surrounding code the report doesn't pin).
 - Any fix that would reverse a deliberate design choice visible in the surrounding code.
 
 When in doubt, classify as ASK. Over-fixing silently is worse than asking.
@@ -180,7 +185,7 @@ For each AUTO finding, in report order:
 
 1. Read the cited file around the target line.
 2. Confirm the `Found` state matches what's on disk. If it doesn't (the code has changed since the audit, or the citation is off by more than one or two lines), reclassify the finding as ASK and record the reason. Do not guess a new location.
-3. Make the minimal edit that produces the `Expected` state. No adjacent cleanup.
+3. Make the minimal edit the finding names. When the finding carries a `remedy`, apply that concrete bounded edit verbatim; otherwise make the minimal edit that produces the `Expected` state. No adjacent cleanup either way.
 4. Re-read the file to confirm the edit applied as intended.
 5. Record the result in the fix log: `[FIXED]` with a one-line diff summary, or `[SKIPPED]` with the reason if Phase 5 step 2 reclassified it.
 

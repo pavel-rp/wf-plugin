@@ -1,6 +1,6 @@
 # `rule-audit` fragment — migration capability (inline reference doc)
 
-**Version:** 1.0.0 (WF-10 — kept prototype)
+**Version:** 1.1.0 (WF-82 — absorbed the mechanical-remedy recipes re-sourced from the domain-free core fix skill; `finding` now carries a `remedy` field)
 **Wired by:** `plugins/wf-caps/capabilities/migration/manifest.md` (`rule-audit → inline: fragments/rule-audit.md`)
 **Backed by:** the `rule-checks` and `invariants` slots of `plugins/wf-caps/capabilities/migration/migration.contract.md`
 **Contributes:** a `finding` at the `verify` phase, per `plugins/wf/skills/_contracts/capability-registry.contract.md`
@@ -66,8 +66,41 @@ tripped rule-check:
   severity: <fail | warn>
   location: <file:line or unit identifier>
   evidence: <the concrete divergence observed in the diff>
+  remedy: <the concrete, bounded mechanical edit that resolves the finding — see "Mechanical remedies" below; omit when no bounded edit applies (the finding is then escalation-only)>
 ```
+
+The **`remedy`** field is what a fix step (`/wf:verify-fix`) applies. Core's fix skill is
+domain-free — it applies whatever bounded edit the finding names but knows none of the
+migration-specific recipes itself. So every migration finding that *has* a mechanical fix
+carries that fix here, in the `remedy` field, spelled out concretely enough that a fix step can
+apply it verbatim without knowing this capability's stack. A finding whose remedy is
+context-dependent (no single bounded edit) omits `remedy` — the fix step then escalates it.
 
 If every rule-check passes, return an **empty findings list** — the same empty shape the
 `<none>` no-op produces, signalling a conformant unit. The core proceeds with its workflow
 either way; this fragment contributes findings, it does not halt the skeleton.
+
+## Mechanical remedies (the fix recipes core no longer carries)
+
+These are the concrete, bounded edits that resolve a tripped rule-check — the migration
+capability's own recipes, re-homed here from the (now domain-free) core fix skill. Each finding
+that flags one of these violations sets its `remedy` field to the matching recipe, so a fix step
+applies it without knowing the stack. The recipes:
+
+| Violation the rule-check flags | `remedy` the finding carries |
+|--------------------------------|------------------------------|
+| A forbidden legacy utility call survives on the target side (e.g. a `CacheUtility.*` call the migration policy says has no target equivalent) | **Comment out** the forbidden line at the cited `file:line` — do not translate it. The behavior is deliberately dropped, not ported. |
+| A legacy DOM/navigation API survives that the target framework replaces (e.g. a `jQuery` call, a `window.location` navigation) where the bounded replacement is unambiguous | **Wrap the line with a marker comment** flagging it for the target-framework equivalent (see the marker convention below), leaving the call commented so the port is explicit. When the correct replacement depends on surrounding context, **omit `remedy`** — escalate instead. |
+| A ported unit is missing a required migration-note marker on a cited line | **Prepend or replace the marker comment** on the cited line, using the marker convention below. |
+| A stack-specific branch the target must handle differently survives unported (e.g. a render-mode / output-mode branch the target implements another way) | **Comment out the legacy branch** at the cited `file:line` and mark it for re-implementation via the marker convention; escalate (omit `remedy`) if the target approach isn't a single bounded edit. |
+
+**Marker-comment convention.** Migration-note markers are `//MIGRATION NOTE (XX):` /
+`//MIGRATION TODO (XX):` / `//MIGRATION QUESTION (XX):`, where `XX` is the author's initials
+tag. A finding's `remedy` gives the exact marker text to apply; if the file already uses a
+consistent initials tag, reuse it, otherwise the `remedy` leaves `XX` as a placeholder for the
+fix step to flag as an open question rather than guess.
+
+These recipes are the migration capability's, not core's: they name legacy utilities, the target
+framework's DOM/navigation replacements, and the migration-note marker convention — all
+stack-specific, all owned here. Core's fix step reads the `remedy` string and applies it; it
+never reconstructs these recipes.

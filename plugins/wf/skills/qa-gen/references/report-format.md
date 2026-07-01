@@ -106,7 +106,7 @@ API scenarios use the same verdict shape, with the **Assertions** table in place
 | 2 | Response is an array | true | — | not run |
 
 **Request:** `GET /api/provider-groups?accessLevelId=123`
-**Failure notes:** <description — e.g., "500 Internal Server Error; body: NullReferenceException at ...">
+**Failure notes:** <description — e.g., "500 Internal Server Error; body: unhandled null-reference in the handler">
 **Response:** `artifacts/qa-api-TC-005-<timestamp>.json` *(agentic mode only — the API analog of a screenshot)*
 **Fixtures:** scaffolded ephemeral backend host `__qa/provider-groups` then reverted *(agentic mode only)*
 
