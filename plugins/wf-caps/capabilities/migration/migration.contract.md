@@ -1,6 +1,6 @@
 # Migration capability contract
 
-**Version:** 1.0.0 (frozen — WF-1)
+**Version:** 1.0.0 (embedded slot schema frozen — WF-1; surrounding prose evolves with the v2 model)
 **Status:** authoritative source of truth for the migration capability's slot schema
 **Composes onto:** the SDD phases + contribution taxonomy — `plugins/wf/skills/_contracts/capability-registry.contract.md`
 **Model:** claude-opus-4-8
