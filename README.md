@@ -25,11 +25,11 @@ Then, in any git repo you want to work in:
 
 `/wf:init` is per-repo: it scaffolds `_local/` for per-task artifacts, adds gitignore entries, and writes the Node test runner. No per-machine setup is needed — Claude Code auto-discovers the plugin's skills and agents on install, and nested subagent delegation (e.g. `wf:branch`→`wf:index`) works out of the box.
 
-## What's in the plugin
+## What's in the plugins
 
-The plugin is named `wf`, so its skills are invoked as `/wf:<skill>` — `/wf:spec`, `/wf:plan`, `/wf:qa-auto`, etc. (skill names are bare; the `wf:` prefix comes from the plugin namespace).
+Each plugin's skills are invoked under its own namespace: core `wf` skills as `/wf:<skill>` (`/wf:spec`, `/wf:plan`, `/wf:qa-auto`, …) and `wf-caps` skills as `/wf-caps:<skill>` (skill names are bare; the namespace prefix comes from the plugin).
 
-See **[plugins/wf/README.md](plugins/wf/README.md)** for the full, authoritative skill and subagent reference. In brief, the skills cover triage → spec → plan → implement → verify → QA → commit/PR, plus a `/wf:run` dispatcher that drives the safe front of the chain hands-off.
+See **[plugins/wf/README.md](plugins/wf/README.md)** for the full, authoritative core skill and subagent reference. In brief, the core skills cover triage → spec → plan → implement → verify → QA → commit/PR, plus a `/wf:run` dispatcher that drives the safe front of the chain hands-off. See **[plugins/wf-caps/README.md](plugins/wf-caps/README.md)** for the stack/domain capabilities that attach to the spine.
 
 ## Authoring
 
