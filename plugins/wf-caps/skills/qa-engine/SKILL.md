@@ -22,7 +22,7 @@ So this engine drives the browser in its own thread (already isolated from the o
 
 - Every `read_page` result is summarized to one line of observed value before the loop continues. Don't refer back to prior page dumps.
 - For compound assertions (filter applied, list re-ordered, multi-element check), use `run_playwright_code` returning a small JSON object — not `read_page` returning the full DOM.
-- Screenshots only on FAIL. Saved to `artifacts/qa-run-TC-NNN-<UTC>.png`.
+- Screenshots only on FAIL. Saved to `artifacts/qa-run-TC-NNN-<UTC>.png`. **One documented exception:** a scenario the plan marked `**Visual:** yes` takes a screenshot **on the pass path** for its Layer B vision review — see [Phase 5v](#5v-visual-verification-sub-phase-visual-yes-scenarios-only). The agent views that screenshot to score the rubric, then discards it from working memory (keeps only the one-line rubric verdict + the saved path); it does not become a page dump the loop refers back to. This exception is narrow — it applies **only** to `**Visual:** yes` scenarios; every unmarked scenario keeps "screenshots only on FAIL" exactly.
 - After every batch (default 25 scenarios), checkpoint the report and stop. Re-invoke for the next batch.
 
 ---
@@ -79,7 +79,7 @@ Disambiguation: a 3+-digit numeric or prefixed token is the id; `--`-prefixed to
 - Store production credentials. The user has stated test creds are non-sensitive; the file format reflects that.
 - Run builds, tests, installs, or destructive git.
 - Read application source to "understand" the implementation when a step or assertion fails. Black-box discipline: a failing scenario is a FAIL.
-- Retain page snapshots in working memory across steps. After observing each step, summarize to one line and move on; never refer back to a prior `read_page` dump.
+- Retain page snapshots in working memory across steps. After observing each step, summarize to one line and move on; never refer back to a prior `read_page` dump. (The one narrow exception is the pass-path screenshot a `**Visual:** yes` scenario takes for its Layer B rubric review — the agent views it to score the rubric, records the one-line verdict + saved path, and discards the image; see Phase 5v.)
 
 ---
 
@@ -205,6 +205,8 @@ For TC-NNN:
      - **Matches** → `step K PASS` with a one-line observed summary.
      - **Doesn't match** → record `step K FAIL` with the divergence. `screenshot_page` to `artifacts/qa-run-TC-NNN-<UTC>.png`. **Stop running further steps** in this scenario.
 
+   - **After the steps run, before teardown:** if the scenario's `06_qa.md` block carries a `**Visual:** yes` marker line, run the **visual-verification sub-phase** ([5v](#5v-visual-verification-sub-phase-visual-yes-scenarios-only)) now. A scenario **without** the marker skips 5v entirely — it follows the existing DOM-only flow (no screenshot, no geometry probe). The sub-phase can turn a step-PASS scenario into a FAIL (a hard-fail geometry probe or a rubric failure); fold its verdict into the scenario verdict before recording.
+
 3. **Scenario teardown** if specified in `06_qa.md`. Execute. Don't gate the verdict — note teardown failures under `Notes:`.
 
 4. **Fixture teardown.** Reverse every browser-storage fixture write from step 1, in reverse order. Validate each revert by re-reading the storage. On a teardown failure, retry once; if still failing, surface a `⚠ teardown failed` note in the report. Continue with remaining teardowns. The scenario's verdict stands; the run's overall `Status` flips to `INCOMPLETE` if any teardown failed (the browser state isn't in a known baseline).
@@ -221,12 +223,58 @@ Baseline-health steps — and any step whose Expected references the browser con
 4. **Verdict:** after filtering, non-empty `errors` or `failed` → `FAIL`, with the offending entries (each truncated to ~120 chars, prefixed with their `tc` for the full-run check) as the observed value; surface them in the report's Defects/Notes. Empty → `PASS`.
 5. **If neither capture path works in this runtime** → mark the affected scenario `BLOCKED · setup: console/network capture unavailable`. Never report a baseline PASS you couldn't actually measure.
 
+### 5v. Visual-verification sub-phase (`**Visual:** yes` scenarios only)
+
+Runs **only** for a scenario whose `06_qa.md` block carries a `**Visual:** yes` marker line, after its steps have run and before teardown. A scenario without the marker never enters this sub-phase — the marker gate is real. This sub-phase is the capability-only half of the visual-verification feature; core (`qa-gen`) writes the marker but does not know how the engine acts on it.
+
+**Scope boundary:** this detects **absolute** visual defects only — overlap, clipping/truncation, crowding/"stuck-together" controls, orphaned or mis-rendered controls, collapsed/oversized containers. It is **not** visual-regression / golden-image pixel-diffing (no baseline image, no per-pixel comparison) — that is explicitly out of scope. Use only generic browser APIs (`getBoundingClientRect`, computed styles, `screenshot_page`, `run_playwright_code`); name no framework, component library, or app route.
+
+#### Layer A — deterministic geometry probes
+
+Run **one** `run_playwright_code` call that walks the visible interactive/content elements via `getBoundingClientRect()` + computed styles and returns a **small JSON findings object** (not a DOM dump — keep it well under the ~2KB guard; return only elements *with* findings plus counts, not every element). Probe for:
+
+| Probe | What it measures | Bucket |
+|---|---|---|
+| **interactive-element overlap** | two interactive elements' bounding rects intersect (beyond expected nesting) | **HARD-FAIL** |
+| **collapsed 0-size (should be visible)** | an element that should render has `width===0` or `height===0` (or `clientHeight===0` with content) while not intentionally hidden (`display:none`/`hidden`/`aria-hidden`) | **HARD-FAIL** |
+| **off-screen positioning** | a should-be-visible element sits entirely outside the viewport / its container (e.g. negative coords, pushed far beyond the layout) with no intentional off-screen pattern | **HARD-FAIL** |
+| **clipping / overflow** | `scrollWidth > clientWidth` (or `scrollHeight > clientHeight`) on a container not meant to scroll, or an element extending beyond its parent/viewport bounds — text or controls truncated | advisory *(recorded; see note)* |
+| **"stuck-together" adjacency** | two adjacent interactive elements with ~0px gap where spacing is expected | **advisory** |
+| **low text/background contrast** | computed text vs. background color contrast below a legibility threshold | **advisory** |
+
+**Hybrid verdict authority (exact — do not drift):**
+
+- **HARD-FAIL set = { interactive-element overlap, collapsed 0-size element that should be visible, off-screen positioning }.** Any finding in this set **fails the scenario deterministically**. Do not demote a hard-fail finding to a note.
+- **ADVISORY set = { clipping / overflow, "stuck-together" ~0px-gap adjacency, low text/background contrast }.** These are **recorded as notes only and never fail the scenario on their own.** Do not let an advisory finding flip the verdict.
+
+State the bucket for every finding you record. The verdict from Layer A is: **any hard-fail finding → Layer-A FAIL**; otherwise Layer-A PASS (advisories, if any, ride along as notes into the `**Visual:**` sub-block's geometry table).
+
+#### Layer B — holistic vision review (pass path)
+
+If Layer A did not already hard-fail, take a screenshot **on the pass path** (`screenshot_page` → `artifacts/qa-run-TC-NNN-<UTC>.png`) — the documented exception to "screenshots only on FAIL" stated in [Why this engine drives in-thread](#why-this-engine-drives-in-thread-instead-of-via-per-scenario-subagents). **View** the screenshot and score the rendered layout against this **fixed rubric**:
+
+- **alignment** — controls and content line up on a sensible grid; nothing visibly askew.
+- **spacing / crowding** — adequate whitespace; no controls jammed together.
+- **overlap** — no controls visually sitting on top of one another.
+- **clipping** — no text or control cut off at an edge or container boundary.
+- **consistent sizing** — like controls are sized consistently; nothing collapsed or blown up.
+- **"controls look like controls"** — buttons/inputs/links render as recognizable, styled controls, not orphaned/unstyled fragments.
+
+A **rubric failure** (any criterion clearly violated in the rendered image) **FAILs the scenario.** Record the one-line rubric verdict and the saved screenshot path, then discard the image from working memory (observation discipline — don't retain it as a page dump).
+
+#### Wire the verdict
+
+- **A hard-fail Layer A probe OR a Layer B rubric failure → the scenario FAILs.** Use the existing FAIL shape (step/assertion table as recorded + the `**Screenshot:**` line, which for a Layer-B failure is the pass-path capture, for a Layer-A hard-fail a screenshot taken at failure time). Surface the offending probe/rubric criterion in the failure notes and the Defects table.
+- **Otherwise the scenario PASSes**, and the report carries the `**Visual:**` PASS-path sub-block per [`../../../wf/skills/qa-gen/references/report-format.md`](../../../wf/skills/qa-gen/references/report-format.md): `**Visual:** PASS`, `**Screenshot:**` (the pass-path capture), `**Geometry findings:**` (the compact table, or `none`), and `**Vision review:**` (the rubric verdict). Advisory Layer-A findings appear in that geometry table tagged `advisory` — present but non-failing.
+
+If the runtime can't take a screenshot or `run_playwright_code` is unavailable for the geometry probe, mark the scenario `BLOCKED · setup: visual verification unavailable (no screenshot / playwright)` rather than reporting a visual PASS you couldn't actually measure.
+
 ### 5b. Verdict block per scenario
 
 Record one block per scenario in `07_qa-report.md` under the appropriate suite section, in the per-suite-results format from [`../../../wf/skills/qa-gen/references/report-format.md`](../../../wf/skills/qa-gen/references/report-format.md):
 
-- PASS → one-line `All steps passed.` (with optional one-line note).
-- FAIL → full step table, observed values, screenshot path, failure notes.
+- PASS → one-line `All steps passed.` (with optional one-line note). **For a `**Visual:** yes` scenario, also attach the `**Visual:**` PASS-path sub-block** (screenshot path + geometry-findings table/`none` + vision-review verdict) beneath the one-line PASS — the documented exception to one-line-PASS defined in the report format.
+- FAIL → full step table, observed values, screenshot path, failure notes. A visual FAIL names the offending Layer A hard-fail probe or Layer B rubric criterion.
 - BLOCKED → block point + reason.
 
 Always include a `Fixtures:` line summarizing what was set up and reverted (`none`, `precondition already met`, `cleared browser storage; re-authenticated`). Format details in [`references/preconditions.md`](references/preconditions.md#recording-fixtures-in-the-report).
@@ -281,6 +329,8 @@ After the loop completes (or stops at batch / abort):
 - **`run_playwright_code` returns unexpectedly large output.** Truncate at the source — write the script to project just the assertion's relevant fields, not the whole DOM. If you find yourself returning >2KB per assertion, the script is wrong; fix it.
 - **Production-URL guard fires on a fixture-bearing scenario.** A scenario needing a storage write against a production-shaped URL is BLOCKED with `setup: refused — app URL "<url>" looks like production`. The user must point creds at a non-production environment and re-run.
 - **Teardown fails for one scenario, run continues.** The Status flips to INCOMPLETE for the run. Subsequent scenarios still run — one polluted storage key shouldn't halt the whole pass.
+- **Scenario carries `**Visual:** yes`.** After its steps run, the visual-verification sub-phase (5v) runs: Layer A geometry probes (hard-fail set fails deterministically; advisory set is notes-only) and, if not already hard-failed, a Layer B pass-path screenshot + fixed-rubric vision review. A PASS attaches the `**Visual:**` evidence sub-block; a hard-fail probe or rubric failure FAILs the scenario. A scenario **without** the marker never enters 5v. Absolute-defect detection only — not pixel-diffing.
+- **Visual verification unavailable in the runtime** (no `screenshot_page`, or `run_playwright_code` can't run the geometry probe). Mark the visual scenario `BLOCKED · setup: visual verification unavailable (no screenshot / playwright)` — never report a visual PASS you couldn't measure.
 
 ---
 

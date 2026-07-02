@@ -179,8 +179,11 @@ Independent of the criteria and the scope, **every** `06_qa.md` ends with a `## 
 
 1. **`<target>` loads clean** — *always, every scope.* Priority **P1**. Navigate to the target route with the console and network panels cleared, then assert three things as separate steps: the primary content renders (no white screen / error page), the console logged no error-level entries during load, and no request failed or returned 4xx/5xx during load. Each assertion excludes anything matching `{qa-baseline-ignore}` and the expected auth/redirect calls.
 2. **Console & network clean across the full run** — *always, every scope.* Priority **P1**. Evaluated **after all other scenarios complete**: inspect every error-level console entry and every failed/4xx-5xx request that occurred *at any point during the session* — across all scenarios, not just one route — excluding `{qa-baseline-ignore}` and the expected auth/redirect calls. This is the catch-all for errors no individual step asserted against, and for leaks that surface only after the app has been driven for a while. The runners evaluate it last, from signals accumulated across the whole session, and attribute each finding to the scenario that was active when it fired.
+3. **`<target>` renders without visual defects** — *always, every scope, browser target only.* Priority **P1**. Carries the `**Visual:** yes` marker (see "The `**Visual:** yes` marker" below). Worded e.g. "`<target route>` renders without visual defects — no overlapping, clipped/truncated, or crowded/'stuck-together' controls; every control renders correctly (nothing orphaned, collapsed, or oversized)." A single browser scenario (no elaborate steps table): navigate to `<target route>`, then assert the rendered layout is free of the absolute visual defects listed. It carries `Validates: — (baseline health)` like the other two. The runner that owns the visual treatment (the execution engine) acts on the marker; `qa-gen` only writes it and does not know how the engine acts on it. **Skip this scenario entirely under the API-baseline / no-runnable-surface branches** — it is browser-only. **Scope boundary:** this asserts *absolute* visual-defect detection only (overlap, clipping/truncation, crowding, orphaned/mis-rendered controls, collapsed/oversized containers) — **not** visual-regression / golden-image pixel-diffing, which is out of scope.
 
-Number them in sequence after the spec scenarios (Baseline health is the last suite). Don't invent extra baseline scenarios beyond these two — keep the standing bar small and stable. If the task has no reachable route but has a callable endpoint/service, emit the **API baseline** scenario described above instead of these two. Only when the task has *no runnable surface of any kind* (pure library/helper work — no route, no endpoint, no service) emit the suite with a single scenario marked `[N/A: no runnable surface on this task]` and explain in one line, rather than omitting it.
+Number them in sequence after the spec scenarios (Baseline health is the last suite). Don't invent extra baseline scenarios beyond these three — keep the standing bar small and stable. If the task has no reachable route but has a callable endpoint/service, emit the **API baseline** scenario described above instead of these three (the visual-baseline is browser-only and is skipped). Only when the task has *no runnable surface of any kind* (pure library/helper work — no route, no endpoint, no service) emit the suite with a single scenario marked `[N/A: no runnable surface on this task]` and explain in one line, rather than omitting it.
+
+**The `**Visual:** yes` marker (generation contract).** A scenario may carry a `**Visual:** yes` marker line (alongside `**Priority:**`, and — for API scenarios — `**Type:** API`). The marker is a **generation-contract term**: a scenario carrying it receives the **visual treatment** at execution (a screenshot + geometry probes + a holistic vision review on the pass path, and a `**Visual:**` evidence sub-block in the report even on PASS — see [`references/report-format.md`](references/report-format.md)); a scenario **without** it stays **DOM-only**, exactly as scenarios behave today (no screenshot on a passing path, one-line PASS). `qa-gen` **writes** the marker on the standing visual-baseline scenario above (and may add it to any spec-traced browser scenario whose criterion is inherently about rendered appearance); it does **not** know how the engine acts on it — the marker is the contract boundary. Keep the term written exactly as `**Visual:** yes` so the execution engine and the report format key off it consistently. **Scope boundary:** the marker requests *absolute* visual-defect detection only — never visual-regression / golden-image pixel-diffing.
 
 ---
 
@@ -274,8 +277,9 @@ This plan is executed manually in a browser against the running app. Each scenar
 |---|---|
 | TC-NNN | `<target route>` loads clean — primary content renders + no console errors + no failed/4xx-5xx requests on load |
 | TC-NNN | Console & network clean across the full run — evaluated after all scenarios, session-wide |
+| TC-NNN | `<target route>` renders without visual defects (`**Visual:** yes`) — no overlap / clipping / crowding; controls render correctly (browser target only) |
 
-Not spec-traced — these assert a standing quality bar, not an `SC-N`. Known-benign noise is filtered via `{qa-baseline-ignore}`.
+Not spec-traced — these assert a standing quality bar, not an `SC-N`. Known-benign noise is filtered via `{qa-baseline-ignore}`. The visual-defect row carries `**Visual:** yes` and is present only for a browser target (omitted for the API-baseline / no-runnable-surface branches).
 
 ### Capability scenarios (present only when one or more capabilities contributed — omit otherwise)
 
@@ -381,6 +385,29 @@ Standing measurable checks — not derived from a spec criterion. Always present
 |---|---|---|
 | 1 | Review the Console for the entire session. | No error-level entries were logged during any scenario (warnings allowed), excluding the known-benign list. Each violation is attributed to the scenario that was active when it fired. |
 | 2 | Review the Network history for the entire session. | No request failed or returned 4xx/5xx during any scenario, excluding the known-benign list and the expected auth/redirect calls. |
+
+**Teardown:** none.
+
+---
+
+### TC-NNN: `<target route>` renders without visual defects
+
+**Validates:** — (baseline health)
+**Priority:** P1
+**Visual:** yes
+
+> **Visual scenario** — the `**Visual:** yes` marker requests the visual treatment at execution: a screenshot plus geometry probes and a holistic vision review on the pass path, and a `**Visual:**` evidence sub-block in the report even on PASS (see `references/report-format.md`). *Absolute* visual-defect detection only — not visual-regression / pixel-diffing.
+
+**Preconditions:**
+
+- Logged in; entity selected.
+- On a viewport wide enough to render the target's normal layout (note the width if the target is layout-sensitive).
+
+**Steps:**
+
+| # | Action | Expected Result |
+|---|---|---|
+| 1 | Navigate to `<target route>` and let it settle. | The rendered layout is free of absolute visual defects: no overlapping controls, no clipped/truncated text or controls, no crowded/"stuck-together" adjacent controls, nothing orphaned or mis-rendered, no collapsed or oversized containers. Controls look like controls and are correctly positioned. |
 
 **Teardown:** none.
 ```
