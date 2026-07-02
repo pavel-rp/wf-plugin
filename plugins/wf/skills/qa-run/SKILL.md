@@ -22,7 +22,7 @@ Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If absent, stop wit
 
 `06_qa.md` must exist in the task folder. If missing, stop: "No QA plan found. Run `/wf:qa-gen` first."
 
-The report shape is documented once in [`../wf:qa-gen/references/report-format.md`](../wf:qa-gen/references/report-format.md). This skill writes that exact shape — keep both in lockstep when editing.
+The report shape is documented once in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md). This skill writes that exact shape — keep both in lockstep when editing.
 
 ---
 
@@ -177,7 +177,7 @@ Announce: `TC-NNN: <verdict>`. Move to the next scenario.
 
 ### 3d. Incremental save
 
-After every 3 completed scenarios (or on `abort`), write the current state to `07_qa-report.md` in the format from [`../wf:qa-gen/references/report-format.md`](../wf:qa-gen/references/report-format.md). Scenarios not yet executed appear with verdict `Not run`. This is the safety net for crashed sessions.
+After every 3 completed scenarios (or on `abort`), write the current state to `07_qa-report.md` in the format from [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md). Scenarios not yet executed appear with verdict `Not run`. This is the safety net for crashed sessions.
 
 ---
 
