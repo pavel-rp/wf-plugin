@@ -72,6 +72,26 @@ All steps passed. <optional: one-line note if the tester or agent recorded one>
 
 **Fixtures:** none *(agentic mode only — manual mode omits this line)*
 
+#### TC-00N: <title> — PASS *(Visual: yes)*
+
+A scenario the plan marked `**Visual:** yes` attaches a **`**Visual:**` evidence sub-block even on PASS** — the one deliberate exception to the one-line-PASS rule (see Writing rules). PASS still gets its one line; the sub-block adds the visual evidence beneath it:
+
+`All steps passed.` <optional one-line note>
+
+**Visual:** PASS
+**Screenshot:** `artifacts/qa-run-TC-00N-<timestamp>.png` *(captured on the pass path for visual scenarios — the documented exception to "screenshots only on FAIL")*
+**Geometry findings:** *(on a clean pass with no advisory findings, write `**Geometry findings:** none` and omit the table; render the table below only when at least one advisory finding was recorded)*
+
+| Probe | Element(s) | Finding | Bucket |
+|---|---|---|---|
+| stuck-together (~0px gap) | `.toolbar button` × 2 | 0px gap where spacing expected | advisory |
+
+Only the **advisory** buckets can appear on a PASS — a **hard-fail** probe (overlap, collapsed 0-size, off-screen positioning) fails the scenario, so it never shows up in a PASS geometry table. Advisory buckets are `clipping / overflow`, `stuck-together (~0px gap)`, and `low contrast`; list only the ones actually found.
+
+**Vision review:** <rubric score / verdict — e.g. `PASS — alignment, spacing, no overlap/clipping, consistent sizing, controls read as controls`>
+
+Field names are stable and machine-readable: `**Visual:**`, `**Screenshot:**`, `**Geometry findings:**`, `**Vision review:**`. Real visual evidence is **agentic-only** — only the execution engine (`/wf:qa-auto` → `wf-caps:qa-engine`) captures the screenshot, runs the geometry probes, and scores the vision rubric, then writes the populated sub-block. A manual `/wf:qa-run` walkthrough has no way to produce the geometry probes or the rubric score, so in **manual mode** a `**Visual:** yes` scenario writes the sub-block with the field names preserved but their values set to `n/a` — `**Visual:** not evaluated — agentic only`, `**Screenshot:** n/a`, `**Geometry findings:** n/a`, `**Vision review:** n/a` — so the fields stay present and grep-stable rather than being dropped. Reviewers grep the field names either way. A visual scenario that **FAILs** keeps the ordinary FAIL shape below (step/assertion table + `**Screenshot:**`) — no change to FAIL. **Scope:** *absolute* visual-defect evidence only (overlap, clipping/truncation, crowding, orphaned/mis-rendered, collapsed/oversized) — never visual-regression / golden-image pixel-diff output.
+
 #### TC-002: <title> — FAIL@step2
 
 | # | Action | Expected | Observed | Verdict |
@@ -140,7 +160,7 @@ Omit the section entirely when the run is PASS — no defects, no header.
 
 ## Writing rules
 
-- **PASS scenarios get one line.** No step-by-step table for passing scenarios — keeps the report scannable.
+- **PASS scenarios get one line.** No step-by-step table for passing scenarios — keeps the report scannable. **Exception — visual scenarios:** a scenario carrying `**Visual:** yes` in the plan attaches a `**Visual:**` evidence sub-block (screenshot path + geometry-findings table or "none" + vision-review verdict) beneath its one-line PASS — see the `TC-00N — PASS (Visual: yes)` shape above. This is the only permitted addition to a PASS line, and it applies **only** to visual scenarios; every other PASS stays a single line. Real visual evidence is **agentic-only** — in a manual `/wf:qa-run` walkthrough a `**Visual:** yes` scenario writes the sub-block with the field names preserved but their values set to `n/a` (`**Visual:** not evaluated — agentic only`, `**Screenshot:** n/a`, `**Geometry findings:** n/a`, `**Vision review:** n/a`), so the stable, machine-readable fields stay greppable rather than being dropped (see the `TC-00N — PASS (Visual: yes)` shape above). Scope: absolute visual-defect evidence only, not visual-regression / pixel-diffing.
 - **FAIL / BLOCKED scenarios get the full step table or block.** Show exactly where it broke and what the observed result was.
 - **Traceability matrix is mandatory.** Every spec criterion (`SC-N`) appears, even when uncovered (mark `GAP`).
 - **Baseline health scenarios are exempt from the matrix.** Scenarios marked `Validates: —` (the standing Baseline health suite `/wf:qa-gen` adds to every plan — browser `Validates: — (baseline health)` or backend `Validates: — (baseline health, API)`) don't map to an `SC-N` — list them only under Results by Suite, never as a matrix row. Their FAILs still flow into the Defects table normally (severity from priority: P1→Medium, P2→Low). The full-run check (`Validates: — (baseline health, full-run)`) is evaluated *after the whole loop* from session-wide console/network capture, with each finding attributed to the TC that was active when it fired; it is `Not run` on a partial or `--only` pass, since a session-wide sweep is only meaningful over a complete run.
