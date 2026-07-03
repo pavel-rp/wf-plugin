@@ -1,9 +1,9 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.2.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface)
+**Version:** 2.3.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface)
 **Status:** authoritative source of truth for the core↔capability boundary semantics
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
-**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.2.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
+**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.3.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 
@@ -229,7 +229,7 @@ the authored artifacts.
 
 | Phase | SDD role | What a capability contributes here | Contribution kind |
 |-------|----------|------------------------------------|-------------------|
-| `spec` | Specify — **authoring hub** (WHAT) | conventions, constraints, acceptance criteria, invariants | authoring `guidance` |
+| `spec` | Specify — **authoring hub** (WHAT) | conventions, constraints, acceptance criteria, invariants; *also* the ownership anchor for the tracker `provider` (registration only — see "The tracker provider surface") | authoring `guidance`; `provider` (tracker surface) |
 | `plan` | Plan — derivation | correspondence / decomposition that can't live as spec prose | `artifact` |
 | `tasks` | Tasks — derivation | opinionated decomposition into small, independently testable units | `task-list` |
 | `implement` | Implement — **authoring hub** (HOW) | stack idioms / scaffolds; apply the plan's correspondence; *also* the ownership anchor for the delivery `provider` (registration only — see "The delivery provider surface") | authoring `guidance`; `provider` (delivery surface) |
@@ -258,7 +258,7 @@ without naming the capability. Each kind below states its phase(s) and its
 | `artifact` | `plan` | a structured correspondence table / document derived in the plan phase | **partition by ownership** — only the owning capability applies (scope below) |
 | `finding` | `verify` | a conformance issue asserted against the work under review | **aggregate** — every contributor's findings, **provenance-tagged** |
 | `scenario` | `qa-generation` | an executable check derived from an acceptance criterion | **aggregate** — every contributor's scenarios, provenance-tagged |
-| `provider` | `qa-execution`, `implement` | a capability that supplies *execution* (an engine or environment) or an *operation* (a delivery action), not a result | **partition by ownership** — one owner per surface (scope below); subagent dispatch (`qa-execution`) or direct resolve (`implement`, delivery surface — see below) |
+| `provider` | `qa-execution`, `implement`, `spec` | a capability that supplies *execution* (an engine or environment) or an *operation* (a delivery or tracker action), not a result | **partition by ownership** — one owner per surface (scope below); subagent dispatch (`qa-execution`) or direct resolve (`implement`, delivery surface; `spec`, tracker surface — see below) |
 | `article` | constitution (set up at `init`; enforced at `verify`) | a non-negotiable principle | **aggregate** with provenance; precedence rules below |
 
 Authoring `guidance` and `task-list` are **authoring-side** kinds the hubs and the
@@ -281,12 +281,12 @@ not a merge.
   offenders named. Two partitioned kinds carry an ownership **scope** token:
 
   - **`provider`** carries a **`surface`** token drawn from a small controlled
-    enum (`engine`, `host`, `delivery`, …). Two capabilities claiming the **same**
-    surface = validation error; **different** surfaces compose (e.g. one
-    capability owns `engine`, another owns `host`, a third owns `delivery`) —
-    ownership uniqueness is checked **by surface token, independent of which
-    phase(s) the claiming fragment is attached to** (see "The delivery provider
-    surface" below).
+    enum (`engine`, `host`, `delivery`, `tracker`, …). Two capabilities claiming the
+    **same** surface = validation error; **different** surfaces compose (e.g. one
+    capability owns `engine`, another owns `host`, a third owns `delivery`, a
+    fourth owns `tracker`) — ownership uniqueness is checked **by surface token,
+    independent of which phase(s) the claiming fragment is attached to** (see "The
+    delivery provider surface" and "The tracker provider surface" below).
   - **`artifact`** carries a **`source→target`** token pair drawn from a
     controlled vocabulary (e.g. `csharp→ts`). Ownership is whole-unit — a pair is
     owned entirely by one capability, never split. Overlap = an identical pair
@@ -359,6 +359,80 @@ again for the same artifact, the caller **reads the metadata line back first**;
 a present value means the operation already ran and is treated as
 already-published — it is never re-invoked. This is the caller-side idempotency
 guard for an operation whose provider has no idempotency of its own.
+
+---
+
+### The tracker provider surface
+
+Core has no vocabulary of its own for issue-tracker operations — creating a
+top-level work item, nesting a child work item beneath it, commenting, moving a
+status, attaching a link — so a capability that wants to bind that behaviour to
+core has nothing to attach to. The **tracker provider surface** is a `provider`
+fragment, scoped by the **`tracker`** `surface` token, that fills this gap using
+the same partitioned-ownership mechanism the `delivery` surface already uses —
+not a parallel mechanism.
+
+**Operation set — named abstractly, zero tracker-product strings, no plumbing
+exemption.** A capability owning the `tracker` surface implements:
+
+- `resolve_config` — read tracker configuration; report configured or
+  unconfigured (local-only).
+- `create_umbrella` — create the top-level work item for a task.
+- `create_child` — create a work item nested under a parent (used both for a
+  task's own child work items and for further nesting beneath those).
+- `update` — update fields on an existing work item.
+- `get` — fetch a work item's current state.
+- `list_children` — enumerate the existing child work items of a parent.
+- `post_comment` — post a comment on a work item.
+- `set_status` — move a work item to a named workflow status.
+- `attach_link` — attach an external URL to a work item.
+
+No operation name, and no prose describing it, may contain a concrete
+tracker-product name, API shape, or vocabulary term. "Work item", "umbrella",
+"child", and "status" are abstract vocabulary, not hits — a capability's own
+manifest and fragment prose is where any concrete tracker binds to these names.
+
+**Phase anchor — registration only, not a firing gate.** A `tracker`-surface
+`provider` fragment is attached at the `spec` phase (the SDD phase where a
+tracker operation is first exercised in practice — a task's umbrella/child work
+items are created at authoring time). Exactly like the `delivery` surface's
+`implement` anchor, this attachment is an **ownership anchor for registry
+validation only** — it does not restrict *when* a core skill may invoke a
+tracker operation. Any core skill, at any point in its own procedure, resolves
+the `tracker` surface directly, via the same "Direct provider resolution"
+procedure in `invocation-runtime.contract.md` the `delivery` surface already
+uses — this contract states the surface's existence and semantics; that
+document states how core reaches it.
+
+**The id-shape rule.** The active tracker capability supplies the shape of a
+task id (e.g. a tracker-native identifier format). When the registry has **no**
+active `tracker`-surface owner, core falls back to its own **local id scheme**:
+`T<NNN>` — scan the **task root** (`{task-root}`, the folder where per-task
+artifacts are written; core resolves it the same way every other core skill
+does, via its own config) for existing `T<NNN>`-prefixed task folders anywhere
+under it, take the highest existing number, increment by one, and zero-pad to
+3 digits. This is the same
+"empty table = fully generic core" guarantee the registry already states in
+general, applied concretely to task-id generation: an empty registry yields a
+deterministic local id with **no** tracker call at all.
+
+**Degradation rules.**
+
+- **Unconfigured tracker** — a silent local-only fallback. No prompt, no error;
+  every read and write proceeds against local artifacts alone.
+- **Mid-run provider failure** — an operation call that errors after a tracker
+  was configured **warns once**, naming the failing operation and the error,
+  then **continues local-only** for the remainder of the run. A tracker failure
+  never blocks a local artifact write.
+
+**Single-shot-publish idempotency.** A tracker write whose result is an id
+(`create_umbrella` and `create_child` are the canonical cases) has that returned
+id **recorded as a metadata line in the local artifact that triggered it** —
+the same `**<label>:** <value>` metadata-line shape the `delivery` surface's
+`pr-create` operation already uses. Before invoking that operation again for the
+same artifact/slot, the caller **reads the metadata line back first**; a present
+value means the operation already ran and is treated as already-published — it
+is never re-invoked.
 
 ---
 

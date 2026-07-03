@@ -77,6 +77,10 @@ assert "plugin-anchored resolves passes" pass-plugin-anchored.md - 0 "Validation
 # fragment at `implement`, scope `delivery`) validates clean — CHECK 5 is already
 # phase-agnostic, so this exercises the existing overlap check with no code change.
 assert "delivery surface single owner passes" pass-delivery.md - 0 "Validation passed"
+# WF-121: a single capability owning the tracker provider surface (a `provider`
+# fragment at `spec`, scope `tracker`) validates clean — same phase-agnostic CHECK 5
+# path as delivery, exercised with a second surface token and a second phase.
+assert "tracker surface single owner passes" pass-tracker.md - 0 "Validation passed"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
@@ -91,6 +95,8 @@ assert "provider overlap named"       fail-provider-overlap.md - 1 "engine-owner
 assert "artifact overlap named"       fail-artifact-overlap.md - 1 "artifact-owner" "artifact-owner-2" "csharp→ts"
 # WF-120: two capabilities both claiming the delivery provider surface, both named.
 assert "delivery overlap named"       fail-delivery-overlap.md - 1 "delivery-owner" "delivery-owner-2" "delivery" "must not overlap"
+# WF-121: two capabilities both claiming the tracker provider surface, both named.
+assert "tracker overlap named"        fail-tracker-overlap.md  - 1 "tracker-owner" "tracker-owner-2" "tracker" "must not overlap"
 assert "bad phase named"              fail-bad-phase.md     - 1 "bad-phase" "unknown phase" "deploy"
 assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unknown contribution-kind" "assertion"
 # Glob metacharacters must NOT bypass the phase/kind allowlist. The interpolated
