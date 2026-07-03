@@ -1,9 +1,9 @@
 # Capability invocation runtime (the registry-iterating, per-phase-injecting substrate)
 
-**Version:** 2.2.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface)
+**Version:** 2.3.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface)
 **Status:** authoritative source of truth for HOW a core skill invokes active capabilities at a phase
 **Supersedes:** `invocation-mechanism.contract.md` (v1.0.0, WF-10) — the single-manifest, three-named-seam runtime, kept intact as the frozen N=1 substrate this generalises
-**Executes the port:** `capability-registry.contract.md` (v2.2.0, WF-21; WF-99; WF-120) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
+**Executes the port:** `capability-registry.contract.md` (v2.3.0, WF-21; WF-99; WF-120; WF-121) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 
@@ -239,45 +239,53 @@ is a **registry-validation error**, owned by the validator (WF-2's registry pass
 WF-28), which names both offenders. The runtime assumes a validated registry and
 applies the single owner. Two partitioned kinds carry an ownership **scope** token:
 
-- **`provider`** (at `qa-execution`, and `implement` for the delivery surface —
-  see below) carries a **`surface`** enum token. Different surfaces compose —
-  distinct owners coexist; the same surface claimed twice is the validator's
-  error, not a runtime merge. Ownership uniqueness is checked **by surface token
-  alone, across the whole registry, independent of which phase(s) the claiming
-  row is attached to** — a `qa-execution` row and an `implement` row never
-  collide merely for sharing a phase; they collide only if they share a
-  `surface` value. `qa-execution`'s `provider` dispatches by subagent when its
-  phase fires; the `delivery` surface (`implement`) is instead reached via
-  **direct provider resolution** (see below) — a phase-independent invocation
-  mode, not a runtime merge or a second aggregation policy.
+- **`provider`** (at `qa-execution`, `implement` for the delivery surface, and
+  `spec` for the tracker surface — see below) carries a **`surface`** enum
+  token. Different surfaces compose — distinct owners coexist; the same
+  surface claimed twice is the validator's error, not a runtime merge.
+  Ownership uniqueness is checked **by surface token alone, across the whole
+  registry, independent of which phase(s) the claiming row is attached to** —
+  a `qa-execution` row, an `implement` row, and a `spec` row never collide
+  merely for sharing a phase; they collide only if they share a `surface`
+  value. `qa-execution`'s `provider` dispatches by subagent when its phase
+  fires; the `delivery` surface (`implement`) and the `tracker` surface
+  (`spec`) are instead reached via **direct provider resolution** (see below) —
+  a phase-independent invocation mode, not a runtime merge or a second
+  aggregation policy.
 - **`artifact`** (at `plan`) carries a **`source→target`** token pair. A pair is owned
   whole by one capability; an identical pair claimed twice is the validator's error.
 
 ---
 
-## Direct provider resolution (the delivery invocation mode)
+## Direct provider resolution (the delivery and tracker invocation modes)
 
 The five moving parts above assume a phase *fires* and its contributors
 *aggregate*. That model fits `qa-execution`'s `provider` (invoked when the
-`qa-execution` phase fires) but not the **delivery** `provider` surface defined
-in `capability-registry.contract.md` ("The delivery provider surface"): a
-delivery operation (branch/commit/push/PR, or a read like workspace-root
-resolution) is needed whenever a core skill needs it — id inference can happen
-at any phase, and `branch` / `commit` / `pr`-style skill bodies invoke a
-delivery operation directly, not as a side effect of a phase firing.
+`qa-execution` phase fires) but not the **delivery** or **tracker** `provider`
+surfaces defined in `capability-registry.contract.md` ("The delivery provider
+surface", "The tracker provider surface"): a delivery operation (branch/commit/
+push/PR, or a read like workspace-root resolution) or a tracker operation
+(create/update/comment/status/link on a work item) is needed whenever a core
+skill needs it — id inference can happen at any phase, `branch` / `commit` /
+`pr`-style skill bodies invoke a delivery operation directly, and `ts` / `tp` /
+`ti` / `tf`-style skill bodies invoke a tracker operation directly — none of
+these are a side effect of a phase firing.
 
 **Direct provider resolution** is the alternate entry point a core skill uses to
-reach the `delivery` surface. It reuses three of the five primitives verbatim and
-skips the other two:
+reach the `delivery` or `tracker` surface — the same mechanism serves both; a
+surface is not a reason for a second procedure. It reuses three of the five
+primitives verbatim and skips the other two:
 
 1. **Registry iteration** — unchanged (primitive 1).
 2. **Per-capability manifest read** — unchanged (primitive 2).
 3. ~~Per-phase fragment collection~~ — **replaced** by a **scope-equality
    filter**: instead of selecting rows whose `phase` equals a firing phase, the
    skill selects the row(s) where `contribution-kind = provider` **and**
-   `scope = delivery`, across the whole registry, regardless of that row's
-   `phase` value. (The `implement` phase value on a delivery row is a
-   registration anchor for the validator, not a filter condition here.)
+   `scope = delivery` (or `scope = tracker`, for a skill that needs the tracker
+   surface), across the whole registry, regardless of that row's `phase` value.
+   (The `implement` phase value on a delivery row, and the `spec` phase value on
+   a tracker row, are registration anchors for the validator, not filter
+   conditions here.)
 4. **Per-fragment dispatch** — unchanged (primitive 4): `inline:` read-and-follow,
    or `subagent:` via the Task tool, exactly as any other fragment dispatches.
 5. ~~Aggregation~~ — **skipped**. Partitioned ownership (enforced by the
@@ -287,21 +295,24 @@ skips the other two:
    result.
 
 **Unconfigured case.** When the scope-equality filter matches **zero** rows (no
-active capability owns the `delivery` surface), the outcome is structurally the
-same "zero matching contributors" shape the § no-op path already defines for
-phase-firing (its case 3 is the phase-filtered instance; this is the
-scope-filtered instance of the same "nothing matched" shape) — no new no-op
-*case* is introduced, only a second filter that can produce it.
-`capability-registry.contract.md`'s "The delivery provider surface" states what
-that no-op resolves to operationally (the workspace-root plain-directory
-fallback for reads; a plain "no delivery provider registered" statement naming
-the remedy for a user-invoked write).
+active capability owns the `delivery` surface, or none owns the `tracker`
+surface), the outcome is structurally the same "zero matching contributors"
+shape the § no-op path already defines for phase-firing (its case 3 is the
+phase-filtered instance; this is the scope-filtered instance of the same
+"nothing matched" shape) — no new no-op *case* is introduced, only a second
+filter that can produce it. `capability-registry.contract.md`'s "The delivery
+provider surface" and "The tracker provider surface" state what that no-op
+resolves to operationally for each surface (the workspace-root plain-directory
+fallback and a plain "no delivery provider registered" statement for delivery;
+the silent local-only `T<NNN>` id fallback and degradation rules for tracker).
 
 Direct provider resolution introduces no new primitive and no new aggregation
 policy — it is the existing registry-iteration / manifest-read / dispatch
-substrate, entered through a scope filter instead of a phase filter, for the one
+substrate, entered through a scope filter instead of a phase filter, for the
 partitioned kind where "at most one match, invoked on demand" is the operative
-shape rather than "every contributor at a firing phase."
+shape rather than "every contributor at a firing phase." A second surface
+(`tracker`) plugging into the same filter, unchanged, is exactly what proves the
+mechanism generalises — not a reason to add a third procedure.
 
 ---
 
