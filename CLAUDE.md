@@ -116,6 +116,8 @@ Phases are the **injection points**. A capability touches only the phases it has
 
 Empty table = fully generic core. Name is decoupled from path so the binding survives a capability moving to a standalone plugin. Table order = deterministic injection order (general → specific).
 
+A `Path` is one of two shapes, **both runtime-resolved**: a repo-relative folder (for a vendored capability), or a **plugin-anchored** `plugin:<plugin-name>/<rel-path>` token (for a capability shipping inside an installed plugin). The plugin-anchored token resolves through a `## Plugin Roots` mapping (`| Plugin | Root |`) co-located with the registry — the `<plugin-name>→install-root` datum `${CLAUDE_PLUGIN_ROOT}` alone can't supply (it resolves only the *executing* plugin's root). That mapping is **per-machine, gitignored, and written by a pack's own init skill** — e.g. `/wf-caps:init` records wf-caps's install root and self-registers its capabilities as plugin-anchored rows, collapsing onboarding to one command (no hand-edited `_local/config.md`); core only reads the generic map. Full semantics: `capability-registry.contract.md` §"The `## Plugin Roots` mapping".
+
 **Capability kinds:**
 
 | Kind | Provides | Composes via | Example |

@@ -1,6 +1,6 @@
 {
   "name": "wf-caps",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "wf default-capabilities pack — non-core, stack/domain-specific capabilities for the wf workflow, composed with wf core via the capability registry. Ships the migration capability (migration-map: C#/MVC -> Angular/TS mapping), the browser-qa capability (qa-engine: stack-agnostic browser-automation QA engine), the angular stack capability (qa-host + test-page: Angular test-host scaffolding, qa-execution host provider), and the node-ts stack capability (test-node: pure-helper Node test harness).",
   "author": {
     "name": "Pavel Kalabin",

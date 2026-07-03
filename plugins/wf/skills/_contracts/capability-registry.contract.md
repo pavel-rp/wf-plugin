@@ -1,9 +1,9 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.0.0 (WF-21)
+**Version:** 2.1.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping)
 **Status:** authoritative source of truth for the core↔capability boundary semantics
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
-**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.0.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
+**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.1.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 
@@ -97,7 +97,7 @@ One row per active capability:
 | Column | Meaning |
 |--------|---------|
 | `Capability` | The capability's **name** — its identity, decoupled from where it lives so the binding survives the capability moving into a standalone add-on plugin. Used to locate config, never to key a core code path. |
-| `Path` | The location of the capability's `manifest.md` and reference docs, in **one of two accepted shapes** (forward slashes in both): (a) a **repo-relative folder** — the path relative to the marketplace repo root (e.g. `plugins/wf-caps/capabilities/migration`); or (b) a **plugin-anchored token** of the shape `plugin:<plugin-name>/<rel-path>`, naming a capability that lives *inside* an installed plugin (`<plugin-name>` is the plugin's manifest name; `<rel-path>` is forward-slash, relative to that plugin's install root). Core reads the manifest at `<path>/manifest.md`; it never hardcodes a folder. See "The two `Path` shapes" below for which shape is runtime-resolved today. |
+| `Path` | The location of the capability's `manifest.md` and reference docs, in **one of two accepted shapes** (forward slashes in both): (a) a **repo-relative folder** — the path relative to the marketplace repo root (e.g. `plugins/wf-caps/capabilities/migration`); or (b) a **plugin-anchored token** of the shape `plugin:<plugin-name>/<rel-path>`, naming a capability that lives *inside* an installed plugin (`<plugin-name>` is the plugin's manifest name; `<rel-path>` is forward-slash, relative to that plugin's install root). Core reads the manifest at `<path>/manifest.md`; it never hardcodes a folder. **Both shapes resolve at runtime** — the plugin-anchored token via the `## Plugin Roots` mapping (see "The two `Path` shapes" and "The `## Plugin Roots` mapping" below). |
 
 Registry semantics:
 
@@ -125,29 +125,93 @@ Registry semantics:
    capability; the empty registry is exactly v1's absent state. Backward
    compatibility is structural, not bolted on.
 
-### The two `Path` shapes (one runtime-resolved today, one forward-looking)
+### The two `Path` shapes (both runtime-resolved)
 
-The `Path` column accepts two token shapes, but only one is resolved at runtime today:
+The `Path` column accepts two token shapes; **both resolve at runtime** (WF-99):
 
-1. **Repo-relative folder — the only form resolved at runtime today.** A path
-   relative to the marketplace repo root (forward slashes). This is the form to use
-   for any capability registered today; it resolves in the marketplace checkout
-   exactly as v1's selector did. An existing repo-relative registry resolves with no
-   change — the second shape is **purely additive and backward-compatible.**
+1. **Repo-relative folder.** A path relative to the marketplace repo root (forward
+   slashes). It resolves in the marketplace checkout exactly as v1's selector did.
+   This is the form for a capability vendored in the repo. An existing repo-relative
+   registry resolves with **no change** — the second shape is **purely additive and
+   backward-compatible.**
 
-2. **Plugin-anchored token — `plugin:<plugin-name>/<rel-path>` — forward-looking,
-   runtime resolution deferred.** This shape names a capability living *inside* an
-   installed plugin, whose on-disk install root varies per machine. It is **recognized
-   registry vocabulary** so a registry can be authored against the multi-plugin future,
-   but its **runtime resolution is deferred to a follow-up issue** — core does not
-   resolve a plugin-anchored `Path` today.
+2. **Plugin-anchored token — `plugin:<plugin-name>/<rel-path>`.** This shape names a
+   capability living *inside* an installed plugin, whose on-disk install root varies
+   per machine. Core resolves it by looking `<plugin-name>` up in the **`## Plugin
+   Roots` mapping** (below), resolving `<root>/<rel-path>` and reading its
+   `manifest.md`. This is the form to use on a **plugin-only install**, where the
+   consuming repo does not vendor the plugin's `capabilities/` folder.
 
-   The reason resolution is deferred: `${CLAUDE_PLUGIN_ROOT}` resolves only to the
-   **executing** plugin's own install root, so a capability path inside a *sibling*
-   plugin (e.g. `wf` core reaching a capability that ships in `wf-caps`) cannot be
-   resolved from it. Cross-plugin resolution needs a `<plugin-name>` → install-root
-   mapping that does not yet exist; until that mapping lands, only the repo-relative
-   form is runtime-resolved.
+   **Why a mapping is needed (the datum core was missing).** `${CLAUDE_PLUGIN_ROOT}`
+   resolves only to the **executing** plugin's own install root, so a capability path
+   inside a *sibling* plugin (core reaching a capability that ships in a separate pack
+   plugin) cannot be resolved from it — core has no `<plugin-name>` → install-root
+   map of its own. The `## Plugin Roots` mapping supplies exactly that datum: it is
+   written by a **pack-owned init skill**, which runs with *its* `${CLAUDE_PLUGIN_ROOT}`
+   equal to the pack's install root and records it. Core then reads a generic
+   `<plugin-name>` → root table and resolves any plugin-anchored `Path` from it,
+   naming no concrete plugin.
+
+---
+
+### The `## Plugin Roots` mapping
+
+The datum that resolves a plugin-anchored `Path` is a second table, **co-located with
+the `## Capabilities` registry** at the `registryPath`-resolved location (default
+`_local/config.md`, gitignored):
+
+```markdown
+## Plugin Roots
+
+| Plugin     | Root                              |
+|------------|-----------------------------------|
+| <name>     | <absolute or repo-relative root>  |
+```
+
+| Column | Meaning |
+|--------|---------|
+| `Plugin` | The `<plugin-name>` used in a `plugin:<plugin-name>/<rel-path>` `Path` token — the plugin's manifest name. Matches the token's `<plugin-name>` segment verbatim. |
+| `Root` | That plugin's **install root** — the folder its `capabilities/` live under. **Per-machine.** |
+
+Mapping semantics:
+
+1. **Resolution.** For a registry row whose `Path` is `plugin:<name>/<rel-path>`, core
+   looks `<name>` up in this table and resolves `<root>/<rel-path>/manifest.md`. A
+   **repo-relative** `Root` is joined to the repo root; an **absolute** `Root` is used
+   as-is. A `plugin:` `Path` whose `<name>` has **no** row here is **unmapped** — the
+   validator errors on it (naming the plugin); the runtime **no-ops** that row
+   (fail-safe), exactly like a missing manifest.
+
+2. **`Root` shape — deliberately distinct from `Path`/`registryPath`.** `Root`
+   **may be absolute or drive-prefixed** (a plugin install root is absolute *by
+   nature*), unlike the `Path` column and `registryPath`, which forbid absolute paths
+   precisely so a *committed, repo-relative* location can never escape the repo. That
+   escape concern does not apply here: the mapping lives in gitignored, per-machine
+   `_local/`, and its whole purpose is to record a machine-specific install root. `Root`
+   is still rejected if it contains a `..` segment or a backslash (a residual traversal
+   guard; forward slashes only). Registry validation (WF-2's registry pass / WF-28)
+   enforces this `Root` shape.
+
+3. **Per-machine, gitignored, pack-written.** Because a `Root` is an absolute
+   machine-specific path, the mapping belongs under `_local/` (already gitignored) and
+   is **never** committed to `wf.config.js` or the registry `Path` column. A
+   **pack-owned init skill** writes and refreshes each row (its own install root can
+   move between machines / upgrades); **core never writes another plugin's root** — it
+   only reads the table. When the registry is relocated to a **committed** file via
+   `registryPath`, the machine-specific `## Plugin Roots` table must stay gitignored
+   (keep it in `_local/`); the default location already is.
+
+4. **No-op when absent.** A registry with only repo-relative `Path` rows needs no
+   `## Plugin Roots` table at all — an absent or empty table simply means no
+   plugin-anchored row can resolve, and repo-relative resolution is unchanged. This
+   mirrors the empty-registry / inert-phase no-op: the mapping matters only when a
+   `plugin:` `Path` is present.
+
+The mapping names **no** concrete plugin or capability; it is the generic
+`<plugin-name>` → root shape every pack's install root plugs into. Its location and
+shape are fixed here (a downstream-visible contract, like a phase name); executing the
+resolution is owned by the runtime (`invocation-runtime.contract.md`), writing it by a
+pack-owned init skill, and checking it by the validator.
 
 ---
 
@@ -401,9 +465,10 @@ new vocabulary.
   generalisation is owned by **WF-22** (generalising the v1 substrate).
 - It is **not** a validator. The registry-level checks (unique names, names are
   filesystem-safe tokens, `registryPath` is a forward-slash repo-relative path with no
-  `..`/absolute prefix, paths exist and carry a manifest, no overlapping ownership
-  scopes, no contradictory articles, valid phase/kind references) are owned by
-  **WF-2's registry pass / WF-28**. The
+  `..`/absolute prefix, paths exist and carry a manifest — a plugin-anchored `Path`
+  resolved via the `## Plugin Roots` mapping, with a valid `Root` shape and no unmapped
+  plugin, no overlapping ownership scopes, no contradictory articles, valid phase/kind
+  references) are owned by **WF-2's registry pass / WF-28**. The
   per-capability profile check (a profile vs its contract) is unchanged.
 - It is **not** a capability. It names zero stack/domain/project concerns. Every
   concrete vocabulary, value, or example belongs in a capability's own contract,
