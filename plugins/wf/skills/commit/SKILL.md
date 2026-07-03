@@ -38,6 +38,21 @@ Emit the subagent's Final Output block (`COMMIT — committed`, `COMMIT — noth
 
 ---
 
+## Edge Cases
+
+The subagent owns every stop condition; each surfaces through the Final Output block below. It returns:
+
+- **Nothing staged or changed** — `COMMIT — nothing-to-commit`; a no-op commit path (a `--push` still syncs any unpushed commits).
+- **Not on the task branch** — the subagent invokes its branch gate (`wf:branch`); if that gate fails (e.g. a dirty tree blocks the switch), it returns `COMMIT — Error` with the branch reason. To commit into a task branch you must already be on it.
+- **Detached HEAD** — `COMMIT — Error`; task work cannot be committed from a detached HEAD.
+- **Unresolvable task ID** — `COMMIT — Error`; no ID was passed and none could be inferred from the current branch.
+- **Missing config / not a git repo** — `COMMIT — Error`; `_local/config.md` is absent (run `/wf:init` first) or the command ran outside a git repository.
+- **Commit failure** — `COMMIT — Error` with git's reason; a non-zero `git commit` exit aborts.
+- **Push failure under `--push`** — non-fatal to the commit; the `Push:` line reads `failed (<reason>)` while the commit itself stays intact.
+- **Index update failure** — non-fatal; the commit still succeeds and ` (index update failed)` is appended to the `Push:` line.
+
+---
+
 ## Final Output (emitted by the subagent)
 
 Success:
