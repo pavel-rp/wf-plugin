@@ -166,7 +166,7 @@ cap_names=()
 cap_paths=()
 
 in_table=0
-while IFS= read -r raw; do
+while IFS= read -r raw || [ -n "$raw" ]; do
   line="$(printf '%s' "$raw" | sed 's/\r$//')"
   case "$line" in
     '## Capabilities'*) in_table=1; continue ;;
@@ -208,6 +208,87 @@ if [ "${#cap_names[@]}" -eq 0 ]; then
 fi
 
 # ===========================================================================
+# Parse the `## Plugin Roots` table (WF-99) — the <plugin-name> → install-root
+# mapping that resolves a plugin-anchored `Path` (`plugin:<name>/<rel-path>`).
+# Co-located with `## Capabilities` at the registry file. Same block-scan style.
+# An absent/empty table means no plugin is mapped (only repo-relative Paths can
+# resolve). Parallel arrays hold each row's plugin name + root.
+# ===========================================================================
+pr_names=()
+pr_roots=()
+
+in_pr=0
+while IFS= read -r raw || [ -n "$raw" ]; do
+  line="$(printf '%s' "$raw" | sed 's/\r$//')"
+  case "$line" in
+    '## Plugin Roots'*) in_pr=1; continue ;;
+    '##'*) [ "$in_pr" -eq 1 ] && break ;;
+  esac
+  [ "$in_pr" -eq 1 ] || continue
+
+  case "$line" in \|*) ;; *) continue ;; esac
+  case "$line" in *[!\|:_\ -]*) ;; *) continue ;; esac
+
+  body="${line#|}"
+  p_name="${body%%|*}"
+  rest="${body#*|}"
+  p_root="${rest%%|*}"
+
+  p_name="$(trim "$p_name")"
+  p_root="$(trim "$p_root")"
+
+  [ "$p_name" = "Plugin" ] && continue
+  [ -z "$p_name" ] && continue
+
+  pr_names+=("$p_name")
+  pr_roots+=("$p_root")
+done < "$REGISTRY"
+
+# ---------------------------------------------------------------------------
+# CHECK 4a — plugin-root shape. A `Root` MAY be absolute or drive-prefixed (a
+# plugin install root is absolute by nature and lives in gitignored `_local/`),
+# so — unlike `Path`/`registryPath` — absolute is allowed. It must still not
+# contain a backslash or a `..` segment (forward slashes; no traversal).
+# ---------------------------------------------------------------------------
+i=0
+while [ "$i" -lt "${#pr_roots[@]}" ]; do
+  pn="${pr_names[$i]}"
+  prt="${pr_roots[$i]}"
+  bad_root=""
+  case "$prt" in *\\*) bad_root="contains a backslash (must use forward slashes)" ;; esac
+  if [ -z "$bad_root" ]; then
+    case "/$prt/" in */../*) bad_root="contains a '..' segment" ;; esac
+  fi
+  if [ -z "$prt" ] || [ "$prt" = "—" ]; then
+    err "plugin root for \`$pn\` is empty — every \`## Plugin Roots\` row needs a Root."
+  elif [ -n "$bad_root" ]; then
+    err "plugin root for \`$pn\` \`$prt\` is not a valid root: $bad_root."
+  else
+    ok "plugin root \`$pn\` → \`$prt\`."
+  fi
+  i=$((i + 1))
+done
+
+# Resolve a plugin name to its on-disk root via the `## Plugin Roots` mapping.
+# Echoes the resolved root (absolute as-is; repo-relative joined to REPO_ROOT);
+# returns non-zero (echoing nothing) when the plugin is unmapped.
+resolve_plugin_root() {
+  local needle="$1" i=0 r
+  while [ "$i" -lt "${#pr_names[@]}" ]; do
+    if [ "${pr_names[$i]}" = "$needle" ]; then
+      r="${pr_roots[$i]}"
+      case "$r" in
+        /* | [A-Za-z]:*) printf '%s' "$r" ;;
+        *)               printf '%s' "$REPO_ROOT/$r" ;;
+      esac
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+# ===========================================================================
 # CHECK 2 — capability names unique.
 # ===========================================================================
 i=0
@@ -243,10 +324,12 @@ done
 # ===========================================================================
 # CHECK 4 — declared paths exist and carry a manifest.md.
 #
-# Two `Path` shapes exist in the contract. The plugin-anchored token
-# `plugin:<name>/...` is recognized vocabulary but its on-disk resolution is
-# deferred — skip the disk check for it (do not error). The repo-relative
-# folder form resolves against REPO_ROOT and must hold a `manifest.md`.
+# Two `Path` shapes exist in the contract, and BOTH resolve (WF-99). The
+# repo-relative folder form resolves against REPO_ROOT. The plugin-anchored
+# token `plugin:<name>/<rel-path>` resolves via the `## Plugin Roots` mapping
+# (`<root>/<rel-path>`): an unmapped plugin, or a resolved path with no
+# `manifest.md`, is an error naming the offender. Every resolvable manifest is
+# added to the checkable set so CHECK 5-9 run against it too.
 # ===========================================================================
 manifest_files=()   # parallel to a filtered list of cap indices we can check
 checkable_idx=()
@@ -256,7 +339,26 @@ while [ "$i" -lt "${#cap_paths[@]}" ]; do
   n="${cap_names[$i]}"
   case "$p" in
     plugin:*)
-      ok "capability \`$n\` uses a plugin-anchored path \`$p\` — on-disk resolution deferred, skipped."
+      # plugin:<name>/<rel-path> — resolve via the `## Plugin Roots` mapping (WF-99).
+      tok="${p#plugin:}"        # <name>/<rel-path>
+      pl_name="${tok%%/*}"      # <name>
+      pl_rel="${tok#*/}"        # <rel-path>
+      if [ "$pl_name" = "$tok" ] || [ -z "$pl_rel" ] || [ -z "$pl_name" ]; then
+        err "capability \`$n\` has a malformed plugin-anchored path \`$p\` — expected \`plugin:<name>/<rel-path>\`."
+      elif ! pl_root="$(resolve_plugin_root "$pl_name")"; then
+        err "capability \`$n\` names plugin \`$pl_name\` in its path \`$p\`, but there is no \`## Plugin Roots\` entry for \`$pl_name\`."
+      else
+        folder="$pl_root/$pl_rel"
+        if [ ! -d "$folder" ]; then
+          err "capability \`$n\` plugin-anchored path \`$p\` does not resolve to a directory (looked in \`$folder\` via plugin root \`$pl_name\`)."
+        elif [ ! -f "$folder/manifest.md" ]; then
+          err "capability \`$n\` plugin-anchored path \`$p\` is missing a \`manifest.md\` (expected \`$folder/manifest.md\`)."
+        else
+          ok "capability \`$n\` plugin-anchored path \`$p\` resolves via plugin root \`$pl_name\` and carries a manifest.md."
+          manifest_files+=("$folder/manifest.md")
+          checkable_idx+=("$i")
+        fi
+      fi
       ;;
     "" | "—")
       err "capability \`$n\` has no Path in the registry."
@@ -307,7 +409,7 @@ while [ "$ci" -lt "${#checkable_idx[@]}" ]; do
   mf="${manifest_files[$ci]}"
 
   in_frag=0
-  while IFS= read -r raw; do
+  while IFS= read -r raw || [ -n "$raw" ]; do
     line="$(printf '%s' "$raw" | sed 's/\r$//')"
 
     # --- manifest key lines (anywhere in the file) -----------------------

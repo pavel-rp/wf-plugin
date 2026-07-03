@@ -205,12 +205,14 @@ Record the chosen rule (and the rejected candidates, if any) in the chat summary
 
 After the `## Capabilities` registry table exists (Phase 2) and before the constitution is established (Phase 7), execute the **profile-seeding convention** defined in `plugins/wf/skills/_contracts/capability-registry.contract.md` (§"The profile-seeding convention"). Do **not** re-derive its rules here — follow the convention **by name**; this phase only invokes it for every registered capability.
 
+> **Resolving a registry row's manifest path (used by this phase and Phase 6).** A row's `Path` is one of two shapes (`plugins/wf/skills/_contracts/capability-registry.contract.md` §"The two `Path` shapes"), **both resolved**: a **repo-relative** `Path` → `<repo-root>/<Path>/manifest.md`; a **plugin-anchored** `plugin:<name>/<rel-path>` → look `<name>` up in the **`## Plugin Roots`** mapping (co-located with the `## Capabilities` registry at the Phase 0 resolved location), then read `<root>/<rel-path>/manifest.md` (an absolute `Root` as-is; a repo-relative `Root` joined to the repo root). If a `plugin:` row's `<name>` has **no `## Plugin Roots` entry**, it is **unmapped** — **no-op that row** (skip; record `skipped — unmapped plugin root`), mirroring the runtime's fail-safe. This resolution names **no** concrete plugin or capability — it reads the generic `<plugin-name>→root` table.
+
 Iterate the registry rows at the Phase 0 resolved location and, for each row, apply the convention:
 
 1. **Read the registry rows.** Open the `## Capabilities` table at the resolved registry location and read its rows in order. Each row carries a `Capability` name and a `Path`.
    - **Empty (header-only) or absent table ⇒ seed nothing** — no destination is created. This is the inert no-op; report "none" in the Final Output. (Matches the contract's no-op-when-absent rule.)
 
-2. **Per row, read the manifest.** Read `<Path>/manifest.md` (forward-slash, repo-relative — the only `Path` shape resolved at runtime today). If the manifest does **not** declare a `profile-template:` field, **no-op** for this capability (skip — no destination, no placeholder) and record `skipped — no template`.
+2. **Per row, read the manifest.** Read the row's manifest resolved per "Resolving a registry row's manifest path" above (repo-relative or plugin-anchored via `## Plugin Roots`; an **unmapped** `plugin:` row no-ops → record `skipped — unmapped plugin root`). If the manifest does **not** declare a `profile-template:` field, **no-op** for this capability (skip — no destination, no placeholder) and record `skipped — no template`.
 
 3. **Per declaring capability, derive the deterministic destination.** When the manifest declares `profile-template:`, derive the destination **keyed on the registry `Capability` column** (its stable identity — never the `Path`):
 
@@ -288,8 +290,9 @@ the no-name discipline on Phase 2.5 above and `verify-spec`'s registry iteration
 1. **Read the `## Capabilities` registry** at the Phase 0 resolved location and iterate its
    rows **in order**. **Empty (header-only) or absent table ⇒ skip silently** (the inert
    no-op — nothing is appended).
-2. **Per row, read `<Path>/manifest.md`** (forward-slash, repo-relative — the only `Path`
-   shape resolved at runtime today) and **resolve that capability's profile** via the
+2. **Per row, read the manifest** resolved per Phase 2.5's "Resolving a registry row's
+   manifest path" note (repo-relative or plugin-anchored via `## Plugin Roots`; an
+   **unmapped** `plugin:` row is skipped) and **resolve that capability's profile** via the
    profile-seeding convention defined in
    `plugins/wf/skills/_contracts/capability-registry.contract.md` — override
    `_local/profiles/<Capability>.profile.json` > the capability's default template — keyed
@@ -355,7 +358,7 @@ Actions:
 
 Registry: <resolved registry location> (<default | configured | rejected → fell back to default>)
 Capability profiles:
-- <capability-name> — <seeded override [seeded by <model id>] | default in use | skipped — no template | skipped — unsafe capability name>
+- <capability-name> — <seeded override [seeded by <model id>] | default in use | skipped — no template | skipped — unsafe capability name | skipped — unmapped plugin root>
   (repeat one line per registered capability; "none" when the registry is empty. Append `seeded by <model id>` **only** to a `seeded override` row whose profile format has no schema-permitted attribution slot — see Phase 2.5 step 5; every other outcome carries no separate seeding-model stamp (a seeded markdown/prose profile records its model in its own in-file `**Model:**` line).)
 
 Verify Command: <detected command>

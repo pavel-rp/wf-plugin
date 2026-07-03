@@ -1,9 +1,9 @@
 # Capability invocation runtime (the registry-iterating, per-phase-injecting substrate)
 
-**Version:** 2.0.0 (WF-22)
+**Version:** 2.1.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping)
 **Status:** authoritative source of truth for HOW a core skill invokes active capabilities at a phase
 **Supersedes:** `invocation-mechanism.contract.md` (v1.0.0, WF-10) — the single-manifest, three-named-seam runtime, kept intact as the frozen N=1 substrate this generalises
-**Executes the port:** `capability-registry.contract.md` (v2.0.0, WF-21) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
+**Executes the port:** `capability-registry.contract.md` (v2.1.0, WF-21; WF-99) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 
@@ -101,17 +101,22 @@ change to how the registry is read. The registry shape and column meaning are fi
 - Each row carries a `Capability` **name** and a `Path`. Core uses the
   path to locate the manifest; it **never** hardcodes a folder, and it **never** uses
   the name to key a code path (see "Generic-only branch rule").
-- **`Path` resolution — repo-relative only today.** The port
+- **`Path` resolution — both shapes (WF-99).** The port
   (`capability-registry.contract.md`) defines `Path` as accepting two shapes: a
   repo-relative folder and a plugin-anchored token `plugin:<plugin-name>/<rel-path>`.
-  This runtime resolves the **repo-relative form only**; the plugin-anchored token is
-  recognized registry vocabulary whose **runtime resolution is deferred** (see the
-  port's "The two `Path` shapes"). The deferral reason is the same:
-  `${CLAUDE_PLUGIN_ROOT}` resolves only to the **executing** plugin's install root, so
-  a sibling-plugin capability path cannot be resolved from it without a
-  `<plugin-name>` → install-root mapping that does not yet exist. Existing
-  repo-relative resolution behaviour is **unchanged** — this is an additive deferral
-  note, not a change to how a repo-relative `Path` resolves.
+  This runtime resolves **both**. A **repo-relative** `Path` resolves against the repo
+  root, unchanged. A **plugin-anchored** `Path` resolves via the port's **`## Plugin
+  Roots` mapping** (co-located with the registry at the `registryPath`-resolved
+  location): core looks `<plugin-name>` up in that table, joins `<root>/<rel-path>`
+  (an absolute `Root` as-is; a repo-relative `Root` against the repo root), and reads
+  its `manifest.md`. This supplies the `<plugin-name>` → install-root datum
+  `${CLAUDE_PLUGIN_ROOT}` alone could not (it resolves only to the *executing* plugin's
+  root); the mapping is written by a pack-owned init skill, core only reads it. A
+  plugin-anchored `Path` whose `<plugin-name>` has **no** `## Plugin Roots` row is
+  **unmapped** → the row **no-ops** (fail-safe, same as a missing manifest; the
+  validator is what errors on it). Existing repo-relative resolution behaviour is
+  **unchanged** — this is an additive resolution rule, not a change to how a
+  repo-relative `Path` resolves.
 - **Registry order is the injection order** — general → specific. Core walks the rows
   top to bottom and preserves that order through aggregation.
 
@@ -137,10 +142,12 @@ path under that row's path:
 
 Core reads `<path>/manifest.md` to learn which fragments this capability attaches to
 which phases. It does **not** scan, glob, or guess — the path is fixed by the port
-contract, so each read is a single deterministic read. Here `<path>` is the
-registry row's **repo-relative** `Path` — the only form this runtime resolves today
-(the plugin-anchored `plugin:<plugin-name>/<rel-path>` token's resolution is deferred,
-per §1).
+contract, so each read is a single deterministic read. Here `<path>` is the registry
+row's `Path`, resolved per §1 — a **repo-relative** `Path` against the repo root, or a
+**plugin-anchored** `plugin:<plugin-name>/<rel-path>` token via the `## Plugin Roots`
+mapping (`<root>/<rel-path>`). An **unmapped** plugin-anchored `Path` resolves to no
+readable manifest → this capability contributes **nothing** for the invocation (the
+no-op path below applies to it).
 
 The manifest's **fragments table** has the v2 schema fixed by
 `capability-registry.contract.md`:
@@ -248,7 +255,7 @@ result of the firing kind's declared shape and lets the surrounding SDD skeleton
 proceed exactly as if nothing were attached) in any of these cases:
 
 1. the `## Capabilities` registry is **empty or absent** (zero rows to iterate), **or**
-2. a registry row's manifest at `<path>/manifest.md` does **not exist**, **or**
+2. a registry row's manifest at `<path>/manifest.md` does **not exist** — including a plugin-anchored `Path` whose `<plugin-name>` is **unmapped** in `## Plugin Roots`, which resolves to no readable manifest (fail-safe; the validator errors on it), **or**
 3. a manifest exists but has **no fragment row** for the firing phase, **or**
 4. a fragment row exists but its `dispatch` is neither `inline:` nor `subagent:` (a malformed or unrecognized kind — see fail-safe).
 

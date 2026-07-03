@@ -16,6 +16,7 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 
 | Skill | Capability | What it is |
 |---|---|---|
+| `/wf-caps:init` | (pack) | one-command onboarding — registers the pack's capabilities into the downstream `## Capabilities` registry and records the pack's install root in `## Plugin Roots`, so core resolves them on a plugin-only install (no hand-edited `_local/config.md`) |
 | `/wf-caps:migration-map` | migration | 1:1 C#/MVC -> Angular/TS mapping table |
 | `/wf-caps:qa-engine` | browser-qa | stack-agnostic browser-automation QA engine — the `qa-execution` provider core's `/wf:qa-auto` dispatches to |
 | `/wf-caps:qa-host` | angular | routed Angular test-host scaffolder (+ ephemeral backend-controller analog) — the `qa-execution` `surface: host` provider |
@@ -37,8 +38,18 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 
 ### Registering a capability downstream
 
-To activate a capability in a consuming project, add a row to that project's
-`_local/config.md` `## Capabilities` table — the path is repo-relative (forward slashes):
+**One command (recommended): `/wf-caps:init`.** After `/wf:init` has bootstrapped the
+repo, run `/wf-caps:init` — it registers every capability the pack ships (or a subset you
+name) as **plugin-anchored** rows (`plugin:wf-caps/capabilities/<name>`), records the
+pack's install root in a gitignored `## Plugin Roots` mapping, and seeds each capability's
+profile. Core resolves those rows through the mapping, so this works on a **plugin-only
+install** where the consuming repo does **not** vendor `plugins/wf-caps/...`. Re-run after a
+pack upgrade to refresh the install root; it is idempotent. See
+`plugins/wf/skills/_contracts/capability-registry.contract.md` §"The `## Plugin Roots` mapping".
+
+**Manual (escape hatch):** when the pack **is** vendored in the consuming repo, you can
+instead add a repo-relative row to the project's `_local/config.md` `## Capabilities` table
+by hand (forward slashes):
 
 ```markdown
 ## Capabilities

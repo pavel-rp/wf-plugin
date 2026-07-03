@@ -70,6 +70,9 @@ assert "multi-row non-overlap passes" pass-multi.md  - 0 "Validation passed"
 # WF-26: angular (provider surface: host) + node-ts (skills-only) compose with
 # browser-qa (provider surface: engine) — different surfaces, no partition collision.
 assert "stack caps compose passes"    pass-stack.md  - 0 "Validation passed" "angular" "node-ts"
+# WF-99: a plugin-anchored Path (`plugin:testpkg/caps/solo`) resolves via the
+# co-located `## Plugin Roots` mapping to the real caps/solo manifest.
+assert "plugin-anchored resolves passes" pass-plugin-anchored.md - 0 "Validation passed" "testpkg"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
@@ -93,6 +96,15 @@ assert "glob kind rejected"           fail-glob-kind.md     - 1 "glob-kind" "unk
 assert "unsatisfied requires named"   fail-requires.md      - 1 "needs-dep" "absent-dep"
 assert "co-active conflicts named"    fail-conflicts.md     - 1 "conflicter" "solo" "declares a conflict"
 assert "article contradiction named"  fail-article.md       - 1 "article-yes" "article-no" "commit-signing"
+# WF-99: plugin-anchored resolution failures — unmapped plugin, and mapped-but-dangling.
+assert "unmapped plugin root named"   fail-plugin-root-missing.md  - 1 "testpkg" "Plugin Roots"
+assert "dangling plugin manifest named" fail-plugin-root-dangling.md - 1 "ghost" "does not resolve to a directory"
+# WF-99: mapped plugin, resolved dir exists but no manifest.md.
+assert "plugin manifest missing named" fail-plugin-manifest-missing.md - 1 "nomani" "manifest.md"
+# WF-99: CHECK 4a plugin-root shape — empty / backslash / '..' segment.
+assert "plugin root empty named"      fail-plugin-root-empty.md     - 1 "wf-caps" "needs a Root"
+assert "plugin root backslash named"  fail-plugin-root-backslash.md - 1 "wf-caps" "backslash"
+assert "plugin root dotdot named"     fail-plugin-root-dotdot.md    - 1 "wf-caps" "'..' segment"
 
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
