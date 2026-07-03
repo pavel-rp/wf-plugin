@@ -1,9 +1,9 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.1.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping)
+**Version:** 2.2.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface)
 **Status:** authoritative source of truth for the core↔capability boundary semantics
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
-**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.1.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
+**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.2.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 
@@ -232,7 +232,7 @@ the authored artifacts.
 | `spec` | Specify — **authoring hub** (WHAT) | conventions, constraints, acceptance criteria, invariants | authoring `guidance` |
 | `plan` | Plan — derivation | correspondence / decomposition that can't live as spec prose | `artifact` |
 | `tasks` | Tasks — derivation | opinionated decomposition into small, independently testable units | `task-list` |
-| `implement` | Implement — **authoring hub** (HOW) | stack idioms / scaffolds; apply the plan's correspondence | authoring `guidance` |
+| `implement` | Implement — **authoring hub** (HOW) | stack idioms / scaffolds; apply the plan's correspondence; *also* the ownership anchor for the delivery `provider` (registration only — see "The delivery provider surface") | authoring `guidance`; `provider` (delivery surface) |
 | `verify` | wf extension — checking | assert conformance to the spec + spec-derived invariants | `finding` |
 | `qa-generation` | wf extension — checking | scenarios derived from acceptance criteria | `scenario` |
 | `qa-execution` | wf extension — provider | the execution engine + environment | `provider` |
@@ -258,7 +258,7 @@ without naming the capability. Each kind below states its phase(s) and its
 | `artifact` | `plan` | a structured correspondence table / document derived in the plan phase | **partition by ownership** — only the owning capability applies (scope below) |
 | `finding` | `verify` | a conformance issue asserted against the work under review | **aggregate** — every contributor's findings, **provenance-tagged** |
 | `scenario` | `qa-generation` | an executable check derived from an acceptance criterion | **aggregate** — every contributor's scenarios, provenance-tagged |
-| `provider` | `qa-execution` | a capability that supplies *execution* (an engine or environment), not a result | **partition by ownership** — one owner per surface (scope below); subagent dispatch |
+| `provider` | `qa-execution`, `implement` | a capability that supplies *execution* (an engine or environment) or an *operation* (a delivery action), not a result | **partition by ownership** — one owner per surface (scope below); subagent dispatch (`qa-execution`) or direct resolve (`implement`, delivery surface — see below) |
 | `article` | constitution (set up at `init`; enforced at `verify`) | a non-negotiable principle | **aggregate** with provenance; precedence rules below |
 
 Authoring `guidance` and `task-list` are **authoring-side** kinds the hubs and the
@@ -281,9 +281,12 @@ not a merge.
   offenders named. Two partitioned kinds carry an ownership **scope** token:
 
   - **`provider`** carries a **`surface`** token drawn from a small controlled
-    enum (`engine`, `host`, …). Two capabilities claiming the **same** surface =
-    validation error; **different** surfaces compose at `qa-execution` (e.g. one
-    capability owns `engine`, another owns `host`).
+    enum (`engine`, `host`, `delivery`, …). Two capabilities claiming the **same**
+    surface = validation error; **different** surfaces compose (e.g. one
+    capability owns `engine`, another owns `host`, a third owns `delivery`) —
+    ownership uniqueness is checked **by surface token, independent of which
+    phase(s) the claiming fragment is attached to** (see "The delivery provider
+    surface" below).
   - **`artifact`** carries a **`source→target`** token pair drawn from a
     controlled vocabulary (e.g. `csharp→ts`). Ownership is whole-unit — a pair is
     owned entirely by one capability, never split. Overlap = an identical pair
@@ -291,6 +294,71 @@ not a merge.
 
 Start with the minimal scope vocabulary above; upgrade to a richer scope schema
 only when a real second owner of the same surface or pair appears.
+
+---
+
+### The delivery provider surface
+
+Core has no vocabulary of its own for version-control / delivery operations —
+creating a branch, committing, pushing, opening or detecting a pull request — so
+a capability that wants to bind that behaviour to core has nothing to attach to.
+The **delivery provider surface** is a `provider` fragment, scoped by the
+**`delivery`** `surface` token, that fills this gap using the same
+partitioned-ownership mechanism `qa-execution`'s `engine` / `host` surfaces
+already use — not a parallel mechanism.
+
+**Operation set — named abstractly, zero git/gh strings, no plumbing
+exemption.** A capability owning the `delivery` surface implements:
+
+- **Write side:** `branch-create`, `branch-switch`, `commit`, `push-upstream`,
+  `pr-create`, `pr-detect`.
+- **Read side**, consumed by core (e.g. for id inference): `workspace-root-resolve`,
+  `current-branch-query`.
+
+No operation name, and no prose describing it, may contain a git/gh command
+string or a plumbing invocation. "Branch", "commit", "deliver", and "workspace
+root" are abstract vocabulary, not hits — a capability's own manifest and
+fragment prose is where any concrete tool binds to these names.
+
+**Phase anchor — registration only, not a firing gate.** A `delivery`-surface
+`provider` fragment is attached at the `implement` phase (the SDD phase where a
+delivery operation is actually exercised in practice — the tail of an
+implementation). Unlike `qa-execution`'s `provider`, which is fired as part of
+that phase's fragment collection, the `implement` phase attachment here is an
+**ownership anchor for registry validation only** — it does not restrict *when*
+a core skill may invoke a delivery operation. Any core skill, at any point in its
+own procedure, resolves the `delivery` surface directly. The runtime mechanics of
+that direct resolution are defined in `invocation-runtime.contract.md`'s "Direct
+provider resolution" section — this contract states the surface's existence and
+semantics; that document states how core reaches it.
+
+**Workspace-root plain-directory fallback.** When no active capability owns the
+`delivery` surface, `workspace-root-resolve` resolves the workspace root as a
+**plain directory** — no VCS invocation of any kind. This fallback is how core
+locates `wf.config.js` and `_local/` when running in bare-core mode (no delivery
+provider registered): the plain-directory resolution is not a degraded mode, it
+is the contract's defined behaviour for the unconfigured case.
+
+**Unconfigured-provider behaviour.**
+
+- **Reads** (`workspace-root-resolve`, `current-branch-query`) fall back
+  **silently** to the plain-directory path — no error, no warning. A read
+  operation always resolves to *something* usable.
+- A **write** operation (`branch-create`, `commit`, `push-upstream`, `pr-create`,
+  …) invoked by a user-initiated skill with **no** `delivery`-surface owner active
+  states **plainly** that no delivery provider is registered and **names the
+  remedy** (register a capability that owns the `delivery` surface in the
+  `## Capabilities` registry) — it does not fail silently or guess a fallback.
+
+**Single-shot-publish idempotency.** A delivery operation whose result is an
+id or URL (`pr-create` is the canonical case) has that returned id/URL
+**recorded as a metadata line in the local artifact that triggered it** — the
+same `**<label>:** <value>` metadata-line shape used elsewhere for per-artifact
+attribution (e.g. a model-attribution line). Before invoking that operation
+again for the same artifact, the caller **reads the metadata line back first**;
+a present value means the operation already ran and is treated as
+already-published — it is never re-invoked. This is the caller-side idempotency
+guard for an operation whose provider has no idempotency of its own.
 
 ---
 

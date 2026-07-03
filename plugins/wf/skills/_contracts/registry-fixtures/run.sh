@@ -73,6 +73,10 @@ assert "stack caps compose passes"    pass-stack.md  - 0 "Validation passed" "an
 # WF-99: a plugin-anchored Path (`plugin:testpkg/caps/solo`) resolves via the
 # co-located `## Plugin Roots` mapping to the real caps/solo manifest.
 assert "plugin-anchored resolves passes" pass-plugin-anchored.md - 0 "Validation passed" "testpkg"
+# WF-120: a single capability owning the delivery provider surface (a `provider`
+# fragment at `implement`, scope `delivery`) validates clean — CHECK 5 is already
+# phase-agnostic, so this exercises the existing overlap check with no code change.
+assert "delivery surface single owner passes" pass-delivery.md - 0 "Validation passed"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
@@ -85,6 +89,8 @@ assert "missing path named"           fail-missing-path.md  - 1 "ghost" "does no
 assert "missing manifest named"       fail-no-manifest.md   - 1 "no-manifest" "manifest.md"
 assert "provider overlap named"       fail-provider-overlap.md - 1 "engine-owner" "engine-owner-2" "provider surface" "must not overlap"
 assert "artifact overlap named"       fail-artifact-overlap.md - 1 "artifact-owner" "artifact-owner-2" "csharp→ts"
+# WF-120: two capabilities both claiming the delivery provider surface, both named.
+assert "delivery overlap named"       fail-delivery-overlap.md - 1 "delivery-owner" "delivery-owner-2" "delivery" "must not overlap"
 assert "bad phase named"              fail-bad-phase.md     - 1 "bad-phase" "unknown phase" "deploy"
 assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unknown contribution-kind" "assertion"
 # Glob metacharacters must NOT bypass the phase/kind allowlist. The interpolated
