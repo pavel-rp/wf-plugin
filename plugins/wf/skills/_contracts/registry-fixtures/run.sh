@@ -105,6 +105,7 @@ assert "plugin manifest missing named" fail-plugin-manifest-missing.md - 1 "noma
 assert "plugin root empty named"      fail-plugin-root-empty.md     - 1 "wf-caps" "needs a Root"
 assert "plugin root backslash named"  fail-plugin-root-backslash.md - 1 "wf-caps" "backslash"
 assert "plugin root dotdot named"     fail-plugin-root-dotdot.md    - 1 "wf-caps" "'..' segment"
+assert "plugin root duplicate named"  fail-plugin-root-dup.md       - 1 "wf-caps" "duplicate plugin root name"
 
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"

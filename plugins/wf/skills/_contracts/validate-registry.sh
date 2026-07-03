@@ -269,6 +269,23 @@ while [ "$i" -lt "${#pr_roots[@]}" ]; do
   i=$((i + 1))
 done
 
+# ---------------------------------------------------------------------------
+# CHECK 4b — plugin-root names unique. A duplicate `Plugin` key would make
+# resolve_plugin_root silently pick the first match and hide a misconfigured
+# mapping, so duplicates are a validation error (mirrors CHECK 2 for names).
+# ---------------------------------------------------------------------------
+i=0
+while [ "$i" -lt "${#pr_names[@]}" ]; do
+  j=$((i + 1))
+  while [ "$j" -lt "${#pr_names[@]}" ]; do
+    if [ "${pr_names[$i]}" = "${pr_names[$j]}" ]; then
+      err "duplicate plugin root name \`${pr_names[$i]}\` (rows $((i + 1)) and $((j + 1))) — \`## Plugin Roots\` names must be unique so resolution is deterministic."
+    fi
+    j=$((j + 1))
+  done
+  i=$((i + 1))
+done
+
 # Resolve a plugin name to its on-disk root via the `## Plugin Roots` mapping.
 # Echoes the resolved root (absolute as-is; repo-relative joined to REPO_ROOT);
 # returns non-zero (echoing nothing) when the plugin is unmapped.

@@ -74,7 +74,7 @@ commands are already discoverable from installing the plugin; this skill wires t
 ## Phase 1: Discover self
 
 1. **Capture the install root.** Run (Bash) `printf '%s' "$CLAUDE_PLUGIN_ROOT"` to read the pack's install root. If it is empty, stop: "`$CLAUDE_PLUGIN_ROOT` is not set — run this as the `/wf-caps:init` slash command so the pack's install root is available." **Normalize to forward slashes** (replace every `\` with `/`); a leading drive prefix such as `C:` is fine (the `## Plugin Roots` `Root` shape permits absolute/drive-prefixed roots — see the contract). Call the normalized value `<pack-root>`.
-2. **Enumerate the pack's capabilities.** `Glob` `${CLAUDE_PLUGIN_ROOT}/capabilities/*/manifest.md`; each match's parent folder name is a capability name. If arguments were given, intersect with them (erroring on any unknown name per Validation). If the resulting set is empty, stop: "No capabilities to register." Call this the **selected set**.
+2. **Enumerate the pack's capabilities.** `Glob` `<pack-root>/capabilities/*/manifest.md` (use the normalized `<pack-root>`, not the raw `$CLAUDE_PLUGIN_ROOT`, so a Windows backslash can't make the glob miss manifests); each match's parent folder name is a capability name. If arguments were given, intersect with them (erroring on any unknown name per Validation). If the resulting set is empty, stop: "No capabilities to register." Call this the **selected set**.
 
 ---
 
