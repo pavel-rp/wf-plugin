@@ -291,11 +291,11 @@ active capability owns the `delivery` surface), the outcome is structurally the
 same "zero matching contributors" shape the § no-op path already defines for
 phase-firing (its case 3 is the phase-filtered instance; this is the
 scope-filtered instance of the same "nothing matched" shape) — no new no-op
-*case* is introduced, only a second filter that can produce it. `capability-
-registry.contract.md`'s "The delivery provider surface" states what that no-op
-resolves to operationally (the workspace-root plain-directory fallback for
-reads; a plain "no delivery provider registered" statement naming the remedy
-for a user-invoked write).
+*case* is introduced, only a second filter that can produce it.
+`capability-registry.contract.md`'s "The delivery provider surface" states what
+that no-op resolves to operationally (the workspace-root plain-directory
+fallback for reads; a plain "no delivery provider registered" statement naming
+the remedy for a user-invoked write).
 
 Direct provider resolution introduces no new primitive and no new aggregation
 policy — it is the existing registry-iteration / manifest-read / dispatch

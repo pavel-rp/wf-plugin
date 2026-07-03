@@ -339,7 +339,7 @@ locates `wf.config.js` and `_local/` when running in bare-core mode (no delivery
 provider registered): the plain-directory resolution is not a degraded mode, it
 is the contract's defined behaviour for the unconfigured case.
 
-**Unconfigured-provider behavior.**
+**Unconfigured-provider behaviour.**
 
 - **Reads** (`workspace-root-resolve`, `current-branch-query`) fall back
   **silently** to the plain-directory path — no error, no warning. A read
