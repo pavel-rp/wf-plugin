@@ -267,9 +267,9 @@ surface", "The tracker provider surface"): a delivery operation (branch/commit/
 push/PR, or a read like workspace-root resolution) or a tracker operation
 (create/update/comment/status/link on a work item) is needed whenever a core
 skill needs it — id inference can happen at any phase, `branch` / `commit` /
-`pr`-style skill bodies invoke a delivery operation directly, and `ts` / `tp` /
-`ti` / `tf`-style skill bodies invoke a tracker operation directly — none of
-these are a side effect of a phase firing.
+`pr`-style skill bodies invoke a delivery operation directly, and `spec` /
+`plan` / `implement`-style skill bodies invoke a tracker operation directly —
+none of these are a side effect of a phase firing.
 
 **Direct provider resolution** is the alternate entry point a core skill uses to
 reach the `delivery` or `tracker` surface — the same mechanism serves both; a

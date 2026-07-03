@@ -407,10 +407,11 @@ document states how core reaches it.
 **The id-shape rule.** The active tracker capability supplies the shape of a
 task id (e.g. a tracker-native identifier format). When the registry has **no**
 active `tracker`-surface owner, core falls back to its own **local id scheme**:
-`T<NNN>` — scan the **docs root** (the folder where task artifacts are written;
-core resolves it the same way every other core skill does, via its own config)
-for existing `T<NNN>`-prefixed task folders anywhere under it, take the highest
-existing number, increment by one, and zero-pad to 3 digits. This is the same
+`T<NNN>` — scan the **task root** (`{task-root}`, the folder where per-task
+artifacts are written; core resolves it the same way every other core skill
+does, via its own config) for existing `T<NNN>`-prefixed task folders anywhere
+under it, take the highest existing number, increment by one, and zero-pad to
+3 digits. This is the same
 "empty table = fully generic core" guarantee the registry already states in
 general, applied concretely to task-id generation: an empty registry yields a
 deterministic local id with **no** tracker call at all.
