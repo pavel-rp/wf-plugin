@@ -34,6 +34,22 @@ Emit the subagent's Final Output block (`BRANCH — created`, `BRANCH — switch
 
 ---
 
+## Edge Cases
+
+The subagent owns every stop condition; each surfaces through the Final Output block below. It returns:
+
+- **Already on the task branch** — `BRANCH — already-active`; no new branch is created (the current branch already carries `/{id}-`).
+- **Branch already exists for this task** — `BRANCH — switched`; checks out the existing branch rather than recreating it.
+- **Dirty working tree** — `BRANCH — Error`; uncommitted changes block the base switch. Commit or stash first.
+- **Detached HEAD** — `BRANCH — Error`; branches cannot be created from a detached HEAD.
+- **Unresolvable task ID** — `BRANCH — Error`; no ID was passed and none could be inferred from the current branch.
+- **Missing config / task folder / plan sources** — `BRANCH — Error`; `_local/config.md`, the task folder, or a plan/spec/reqs file is absent (run `/wf:init` / `/wf:spec` first).
+- **Not a git repo** — `BRANCH — Error`; `git rev-parse` failed outside a git repository.
+- **Base-branch fetch failure** — `BRANCH — Error` when a remote exists but `git fetch` fails; with no remote configured it silently branches from the local base instead.
+- **Index update failure** — non-fatal; the branch still succeeds and `<tracking>` carries an appended ` (index update failed)`.
+
+---
+
 ## Final Output (emitted by the subagent)
 
 Success:
