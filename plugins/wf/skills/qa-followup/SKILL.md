@@ -26,7 +26,7 @@ For the white-box analog driven by a `/wf:verify-spec` audit (which cites `file:
 
 `07_qa-report.md` must exist in the task folder. If missing, stop: "No QA report found. Run `/wf:qa-run` or `/wf:qa-auto` first."
 
-The report shape is documented in [`../wf:qa-gen/references/report-format.md`](../wf:qa-gen/references/report-format.md) — this skill parses that exact shape.
+The report shape is documented in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md) — this skill parses that exact shape.
 
 ---
 
@@ -77,7 +77,7 @@ Disambiguation: a 3+-digit numeric or `<wi-prefix>-NNN` token is the ID; anythin
 
 1. **Resolve `<ado-id>`** from the passed argument or branch inference. Stop with the standard message if neither yields an ID.
 2. **Locate the task folder.** Stop if `07_qa-report.md` is missing (message above).
-3. **Parse `07_qa-report.md`** per [`../wf:qa-gen/references/report-format.md`](../wf:qa-gen/references/report-format.md): the header (`Run date`, `Mode`, `Status`, `App`), the traceability matrix (`SC-N → scenarios → result`), each per-suite scenario block, and the Defects table. If the report has no `## Summary` and no per-suite results, stop: "Report is malformed — re-run `/wf:qa-auto`."
+3. **Parse `07_qa-report.md`** per [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md): the header (`Run date`, `Mode`, `Status`, `App`), the traceability matrix (`SC-N → scenarios → result`), each per-suite scenario block, and the Defects table. If the report has no `## Summary` and no per-suite results, stop: "Report is malformed — re-run `/wf:qa-auto`."
 4. **Filter by `--suite`** if passed.
 5. **Short-circuit on PASS.** If the report `Status` is `PASS` and there are zero FAIL and zero BLOCKED scenarios, emit `QA-FOLLOWUP — NOOP` and stop — nothing to follow up.
 

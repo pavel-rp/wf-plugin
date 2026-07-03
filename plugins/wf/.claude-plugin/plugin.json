@@ -1,6 +1,6 @@
 {
   "name": "wf",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "description": "wf:* skill chain for ADO-tracked tasks: spec/plan/implement plus verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free core spine. Stack/domain capabilities (migration, browser-qa, angular test-host, node-ts) ship in the wf-caps plugin.",
   "author": {
     "name": "Pavel Kalabin",
