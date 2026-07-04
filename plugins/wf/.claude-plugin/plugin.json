@@ -1,7 +1,7 @@
 {
   "name": "wf",
-  "version": "0.24.0",
-  "description": "wf:* skill chain for ADO-tracked tasks: spec/plan/implement plus verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free core spine. Stack/domain capabilities (migration, browser-qa, angular test-host, node-ts) ship in the wf-caps plugin.",
+  "version": "0.24.1",
+  "description": "wf:* skill chain: spec/plan/implement plus verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core spine — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (migration, browser-qa, angular test-host, node-ts) ship in the wf-caps plugin.",
   "author": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
@@ -9,7 +9,6 @@
   "repository": "https://github.com/pavel-rp/wf-plugin",
   "license": "UNLICENSED",
   "keywords": [
-    "ado",
     "workflow",
     "migration",
     "angular",
