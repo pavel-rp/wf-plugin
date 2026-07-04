@@ -1,6 +1,6 @@
 # git capability manifest
 
-**Version:** 1.0.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/gh procedures)
+**Version:** 1.0.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" (v2.3.0)
 **Capability:** git (registered in the downstream `_local/config.md` `## Capabilities` table)
