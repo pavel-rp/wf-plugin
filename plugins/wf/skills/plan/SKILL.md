@@ -6,7 +6,7 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 
 # /wf:plan — Checkbox-driven implementation plan from a spec
 
-Create an implementation plan (`02_plan.md`) for a task. Accepts an ADO work item ID, resolves the task folder under `{task-root}/`, explores the codebase, and builds an informed checkbox-driven plan. Reads `01_spec.md` from the folder if it exists, otherwise reads `00_reqs.md`.
+Create an implementation plan (`02_plan.md`) for a task. Accepts a task id, resolves the task folder under `{task-root}/`, explores the codebase, and builds an informed checkbox-driven plan. Reads `01_spec.md` from the folder if it exists, otherwise reads `00_reqs.md`.
 
 **Planning only — never modifies source code.**
 
@@ -14,45 +14,45 @@ Create an implementation plan (`02_plan.md`) for a task. Accepts an ADO work ite
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}`, `{ado-project}`, and `{wi-prefix}` below come from that file. Never hardcode these values.
+**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}` below come from that file — never hardcode it. A registered tracker capability resolves its own project-scoped config from its own fragment binding; core never reads it directly.
 
 ---
 
 ## Command Syntax
 
 ```
-/wf:plan <ado-id> [--type feat|fix|chore|refactor|migration|docs|hotfix] [--complexity S|M|L]
+/wf:plan <id> [--type feat|fix|chore|refactor|migration|docs|hotfix] [--complexity S|M|L]
 ```
 
 ### Arguments
 
 | Argument          | Required | Description                                                        |
 | ----------------- | -------- | ------------------------------------------------------------------ |
-| `<ado-id>`        | NO       | ADO work item ID — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). Falls back to inferring from the current git branch. |
+| `<id>`            | NO       | Task id — whatever shape the active tracker capability produced when `/wf:spec` created the task folder (opaque to core), or a local `T<NNN>` id when none was registered. Falls back to inferring from the current branch. |
 | `--type <type>`   | NO       | One of: `feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`. When supplied, wins over `01_spec.md` metadata and `/wf:classify`; treated as confidence `high`. Otherwise resolved per Phase 0.5 (spec metadata first, classifier fallback). |
 | `--complexity <c>`| NO       | `S`, `M`, or `L`. Resolution order: `--complexity` flag → `01_spec.md` metadata → `triage.md` Size field → `M` default. |
 
 ### Folder Resolution
 
-- Extract the numeric ID: `6396` from `6396`, `ADO-6396`, or `ADO_6396`.
-- **Task folder:** `{task-root}/{wi-prefix}-{id}/` (e.g. `_local/ADO-6396/`).
-- **Task ID:** `{wi-prefix}-{id}` (e.g. `ADO-6396`).
+- **Task id (the contract's id-shape rule):** `<id>` is opaque — the active tracker capability's own shape when one was registered at spec time (e.g. a tracker-native identifier format), or the local `T<NNN>` scheme when none was. Core never reconstructs or re-derives it — use whatever `/wf:spec` already established for this task folder.
+- **Task folder:** `{task-root}/{task-id}/`.
 
 ### Validation
 
-- If `<ado-id>` is provided, use it. If omitted, infer from `git branch --show-current`: extract the first 3+-digit run. If no digit run exists (e.g., on `main`), stop: "No ADO ID provided and none could be inferred from the current branch. Pass the ID explicitly: `/wf:plan <ado-id>`."
+- If `<id>` is provided, use it verbatim. If omitted, infer it via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (the same mechanism `spec`'s Phase 0.5 Branch Gate uses): extract the first 3+-digit run from the resolved branch name. With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to infer from). If no id can be inferred, stop: "No task id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:plan <id>`."
 - If the task folder doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
 - If `01_spec.md` exists, read it as the spec (primary source).
 - If no `01_spec.md` but `00_reqs.md` exists, use that.
 - If neither exists, stop: "No spec or requirements found. Run `/wf:spec {id}` first."
 - **Task title:** read from `01_spec.md` heading, or from `00_reqs.md` (synthesize a short title, 5-8 words max). First available wins.
+- **Branch-name matching token.** Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** by the Phase 0 branch-gate quick-check (matching against an already-existing branch name); it plays no role in the task folder, the task id, or any tracker operation.
 
 **Type resolution:** If `--type` is provided, use it (treat as `Confidence: high`). Otherwise, defer until Phase 0.5, which prefers `01_spec.md` metadata and falls back to `/wf:classify`. Do NOT keyword-scan inline — the rubric lives in the classifier.
 
 **Complexity resolution:** Apply in order, first match wins.
 1. If `--complexity` is provided, use it. Source: `flag`.
 2. Else, if `01_spec.md` exists and has a `**Complexity:** <S|M|L>` line in its metadata, use that value (it was already resolved by `/wf:spec`). Source: `spec`.
-3. Else, if `{task-root}/{wi-prefix}-{id}/triage.md` exists and has a `**Size:** <S|M|L>` field (not `—`), use that value. Source: `triage`.
+3. Else, if `{task-root}/{task-id}/triage.md` exists and has a `**Size:** <S|M|L>` field (not `—`), use that value. Source: `triage`.
 4. Else, default to `M`. Source: `default`.
 
 Record the resolved value and source — both appear in the Final Output block so the user can see where the sizing came from.
@@ -66,9 +66,8 @@ Record the resolved value and source — both appear in the Final Output block s
 - Use sourcebot MCP tools (`mcp__sourcebot__search_code`, `mcp__sourcebot__read_file`, `mcp__sourcebot__list_tree`) for code search — preferred over raw `Grep`/`Glob` because it's indexed and cross-repo
 - Read any file in the project (`Read`, `Glob`, `Grep`) — fall back when sourcebot is unavailable or for file-pattern search
 - Use MSSQL extension tools (`mssql_run_query`, `mssql_list_tables`, `mssql_list_views`, `mssql_list_schemas`) for database schema and data exploration
-- Use ADO MCP tools for reading work item details (read-only)
-- Read-only git commands (`git rev-parse`, `git branch`, `git log`)
-- Write/create files ONLY inside the task folder (`{task-root}/{wi-prefix}-{id}/`)
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface)
+- Write/create files ONLY inside the task folder (`{task-root}/{task-id}/`)
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 0 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 0.5 type resolution (read-only).
 
 **Forbidden:**
@@ -81,11 +80,11 @@ Record the resolved value and source — both appear in the Final Output block s
 
 ## Phase 0: Branch Gate
 
-Before any other work, verify the current git branch is correct for this task.
+Before any other work, verify the current branch is correct for this task.
 
-1. Run `git rev-parse --abbrev-ref HEAD` to get the current branch name.
-2. **If the branch name contains `/{id}-`** (e.g. `feature/6396-...`, `fix/6396-...`, `chore/6396-...`, etc.) — already on the task branch, continue directly to Phase 0.5.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing `ado-id: {id}`. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
+1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (`plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution") — the same mechanism `plugins/wf/agents/branch.md` already uses. With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against).
+2. **If the branch name contains `/{numeric-id}-`** (e.g. `feature/6396-...`, `fix/6396-...`, `chore/6396-...`, etc.) — already on the task branch, continue directly to Phase 0.5.
+3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` as its argument. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
    - On success (`BRANCH — created`/`switched`/`already-active`), continue directly to Phase 0.5.
    - On failure (`BRANCH — Error`), stop and surface the subagent's reason.
 
@@ -160,7 +159,7 @@ Before writing the plan, explore the project to understand what files are releva
 ## Plan Template
 
 ```markdown
-# {wi-prefix}-{id} — <title>
+# {task-id} — <title>
 
 **Type:** <feat | fix | chore | refactor | migration | docs | hotfix>
 **Alternative:** <type | —>   <!-- always include; use the alternative type only when /wf:classify returned medium confidence (or it was carried over from 01_spec.md), otherwise write — -->
@@ -289,13 +288,13 @@ Acceptable: "POST /api/auth/login returns 200 with a valid JWT when given correc
 ```
 PLAN — Complete
 
-Task: {wi-prefix}-{id} — <title>
+Task: {task-id} — <title>
 Type: <feat | fix | chore | refactor | migration | docs | hotfix>  (source: <flag | spec | classify-high | classify-medium | classify-low-user-confirmed>)
 Complexity: <S | M | L>  (source: <flag | spec | triage | default>)
 Steps: <N>
-Folder: {task-root}/{wi-prefix}-{id}/
-Spec: {task-root}/{wi-prefix}-{id}/01_spec.md (or "none")
-Plan: {task-root}/{wi-prefix}-{id}/02_plan.md
+Folder: {task-root}/{task-id}/
+Spec: {task-root}/{task-id}/01_spec.md (or "none")
+Plan: {task-root}/{task-id}/02_plan.md
 Next: /wf:tasks {id}      — decompose the plan into small, independently testable units (or /wf:implement {id} to skip straight to execution)
 ```
 
