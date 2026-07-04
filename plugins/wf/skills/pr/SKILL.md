@@ -1,14 +1,14 @@
 ---
 name: pr
-description: Opens a GitHub pull request for the current ADO task branch — first commits and pushes any pending work (via the wf:commit subagent, push on), then composes a PR body from the task's wf artifacts (reqs, spec, plan resolution, verify, QA), links the work item with AB#<id>, and runs gh pr create. Use when a task is implemented and ready for review. Pass --no-commit to open a PR against exactly what's already pushed, --draft for a draft PR.
+description: Opens a pull request for the current ADO task branch — first commits and pushes any pending work (via the wf:commit subagent, push on), then composes a PR body from the task's wf artifacts (reqs, spec, plan resolution, verify, QA), links the work item with AB#<id>, and creates the PR through the active delivery provider. Use when a task is implemented and ready for review. Pass --no-commit to open a PR against exactly what's already pushed, --draft for a draft PR.
 allowed-tools: [Bash]
 ---
 
 # /wf:pr — Push, then open a PR from the task's wf artifacts
 
-Opens a GitHub PR for the current task. This skill is a **light orchestrator**, not a pure thin wrapper: it makes two host-level **Task** calls — first `wf:commit` (to commit + push), then `wf:pr` (to compose the body and create the PR). The orchestration lives in the host (not inside a subagent) on purpose: it keeps every nested **Task** call at the single level of depth this library has proven (host → agent → agent), while the heavy context (the full diff, all artifacts) still stays entirely inside the two subagents. The host only ever sees two short result blocks.
+Opens a PR for the current task through the project's active delivery provider. This skill is a **light orchestrator**, not a pure thin wrapper: it makes two host-level **Task** calls — first `wf:commit` (to commit + push), then `wf:pr` (to compose the body and create the PR). The orchestration lives in the host (not inside a subagent) on purpose: it keeps every nested **Task** call at the single level of depth this library has proven (host → agent → agent), while the heavy context (the full diff, all artifacts) still stays entirely inside the two subagents. The host only ever sees two short result blocks.
 
-**Why GitHub:** the downstream repo is hosted on GitHub with its work items in Azure Boards. PRs are created with `gh pr create`; the work item is linked by putting `AB#<id>` in the PR body (the GitHub ↔ Azure Boards bridge). Prerequisite: `gh auth status` must pass.
+**How a PR is opened:** core opens and detects pull requests through the project's active **delivery provider** — it does not know or name which concrete tool implements that. The work item is linked by putting `AB#<id>` in the PR body (the tracker's autolink convention). Prerequisite: a delivery provider must be registered, and its underlying tool authenticated, before this operation can succeed.
 
 ---
 
@@ -38,20 +38,20 @@ Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If missing, stop: "
 **Allowed:**
 
 - Read `_local/config.md` and the task folder.
-- Read-only git for ID/branch inference (`git rev-parse`, `git branch`).
+- Read-only resolution for ID/branch inference (`workspace-root-resolve`, `current-branch-query`).
 - Invoke the **Task** tool with `subagent_type` `wf:commit` and `wf:pr`.
 
 **Forbidden:**
 
-- Modify any source file — this skill only orchestrates; the subagents do the git/gh work.
-- Run any destructive git operation.
+- Modify any source file — this skill only orchestrates; the subagents invoke the delivery provider.
+- Run any destructive delivery operation.
 - Author commits or PR bodies inline — that is the subagents' job, and keeps the diff and artifacts out of this context.
 
 ---
 
 ## Phase 1 — Resolve the task ID
 
-Resolve `{numeric-id}`: the passed value, or `git branch --show-current` first 3+-digit run. If neither, stop: "No ADO ID provided and none could be inferred from the current branch."
+Resolve `{numeric-id}`: the passed value, or the current branch's first 3+-digit run (via `current-branch-query`). If neither, stop: "No ADO ID provided and none could be inferred from the current branch."
 
 ## Phase 2 — Commit and push (unless --no-commit)
 
@@ -82,9 +82,11 @@ Emit the subagent's `PR —` block verbatim as this skill's final output.
 ## Edge Cases
 
 - **Not on a task branch + `--no-commit`:** the subagent stops (`PR — Error`) — it won't create a branch in no-commit mode. Drop `--no-commit` (so `wf:commit` runs its branch gate) or run `/wf:branch` first.
+- **No resolvable workspace root** — `PR — Error`; with a delivery provider active, `workspace-root-resolve` found no working tree to resolve.
 - **Push failed in Phase 2:** stop before PR creation — the branch isn't on the remote.
 - **PR already open for this branch:** the subagent returns `PR — exists` with the existing URL rather than creating a duplicate.
-- **`gh` not authenticated:** the subagent returns `PR — Error` with the `gh auth login` hint.
+- **Delivery provider not authenticated:** the subagent returns `PR — Error` with the provider's own authentication-remedy hint.
+- **No delivery provider registered:** the subagent returns `PR — Error` stating plainly that no delivery provider is registered and naming the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`). No delivery operation of any kind is attempted.
 
 ---
 

@@ -8,7 +8,7 @@ allowed-tools: [Bash]
 
 User-facing slash command for committing the current task changes with a concise, auto-generated message. The implementation lives entirely in the `wf:commit` subagent (`agents/commit.md`); this skill body is a thin entry point that exists only for direct user invocation.
 
-**Other wf:* skills that need to commit MUST invoke the **Task** tool with `subagent_type: wf:commit` — never the `/wf:commit` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern avoids. The subagent is self-sufficient: it resolves config, gates the branch, reads the diff, authors the message, commits, optionally pushes, and updates `index.md` — all in its own isolated context, so the (potentially large) diff never reaches the caller.
+**Other wf:* skills that need to commit MUST invoke the **Task** tool with `subagent_type: wf:commit` — never the `/wf:commit` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern avoids. The subagent is self-sufficient: it resolves config, gates the branch, reads the diff, authors the message, commits through the active delivery provider, optionally pushes, and updates `index.md` — all in its own isolated context, so the (potentially large) diff never reaches the caller.
 
 ---
 
@@ -19,10 +19,10 @@ User-facing slash command for committing the current task changes with a concise
 ```
 
 | Argument    | Required | Description                                                                                                                                          |
-| ----------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<ado-id>`  | NO       | ADO work item ID — numeric (`6396`) or prefixed (`ADO-6396`). Falls back to inferring from the current git branch.                                  |
+| ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<ado-id>`  | NO       | ADO work item ID — numeric (`6396`) or prefixed (`ADO-6396`). Falls back to inferring from the current branch.                                  |
 | `--push`    | NO       | Push after committing. Off by default. When set, a push is attempted even if there was nothing new to commit (syncs any unpushed commits).          |
-| `--staged`  | NO       | Commit only what is already staged. By default the skill stages all changes (`git add -A`; `_local/` is gitignored, so artifacts never leak in).    |
+| `--staged`  | NO       | Commit only what is already staged. By default the delivery provider's `commit` operation stages all outstanding changes first (`_local/` is gitignored, so artifacts never leak in). |
 
 ---
 
@@ -42,14 +42,15 @@ Emit the subagent's Final Output block (`COMMIT — committed`, `COMMIT — noth
 
 The subagent owns every stop condition; each surfaces through the Final Output block below. It returns:
 
-- **Nothing staged** — `COMMIT — nothing-to-commit`; the staged set is empty (default mode runs `git add -A` first, so this means a clean tree; under `--staged` it means nothing is staged, even if the working tree has unstaged changes). A no-op commit path — a `--push` still syncs any unpushed commits.
+- **Nothing staged** — `COMMIT — nothing-to-commit`; the staged set is empty (the default mode stages everything via the delivery provider first, so this means a clean tree; under `--staged` it means nothing is staged, even if the working tree has unstaged changes). A no-op commit path — a `--push` still syncs any unpushed commits.
 - **Not on the task branch** — the subagent invokes its branch gate (`wf:branch`); if that gate fails (e.g. a dirty tree blocks the switch), it returns `COMMIT — Error` with the branch reason. To commit into a task branch you must already be on it.
 - **Detached HEAD** — `COMMIT — Error`; task work cannot be committed from a detached HEAD.
 - **Unresolvable task ID** — `COMMIT — Error`; no ID was passed and none could be inferred from the current branch.
-- **Missing config / not a git repo** — `COMMIT — Error`; `_local/config.md` is absent (run `/wf:init` first) or the command ran outside a git repository.
-- **Commit failure** — `COMMIT — Error` with git's reason; a non-zero `git commit` exit aborts.
+- **Missing config / no resolvable workspace** — `COMMIT — Error`; `_local/config.md` is absent (run `/wf:init` first), or `workspace-root-resolve` failed with a delivery provider active (a genuine environment error — no working tree found).
+- **Commit failure** — `COMMIT — Error` with the delivery provider's reason; the `commit` operation returning a failure aborts.
 - **Push failure under `--push`** — non-fatal to the commit; the `Push:` line reads `failed (<reason>)` while the commit itself stays intact.
 - **Index update failure** — non-fatal; the commit still succeeds and ` (index update failed)` is appended to the `Push:` line.
+- **No delivery provider registered** — `COMMIT — Error`; the capability registry has no active `provider` row scoped to `delivery`. States plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`). No delivery operation is attempted.
 
 ---
 
