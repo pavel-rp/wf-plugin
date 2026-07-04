@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Authors a terse conventional-style commit message from the staged diff in an isolated context and commits (optionally pushing), keeping the full diff out of the caller's transcript. The implementation behind /wf:commit.
+description: Authors a terse conventional-style commit message from the pending change content in an isolated context and commits through the active delivery provider (optionally pushing), keeping the full diff out of the caller's transcript. The implementation behind /wf:commit.
 argument-hint: 'ado-id (optional); push (bool); staged (bool)'
 ---
 
@@ -12,22 +12,31 @@ You are the implementation of `/wf:commit`. The full procedure lives here — th
 
 ## Inputs
 
-- `ado-id` — numeric (`6396`) or prefixed (`ADO-6396`). If omitted, infer from `git branch --show-current` (first 3+-digit run).
+- `ado-id` — numeric (`6396`) or prefixed (`ADO-6396`). If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
 - `push` — boolean; when true, push after committing (and even when there is nothing to commit). Default false.
 - `staged` — boolean; when true, commit only the already-staged set. Default false (stage all changes first).
 
-## Step 1 — Resolve config and task folder
+## Direct provider resolution (how every operation below is reached)
 
-1. Read `_local/config.md` from the repo root. If missing, return `COMMIT — Error` with reason "Run /wf:init first."
+Every operation this file invokes — `workspace-root-resolve`, `current-branch-query`, `commit`, `push-upstream` — is reached the same way, per `invocation-runtime.contract.md` §"Direct provider resolution":
+
+1. Read the `## Capabilities` registry from `_local/config.md` — the contract's default-absent `registryPath` value — via the plain, cwd-relative bootstrap read Step 1 performs below. **Known limitation, unchanged from today:** this first read precedes any provider resolution, so it cannot itself honor a project-configured non-default `registryPath`, and assumes the current working directory is the repo root.
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. Reads (`workspace-root-resolve`, `current-branch-query`) fall back silently to the plain-directory / already-known-branch value; a write (`commit`, `push-upstream`) cannot proceed — see Step 4's no-delivery-provider path (Step 5 never needs its own — it is unreachable when no provider is registered, since Step 4 already returned an error).
+
+## Step 1 — Resolve config, workspace root, and task folder
+
+1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). If missing, return `COMMIT — Error` with reason "Run /wf:init first."
 2. Extract `{task-root}` and `{wi-prefix}`. Never hardcode them.
-3. Resolve `{numeric-id}`: digits from the input, or the current branch's first 3+-digit run. If neither, return `COMMIT — Error` with reason "No ADO ID provided and none could be inferred from the current branch."
-4. Resolve the repo root: `git rev-parse --show-toplevel`. Non-zero exit → return `COMMIT — Error` with reason "Not inside a git repository."
-5. Compute the task folder: if `{task-root}` is absolute, use it as-is; otherwise join with the repo root → `<repo-root>/{task-root}/{wi-prefix}-{numeric-id}/`. Hold as `<task-folder-abs>`. It may not exist yet (commit can run before `/wf:spec`) — that is not fatal here; it only limits the first-commit title source (Step 5).
+3. Resolve `{numeric-id}`: digits from the input, or the current branch's first 3+-digit run (via `current-branch-query`). If neither, return `COMMIT — Error` with reason "No ADO ID provided and none could be inferred from the current branch."
+4. Resolve the absolute workspace root via `workspace-root-resolve`. With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error); with a provider registered but no working tree to resolve, return `COMMIT — Error` with reason "Not inside a resolvable workspace."
+5. Compute the task folder: if `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root → `<workspace-root>/{task-root}/{wi-prefix}-{numeric-id}/`. Hold as `<task-folder-abs>`. It may not exist yet (commit can run before `/wf:spec`) — that is not fatal here; it only limits the first-commit title source (Step 4).
 6. `{task-id}` = `{wi-prefix}-{numeric-id}`.
 
 ## Step 2 — Branch gate
 
-1. `git rev-parse --abbrev-ref HEAD`. If it equals `HEAD`, return `COMMIT — Error` with reason "Detached HEAD; cannot commit task work from this state."
+1. Resolve the current branch via `current-branch-query`. Its detached-HEAD signal (the literal `HEAD`) → return `COMMIT — Error` with reason "Detached HEAD; cannot commit task work from this state."
 2. If the branch name contains `/{numeric-id}-` (e.g. `feature/6396-…`, `fix/6396-…`), you are on the task branch — continue to Step 3.
 3. Otherwise invoke the **Task** tool with `subagent_type: wf:branch`, passing `ado-id: {numeric-id}`.
    - On `BRANCH — created`/`switched`/`already-active`, continue to Step 3.
@@ -35,58 +44,52 @@ You are the implementation of `/wf:commit`. The full procedure lives here — th
 
 ## Step 3 — First-commit detection
 
-1. Determine the base branch: `git rev-parse --verify main` (exit 0 → `main`; non-zero → `master`). Discard stderr.
-2. `git rev-list --count <base>..HEAD`. `0` → this is the **first commit** on the branch (`<is-first>` = true). Otherwise `<is-first>` = false.
+1. Determine the base branch: `main`, falling back to `master` if `main` doesn't exist in this repository.
+2. Count the commits already introduced on this branch since the base branch. Zero → this is the **first commit** on the branch (`<is-first>` = true). Otherwise `<is-first>` = false.
 
-## Step 4 — Stage
+## Step 4 — Author the message, then commit
 
-1. If `staged` is false: `git add -A` (stages all changes; `_local/` is gitignored, so nothing under it is staged).
-2. Check for staged content: `git diff --staged --quiet`. Exit 0 → nothing staged → go to **Step 7** on the nothing-to-commit path (honoring `push`). Non-zero → there is something to commit; continue to Step 5.
+1. **No-delivery-provider path.** If the scope-equality filter (`provider` + `scope: delivery`) matches zero rows across the registry, return `COMMIT — Error` immediately with reason "No delivery provider is registered. Register a capability that owns the `delivery` surface (e.g. install and run `/wf-git:init`)." No delivery operation of any kind is attempted — skip message authoring entirely, there is nothing to commit it with.
+2. **Read the pending change content** that is about to be recorded — the full outstanding diff when `<staged>` is false (the `commit` operation stages everything before recording), or just the already-staged content when `<staged>` is true. This is the large input that stays entirely in your isolated context. No delivery operation covers message-authoring content, so this stays a direct read — described here by outcome, never as a literal diff command.
+3. **Author the message.**
 
-## Step 5 — Author the message
+   **Subject** — always `<id>: <text>`, where `<id>` is `{numeric-id}` with no `ADO-` prefix and no brackets:
 
-Read the staged diff for context — this is the large input that stays in your isolated context: `git diff --staged`.
+   - `<is-first>` true → `<text>` is the **ADO task name**. Source it from the task folder, first available wins: `00_reqs.md` (authoritative title), `01_spec.md`, `02_plan.md`, `lite.md` (the H1 heading or a `**Title:**` / `Title:` metadata field). If the task folder or a title is unavailable, fall back to a concise imperative summary of the pending diff.
+   - `<is-first>` false → `<text>` is a **concise imperative summary** of the pending diff (≤ ~65 chars). State what changed, not how.
 
-**Subject** — always `<id>: <text>`, where `<id>` is `{numeric-id}` with no `ADO-` prefix and no brackets:
+   **Body** — a bulleted list of what's done, not how. As terse as possible; dedupe across files (one bullet may cover several files that serve the same change). Each bullet is a short phrase, no trailing period. Omit the body entirely if the subject already says everything.
 
-- `<is-first>` true → `<text>` is the **ADO task name**. Source it from the task folder, first available wins: `00_reqs.md` (authoritative title), `01_spec.md`, `02_plan.md`, `lite.md` (the H1 heading or a `**Title:**` / `Title:` metadata field). If the task folder or a title is unavailable, fall back to a concise imperative summary of the staged diff.
-- `<is-first>` false → `<text>` is a **concise imperative summary** of the staged diff (≤ ~65 chars). State what changed, not how.
+   Assemble the full message as: subject line, blank line, then the bullets.
 
-**Body** — a bulleted list of what's done, not how. As terse as possible; dedupe across files (one bullet may cover several files that serve the same change). Each bullet is a short phrase, no trailing period. Omit the body entirely if the subject already says everything.
+4. **Invoke `commit(<message>, <staged>)`.** This single operation absorbs staging (unless `<staged>` is true), the nothing-to-commit check, and the actual commit.
+   - `<state>` = `nothing-to-commit` → skip to **Step 5** on the nothing-to-commit path (honoring `push`).
+   - `<state>` = `committed` → continue to Step 5, carrying forward the operation's returned diffstat summary — `<n> changed (+<a> -<d>)` — for the `Files:` line.
+   - Any other failure → return `COMMIT — Error` with the operation's reason. The commit itself did not happen.
 
-Assemble the full message as: subject line, blank line, then the bullets.
+## Step 5 — Push (conditional)
 
-## Step 6 — Commit
+Run the push when `push` is true. When `push` is false, set `Push: not-pushed` and skip to Step 6.
 
-1. Write the assembled message to `<repo-root>/.git/WF_COMMITMSG` (inside `.git/`, so it never dirties the worktree and is never tracked).
-2. `git commit -F <repo-root>/.git/WF_COMMITMSG`.
-3. Non-zero exit → return `COMMIT — Error` with the git reason. Remove `.git/WF_COMMITMSG` afterward (best effort, either outcome).
-4. Capture the short stat for the block: `git show --stat --format= HEAD` (or `git diff --stat HEAD~1 HEAD`) → `<n> changed (+<a> -<d>)`.
+1. Invoke `push-upstream(<branch>)` for the current branch.
+2. Map the outcome to the `Push:` value:
+   - `<state>` = `pushed (<remote>/<remote-branch>)` → `pushed (origin/<branch>)` (or `up-to-date (origin/<branch>)` when the operation reports nothing new to push).
+   - `<state>` = `failed (<reason>)` → `failed (<short reason>)`. The commit itself is intact — do NOT undo it.
 
-## Step 7 — Push (conditional)
+(No separate no-delivery-provider check is needed here — Step 4's own no-delivery-provider path already returns `COMMIT — Error` before this step is ever reached, so `push-upstream` is only invoked when a delivery provider is confirmed active.)
 
-Run the push when `push` is true. When `push` is false, set `Push: not-pushed` and skip to Step 8.
+## Step 6 — Update the index
 
-1. Detect upstream: `git rev-parse --abbrev-ref --symbolic-full-name @{u}` (exit 0 → upstream set).
-2. Push:
-   - upstream set → `git push`.
-   - no upstream → `git push --set-upstream origin <current-branch>`.
-3. Map the outcome to the `Push:` value:
-   - exit 0 → `pushed (origin/<branch>)` (use `up-to-date (origin/<branch>)` if git reported "Everything up-to-date" and you can tell).
-   - non-zero → `failed (<short reason>)`. The commit itself is intact — do NOT undo it.
-
-## Step 8 — Update the index
-
-Run this only when a commit was actually made (Step 6 ran) and `<task-folder-abs>` exists. Invoke the **Task** tool with `subagent_type: wf:index`, passing:
+Run this only when a commit was actually made (Step 4 reached `committed`) and `<task-folder-abs>` exists. Invoke the **Task** tool with `subagent_type: wf:index`, passing:
 
 - `task-folder` — `<task-folder-abs>`
 - `slot` — the literal string `commit`
-- `summary` — `<n> commits · <subject>` trimmed to ≤80 chars, where `<n>` = `git rev-list --count <base>..HEAD`
+- `summary` — `<n> commits · <subject>` trimmed to ≤80 chars, where `<n>` is the count of commits already introduced since the base branch (Step 3)
 - `calling-skill` — the literal string `/wf:commit`
 
 If `wf:index` returns `INDEX — Error`, do NOT fail the commit — append ` (index update failed)` to the `Push:` line and still emit the success block. Skip this step entirely on the nothing-to-commit path or when the task folder doesn't exist.
 
-## Step 9 — Final Output
+## Step 7 — Final Output
 
 Emit ONLY the Final Output block. No narrative before or after — diff reading and message authoring stay in your isolated context.
 

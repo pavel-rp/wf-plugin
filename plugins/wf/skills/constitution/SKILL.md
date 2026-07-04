@@ -119,18 +119,17 @@ constitution regardless of the registry:
    overrides the spec; conformance is judged against the spec.
 2. **No phase skips its gate.** Every phase is a human-approved artifact that feeds the
    next; nothing advances past an unapproved gate.
-3. **Never commit to `main`.** All work lands on a feature branch and merges via review.
-4. **Nothing writes outside `_local/`** except the designated source-mutating skills.
-5. **Every artifact carries model attribution.** A `**Model:** <id>` line (or a verb-shaped
+3. **Nothing writes outside `_local/`** except the designated source-mutating skills.
+4. **Every artifact carries model attribution.** A `**Model:** <id>` line (or a verb-shaped
    variant) records which model produced each artifact.
-6. **No AI attribution in commits.** Commit messages and PR descriptions carry no
+5. **No AI attribution in commits.** Commit messages and PR descriptions carry no
    `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.
-7. **Project configuration lives in `_local/config.md`.** Project-specific values are read
+6. **Project configuration lives in `_local/config.md`.** Project-specific values are read
    from config, never hardcoded into a skill.
 
 Plus this additional core article (provenance `core`), recorded **verbatim**:
 
-8. **Core never requires a capability.** Every core extension point ships a lean default and
+7. **Core never requires a capability.** Every core extension point ships a lean default and
    runs inert when no capability is registered; core never names or hard-depends on a
    specific capability.
 
@@ -263,8 +262,8 @@ other tasks). Re-run `/wf:constitution` to refresh after a registry or project-c
 
 ## Core articles (provenance: core)
 
-<the seven domain-free process articles verbatim, then the "Core never requires a
-capability" article verbatim — numbered 1–8>
+<the six domain-free process articles verbatim, then the "Core never requires a
+capability" article verbatim — numbered 1–7>
 
 ## Capability articles (provenance: each capability)
 
@@ -319,7 +318,7 @@ End the chat reply with this fenced block, as the very last thing emitted:
 ```
 CONSTITUTION — <established | updated | unchanged>
 
-Articles: <8 core> + <capability articles present | none (core-only)> + <project section: seeded | preserved>
+Articles: <7 core> + <capability articles present | none (core-only)> + <project section: seeded | preserved>
 Registry: <comma-separated capability names | none (core-only)>
 File:     _local/constitution.md
 Next:     review _local/constitution.md and add any project clauses; then /wf:spec <id> to start a task (the constitution is intended for consultation at spec and enforcement at verify once that wiring lands).

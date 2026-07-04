@@ -1,6 +1,6 @@
 ---
 name: branch
-description: Creates and switches to a git branch for an ADO task, deriving the branch name (feature/<id>-…, fix/<id>-…, chore/<id>-…, etc.) from the task's plan or spec and setting up remote tracking. Thin slash-command wrapper — the full procedure lives in the wf:branch subagent (config resolution, branch derivation, git execution, index update all happen there). Use directly via /wf:branch <id> for ad-hoc invocation, OR invoke the Task tool with subagent_type wf:branch from another wf:* skill that needs a branch gate (required when called from another skill — bypasses the slash-command's caller-side cost).
+description: Creates and switches to a dedicated branch for an ADO task, deriving the branch name (feature/<id>-…, fix/<id>-…, chore/<id>-…, etc.) from the task's plan or spec and setting up remote tracking through the active delivery provider. Thin slash-command wrapper — the full procedure lives in the wf:branch subagent (config resolution, branch derivation, delivery-provider dispatch, index update all happen there). Use directly via /wf:branch <id> for ad-hoc invocation, OR invoke the Task tool with subagent_type wf:branch from another wf:* skill that needs a branch gate (required when called from another skill — bypasses the slash-command's caller-side cost).
 allowed-tools: [Bash]
 ---
 
@@ -8,7 +8,7 @@ allowed-tools: [Bash]
 
 User-facing slash command for creating and switching to a task branch. The implementation lives entirely in the `wf:branch` subagent (`agents/branch.md`); this skill body is a thin entry point that exists only for direct user invocation.
 
-**Other wf:* skills that need a branch gate MUST invoke the **Task** tool with `subagent_type: wf:branch` — never the `/wf:branch` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern is designed to avoid. The subagent is self-sufficient: it resolves config, derives the branch name, runs git, and updates `index.md` (via a nested **Task** call to `wf:index`) all in its own isolated context.
+**Other wf:* skills that need a branch gate MUST invoke the **Task** tool with `subagent_type: wf:branch` — never the `/wf:branch` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern is designed to avoid. The subagent is self-sufficient: it resolves config, derives the branch name, invokes the delivery provider to create or switch the branch, and updates `index.md` (via a nested **Task** call to `wf:index`) all in its own isolated context.
 
 ---
 
@@ -19,8 +19,8 @@ User-facing slash command for creating and switching to a task branch. The imple
 ```
 
 | Argument    | Required | Description                                                                                                          |
-| ----------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `<ado-id>`  | NO       | ADO work item ID — numeric (`6396`) or prefixed (`ADO-6396`). Falls back to inferring from the current git branch.   |
+| ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `<ado-id>`  | NO       | ADO work item ID — numeric (`6396`) or prefixed (`ADO-6396`). Falls back to inferring from the current branch.   |
 
 ---
 
@@ -44,9 +44,10 @@ The subagent owns every stop condition; each surfaces through the Final Output b
 - **Detached HEAD** — `BRANCH — Error`; branches cannot be created from a detached HEAD.
 - **Unresolvable task ID** — `BRANCH — Error`; no ID was passed and none could be inferred from the current branch.
 - **Missing config / task folder / plan sources** — `BRANCH — Error`; `_local/config.md`, the task folder, or a plan/spec/reqs file is absent (run `/wf:init` / `/wf:spec` first).
-- **Not a git repo** — `BRANCH — Error`; `git rev-parse` failed outside a git repository.
-- **Base-branch fetch failure** — `BRANCH — Error` when a remote exists but `git fetch` fails; with no remote configured it silently branches from the local base instead.
+- **No resolvable workspace root** — `BRANCH — Error`; with a delivery provider active, `workspace-root-resolve` found no working tree to resolve.
+- **Base-branch fetch failure** — `BRANCH — Error` when the delivery provider's remote exists but fetching the latest base fails; with no remote configured it silently branches from the local base instead.
 - **Index update failure** — non-fatal; the branch still succeeds and `<tracking>` carries an appended ` (index update failed)`.
+- **No delivery provider registered** — `BRANCH — Error`; the capability registry has no active `provider` row scoped to `delivery`. States plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`). No delivery operation of any kind is attempted.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: branch
-description: Creates and switches to the git branch for an ADO task — deriving the branch name (feature/fix/chore/refactor/migration/docs/hotfix) from the task's plan or spec — and sets up remote tracking. The self-contained implementation behind /wf:branch; invoked via the Task tool as the branch gate by other wf:* skills.
+description: Creates and switches to the task's dedicated branch for an ADO task — deriving the branch name (feature/fix/chore/refactor/migration/docs/hotfix) from the task's plan or spec — and sets up remote tracking through the active delivery provider. The self-contained implementation behind /wf:branch; invoked via the Task tool as the branch gate by other wf:* skills.
 argument-hint: 'ado-id (numeric or prefixed); empty to infer from current branch'
 ---
 
@@ -12,17 +12,26 @@ You are the implementation of `/wf:branch`. The full procedure lives here — th
 
 You are invoked with one optional arg:
 
-- `ado-id` — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). If omitted, infer from `git branch --show-current` (first 3+-digit run).
+- `ado-id` — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). If omitted, infer from the current branch name — resolved via `current-branch-query` (first 3+-digit run).
 
 If neither passed nor inferable from the current branch, return `BRANCH — Error` with reason "No ADO ID provided and none could be inferred from the current branch."
 
-## Step 1 — Resolve config and task folder
+## Direct provider resolution (how every operation below is reached)
 
-1. Read `_local/config.md` from the repo root. If missing, return `BRANCH — Error` with reason "Run /wf:init first."
+Every operation this file invokes — `workspace-root-resolve`, `current-branch-query`, `branch-create` — is reached the same way, per `invocation-runtime.contract.md` §"Direct provider resolution":
+
+1. Read the `## Capabilities` registry from `_local/config.md` — the contract's default-absent `registryPath` value — via the plain, cwd-relative bootstrap read Step 1 performs below. **Known limitation, unchanged from today:** this first read precedes any provider resolution, so it cannot itself honor a project-configured non-default `registryPath`, and assumes the current working directory is the repo root.
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. Reads (`workspace-root-resolve`, `current-branch-query`) fall back silently to the plain-directory / already-known-branch value; a write (`branch-create`) cannot proceed — see Step 3's no-delivery-provider path.
+
+## Step 1 — Resolve config, workspace root, and task folder
+
+1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). If missing, return `BRANCH — Error` with reason "Run /wf:init first."
 2. Extract `{task-root}` and `{wi-prefix}` from the config. Never hardcode them.
-3. Resolve `{numeric-id}`: digits from the input (`6396` from `6396`, `ADO-6396`, or `ADO_6396`), or from the current branch's first 3+-digit run.
-4. Resolve the repo root: run `git rev-parse --show-toplevel`. If exit code is non-zero, return `BRANCH — Error` with reason "Not inside a git repository."
-5. Compute task folder. If `{task-root}` is absolute, use it as-is; otherwise join with the repo root: `<repo-root>/{task-root}/{wi-prefix}-{numeric-id}/`. Hold the result as `<task-folder-abs>` (always absolute — passed verbatim to wf:index in Step 4). If the folder doesn't exist, return `BRANCH — Error` with reason "Task folder not found. Run /wf:spec <id> first."
+3. Resolve `{numeric-id}`: digits from the input (`6396` from `6396`, `ADO-6396`, or `ADO_6396`), or from the current branch's first 3+-digit run (via `current-branch-query`).
+4. Resolve the absolute workspace root via `workspace-root-resolve` (direct provider resolution above). With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error). With a provider registered but no working tree to resolve, return `BRANCH — Error` with reason "Not inside a resolvable workspace."
+5. Compute task folder. If `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root: `<workspace-root>/{task-root}/{wi-prefix}-{numeric-id}/`. Hold the result as `<task-folder-abs>` (always absolute — passed verbatim to wf:index in Step 4). If the folder doesn't exist, return `BRANCH — Error` with reason "Task folder not found. Run /wf:spec <id> first."
 6. `{task-id}` = `{wi-prefix}-{numeric-id}` (used in the `Task:` line of the final block).
 
 ## Step 2 — Resolve branch name
@@ -45,26 +54,20 @@ If neither passed nor inferable from the current branch, return `BRANCH — Erro
    - **Normalized title:** lowercase, hyphenated, special characters stripped, max 40 characters.
    - Examples: `fix/6565-debug-wellstar-par`, `feature/6370-review-form-caching`, `chore/7001-update-nuget-packages`, `migration/6800-add-audit-table`.
 
-## Step 3 — Create and switch
+## Step 3 — Invoke `branch-create`
 
-The error-handling convention for git probes in this section: rely on **exit codes**, not stderr text. Exit code 0 means the probed thing exists; non-zero means it doesn't (the stderr message git prints is informational only — discard it). All `<tracking>` values come from a single helper rule: after the working branch is set, run `git rev-parse --abbrev-ref --symbolic-full-name @{u}`. Exit code 0 → the upstream value (e.g., `origin/<branch-name>`); non-zero → `local-only (no upstream)`. Specific paths below override this only when they have a more specific signal (e.g., the push just failed).
+Derive `<branch-name>` from Step 2 (unchanged, tracker-side logic — out of scope for this rewrite), then invoke `branch-create(<branch-name>)` via direct provider resolution.
 
-1. Run `git rev-parse --abbrev-ref HEAD` to get the current branch.
-2. **Detached HEAD:** if the output equals `HEAD`, return `BRANCH — Error` with reason "Detached HEAD; cannot create branches from this state."
-3. **Already on a matching task branch:** if the output contains `/{numeric-id}-`, set `<state>` = `already-active`, `<branch-name>` = current-branch, `<base-source>` = `"already existed"`, derive `<tracking>` via the helper rule above, and skip to Step 4.
-4. **Dirty worktree:** run `git status --porcelain`. If non-empty, return `BRANCH — Error` with reason "Uncommitted changes detected. Commit or stash before switching branches."
-5. **Branch already exists for this task:** run `git branch --list "*/{numeric-id}-*"`. If a match exists, run `git checkout <match>`, set `<state>` = `switched`, `<branch-name>` = `<match>`, `<base-source>` = `"already existed"`, derive `<tracking>` via the helper rule above, and skip to Step 4.
-6. **Determine base branch:** run `git rev-parse --verify main`. Exit code 0 → `<base>` = `main`. Non-zero (any error) → `<base>` = `master`. Discard stderr — it's informational only.
-7. **Detect remote:** run `git remote get-url origin`. Exit code 0 → a remote exists, set `<has-remote>` = true. Non-zero → `<has-remote>` = false. Discard stderr.
-8. **Fetch latest base:** if `<has-remote>` is true, run `git fetch origin <base>`. On non-zero exit (network, auth), return `BRANCH — Error` with reason "Failed to fetch <base> from origin. Fix the remote issue or rerun without network." If `<has-remote>` is false, skip the fetch and branch from the local base.
-9. **Branch-name collision** with a different task: should not happen given step 5, but guard — if the computed name already exists locally with a different ID portion, append a numeric suffix (e.g., `-2`).
-10. **Create and switch:**
-    - With `<has-remote>` true: `git checkout -b <branch-name> origin/<base>`. `<base-source>` = `origin/<base>`.
-    - With `<has-remote>` false: `git checkout -b <branch-name> <base>`. `<base-source>` = `<base>` (local).
-11. **Set up remote tracking:**
-    - If `<has-remote>` is true: run `git push --set-upstream origin <branch-name>`. On exit code 0, `<tracking>` = `origin/<branch-name>`. On non-zero (e.g., permissions), `<tracking>` = `local-only (push failed)`. The local branch is valid either way — do NOT abort.
-    - If `<has-remote>` is false: `<tracking>` = `local-only (no remote)`.
-12. Set `<state>` = `created`.
+1. **No-delivery-provider path.** If the scope-equality filter (`provider` + `scope: delivery`) matches zero rows across the registry, return `BRANCH — Error` immediately with reason "No delivery provider is registered. Register a capability that owns the `delivery` surface (e.g. install and run `/wf-git:init`)." No delivery operation is attempted.
+2. **Invoke `branch-create(<branch-name>)`.** This single operation absorbs the detached-HEAD guard, the dirty-worktree guard, the exact-name existing-branch check, base determination, remote detection and fetch, branch creation/switch, and upstream tracking — all internal to the delivery provider's own implementation.
+3. **Detached HEAD** and **dirty working tree** both surface as an error result from `branch-create` itself — propagate its reason verbatim into `BRANCH — Error`.
+4. **Base-branch fetch failure** — a remote exists but the provider's fetch of the latest base fails — surfaces as an error result from `branch-create`; propagate its reason. With no remote, `branch-create` silently branches from the local base instead (no error).
+5. **Map the result** onto the unchanged Final Output block (Step 5): `<state>` (`created` | `switched` | `already-active`), `<base-source>` (`origin/<base>` | `<base>` | `already existed`), `<tracking>` (`origin/<branch-name>` | `local-only (push failed)` | `local-only (no remote)` | `local-only (no upstream)`).
+
+**Two v1 safety nets have no equivalent operation and are intentionally dropped** — not a fresh gap discovered here, already accepted at planning time:
+
+- The ID-glob existing-branch search for a branch whose *title* drifted between two invocations — `branch-create` matches only by exact name. Accepted because the branch name is derived deterministically from the same static plan/spec source every time (Step 2), so no title drift occurs in practice.
+- The branch-name-collision-with-a-different-task numeric-suffix guard — no operation covers this rare case. If a real collision surfaces in practice it needs either a contract change or a core-side pre-check before invoking `branch-create` — it is not silently invented here.
 
 ## Step 4 — Update the index
 
@@ -79,7 +82,7 @@ If the wf:index subagent returns `INDEX — Error`, do NOT fail the branch opera
 
 ## Step 5 — Final Output
 
-Emit ONLY the Final Output block. No narrative before or after — branch-derivation reasoning and intermediate git output stay in your isolated context.
+Emit ONLY the Final Output block. No narrative before or after — branch-derivation reasoning and intermediate results stay in your isolated context.
 
 Success:
 
