@@ -6,7 +6,7 @@ allowed-tools: [Read, Write, Edit, Glob, Bash]
 
 # /wf:init — Bootstrap a repo for the wf:* skill suite
 
-Bootstrap the current git repository for the wf:* skill suite. Creates and/or updates:
+Bootstrap the current repository for the wf:* skill suite. Creates and/or updates:
 
 - `_local/` — task root (per-ticket artifacts)
 - `_local/config.md` — project-specific values consumed by every wf:* skill
@@ -43,25 +43,26 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 - Append (not rewrite) `.gitignore`
 - Append (not rewrite) `.git/info/exclude`
 - Write the `## Capabilities` registry table to a **configured `registryPath`** location when `wf.config.js` sets one (a repo-relative file path that passes the Phase 0 defensive check) — this is the one sanctioned write outside `_local/`, since relocating the registry is the feature's whole purpose
-- Read-only git commands (`git rev-parse`, `git remote get-url`)
+- Read-only resolution via `workspace-root-resolve` (direct provider resolution)
 
 **Forbidden:**
 
 - Modify any source file **except** the writes named in the Allowed list above — i.e. anything other than files under `_local/`, the two exclude files (`.gitignore`, `.git/info/exclude`), and a configured `registryPath` registry location, all of which are explicitly permitted
 - Run builds, tests, linters, installs
-- Any destructive git operation
-- Initialize a git repo — if none exists, stop and ask the user
+- Invoke a delivery write operation (`branch-create`, `commit`, `push-upstream`, `pr-create`) — init only ever reads `workspace-root-resolve`, it never writes through the delivery provider
 
 ---
 
 ## Phase 0: Preconditions
 
-1. Confirm the current directory is a git working tree: `git rev-parse --git-dir`.
-   - If not, stop: "wf:init must run inside a git repository. Run `git init` first, then rerun."
-2. Record the repo root: `git rev-parse --show-toplevel`. All paths below are relative to it.
-3. **Resolve the registry location.** Read `wf.config.js` at the repo root (if present) and resolve the registry's `## Capabilities` table location from its optional `registryPath` key, **defaulting to `_local/config.md` when the key (or the file) is absent**. Use this resolved location everywhere this skill writes or reads the registry — the Phase 2 table write and the Phase 2.5 seeding iteration below. When `registryPath` is absent the resolved location is `_local/config.md`, so default behaviour is byte-identical to before this key existed. Record the registry-location state for the Final Output — `default` (no key), `configured` (a key that passed the defensive check below), or `rejected → fell back to default` (a key that failed it).
+1. **Resolve the workspace root via `workspace-root-resolve`**, reached through **direct provider resolution** (`plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution"): read the `## Capabilities` registry from `_local/config.md` in the current working directory (a plain bootstrap read that precedes any provider resolution — the same known limitation `agents/branch.md`'s "Direct provider resolution" section, item 1, documents: it can't itself honor a project-configured non-default `registryPath`, and assumes the current directory is the workspace root). Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry.
+   - **One row matches** — read that capability's `manifest.md` and dispatch its fragment (today, `wf-git`'s `inline: fragments/delivery.md`) to resolve the workspace root. A **registered** provider that fails to resolve (no working tree to resolve) is a genuine environment error, distinct from the unconfigured case below — stop: "Could not resolve a workspace root: <provider's error>." Never fall through to the plain-directory fallback in this case.
+   - **Zero matching rows** — including a registry that doesn't exist yet (the fresh-repo case) — resolves `workspace-root-resolve` as a **plain directory**: the current working directory, with no VCS invocation of any kind, no error, no stop condition.
 
-   **Defensive `registryPath` check (fallback).** When `registryPath` is set, before resolving a write location from it confirm it is a **repo-relative, forward-slash file path** with **no** `..` segment and **no** absolute/drive prefix (no leading `/`, no `C:`-style prefix) — the shape the contract requires. If it violates that shape, do **not** resolve or write to it: fall back to the default `_local/config.md`, record the `rejected → fell back to default` state, and flag the rejected value loudly in the chat summary. Registry validation (WF-2's registry pass / WF-28) should reject such a value upstream; this is a defensive fallback so a configured `registryPath` can never make `init` write outside the repo root even if that validation has not run — mirroring the Phase 2.5 defensive token check. (A passing `registryPath` may resolve outside `_local/` — that relocated registry write is the sanctioned exception in the Safety Rules above.)
+   All paths below are relative to this resolved workspace root.
+2. **Resolve the registry location.** Read `wf.config.js` at the resolved workspace root (if present) and resolve the registry's `## Capabilities` table location from its optional `registryPath` key, **defaulting to `_local/config.md` when the key (or the file) is absent**. Use this resolved location everywhere this skill writes or reads the registry — the Phase 2 table write and the Phase 2.5 seeding iteration below. When `registryPath` is absent the resolved location is `_local/config.md`, so default behaviour is byte-identical to before this key existed. Record the registry-location state for the Final Output — `default` (no key), `configured` (a key that passed the defensive check below), or `rejected → fell back to default` (a key that failed it).
+
+   **Defensive `registryPath` check (fallback).** When `registryPath` is set, before resolving a write location from it confirm it is a **repo-relative, forward-slash file path** with **no** `..` segment and **no** absolute/drive prefix (no leading `/`, no `C:`-style prefix) — the shape the contract requires. If it violates that shape, do **not** resolve or write to it: fall back to the default `_local/config.md`, record the `rejected → fell back to default` state, and flag the rejected value loudly in the chat summary. Registry validation (WF-2's registry pass / WF-28) should reject such a value upstream; this is a defensive fallback so a configured `registryPath` can never make `init` write outside the resolved workspace root that repo-relative path is resolved against, even if that validation has not run — mirroring the Phase 2.5 defensive token check. (A passing `registryPath` may resolve outside `_local/` — that relocated registry write is the sanctioned exception in the Safety Rules above.)
 
 ---
 
@@ -85,9 +86,8 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 - **One registry, never two.** The `## Capabilities` section in the "Default content" template below belongs to **exactly one** destination — the **Phase 0 resolved registry location**, not whether `registryPath` is set. When the resolved location **is** `_local/config.md` (the `default`, `rejected → fell back to default`, **and** a `configured` value pointing back at `_local/config.md` cases), keep `## Capabilities` inside `_local/config.md`. When the resolved location is a **different** file, **omit the `## Capabilities` section from the `_local/config.md` write entirely** and write that section **only** to the resolved registry file — never emit it in both places, so a user can't edit the wrong copy (runtime reads only the resolved location).
 - **Strip the authoring aid.** The `<!-- … -->` HTML comment above the `## Capabilities` table in the template is a build-time directive **for `init` only** — it must **never** reach a written file. Drop it in both branches: write only the `## Capabilities` heading, table, and explanatory prose to the Phase 0 resolved registry location (which is `_local/config.md` itself when the resolved location equals it). Every "write the template" instruction below means the template **minus** this comment.
 - Otherwise:
-  1. **Ask for the Azure DevOps Organization.** Prompt the user for their ADO org slug — the `<org>` segment in `dev.azure.com/<org>`. There is no sensible default, so don't invent one. If the user can't supply it yet, write `<your-ado-org>` into the **ADO Organization** row and flag it in the chat summary so they fix it before `/wf:spec`.
-  2. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on a framework project needing template/metadata checks) misses the very errors the skills exist to catch.
-  3. Write the template below, substituting the org into the `ADO Organization` row and the detected command into the `Verify Command` row. If either falls back to a placeholder, flag it prominently in the chat summary so the user fixes it before running any other skill.
+  1. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on a framework project needing template/metadata checks) misses the very errors the skills exist to catch.
+  2. Write the template below, substituting the detected command into the `Verify Command` row. If it falls back to a placeholder, flag it prominently in the chat summary so the user fixes it before running any other skill.
 
 ### Default content
 
@@ -96,20 +96,12 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 
 Project-specific values used by all `wf:*` skills. Skills MUST read this file at startup and substitute these values — never hardcode them.
 
-## Azure DevOps
-
-| Key | Value |
-|-----|-------|
-| **ADO Project** | `<ADO_PROJECT: the Azure DevOps project name>` |
-| **ADO Organization** | `<asked by wf:init — see Phase 2>` |
-| **Work Item ID Prefix** | `ADO` |
-
 ## Task Folders
 
 | Key | Value |
 |-----|-------|
 | **Task Root** | `_local` |
-| **Folder Pattern** | `{task-root}/{prefix}-{id}/` (e.g. `_local/ADO-6396/`) |
+| **Folder Pattern** | `{task-root}/T<NNN>/` (e.g. `_local/T001/`) — the tracker contract's empty-registry default (`capability-registry.contract.md` §"The tracker provider surface", "The id-shape rule"). An active tracker capability supplies its own id shape once registered. |
 
 ## Build / Verify
 
@@ -269,7 +261,7 @@ If the file already exists and `--force` is not set, skip. Otherwise write:
 
 Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
 
-- `ADO-<id>/` — task folders (requirements, spec, plan, research, artifacts)
+- `T<NNN>/` — task folders (requirements, spec, plan, research, artifacts)
 - `_testkit/` — Node test runner for `/wf-caps:test-node`
 - `config.md` — project-specific values consumed by every wf:* skill
 
@@ -332,7 +324,7 @@ chat summary telling the user to run `/wf:constitution` manually — never STOP 
 
 ## Edge Cases
 
-- **Not a git repository:** Stop in Phase 0 with the init instruction. Never run `git init` automatically.
+- **Registered delivery provider fails to resolve a workspace root:** Stop in Phase 0 with the provider's error. Never fall back to the plain-directory resolution in this case — that fallback is only for the unconfigured (no delivery provider registered) case.
 - **`_local/` is a regular file, not a directory:** Stop and report the conflict. Do not delete.
 - **`.gitignore` or `.git/info/exclude` is read-only:** Stop and report. Don't attempt to chmod.
 - **`--force` passed but nothing needs rewriting:** Continue; produce no diff on clean runs.
@@ -365,7 +357,8 @@ Verify Command: <detected command>
   Rule: <which detection rule matched — e.g. "rule 2: typecheck script in web/package.json">
   Rejected candidates: <list any other project roots that could have been picked, or "none">
 
-Next: review `_local/config.md` — confirm the Verify Command matches what you actually run to typecheck the project. Then `/wf:spec <ado-id>`.
+Next: review `_local/config.md` — confirm the Verify Command matches what you actually run to typecheck the project. Then `/wf:spec <task-id>`.
+  Need a tracker? Install and run the active tracker capability's own init for tracker-specific config (see the capability pack's own docs for the exact command).
 ```
 
 If detection fell back to rule 7 (TODO placeholder), replace the `Verify Command` line with:
