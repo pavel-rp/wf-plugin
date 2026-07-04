@@ -20,14 +20,14 @@ You are the implementation of `/wf:commit`. The full procedure lives here — th
 
 Every operation this file invokes — `workspace-root-resolve`, `current-branch-query`, `commit`, `push-upstream` — is reached the same way, per `invocation-runtime.contract.md` §"Direct provider resolution":
 
-1. Read the `## Capabilities` registry at its `registryPath`-resolved location (default `_local/config.md` — already loaded in Step 1).
+1. Read the `## Capabilities` registry from `_local/config.md` — the contract's default-absent `registryPath` value — via the plain, cwd-relative bootstrap read Step 1 performs below. **Known limitation, unchanged from today:** this first read precedes any provider resolution, so it cannot itself honor a project-configured non-default `registryPath`, and assumes the current working directory is the repo root.
 2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
 3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
 4. **Zero matching rows** — no capability owns the `delivery` surface. Reads (`workspace-root-resolve`, `current-branch-query`) fall back silently to the plain-directory / already-known-branch value; a write (`commit`, `push-upstream`) cannot proceed — see Step 4's no-delivery-provider path (Step 5 never needs its own — it is unreachable when no provider is registered, since Step 4 already returned an error).
 
 ## Step 1 — Resolve config, workspace root, and task folder
 
-1. Read `_local/config.md` from the current working directory — a plain read, no delivery-provider call needed (the registry lives in this same file, consulted from here on). If missing, return `COMMIT — Error` with reason "Run /wf:init first."
+1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). If missing, return `COMMIT — Error` with reason "Run /wf:init first."
 2. Extract `{task-root}` and `{wi-prefix}`. Never hardcode them.
 3. Resolve `{numeric-id}`: digits from the input, or the current branch's first 3+-digit run (via `current-branch-query`). If neither, return `COMMIT — Error` with reason "No ADO ID provided and none could be inferred from the current branch."
 4. Resolve the absolute workspace root via `workspace-root-resolve`. With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error); with a provider registered but no working tree to resolve, return `COMMIT — Error` with reason "Not inside a resolvable workspace."

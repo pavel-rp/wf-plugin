@@ -20,14 +20,14 @@ You are the PR-composition-and-creation half of `/wf:pr`. The `/wf:pr` host has 
 
 Every operation this file invokes directly, or that `pr-create` internally absorbs — `workspace-root-resolve`, `current-branch-query`, `pr-create` (which itself calls `push-upstream` and has `pr-detect`'s detection semantics) — is reached the same way, per `invocation-runtime.contract.md` §"Direct provider resolution":
 
-1. Read the `## Capabilities` registry at its `registryPath`-resolved location (default `_local/config.md` — already loaded in Step 1).
+1. Read the `## Capabilities` registry from `_local/config.md` — the contract's default-absent `registryPath` value — via the plain, cwd-relative bootstrap read Step 1 performs below. **Known limitation, unchanged from today:** this first read precedes any provider resolution, so it cannot itself honor a project-configured non-default `registryPath`, and assumes the current working directory is the repo root.
 2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
 3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
 4. **Zero matching rows** — no capability owns the `delivery` surface. See Step 4's no-delivery-provider path — a write (`pr-create`) cannot proceed.
 
 ## Step 1 — Resolve config, workspace root, and task folder
 
-1. Read `_local/config.md` from the current working directory — a plain read, no delivery-provider call needed (the registry lives in this same file, consulted from here on). Missing → `PR — Error`, reason "Run /wf:init first."
+1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). Missing → `PR — Error`, reason "Run /wf:init first."
 2. Extract `{task-root}` and `{wi-prefix}`. Resolve `{numeric-id}` (input, or the current branch's first 3+-digit run via `current-branch-query`). None → `PR — Error`, reason "No ADO ID provided and none could be inferred from the current branch."
 3. Resolve the absolute workspace root via `workspace-root-resolve`. With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error); with a provider registered but no working tree to resolve, return `PR — Error`, reason "Not inside a resolvable workspace."
 4. Task folder: `<workspace-root>/{task-root}/{wi-prefix}-{numeric-id}/` (or `{task-root}` as-is if absolute) → `<task-folder-abs>`. If it doesn't exist → `PR — Error`, reason "Task folder not found. Run /wf:spec first."

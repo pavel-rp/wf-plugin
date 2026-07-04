@@ -20,14 +20,14 @@ If neither passed nor inferable from the current branch, return `BRANCH — Erro
 
 Every operation this file invokes — `workspace-root-resolve`, `current-branch-query`, `branch-create` — is reached the same way, per `invocation-runtime.contract.md` §"Direct provider resolution":
 
-1. Read the `## Capabilities` registry at its `registryPath`-resolved location (default `_local/config.md` — already loaded in Step 1).
+1. Read the `## Capabilities` registry from `_local/config.md` — the contract's default-absent `registryPath` value — via the plain, cwd-relative bootstrap read Step 1 performs below. **Known limitation, unchanged from today:** this first read precedes any provider resolution, so it cannot itself honor a project-configured non-default `registryPath`, and assumes the current working directory is the repo root.
 2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
 3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
 4. **Zero matching rows** — no capability owns the `delivery` surface. Reads (`workspace-root-resolve`, `current-branch-query`) fall back silently to the plain-directory / already-known-branch value; a write (`branch-create`) cannot proceed — see Step 3's no-delivery-provider path.
 
 ## Step 1 — Resolve config, workspace root, and task folder
 
-1. Read `_local/config.md` from the current working directory — a plain read; it needs no delivery-provider call at all (the registry lives in this same file, consulted from here on). If missing, return `BRANCH — Error` with reason "Run /wf:init first."
+1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). If missing, return `BRANCH — Error` with reason "Run /wf:init first."
 2. Extract `{task-root}` and `{wi-prefix}` from the config. Never hardcode them.
 3. Resolve `{numeric-id}`: digits from the input (`6396` from `6396`, `ADO-6396`, or `ADO_6396`), or from the current branch's first 3+-digit run (via `current-branch-query`).
 4. Resolve the absolute workspace root via `workspace-root-resolve` (direct provider resolution above). With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error). With a provider registered but no working tree to resolve, return `BRANCH — Error` with reason "Not inside a resolvable workspace."
