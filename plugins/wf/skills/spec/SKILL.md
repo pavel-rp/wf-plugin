@@ -1,32 +1,32 @@
 ---
 name: spec
-description: Writes a grounded task specification (01_spec.md) for an ADO work item by fetching requirements from Azure DevOps, exploring the current codebase, and resolving ambiguities interactively. Use when the user starts a new ADO-tracked task and needs to document scope before planning.
+description: Writes a grounded task specification (01_spec.md) for a task by fetching requirements from the active tracker capability (when registered), exploring the current codebase, and resolving ambiguities interactively. Use when the user starts a new task and needs to document scope before planning.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
-# /wf:spec — Grounded task specification from an ADO work item
+# /wf:spec — Grounded task specification from a task id
 
-Write a spec (`01_spec.md`) for a task. Accepts an ADO work item ID, fetches the work item directly from Azure DevOps, creates a task folder under `{task-root}/`, and writes a grounded spec. Explores the codebase, resolves ambiguities interactively, and produces a clean spec.
+Write a spec (`01_spec.md`) for a task. Accepts a task id, fetches the work item through the active tracker capability (when one is registered) via direct provider resolution, creates a task folder under `{task-root}/`, and writes a grounded spec. Explores the codebase, resolves ambiguities interactively, and produces a clean spec.
 
 ---
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}`, `{ado-project}`, and `{wi-prefix}` below come from that file. Never hardcode these values.
+**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}` below come from that file — never hardcode it. A registered tracker capability resolves its own project-scoped config (e.g. a tracker project name) from its own fragment binding; core never reads it directly.
 
 ---
 
 ## Command Syntax
 
 ```
-/wf:spec <ado-id> [--type feat|fix|chore|refactor|migration|docs|hotfix] [--complexity S|M|L]
+/wf:spec <id> [--type feat|fix|chore|refactor|migration|docs|hotfix] [--complexity S|M|L]
 ```
 
 ### Arguments
 
 | Argument          | Required | Description                                                        |
 | ----------------- | -------- | ------------------------------------------------------------------ |
-| `<ado-id>`        | NO       | ADO work item ID — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). Falls back to inferring from the current git branch. First run for a new task needs an explicit ID (branch doesn't exist yet). |
+| `<id>`            | NO       | Task id — whatever shape the active tracker capability produces (opaque to core; e.g. a numeric or prefixed identifier), or a local `T<NNN>` id when no tracker is registered. Falls back to inferring from the current branch. First run for a new task needs an explicit id (branch doesn't exist yet). |
 | `--type <type>`   | NO       | One of: `feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`. When supplied, wins over `/wf:classify` and is treated as confidence `high`. Defaults to whatever `/wf:classify` returns. |
 | `--complexity <c>`| NO       | `S`, `M`, or `L`. Resolution order: `--complexity` flag → `triage.md` Size field → `M` default. |
 
@@ -35,14 +35,16 @@ Write a spec (`01_spec.md`) for a task. Accepts an ADO work item ID, fetches the
 All task folders live under `{task-root}/` in the repo root:
 
 ```
-{task-root}/{wi-prefix}-{id}/
-├── 00_reqs.md           # Requirements (from ADO)
+{task-root}/{task-id}/
+├── 00_reqs.md           # Requirements (fetched from the active tracker, when registered)
 ├── 01_spec.md           # Specification (this skill)
 ├── 02_plan.md           # Implementation plan (wf:plan)
 ├── research/            # Codebase exploration notes, analysis, investigations
 ├── assets/              # Screenshots, mockups, trace files, images
 └── artifacts/           # Diffs, test cases, test results, generated outputs
 ```
+
+`{task-id}` is opaque: the active tracker capability's own shape when registered (e.g. a tracker-native identifier format), or the local `T<NNN>` scheme otherwise.
 
 **Core files** (`00_reqs.md`, `01_spec.md`, `02_plan.md`) live at the task folder root.
 **Non-essential files** go into subfolders:
@@ -52,111 +54,107 @@ All task folders live under `{task-root}/` in the repo root:
 
 ### Validation
 
-- If `<ado-id>` is provided, use it. If omitted, infer from `git branch --show-current`: extract the first 3+-digit run. If no digit run exists (e.g., on `main`), stop: "No ADO ID provided and none could be inferred from the current branch. Pass the ID explicitly: `/wf:spec <ado-id>`."
-- Extract the numeric ID: `6396` from `6396`, `ADO-6396`, or `ADO_6396`.
-- **Task folder:** `{task-root}/{wi-prefix}-{id}/` (e.g. `_local/ADO-6396/`). Create if it doesn't exist.
-- **Task ID:** `{wi-prefix}-{id}` (e.g. `ADO-6396`).
-- If `00_reqs.md` already exists in the folder, skip the ADO fetch and use the existing file.
+- **Resolve the tracker-surface state first** (direct provider resolution's scope-equality filter — "Direct provider resolution" below — applied at validation time, before any fetch): whether an active capability owns the `tracker` surface.
+- **Tracker active:** `<id>` must be supplied or inferable — a real tracker record needs a real id. If `<id>` is provided, use it verbatim (opaque to core — whatever shape the active tracker capability produces). If omitted, infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (this matches both a tracker-prefixed shape like `ADO-6396` and the local `T<NNN>` scheme's own `T6396` uniformly). Exactly one match — reuse that folder's full name as `<id>` verbatim; this recovers the opaque shape a prior invocation already established, core still never reconstructs it itself. Zero matches — the bare token isn't a deterministic `<id>` — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:spec <id>`." More than one match — ambiguous — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:spec <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:spec <id>`."
+- **No tracker active (the contract's id-shape rule, local scheme):** if `<id>` is explicitly provided, use it verbatim as `{task-id}`. Otherwise mint a fresh id: scan `{task-root}` for existing `T<NNN>`-prefixed folders, take the highest, +1, zero-pad to 3 digits. **No stop condition** — an empty registry always yields a deterministic local id with no tracker call at all; there is nothing to infer and nothing to fail.
+- **Task folder:** `{task-root}/{task-id}/`. Create if it doesn't exist.
+- If `00_reqs.md` already exists in the folder, skip the tracker fetch and use the existing file.
+- **Branch-name matching token.** Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** by the Phase 0.5 branch-gate quick-check (matching against an already-existing branch name); it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
 
 **Type resolution:** If `--type` is provided, use it (treat as `Confidence: high`). Otherwise, defer until Phase 0.7, which delegates to `/wf:classify`. Do NOT keyword-scan inline — the rubric lives in the classifier.
 
 **Complexity resolution:** Apply in order, first match wins.
 1. If `--complexity` is provided, use it. Source: `flag`.
-2. Else, if `{task-root}/{wi-prefix}-{id}/triage.md` exists and has a `**Size:** <S|M|L>` field (not `—`), use that value. Source: `triage`.
+2. Else, if `{task-root}/{task-id}/triage.md` exists and has a `**Size:** <S|M|L>` field (not `—`), use that value. Source: `triage`.
 3. Else, default to `M`. Source: `default`.
 
 Record the resolved value and source — both appear in the Final Output block so the user can see where the sizing came from.
 
 ---
 
-## Phase 0: Fetch from ADO and Create Requirements
+## Phase 0: Create Requirements
 
 Always runs first unless `00_reqs.md` already exists in the task folder.
 
+### Direct provider resolution (how `get`/`update` are reached)
+
+Every tracker operation below (`get`, `update`) is reached the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" — mirroring `plugins/wf/agents/branch.md`'s "Direct provider resolution" section, applied to the `tracker` surface instead of `delivery`:
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = tracker`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `tracker` surface. This is the silent local-only fallback (see the degradation rules in step 1 below) — no tracker operation is attempted; every step below proceeds from local artifacts alone.
+
 ### Fetch Procedure
 
-1. **Fetch the work item** using `mcp_ado_wit_get_work_item`:
-   - `id`: the extracted numeric ID
-   - `project`: `{ado-project}` (from config)
-   - `expand`: `"all"` (to get description, acceptance criteria, and relations)
-   - If the call fails, stop and report: "ADO work item #<ID> not found or inaccessible."
+1. **Fetch the work item and resolve parent context.** Invoke `get(<id>)` via direct provider resolution above. Its declared output — "the work item's current fields, state, and relations" — covers both the child fetch and the immediate parent's relation when present, even if the child description is complete. Parent items often contain scope boundaries, acceptance criteria, and cross-task constraints the child omits.
+   - **Unconfigured tracker** (the scope-equality filter matches zero rows) — silent local-only fallback, no prompt, no error: continue to step 2 with no fetched data.
+   - **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before.
+   - **Mid-run failure** (a tracker was registered but the `get` call errors) — warn once, naming the operation and the error, then continue local-only from whatever context is available. The run is never blocked by a tracker failure.
 
-2. **Resolve parent context (always).** Inspect relations for a parent work item and fetch the immediate parent when present, even if the child description is complete. Parent items often contain scope boundaries, acceptance criteria, and cross-task constraints that the child omits.
+2. **Check for empty requirements.** If the child description is empty/minimal, use parent description as the primary requirement source. If both are empty/minimal, create a minimal requirements file and warn the user.
 
-3. **Check for empty requirements.** If the child description is empty/minimal, use parent description as the primary requirement source. If both are empty/minimal, create a minimal requirements file and warn the user.
-
-4. **Backfill an empty "Dev" child description (the library's single ADO write).** If ALL of the following hold:
+3. **Backfill an empty "Dev" child description (the library's single tracker write).** If ALL of the following hold:
    - the child work item's title starts with `Dev` (e.g. `Dev`, `Dev:`, `Dev — backend part`),
    - the child description is empty or minimal (blank, whitespace-only, or merely restating the title),
-   - a parent work item was resolved in step 2 and has a non-empty description,
+   - a parent work item was resolved in step 1 and has a non-empty description,
 
-   then write a description onto the **child** work item:
+   then invoke `update(<id>, description: <composed-text>)` via direct provider resolution:
    - Compose `X` — the most concise statement of what's to be done, **5 words max**, derived from the parent title/description (e.g. `CSV export for audit log`).
    - Pick the sentence by the parent's work item type: parent is a Bug → `Fix X as described in the parent bug (<link>)`; parent is a PBI / Product Backlog Item / User Story / Feature → `Implement X as described in the parent PBI (<link>)`.
-   - `<link>` is an HTML anchor to the parent work item with link text `<parent-id>: <parent title>` (e.g. `<a href="...">6390: Audit log CSV export</a>`). Use the parent's `_links.html.href` from the fetch response for the href; fall back to `https://dev.azure.com/<org>/{ado-project}/_workitems/edit/<parent-id>` (derive `<org>` from the child's own URL). ADO description fields are HTML.
-   - Update via the ADO MCP work-item update tool (`mcp_ado_wit_update_work_item` or the batch variant), patching **only** `System.Description` on the child. Never touch any other field, any other work item, or a non-empty description — this backfill is the only ADO write any skill in the library performs.
-   - Use the same sentence as the `## Description` body of `00_reqs.md` (step 8); the Parent Context section still carries the substance.
-   - If the update tool is unavailable or the write fails, continue the spec flow and record in `00_reqs.md`: "Child description backfill failed: <reason>".
+   - `<link>` is an HTML anchor to the parent work item with link text `<parent-id>: <parent title>` (e.g. `<a href="...">6390: Audit log CSV export</a>`), using whatever link the `get` output already supplies for the parent. If `get`'s output supplies no such link, omit the anchor and use the plain `<parent-id>: <parent title>` text instead. Description fields may carry the tracker's own markup — normalize to clean markdown when composing.
+   - Core names the field generically as `description` — never a tracker-specific field string; the active tracker capability's own fragment binds `description` to its concrete field. Never touch any other field, any other work item, or a non-empty description — this backfill is the only tracker write any skill in the library performs.
+   - Use the same sentence as the `## Description` body of `00_reqs.md` (step 6); the Parent Context section still carries the substance.
+   - If `update` is unavailable (no tracker registered) or the write fails, continue the spec flow. When a tracker is registered but the write fails, record in `00_reqs.md`: "Child description backfill failed: <reason>."
 
-5. **Fetch discussion comments** using `mcp_ado_wit_list_work_item_comments`:
-   - `project`: `{ado-project}` (from config)
-   - `workItemId`: same ID
-   - If a parent exists, also fetch parent comments and include only substantive notes.
+4. **Discussion comments and image attachments are a documented contract-completeness gap, not fetched.** The tracker provider surface has no `list_comments`/`get_attachments`-equivalent operation today — this is a known gap, tracked for a future tracker-contract extension, not a local workaround. Skip both; do not attempt an inline tracker-specific call to bridge the gap.
 
-6. **Fetch visual attachments (required when present).**
-   - Inspect child (and parent, when present) work item relations for `AttachedFile` links.
-   - Keep image attachments only (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.bmp`, `.svg`).
-   - Download each image using `mcp_ado_wit_get_work_item_attachment` into `{task-root}/{wi-prefix}-{id}/assets/ado/`.
-   - Open each downloaded image with the image-view tool and extract only task-relevant facts (UI labels, error text, expected layout cues, highlighted fields).
-   - Write a short per-image note into `00_reqs.md` (and `research/exploration.md` for L complexity when needed). Do not infer hidden behavior from visuals.
-   - If an image cannot be downloaded or viewed, continue and record the failure reason in `00_reqs.md`.
+5. **Create the task folder** `{task-root}/{task-id}/` if it doesn't exist.
 
-7. **Create the task folder** `{task-root}/{wi-prefix}-{id}/` if it doesn't exist.
-
-8. **Write `00_reqs.md`** in the task folder:
+6. **Write `00_reqs.md`** in the task folder:
 
 ```markdown
-# {wi-prefix}-{id}: {Work Item Title}
+# {task-id}: {Work Item Title}
 
-> Auto-fetched from Azure DevOps work item #{id} on {YYYY-MM-DD}
+> Fetched from the active tracker (task #{id}) on {YYYY-MM-DD}, when a tracker capability is registered; otherwise a blank local requirements file.
 > Type: {work item type} | State: {state} | Assigned: {assigned to}
 > Fetched by: <model identifier>
+> Discussion comments and image attachments are a documented contract-completeness gap — no `list_comments`/`get_attachments`-equivalent tracker operation exists today, so neither is fetched. Pending a future tracker-contract extension.
 
 ## Description
 
-{Work item description field — preserve original formatting, strip HTML tags to clean markdown}
+{Work item description field — preserve original formatting, strip markup to clean markdown}
 
 ## Acceptance Criteria
 
 {Acceptance criteria field if present, otherwise omit this section}
 
-## Discussion Notes
-
-{Relevant comments from the discussion thread, newest first. Omit automated/system comments (state changes, link additions). If no substantive comments, omit this section.}
-
 ## Visual Context
 
-{Summarize what task-related screenshots/diagrams show. Include image file path(s) under `assets/ado/` and concise observations. If no images exist, omit this section.}
+{Summarize what task-related screenshots/diagrams show, when manually added under `assets/`. Include image file path(s) and concise observations. If no images exist, omit this section.}
 
 ## Parent Context
 
 {If a parent exists, include parent ID/title and the relevant constraints, acceptance criteria, and scope notes that affect this task. If no parent exists, omit.}
 ```
 
-9. **Update the index.** Invoke `/wf:index {id} reqs "<work item title>"` to record the requirements artifact. Pass the title verbatim from the ADO work item (truncate to 80 chars if longer; escape any `|` as `\|` so the index table doesn't break).
+7. **Update the index.** Invoke `/wf:index {id} reqs "<work item title>"` to record the requirements artifact. Pass the title verbatim from the fetched work item (truncate to 80 chars if longer; escape any `|` as `\|` so the index table doesn't break).
 
-10. **Report** to the user: "Fetched ADO #{id} (+ parent context when present) -> `{task-root}/{wi-prefix}-{id}/00_reqs.md` (images saved under `assets/ado/` when available). Review before proceeding." If step 4 backfilled the child description, add: "Backfilled empty ADO description from parent #<parent-id>."
+8. **Report** to the user, per the outcome of step 1:
+   - **Fetch succeeded:** "Fetched task {id} (+ parent context when present) -> `{task-root}/{task-id}/00_reqs.md`. Review before proceeding." If step 3 backfilled the child description, add: "Backfilled empty description from parent #<parent-id>."
+   - **No tracker registered:** "No tracker registered — created a local requirements file at `{task-root}/{task-id}/00_reqs.md`. Review before proceeding."
+   - **Mid-run tracker failure:** "Tracker fetch failed for task {id} (see the warning above) — continued local-only -> `{task-root}/{task-id}/00_reqs.md`. Review before proceeding."
 
-11. **Continue** with the Branch Gate using the newly created `00_reqs.md`.
+9. **Continue** with the Branch Gate using the newly created `00_reqs.md`.
 
 ---
 ## Phase 0.5: Branch Gate
 
-Before exploring the codebase or writing the spec, verify the current git branch is correct for this task. Runs after Phase 0 so that `00_reqs.md` exists for `wf:branch` to derive a branch name.
+Before exploring the codebase or writing the spec, verify the current branch is correct for this task. Runs after Phase 0 so that `00_reqs.md` exists for `wf:branch` to derive a branch name.
 
-1. Run `git rev-parse --abbrev-ref HEAD` to get the current branch name.
-2. **If the branch name contains `/{id}-`** (e.g. `feature/6396-...`, `fix/6396-...`, `chore/6396-...`, etc.) — already on the task branch, continue directly to Phase 0.7.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing `ado-id: {id}`. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
+1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (`plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution") — the same mechanism `plugins/wf/agents/branch.md` already uses. With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against).
+2. **If the branch name contains `/{numeric-id}-`** (e.g. `feature/6396-...`, `fix/6396-...`, `chore/6396-...`, etc.) — already on the task branch, continue directly to Phase 0.7.
+3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` as its argument. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
    - On success (`BRANCH — created`/`switched`/`already-active`), continue directly to Phase 0.7.
    - On failure (`BRANCH — Error`), stop and surface the subagent's reason.
 
@@ -185,9 +183,9 @@ Determine the task's branch-type bucket (one of `feat`, `fix`, `chore`, `refacto
 - Use sourcebot MCP tools (`mcp__sourcebot__search_code`, `mcp__sourcebot__read_file`, `mcp__sourcebot__list_tree`) for code search — preferred over raw `Grep`/`Glob` because it's indexed and cross-repo
 - Read any file in the project (`Read`, `Glob`, `Grep`) — fall back when sourcebot is unavailable or for file-pattern search
 - Use MSSQL extension tools (`mssql_run_query`, `mssql_list_tables`, `mssql_list_views`, `mssql_list_schemas`) for database schema and data exploration
-- Use ADO MCP tools for fetching work item details — **read-only, with exactly one write exception**: Phase 0 step 4 may patch `System.Description` on the child work item, only when that description is empty/minimal, the title starts with `Dev`, and a parent with a real description exists. No other ADO field or work item may ever be written.
-- Read-only git commands (`git rev-parse`, `git branch`, `git log`)
-- Write/create files ONLY inside the task folder (`{task-root}/{wi-prefix}-{id}/`)
+- Invoke `get`/`update` via **direct provider resolution** to the `tracker` surface — **read-only, with exactly one write exception**: Phase 0 step 3 may invoke `update` to patch the description field on the child work item, only when that description is empty/minimal, the title starts with `Dev`, and a parent with a real description exists. No other field or work item may ever be written.
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface)
+- Write/create files ONLY inside the task folder (`{task-root}/{task-id}/`)
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 0.5 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 0.7 type resolution (read-only).
 
 **Forbidden:**
@@ -256,7 +254,7 @@ Write `01_spec.md` in the task folder using the template below.
 ## Spec Template
 
 ```markdown
-# {wi-prefix}-{id} — <title>
+# {task-id} — <title>
 
 **Type:** <feat | fix | chore | refactor | migration | docs | hotfix>
 **Alternative:** <type | —>   <!-- always include; use the alternative type only when /wf:classify returned medium confidence, otherwise write — -->
@@ -334,11 +332,10 @@ Sections are optional — omit any that would be empty. Only include an "Open Qu
 
 ## Edge Cases
 
-- **ADO work item not found:** Stop: "ADO work item #{id} not found or inaccessible."
-- **ADO work item has empty description:** Use parent work item when available. If the child title starts with `Dev`, also backfill the ADO description per Phase 0 step 4. If parent also empty, create minimal `00_reqs.md` with title only, skip the backfill, and warn user.
-- **Backfill write fails (permissions, tool missing):** Not fatal. Continue the spec; record the failure reason in `00_reqs.md`.
-- **Image attachments exist but cannot be read:** Continue spec generation; add a warning note in `00_reqs.md` listing failed attachment IDs/filenames.
-- **MCP tools unavailable:** Stop: "ADO MCP tools are not available. Enable them to use /wf:spec."
+- **Tracker fetch outcome (configured / unconfigured / failed):** **Unconfigured** (no active tracker-surface owner) — silent local-only fallback, no prompt, no error; proceed with a blank local requirements file. **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before. **Configured but the `get` call fails mid-run** — warn once, naming the operation and the error, then continue building `00_reqs.md`/`01_spec.md` from whatever local/partial context is available. The run is never blocked by a tracker failure.
+- **Fetched work item has empty description:** Use parent work item when available. If the child title starts with `Dev`, also backfill via `update` per Phase 0 step 3. If parent also empty, create minimal `00_reqs.md` with title only, skip the backfill, and warn user.
+- **No tracker registered:** Not fatal, not a failure — the silent local-only fallback. Continue the spec; do not record a failure note (there is nothing to have attempted).
+- **Tracker registered but the backfill write fails (permissions, etc.):** Not fatal. Continue the spec; record the failure reason in `00_reqs.md`.
 - **Complexity is L:** Add a note in the spec: "Consider breaking this into sub-specs before planning."
 - **Folder already has `01_spec.md`:** Overwrite it.
 - **Folder already has `02_plan.md`:** Warn: "A plan already exists. The spec will be updated but the existing plan may be outdated."
@@ -352,11 +349,11 @@ Sections are optional — omit any that would be empty. Only include an "Open Qu
 ```
 SPEC — Complete
 
-Task: {wi-prefix}-{id} — <title>
+Task: {task-id} — <title>
 Type: <feat | fix | chore | refactor | migration | docs | hotfix>  (source: <flag | classify-high | classify-medium | classify-low-user-confirmed>)
 Complexity: <S | M | L>  (source: <flag | triage | default>)
-Folder: {task-root}/{wi-prefix}-{id}/
-Spec: {task-root}/{wi-prefix}-{id}/01_spec.md
+Folder: {task-root}/{task-id}/
+Spec: {task-root}/{task-id}/01_spec.md
 Next: /wf:plan {id}
 ```
 
