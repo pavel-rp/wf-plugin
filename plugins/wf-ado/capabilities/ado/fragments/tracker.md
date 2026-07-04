@@ -126,8 +126,8 @@ codebase has ever created a child work item.
 
 1. Patch the named field(s) on the given work item in `{ado-project}` (from config).
 2. Tool: `mcp_ado_wit_update_work_item` (or its batch variant) — the same tool this
-   codebase's `spec/SKILL.md` Phase 0 step 4 already calls to backfill an empty `Dev`
-   child's `System.Description` from its parent.
+   codebase's `plugins/wf/skills/spec/SKILL.md` Phase 0 step 4 already calls to backfill
+   an empty `Dev` child's `System.Description` from its parent.
 
 **This binding is unrestricted.** Today's only core usage patches exactly one field
 (`System.Description`, and only under narrow backfill conditions); this fragment's
@@ -151,8 +151,8 @@ than this operation's full scope, per above.
 
 1. Fetch the work item from `{ado-project}` (from config) with `expand: "all"` (to get
    description, acceptance criteria, and relations) — the same call shape
-   `spec/SKILL.md` Phase 0 step 1, `lite/SKILL.md` Phase 1 step 1, and
-   `triage/SKILL.md` Phase 1 step 1 already use.
+   `plugins/wf/skills/spec/SKILL.md` Phase 0 step 1, `plugins/wf/skills/lite/SKILL.md`
+   Phase 1 step 1, and `plugins/wf/skills/triage/SKILL.md` Phase 1 step 1 already use.
 2. Tool: `mcp_ado_wit_get_work_item`.
 
 **Output:** the work item's current fields, state, and relations.
@@ -195,8 +195,8 @@ reverse direction and has never been exercised.
 response shape once confirmed).
 
 **Grounding:** Unverified — tool name not yet confirmed. Today's codebase only
-**reads** comments (`spec/SKILL.md` Phase 0 step 5, via `mcp_ado_wit_list_work_item_comments`,
-grounded for reading) — it has never posted one.
+**reads** comments (`plugins/wf/skills/spec/SKILL.md` Phase 0 step 5, via
+`mcp_ado_wit_list_work_item_comments`, grounded for reading) — it has never posted one.
 
 ---
 
@@ -227,10 +227,11 @@ asserted as fact.
 
 1. **Not an API call.** Embed the literal `AB#<id>` string in the PR body — Azure
    Boards parses this autolink server-side on merge and attaches the PR URL to the
-   work item automatically. This is exactly the convention `agents/pr.md`'s PR body
-   template already uses (`Resolves AB#{numeric-id}.`, `agents/pr.md` §"Work-item
-   link"); `skills/pr/SKILL.md` corroborates the same convention in prose ("linked by
-   putting `AB#<id>` in the PR body") without repeating the literal template.
+   work item automatically. This is exactly the convention `plugins/wf/agents/pr.md`'s
+   PR body template already uses (`Resolves AB#{numeric-id}.`, `plugins/wf/agents/pr.md`
+   §"Work-item link"); `plugins/wf/skills/pr/SKILL.md` corroborates the same convention
+   in prose ("linked by putting `AB#<id>` in the PR body") without repeating the literal
+   template.
 2. Zero MCP calls — the "attachment" is a side effect of Azure Boards' own PR-body
    parsing, triggered by the literal text making it into the merged PR.
 
@@ -238,7 +239,7 @@ asserted as fact.
 once Azure Boards processes the merge.
 
 **Grounding:** Grounded — the literal-embed convention is already in production use in
-`agents/pr.md`, corroborated in prose by `skills/pr/SKILL.md`.
+`plugins/wf/agents/pr.md`, corroborated in prose by `plugins/wf/skills/pr/SKILL.md`.
 
 ---
 
