@@ -124,18 +124,35 @@ short diffstat summary.
 
 **Procedure:**
 
-1. **Detect upstream, scoped to `<branch>`.** `git rev-parse --abbrev-ref
-   --symbolic-full-name <branch>@{u}` — exit 0 → upstream is set. Always name
-   `<branch>` explicitly here (never the bare `@{u}` form) so this operation reports
-   and pushes the requested branch even when it differs from whatever is currently
-   checked out.
-2. **Push, scoped to `<branch>`.** Upstream set → `git push origin <branch>`. No
-   upstream → `git push --set-upstream origin <branch>`. Always name `<branch>`
-   explicitly (never a bare `git push`), for the same reason as step 1.
-3. **Map the outcome.** Exit 0 → `pushed (origin/<branch>)` (or `up-to-date
-   (origin/<branch>)` when git reports nothing to push and that can be distinguished).
-   Non-zero → `failed (<short reason>)` — this failure is **non-fatal** to any prior
-   commit; do not undo it.
+1. **Resolve `<branch>` if omitted.** Run `current-branch-query`. Its detached-HEAD
+   signal (the literal `HEAD`) → return an error: "Detached HEAD; no branch to push."
+   Otherwise use its result as `<branch>`.
+2. **Detect the configured upstream, scoped to `<branch>`** — via `git config`, never
+   the abbreviated `<branch>@{u}` ref (its remote and branch segments are joined by
+   `/` with no escaping, so it cannot be split back apart when a remote name or branch
+   name itself contains a `/`). Run `git config --get branch.<branch>.remote`.
+   - Non-zero exit (or empty output) → no upstream configured; skip to step 4.
+   - Output is the literal `.` → `<branch>` tracks another **local** branch, not a
+     remote — there is nothing to push upstream; return
+     `failed (tracks a local branch, not a remote)`.
+   - Otherwise → capture the output verbatim as `<remote>`, then run
+     `git config --get branch.<branch>.merge` and strip its `refs/heads/` prefix to
+     get `<remote-branch>`.
+3. **Push with an explicit two-sided refspec, scoped to `<branch>`.**
+   `git push <remote> <branch>:<remote-branch>`. Always name both sides explicitly —
+   **never** `git push <remote> <branch>` alone: when `<remote-branch>` differs from
+   `<branch>` (a real, supported git configuration), the same-name-only form silently
+   creates a *new* same-named branch on the remote while leaving the actually-tracked
+   branch stale, with exit 0 and no error surfaced. Skip to step 5.
+4. **No upstream configured — bootstrap to `origin`.**
+   `git push --set-upstream origin <branch>` (bootstrapping a new upstream still
+   defaults to `origin`, matching this capability's single-default-remote convention
+   elsewhere).
+5. **Map the outcome.** Exit 0 → `pushed (<remote>/<remote-branch>)` on the
+   has-upstream path (or `up-to-date (<remote>/<remote-branch>)` when git reports
+   nothing to push and that can be distinguished), or `pushed (origin/<branch>)` on
+   the bootstrap path. Non-zero → `failed (<short reason>)` — this failure is
+   **non-fatal** to any prior commit; do not undo it.
 
 **Output:** `<state>` (`pushed` | `up-to-date` | `failed (<reason>)`).
 
@@ -149,29 +166,32 @@ false).
 
 **Procedure:**
 
-1. **Ensure `<head>` is pushed.** Run `push-upstream` for `<head>` defensively — this is
+1. **Resolve `<head>` if omitted.** Run `current-branch-query`. Its detached-HEAD
+   signal (the literal `HEAD`) → return an error: "Detached HEAD; no branch to open a
+   PR from." Otherwise use its result as `<head>`.
+2. **Ensure `<head>` is pushed.** Run `push-upstream` for `<head>` defensively — this is
    idempotent even if the branch is already pushed. Check its returned `<state>`: on
-   `failed (<reason>)`, stop here and return an error — "Failed to push `<head>` to
-   origin — cannot open a PR for an unpushed branch" — rather than letting an unpushed
-   head fall through to a less specific `gh pr create` failure in step 4.
-2. **Short-circuit on an existing PR.** `gh pr view <head> --json url,state`.
+   `failed (<reason>)`, stop here and return an error — "Failed to push `<head>` —
+   cannot open a PR for an unpushed branch" — rather than letting an unpushed head fall
+   through to a less specific `gh pr create` failure in step 5.
+3. **Short-circuit on an existing PR.** `gh pr view <head> --json url,state`.
    - `gh` errors with an authentication problem → return an error naming the remedy:
      "`gh` is not authenticated. Run `gh auth login`."
    - An open PR is found → return `<state>` = `exists` with its URL. **Never** create a
      duplicate.
    - Otherwise continue.
-3. **Write `<body>` to a scratch file inside `.git/`** (never tracked) — e.g.
+4. **Write `<body>` to a scratch file inside `.git/`** (never tracked) — e.g.
    `.git/WF_PRBODY`.
-4. `gh pr create --base <base> --head <head> --title "<title>" --body-file <that
+5. `gh pr create --base <base> --head <head> --title "<title>" --body-file <that
    file>`, adding `--draft` when `<draft>` is true. Non-zero exit → return an error
    with the `gh` failure reason (surface an auth hint if relevant). Remove the scratch
    file regardless of outcome (best effort).
-5. **Capture the created PR URL** from `gh`'s output. `<state>` = `created`.
+6. **Capture the created PR URL** from `gh`'s output. `<state>` = `created`.
 
 **Output:** `<state>` (`created` | `exists`), `<url>`.
 
 **Single-shot-publish idempotency (explicit).** This operation's own `gh pr view`
-check (step 2) is a **safety net**, not the primary guard. The *primary* guard is the
+check (step 3) is a **safety net**, not the primary guard. The *primary* guard is the
 caller: before invoking `pr-create` again for the same artifact, the caller reads back
 a `**PR:** <url>` metadata line already recorded in the artifact that triggered the
 first call. A present value means the operation already ran and must be treated as
@@ -187,7 +207,10 @@ attribution).
 
 **Procedure:**
 
-1. `gh pr view <branch> --json url,state`.
+1. **Resolve `<branch>` if omitted.** Run `current-branch-query`. Its detached-HEAD
+   signal (the literal `HEAD`) → return an error: "Detached HEAD; no branch to detect
+   a PR for." Otherwise use its result as `<branch>`.
+2. `gh pr view <branch> --json url,state`.
    - `gh` errors with an authentication problem → return an error naming the remedy
      ("`gh` is not authenticated. Run `gh auth login`.").
    - Found → return the `<url>` and `<state>`.
@@ -238,9 +261,11 @@ A completeness self-check against today's `branch.md` / `commit.md` / `pr.md`:
 - **Existing branch** — `branch-create` step 4 (exact-name match → `switched`),
   `branch-switch` steps 2–3 (local or remote-only match).
 - **No upstream** — `branch-create` step 8 (`local-only (no upstream)` derivation),
-  `push-upstream` step 1–2 (sets it when absent).
-- **Existing PR** — `pr-create` step 2 (`exists`, never duplicated), `pr-detect` step 1
+  `push-upstream` steps 2 & 4 (detects it, then bootstraps to `origin` when absent).
+- **Existing PR** — `pr-create` step 3 (`exists`, never duplicated), `pr-detect` step 2
   (found vs. not-found, the latter not an error).
-- **Detached HEAD** — `branch-create` step 1, `branch-switch` step 1, `commit` step 1.
-- **`gh`-not-authenticated** — `pr-create` step 2, `pr-detect` step 1 (both name the
+- **Detached HEAD** — `branch-create` step 1, `branch-switch` step 1, `commit` step 1,
+  `push-upstream` step 1, `pr-detect` step 1, `pr-create` step 1 (the latter three via
+  `current-branch-query` when the branch input is omitted).
+- **`gh`-not-authenticated** — `pr-create` step 3, `pr-detect` step 2 (both name the
   `gh auth login` remedy).
