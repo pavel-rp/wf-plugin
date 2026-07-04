@@ -36,6 +36,14 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 | angular | feature | `plugins/wf-caps/capabilities/angular` | `qa-execution` provider (`surface: host`) | the `/wf-caps:qa-host` + `/wf-caps:test-page` Angular test-host skills; ships a `profile-template:` (web-root, routing-module, test-host-root, verify-command) seeded downstream on divergence |
 | node-ts | feature | `plugins/wf-caps/capabilities/node-ts` | — (skills-only; no phase fragments) | the `/wf-caps:test-node` pure-helper Node test harness |
 
+### Prerequisites
+
+Every capability this pack ships declares `requires: git, ado` — each assumes a
+`delivery` provider and a `tracker` provider are already active in the registry.
+Install and run `/wf-git:init` and `/wf-ado:init` (either order, before or alongside
+`/wf-caps:init`) so `git` and `ado` are registered first; otherwise `validate-registry.sh`
+CHECK 7 fails, naming the wf-caps capability, the missing capability, and the remedy.
+
 ### Registering a capability downstream
 
 **One command (recommended): `/wf-caps:init`.** After `/wf:init` has bootstrapped the
