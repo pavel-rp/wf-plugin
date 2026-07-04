@@ -1,6 +1,6 @@
 # angular capability manifest
 
-**Version:** 1.0.0 (WF-26 — initial extraction of the Angular stack test-host surface, absorbing WF-5's stack paths)
+**Version:** 1.0.1 (WF-126 — `requires: git, ado` declared)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Capability:** angular (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** feature (ships its own skills; also attaches one phase fragment via the registry)
@@ -21,6 +21,14 @@ they name the Angular runtime (DI, zone.js, `HttpClient`), the stack's routing m
 the stack's web/test-host paths — which is exactly why they belong in a stack capability and
 not in domain-free core. The concrete project paths these skills consume live in the
 capability's **profile** (below), not in the skill bodies.
+
+## Requires
+
+requires: git, ado
+
+This capability assumes a `delivery` provider (`git`) and a `tracker` provider (`ado`)
+are both registered in the capability registry — the wf-caps pack is built assuming
+git-based delivery and tracker-backed work-item tracking are available downstream.
 
 ## Fragments
 

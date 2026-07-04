@@ -1,6 +1,6 @@
 # browser-qa capability manifest
 
-**Version:** 1.0.0 (WF-25 — initial extraction of the stack-agnostic browser-automation engine)
+**Version:** 1.0.1 (WF-126 — `requires: git, ado` declared)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Capability:** browser-qa (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** feature (ships its own skill + agent; also attaches one phase fragment via the registry)
@@ -21,6 +21,14 @@ across projects regardless of stack (React, jQuery, any web UI). It carries **ze
 nouns — no framework names, no database tooling, no host-scaffolding wiring; those are
 separate stack capabilities. The engine reaches only browser-level storage/state
 preconditions (`localStorage` / `sessionStorage` / cookies, URL, viewport).
+
+## Requires
+
+requires: git, ado
+
+This capability assumes a `delivery` provider (`git`) and a `tracker` provider (`ado`)
+are both registered in the capability registry — the wf-caps pack is built assuming
+git-based delivery and tracker-backed work-item tracking are available downstream.
 
 ## Fragments
 

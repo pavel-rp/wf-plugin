@@ -1,6 +1,6 @@
 # node-ts capability manifest
 
-**Version:** 1.0.0 (WF-26 — initial extraction of the Node/TS pure-helper test harness)
+**Version:** 1.0.1 (WF-126 — `requires: git, ado` declared)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Capability:** node-ts (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** feature (ships its own skill; attaches no phase fragments)
@@ -18,6 +18,14 @@ helpers) that need no Angular runtime (no DI, zone.js, `HttpClient`, templates).
 distinct stack from the Angular surface (`angular` capability): the Node runtime, not the
 browser/DI runtime. It belongs in a stack capability — not domain-free core — because it
 names the Node test runner and the `_local/_testkit` harness.
+
+## Requires
+
+requires: git, ado
+
+This capability assumes a `delivery` provider (`git`) and a `tracker` provider (`ado`)
+are both registered in the capability registry — the wf-caps pack is built assuming
+git-based delivery and tracker-backed work-item tracking are available downstream.
 
 ## Fragments
 

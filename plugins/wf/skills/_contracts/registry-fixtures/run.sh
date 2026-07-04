@@ -81,6 +81,9 @@ assert "delivery surface single owner passes" pass-delivery.md - 0 "Validation p
 # fragment at `spec`, scope `tracker`) validates clean — same phase-agnostic CHECK 5
 # path as delivery, exercised with a second surface token and a second phase.
 assert "tracker surface single owner passes" pass-tracker.md - 0 "Validation passed"
+# WF-126: a wf-caps-shaped capability requiring both `git` and `ado`, with both
+# satisfied, validates clean.
+assert "two-dependency requires satisfied passes" pass-requires-git-ado.md - 0 "Validation passed"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
@@ -106,6 +109,9 @@ assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unkn
 assert "glob phase rejected"          fail-glob-phase.md    - 1 "glob-phase" "unknown phase" "*"
 assert "glob kind rejected"           fail-glob-kind.md     - 1 "glob-kind" "unknown contribution-kind" "*"
 assert "unsatisfied requires named"   fail-requires.md      - 1 "needs-dep" "absent-dep"
+# WF-126: two-dependency requires (`git, ado`), `ado` absent — names the requirer, the
+# missing capability, and CHECK 7's new remedy clause.
+assert "two-dependency requires unsatisfied named" fail-requires-git-ado.md - 1 "needs-git-ado" "requires \`ado\`" "Install and register/initialize"
 assert "co-active conflicts named"    fail-conflicts.md     - 1 "conflicter" "solo" "declares a conflict"
 assert "article contradiction named"  fail-article.md       - 1 "article-yes" "article-no" "commit-signing"
 # WF-99: plugin-anchored resolution failures — unmapped plugin, and mapped-but-dangling.

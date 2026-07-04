@@ -1,6 +1,6 @@
 # Migration capability manifest
 
-**Version:** 2.2.0 (WF-23 — `task-list` wired as a `tasks` decomposition fragment)
+**Version:** 2.2.1 (WF-126 — `requires: git, ado` declared)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md` (v2.0.0, WF-22)
 **Capability:** migration (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -13,6 +13,14 @@ This is the migration capability's **fragments manifest** — the file a core sk
 at `<path>/manifest.md` (when iterating the `## Capabilities` registry) to learn which
 fragments this capability attaches to which SDD phases. Core resolves `<path>` from the
 registry row in `_local/config.md`; it does not hardcode this path.
+
+## Requires
+
+requires: git, ado
+
+This capability assumes a `delivery` provider (`git`) and a `tracker` provider (`ado`)
+are both registered in the capability registry — the wf-caps pack is built assuming
+git-based delivery and tracker-backed work-item tracking are available downstream.
 
 ## Fragments
 

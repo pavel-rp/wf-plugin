@@ -548,7 +548,7 @@ for pair in ${req_pairs[@]+"${req_pairs[@]}"}; do
   if is_active "$needed"; then
     ok "capability \`$requirer\` requires \`$needed\` — satisfied (active)."
   else
-    err "capability \`$requirer\` requires \`$needed\`, which is not an active capability in the registry."
+    err "capability \`$requirer\` requires \`$needed\`, which is not an active capability in the registry. Install and register/initialize the capability that provides \`$needed\`, then re-run validation."
   fi
 done
 
