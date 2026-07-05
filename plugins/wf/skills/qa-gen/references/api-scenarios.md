@@ -126,7 +126,7 @@ Keep the standing bar small — this one API baseline scenario, no more. Only fa
 
 ## Backend-diff signals (Phase 2)
 
-When inspecting `git diff --name-only main...HEAD` in Phase 2, flag a file as a backend surface (signature-only read, per the black-box rule) by its **role**, not its stack-specific file-name pattern. The three roles:
+When inspecting the set of files changed on this branch relative to the base branch in Phase 2, flag a file as a backend surface (signature-only read, per the black-box rule) by its **role**, not its stack-specific file-name pattern. The three roles:
 
 - **Endpoint / route-handler files** — read each handler's HTTP verb, route template, parameters, and return type. New or changed handlers are **endpoint** API surfaces (case 1).
 - **Service / data-layer files** (service, repository, provider, or whatever the stack calls its business- and data-access layer) — read public method signatures. A new/changed public method with no endpoint handler calling it is a **service-only** API surface (case 2 → `Backend host required:`).

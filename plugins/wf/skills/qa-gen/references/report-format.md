@@ -8,7 +8,7 @@ This file is the single source of truth for the format. Update here, then both r
 
 ## Filename and location
 
-`{task-root}/{wi-prefix}-{id}/07_qa-report.md` — same numbered-pipeline convention as the other per-task artifacts. Number `07` follows `06_qa.md`.
+`{task-root}/{task-id}/07_qa-report.md` — same numbered-pipeline convention as the other per-task artifacts. Number `07` follows `06_qa.md`.
 
 Overwritten by default. If a prior report exists with annotated results, the writer renames it to `07_qa-report.<UTC-timestamp>.md` first.
 
@@ -17,11 +17,11 @@ Overwritten by default. If a prior report exists with annotated results, the wri
 ## Template
 
 ```markdown
-# {wi-prefix}-{id} — QA Run Report
+# {task-id} — QA Run Report
 
 **Run date:** <YYYY-MM-DD HH:mm>
 **Mode:** <manual | agentic>
-**Tester:** <git config user.name, or "wf:qa-auto" for agentic runs>
+**Tester:** <the environment's configured user identity, or "wf:qa-auto" for agentic runs>
 **Driver model:** <model identifier — for agentic runs, the model the per-TC subagent ran under>
 **Plan:** `06_qa.md` (scope: <smoke | happy | full>)
 **App:** <base URL from creds file, agentic only>

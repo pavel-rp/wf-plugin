@@ -1,12 +1,12 @@
 ---
 name: qa-gen
-description: Generates a test plan for an ADO task — classifies each spec success criterion by verification method (build/static, automated test, manual-browser, or API endpoint-exercise), then writes 06_qa.md with scoped, spec-traced scenarios. UI criteria become browser scenarios a human or agent runs in the running app; backend criteria become API scenarios that exercise the endpoint (or a temporarily-wired service) over HTTP with a real token. On top of that generic plan it fires the qa-generation phase, aggregating any scenarios contributed by whatever capabilities the project has registered — without naming or assuming any of them. Use when a task is implemented (or nearly so) and you want a QA pass tied to spec criteria before opening a PR or handing the plan to a run-assistant — including backend-only tasks that have no UI.
+description: Generates a test plan for a task — classifies each spec success criterion by verification method (build/static, automated test, manual-browser, or API endpoint-exercise), then writes 06_qa.md with scoped, spec-traced scenarios. UI criteria become browser scenarios a human or agent runs in the running app; backend criteria become API scenarios that exercise the endpoint (or a temporarily-wired service) over HTTP with a real token. On top of that generic plan it fires the qa-generation phase, aggregating any scenarios contributed by whatever capabilities the project has registered — without naming or assuming any of them. Use when a task is implemented (or nearly so) and you want a QA pass tied to spec criteria before opening a PR or handing the plan to a run-assistant — including backend-only tasks that have no UI.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:qa-gen — Manual browser-test plan generator
 
-Generates a structured manual test plan for an ADO task. Reads `00_reqs.md` (source of truth), classifies each success criterion by how it can be verified, designs scenarios for the criteria that need a human in a browser, and writes `06_qa.md` in the task folder. Every spec-derived scenario traces back to a numbered spec criterion; untraceable spec scenarios don't ship. The one deliberate exception is the **Baseline health suite** — a small standing set of measurable checks (no console errors, no failed network requests, the view renders) that every plan carries regardless of scope or criteria. See Phase 3.5.
+Generates a structured manual test plan for a task. Reads `00_reqs.md` (source of truth), classifies each success criterion by how it can be verified, designs scenarios for the criteria that need a human in a browser, and writes `06_qa.md` in the task folder. Every spec-derived scenario traces back to a numbered spec criterion; untraceable spec scenarios don't ship. The one deliberate exception is the **Baseline health suite** — a small standing set of measurable checks (no console errors, no failed network requests, the view renders) that every plan carries regardless of scope or criteria. See Phase 3.5.
 
 This skill produces **prose, not code**. The output is a plan a tester (human or agent) executes against the running app. Most scenarios are **browser** scenarios — clicks, typed values, observed UI changes, network calls visible in devtools. For a **backend** task (a controller endpoint, a service method, a repository method) it instead writes **API** scenarios that exercise the endpoint over HTTP with a real token and assert status + response shape; when the deliverable is a service with no endpoint yet, the scenario carries a `Backend host required:` precondition the runner satisfies by temporarily wiring the service to a controller (then reverting it). The full API-scenario rules live in [`references/api-scenarios.md`](references/api-scenarios.md). For automated unit tests scaffold via `/wf-caps:test-page` (component/DI-level, sandbox host) or `/wf-caps:test-node` (pure helpers, Node runner) — those siblings cover what this skill deliberately doesn't.
 
@@ -25,7 +25,7 @@ Both write `07_qa-report.md` in the format documented at [`references/report-for
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If absent, stop with: "Run `/wf:init` first." Also read `{qa-baseline-ignore}` if present (the allowlist of known-benign console messages / request patterns the Baseline health suite tolerates) — it's optional; treat an absent key as an empty list.
+Read `_local/config.md` for `{task-root}`. If absent, stop with: "Run `/wf:init` first." Also read `{qa-baseline-ignore}` if present (the allowlist of known-benign console messages / request patterns the Baseline health suite tolerates) — it's optional; treat an absent key as an empty list.
 
 `00_reqs.md` is the authoritative spec. `01_spec.md` is consulted only if reqs are too thin to derive testable criteria. **Never derive cases from the implementation** — see the black-box rule under Phase 3.
 
@@ -34,26 +34,37 @@ Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If absent, stop wit
 ## Command Syntax
 
 ```
-/wf:qa-gen [<ado-id>] [scope]
+/wf:qa-gen [<id>] [scope]
 ```
 
-Two optional positional arguments. Zero-arg invocation infers the ADO ID from the current branch and uses scope `full`.
+Two optional positional arguments. Zero-arg invocation infers the task id from the current branch and uses scope `full`.
 
 ### Arguments
 
 | Argument    | Required | Description                                                                                       |
 | ----------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `<ado-id>`  | NO       | ADO ID. Falls back to inferring from `git branch --show-current` (first 3+-digit run).            |
+| `<id>`      | NO       | Task id — whatever shape the active tracker capability produces (opaque to core), or a local `T<NNN>` id when no tracker is registered. Falls back to inferring from the current branch (first 3+-digit run). |
 | `[scope]`   | NO       | `smoke`, `happy`, or `full` — see Scope Reference below. Default `full`.                         |
 
-Argument-parser disambiguation: if a token is a 3+-digit numeric or `<wi-prefix>-NNN` form, treat it as the ID. Otherwise treat it as the scope. Unknown scope values stop with an error.
+Argument-parser disambiguation: if a token contains a 3+-digit run, or exactly matches an existing task folder name under `{task-root}`, treat it as the id. Otherwise treat it as the scope. Unknown scope values stop with an error.
 
 Examples:
 
-- `/wf:qa-gen` — infer ID from branch, scope `full` (default).
-- `/wf:qa-gen 6396` — explicit ID, scope `full`.
-- `/wf:qa-gen happy` — infer ID from branch, narrow to scope `happy`.
-- `/wf:qa-gen 6396 smoke` — explicit ID, scope `smoke`.
+- `/wf:qa-gen` — infer id from branch, scope `full` (default).
+- `/wf:qa-gen 6396` — explicit id, scope `full`.
+- `/wf:qa-gen happy` — infer id from branch, narrow to scope `happy`.
+- `/wf:qa-gen 6396 smoke` — explicit id, scope `smoke`.
+
+---
+
+## Direct provider resolution (how `current-branch-query` is reached)
+
+Id inference and the Phase 1 branch gate both reach `current-branch-query` the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section (qa-gen has no tracker-surface call site — it never fetches):
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
 
 ---
 
@@ -62,9 +73,9 @@ Examples:
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
-- Read-only git commands: `git rev-parse`, `git branch --show-current`, `git diff --name-only main...HEAD`, `git status --porcelain`, `git log`.
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface) for id inference and branch gating. Diff-based changed-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
 - Invoke the **Task** tool for `wf:branch` (branch gate) and `/wf:index` (index update).
-- Write `06_qa.md` ONLY inside the resolved task folder (`{task-root}/{wi-prefix}-{id}/`).
+- Write `06_qa.md` ONLY inside the resolved task folder (`{task-root}/{task-id}/`).
 
 **Forbidden:**
 
@@ -78,13 +89,13 @@ Examples:
 
 ## Phase 1: Resolve and gate
 
-1. **Resolve `<ado-id>`** from the passed argument, or extract the first 3+-digit run from `git branch --show-current`. If neither yields an ID, stop: "No ADO ID provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-gen <ado-id>`."
+1. **Resolve `<id>`.** If passed explicitly, use it verbatim as `{task-id}` — opaque, whatever shape the active tracker capability produces, or the local `T<NNN>` scheme. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run — call it `{numeric-id}`. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to `{numeric-id}` (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No task id provided and the branch-inferred token `{numeric-id}` doesn't match an existing task folder. Pass it explicitly: `/wf:qa-gen <id>`." More than one match — stop: "No task id provided and the branch-inferred token `{numeric-id}` matches more than one task folder. Pass it explicitly: `/wf:qa-gen <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-gen <id>`."
 
-2. **Locate the task folder.** Compute `{task-root}/{wi-prefix}-{id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
+2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
 
-3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{wi-prefix}-{id}`. Run `/wf:spec {id}` first to fetch ADO requirements."
+3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {id}` first to fetch requirements."
 
-4. **Branch gate.** If `git branch --show-current` doesn't match `*/<id>-*`, invoke the **Task** tool with `subagent_type: wf:branch` and the resolved ID. The subagent will create or switch to the task branch. If subagent invocation is unavailable, stop with: "Not on task branch and the Task tool isn't available. Run `/wf:branch {id}` manually, then re-run `/wf:qa-gen`."
+4. **Branch gate.** Resolve the current branch via `current-branch-query`. If it doesn't match `/{numeric-id}-` (the first 3+-digit run of the opaque `{task-id}`), invoke the **Task** tool with `subagent_type: wf:branch` and the resolved id. The subagent will create or switch to the task branch. If subagent invocation is unavailable, stop with: "Not on task branch and the Task tool isn't available. Run `/wf:branch {id}` manually, then re-run `/wf:qa-gen`."
 
 5. **Resolve scope.** Default `full`. Accept `smoke`, `happy`, `full` — anything else stops with "Unknown scope: `<value>`. Use one of: smoke, happy, full."
 
@@ -104,14 +115,14 @@ Run these reads in parallel where the tools allow:
 
 3. **Read `02_plan.md` if it exists** for the list of files implemented and any noted manual-test hints. Don't derive scenarios from plan steps — they describe code, not behavior.
 
-4. **Inspect what changed.** Run `git diff --name-only main...HEAD` to list files modified on this branch. For each file, do a *signature-only* read (component selectors, route paths, public method names, template button labels) so scenarios can name real UI elements. **Stop reading at the first method body.** This is the same black-box rule `/wf-caps:test-page` enforces.
+4. **Inspect what changed.** Inspect the set of files changed on this branch relative to the base branch — a read-only content-gathering read with no delivery operation of its own, described here by outcome, never as a literal command. For each file, do a *signature-only* read (component selectors, route paths, public method names, template button labels) so scenarios can name real UI elements. **Stop reading at the first method body.** This is the same black-box rule `/wf-caps:test-page` enforces.
 
    For each new UI component in the diff, also check whether it is reachable by a route in the running app (grep the project's routing configuration for the component's selector / kebab-name). If it is not routed and no test-host for it exists either, the target is **host-missing** — record this so Phase 4 can emit a `Host required: <component-path>` precondition on scenarios that interact with it. `/wf:qa-auto` invokes `/wf-caps:qa-host` to scaffold a routed test-host on demand.
 
    **Backend surfaces.** Apply the same signature-only read to backend source files in the diff — controllers, services, repositories, and the DTOs they return — following [`references/api-scenarios.md` § Backend-diff signals](references/api-scenarios.md#backend-diff-signals-phase-2). For each new/changed controller action, record its verb + route + params + return type (an **endpoint** surface). For each new/changed public method on a service/repository with no controller action calling it, record it as a **service-only** surface so Phase 4 can emit a `Backend host required: <Service>.<method>` precondition. A diff that is entirely backend data-layer files with no UI target is a **backend-only** task — its behavioral criteria classify as **API** in Phase 3.
 
 5. **Catalog existing automated coverage.** Look under:
-   - `_local/{wi-prefix}-{id}/tests/` — `/wf-caps:test-node` output.
+   - `_local/{task-id}/tests/` — `/wf-caps:test-node` output.
    - The project's page-test location — `/wf-caps:test-page` output (filename hints carry the suite name; the file may be git-excluded but local).
    - Any pre-existing test files referenced in `02_plan.md`.
 
@@ -232,7 +243,7 @@ subagent reference, no STOP. **Never** name a concrete capability, count the reg
 carry a per-capability code path. An aggregated scenario rolls up into the plan and the
 coverage matrix on the same footing as a spec-traced scenario, carrying its provenance tag.
 
-Write to `{task-root}/{wi-prefix}-{id}/06_qa.md`. Overwrite if it exists — the task folder is gitignored, so there's no git history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
+Write to `{task-root}/{task-id}/06_qa.md`. Overwrite if it exists — the task folder is gitignored, so there's no git history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
 
 Use the template in the next section verbatim. Substitute placeholders. Don't invent extra sections.
 
@@ -241,12 +252,12 @@ Use the template in the next section verbatim. Substitute placeholders. Don't in
 ## Template: `06_qa.md`
 
 ```markdown
-# {wi-prefix}-{id} — Manual QA Plan
+# {task-id} — Manual QA Plan
 
 **Generated:** <YYYY-MM-DD HH:mm>
 **Generated by:** <model identifier>
 **Scope:** <smoke | happy | full>
-**Branch:** <git branch --show-current>
+**Branch:** <current branch>
 **Spec:** `00_reqs.md` (+ `01_spec.md` where noted)
 
 This plan is executed manually in a browser against the running app. Each scenario validates one spec criterion. Mark results in-place as the run-assistant directs, or — if running solo — annotate `[PASS]`, `[FAIL: <reason>]`, or `[SKIP: <reason>]` next to each `TC-NNN` heading.
@@ -468,13 +479,13 @@ Default `full`. The same skill at the same scope on the same spec should produce
 ```
 QA-GEN — Complete
 
-Task:      {wi-prefix}-{id}
+Task:      {task-id}
 Scope:     <smoke | happy | full>
 Capability scenarios: <none | <N> across <M> capabilities>
 Scenarios: <N> in <S> suites (incl. <b> Baseline health<, <c> capability scenarios if any>) — <br> browser · <api> API · <cap> capability
 Coverage:  <M>/<K> criteria mapped (<M-browser> browser · <M-api> API · <M-auto> automated · <M-static> build/static)
 
-File:      {task-root}/{wi-prefix}-{id}/06_qa.md
+File:      {task-root}/{task-id}/06_qa.md
 
 Gaps:      <list of uncovered SC-N, or "none">
 
