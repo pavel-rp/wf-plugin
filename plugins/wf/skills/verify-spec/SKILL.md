@@ -265,7 +265,7 @@ Write the file first, then print the chat summary. If the write fails (permissio
 path missing), stop and report the failure — do NOT fall back to printing the full
 report inline.
 
-**After writing the report**, invoke `/wf:index <id> verify "<a> PASS · <b> FAIL · <c> PARTIAL"`
+**After writing the report**, invoke `/wf:index {task-id} verify "<a> PASS · <b> FAIL · <c> PARTIAL"`
 to record the audit in the per-task index. Substitute each placeholder with its own
 count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step when the
 `<path-to-00_reqs.md>` override form is used and the report lives outside the task folder.
@@ -334,7 +334,7 @@ Print, in this order:
 - **Top next actions:** 1–3 bullets — the most important items from the report's
   "Recommended next actions".
 - **`/wf:verify-fix` suggestion (conditional):** one line —
-  `Suggested: /wf:verify-fix <id> — <N> mechanical fixes look auto-applicable.` Include
+  `Suggested: /wf:verify-fix {task-id} — <N> mechanical fixes look auto-applicable.` Include
   **only** when at least one FAIL or PARTIAL finding has a concrete literal `Expected`
   value at a cited `file:line` (a specific value, enum member, missing property, or
   forbidden pattern with a mechanical remedy). Omit on PASS reports, when every finding
@@ -367,11 +367,11 @@ End with the final-output block (see below).
 
 ## Edge Cases
 
-- **Spec is stale**: compare the spec header's fetch/author date against the branch's
-  last-commit timestamp — reached via `last-commit-timestamp-query` (direct provider
+- **Spec is stale**: compare the spec header's fetch/author date against the timestamp
+  returned by `last-commit-timestamp-query` (direct provider
   resolution to the `delivery` surface, see "Direct provider resolution" above; with
   zero matching delivery-provider rows this falls back silently to a
-  plain-directory-safe timestamp read). If the last-commit timestamp is after the
+  plain-directory-safe timestamp read). If that timestamp is after the
   spec's fetch/author date, warn the user — the spec may have been updated since.
   Continue anyway, but flag it.
 - **Requirements reference files that no longer exist**: the file may have moved or been
@@ -410,10 +410,10 @@ Next: <branched on the verdict — see below>
 
 The `Next:` line is **always present**, branched on the verdict:
 
-- **PASS** → `/wf:qa-gen <id>` (proceed to QA).
-- **FAIL/PARTIAL with at least one mechanically fixable finding** → `/wf:verify-fix <id>`
+- **PASS** → `/wf:qa-gen {task-id}` (proceed to QA).
+- **FAIL/PARTIAL with at least one mechanically fixable finding** → `/wf:verify-fix {task-id}`
   (the same finding that gates the chat summary's `/wf:verify-fix` suggestion).
 - **FAIL/PARTIAL with only manual/structural findings** → `fix the findings in
-  04_verify.md, then re-run /wf:verify-spec <id>`.
+  04_verify.md, then re-run /wf:verify-spec {task-id}`.
 
 **The final output block must always be the very last thing output to chat.**
