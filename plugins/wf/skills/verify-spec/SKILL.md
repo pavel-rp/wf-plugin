@@ -413,7 +413,7 @@ The `Next:` line is **always present**, branched on the verdict:
 - **PASS** → `/wf:qa-gen {task-id}` (proceed to QA).
 - **FAIL/PARTIAL with at least one mechanically fixable finding** → `/wf:verify-fix {task-id}`
   (the same finding that gates the chat summary's `/wf:verify-fix` suggestion).
-- **FAIL/PARTIAL with only manual/structural findings** → `fix the findings in
-  04_verify.md, then re-run /wf:verify-spec {task-id}`.
+- **FAIL/PARTIAL with only manual/structural findings** → fix the findings in
+  04_verify.md, then re-run `/wf:verify-spec {task-id}`.
 
 **The final output block must always be the very last thing output to chat.**
