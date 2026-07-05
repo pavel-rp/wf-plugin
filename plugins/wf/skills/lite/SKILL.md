@@ -1,12 +1,12 @@
 ---
 name: lite
-description: Runs a condensed spec-plan-implement pass for small ADO tasks in a single skill invocation. Fetches requirements, writes a combined mini-spec-and-plan, stops once for user approval, then implements and hands off. Use for S-complexity items where the full /wf:spec + /wf:plan + /wf:implement chain is overkill.
+description: Runs a condensed spec-plan-implement pass for small tasks in a single skill invocation. Fetches requirements from the active tracker when one is registered; when none is, works from an already-present local requirements file with no tracker fetch and no error, deferring to /wf:spec when a self-contained description isn't available. It then writes a combined mini-spec-and-plan, stops once for user approval, and implements and hands off. Use for S-complexity items where the full /wf:spec + /wf:plan + /wf:implement chain is overkill.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
 # /wf:lite — One-pass spec-plan-implement for small tasks
 
-Handle a small ADO task end-to-end in a single skill run. Fetches the work item, writes `00_reqs.md` and a combined `lite.md` (mini-spec + checkbox plan), pauses once for user approval, then implements and hands off — no commit. Intended for S-complexity items where the full spec→plan→implement chain burns more tokens than the task is worth.
+Handle a small task end-to-end in a single skill run. Fetches the work item from the active tracker when one is registered; when none is, works from an already-present local requirements file with no tracker fetch and no error, deferring to `/wf:spec` when a self-contained description isn't available. It then writes `00_reqs.md` and a combined `lite.md` (mini-spec + checkbox plan), pauses once for user approval, then implements and hands off — no commit. Intended for S-complexity items where the full spec→plan→implement chain burns more tokens than the task is worth.
 
 **One approval gate. One combined artifact. No step-by-step ticking ceremony.**
 
@@ -14,7 +14,7 @@ Handle a small ADO task end-to-end in a single skill run. Fetches the work item,
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}`, `{ado-project}`, and `{wi-prefix}` below come from that file. Never hardcode these values.
+**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}` below come from that file — never hardcode it. A registered tracker capability resolves its own project-scoped config (e.g. a tracker project name) from its own fragment binding; core never reads it directly.
 
 ---
 
@@ -31,29 +31,49 @@ The choice is left to the user for now. A future ranker skill will advise which 
 ## Command Syntax
 
 ```
-/wf:lite <ado-id> [--type feat|fix|chore|refactor|migration|docs|hotfix]
+/wf:lite <id> [--type feat|fix|chore|refactor|migration|docs|hotfix]
 ```
 
 ### Arguments
 
 | Argument          | Required | Description                                                        |
 | ----------------- | -------- | ------------------------------------------------------------------ |
-| `<ado-id>`        | NO       | ADO work item ID — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). Falls back to inferring from the current git branch. First run for a new task needs an explicit ID. |
+| `<id>`            | NO       | Task id — whatever shape the active tracker capability produces (opaque to core), or a local `T<NNN>` id when no tracker is registered. Falls back to inferring from the current branch. First run for a new task needs an explicit id. |
 | `--type <type>`   | NO       | Branch type prefix. One of: `feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`. When supplied, wins over `/wf:classify` and is treated as confidence `high`. Otherwise resolved per Phase 2.5 via `/wf:classify`. |
 
 ### Folder Resolution
 
-- Extract the numeric ID: `6396` from `6396`, `ADO-6396`, or `ADO_6396`.
-- **Task folder:** `{task-root}/{wi-prefix}-{id}/` (e.g. `_local/ADO-6396/`).
-- **Task ID:** `{wi-prefix}-{id}` (e.g. `ADO-6396`).
+- **Task folder:** `{task-root}/{task-id}/`.
+- **Task id:** `{task-id}` — opaque: the active tracker capability's own shape when registered (e.g. a tracker-native identifier format), or the local `T<NNN>` scheme otherwise (see Validation below for how `{task-id}` is resolved).
 
 ### Validation
 
-- If `<ado-id>` is provided, use it. If omitted, infer from `git branch --show-current`: extract the first 3+-digit run. If no digit run exists (e.g., on `main`), stop: "No ADO ID provided and none could be inferred from the current branch. Pass the ID explicitly: `/wf:lite <ado-id>`."
-- If `00_reqs.md` already exists, skip the ADO fetch and use the existing file.
+- **Resolve the tracker-surface state first** (direct provider resolution's scope-equality filter — "Direct provider resolution" below — applied at validation time, before any fetch): whether an active capability owns the `tracker` surface.
+- **Tracker active:** `<id>` must be supplied or inferable — a real tracker record needs a real id. If `<id>` is provided, use it verbatim (opaque to core). If omitted, infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (matching both a tracker-prefixed shape and the local `T<NNN>` scheme's own form uniformly). Exactly one match — reuse that folder's full name as `<id>` verbatim (this recovers the opaque shape a prior invocation already established; core never reconstructs it itself) and set `{task-id}` = `<id>`. Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:lite <id>`." More than one match — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:lite <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:lite <id>`."
+- **No tracker active (the contract's id-shape rule, local scheme):** if `<id>` is explicitly provided, use it verbatim as `{task-id}`. Otherwise mint a fresh id: scan `{task-root}` for existing `T<NNN>`-prefixed folders, take the highest, +1, zero-pad to 3 digits. **No stop condition** — an empty registry always yields a deterministic local id with no tracker call at all.
+- If `00_reqs.md` already exists, skip the tracker fetch and use the existing file.
 - If `01_spec.md` or `02_plan.md` already exists, stop: "Full-flow artifacts found. Continue with `/wf:implement {id}` or delete them first."
+- **Branch-name matching token.** Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** by the Phase 2 branch-gate check (matching against an already-existing branch name); it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
 
 **Type resolution:** If `--type` is provided, use it (treat as `Confidence: high`). Otherwise, defer until Phase 2.5, which delegates to `/wf:classify`. Do NOT keyword-scan inline — the rubric lives in the classifier.
+
+### Direct provider resolution (how `get` is reached)
+
+Every tracker operation below (`get`) is reached the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" — mirroring `plugins/wf/skills/spec/SKILL.md`'s own tracker-surface section:
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = tracker`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `tracker` surface. This is the silent local-only fallback — no tracker operation is attempted; every step below proceeds from local artifacts alone.
+
+### Direct provider resolution (how `current-branch-query` is reached)
+
+Every delivery operation below (`current-branch-query`) is reached the same way, per the same contract section — mirroring `plugins/wf/agents/branch.md`'s own delivery-surface section:
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
 
 ---
 
@@ -64,9 +84,10 @@ The choice is left to the user for now. A future ranker skill will advise which 
 - Use sourcebot MCP tools (`mcp__sourcebot__search_code`, `mcp__sourcebot__read_file`, `mcp__sourcebot__list_tree`) for code search — preferred over raw `Grep`/`Glob`.
 - Read any file in the project.
 - Use MSSQL extension tools (`mssql_*`) read-only for schema lookups.
-- Use ADO MCP tools read-only for fetching the work item.
-- Read-only git commands (`git rev-parse`, `git branch`, `git log`, `git status`, `git diff`).
-- Write/create files inside the task folder (`{task-root}/{wi-prefix}-{id}/`).
+- Invoke `get` via direct provider resolution to the tracker surface (read-only) for fetching the work item.
+- Read-only resolution via `current-branch-query` (direct provider resolution to the delivery surface).
+- Read-only diff/status review for the Phase 6 handoff summary (inspecting the working tree; not a delivery-provider operation).
+- Write/create files inside the task folder (`{task-root}/{task-id}/`).
 - Modify source files during Phase 5 (implementation) only.
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 2 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 2.5 type resolution (read-only).
 
@@ -79,26 +100,25 @@ The choice is left to the user for now. A future ranker skill will advise which 
 
 ---
 
-## Phase 1: Fetch ADO and Write Requirements
+## Phase 1: Fetch Requirements
 
 Skip if `00_reqs.md` already exists in the task folder.
 
-1. **Fetch the work item** using `mcp_ado_wit_get_work_item`:
-   - `id`: the extracted numeric ID
-   - `project`: `{ado-project}` (from config)
-   - `expand`: `"all"`
-   - If the call fails, stop: "ADO work item #{id} not found or inaccessible."
+1. **Fetch the work item.** Invoke `get(<id>)` via direct provider resolution to the tracker surface (above).
+   - **Unconfigured tracker** (the scope-equality filter matches zero rows) — silent local-only fallback, no prompt, no error: continue to step 2 with no fetched data.
+   - **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before.
+   - **Mid-run failure** (a tracker was registered but the `get` call errors) — warn once, naming the operation and the error, then continue local-only from whatever context is available. The tracker call itself never hard-stops the run; lite's own empty-description gate (step 2) still applies when no usable description results.
 
-2. **Skip parent fetch and discussion comments.** `/wf:lite` is for small tasks where the child description is expected to be sufficient. If the description is empty or minimal, stop: "Work item description is empty or minimal. Use `/wf:spec {id}` to fetch parent context."
+2. **Skip parent fetch and discussion comments.** `/wf:lite` is for small tasks where the child description is expected to be sufficient. If the description is empty or minimal (including the unconfigured/failed-tracker case, where no description was fetched at all), stop: "Work item description is empty or minimal. Use `/wf:spec {id}` to fetch parent context." This content gate is independent of tracker state — `/wf:lite` needs a self-contained description to write a mini-spec, and `/wf:spec` is the flow that resolves an empty one from parent context.
 
-3. **Create the task folder** `{task-root}/{wi-prefix}-{id}/` if it doesn't exist.
+3. **Create the task folder** `{task-root}/{task-id}/` if it doesn't exist.
 
 4. **Write `00_reqs.md`**:
 
 ```markdown
-# {wi-prefix}-{id}: {Work Item Title}
+# {task-id}: {Work Item Title}
 
-> Auto-fetched from Azure DevOps work item #{id} on {YYYY-MM-DD}
+> Fetched from the active tracker (task #{id}) on {YYYY-MM-DD}, when a tracker capability is registered; otherwise a blank local requirements file.
 > Type: {work item type} | State: {state} | Assigned: {assigned to}
 > Fetched by: <model identifier>
 
@@ -117,9 +137,9 @@ Skip if `00_reqs.md` already exists in the task folder.
 
 ## Phase 2: Branch Gate
 
-1. Run `git rev-parse --abbrev-ref HEAD`.
-2. **If the branch name contains `/{id}-`** — already on the task branch, proceed to Phase 2.5.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing `ado-id: {id}`. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
+1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above).
+2. **If the branch name contains `/{numeric-id}-`** — already on the task branch, proceed to Phase 2.5.
+3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` as its argument. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
    - On success (`BRANCH — created`/`switched`/`already-active`), continue to Phase 2.5.
    - On failure (`BRANCH — Error`), stop and surface the subagent's reason.
 
@@ -160,7 +180,7 @@ Write `lite.md` in the task folder using the template below, then emit a short s
 ### lite.md Template
 
 ```markdown
-# {wi-prefix}-{id} — <title>
+# {task-id} — <title>
 
 **Type:** <feat | fix | chore | refactor | migration | docs | hotfix>
 **Alternative:** <type | —>   <!-- always include; use the alternative type only when /wf:classify returned medium confidence, otherwise write — -->
@@ -212,10 +232,10 @@ Write `lite.md` in the task folder using the template below, then emit a short s
 ```
 LITE — Plan Ready
 
-Task: {wi-prefix}-{id} — <title>
+Task: {task-id} — <title>
 Files: <count>
 Steps: <count>
-Plan: {task-root}/{wi-prefix}-{id}/lite.md
+Plan: {task-root}/{task-id}/lite.md
 
 Reply `ok` to implement, or describe revisions.
 ```
@@ -243,8 +263,8 @@ If something unexpected blocks a step (merge conflict, missing dependency, the c
 1. **Run the verification command** from the plan's verify step (always `{verify-command}` from `_local/config.md`). Tick the checkbox on pass.
 2. **Verify Done When criteria.** Run commands or read the implementation to confirm each.
 3. **Stage handoff:**
-   - Run `git diff --stat` — confirm only expected files were modified.
-   - Run `git diff` — show the full diff.
+   - Review the changed-files summary — confirm only expected files were modified.
+   - Review the full working-tree diff.
    - List files the user should stage.
 4. **Tick the handoff checkbox.**
 5. **Append Resolution block** to `lite.md`:
@@ -267,11 +287,11 @@ If verification fails, do not commit. Report the error, revert if isolatable, ad
 
 ## Edge Cases
 
-- **ADO work item not found:** Stop: "ADO work item #{id} not found or inaccessible."
-- **Empty/minimal description:** Stop. `/wf:lite` expects the child description to be self-contained. Direct the user to `/wf:spec {id}`.
+- **Tracker fetch outcome (configured / unconfigured / failed):** **Unconfigured** (no active tracker-surface owner) — silent local-only fallback, no prompt, no error; proceed to Phase 1 step 2 with no fetched data. **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before. **Configured but the `get` call fails mid-run** — warn once, naming the operation and the error, then continue local-only from whatever context is available. The tracker call itself never hard-stops the run; but with no usable description resulting (the unconfigured/failed case with no pre-existing `00_reqs.md`), the empty-description gate below still applies — see the next bullet.
+- **Empty/minimal description:** Stop. `/wf:lite` expects the child description to be self-contained. Direct the user to `/wf:spec {id}`. This gate is independent of tracker state — it fires on content, not on a tracker call.
 - **Full-flow artifacts already exist** (`01_spec.md` or `02_plan.md`): Stop. The task is already in the full flow — continue with `/wf:implement {id}` instead.
 - **`lite.md` already exists and has unchecked steps:** Resume from the first unchecked step. Do not re-fetch or re-explore. Skip straight to Phase 5.
-- **`lite.md` already exists and is fully checked:** Report "All steps complete for {wi-prefix}-{id}." and stop.
+- **`lite.md` already exists and is fully checked:** Report "All steps complete for {task-id}." and stop.
 - **Exploration reveals >5 files or architectural work:** Stop. Escalate to full flow.
 - **Mid-execution scope creep:** Stop. Revert partial edits. Escalate.
 - **Verification fails:** Do not commit. Revert if isolatable. Leave a failure note in `lite.md`.
@@ -284,12 +304,12 @@ If verification fails, do not commit. Report the error, revert if isolatable, ad
 ```
 LITE — Complete
 
-Task: {wi-prefix}-{id} — <title>
+Task: {task-id} — <title>
 Type: <feat | fix | chore | refactor | migration | docs | hotfix>  (source: <flag | classify-high | classify-medium | classify-low-user-confirmed>)
 Files changed: <count>
 Status: READY FOR REVIEW (not committed)
 Verification: <PASS / FAIL>
-Artifact: {task-root}/{wi-prefix}-{id}/lite.md
+Artifact: {task-root}/{task-id}/lite.md
 
 Next — pick a fork:
   Audit against spec:

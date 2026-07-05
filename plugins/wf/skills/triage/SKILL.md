@@ -1,12 +1,12 @@
 ---
 name: triage
-description: Scores an ADO task against a 5-dimension rubric (scope, clarity, design, risk, dependencies) and recommends which workflow to run next — lite, full, split, blocked, or clarify. Read-only advisor that runs before any work begins; fetches requirements if absent, performs a bounded repo scan, writes triage.md, and hands off with an exact next command. Use when a new task arrives and the right flow is uncertain, or as a sanity check before committing to /wf:lite vs /wf:spec.
+description: Scores a task against a 5-dimension rubric (scope, clarity, design, risk, dependencies) and recommends which workflow to run next — lite, full, split, blocked, or clarify. Read-only advisor that runs before any work begins; when requirements are absent it fetches them from the active tracker if one is registered, otherwise runs local-only with no fetch and no error, then performs a bounded repo scan, writes triage.md, and hands off with an exact next command. Use when a new task arrives and the right flow is uncertain, or as a sanity check before committing to /wf:lite vs /wf:spec.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
-# /wf:triage — Flow router for ADO tasks
+# /wf:triage — Flow router for tasks
 
-Classify an ADO task and recommend the downstream workflow. Fetches `00_reqs.md` if it doesn't exist, performs a bounded repo scan (no full exploration), scores 5 dimensions on a 1–5 scale, maps the scores to a verdict, and emits a structured report plus the exact command to run next.
+Classify a task and recommend the downstream workflow. When `00_reqs.md` is absent it fetches requirements from the active tracker if one is registered, otherwise runs local-only with no fetch and no error; then performs a bounded repo scan (no full exploration), scores 5 dimensions on a 1–5 scale, maps the scores to a verdict, and emits a structured report plus the exact command to run next.
 
 **Advisor only. Does not branch, plan, or implement. User retains override.**
 
@@ -14,7 +14,7 @@ Classify an ADO task and recommend the downstream workflow. Fetches `00_reqs.md`
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}`, `{ado-project}`, and `{wi-prefix}` below come from that file. Never hardcode these values.
+**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}` below come from that file — never hardcode it. A registered tracker capability resolves its own project-scoped config (e.g. a tracker project name) from its own fragment binding; core never reads it directly.
 
 ---
 
@@ -29,26 +29,45 @@ Reach for `/wf:triage` at the very start of a ticket, before deciding between `/
 ## Command Syntax
 
 ```
-/wf:triage <ado-id>
+/wf:triage <id>
 ```
 
 ### Arguments
 
 | Argument     | Required | Description                                                   |
 | ------------ | -------- | ------------------------------------------------------------- |
-| `<ado-id>`   | NO       | ADO work item ID — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). Falls back to inferring from the current git branch. On a fresh `main`, an explicit ID is required. |
+| `<id>`       | NO       | Task id — whatever shape the active tracker capability produces (opaque to core), or a local `T<NNN>` id when no tracker is registered. Falls back to inferring from the current branch. On a fresh `main`, an explicit id is required. |
 
 ### Folder Resolution
 
-- Extract the numeric ID: `6396` from `6396`, `ADO-6396`, or `ADO_6396`.
-- **Task folder:** `{task-root}/{wi-prefix}-{id}/`.
-- **Task ID:** `{wi-prefix}-{id}`.
+- **Task folder:** `{task-root}/{task-id}/`.
+- **Task id:** `{task-id}` — opaque: the active tracker capability's own shape when registered (e.g. a tracker-native identifier format), or the local `T<NNN>` scheme otherwise (see Validation below for how `{task-id}` is resolved).
 
 ### Validation
 
-- If `<ado-id>` is provided, use it. If omitted, infer from `git branch --show-current`: first 3+-digit run. If no digit run exists, stop: "No ADO ID provided and none could be inferred from the current branch. Pass the ID explicitly: `/wf:triage <ado-id>`."
-- If `00_reqs.md` already exists in the folder, skip the ADO fetch and use it.
+- **Resolve the tracker-surface state first** (direct provider resolution's scope-equality filter — "Direct provider resolution" below — applied at validation time, before any fetch): whether an active capability owns the `tracker` surface.
+- **Tracker active:** `<id>` must be supplied or inferable — a real tracker record needs a real id. If `<id>` is provided, use it verbatim (opaque to core). If omitted, infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (matching both a tracker-prefixed shape and the local `T<NNN>` scheme's own form uniformly). Exactly one match — reuse that folder's full name as `<id>` verbatim (this recovers the opaque shape a prior invocation already established; core never reconstructs it itself) and set `{task-id}` = `<id>`. Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:triage <id>`." More than one match — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:triage <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:triage <id>`."
+- **No tracker active (the contract's id-shape rule, local scheme):** if `<id>` is explicitly provided, use it verbatim as `{task-id}`. Otherwise mint a fresh id: scan `{task-root}` for existing `T<NNN>`-prefixed folders, take the highest, +1, zero-pad to 3 digits. **No stop condition** — an empty registry always yields a deterministic local id with no tracker call at all.
+- If `00_reqs.md` already exists in the folder, skip the tracker fetch and use it.
 - If `02_plan.md` or `lite.md` already exists, warn: "Task is already in flight with a `<plan|lite>` artifact. Triage is an entry-point advisor — continue with `/wf:implement {id}` or `/wf:lite {id}` instead." Proceed only if the user explicitly confirms.
+
+### Direct provider resolution (how `get` is reached)
+
+Every tracker operation below (`get`) is reached the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" — mirroring `plugins/wf/skills/spec/SKILL.md`'s own tracker-surface section:
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = tracker`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `tracker` surface. This is the silent local-only fallback — no tracker operation is attempted; every step below proceeds from local artifacts alone.
+
+### Direct provider resolution (how `current-branch-query` is reached)
+
+Every delivery operation below (`current-branch-query`) is reached the same way, per the same contract section — mirroring `plugins/wf/agents/branch.md`'s own delivery-surface section:
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
 
 ---
 
@@ -59,8 +78,8 @@ Reach for `/wf:triage` at the very start of a ticket, before deciding between `/
 - Use sourcebot MCP tools (`mcp__sourcebot__search_code`, `mcp__sourcebot__read_file`, `mcp__sourcebot__list_tree`) for code search — preferred over `Grep`/`Glob`.
 - Read any file in the project.
 - Use MSSQL extension tools read-only for schema lookups (only if the task description mentions data, tables, or queries).
-- Use ADO MCP tools read-only for work item fetch.
-- Read-only git commands.
+- Invoke `get` via direct provider resolution to the tracker surface (read-only).
+- Read-only resolution via `current-branch-query` (direct provider resolution to the delivery surface).
 - Write `00_reqs.md` (if fetched) and `triage.md` inside the task folder only.
 
 **Forbidden:**
@@ -77,7 +96,10 @@ Reach for `/wf:triage` at the very start of a ticket, before deciding between `/
 
 Skip to Phase 2 if `00_reqs.md` already exists.
 
-1. **Fetch the work item** via `mcp_ado_wit_get_work_item` with `id`, `project: {ado-project}`, `expand: "all"`. On failure, stop: "ADO work item #{id} not found or inaccessible."
+1. **Fetch the work item.** Invoke `get(<id>)` via direct provider resolution to the tracker surface (above).
+   - **Unconfigured tracker** (the scope-equality filter matches zero rows) — silent local-only fallback, no prompt, no error: continue to step 2 with no fetched data.
+   - **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before.
+   - **Mid-run failure** (a tracker was registered but the `get` call errors) — warn once, naming the operation and the error, then continue local-only from whatever context is available. The run is never blocked by a tracker failure.
 2. **Do NOT fetch parent or comments.** Triage is deliberately shallow — the whole point is to detect when the child description is insufficient and recommend `clarify`.
 3. **Create the task folder** if it doesn't exist.
 4. **Write `00_reqs.md`** using the same template as `/wf:lite` Phase 1 (title, description, AC).
@@ -155,7 +177,7 @@ Score each of the 5 dimensions on a 1–5 scale using the anchors below. Pick th
 | --- | --- |
 | 1 | Standalone; no other work depends on or gates this |
 | 2 | Reads from another team's surface but does not block on their changes |
-| 3 | Requires coordinating with another in-flight ADO task |
+| 3 | Requires coordinating with another in-flight tracked task |
 | 4 | Blocked on another team's decision, an external vendor, or a legal/compliance sign-off |
 | 5 | Blocked on unfinished upstream work that must land first |
 
@@ -192,7 +214,7 @@ Write `triage.md` in the task folder using the template. Overwrite prior version
 ### triage.md Template
 
 ```markdown
-# {wi-prefix}-{id} — Triage
+# {task-id} — Triage
 
 **Created:** <YYYY-MM-DD HH:mm>
 **Model:** <model identifier>
@@ -245,11 +267,11 @@ Write `triage.md` in the task folder using the template. Overwrite prior version
 ```
 TRIAGE — <verdict>
 
-Task: {wi-prefix}-{id} — <title>
+Task: {task-id} — <title>
 Scores: Scope=N Clarity=N Design=N Risk=N Deps=N (total NN/25)
 Size: <S | M | L | —>
 Confidence: <high | low>
-Artifact: {task-root}/{wi-prefix}-{id}/triage.md
+Artifact: {task-root}/{task-id}/triage.md
 
 Next:
   <exact command>
@@ -293,11 +315,11 @@ Rule: mid-sized; design decision non-trivial (cache key strategy, invalidation).
 
 ## Edge Cases
 
-- **ADO work item not found:** Stop: "ADO work item #{id} not found or inaccessible."
+- **Tracker fetch outcome (configured / unconfigured / failed):** **Unconfigured** (no active tracker-surface owner) — silent local-only fallback, no prompt, no error; proceed with locally-derived requirements only. **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before. **Configured but the `get` call fails mid-run** — warn once, naming the operation and the error, then continue building `00_reqs.md`/`triage.md` from whatever local/partial context is available. The run is never blocked by a tracker failure.
 - **Empty/minimal description AND no parent worth noting:** Score Clarity 5 → verdict `clarify`. Do not fall back to fetching parent here — that's `/wf:spec`'s job.
 - **Repo scan returns no hits for title keywords:** Not an error. Note in triage.md ("no existing code matches the task's key terms") and factor into Design and Clarity scoring.
 - **Already-in-flight task** (`02_plan.md` or `lite.md` present): Warn once, ask explicit confirmation before proceeding. If the user confirms, re-triage; the prior artifacts are untouched.
-- **Repeated triage on the same task**: Overwrite `triage.md`. The verdict may legitimately change as the task description is refined in ADO.
+- **Repeated triage on the same task**: Overwrite `triage.md`. The verdict may legitimately change as the task description is refined upstream.
 - **Budget exhausted mid-scan:** Stop scanning, score with what you have, set `confidence: low`.
 - **User disagrees with the verdict:** Expected and fine. The skill is advisory — the user can invoke any flow they want. Do not argue; the user has context the scan missed.
 

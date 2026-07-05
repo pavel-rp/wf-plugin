@@ -1,12 +1,12 @@
 ---
 name: classify
-description: Classifies an ADO task into one of seven branch-type buckets (feat, fix, chore, refactor, migration, docs, hotfix) with a calibrated confidence (high/medium/low). Reads requirements from a file or raw text, delegates the rubric to its subagent for context-isolated reasoning, and emits a structured verdict for downstream skills (wf:spec, wf:plan, wf:lite, wf:branch). Use when another skill needs to determine task type without hardcoding a feat/fix-only assumption.
+description: Classifies a task into one of seven branch-type buckets (feat, fix, chore, refactor, migration, docs, hotfix) with a calibrated confidence (high/medium/low). Reads requirements from a file or raw text, delegates the rubric to its subagent for context-isolated reasoning, and emits a structured verdict for downstream skills (wf:spec, wf:plan, wf:lite, wf:branch). Use when another skill needs to determine task type without hardcoding a feat/fix-only assumption.
 allowed-tools: [Read, Glob, Grep, Bash]
 ---
 
 # /wf:classify — Branch-type classifier with confidence
 
-Classify an ADO task into one of seven branch-type buckets and return a calibrated confidence. Reads `00_reqs.md` (or `01_spec.md` if richer) from a task folder, delegates the rubric to its subagent, and emits a structured verdict that downstream skills consume to set commit type, branch prefix, and spec/plan metadata.
+Classify a task into one of seven branch-type buckets and return a calibrated confidence. Reads `00_reqs.md` (or `01_spec.md` if richer) from a task folder, delegates the rubric to its subagent, and emits a structured verdict that downstream skills consume to set commit type, branch prefix, and spec/plan metadata.
 
 **Read-only. Does not write artifacts. Does not branch, plan, or implement.**
 
@@ -23,27 +23,37 @@ Reach for `/wf:classify` from inside another skill when that skill needs the tas
 ## Command Syntax
 
 ```
-/wf:classify [<ado-id> | --file <path> | --text "<inline>"]
+/wf:classify [<id> | --file <path> | --text "<inline>"]
 ```
 
 ### Arguments
 
 | Argument          | Required | Description                                                                                       |
 | ----------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `<ado-id>`        | NO       | ADO work item ID — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). Resolves to `{task-root}/{wi-prefix}-{id}/01_spec.md` if it exists, else `00_reqs.md`. Falls back to inferring from the current git branch. |
+| `<id>`            | NO       | Task id — whatever shape the active tracker capability produces (opaque to core), or a local `T<NNN>` id when no tracker is registered. Resolves to `{task-root}/{task-id}/01_spec.md` if it exists, else `00_reqs.md`. Falls back to inferring from the current branch. |
 | `--file <path>`   | NO       | Explicit path to a markdown/text file to classify. Bypasses task-folder resolution.               |
 | `--text "<inline>"` | NO     | Inline requirement text. Use when classifying ad-hoc input without a file.                        |
 
-Exactly one of the three input modes is used. Resolution: `--text` > `--file` > `<ado-id>` > inferred ID. If none can be resolved, stop: "No input provided. Pass an ADO ID, `--file <path>`, or `--text "..."`."
+Exactly one of the three input modes is used. Resolution: `--text` > `--file` > `<id>` > inferred id. If none can be resolved, stop: "No input provided. Pass a task id, `--file <path>`, or `--text "..."`."
 
-### Folder Resolution (when using `<ado-id>`)
+### Folder Resolution (when using `<id>`)
 
 Only attempted when neither `--file` nor `--text` is passed.
 
-- Read `_local/config.md` to resolve `{task-root}` and `{wi-prefix}`. If missing, stop: "Run `/wf:init` first."
-- Extract the numeric ID: `6396` from `6396`, `ADO-6396`, or `ADO_6396`.
-- **Input source preference:** `01_spec.md` (richer, post-spec) > `00_reqs.md` (raw ADO description). First available wins.
-- If neither file exists, stop: "No `01_spec.md` or `00_reqs.md` found in `{task-root}/{wi-prefix}-{id}/`. Run `/wf:spec {id}` first."
+- Read `_local/config.md` to resolve `{task-root}`. If missing, stop: "Run `/wf:init` first."
+- If `<id>` is provided, treat it as opaque — whatever shape the active tracker capability produces, or the local `T<NNN>` scheme — and use it verbatim as `{task-id}`.
+- If `<id>` is omitted, infer a numeric token via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name, call it `{numeric-id}`. Resolve that token against `{task-root}`: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token, mirroring `spec/SKILL.md`'s Validation-section resolution logic. Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "The branch-inferred token `<token>` doesn't match an existing task folder. Pass a task id, `--file <path>`, or `--text "..."`." More than one match — stop: "The branch-inferred token `<token>` matches more than one task folder. Pass a task id explicitly, or use `--file <path>` / `--text "..."`."
+- **Input source preference:** `01_spec.md` (richer, post-spec) > `00_reqs.md` (raw requirements). First available wins.
+- If neither file exists, stop: "No `01_spec.md` or `00_reqs.md` found in `{task-root}/{task-id}/`. Run `/wf:spec {id}` first."
+
+### Direct provider resolution (how `current-branch-query` is reached)
+
+Branch inference above is reached via **direct provider resolution**, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" — mirroring `plugins/wf/agents/branch.md`'s own section, applied to the `delivery` surface (classify has no tracker-surface call site — it never fetches):
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
 
 ---
 
@@ -52,7 +62,7 @@ Only attempted when neither `--file` nor `--text` is passed.
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
-- Read-only git commands for ID inference (`git rev-parse`, `git branch`).
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface) for id inference.
 - Invoke the **Task** tool to delegate to the `wf:classify` subagent. **The subagent is the only place the rubric runs** — this skill never classifies inline.
 
 **Forbidden:**
@@ -60,7 +70,7 @@ Only attempted when neither `--file` nor `--text` is passed.
 - Write any file. Classification is read-only — consumers persist the result, not this skill.
 - Modify source files.
 - Run builds, tests, or installs.
-- Fetch from ADO directly. Use already-resolved `00_reqs.md`/`01_spec.md` only — fetching is `/wf:spec` Phase 0's job.
+- Fetch from a tracker directly. Use already-resolved `00_reqs.md`/`01_spec.md` only — fetching is `/wf:spec` Phase 0's job.
 - Implement the rubric inline. If subagent invocation is unavailable, stop and report — see Phase 2.
 
 ---
@@ -69,7 +79,7 @@ Only attempted when neither `--file` nor `--text` is passed.
 
 1. If `--text "<inline>"` is provided, use the inline string as the classifiable content. Skip to Phase 2.
 2. Else, if `--file <path>` is provided, validate the file exists. If missing, stop: "Input file not found at `<path>`."
-3. Else, resolve the ADO ID (passed or inferred from branch) → task folder → first-available of `01_spec.md`, `00_reqs.md`. The subagent will read it itself; just hold the path.
+3. Else, resolve the task id (passed or inferred from branch) → task folder → first-available of `01_spec.md`, `00_reqs.md`. The subagent will read it itself; just hold the path.
 4. The classifiable content is the **title + description + acceptance criteria** sections only. Strip metadata blocks (frontmatter, `**Type:**`, `**Created:**`, etc.) so prior classification labels don't bias the rubric. (This stripping is the subagent's job when it reads the file — caller just hands over the path or text.)
 
 ---
@@ -153,7 +163,7 @@ Return ONLY the Final Output block (see below). No prose before or after — the
 
 Skills that call `/wf:classify` (`wf:spec`, `wf:plan`, `wf:lite`, indirectly `wf:branch`) should:
 
-1. Run `/wf:classify` with the appropriate input (ADO ID once requirements are fetched, or `--file`).
+1. Run `/wf:classify` with the appropriate input (task id once requirements are fetched, or `--file`).
 2. Parse `Type` and `Confidence` from the structured block.
 3. Branch on confidence:
    - **high** → use silently.
