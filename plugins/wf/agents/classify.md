@@ -1,6 +1,6 @@
 ---
 name: classify
-description: Classifies an ADO task into one of seven branch-type buckets (feat, fix, chore, refactor, migration, docs, hotfix) with calibrated confidence, running the rubric in an isolated context. Invoked by wf:spec, wf:plan, and wf:lite when an explicit --type isn't provided.
+description: Classifies a task into one of seven branch-type buckets (feat, fix, chore, refactor, migration, docs, hotfix) with calibrated confidence, running the rubric in an isolated context. Invoked by wf:spec, wf:plan, and wf:lite when an explicit --type isn't provided.
 argument-hint: 'path to a requirements/spec file, or raw requirement text'
 ---
 
