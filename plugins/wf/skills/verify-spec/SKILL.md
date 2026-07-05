@@ -29,8 +29,8 @@ generic verdict stands alone.
 
 **Before any other phase**, read `_local/config.md` to load project-specific values. If
 the file doesn't exist, stop and instruct the user to run `/wf:init` first. All
-references to `{task-root}` and `{wi-prefix}` below come from that file — never hardcode
-them. Task folders live at `{task-root}/{wi-prefix}-{id}/`.
+references to `{task-root}` below come from that file — never hardcode it. Task folders
+live at `{task-root}/{task-id}/`.
 
 ---
 
@@ -40,29 +40,32 @@ Parse the first token. Recognized forms:
 
 ### empty → infer from current branch
 
-1. Run `git branch --show-current`. Expect something like
-   `feat/<id>-<slug>`, `fix/<id>-<slug>`, or any `<type>/<id>-<slug>` form
-   (`feature/`, `chore/`, … — the `wf:branch` prefix taxonomy).
-2. Extract the task id from the branch name — the first 3+-digit run after the type
-   prefix (e.g. `feature/6396-…` → `6396`).
-3. Locate the task folder at `{task-root}/{wi-prefix}-{id}/`. Confirm its requirements
-   artifact (`00_reqs.md`) exists. If not, stop and ask the user to either pass the id
-   explicitly or point at a requirements path.
+1. Resolve the current branch via `current-branch-query`, reached through **direct
+   provider resolution** to the `delivery` surface (see "Direct provider resolution"
+   below). Extract the first 3+-digit run from the resolved branch name — the
+   branch-inferred token. With zero matching delivery-provider rows, this falls back
+   silently to the plain-directory case (no branch to infer from). If no numeric token
+   can be extracted from the branch at all, stop: "No id provided and none could be
+   inferred from the current branch. Pass the id explicitly: `/wf:verify-spec <id>`."
+2. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run
+   extraction to each existing folder's name and compare it to the branch-inferred
+   token (mirroring `plugins/wf/skills/spec/SKILL.md`'s Validation-section resolution
+   logic — this matches both a tracker-prefixed shape and the local `T<NNN>` scheme's
+   own form uniformly). Exactly one match — reuse that folder's full name as
+   `{task-id}` verbatim. Zero matches — stop: "No id provided and the branch-inferred
+   token `<token>` doesn't match an existing task folder. Pass the id explicitly:
+   `/wf:verify-spec <id>`." More than one match — stop: "No id provided and the
+   branch-inferred token `<token>` matches more than one task folder. Pass the id
+   explicitly: `/wf:verify-spec <id>`."
+3. Confirm the resolved task folder's requirements artifact (`00_reqs.md`) exists. If
+   not, stop and ask the user to either pass the id explicitly or point at a
+   requirements path.
 
-### `<task-id>` (e.g. `7`, `WF-7`, `6396`, `ENG-123`)
+### `<id>` (opaque — whatever shape the active tracker capability produces, or the local `T<NNN>` scheme)
 
-**Normalize the argument to `{id}` before resolving any path.** The user may type the
-id bare (`7`, `6396`) or prefixed (`WF-7`, `ENG_123`). Strip a leading
-`<prefix>-` / `<prefix>_` segment — whether it matches `{wi-prefix}` or any other token
-— to obtain `{id}`; the remainder is the id used everywhere below. Do **not** substitute
-the raw argument into `{wi-prefix}-{id}`: with `{wi-prefix}` already `WF`, the raw arg
-`WF-7` would resolve to `{task-root}/WF-WF-7/`, and a downstream `/wf:index WF-7 …` would
-miss its `3+-digit / {wi-prefix}-NNN` disambiguation. So `WF-7` → `{id}` = `7`,
-`6396` → `{id}` = `6396`, `7` → `{id}` = `7`.
-
-Resolve to the task folder `{task-root}/{wi-prefix}-{id}/` using the **normalized** `{id}`.
-If the folder or its `00_reqs.md` is missing, stop and tell the user; do not fall back to
-the derived `01_spec.md` as the source of truth.
+Use verbatim as `{task-id}` — no normalization. Resolve to the task folder
+`{task-root}/{task-id}/`. If the folder or its `00_reqs.md` is missing, stop and tell
+the user; do not fall back to the derived `01_spec.md` as the source of truth.
 
 ### `<path-to-00_reqs.md>`
 
@@ -72,6 +75,31 @@ of that file.
 
 If the requirements artifact is missing, stop and tell the user. They either need to
 author it (`/wf:spec`) or pass a path explicitly.
+
+---
+
+## Direct provider resolution (how `current-branch-query` and `last-commit-timestamp-query` are reached)
+
+Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch
+id inference above, and the Implementation-scope branch name below) and
+`last-commit-timestamp-query` (the spec-staleness edge case) — is reached the same way,
+per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider
+resolution", mirroring `plugins/wf/agents/branch.md`'s own section:
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's
+   default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`,
+   across the whole registry (a scope filter, independent of which phase value the row
+   itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its
+   fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the
+   referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. Both operations
+   fall back silently to their plain-directory-safe cases — no error, no capability
+   term surfaces. This audit's core evidence-gathering (the diff, commit coordinates,
+   and dirty-tree state — see "Implementation scope" below) has no delivery operation
+   of its own today; it is gathered directly against the local working tree regardless
+   of registry state — a documented contract-completeness gap, not a workaround.
 
 ---
 
@@ -89,15 +117,19 @@ Always read, in order:
    read it for inherited constraints (mapping tables, naming conventions, cross-task
    rules).
 3. **Implementation scope** — the diff of the current branch vs `main`, plus
-   the commit coordinates the audit runs against:
-   ```
-   git rev-parse --abbrev-ref HEAD        # branch name
-   git rev-parse HEAD                     # HEAD SHA (full)
-   git merge-base main HEAD               # base SHA — the "main" side of the diff
-   git status --porcelain                 # dirty tree? list files if any
-   git diff --stat main...HEAD
-   git diff main...HEAD
-   ```
+   the commit coordinates the audit runs against. No delivery operation covers
+   diff/log inspection today (a documented contract-completeness gap, not a
+   workaround — see `plugins/wf/skills/_contracts/capability-registry.contract.md`
+   §"The delivery provider surface" for the operation set); gather the following by
+   outcome, described generically and never as a literal command:
+   - the current branch name — via `current-branch-query` (direct provider resolution
+     to the `delivery` surface, see "Direct provider resolution" above)
+   - the current HEAD commit coordinate (full SHA)
+   - the base commit coordinate where the branch diverged from `main`
+   - whether the working tree is clean or dirty, and which files are dirty if so
+   - the changed-file summary (file list + insertion/deletion counts) against `main`
+   - the full diff content against `main`
+
    This is the set of code actually under audit. Don't verify against uncommitted noise
    from unrelated files; call those out separately. Record the branch, HEAD SHA, base
    SHA, and dirty-tree flag in the report header — this lets a reader tell which commit
@@ -241,13 +273,13 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 ### Full report shape (`04_verify.md`)
 
 ```
-# verify-spec: {wi-prefix}-{id}
+# verify-spec: {task-id}
 
 **Source:** `<path to 00_reqs.md>`
 **Branch:** `<branch name>`
 **Commit:** `<HEAD SHA>`  (base `<merge-base SHA>`)
 **Tree:** clean  |  dirty — <N> uncommitted files: `<path>, <path>, …`
-**Scope:** `git diff main...HEAD` — <N files, +X/-Y>
+**Scope:** <N files, +X/-Y> vs `main`
 **Verdict:** <PASS | FAIL | PARTIAL>  (<passed>/<total> requirements)
 **Audited by:** <model identifier>
 **Audited at:** <ISO 8601 timestamp>
@@ -335,17 +367,23 @@ End with the final-output block (see below).
 
 ## Edge Cases
 
-- **Spec is stale**: if the spec header carries a fetch/author date older than the most
-  recent commit on the branch, warn the user — the spec may have been updated since.
+- **Spec is stale**: compare the spec header's fetch/author date against the branch's
+  last-commit timestamp — reached via `last-commit-timestamp-query` (direct provider
+  resolution to the `delivery` surface, see "Direct provider resolution" above; with
+  zero matching delivery-provider rows this falls back silently to a
+  plain-directory-safe timestamp read). If the last-commit timestamp is after the
+  spec's fetch/author date, warn the user — the spec may have been updated since.
   Continue anyway, but flag it.
 - **Requirements reference files that no longer exist**: the file may have moved or been
   renamed. `Glob` for the basename before giving up. If truly missing, mark the
   dependent requirements UNVERIFIABLE and say why.
-- **Branch has commits from multiple tasks**: `git log main..HEAD --oneline` will show
-  this. Only verify the files touched for this task; list the unrelated commits
-  separately.
-- **Uncommitted changes**: `git status` shows a dirty tree. Verify against `HEAD`, not
-  the working tree — and note the dirty files so the user knows they weren't included.
+- **Branch has commits from multiple tasks**: inspecting the commit history between the
+  base and HEAD (the same content-gathering approach as the Implementation scope above)
+  will show this. Only verify the files touched for this task; list the unrelated
+  commits separately.
+- **Uncommitted changes**: the working-tree inspection above shows a dirty tree. Verify
+  against `HEAD`, not the working tree — and note the dirty files so the user knows they
+  weren't included.
 - **Capability dispatch unavailable**: if a `subagent:` fragment names an agent that is
   not registered in this environment, treat that fragment as a no-op (it contributes no
   findings) and continue — never STOP the verdict on a missing capability. The generic
@@ -365,7 +403,7 @@ End the chat reply with this fenced block, after the chat summary:
 ```
 VERIFY — <PASS | FAIL | PARTIAL>
 
-{wi-prefix}-{id}: <passed>/<total> requirements, capability findings <none | N across M capabilities>
+{task-id}: <passed>/<total> requirements, capability findings <none | N across M capabilities>
 Report: <task-folder>/04_verify.md
 Next: <branched on the verdict — see below>
 ```
