@@ -40,9 +40,9 @@ Parse the first token.
 
 ### empty → infer from current branch
 
-1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below). Extract the first 3+-digit run from the resolved branch name — call it `{numeric-id}`.
+1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below). Extract the first 3+-digit run from the resolved branch name — call it `{numeric-id}`. If no numeric token can be extracted from the branch at all, stop: "No id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:verify-fix <id>`."
 2. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to `{numeric-id}` (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No audit report found. The branch-inferred token `{numeric-id}` doesn't match an existing task folder. Pass the id explicitly: `/wf:verify-fix <id>`." More than one match — stop: "No audit report found. The branch-inferred token `{numeric-id}` matches more than one task folder. Pass the id explicitly: `/wf:verify-fix <id>`."
-3. Confirm `{task-root}/{task-id}/04_verify.md` exists. If not, stop: "No audit report found. Run `/wf:verify-spec {id}` first."
+3. Confirm `{task-root}/{task-id}/04_verify.md` exists. If not, stop: "No audit report found. Run `/wf:verify-spec {task-id}` first."
 
 ### `<id>` (opaque — whatever shape the active tracker capability produces, or the local `T<NNN>` scheme)
 

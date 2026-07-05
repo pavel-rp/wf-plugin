@@ -91,9 +91,9 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` the s
 
 1. **Resolve `<id>`.** If passed explicitly, use it verbatim as `{task-id}` — opaque, whatever shape the active tracker capability produces, or the local `T<NNN>` scheme. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run — call it `{numeric-id}`. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to `{numeric-id}` (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No task id provided and the branch-inferred token `{numeric-id}` doesn't match an existing task folder. Pass it explicitly: `/wf:qa-gen <id>`." More than one match — stop: "No task id provided and the branch-inferred token `{numeric-id}` matches more than one task folder. Pass it explicitly: `/wf:qa-gen <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-gen <id>`."
 
-2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
+2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {task-id}` first."
 
-3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {id}` first to fetch requirements."
+3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {task-id}` first to fetch requirements."
 
 4. **Branch gate.** Resolve the current branch via `current-branch-query`. If it doesn't match `/{numeric-id}-` (the first 3+-digit run of the opaque `{task-id}`), invoke the **Task** tool with `subagent_type: wf:branch` and the resolved id. The subagent will create or switch to the task branch. If subagent invocation is unavailable, stop with: "Not on task branch and the Task tool isn't available. Run `/wf:branch {id}` manually, then re-run `/wf:qa-gen`."
 
