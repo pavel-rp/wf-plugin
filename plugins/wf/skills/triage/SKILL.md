@@ -6,7 +6,7 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 
 # /wf:triage — Flow router for tasks
 
-Classify a task and recommend the downstream workflow. Fetches `00_reqs.md` if it doesn't exist, performs a bounded repo scan (no full exploration), scores 5 dimensions on a 1–5 scale, maps the scores to a verdict, and emits a structured report plus the exact command to run next.
+Classify a task and recommend the downstream workflow. When `00_reqs.md` is absent it fetches requirements from the active tracker if one is registered, otherwise runs local-only with no fetch and no error; then performs a bounded repo scan (no full exploration), scores 5 dimensions on a 1–5 scale, maps the scores to a verdict, and emits a structured report plus the exact command to run next.
 
 **Advisor only. Does not branch, plan, or implement. User retains override.**
 

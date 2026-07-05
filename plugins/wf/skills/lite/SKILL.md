@@ -1,12 +1,12 @@
 ---
 name: lite
-description: Runs a condensed spec-plan-implement pass for small tasks in a single skill invocation. Fetches requirements, writes a combined mini-spec-and-plan, stops once for user approval, then implements and hands off. Use for S-complexity items where the full /wf:spec + /wf:plan + /wf:implement chain is overkill.
+description: Runs a condensed spec-plan-implement pass for small tasks in a single skill invocation. When requirements are absent it fetches them from the active tracker if one is registered, otherwise runs local-only with no fetch and no error; then writes a combined mini-spec-and-plan, stops once for user approval, and implements and hands off. Use for S-complexity items where the full /wf:spec + /wf:plan + /wf:implement chain is overkill.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
 # /wf:lite — One-pass spec-plan-implement for small tasks
 
-Handle a small task end-to-end in a single skill run. Fetches the work item, writes `00_reqs.md` and a combined `lite.md` (mini-spec + checkbox plan), pauses once for user approval, then implements and hands off — no commit. Intended for S-complexity items where the full spec→plan→implement chain burns more tokens than the task is worth.
+Handle a small task end-to-end in a single skill run. When requirements are absent it fetches the work item from the active tracker if one is registered, otherwise runs local-only with no fetch and no error; then writes `00_reqs.md` and a combined `lite.md` (mini-spec + checkbox plan), pauses once for user approval, then implements and hands off — no commit. Intended for S-complexity items where the full spec→plan→implement chain burns more tokens than the task is worth.
 
 **One approval gate. One combined artifact. No step-by-step ticking ceremony.**
 
