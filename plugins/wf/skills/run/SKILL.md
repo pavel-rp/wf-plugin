@@ -39,7 +39,7 @@ For a single-pass small task, `/wf:lite` is still the right tool — `wf:run` wi
 
 `--resume` is accepted as an explicit alias for the default behavior (re-derive state and advance); it is implied whenever no `--from` is given.
 
-Disambiguation: a 3+-digit numeric token, or the task's opaque id (tracker-shaped or local `T<NNN>`), is the id; `--`-prefixed tokens are flags.
+Disambiguation: the leading non-`--`-prefixed token is the `<id>` argument — pass the task's full opaque id (whatever shape the active tracker capability produced, or local `T<NNN>`) verbatim; a bare numeric token only resolves on its own when the task folder itself is named with just that number. `--`-prefixed tokens are flags; `--from`/`--to` each consume their own following phase-name token, not the id.
 
 ---
 
@@ -183,8 +183,8 @@ Gate:       <stopped before <gated phase> | auto-complete | halted (<reason>) | 
 Loops:      verify <n>/2 · qa <n>/2   (omit if zero)
 
 <if not complete:>
-Run next:   <e.g. /wf:implement 6396>
-Then:       /clear, then /wf:run 6396   (re-derives state and continues the walk; add --step for one phase at a time)
+Run next:   <e.g. /wf:implement {task-id}>
+Then:       /clear, then /wf:run {task-id}   (re-derives state and continues the walk; add --step for one phase at a time)
 
 <if blocked/error:>
 Halted:     <one-line reason>
