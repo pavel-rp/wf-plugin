@@ -1,7 +1,7 @@
 ---
 name: implement
 description: Executes a task's implementation plan (02_plan.md) step by step, ticking each checkbox on completion and stopping immediately on anything unexpected. Does not commit — hands off to the user. Use after /wf:plan to actually make the code changes.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:implement — Execute a plan step by step
