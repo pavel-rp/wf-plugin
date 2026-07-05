@@ -315,7 +315,7 @@ VERIFY-FIX — <CLEAN | PARTIAL | PENDING | NOOP>
 
 {task-id}: <a> auto-fixed, <b> awaiting user, <c> skipped
 Log: {task-root}/{task-id}/05_verify-fix.md
-Next: re-run `/wf:verify-spec <id>` to confirm
+Next: re-run `/wf:verify-spec {task-id}` to confirm
 ```
 
 State meanings:
