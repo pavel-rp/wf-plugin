@@ -40,8 +40,8 @@ Parse the first token.
 
 ### empty → infer from current branch
 
-1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below). Extract the first 3+-digit run from the resolved branch name — call it `{numeric-id}`. If no numeric token can be extracted from the branch at all, stop: "No id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:verify-fix <id>`."
-2. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to `{numeric-id}` (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No audit report found. The branch-inferred token `{numeric-id}` doesn't match an existing task folder. Pass the id explicitly: `/wf:verify-fix <id>`." More than one match — stop: "No audit report found. The branch-inferred token `{numeric-id}` matches more than one task folder. Pass the id explicitly: `/wf:verify-fix <id>`."
+1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below). Extract the first 3+-digit run from the resolved branch name — the branch-inferred token. If no numeric token can be extracted from the branch at all, stop: "No id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:verify-fix <id>`."
+2. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the branch-inferred token (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No audit report found. The branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:verify-fix <id>`." More than one match — stop: "No audit report found. The branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:verify-fix <id>`."
 3. Confirm `{task-root}/{task-id}/04_verify.md` exists. If not, stop: "No audit report found. Run `/wf:verify-spec {task-id}` first."
 
 ### `<id>` (opaque — whatever shape the active tracker capability produces, or the local `T<NNN>` scheme)
@@ -88,11 +88,11 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 
 ## Phase 1: Branch Gate
 
-Before editing any code, verify the current branch matches the audit's target.
+Before editing any code, verify the current branch matches the audit's target. Extract the first 3+-digit run from `{task-id}` — call it `{numeric-id}`; it is used **only** for the branch-name match below, never for the task folder or any operation.
 
 1. Resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against).
-2. **If the branch name contains `/{numeric-id}-`** (the first 3+-digit run of the opaque `{task-id}`, e.g. `feature/6756-...`) — proceed.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` generically in prose. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the subagent's reason.
+2. **If the branch name contains `/{numeric-id}-`** (the token defined above, e.g. `feature/6756-...`) — proceed.
+3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the subagent's reason.
 
 Rationale: the audit's evidence lines (`file:line`) are only meaningful on the branch that produced them. Fixing on `main` or an unrelated branch edits the wrong state.
 
@@ -102,7 +102,7 @@ Rationale: the audit's evidence lines (`file:line`) are only meaningful on the b
 
 Read `04_verify.md` in full. Extract the header metadata and three lists, preserving order and each finding's identifier (the numbered requirement, or the capability finding's own id — e.g. `MIG-<n>` for a migration-capability finding).
 
-1. **Header metadata** — capture `Branch:`, `Commit:` (HEAD SHA the audit ran against), base SHA, and `Tree:` (clean or dirty). These may be absent on reports produced before the header was extended — treat as unknown and skip the staleness check below.
+1. **Header metadata** — capture `Branch:`, `Commit:` (HEAD SHA the audit ran against), base SHA, `Tree:` (clean or dirty), and `**Audited at:**` (the timestamp the staleness check below compares against). These may be absent on reports produced before the header was extended — treat as unknown and skip the staleness check below.
 2. **Requirements list** — each numbered `[PASS | FAIL | PARTIAL | N/A | UNVERIFIABLE]` item. Capture verdict, requirement text, `Expected`, `Found`, `Location` / `Evidence`, and a `remedy` (the concrete bounded edit the finding names) when the report carries one.
 3. **Capability-finding audit** — each `[PASS | FAIL]` line a capability's `verify` `finding` fragment contributed. Capture the rule, file:line, the snippet, and a `remedy` when present. (A capability that produces mechanical-remedy findings — e.g. the migration capability — carries the concrete edit in the finding's `remedy`; this skill applies it, it doesn't know the recipe.)
 4. **Deviations from `01_spec.md`** — informational only; do not act on these.
@@ -300,7 +300,7 @@ Target ~25 lines of chat for the summary (not counting the open-question blocks 
 - **Code has moved since the audit** — a cited `file:line` no longer points at the `Found` snippet. Reclassify to ASK (with reason "report may be stale — re-run `/wf:verify-spec`"). Don't try to re-locate the target.
 - **Branch has uncommitted changes before the skill runs** — record the dirty files in the fix log's header. Edits from this skill add to the dirty set; the user sees the combined state in the working-tree diff.
 - **Multiple findings target the same line** — apply them in report order. If the second edit can no longer find its `Found` snippet (because the first edit moved or replaced it), reclassify the second as ASK.
-- **No `04_verify.md`** — stop, say "Run `/wf:verify-spec {id}` first."
+- **No `04_verify.md`** — stop, say "Run `/wf:verify-spec {task-id}` first."
 - **Malformed `04_verify.md`** (no `## Requirements` heading, no verdict markers) — stop, ask the user to re-run `/wf:verify-spec`.
 - **Re-run after partial application** — `05_verify-fix.md` is overwritten with the latest run; the prior log rotates into `05_verify-fix.history.md` (newest entry on top, `---` separated). The audit report (`04_verify.md`) may still show the same FAILs until `/wf:verify-spec` is re-run; explain this in the chat summary so the user doesn't loop on a stale report.
 
