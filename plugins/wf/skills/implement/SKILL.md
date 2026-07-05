@@ -1,12 +1,12 @@
 ---
 name: implement
-description: Executes an ADO task's implementation plan (02_plan.md) step by step, ticking each checkbox on completion and stopping immediately on anything unexpected. Does not commit — hands off to the user. Use after /wf:plan to actually make the code changes.
+description: Executes a task's implementation plan (02_plan.md) step by step, ticking each checkbox on completion and stopping immediately on anything unexpected. Does not commit — hands off to the user. Use after /wf:plan to actually make the code changes.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
 # /wf:implement — Execute a plan step by step
 
-Execute a task's implementation plan step by step. Accepts an ADO work item ID, resolves the task folder under `{task-root}/`, reads `02_plan.md`, implements each unchecked step in order, ticks the checkbox on completion, and stops immediately if anything unexpected is found.
+Execute a task's implementation plan step by step. Accepts a task id, resolves the task folder under `{task-root}/`, reads `02_plan.md`, implements each unchecked step in order, ticks the checkbox on completion, and stops immediately if anything unexpected is found.
 
 **One task at a time. No skipping steps. No assumptions.**
 
@@ -14,7 +14,7 @@ Execute a task's implementation plan step by step. Accepts an ADO work item ID, 
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}`, `{ado-project}`, and `{wi-prefix}` below come from that file. Never hardcode these values.
+**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}` below come from that file — never hardcode it. A registered tracker capability resolves its own project-scoped config from its own fragment binding; core never reads it directly.
 
 `02_plan.md` is the authoritative input this skill executes. When the upstream `tasks` phase has run, a `03_tasks.md` decomposition also exists in the task folder — read it for the finer-grained, independently-testable ordering and let it guide how each plan step is carried out; the plan's checkboxes remain the units this skill ticks. When `03_tasks.md` is absent, execute the plan directly — the `tasks` phase is optional on the chain.
 
@@ -23,29 +23,29 @@ Execute a task's implementation plan step by step. Accepts an ADO work item ID, 
 ## Command Syntax
 
 ```
-/wf:implement <ado-id> [--steps <range>] [--mode <mode>]
+/wf:implement <id> [--steps <range>] [--mode <mode>]
 ```
 
 ### Arguments
 
 | Argument                | Required | Description                                                   |
 | ----------------------- | -------- | ------------------------------------------------------------- |
-| `<ado-id>`              | NO       | ADO work item ID — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). Falls back to inferring from the current git branch. |
+| `<id>`                  | NO       | Task id — whatever shape the active tracker capability produced when the task folder was created (opaque to core), or a local `T<NNN>` id when none was registered. Falls back to inferring from the current branch. |
 | `--steps <range>`       | NO       | Restrict execution to a subset of steps. Accepts: a single step (`3`), a range (`2-5`), or a comma-separated list (`2,4,6`). When omitted, all unchecked steps are executed. |
 | `--mode <mode>`         | NO       | `nonstop` (default) or `step`. Nonstop runs all steps without pausing. Step pauses after each step for review. |
 
 ### Folder Resolution
 
-- Extract the numeric ID: `6396` from `6396`, `ADO-6396`, or `ADO_6396`.
-- **Task folder:** `{task-root}/{wi-prefix}-{id}/` (e.g. `_local/ADO-6396/`).
-- **Task ID:** `{wi-prefix}-{id}` (e.g. `ADO-6396`).
+- **Task id (the contract's id-shape rule):** `<id>` is opaque — the active tracker capability's own shape when one was registered at spec/plan time (e.g. a tracker-native identifier format), or the local `T<NNN>` scheme when none was. Core never reconstructs or re-derives it — use whatever `/wf:spec`/`/wf:plan` already established for this task folder.
+- **Task folder:** `{task-root}/{task-id}/`.
 
 ### Validation
 
-- If `<ado-id>` is provided, use it. If omitted, infer from `git branch --show-current`: extract the first 3+-digit run. If no digit run exists (e.g., on `main`), stop: "No ADO ID provided and none could be inferred from the current branch. Pass the ID explicitly: `/wf:implement <ado-id>`."
+- If `<id>` is provided, use it verbatim. If omitted, infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (the same mechanism `plugins/wf/skills/plan/SKILL.md`'s Validation section uses): extract the first 3+-digit run from the resolved branch name, then **resolve that token against `{task-root}`** — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (this matches both a tracker-prefixed shape like `<PREFIX>-6396` and the local `T<NNN>` scheme's own `T6396` uniformly). Exactly one match — reuse that folder's full name as `<id>` (this recovers the opaque shape a prior invocation already established; core still never reconstructs it itself). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to infer from). Zero matches — stop: "No id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:implement <id>`." More than one match — ambiguous — stop: "No id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:implement <id>`." If no numeric token can be extracted from the branch at all, stop: "No id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:implement <id>`."
+- **Branch-name matching token.** Extract the first 3+-digit run from `{task-id}` (whatever its shape) — call it `{numeric-id}`. This token is used **only** by the Phase 1 branch-gate quick-check (matching against an already-existing branch name); it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `{task-id}` form verbatim.
 - If the task folder doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
 - If `02_plan.md` does not exist in the task folder, stop: "No plan file found. Run `/wf:plan {id}` first."
-- If all steps are already checked, report: "All steps complete for {wi-prefix}-{id}." and stop.
+- If all steps are already checked, report: "All steps complete for {task-id}." and stop.
 - **Task title:** read from `02_plan.md` heading, or from `01_spec.md`, or from `00_reqs.md`. First available wins.
 - If `--steps` is provided, parse the range and validate that all referenced step numbers exist in the plan.
 
@@ -73,14 +73,14 @@ When `--steps` is provided, only the specified steps are executed (plus STEP-001
 - Read any file in the project (`Read`, `Glob`, `Grep`); prefer sourcebot MCP for cross-file lookups.
 - Use MSSQL extension tools (`mssql_*`) read-only for schema and data exploration.
 - **Edit/Write source files** as the loaded `02_plan.md` step dictates — this is the skill's primary purpose.
-- Read-only git commands (`git rev-parse`, `git branch`, `git status`, `git diff`).
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface), used by the Phase 1 branch gate when a delivery provider is registered.
 - Run the verification command specified in the plan's verify step (e.g., the project's `npm test` / build), but only that command — never ad-hoc tests or installs.
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits.
 
 **Forbidden:**
 
 - Commit, stage, push application code, or open a PR — always hand off to the user manually for review. (`push --set-upstream` performed by wf:branch is the one exception, and only for publishing the new task branch — never for pushing implementation commits.) The user runs `/wf:commit` and `/wf:pr` for that step; `wf:implement` itself still never commits.
-- Run any destructive git operation directly (`git reset --hard`, `git push --force`, `git branch -D`, `git checkout --`, etc.).
+- Run any destructive git operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
 - Run builds, tests, linters, or installs other than the verify command specified in the plan.
 - Skip steps in `02_plan.md`, or expand scope beyond what's explicitly checked off in the loaded plan.
 - Modify `00_reqs.md`, `01_spec.md`, or `02_plan.md` content other than ticking the plan's checkboxes as steps complete.
@@ -89,13 +89,26 @@ When `--steps` is provided, only the specified steps are executed (plus STEP-001
 
 ## Phase 1: Branch Gate
 
-Before touching any code, verify the current git branch is correct for this task.
+Before touching any code, verify the current branch is correct for this task — but only when a delivery provider is registered. `implement` is the one designated source-mutating skill, so this gate degrades gracefully rather than erroring out in bare-core mode: a missing delivery capability is not a reason to block an otherwise-safe implementation run.
 
-1. Run `git rev-parse --abbrev-ref HEAD` to get the current branch name.
-2. **If the branch name contains `/{id}-`** (e.g. `feature/6396-...`, `fix/6396-...`, `chore/6396-...`, etc.) — already on the task branch, proceed to Phase 2.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing `ado-id: {id}`. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
-   - On success (`BRANCH — created`/`switched`/`already-active`), continue directly to Phase 2.
-   - On failure (`BRANCH — Error`), stop and surface the subagent's reason.
+### Direct provider resolution (how `current-branch-query` and the wf:branch subagent's `branch-create` are reached)
+
+Reached the same way `plugins/wf/skills/plan/SKILL.md`'s Phase 0 and `plugins/wf/agents/branch.md` already use, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution":
+
+1. Read the `## Capabilities` registry from `_local/config.md`.
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface.
+
+**Gate procedure:**
+
+1. **Resolve the delivery-surface ownership state first** (the scope-equality filter above, applied before any branch read).
+2. **Zero matching rows (bare-core mode)** — the gate degrades to a no-op: do not invoke `current-branch-query`, do not invoke the wf:branch subagent, no error, no hard stop. Report: "Branch gate skipped — no delivery provider registered (bare-core mode)." Continue directly to Phase 2.
+3. **One matching row** — resolve the current branch via `current-branch-query` (direct provider resolution above).
+   - **If the branch name contains `/{numeric-id}-`** (e.g. `feature/6396-...`, `fix/6396-...`, `chore/6396-...`, etc.) — already on the task branch, proceed to Phase 2.
+   - **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` as its argument. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
+     - On success (`BRANCH — created`/`switched`/`already-active`), continue directly to Phase 2.
+     - On failure (`BRANCH — Error`), stop and surface the subagent's reason.
 
 ---
 
@@ -194,10 +207,9 @@ The final step is a handoff check. Do not commit, push, or open a PR.
 
 **Run manual handoff checks (always):**
 
-- Run `git diff --stat` to confirm only expected files were modified
-- If unexpected files appear, stop and report
-- Run `git diff` to show the full diff
-- List every file that should be staged by the user
+- **Scope-confinement guard.** Cross-check every file this run modified — across all steps, **including any side effect of the Phase 4 verification command** (a build/test run may write lockfiles, generated artifacts, snapshots, or coverage output) — against the union of every executed step's Files table (plus STEP-001's confirmed target files). If a file was modified that no step's Files table names and no verify-command side effect explains, stop and report it — this is the "unexpected files" guard, expressed against the plan's own bookkeeping rather than a live repository diff. On a resumed run, re-derive the modified-file set from the plan's ticked steps (not just this session's own edits) so files touched by an earlier, interrupted session are still covered.
+- **Contract-completeness gap, documented, not worked around.** The delivery contract's operation set (`plugins/wf/skills/_contracts/capability-registry.contract.md` §"The delivery provider surface") has no changed-files/diff-review operation today — reviewing the accumulated diff content itself is left to whatever review step the user runs next (`/wf:commit`, `/wf:pr`, or a manual review), not reproduced here.
+- List every file that should be staged by the user (the same file list the scope-confinement guard checked against).
 
 Tick the final step checkbox and add a ready-for-review note:
 
@@ -214,7 +226,7 @@ Tick the final step checkbox and add a ready-for-review note:
 After all steps are ticked, output a completion summary.
 
 ```
-{wi-prefix}-{id} — <title>
+{task-id} — <title>
 
 Steps completed: N/N
 Status: READY FOR REVIEW (not committed)
@@ -279,8 +291,9 @@ In both modes, if the session is interrupted, the plan's checkboxes record exact
 
 ## Edge Cases
 
+- **No delivery provider registered (bare-core mode):** the Phase 1 branch gate degrades to a no-op with a stated reason and proceeds directly to Phase 2 — never a raw git error, never a hard block.
 - **Package install required by the task:** Allowed only if the exact command appears in the plan's Approach section or a step's Changes. Do not install additional packages.
-- **Task requires creating a new file:** Create it in the correct location. Add it to the git add list.
+- **Task requires creating a new file:** Create it in the correct location. Add it to the list of files to stage.
 - **Step's file list is incomplete:** Stop. Report the unlisted file. Do not modify it without updating the plan first.
 - **Complexity L task:** After STEP-001, output a warning: "This is an L-complexity item. Each step may take significant time."
 - **Merge conflict:** Stop immediately. Do not attempt to resolve automatically.

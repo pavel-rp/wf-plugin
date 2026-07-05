@@ -18,31 +18,30 @@ This phase is **lighter** than the `spec` and `implement` authoring hubs: decomp
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}`, `{ado-project}`, and `{wi-prefix}` below come from that file. Never hardcode these values.
+**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}` below come from that file — never hardcode it. A registered tracker capability resolves its own project-scoped config from its own fragment binding; core never reads it directly.
 
 ---
 
 ## Command Syntax
 
 ```
-/wf:tasks <ado-id>
+/wf:tasks <id>
 ```
 
 ### Arguments
 
-| Argument   | Required | Description                                                                 |
-| ---------- | -------- | --------------------------------------------------------------------------- |
-| `<ado-id>` | NO       | ADO work item ID — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). Falls back to inferring from the current git branch. |
+| Argument | Required | Description                                                                 |
+| -------- | -------- | ---------------------------------------------------------------------------- |
+| `<id>`   | NO       | Task id — whatever shape the active tracker capability produced when the task folder was created (opaque to core), or a local `T<NNN>` id when none was registered. Falls back to inferring from the current branch. |
 
 ### Folder Resolution
 
-- Extract the numeric ID: `6396` from `6396`, `ADO-6396`, or `ADO_6396`.
-- **Task folder:** `{task-root}/{wi-prefix}-{id}/` (e.g. `_local/ADO-6396/`).
-- **Task ID:** `{wi-prefix}-{id}` (e.g. `ADO-6396`).
+- **Task id (the contract's id-shape rule):** `<id>` is opaque — the active tracker capability's own shape when one was registered at spec/plan time (e.g. a tracker-native identifier format), or the local `T<NNN>` scheme when none was. Core never reconstructs or re-derives it — use whatever `/wf:spec`/`/wf:plan` already established for this task folder.
+- **Task folder:** `{task-root}/{task-id}/`.
 
 ### Validation
 
-- If `<ado-id>` is provided, use it. If omitted, infer from `git branch --show-current`: extract the first 3+-digit run. If no digit run exists (e.g., on `main`), stop: "No ADO ID provided and none could be inferred from the current branch. Pass the ID explicitly: `/wf:tasks <ado-id>`."
+- If `<id>` is provided, use it verbatim. If omitted, infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (the same mechanism `plugins/wf/skills/plan/SKILL.md`'s Validation section uses): extract the first 3+-digit run from the resolved branch name, then **resolve that token against `{task-root}`** — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (this matches both a tracker-prefixed shape like `<PREFIX>-6396` and the local `T<NNN>` scheme's own `T6396` uniformly). Exactly one match — reuse that folder's full name as `<id>` (this recovers the opaque shape a prior invocation already established; core still never reconstructs it itself). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to infer from). Zero matches — stop: "No id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:tasks <id>`." More than one match — ambiguous — stop: "No id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:tasks <id>`." If no numeric token can be extracted from the branch at all, stop: "No id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:tasks <id>`."
 - If the task folder doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
 - If `02_plan.md` does not exist in the task folder, stop: "No plan found. Run `/wf:plan {id}` first."
 - **Task title:** read from `02_plan.md` heading, or from `01_spec.md`, or from `00_reqs.md`. First available wins.
@@ -54,8 +53,8 @@ This phase is **lighter** than the `spec` and `implement` authoring hubs: decomp
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`, `Grep`); prefer sourcebot MCP for cross-file lookups when available.
-- Read-only git commands (`git rev-parse`, `git branch`, `git log`).
-- Write/create files ONLY inside the task folder (`{task-root}/{wi-prefix}-{id}/`) — its single artifact is `03_tasks.md`, plus the index row.
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface).
+- Write/create files ONLY inside the task folder (`{task-root}/{task-id}/`) — its single artifact is `03_tasks.md`, plus the index row.
 
 **Forbidden:**
 
@@ -67,9 +66,9 @@ This phase is **lighter** than the `spec` and `implement` authoring hubs: decomp
 
 ## Phase 1: Resolve and read the plan
 
-1. **Resolve `<ado-id>`** from the passed argument, or extract the first 3+-digit run from `git branch --show-current`. If neither yields an ID, stop with the validation message above.
+1. **Resolve `<id>`** per the Validation section above — from the passed argument, or inferred via `current-branch-query` and resolved against `{task-root}`. If neither yields an id, stop with the validation message above.
 
-2. **Locate the task folder.** Compute `{task-root}/{wi-prefix}-{id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
+2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
 
 3. **Read the approved plan** `02_plan.md` as the authoritative input. Extract:
    - The plan's `Type:` and `Complexity:` metadata.
@@ -116,7 +115,7 @@ After deriving the generic decomposition, fire the **`tasks`** phase and aggrega
 
 ## Phase 4: Write `03_tasks.md`
 
-Write the decomposition to `{task-root}/{wi-prefix}-{id}/03_tasks.md` using the template below. **Overwrite if it exists** (the task folder is gitignored — there's no git history to fall back on; warn the user first if the existing file carries execution annotations).
+Write the decomposition to `{task-root}/{task-id}/03_tasks.md` using the template below. **Overwrite if it exists** (the task folder is gitignored — there's no git history to fall back on; warn the user first if the existing file carries execution annotations).
 
 Then **update the index.** Invoke `/wf:index {id} tasks "<n> tasks; derived from 02_plan.md"`, substituting the actual task count.
 
@@ -125,7 +124,7 @@ Then **update the index.** Invoke `/wf:index {id} tasks "<n> tasks; derived from
 ## Template: `03_tasks.md`
 
 ```markdown
-# {wi-prefix}-{id} — Task Decomposition
+# {task-id} — Task Decomposition
 
 **Generated:** <YYYY-MM-DD HH:mm>
 **Generated by:** <model identifier>
@@ -180,9 +179,9 @@ This is the ordered, independently-testable decomposition of the approved plan. 
 ```
 TASKS — Complete
 
-Task:  {wi-prefix}-{id} — <title>
+Task:  {task-id} — <title>
 Tasks: <N>, derived from 02_plan.md
-File:  {task-root}/{wi-prefix}-{id}/03_tasks.md
+File:  {task-root}/{task-id}/03_tasks.md
 
 Next:  /wf:implement {id}
 ```
