@@ -1,12 +1,12 @@
 ---
 name: index
 description: Updates one row in the per-task `index.md` manifest with a status and summary, creating the file (with all-N/A seed rows) on first call. Designed for other wf:* skills to call after they write any artifact or produce any small per-task result (branch name, classification, etc.) so the index stays in sync with reality. Lean — single responsibility.
-allowed-tools: [Read, Write, Edit, Glob, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Bash, Task]
 ---
 
 # /wf:index — Update the per-task index manifest
 
-Lean updater for `_local/{wi-prefix}-{id}/index.md`. Caller passes a slot key and a summary string; this skill (or its subagent) finds the row, writes the auto-derived status cell and the summary, and saves. Creates the file from a seed template on first call. Idempotent — calling with the same args twice produces no diff (except the timestamp footer).
+Lean updater for `{task-root}/{task-id}/index.md`. Caller passes a slot key and a summary string; this skill (or its subagent) finds the row, writes the auto-derived status cell and the summary, and saves. Creates the file from a seed template on first call. Idempotent — calling with the same args twice produces no diff (except the timestamp footer).
 
 **Read-write but minimal — touches only `index.md` in the resolved task folder.**
 
@@ -14,27 +14,27 @@ Lean updater for `_local/{wi-prefix}-{id}/index.md`. Caller passes a slot key an
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If missing, stop: "Run `/wf:init` first."
+Read `_local/config.md` for `{task-root}`. If missing, stop: "Run `/wf:init` first."
 
 ---
 
 ## Command Syntax
 
 ```
-/wf:index [<ado-id>] <slot> "<summary>"
+/wf:index [<id>] <slot> "<summary>"
 ```
 
-Two or three positional arguments. The `<ado-id>` is optional — when omitted, the skill infers it from the current branch (first 3+-digit run in `git branch --show-current`). Argument-parsers MUST handle both shapes:
+Two or three positional arguments. The `<id>` is optional — when omitted, the skill infers it from the current branch, resolved via `current-branch-query` through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below). Argument-parsers MUST handle both shapes:
 
-- **3 args:** `<ado-id>` `<slot>` `"<summary>"` — explicit ID; preferred when called from another skill that already resolved the task.
-- **2 args:** `<slot>` `"<summary>"` — ID inferred from branch; convenient for direct user invocation while on the task branch.
+- **3 args:** `<id>` `<slot>` `"<summary>"` — explicit id; preferred when called from another skill that already resolved the task.
+- **2 args:** `<slot>` `"<summary>"` — id inferred from branch; convenient for direct user invocation while on the task branch.
 
-Disambiguation: if the first arg is a 3+-digit numeric or `<wi-prefix>-NNN` form, treat it as the ID. Otherwise treat it as the slot.
+Disambiguation by argument count (the summary is always the final quoted token): three positional tokens — the first is the id (3-arg form). Two positional tokens — the id is omitted; the first token is the slot, and the id is inferred per Phase 1 below (2-arg form).
 
 Examples:
 
 - `/wf:index 6396 triage "full · M · score 12/25"`
-- `/wf:index branch "feature/6396-add-csv-export"`  (ID inferred from current branch)
+- `/wf:index branch "feature/6396-add-csv-export"`  (id inferred from current branch)
 - `/wf:index 6396 spec "feat · S · 4 success criteria"`
 - `/wf:index 6396 classify "feat (high)"`
 
@@ -42,9 +42,20 @@ Examples:
 
 | Argument    | Required | Description                                                                                          |
 | ----------- | -------- | ---------------------------------------------------------------------------------------------------- |
-| `<ado-id>`  | NO       | ADO ID. Falls back to inferring from `git branch --show-current` (first 3+-digit run).               |
+| `<id>`      | NO       | Task id — whatever shape the active tracker capability produced (opaque to core), or the local `T<NNN>` scheme when none is registered. Falls back to inferring from the current branch. |
 | `<slot>`    | YES      | Slot key — see Slot Catalogue. Unknown slots become custom rows appended at the end of the table.    |
 | `<summary>` | YES      | One-liner ≤80 chars. If it contains `\|`, escape as `\\|` so the markdown table doesn't break.       |
+
+---
+
+## Direct provider resolution (how `current-branch-query` is reached)
+
+The only delivery operation this file invokes — `current-branch-query` (the branch-inferred id case in Phase 1 below) — is reached the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section:
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory case (no branch to infer from) — no error, no capability term surfaces.
 
 ---
 
@@ -53,7 +64,7 @@ Examples:
 **Allowed:**
 
 - Read `_local/config.md` and the resolved task folder.
-- Read-only git commands for ID inference (`git rev-parse`, `git branch`).
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface).
 - Invoke the `wf:index` subagent via the **Task** tool. **The subagent is the only writer of `index.md`** — this skill never edits the file directly.
 
 **Forbidden:**
@@ -67,8 +78,8 @@ Examples:
 
 ## Phase 1: Resolve
 
-1. Resolve `<ado-id>`: passed value, or `git branch --show-current` first 3+-digit run. If neither, stop: "No ADO ID provided and none could be inferred from the current branch."
-2. Compute task folder: `{task-root}/{wi-prefix}-{id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first to bootstrap it."
+1. Resolve `<id>`: if provided, use it verbatim — whatever shape the active tracker capability produced (opaque to core), or the local `T<NNN>` scheme when none is registered. If omitted, infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above): extract the first 3+-digit run from the resolved branch name, then **resolve that token against `{task-root}`** — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (this matches both a tracker-prefixed shape like `PROJ-6396` and the local `T<NNN>` scheme's own `T6396` uniformly). Exactly one match — reuse that folder's full name as `<id>` (this recovers the opaque shape a prior invocation already established; core still never reconstructs it itself). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to infer from). Zero matches — stop: "No id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:index <id> <slot> \"<summary>\"`." More than one match — ambiguous — stop: "No id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:index <id> <slot> \"<summary>\"`." If no numeric token can be extracted from the branch at all, stop: "No id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:index <id> <slot> \"<summary>\"`."
+2. Compute task folder: `{task-root}/{task-id}/` — `{task-id}` is the `<id>` resolved in Step 1. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {task-id}` first to bootstrap it."
 3. Validate slot key — alphanumeric, hyphens allowed, no whitespace or special chars. If malformed, stop and report.
 
 ---
@@ -127,7 +138,7 @@ This section is the subagent's body. The subagent (`agents/index.md`) is a thin 
 
 The subagent is invoked with:
 
-- `task-folder` — absolute path to `{task-root}/{wi-prefix}-{id}/`
+- `task-folder` — absolute path to `{task-root}/{task-id}/`
 - `slot` — slot key (alphanumeric + hyphen)
 - `summary` — one-line description (≤80 chars)
 - `calling-skill` — slash command name of the upstream invoker (e.g. `/wf:classify`)
@@ -136,7 +147,7 @@ If any of `task-folder`, `slot`, `summary` is missing/empty, return the error va
 
 ### Steps
 
-1. **Read** `<task-folder>/index.md`. If it doesn't exist, write the seed template (below), substituting `{wi-prefix}-{id}` from the task folder's basename into the H1 (e.g. `_local/ADO-6396/` → `# ADO-6396 — Index`).
+1. **Read** `<task-folder>/index.md`. If it doesn't exist, write the seed template (below), substituting `{task-id}` from the task folder's basename into the H1 (e.g. `_local/T042/` → `# T042 — Index`).
 
 2. **Compute the status cell** from the slot's type (look up in the Slot Catalogue):
    - **file slot:** check existence of `<task-folder>/<filename>`. Present → `[open](<filename>)`. Absent → `N/A`.
@@ -155,7 +166,7 @@ If any of `task-folder`, `slot`, `summary` is missing/empty, return the error va
 ### Seed template (when `index.md` doesn't exist)
 
 ```markdown
-# {wi-prefix}-{id} — Index
+# {task-id} — Index
 
 Catalog of artifacts and small results for this task. Every `wf:*` skill updates its row after writing. Underlying files are the source of detailed truth; this index is a manifest for orientation.
 
@@ -208,11 +219,11 @@ Success:
 ```
 INDEX — Updated
 
-Task: {wi-prefix}-{id}
+Task: {task-id}
 Slot: <slot>
 Status: <new status>
 Summary: <new summary>
-File: {task-root}/{wi-prefix}-{id}/index.md
+File: {task-root}/{task-id}/index.md
 ```
 
 Failure (subagent procedure unable to complete safely):
@@ -221,7 +232,7 @@ Failure (subagent procedure unable to complete safely):
 INDEX — Error
 
 Reason: <one sentence — what went wrong>
-File: {task-root}/{wi-prefix}-{id}/index.md (unchanged)
+File: {task-root}/{task-id}/index.md (unchanged)
 ```
 
 **The final output block must always be the very last thing output to chat.**
