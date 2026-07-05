@@ -1,7 +1,7 @@
 ---
 name: qa-run
 description: Walks a human tester through 06_qa.md one step at a time, recording verdicts, notes, and observations via interactive prompts. Writes 07_qa-report.md with the full results matrix and traceability back to spec criteria. Browser scenarios are driven step-by-step in a real browser; Type:API scenarios are presented as a request block + a ready-to-run HTTP request (a copy-paste curl command) for the tester to run, asserting status and response shape. Use when a tester wants to execute the QA plan themselves — the skill is the test lead, the user is the tester.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:qa-run — Interactive manual QA test runner
@@ -18,7 +18,7 @@ For an autonomous run (no human in the loop), use `/wf:qa-auto` instead. The two
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If absent, stop with: "Run `/wf:init` first."
+Read `_local/config.md` for `{task-root}`. If absent, stop with: "Run `/wf:init` first."
 
 `06_qa.md` must exist in the task folder. If missing, stop: "No QA plan found. Run `/wf:qa-gen` first."
 
@@ -29,18 +29,29 @@ The report shape is documented once in [`../qa-gen/references/report-format.md`]
 ## Command Syntax
 
 ```
-/wf:qa-run [<ado-id>] [--suite <suite-name>] [--resume]
+/wf:qa-run [<id>] [--suite <suite-name>] [--resume]
 ```
 
 ### Arguments
 
 | Argument          | Required | Description                                                                                       |
 | ----------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `<ado-id>`        | NO       | ADO ID. Falls back to inferring from `git branch --show-current` (first 3+-digit run).            |
+| `<id>`            | NO       | Task id — whatever shape the active tracker capability produces (opaque to core), or a local `T<NNN>` id when no tracker is registered. Falls back to inferring from the current branch (first 3+-digit run). |
 | `--suite <name>`  | NO       | Run only one named suite from `06_qa.md`. Default: all suites.                                    |
 | `--resume`        | NO       | Resume an interrupted run. Reads existing `07_qa-report.md`, picks up at the first un-verdicted scenario. |
 
-Argument-parser disambiguation: a 3+-digit numeric or `<wi-prefix>-NNN` token is the ID. Anything starting with `--` is a flag. If `--suite` value doesn't match a suite in `06_qa.md`, stop and list available suites.
+Argument-parser disambiguation: if a token contains a 3+-digit run, or exactly matches an existing task folder name under `{task-root}`, treat it as the id. Anything starting with `--` is a flag. If `--suite` value doesn't match a suite in `06_qa.md`, stop and list available suites.
+
+---
+
+## Direct provider resolution (how `current-branch-query` is reached)
+
+Id inference reaches `current-branch-query` the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section (qa-run has no tracker-surface call site — it never fetches):
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
 
 ---
 
@@ -50,7 +61,8 @@ Argument-parser disambiguation: a 3+-digit numeric or `<wi-prefix>-NNN` token is
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
 - Use the question tool (`AskUserQuestion`) to interact with the tester.
-- Read-only git commands: `git rev-parse`, `git branch --show-current`, `git config user.name`.
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface) for id inference.
+- Resolve the report's `Tester` field to the environment's configured user identity (Phase 2, Phase 4) — a documented contract-completeness gap, not a literal identity lookup: the delivery provider surface has no identity/user operation, so this never routes through a contract call.
 - Write `07_qa-report.md` ONLY inside the resolved task folder.
 - Invoke the **Task** tool for `/wf:index` to record the report after writing.
 
@@ -65,8 +77,8 @@ Argument-parser disambiguation: a 3+-digit numeric or `<wi-prefix>-NNN` token is
 
 ## Phase 1: Resolve and load
 
-1. **Resolve `<ado-id>`** from the passed argument or branch inference. Stop with the standard message if neither yields an ID.
-2. **Locate the task folder.** Stop if `06_qa.md` is missing.
+1. **Resolve `<id>`.** If passed explicitly, use it verbatim as `{task-id}` — opaque, whatever shape the active tracker capability produces, or the local `T<NNN>` scheme. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run — the branch-inferred token. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the branch-inferred token (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass it explicitly: `/wf:qa-run <id>`." More than one match — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass it explicitly: `/wf:qa-run <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-run <id>`."
+2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. Stop if `06_qa.md` is missing: "No QA plan found. Run `/wf:qa-gen` first."
 3. **Parse `06_qa.md`.** Extract: scope, suites, scenarios (TC-NNN with title, priority, validates, preconditions, steps table, teardown). Preserve TC-NNN ordering as it appears in the file.
 4. **Filter by `--suite`** if passed.
 5. **Load existing report** if `--resume`. Parse the per-TC headings for verdicts. The first scenario without a verdict is the starting point. If the report doesn't exist and `--resume` was passed, stop: "No `07_qa-report.md` to resume. Run without `--resume`."
@@ -79,14 +91,14 @@ Argument-parser disambiguation: a 3+-digit numeric or `<wi-prefix>-NNN` token is
 Show the tester what they're about to do, then confirm:
 
 ```
-QA RUN — manual — {wi-prefix}-{id}
+QA RUN — manual — {task-id}
 
 Scenarios: <N> (<P0> P0, <P1> P1, <P2> P2)
 Suites:    <comma-separated suite names>
 Resuming:  <starting from TC-NNN | "no — full run">
 Estimated time: ~<minutes> min (≈1 min per 3 steps)
 
-Tester: <git user.name, or "tester" if not set>
+Tester: <the environment's configured user identity, or "tester" if unavailable>
 
 Reply ready to begin. While running:
   • "skip"  — skip the current scenario
@@ -185,7 +197,7 @@ After every 3 completed scenarios (or on `abort`), write the current state to `0
 
 After the loop completes (or aborts), write the full `07_qa-report.md`:
 
-- Header: run date, `Mode: manual`, `Tester:` from `git config user.name` (or `"tester"` if unset), `Driver model:` is the current model identifier, `Plan: 06_qa.md (scope: <scope>)`, `App:` empty for manual mode, status from the deterministic rule.
+- Header: run date, `Mode: manual`, `Tester:` the environment's configured user identity (or `"tester"` if unavailable — see [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md); a documented contract-completeness gap, since the delivery provider surface has no identity/user operation), `Driver model:` is the current model identifier, `Plan: 06_qa.md (scope: <scope>)`, `App:` empty for manual mode, status from the deterministic rule.
 - Summary table.
 - Traceability matrix (rolled up from each scenario's `Validates: SC-N` and verdict).
 - Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table.
@@ -221,7 +233,7 @@ If the run was aborted, the block lists `Status: INCOMPLETE` and notes how to re
 ```
 QA-RUN — Complete
 
-Task:       {wi-prefix}-{id}
+Task:       {task-id}
 Mode:       manual
 Status:     <PASS | FAIL | INCOMPLETE>
 Pass rate:  <N>% (<passed>/<total executed>)
@@ -229,7 +241,7 @@ Failures:   <N>
 Blocked:    <N>
 Skipped:    <N>
 
-Report:     {task-root}/{wi-prefix}-{id}/07_qa-report.md
+Report:     {task-root}/{task-id}/07_qa-report.md
 
 <if any defects:>
 Top defects:
@@ -237,14 +249,14 @@ Top defects:
   • TC-NNN step <K>: <one-line description>
 
 <if INCOMPLETE:>
-Next: /wf:qa-run {id} --resume
+Next: /wf:qa-run {task-id} --resume
 
 <if FAIL:>
-Next: /wf:qa-followup {id}  — triage and fix the defects
+Next: /wf:qa-followup {task-id}  — triage and fix the defects
 
 <if PASS:>
 All executed scenarios passed.
-Next: ship it — /wf:commit {id} --push  then  /wf:pr {id}
+Next: ship it — /wf:commit {task-id} --push  then  /wf:pr {task-id}
 ```
 
 **The final-output block must always be the very last thing output to chat.**

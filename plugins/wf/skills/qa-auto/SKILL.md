@@ -1,7 +1,7 @@
 ---
 name: qa-auto
 description: Orchestrates an autonomous QA run over 06_qa.md — resolves the task and plan, enforces the branch gate, manages run lifecycle (resume / --batch / --only), and dispatches the per-scenario browser drive to the qa-execution provider registered in the capability registry, then assembles 07_qa-report.md with the Summary, traceability matrix, and a full-run console/network baseline rollup. Domain-free — it names no stack and drives no browser itself; the execution engine is supplied by a registered capability. Use when you want a hands-off run; pair with /wf:qa-run for human-in-the-loop runs.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:qa-auto — Agentic QA run orchestrator
@@ -30,7 +30,7 @@ This is the provider analog of the inert-phase no-op: when a phase's provider an
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}`, `{wi-prefix}`, and the `## Capabilities` registry. If absent, stop with: "Run `/wf:init` first." Also read `{qa-baseline-ignore}` if present (the allowlist of known-benign console messages / request patterns the Baseline health scenarios tolerate); treat an absent key as an empty list — pass it through to the engine.
+Read `_local/config.md` for `{task-root}` and the `## Capabilities` registry. If absent, stop with: "Run `/wf:init` first." Also read `{qa-baseline-ignore}` if present (the allowlist of known-benign console messages / request patterns the Baseline health scenarios tolerate); treat an absent key as an empty list — pass it through to the engine.
 
 `06_qa.md` must exist in the task folder.
 
@@ -44,21 +44,32 @@ This skill depends on two runtime capabilities:
 ## Command Syntax
 
 ```
-/wf:qa-auto [<ado-id>] [--suite <suite-name>] [--reset-creds] [--batch <N>] [--resume] [--only <TC-list>]
+/wf:qa-auto [<id>] [--suite <suite-name>] [--reset-creds] [--batch <N>] [--resume] [--only <TC-list>]
 ```
 
 ### Arguments
 
 | Argument           | Required | Description                                                                                       |
 | ------------------ | -------- | ------------------------------------------------------------------------------------------------- |
-| `<ado-id>`         | NO       | Task id. Falls back to inferring from `git branch --show-current` (first 3+-digit run).            |
+| `<id>`             | NO       | Task id — whatever shape the active tracker capability produces (opaque to core), or a local `T<NNN>` id when no tracker is registered. Falls back to inferring from the current branch (first 3+-digit run). |
 | `--suite <name>`   | NO       | Run only one named suite from `06_qa.md`. Passed through to the engine.                            |
 | `--reset-creds`    | NO       | Forwarded to the engine — re-prompt for credentials and overwrite its creds file.                 |
 | `--batch <N>`      | NO       | Stop after N scenarios for a manual context reset. Default 25. Pair with `--resume` to continue.   |
 | `--resume`         | NO       | Resume from the first un-verdicted scenario in an existing `07_qa-report.md`.                     |
 | `--only <TC-list>` | NO       | Re-execute exactly the listed scenarios (comma-separated `TC-NNN`) regardless of their current verdict, overwriting just their results in an existing `07_qa-report.md` and leaving every other scenario untouched. For targeted re-runs — e.g. after `/wf:qa-followup` clears a block. Requires an existing report. |
 
-Disambiguation: 3+-digit numeric or `<wi-prefix>-NNN` is the id; `--`-prefixed tokens are flags. The token after `--only` is its comma-separated scenario list, not the id.
+Disambiguation: if a token contains a 3+-digit run, or exactly matches an existing task folder name under `{task-root}`, treat it as the id; `--`-prefixed tokens are flags. The token after `--only` is its comma-separated scenario list, not the id.
+
+---
+
+## Direct provider resolution (how `current-branch-query` is reached)
+
+Id inference and the Phase 2 branch gate both reach `current-branch-query` the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section (qa-auto has no tracker-surface call site — it never fetches):
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
 
 ---
 
@@ -67,6 +78,7 @@ Disambiguation: 3+-digit numeric or `<wi-prefix>-NNN` is the id; `--`-prefixed t
 **Allowed:**
 
 - Read any file in the project.
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface) for id inference and branch gating.
 - Write `07_qa-report.md` ONLY inside the resolved task folder (assembling the run-level header / Summary / matrix from the engine's per-scenario blocks).
 - Invoke the **Task** tool: `subagent_type: wf:branch` (branch gate), the registered `qa-execution` engine provider (per-scenario drive), and `subagent_type: wf:index` (after the report is written).
 
@@ -81,7 +93,7 @@ Disambiguation: 3+-digit numeric or `<wi-prefix>-NNN` is the id; `--`-prefixed t
 
 ## Phase 1: Resolve task and plan
 
-1. Resolve `<ado-id>` (passed or branch-inferred). Stop with the standard message if neither.
+1. **Resolve `<id>`.** If passed explicitly, use it verbatim as `{task-id}` — opaque, whatever shape the active tracker capability produces, or the local `T<NNN>` scheme. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run — the branch-inferred token. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the branch-inferred token (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass it explicitly: `/wf:qa-auto <id>`." More than one match — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass it explicitly: `/wf:qa-auto <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-auto <id>`."
 2. Locate `06_qa.md`. Stop if missing.
 3. Parse it: scope, suites, scenarios (TC-NNN with priority, validates, preconditions, steps, teardown). Filter by `--suite` if passed.
 4. **Resume / targeted re-run handling.**
@@ -94,7 +106,9 @@ Disambiguation: 3+-digit numeric or `<wi-prefix>-NNN` is the id; `--`-prefixed t
 
 ## Phase 2: Branch gate
 
-If `git branch --show-current` doesn't match `*/<id>-*` and subagent invocation is available, invoke the **Task** tool with `subagent_type: wf:branch` and the resolved ID. If subagent invocation is unavailable, warn but continue — auto runs commonly happen on the task branch anyway.
+Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** for the branch-name match below; it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
+
+Resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against, so the gate below is skipped). If the resolved branch doesn't match `*/{numeric-id}-*` and subagent invocation is available, invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose. If subagent invocation is unavailable, warn but continue — auto runs commonly happen on the task branch anyway.
 
 ---
 
@@ -164,15 +178,15 @@ If subagent invocation is available, invoke `/wf:index` with slot `qa-report` an
 ```
 QA-AUTO — Complete
 
-Task:       {wi-prefix}-{id}
+Task:       {task-id}
 Mode:       agentic
 Status:     <PASS | FAIL | INCOMPLETE>
 Scenarios:  <T> total · <P> PASS · <F> FAIL · <B> BLOCKED · <S> SKIPPED · <N> not run
 Pass rate:  <N>% (excluding blocked/skipped)
 
 App:        <base URL>
-Report:     {task-root}/{wi-prefix}-{id}/07_qa-report.md
-Screenshots: {task-root}/{wi-prefix}-{id}/artifacts/qa-run-*.png (<count> on FAIL only)
+Report:     {task-root}/{task-id}/07_qa-report.md
+Screenshots: {task-root}/{task-id}/artifacts/qa-run-*.png (<count> on FAIL only)
 
 <if any defects:>
 Top defects:
@@ -181,18 +195,18 @@ Top defects:
 
 <if INCOMPLETE due to batch:>
 Reached batch ceiling.
-Next: /wf:qa-auto {id} --resume
+Next: /wf:qa-auto {task-id} --resume
 
 <if INCOMPLETE due to abort:>
 Run interrupted.
-Next: /wf:qa-auto {id} --resume
+Next: /wf:qa-auto {task-id} --resume
 
 <if FAIL:>
-Next: /wf:qa-followup {id}  — triage and fix the defects
+Next: /wf:qa-followup {task-id}  — triage and fix the defects
 
 <if PASS:>
 All scenarios passed.
-Next: ship it — /wf:commit {id} --push  then  /wf:pr {id}
+Next: ship it — /wf:commit {task-id} --push  then  /wf:pr {task-id}
 ```
 
 **The final-output block must always be the very last thing output to chat.**

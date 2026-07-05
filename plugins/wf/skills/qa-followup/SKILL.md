@@ -1,7 +1,7 @@
 ---
 name: qa-followup
 description: Reads a QA run report (07_qa-report.md), triages every non-passing scenario into harness blocks, product defects, and escalations, then closes the loop in one run — fixes the test harness and re-runs blocked scenarios via /wf:qa-auto, writes a checkbox remediation plan (08_qa-fix.md) for the defects, gates on a single approval, applies the source fixes, and recommends a fresh QA pass to confirm. Use after /wf:qa-run or /wf:qa-auto when the report came back with FAIL or BLOCKED scenarios and you want them unblocked and fixed under a plan-then-implement discipline.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:qa-followup — Unblock and fix what the QA report found
@@ -22,7 +22,7 @@ For the white-box analog driven by a `/wf:verify-spec` audit (which cites `file:
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` for `{task-root}`, `{wi-prefix}`, and `{verify-command}`. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. Never hardcode these values.
+**Before any other phase**, read `_local/config.md` for `{task-root}` and `{verify-command}`. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. Never hardcode these values.
 
 `07_qa-report.md` must exist in the task folder. If missing, stop: "No QA report found. Run `/wf:qa-run` or `/wf:qa-auto` first."
 
@@ -33,20 +33,31 @@ The report shape is documented in [`../qa-gen/references/report-format.md`](../q
 ## Command Syntax
 
 ```
-/wf:qa-followup [<ado-id>] [--suite <name>] [--no-rerun] [--mode <nonstop|step>] [--plan-only]
+/wf:qa-followup [<id>] [--suite <name>] [--no-rerun] [--mode <nonstop|step>] [--plan-only]
 ```
 
 ### Arguments
 
 | Argument            | Required | Description                                                                                                  |
 | ------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
-| `<ado-id>`          | NO       | ADO ID. Falls back to inferring from `git branch --show-current` (first 3+-digit run).                       |
+| `<id>`              | NO       | Task id — whatever shape the active tracker capability produces (opaque to core), or a local `T<NNN>` id when no tracker is registered. Falls back to inferring from the current branch (first 3+-digit run). |
 | `--suite <name>`    | NO       | Limit follow-up to scenarios from one named suite in the report. Default: all suites.                        |
 | `--no-rerun`        | NO       | Stage the harness fixes but do NOT auto re-run unblocked scenarios — print the `/wf:qa-auto --only` command for the user to run instead. Use when you want to inspect the harness changes first. |
 | `--mode <mode>`     | NO       | Implementation mode after the gate: `nonstop` (default) applies all fixes; `step` pauses after each defect fix for review. Mirrors `/wf:implement`. |
 | `--plan-only`       | NO       | Write `08_qa-fix.md` and stop at the gate without implementing — even if approved. Escape hatch for inspecting the plan or handing implementation off manually. |
 
-Disambiguation: a 3+-digit numeric or `<wi-prefix>-NNN` token is the ID; anything starting with `--` is a flag. If `--suite` doesn't match a suite in the report, stop and list available suites.
+Disambiguation: if a token contains a 3+-digit run, or exactly matches an existing task folder name under `{task-root}`, treat it as the id; anything starting with `--` is a flag. If `--suite` doesn't match a suite in the report, stop and list available suites.
+
+---
+
+## Direct provider resolution (how `current-branch-query` and `last-commit-timestamp-query` are reached)
+
+Id inference, the Phase 2 branch gate, and the staleness check below all reach these operations the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section (qa-followup has no tracker-surface call site — it never fetches):
+
+1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `delivery` surface. Both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces.
 
 ---
 
@@ -58,7 +69,7 @@ Disambiguation: a 3+-digit numeric or `<wi-prefix>-NNN` token is the ID; anythin
 - **Read application source for root-cause diagnosis.** This is the skill's defining capability — the QA runners forbid it; this skill requires it.
 - **Edit source files**, but only to apply a fix described by a step in the `08_qa-fix.md` plan this run produced, and only after the approval gate (Phase 7) clears.
 - Write `08_qa-fix.md` (and rotate `08_qa-fix.history.md`) ONLY inside the resolved task folder.
-- Read-only git: `git rev-parse`, `git branch --show-current`, `git status --porcelain`, `git diff`, `git log`.
+- Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (direct provider resolution to the `delivery` surface) for id inference, branch gating, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 2 branch gate, and `subagent_type: wf:index` after writing the artifact. Both perform non-destructive operations only.
 - Invoke `/wf-caps:qa-host` (`route` / `new` / `augment` for frontend test hosts; `api-probe` / `api-revert` for backend endpoints) to scaffold or resolve a test surface, and `/wf:qa-auto --only` to re-run unblocked scenarios. These own their own write permissions (including the ephemeral backend-host wiring, which `wf-caps:qa-host` reverts).
 
@@ -75,25 +86,25 @@ Disambiguation: a 3+-digit numeric or `<wi-prefix>-NNN` token is the ID; anythin
 
 ## Phase 1: Resolve and load
 
-1. **Resolve `<ado-id>`** from the passed argument or branch inference. Stop with the standard message if neither yields an ID.
-2. **Locate the task folder.** Stop if `07_qa-report.md` is missing (message above).
+1. **Resolve `<id>`.** If passed explicitly, use it verbatim as `{task-id}` — opaque, whatever shape the active tracker capability produces, or the local `T<NNN>` scheme. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run — the branch-inferred token. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the branch-inferred token (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass it explicitly: `/wf:qa-followup <id>`." More than one match — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass it explicitly: `/wf:qa-followup <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-followup <id>`."
+2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. Stop if `07_qa-report.md` is missing (message above).
 3. **Parse `07_qa-report.md`** per [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md): the header (`Run date`, `Mode`, `Status`, `App`), the traceability matrix (`SC-N → scenarios → result`), each per-suite scenario block, and the Defects table. If the report has no `## Summary` and no per-suite results, stop: "Report is malformed — re-run `/wf:qa-auto`."
 4. **Filter by `--suite`** if passed.
 5. **Short-circuit on PASS.** If the report `Status` is `PASS` and there are zero FAIL and zero BLOCKED scenarios, emit `QA-FOLLOWUP — NOOP` and stop — nothing to follow up.
 
 ### Staleness note
 
-`07_qa-report.md` carries no commit anchor, so this skill does a soft check: run `git log -1 --format=%cd` and compare to the report's `Run date`. If source commits landed after the run, print a one-line warning that some defects may already be addressed and continue — Phase 6 confirms each defect against current source before planning a fix, so a stale symptom is caught at diagnosis time.
+`07_qa-report.md` carries no commit anchor, so this skill does a soft check: invoke `last-commit-timestamp-query` via **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above) and compare it against the report's own `Run date`. Interpret both values as calendar moments and compare chronologically — never a string compare. If the last-commit timestamp is after the report's `Run date`, print a one-line warning that some defects may already be addressed and continue — Phase 6 confirms each defect against current source before planning a fix, so a stale symptom is caught at diagnosis time. With zero matching delivery-provider rows, this falls back silently to a plain-directory-safe timestamp read (the contract's fallback) — no VCS invocation of any kind.
 
 ---
 
 ## Phase 2: Branch gate
 
-Fixes belong on the branch the report was produced against.
+Fixes belong on the branch the report was produced against. Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** for the branch-name match below; it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
 
-1. Run `git rev-parse --abbrev-ref HEAD`.
-2. **If the branch name contains `/<id>-`** — proceed.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing `ado-id: <id>`. (Do NOT call `/wf:branch` — that loads its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the reason.
+1. **Resolve delivery-surface ownership first** (the scope-equality filter from "Direct provider resolution" above, applied before any branch read). **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and continue to Phase 3. **One matching row** — resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above), then apply steps 2–3.
+2. **If the branch name contains `/{numeric-id}-`** — proceed.
+3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose. (Do NOT call `/wf:branch` — that loads its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the reason.
 
 ---
 
@@ -127,7 +138,7 @@ The scenario is `FAIL` (observed ≠ expected at a step, or — for a `Type: API
 Before acting, print the buckets so the user sees the shape:
 
 ```
-QA follow-up for {wi-prefix}-{id} — <N> non-PASS scenarios
+QA follow-up for {task-id} — <N> non-PASS scenarios
 
 Unblock (<u>):
   TC-NNN  <block reason>  → <planned action>
@@ -211,7 +222,7 @@ If a plan step schedules the `{verify-command}` typecheck, run it and record the
 ## `08_qa-fix.md` Template
 
 ```markdown
-# {wi-prefix}-{id} — QA Follow-up
+# {task-id} — QA Follow-up
 
 **Source report:** `07_qa-report.md` (run <date>, mode <manual|agentic>)
 **Branch:** <branch>
@@ -304,12 +315,12 @@ Re-run `/wf:qa-auto <id> --only TC-002,TC-007` to confirm the fixes, or `/wf:qa-
 ```
 QA-FOLLOWUP — <DONE | PARTIAL | ESCALATED | ABORTED | NOOP>
 
-Task:       {wi-prefix}-{id}
+Task:       {task-id}
 Unblocked:  <u> attempted · <r> resolved to PASS · <b> still blocked → escalated
 Defects:    <d> planned · <f> fixed · <x> failed/skipped
 Escalated:  <e>
 
-Plan/log:   {task-root}/{wi-prefix}-{id}/08_qa-fix.md
+Plan/log:   {task-root}/{task-id}/08_qa-fix.md
 
 <if any escalations:>
 Open items:
@@ -317,10 +328,10 @@ Open items:
   • <E2 one-liner>
 
 <if DONE or PARTIAL:>
-Confirm with: /wf:qa-auto {id} --only <fixed-TC-list>
+Confirm with: /wf:qa-auto {task-id} --only <fixed-TC-list>
 
 <if ABORTED:>
-Plan written, nothing implemented. Re-run /wf:qa-followup {id} to apply.
+Plan written, nothing implemented. Re-run /wf:qa-followup {task-id} to apply.
 ```
 
 State meanings:
