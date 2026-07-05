@@ -8,7 +8,7 @@ allowed-tools: [Bash]
 
 Opens a PR for the current task through the project's active delivery provider. This skill is a **light orchestrator**, not a pure thin wrapper: it makes two host-level **Task** calls — first `wf:commit` (to commit + push), then `wf:pr` (to compose the body and create the PR). The orchestration lives in the host (not inside a subagent) on purpose: it keeps every nested **Task** call at the single level of depth this library has proven (host → agent → agent), while the heavy context (the full diff, all artifacts) still stays entirely inside the two subagents. The host only ever sees two short result blocks.
 
-**How a PR is opened:** core opens and detects pull requests through the project's active **delivery provider** — it does not know or name which concrete tool implements that. The work item is linked through the active tracker capability's `attach_link` operation, when one is registered — core doesn't know or name the concrete form that operation returns; with no tracker registered, the body carries no work-item link at all. Prerequisite: a delivery provider must be registered, and its underlying tool authenticated, before this operation can succeed.
+**How a PR is opened:** core opens and detects pull requests through the project's active **delivery provider** — it does not know or name which concrete tool implements that. The work item is linked through the active tracker capability's `attach_link` operation, when one is registered — a side-effecting embed of the tracker's own work-item link form (core doesn't know or name that concrete form, and the operation returns nothing observable), which the tracker attaches when the PR merges; with no tracker registered, the body carries no work-item link at all. Prerequisite: a delivery provider must be registered, and its underlying tool authenticated, before this operation can succeed.
 
 ---
 
@@ -55,7 +55,7 @@ Resolve `{numeric-id}`: the passed value, or the current branch's first 3+-digit
 
 ## Phase 2 — Commit and push (unless --no-commit)
 
-Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing the work-item id `{numeric-id}` as its argument, `push: true`, `staged: false`.
+Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing the work-item id `{numeric-id}` as its argument (which `wf:commit` otherwise infers from the task branch name), `push: true`, `staged: false`.
 
 Gate on its `COMMIT —` block:
 
