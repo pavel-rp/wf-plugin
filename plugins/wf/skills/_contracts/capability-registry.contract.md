@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.3.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface)
+**Version:** 2.4.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation)
 **Status:** authoritative source of truth for the core↔capability boundary semantics
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.3.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -313,7 +313,7 @@ exemption.** A capability owning the `delivery` surface implements:
 - **Write side:** `branch-create`, `branch-switch`, `commit`, `push-upstream`,
   `pr-create`, `pr-detect`.
 - **Read side**, consumed by core (e.g. for id inference): `workspace-root-resolve`,
-  `current-branch-query`.
+  `current-branch-query`, `last-commit-timestamp-query`.
 
 No operation name, and no prose describing it, may contain a git/gh command
 string or a plumbing invocation. "Branch", "commit", "deliver", and "workspace
@@ -339,11 +339,21 @@ locates `wf.config.js` and `_local/` when running in bare-core mode (no delivery
 provider registered): the plain-directory resolution is not a degraded mode, it
 is the contract's defined behaviour for the unconfigured case.
 
+**Last-commit-timestamp plain-directory-safe fallback.** When no active
+capability owns the `delivery` surface, `last-commit-timestamp-query` resolves
+to a **plain-directory-safe filesystem read** — no VCS invocation of any kind —
+consistent with the "a read operation always resolves to something usable"
+guarantee. As with `workspace-root-resolve`'s own fallback, this contract does
+not prescribe a specific algorithm (e.g. a directory's own modification time is
+illustrative only, not the mandated mechanism); the exact algorithm is left to
+whichever provider or bare-core path resolves it.
+
 **Unconfigured-provider behaviour.**
 
-- **Reads** (`workspace-root-resolve`, `current-branch-query`) fall back
-  **silently** to the plain-directory path — no error, no warning. A read
-  operation always resolves to *something* usable.
+- **Reads** (`workspace-root-resolve`, `current-branch-query`,
+  `last-commit-timestamp-query`) fall back **silently** to the plain-directory
+  path — no error, no warning. A read operation always resolves to *something*
+  usable.
 - A **write** operation (`branch-create`, `commit`, `push-upstream`, `pr-create`,
   …) invoked by a user-initiated skill with **no** `delivery`-surface owner active
   states **plainly** that no delivery provider is registered and **names the

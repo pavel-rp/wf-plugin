@@ -1,6 +1,6 @@
 # git capability manifest
 
-**Version:** 1.0.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics)
+**Version:** 1.1.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics; WF-179 — bind the last-commit-timestamp-query read operation, mirroring workspace-root-resolve/current-branch-query)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" (v2.3.0)
 **Capability:** git (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -16,7 +16,7 @@ registry row in `_local/config.md`; it does not hardcode this path.
 
 git supplies the **delivery provider** — the concrete git/GitHub binding for every
 abstract delivery operation the capability-registry contract defines (branch, commit,
-push, pull-request write/read, plus the two workspace-inference reads). It is the
+push, pull-request write/read, plus the three read-side operations). It is the
 destination capability full-stack users register once core's own inline
 `branch`/`commit`/`pr` copy is later scrubbed (SUB-4, a separate task — not this one).
 It carries **zero** tracker-specific vocabulary: every operation consumes an

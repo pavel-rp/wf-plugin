@@ -3,7 +3,7 @@
 **Version:** 2.3.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface)
 **Status:** authoritative source of truth for HOW a core skill invokes active capabilities at a phase
 **Supersedes:** `invocation-mechanism.contract.md` (v1.0.0, WF-10) — the single-manifest, three-named-seam runtime, kept intact as the frozen N=1 substrate this generalises
-**Executes the port:** `capability-registry.contract.md` (v2.3.0, WF-21; WF-99; WF-120; WF-121) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
+**Executes the port:** `capability-registry.contract.md` (v2.4.0, WF-21; WF-99; WF-120; WF-121; WF-179) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 

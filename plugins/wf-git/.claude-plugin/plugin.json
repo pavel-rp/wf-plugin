@@ -1,6 +1,6 @@
 {
   "name": "wf-git",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "wf delivery-provider pack — the git capability owning the wf capability-registry's delivery surface (branch/commit/push/PR git+gh bindings for every abstract delivery operation the contract defines), composed with wf core via the capability registry. Ships /wf-git:init for one-command self-registration.",
   "author": {
     "name": "Pavel Kalabin",
