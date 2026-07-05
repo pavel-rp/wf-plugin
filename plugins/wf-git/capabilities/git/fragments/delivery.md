@@ -253,6 +253,24 @@ attribution).
 
 ---
 
+## last-commit-timestamp-query (read)
+
+**Inputs:** none.
+
+**Procedure:**
+
+1. `git log -1 --format=%cd`.
+2. Success → return the timestamp.
+3. Failure (no commits yet, or not inside a git working tree) — this is a genuine
+   **environment error** for a *registered* provider to surface plainly. This is
+   explicitly distinct from the contract's own no-provider plain-directory-safe
+   fallback, which is core's own behaviour when the `delivery` surface has no owner
+   at all — not something this file implements.
+
+**Output:** the last commit's timestamp, or a plain environment error.
+
+---
+
 ## Edge cases reproduced
 
 A completeness self-check against today's `branch.md` / `commit.md` / `pr.md`:
@@ -269,3 +287,5 @@ A completeness self-check against today's `branch.md` / `commit.md` / `pr.md`:
   `current-branch-query` when the branch input is omitted).
 - **`gh`-not-authenticated** — `pr-create` step 3, `pr-detect` step 2 (both name the
   `gh auth login` remedy).
+- **No commits / not a git working tree** — `last-commit-timestamp-query` step 3
+  (plain environment error, distinct from core's no-provider fallback).

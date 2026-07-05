@@ -5,16 +5,16 @@ capability owning the wf capability-registry's **`delivery`** `provider` surface
 (`plugins/wf/skills/_contracts/capability-registry.contract.md` §"The delivery
 provider surface"). It binds every abstract delivery operation — `branch-create`,
 `branch-switch`, `commit`, `push-upstream`, `pr-create`, `pr-detect`,
-`workspace-root-resolve`, `current-branch-query` — to concrete git/gh procedures, so a
-`wf` core skill that needs to branch, commit, push, or open a PR has a provider to
-dispatch to.
+`workspace-root-resolve`, `current-branch-query`, `last-commit-timestamp-query` — to
+concrete git/gh procedures, so a `wf` core skill that needs to branch, commit, push, or
+open a PR has a provider to dispatch to.
 
 ## What ships
 
 | Item | What it is |
 |---|---|
 | `capabilities/git/manifest.md` | the `git` capability's manifest — one `provider` fragment row scoped `delivery`, plus the "never commit to `main`" constitution `article` |
-| `capabilities/git/fragments/delivery.md` | the inline reference doc binding all eight delivery operations to git/gh procedures |
+| `capabilities/git/fragments/delivery.md` | the inline reference doc binding all nine delivery operations to git/gh procedures |
 | `/wf-git:init` | one-command self-registration — records this pack's install root and registers the `git` capability, mirroring `/wf-caps:init` (WF-99) |
 
 ## Registering wf-git downstream
