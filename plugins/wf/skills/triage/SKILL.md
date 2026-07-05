@@ -1,6 +1,6 @@
 ---
 name: triage
-description: Scores a task against a 5-dimension rubric (scope, clarity, design, risk, dependencies) and recommends which workflow to run next — lite, full, split, blocked, or clarify. Read-only advisor that runs before any work begins; fetches requirements if absent, performs a bounded repo scan, writes triage.md, and hands off with an exact next command. Use when a new task arrives and the right flow is uncertain, or as a sanity check before committing to /wf:lite vs /wf:spec.
+description: Scores a task against a 5-dimension rubric (scope, clarity, design, risk, dependencies) and recommends which workflow to run next — lite, full, split, blocked, or clarify. Read-only advisor that runs before any work begins; when requirements are absent it fetches them from the active tracker if one is registered, otherwise runs local-only with no fetch and no error, then performs a bounded repo scan, writes triage.md, and hands off with an exact next command. Use when a new task arrives and the right flow is uncertain, or as a sanity check before committing to /wf:lite vs /wf:spec.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
