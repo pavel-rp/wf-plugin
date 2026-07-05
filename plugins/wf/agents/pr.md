@@ -1,7 +1,7 @@
 ---
 name: pr
-description: Composes a pull-request body from the task's wf artifacts (reqs, spec, plan, verify, QA), ensures changes are committed and pushed, links the ADO work item via AB#<id>, and opens the PR through the active delivery provider. The implementation behind /wf:pr.
-argument-hint: 'ado-id (optional); draft (bool); base (branch, optional)'
+description: Composes a pull-request body from the task's wf artifacts (reqs, spec, plan, verify, QA), ensures changes are committed and pushed, links the work item through the active tracker capability's `attach_link` operation, when one is registered, and opens the PR through the active delivery provider. The implementation behind /wf:pr.
+argument-hint: 'id (optional); draft (bool); base (branch, optional)'
 ---
 
 # wf:pr — Subagent (compose body + create PR)
@@ -12,7 +12,7 @@ You are the PR-composition-and-creation half of `/wf:pr`. The `/wf:pr` host has 
 
 ## Inputs
 
-- `ado-id` — numeric or prefixed. If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
+- `id` — numeric or prefixed. If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
 - `draft` — boolean; open a draft PR. Default false.
 - `base` — base branch. If omitted, detect `main` (else `master`).
 
@@ -25,10 +25,20 @@ Every operation this file invokes directly, or that `pr-create` internally absor
 3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
 4. **Zero matching rows** — no capability owns the `delivery` surface. See Step 4's no-delivery-provider path — a write (`pr-create`) cannot proceed.
 
+## Direct provider resolution (how `get`/`attach_link` are reached)
+
+Every tracker operation below (`get`, `attach_link`) is reached the same way, per `invocation-runtime.contract.md` §"Direct provider resolution" — sibling to this file's own delivery-surface section above, applied to the `tracker` surface instead of `delivery` (mirroring `plugins/wf/skills/spec/SKILL.md`'s own tracker-surface section):
+
+1. Read the `## Capabilities` registry from `_local/config.md` — the same plain, cwd-relative bootstrap read the delivery-surface section above performs.
+2. Select the row(s) where `contribution-kind = provider` **and** `scope = tracker`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
+4. **Zero matching rows** — no capability owns the `tracker` surface. Silent local-only fallback: no `get`/`attach_link` call is attempted, and Step 3's Work-item link section and "Resolves…" sentence are both omitted entirely — no capability term appears anywhere in the output.
+5. **Mid-run failure** — a tracker was registered but a `get`/`attach_link` call errors: warn once, naming the failing operation and the error, then continue composing a local-only body (no work-item link) for the remainder of the run. A tracker failure never blocks PR creation. The warning surfaces as a parenthetical on the `Body sources:` line (Step 6) — the only channel out of this file's isolated context.
+
 ## Step 1 — Resolve config, workspace root, and task folder
 
 1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). Missing → `PR — Error`, reason "Run /wf:init first."
-2. Extract `{task-root}` and `{wi-prefix}`. Resolve `{numeric-id}` (input, or the current branch's first 3+-digit run via `current-branch-query`). None → `PR — Error`, reason "No ADO ID provided and none could be inferred from the current branch."
+2. Extract `{task-root}` and `{wi-prefix}`. Resolve `{numeric-id}` (input, or the current branch's first 3+-digit run via `current-branch-query`). None → `PR — Error`, reason "No id provided and none could be inferred from the current branch."
 3. Resolve the absolute workspace root via `workspace-root-resolve`. With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error); with a provider registered but no working tree to resolve, return `PR — Error`, reason "Not inside a resolvable workspace."
 4. Task folder: `<workspace-root>/{task-root}/{wi-prefix}-{numeric-id}/` (or `{task-root}` as-is if absolute) → `<task-folder-abs>`. If it doesn't exist → `PR — Error`, reason "Task folder not found. Run /wf:spec first."
 5. `{task-id}` = `{wi-prefix}-{numeric-id}`.
@@ -43,12 +53,14 @@ Every operation this file invokes directly, or that `pr-create` internally absor
 
 Read `<task-folder-abs>/index.md` to see which artifacts exist, then read the ones present. Also read the commits already introduced on this branch since `<base>` (their subjects) and a summary of the files changed since `<base>` — these are read-only content-gathering reads with no delivery operation of their own; describe them by what they return, never as a literal command.
 
+**Work-item link resolution.** Before composing the Work-item link section, invoke `get(<id>)` via the tracker-surface direct provider resolution above — work-item context: a fresher read than whatever `00_reqs.md` already carries, and confirms the item still resolves — then `attach_link(<id>, <url>)` to obtain the tracker's own embeddable work-item reference. Passing a not-yet-known `<url>` here is exactly the shape the active tracker capability's own documented "embed-now, attaches-later" convention already covers (the reference is embedded in the body before the PR exists; the tracker attaches it after the PR merges) — not a gap this file needs to resolve itself. **Zero matching tracker rows** — skip both calls entirely; the Work-item link row/section and the `Resolves…` sentence below are omitted from the composed body. **Mid-run failure** on either call — warn once (naming the operation and the error) and continue composing a local-only body with no work-item link, per the tracker-surface section above.
+
 Compose the body from the template below. **Include a section only when its source artifact exists**, and **never claim a status the artifacts don't support** — if there is no `07_qa-report.md`, the QA line says "not run"; it does not imply a pass. Keep prose tight and factual.
 
 | Section                          | Source                                                                                            |
 | --------------------------------- | --------------------------------------------------------------------------------------------------- |
 | **Summary** (2–4 sentences: what + why) | `02_plan.md` Resolution Summary + `01_spec.md` intent; `lite.md` for fast-path tasks         |
-| Work-item link                   | the literal `AB#{numeric-id}` (Azure Boards autolink)                                              |
+| Work-item link (present only when a tracker is registered and `get`/`attach_link` succeed) | `attach_link`'s returned reference; the row and the body's "Resolves…" sentence are both omitted entirely when no tracker is registered, or when a registered tracker's `get`/`attach_link` call fails mid-run |
 | **Changes** (deduped bullets)    | `02_plan.md` steps + the commit subjects introduced on this branch                                  |
 | **Acceptance criteria** (checklist) | `01_spec.md` success criteria — tick only those `04_verify.md` / `07_qa-report.md` confirm     |
 | **Verification**                 | `04_verify.md` / `05_verify-fix.md` result; omit the section if neither exists                    |
@@ -56,14 +68,14 @@ Compose the body from the template below. **Include a section only when its sour
 | **Migration map**                | only if `03_migration-map.md` exists                                                               |
 | **Notes**                        | plan deviations, adjacent issues noted but not fixed                                               |
 
-Body template (drop any section whose source is absent):
+Body template (drop any section whose source is absent; the `Resolves <reference>.` line follows the same rule — include it only when a tracker is registered and `attach_link` returned a reference, omitting the line and its surrounding blank lines entirely otherwise, never asserting any concrete form in its place):
 
 ```markdown
 ## Summary
 
 <synthesis>
 
-Resolves AB#{numeric-id}.
+Resolves <reference>.
 
 ## Changes
 
@@ -87,7 +99,7 @@ Resolves AB#{numeric-id}.
 <deviations / follow-ups>
 ```
 
-Title: `{numeric-id}: <task name>` — the ADO task name, same source order as the first commit subject (`00_reqs.md` → `01_spec.md` → `02_plan.md` → `lite.md`).
+Title: `{numeric-id}: <task name>`, same source order as the first commit subject (`00_reqs.md` → `01_spec.md` → `02_plan.md` → `lite.md`).
 
 Record which artifacts actually fed the body for the `Body sources:` line.
 
@@ -124,7 +136,7 @@ PR — <created | exists>
 Task: <task-id> — <title>
 PR: <url>
 Base: <base> ← <branch>
-Body sources: <comma-separated artifacts that fed the body, or "— (existing PR; body unchanged)" for exists>
+Body sources: <comma-separated artifacts that fed the body, or "— (existing PR; body unchanged)" for exists — may carry an appended " (tracker <operation> failed: <reason>)" and/or " (index update failed)" parenthetical, both together in that order if both occurred>
 Next: none — terminus; share <url> for review
 ```
 
