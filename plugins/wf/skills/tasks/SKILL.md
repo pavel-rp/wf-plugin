@@ -59,7 +59,7 @@ This phase is **lighter** than the `spec` and `implement` authoring hubs: decomp
 **Forbidden:**
 
 - Modify any source file, the spec, the plan, or any other artifact. This skill is read-mostly — its only write is `03_tasks.md` and the index row.
-- Run builds, tests, linters, installs, or any destructive git operation.
+- Run builds, tests, linters, installs, or any destructive version-control operation.
 - Skip the plan: the plan is the authoritative input. Decompose what the plan settled; do not re-strategize, re-scope, or introduce work the plan didn't call for.
 
 ---

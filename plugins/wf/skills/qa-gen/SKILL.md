@@ -80,7 +80,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` the s
 **Forbidden:**
 
 - Modify any source file, spec, plan, or other artifact. This skill is read-mostly — its only write is `06_qa.md` and the index row.
-- Run builds, tests, installs, or any destructive git operation.
+- Run builds, tests, installs, or any destructive version-control operation.
 - Read implementation method bodies to derive scenarios. Public signatures (route paths, component selectors, button labels, exported names) are allowed when needed to make steps concrete; method bodies are not.
 - Invent scenarios untraceable to a numbered spec criterion. If a criterion is missing, escalate — don't backfill.
 - Write outside `_local/`.

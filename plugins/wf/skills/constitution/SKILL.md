@@ -83,7 +83,7 @@ default detects the right one.
 
 - Read any file in the project (`Read`, `Glob`).
 - Read each registered capability's `manifest.md` at the registry-declared `<path>/manifest.md`.
-- Read-only git commands (`git rev-parse`).
+- Read-only workspace resolution via `workspace-root-resolve` (direct provider resolution to the `delivery` surface; plain-directory fallback when no delivery provider is registered).
 - Write **only** these two `_local/`-scoped targets:
   - `_local/constitution.md` (the composed constitution record).
   - the `## Capabilities` table inside `_local/config.md` (maintained, not the rest of the file).
@@ -99,7 +99,7 @@ default detects the right one.
 - Hardcode, require, count, or special-case any concrete stack, domain, or capability in its
   own behaviour (capability names may still be recorded as provenance tags read from the
   registry — that is composition, not hardcoding).
-- Run builds, tests, installs, or any destructive git operation.
+- Run builds, tests, installs, or any destructive version-control operation.
 
 ---
 

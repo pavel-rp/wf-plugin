@@ -79,7 +79,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach t
 - Inventing a fix for a defect whose root cause you can't locate in source. That's an escalation, not a guess.
 - Modifying `06_qa.md`, `01_spec.md`, `00_reqs.md`, or `07_qa-report.md` by hand. The report is updated only by re-running `/wf:qa-auto`; the upstream artifacts are read-only here.
 - Running builds, tests, installs, or `{verify-command}` yourself — except the typecheck a plan step explicitly schedules (mirrors `/wf:implement`).
-- Committing, staging, pushing, or any destructive git. The user reviews the diff and commits.
+- Committing, staging, pushing, or any destructive version-control operation. The user reviews the diff and commits.
 - "Fixing" a BLOCKED scenario by relaxing or rewriting the QA plan to dodge the block. The plan is the contract; unblock the harness, don't weaken the test.
 
 ---

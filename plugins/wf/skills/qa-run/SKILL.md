@@ -69,7 +69,7 @@ Id inference reaches `current-branch-query` the same way, per `plugins/wf/skills
 **Forbidden:**
 
 - Modify any source file, spec, plan, or QA-plan file. The plan (`06_qa.md`) is read-only — corrections go through `/wf:qa-gen`, not here.
-- Run builds, tests, installs, or destructive git operations.
+- Run builds, tests, installs, or destructive version-control operations.
 - Drive the browser. This skill only narrates and records — the human tester drives. For autonomous browser drive use `/wf:qa-auto`.
 - Execute test steps on behalf of the tester. The tester is the authority on what they observed.
 

@@ -71,7 +71,7 @@ The only delivery operation this file invokes — `current-branch-query` (the br
 
 - Touch any file outside the resolved task folder.
 - Modify any artifact other than `index.md` (this skill only catalogues; it doesn't write spec/plan/etc.).
-- Run builds, tests, installs, or any destructive git operation.
+- Run builds, tests, installs, or any destructive version-control operation.
 - Implement the row-edit logic inline. If subagent invocation is unavailable, stop and report — see Phase 2.
 
 ---

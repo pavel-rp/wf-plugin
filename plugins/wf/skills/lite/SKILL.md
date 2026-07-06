@@ -89,12 +89,12 @@ Every delivery operation below (`current-branch-query`) is reached the same way,
 - Read-only diff/status review for the Phase 6 handoff summary (inspecting the working tree; not a delivery-provider operation).
 - Write/create files inside the task folder (`{task-root}/{task-id}/`).
 - Modify source files during Phase 5 (implementation) only.
-- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 2 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 2.5 type resolution (read-only).
+- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 2 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 2.5 type resolution (read-only).
 
 **Forbidden:**
 
 - Run builds, tests, or installs outside the verification command specified in the plan.
-- Run any destructive git operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
+- Run any destructive version-control operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
 - Commit, push, or open a PR — always hand off manually. (`push --set-upstream` performed by wf:branch is the one exception, and only for publishing the new task branch — never for pushing commits.)
 - Expand scope beyond the approved `lite.md` plan. If the task looks bigger than expected mid-execution, stop and escalate to the full flow.
 
