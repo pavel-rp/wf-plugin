@@ -2,7 +2,7 @@
 
 A Claude Code plugin that runs a gated **Spec-Driven Development** chain — spec → plan → tasks → implement → verify → qa — over each task. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
 
-**Core is tracker- and delivery-agnostic.** It names no tracker (Azure DevOps, Linear, …) and no VCS: work-item and branch/commit/PR mechanics enter through **capability packs** that register against the spine — `wf-git` (delivery provider), `wf-ado` / `wf-linear` (tracker providers). Stack/domain knowledge (migration, browser-QA, Angular test-host, node-ts) ships in `wf-caps`. With **no provider registered, the whole spine still runs fully local** — see [Bare-core](#bare-core-no-provider-registered).
+**Core is tracker- and delivery-agnostic** — it names no tracker (Azure DevOps, Linear, …) and issues no VCS command of its own. Work-item and branch/commit/PR mechanics enter through **capability packs** that register against the spine: `wf-git` supplies the delivery (git) provider, `wf-ado` / `wf-linear` the tracker providers. Stack/domain knowledge (migration, browser-QA, Angular test-host, node-ts) ships in `wf-caps`. With **no provider registered, the whole spine still runs fully local** — see [Bare-core](#bare-core-no-provider-registered).
 
 ## Install
 
@@ -50,7 +50,7 @@ A state-aware dispatcher over the chain below. It reads the task folder's artifa
 /wf:tasks <id>     # decompose the plan into small, independently testable units
 /wf:implement <id> # execute the plan step by step — does not commit
 /wf:commit <id>    # commit current changes, terse auto-message (--push to push)
-/wf:pr <id>        # commit+push, then open a GitHub PR from the wf artifacts
+/wf:pr <id>        # commit+push, then open a PR (via the active delivery provider) from the wf artifacts
 
 /wf:branch <id>    # create task branch (auto-invoked by the others)
 ```

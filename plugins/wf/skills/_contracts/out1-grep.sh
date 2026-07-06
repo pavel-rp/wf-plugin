@@ -31,7 +31,8 @@
 #
 # Requires GNU/PCRE grep (`grep -P`; present on the Linux CI runner and Git Bash).
 # `-P` makes `\b` an unambiguous word boundary (unlike ERE, where it is not
-# portable). Exit 0 = clean; exit 1 = residue found (or grep -P unavailable).
+# portable). Exit 0 = clean; exit 1 = residue found; exit 2 = grep error
+# (e.g. PCRE `grep -P` unavailable on this platform) — never a silent pass.
 set -u
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"   # -> plugins/wf
