@@ -14,7 +14,7 @@ Opens a PR for the current task through the project's active delivery provider. 
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If missing, stop: "Run `/wf:init` first."
+Read `_local/config.md` for `{task-root}`. If missing, stop: "Run `/wf:init` first."
 
 ---
 
@@ -26,7 +26,7 @@ Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If missing, stop: "
 
 | Argument          | Required | Description                                                                                                       |
 | ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| `<id>`            | NO       | Work item id — numeric or prefixed. Falls back to inferring from the current branch.                             |
+| `<id>`            | NO       | Task id — opaque (the active tracker's shape, or the local `T<NNN>` scheme when none is registered). Falls back to inferring from the current branch. |
 | `--draft`         | NO       | Open the PR as a draft.                                                                                           |
 | `--base <branch>` | NO       | Base branch for the PR. Defaults to the repo's `main` (or `master`).                                             |
 | `--no-commit`     | NO       | Skip the commit+push step and open a PR against exactly what's already pushed. (The branch must already exist on the remote.) |
@@ -51,11 +51,11 @@ Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If missing, stop: "
 
 ## Phase 1 — Resolve the task ID
 
-Resolve `{numeric-id}`: the passed value, or the current branch's first 3+-digit run (via `current-branch-query`). If neither, stop: "No id provided and none could be inferred from the current branch."
+Resolve `{task-id}` (the opaque task id — whatever shape the active tracker produced, or the local `T<NNN>` scheme): use the passed value verbatim. If none was passed, leave it unset and let the subagents infer it from the current branch — each resolves the branch-inferred token against `{task-root}` itself, so this skill never reconstructs an id from a prefix.
 
 ## Phase 2 — Commit and push (unless --no-commit)
 
-Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing the work-item id `{numeric-id}` as its argument (which `wf:commit` otherwise infers from the task branch name), `push: true`, `staged: false`.
+Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing `id: {task-id}` (or omit `id` when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`.
 
 Gate on its `COMMIT —` block:
 
@@ -71,7 +71,7 @@ If `--no-commit` was passed, skip straight to Phase 3.
 
 Invoke the **Task** tool with `subagent_type: wf:pr`, passing:
 
-- `id` — `{numeric-id}`
+- `id` — `{task-id}` (omit when unset — the subagent infers it from the current branch)
 - `draft` — `true` if `--draft` was passed, else `false`
 - `base` — the `--base` value, or omit to let the subagent detect `main`/`master`
 
@@ -97,7 +97,7 @@ Emit the subagent's `PR —` block verbatim as this skill's final output.
 ```
 PR — <created | exists>
 
-Task: {wi-prefix}-{id} — <title>
+Task: {task-id} — <title>
 PR: <url>
 Base: <base> ← <branch>
 Body sources: <comma-separated artifacts that fed the body, e.g. reqs, spec, plan, verify, qa>

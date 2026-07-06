@@ -75,12 +75,12 @@ When `--steps` is provided, only the specified steps are executed (plus STEP-001
 - **Edit/Write source files** as the loaded `02_plan.md` step dictates — this is the skill's primary purpose.
 - Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface), used by the Phase 1 branch gate when a delivery provider is registered.
 - Run the verification command specified in the plan's verify step (e.g., the project's `npm test` / build), but only that command — never ad-hoc tests or installs.
-- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits.
+- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits.
 
 **Forbidden:**
 
 - Commit, stage, push application code, or open a PR — always hand off to the user manually for review. (`push --set-upstream` performed by wf:branch is the one exception, and only for publishing the new task branch — never for pushing implementation commits.) The user runs `/wf:commit` and `/wf:pr` for that step; `wf:implement` itself still never commits.
-- Run any destructive git operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
+- Run any destructive version-control operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
 - Run builds, tests, linters, or installs other than the verify command specified in the plan.
 - Skip steps in `02_plan.md`, or expand scope beyond what's explicitly checked off in the loaded plan.
 - Modify `00_reqs.md`, `01_spec.md`, or `02_plan.md` content other than ticking the plan's checkboxes as steps complete.
@@ -291,7 +291,7 @@ In both modes, if the session is interrupted, the plan's checkboxes record exact
 
 ## Edge Cases
 
-- **No delivery provider registered (bare-core mode):** the Phase 1 branch gate degrades to a no-op with a stated reason and proceeds directly to Phase 2 — never a raw git error, never a hard block.
+- **No delivery provider registered (bare-core mode):** the Phase 1 branch gate degrades to a no-op with a stated reason and proceeds directly to Phase 2 — never a raw delivery-provider error, never a hard block.
 - **Package install required by the task:** Allowed only if the exact command appears in the plan's Approach section or a step's Changes. Do not install additional packages.
 - **Task requires creating a new file:** Create it in the correct location. Add it to the list of files to stage.
 - **Step's file list is incomplete:** Stop. Report the unlisted file. Do not modify it without updating the plan first.

@@ -73,14 +73,14 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 - **Edit source files, but only** at `file:line` locations cited in the loaded `04_verify.md`.
 - Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path).
 - Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (direct provider resolution to the `delivery` surface) for branch gating, id inference, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
-- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits.
+- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits.
 
 ### Forbidden
 
 - Fixing things the report didn't cite. If `04_verify.md` doesn't flag it, don't touch it, even if you notice it in the surrounding code.
 - Fabricating an "Expected" value the report doesn't contain. If the report says "FAIL — implementation differs" without a specific target, that's an ask-user finding, not an auto-fix.
 - Running builds, tests, installs, or `/wf:verify-spec`. The skill stops after applying edits.
-- Committing, staging, pushing, or any destructive git. The user reviews the diff.
+- Committing, staging, pushing, or any destructive version-control operation. The user reviews the diff.
 - Modifying files outside the repo, or anything under `.git/`.
 - Touching `00_reqs.md`, `01_spec.md`, or `02_plan.md` — those are upstream artifacts.
 
@@ -90,7 +90,7 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 
 Before editing any code, verify the current branch matches the audit's target. Extract the first 3+-digit run from `{task-id}` — call it `{numeric-id}`; it is used **only** for the branch-name match below, never for the task folder or any operation.
 
-1. Resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against).
+1. **Resolve delivery-surface ownership first** — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of direct provider resolution (see "Direct provider resolution" above), applied before any branch read. **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no hard stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and proceed (the gate is satisfied). **One matching row** — resolve the current branch via `current-branch-query`, then apply steps 2–3.
 2. **If the branch name contains `/{numeric-id}-`** (the token defined above, e.g. `feature/6756-...`) — proceed.
 3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the subagent's reason.
 

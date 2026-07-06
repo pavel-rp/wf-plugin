@@ -89,12 +89,12 @@ Every delivery operation below (`current-branch-query`) is reached the same way,
 - Read-only diff/status review for the Phase 6 handoff summary (inspecting the working tree; not a delivery-provider operation).
 - Write/create files inside the task folder (`{task-root}/{task-id}/`).
 - Modify source files during Phase 5 (implementation) only.
-- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 2 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 2.5 type resolution (read-only).
+- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 2 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 2.5 type resolution (read-only).
 
 **Forbidden:**
 
 - Run builds, tests, or installs outside the verification command specified in the plan.
-- Run any destructive git operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
+- Run any destructive version-control operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
 - Commit, push, or open a PR — always hand off manually. (`push --set-upstream` performed by wf:branch is the one exception, and only for publishing the new task branch — never for pushing commits.)
 - Expand scope beyond the approved `lite.md` plan. If the task looks bigger than expected mid-execution, stop and escalate to the full flow.
 
@@ -137,7 +137,7 @@ Skip if `00_reqs.md` already exists in the task folder.
 
 ## Phase 2: Branch Gate
 
-1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above).
+1. **Resolve delivery-surface ownership first** — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of **direct provider resolution** (see "Direct provider resolution" above), applied before any branch read. **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no hard stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and proceed to Phase 2.5. **One matching row** — resolve the current branch via `current-branch-query`, then apply steps 2–3.
 2. **If the branch name contains `/{numeric-id}-`** — already on the task branch, proceed to Phase 2.5.
 3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` as its argument. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
    - On success (`BRANCH — created`/`switched`/`already-active`), continue to Phase 2.5.

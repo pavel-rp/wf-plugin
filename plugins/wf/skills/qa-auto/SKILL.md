@@ -86,7 +86,7 @@ Id inference and the Phase 2 branch gate both reach `current-branch-query` the s
 
 - Drive a browser, write a database, or scaffold a host directly. That is the engine provider's job — this skill orchestrates, it does not execute.
 - Modify source, spec, plan, or QA-plan files. The plan is read-only.
-- Run builds, tests, installs, or destructive git.
+- Run builds, tests, installs, or destructive version-control operations.
 - Name a specific capability or assume how many are active. Core walks the registry and dispatches whatever owns `surface: engine`.
 
 ---

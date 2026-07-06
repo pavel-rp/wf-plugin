@@ -39,7 +39,7 @@ Create an implementation plan (`02_plan.md`) for a task. Accepts a task id, reso
 
 ### Validation
 
-- If `<id>` is provided, use it verbatim. If omitted, infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (the same mechanism `spec`'s Phase 0.5 Branch Gate uses): extract the first 3+-digit run from the resolved branch name, then **resolve that token against `{task-root}`** — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (this matches both a tracker-prefixed shape like `ADO-6396` and the local `T<NNN>` scheme's own `T6396` uniformly). Exactly one match — reuse that folder's full name as `<id>` (this recovers the opaque shape `/wf:spec` already established; core still never reconstructs it itself). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to infer from). Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:plan <id>`." More than one match — ambiguous — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:plan <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:plan <id>`."
+- If `<id>` is provided, use it verbatim. If omitted, infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (the same mechanism `spec`'s Phase 0.5 Branch Gate uses): extract the first 3+-digit run from the resolved branch name, then **resolve that token against `{task-root}`** — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (this matches both a tracker-prefixed shape like `<PREFIX>-6396` and the local `T<NNN>` scheme's own `T6396` uniformly). Exactly one match — reuse that folder's full name as `<id>` (this recovers the opaque shape `/wf:spec` already established; core still never reconstructs it itself). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to infer from). Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:plan <id>`." More than one match — ambiguous — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:plan <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:plan <id>`."
 - If the task folder doesn't exist, stop: "Task folder not found. Run `/wf:spec {id}` first."
 - If `01_spec.md` exists, read it as the spec (primary source).
 - If no `01_spec.md` but `00_reqs.md` exists, use that.
@@ -68,13 +68,13 @@ Record the resolved value and source — both appear in the Final Output block s
 - Use MSSQL extension tools (`mssql_run_query`, `mssql_list_tables`, `mssql_list_views`, `mssql_list_schemas`) for database schema and data exploration
 - Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface)
 - Write/create files ONLY inside the task folder (`{task-root}/{task-id}/`)
-- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 0 branch gate. The wf:branch subagent performs non-destructive git operations only (`checkout -b` / `checkout` of an existing branch, `fetch`, `push --set-upstream`); it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 0.5 type resolution (read-only).
+- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 0 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 0.5 type resolution (read-only).
 
 **Forbidden:**
 
 - Modify any source file outside the task folder
 - Run builds, tests, linters, or installs
-- Run any destructive git operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above)
+- Run any destructive version-control operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above)
 
 ---
 
@@ -82,7 +82,7 @@ Record the resolved value and source — both appear in the Final Output block s
 
 Before any other work, verify the current branch is correct for this task.
 
-1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (`plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution") — the same mechanism `plugins/wf/agents/branch.md` already uses. With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against).
+1. **Resolve delivery-surface ownership first** — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of **direct provider resolution** (`plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", the same mechanism `plugins/wf/agents/branch.md` uses), applied before any branch read. **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no hard stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and continue directly to Phase 0.5. **One matching row** — resolve the current branch via `current-branch-query`, then apply steps 2–3.
 2. **If the branch name contains `/{numeric-id}-`** (e.g. `feature/6396-...`, `fix/6396-...`, `chore/6396-...`, etc.) — already on the task branch, continue directly to Phase 0.5.
 3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` as its argument. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
    - On success (`BRANCH — created`/`switched`/`already-active`), continue directly to Phase 0.5.
@@ -150,7 +150,7 @@ Before writing the plan, explore the project to understand what files are releva
 - No step touches more than 5 files
 - No exact code — describe the change in plain language
 
-**Step 2b — Write `02_plan.md`** using the Plan Template below. **Overwrite if it exists** (git history preserves prior versions).
+**Step 2b — Write `02_plan.md`** using the Plan Template below. **Overwrite if it exists** (version-control history preserves prior versions).
 
 **Step 2c — Update the index.** After the file is written, invoke `/wf:index {id} plan "<n> steps; verify=<verify-command>"` to record it in the per-task index. Substitute the actual step count and the verify command from `_local/config.md` (e.g. `5 steps; verify=npm run typecheck`). Escape any `|` in the verify command as `\|` so the index table doesn't break.
 

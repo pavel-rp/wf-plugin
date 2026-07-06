@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships the wf + wf-caps plugins)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-git, wf-ado, wf-linear packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -63,6 +63,15 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   └── capabilities/migration/ # the migration capability: manifest + fragments + profile
 │       ├── manifest.md         # how it attaches to the spine
 │       └── fragments/          # v2 fragment prose the migration capability attaches to the spine
+├── plugins/wf-git/            # DELIVERY-PROVIDER PACK — the git capability owning the delivery surface
+│   ├── skills/init/SKILL.md   # /wf-git:init — self-registration
+│   └── capabilities/git/      # manifest.md + fragments/delivery.md (branch-create/commit/push-upstream/pr-create)
+├── plugins/wf-ado/            # TRACKER-PROVIDER PACK — the ado capability owning the tracker surface
+│   ├── skills/init/SKILL.md   # /wf-ado:init
+│   └── capabilities/ado/      # manifest.md + fragments/tracker.md (Azure DevOps work-item bindings)
+├── plugins/wf-linear/         # TRACKER-PROVIDER PACK — the linear capability (second, independent tracker binding)
+│   ├── skills/init/SKILL.md   # /wf-linear:init
+│   └── capabilities/linear/   # manifest.md + fragments/tracker.md (Linear MCP bindings)
 ├── docs/ROADMAP.md            # committed grounding doc
 └── _local/                    # gitignored: research notes, working tracking
 ```
@@ -161,6 +170,8 @@ The current skills are v1-shaped. Their v2 homes:
 
 QA splits cleanly: orchestration (`qa-gen` plan structure, the `qa-run`/`qa-followup` loop, baseline-health) stays core; the browser **engine** and the stack **test-host** are provider capabilities; parity is a migration fragment.
 
+**Delivery & tracker knowledge has fully extracted (WF-119 charter, closed at WF-137).** `init`, `branch`, `commit`, and `pr` stay **core** — they are no longer "core-with-git-inline". They now speak only the abstract delivery/tracker **contract operations** (`branch-create`, `commit`, `push-upstream`, `pr-create`, `current-branch-query`, `workspace-root-resolve`; `get`/`create_umbrella`/`create_child`/`update`/`list_children`/`post_comment`/`set_status`/`attach_link`), reached via **direct provider resolution**. The concrete git mechanics live in the `wf-git` **delivery `provider`** pack; the Azure-DevOps and Linear mechanics in the `wf-ado` and `wf-linear` **tracker `provider`** packs. With no delivery/tracker provider registered, core degrades to a **silent, local-only, `T<NNN>`-id, git-free bare-core mode**: every branch gate skips with a stated reason, id inference and workspace-root resolve via the plain-directory fallback, and no capability term surfaces.
+
 ---
 
 ## 7. Authoring a skill (`SKILL.md`)
@@ -221,16 +232,16 @@ Default to **B** for read-only reasoning, **C** for action-oriented gates, **D**
 
 ## 9. Shared conventions (every skill enforces)
 
-- **Config.** Project values (`{wi-prefix}`, `{task-root}`, `{ado-project}`, database names, paths, the capability registry) live in the downstream `_local/config.md`, not here. Reading that file is step one; if absent, stop and direct the user to `/wf:init`. To add a key, edit the default template in `skills/init/SKILL.md`, then reference it as `{placeholder}` — **never hardcode a project constant.**
-- **Default modes.** Zero-argument invocation must do something useful. For ADO-id skills, infer the id from `git branch --show-current` (first 3+-digit run); require an explicit arg only when inference fails.
-- **Safety Rules.** Every skill declares explicit Allowed / Forbidden lists in prose. **Never write outside `_local/`** — the only exceptions are the source-mutating skills (`implement`, `verify-fix`, `qa-followup`) and `qa-host` (test scaffolding only). `commit`/`pr` are the only git-delivery skills (beyond `branch`'s upstream push); destructive git stays forbidden everywhere.
+- **Config.** Project values (`{task-root}`, `{verify-command}`, database names, paths, the capability registry) live in the downstream `_local/config.md`, not here — each registered tracker/delivery pack owns its own config section (e.g. `## Azure DevOps`, `## Linear`), not core. Reading that file is step one; if absent, stop and direct the user to `/wf:init`. To add a key, edit the default template in `skills/init/SKILL.md`, then reference it as `{placeholder}` — **never hardcode a project constant.**
+- **Default modes.** Zero-argument invocation must do something useful. For id-inferring skills, infer the id from the current branch via the delivery contract's `current-branch-query` (first 3+-digit run), resolved against `{task-root}`; require an explicit arg only when inference fails.
+- **Safety Rules.** Every skill declares explicit Allowed / Forbidden lists in prose. **Never write outside `_local/`** — the only exceptions are the source-mutating skills (`implement`, `verify-fix`, `qa-followup`) and `qa-host` (test scaffolding only). `commit`/`pr` are the only delivery-writing skills (beyond `branch`'s upstream push), and they act only through the delivery-provider contract; destructive version-control operations stay forbidden everywhere.
 - **Final-output block.** Every skill ends with a fenced status block (`SPEC — Complete`, `BRANCH — <state>`, …) as the **very last thing emitted** — downstream skills and users grep for it. Preserve the exact `NAME — status` shape when editing.
 - **Next-step suggestion.** Every user-invocable skill's final block ends with a `Next:` line naming the command(s) to run, or `Next: none — terminus`. Utility subagents consumed by callers (`classify`, `branch`, `index`) are exempt.
 - **`## Edge Cases`.** Every skill's stop-conditions section uses this exact heading.
 - **Tool preferences.** Prefer an indexed MCP tool (`sourcebot`) for code search, `mssql_*` for DB; fall back to `Grep`/`Glob` only when no indexed tool fits. ADO MCP tools are read-only for work-item fetches.
 - **Model attribution.** Every artifact a skill writes carries the current model id in its metadata — a `**Model:** <id>` line (or a verb-shaped variant: `**Fetched by:**`, `**Generated by:**`, `**Audited by:**`). Use the id from the runtime's system prompt (e.g. `claude-opus-4-8`); write `unknown` if unavailable rather than guessing.
 
-**Per-task index (`index.md`).** Each task folder under `_local/{wi-prefix}-{id}/` carries an `index.md` catalogue, maintained **exclusively by the `wf:index` subagent**. After writing any per-task artifact (or a string result like a branch name), a skill calls `/wf:index <id> <slot> "<summary ≤80 chars>"`; agents already holding the absolute path invoke the Task tool with `subagent_type: wf:index` directly. Slots are catalogued in `skills/index/SKILL.md`; unknown slots become custom rows. The underlying artifacts are the source of truth — a missed index call goes stale but loses nothing.
+**Per-task index (`index.md`).** Each task folder under `{task-root}/{task-id}/` carries an `index.md` catalogue, maintained **exclusively by the `wf:index` subagent**. After writing any per-task artifact (or a string result like a branch name), a skill calls `/wf:index <id> <slot> "<summary ≤80 chars>"`; agents already holding the absolute path invoke the Task tool with `subagent_type: wf:index` directly. Slots are catalogued in `skills/index/SKILL.md`; unknown slots become custom rows. The underlying artifacts are the source of truth — a missed index call goes stale but loses nothing.
 
 ---
 

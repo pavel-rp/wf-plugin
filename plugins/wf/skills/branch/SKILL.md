@@ -1,6 +1,6 @@
 ---
 name: branch
-description: Creates and switches to a dedicated branch for an ADO task, deriving the branch name (feature/<id>-…, fix/<id>-…, chore/<id>-…, etc.) from the task's plan or spec and setting up remote tracking through the active delivery provider. Thin slash-command wrapper — the full procedure lives in the wf:branch subagent (config resolution, branch derivation, delivery-provider dispatch, index update all happen there). Use directly via /wf:branch <id> for ad-hoc invocation, OR invoke the Task tool with subagent_type wf:branch from another wf:* skill that needs a branch gate (required when called from another skill — bypasses the slash-command's caller-side cost).
+description: Creates and switches to a dedicated branch for a task, deriving the branch name (feature/<id>-…, fix/<id>-…, chore/<id>-…, etc.) from the task's plan or spec and setting up remote tracking through the active delivery provider. Thin slash-command wrapper — the full procedure lives in the wf:branch subagent (config resolution, branch derivation, delivery-provider dispatch, index update all happen there). Use directly via /wf:branch <id> for ad-hoc invocation, OR invoke the Task tool with subagent_type wf:branch from another wf:* skill that needs a branch gate (required when called from another skill — bypasses the slash-command's caller-side cost).
 allowed-tools: [Bash]
 ---
 
@@ -15,12 +15,12 @@ User-facing slash command for creating and switching to a task branch. The imple
 ## Command Syntax
 
 ```
-/wf:branch [<ado-id>]
+/wf:branch [<id>]
 ```
 
 | Argument    | Required | Description                                                                                                          |
 | ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `<ado-id>`  | NO       | ADO work item ID — numeric (`6396`) or prefixed (`ADO-6396`). Falls back to inferring from the current branch.   |
+| `<id>`      | NO       | Task id — the opaque shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered. Falls back to inferring from the current branch. |
 
 ---
 
@@ -28,7 +28,7 @@ User-facing slash command for creating and switching to a task branch. The imple
 
 Invoke the **Task** tool with `subagent_type: wf:branch`, passing:
 
-- `ado-id` — the user-supplied ID, or omit to let the subagent infer from the current branch.
+- `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
 
 Emit the subagent's Final Output block (`BRANCH — created`, `BRANCH — switched`, `BRANCH — already-active`, or `BRANCH — Error`) verbatim. **No narrative before or after the block** — the subagent already owns the user-facing output.
 
@@ -58,7 +58,7 @@ Success:
 ```
 BRANCH — <created | switched | already-active>
 
-Task: {wi-prefix}-{id} — <title>
+Task: {task-id} — <title>
 Branch: <branch-name>
 Base: <base-source>
 Tracking: <tracking>
