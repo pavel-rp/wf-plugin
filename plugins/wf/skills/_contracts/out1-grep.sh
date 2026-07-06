@@ -37,8 +37,8 @@ set -u
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"   # -> plugins/wf
 
-pat='\bgit (rev-parse|branch|checkout|status|remote|fetch|push|commit|diff|log|show|config|add|clone|merge|rebase|reset|stash|init|pull|worktree|cherry-pick|tag|switch|restore)\b'
-pat="$pat"'|\bgh (pr|repo|api|auth|issue|browse|run)\b'
+pat='\bgit\s+(rev-parse|branch|checkout|status|remote|fetch|push|commit|diff|log|show|config|add|clone|merge|rebase|reset|stash|init|pull|worktree|cherry-pick|tag|switch|restore)\b'
+pat="$pat"'|\bgh\s+(pr|repo|api|auth|issue|browse|run)\b'
 pat="$pat"'|\bADO\b|Azure DevOps|AB#|\bado-id\b'
 
 hits=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$pat" "$root/skills" "$root/agents")
