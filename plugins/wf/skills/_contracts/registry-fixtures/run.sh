@@ -100,6 +100,10 @@ assert "artifact overlap named"       fail-artifact-overlap.md - 1 "artifact-own
 assert "delivery overlap named"       fail-delivery-overlap.md - 1 "delivery-owner" "delivery-owner-2" "delivery" "must not overlap"
 # WF-121: two capabilities both claiming the tracker provider surface, both named.
 assert "tracker overlap named"        fail-tracker-overlap.md  - 1 "tracker-owner" "tracker-owner-2" "tracker" "must not overlap"
+# WF-136: the tracker contract's two independent provider bindings (ado, linear)
+# cannot both own the tracker surface — named by their real capability names, not
+# the generic tracker-owner/-2 stand-ins above.
+assert "ado vs linear tracker overlap named" fail-tracker-overlap-ado-linear.md - 1 "ado" "linear" "tracker" "must not overlap"
 assert "bad phase named"              fail-bad-phase.md     - 1 "bad-phase" "unknown phase" "deploy"
 assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unknown contribution-kind" "assertion"
 # Glob metacharacters must NOT bypass the phase/kind allowlist. The interpolated

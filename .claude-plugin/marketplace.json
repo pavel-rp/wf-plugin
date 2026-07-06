@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.42.0",
-  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-git delivery, wf-ado tracker).",
+  "version": "0.43.0",
+  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-git delivery, wf-ado tracker, wf-linear tracker).",
   "owner": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
@@ -11,7 +11,7 @@
     {
       "name": "wf",
       "source": "./plugins/wf",
-      "version": "0.34.0",
+      "version": "0.34.1",
       "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities ship in the wf-caps plugin.",
       "author": {
         "name": "Pavel Kalabin"
@@ -43,6 +43,16 @@
       "source": "./plugins/wf-ado",
       "version": "0.1.0",
       "description": "wf tracker-provider pack: the ado capability owning the wf capability-registry's tracker surface (Azure DevOps work-item get/create/update/list-children/comment/status bindings, plus the AB#<id> PR-link autolink). Ships /wf-ado:init for one-command self-registration.",
+      "author": {
+        "name": "Pavel Kalabin"
+      },
+      "category": "development"
+    },
+    {
+      "name": "wf-linear",
+      "source": "./plugins/wf-linear",
+      "version": "0.1.0",
+      "description": "wf tracker-provider pack: the linear capability owning the wf capability-registry's tracker surface (Linear issue get/create/update/list-children/comment/status/attachment bindings via mcp__claude_ai_Linear__* tools). A second, independent binding of the tracker contract alongside wf-ado. Ships /wf-linear:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
       },
