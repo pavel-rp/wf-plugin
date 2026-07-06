@@ -55,7 +55,7 @@ Resolve `{task-id}` (the opaque task id — whatever shape the active tracker pr
 
 ## Phase 2 — Commit and push (unless --no-commit)
 
-Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing the task id `{task-id}` as its argument (or omit it when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`.
+Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing `id: {task-id}` (or omit `id` when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`.
 
 Gate on its `COMMIT —` block:
 
