@@ -20,8 +20,12 @@ only. Two concerns are explicitly **not** this file's job:
   behaviour for the unconfigured case, not a procedure this file implements.
 
 **Id shape.** When `linear` is the active tracker owner, a task id has the shape
-`<LETTERS>-<NUMBER>` (e.g. `WF-136`) — the same id-shape rule the contract already
-names as core vocabulary. Unlike Azure DevOps' `{wi-prefix}-{id}` (a locally-configured
+`<LETTERS>-<NUMBER>` (e.g. `WF-136`) — Linear's own identifier format, which the
+contract's id-shape rule accommodates as an opaque, provider-supplied id. The contract
+prescribes **no** specific format: it treats the active provider's id as opaque, with
+`T<NNN>` only as the no-provider fallback; `<LETTERS>-<NUMBER>` is linear's instance of
+that opaque shape, not a format the contract itself names. Unlike Azure DevOps'
+`{wi-prefix}-{id}` (a locally-configured
 prefix glued to a bare numeric id), Linear **mints the whole identifier itself** from
 the issue's team key plus a per-team sequence number — there is no local "prefix"
 config value to carry; `create_umbrella`/`create_child` simply return whatever
