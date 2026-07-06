@@ -234,7 +234,7 @@ If no questions exist, skip to Phase 3.
 
 Write `01_spec.md` in the task folder using the template below.
 
-**Overwrite if `01_spec.md` exists** (git history preserves prior versions).
+**Overwrite if `01_spec.md` exists** (version-control history preserves prior versions).
 
 **Writing principles:**
 

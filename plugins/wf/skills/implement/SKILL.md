@@ -291,7 +291,7 @@ In both modes, if the session is interrupted, the plan's checkboxes record exact
 
 ## Edge Cases
 
-- **No delivery provider registered (bare-core mode):** the Phase 1 branch gate degrades to a no-op with a stated reason and proceeds directly to Phase 2 — never a raw git error, never a hard block.
+- **No delivery provider registered (bare-core mode):** the Phase 1 branch gate degrades to a no-op with a stated reason and proceeds directly to Phase 2 — never a raw delivery-provider error, never a hard block.
 - **Package install required by the task:** Allowed only if the exact command appears in the plan's Approach section or a step's Changes. Do not install additional packages.
 - **Task requires creating a new file:** Create it in the correct location. Add it to the list of files to stage.
 - **Step's file list is incomplete:** Stop. Report the unlisted file. Do not modify it without updating the plan first.

@@ -150,7 +150,7 @@ Before writing the plan, explore the project to understand what files are releva
 - No step touches more than 5 files
 - No exact code — describe the change in plain language
 
-**Step 2b — Write `02_plan.md`** using the Plan Template below. **Overwrite if it exists** (git history preserves prior versions).
+**Step 2b — Write `02_plan.md`** using the Plan Template below. **Overwrite if it exists** (version-control history preserves prior versions).
 
 **Step 2c — Update the index.** After the file is written, invoke `/wf:index {id} plan "<n> steps; verify=<verify-command>"` to record it in the per-task index. Substitute the actual step count and the verify command from `_local/config.md` (e.g. `5 steps; verify=npm run typecheck`). Escape any `|` in the verify command as `\|` so the index table doesn't break.
 

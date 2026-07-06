@@ -95,7 +95,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` the s
 
 3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {task-id}` first to fetch requirements."
 
-4. **Branch gate.** Resolve delivery-surface ownership first — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of direct provider resolution. **Zero matching rows (bare-core mode)** — the gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no stop; continue to step 5. **One matching row** — resolve the current branch via `current-branch-query`; if it doesn't match `/{numeric-id}-` (the token defined in step 1), invoke the **Task** tool with `subagent_type: wf:branch` and the resolved id. The subagent will create or switch to the task branch. If subagent invocation is unavailable, stop with: "Not on task branch and the Task tool isn't available. Run `/wf:branch {task-id}` manually, then re-run `/wf:qa-gen`."
+4. **Branch gate.** Resolve delivery-surface ownership first — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of direct provider resolution. **Zero matching rows (bare-core mode)** — the gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and continue to step 5. **One matching row** — resolve the current branch via `current-branch-query`; if it doesn't match `/{numeric-id}-` (the token defined in step 1), invoke the **Task** tool with `subagent_type: wf:branch` and the resolved id. The subagent will create or switch to the task branch. If subagent invocation is unavailable, stop with: "Not on task branch and the Task tool isn't available. Run `/wf:branch {task-id}` manually, then re-run `/wf:qa-gen`."
 
 5. **Resolve scope.** Default `full`. Accept `smoke`, `happy`, `full` — anything else stops with "Unknown scope: `<value>`. Use one of: smoke, happy, full."
 
@@ -123,7 +123,7 @@ Run these reads in parallel where the tools allow:
 
 5. **Catalog existing automated coverage.** Look under:
    - `_local/{task-id}/tests/` — `/wf-caps:test-node` output.
-   - The project's page-test location — `/wf-caps:test-page` output (filename hints carry the suite name; the file may be git-excluded but local).
+   - The project's page-test location — `/wf-caps:test-page` output (filename hints carry the suite name; the file may be excluded from version control but local).
    - Any pre-existing test files referenced in `02_plan.md`.
 
    For each automated test file, note which assertions it makes — the coverage matrix needs to know what's already verified by code so manual scenarios don't duplicate.
@@ -243,7 +243,7 @@ subagent reference, no STOP. **Never** name a concrete capability, count the reg
 carry a per-capability code path. An aggregated scenario rolls up into the plan and the
 coverage matrix on the same footing as a spec-traced scenario, carrying its provenance tag.
 
-Write to `{task-root}/{task-id}/06_qa.md`. Overwrite if it exists — the task folder is gitignored, so there's no git history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
+Write to `{task-root}/{task-id}/06_qa.md`. Overwrite if it exists — the task folder is excluded from version control, so there's no history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
 
 Use the template in the next section verbatim. Substitute placeholders. Don't invent extra sections.
 

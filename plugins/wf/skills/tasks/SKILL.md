@@ -115,7 +115,7 @@ After deriving the generic decomposition, fire the **`tasks`** phase and aggrega
 
 ## Phase 4: Write `03_tasks.md`
 
-Write the decomposition to `{task-root}/{task-id}/03_tasks.md` using the template below. **Overwrite if it exists** (the task folder is gitignored — there's no git history to fall back on; warn the user first if the existing file carries execution annotations).
+Write the decomposition to `{task-root}/{task-id}/03_tasks.md` using the template below. **Overwrite if it exists** (the task folder is excluded from version control — there's no history to fall back on; warn the user first if the existing file carries execution annotations).
 
 Then **update the index.** Invoke `/wf:index {id} tasks "<n> tasks; derived from 02_plan.md"`, substituting the actual task count.
 
