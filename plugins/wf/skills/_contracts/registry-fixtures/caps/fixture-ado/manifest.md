@@ -4,6 +4,7 @@
 
 ## Fragments
 
-| phase  | contribution-kind | dispatch                 | scope |
-|--------|-------------------|--------------------------|-------|
-| verify | finding           | `inline: hooks/x.md`     | —     |
+| phase  | contribution-kind | dispatch                 | scope   |
+|--------|-------------------|--------------------------|---------|
+| verify | finding           | `inline: hooks/x.md`     | —       |
+| spec   | provider          | `inline: hooks/x.md`     | tracker |
