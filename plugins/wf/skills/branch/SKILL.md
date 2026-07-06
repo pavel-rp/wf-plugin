@@ -28,7 +28,7 @@ User-facing slash command for creating and switching to a task branch. The imple
 
 Invoke the **Task** tool with `subagent_type: wf:branch`, passing:
 
-- `<id>` — the user-supplied id, or omit to let the subagent infer from the current branch.
+- `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
 
 Emit the subagent's Final Output block (`BRANCH — created`, `BRANCH — switched`, `BRANCH — already-active`, or `BRANCH — Error`) verbatim. **No narrative before or after the block** — the subagent already owns the user-facing output.
 

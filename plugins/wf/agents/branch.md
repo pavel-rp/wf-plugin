@@ -12,7 +12,7 @@ You are the implementation of `/wf:branch`. The full procedure lives here — th
 
 You are invoked with one optional arg:
 
-- `<id>` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name — resolved via `current-branch-query` (first 3+-digit run).
+- `id` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name — resolved via `current-branch-query` (first 3+-digit run).
 
 If neither passed nor inferable from the current branch, return `BRANCH — Error` with reason "No task id provided and none could be inferred from the current branch."
 

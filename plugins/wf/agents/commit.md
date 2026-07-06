@@ -12,7 +12,7 @@ You are the implementation of `/wf:commit`. The full procedure lives here — th
 
 ## Inputs
 
-- `<id>` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
+- `id` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
 - `push` — boolean; when true, push after committing (and even when there is nothing to commit). Default false.
 - `staged` — boolean; when true, commit only the already-staged set. Default false (stage all changes first).
 

@@ -30,7 +30,7 @@ User-facing slash command for committing the current task changes with a concise
 
 Invoke the **Task** tool with `subagent_type: wf:commit`, passing:
 
-- `<id>` — the user-supplied id, or omit to let the subagent infer from the current branch.
+- `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
 - `push` — `true` if `--push` was passed, else `false`.
 - `staged` — `true` if `--staged` was passed, else `false`.
 

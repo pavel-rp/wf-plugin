@@ -22,24 +22,25 @@
 # (branch-create, commit, push-upstream, pr-create, current-branch-query,
 # workspace-root-resolve, last-commit-timestamp-query) and the surface/phase
 # nouns (delivery, tracker, branch, commit, deliver, workspace root) used as
-# abstract nouns. These are the intended vocabulary — the command-form patterns
-# below are written to match a git/gh *command*, so they never match the bare
-# nouns; the exclusion is named here for the reviewer, not carved out ad hoc.
-# (Benign non-command substrings the command patterns also do not match, by the
-# same design: the `wf-git` pack name, init's `.gitignore` / `.git/info/exclude`
-# file management, and factual asides like "git history preserves prior versions".)
+# abstract nouns. These are the intended vocabulary — the patterns below match a
+# git/gh *command* (a `\b`-bounded verb after `git `/`gh `), so they never match
+# the bare nouns; the exclusion is named here for the reviewer, not carved out
+# ad hoc. (Benign non-command substrings the command patterns also don't match,
+# by the same design: the `wf-git` pack name, init's `.gitignore` /
+# `.git/info/exclude` file management, and asides like "git history".)
 #
-# Exit 0 = clean; exit 1 = residue found.
+# Requires GNU/PCRE grep (`grep -P`; present on the Linux CI runner and Git Bash).
+# `-P` makes `\b` an unambiguous word boundary (unlike ERE, where it is not
+# portable). Exit 0 = clean; exit 1 = residue found (or grep -P unavailable).
 set -u
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"   # -> plugins/wf
-files=$(find "$root/skills" "$root/agents" -name '*.md' -not -path '*/_contracts/*')
 
-git_cmd='\bgit (rev-parse|branch|checkout|status|remote|fetch|push|commit|diff|log|show|config|add|clone|merge|rebase|reset|stash|init|pull|worktree|cherry-pick|tag|switch|restore)\b'
-gh_cmd='\bgh (pr|repo|api|auth|issue|browse|run)\b'
-ado='(Azure DevOps|AB#|\bADO\b|\bado-id\b)'
+pat='\bgit (rev-parse|branch|checkout|status|remote|fetch|push|commit|diff|log|show|config|add|clone|merge|rebase|reset|stash|init|pull|worktree|cherry-pick|tag|switch|restore)\b'
+pat="$pat"'|\bgh (pr|repo|api|auth|issue|browse|run)\b'
+pat="$pat"'|\bADO\b|Azure DevOps|AB#|\bado-id\b'
 
-hits=$(grep -rEn "$git_cmd|$gh_cmd|$ado" $files || true)
+hits=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$pat" "$root/skills" "$root/agents" || true)
 
 if [ -n "$hits" ]; then
   echo "OUT-1: FAIL — residual git/gh command or ADO strings in the wf spine bodies:"
