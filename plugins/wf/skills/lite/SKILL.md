@@ -137,7 +137,7 @@ Skip if `00_reqs.md` already exists in the task folder.
 
 ## Phase 2: Branch Gate
 
-1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above).
+1. **Resolve delivery-surface ownership first** — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of **direct provider resolution** (see "Direct provider resolution" above), applied before any branch read. **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no hard stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and proceed to Phase 2.5. **One matching row** — resolve the current branch via `current-branch-query`, then apply steps 2–3.
 2. **If the branch name contains `/{numeric-id}-`** — already on the task branch, proceed to Phase 2.5.
 3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` as its argument. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
    - On success (`BRANCH — created`/`switched`/`already-active`), continue to Phase 2.5.
