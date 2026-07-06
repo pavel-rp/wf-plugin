@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships the wf + wf-caps plugins)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-git, wf-ado, wf-linear packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -63,6 +63,15 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   └── capabilities/migration/ # the migration capability: manifest + fragments + profile
 │       ├── manifest.md         # how it attaches to the spine
 │       └── fragments/          # v2 fragment prose the migration capability attaches to the spine
+├── plugins/wf-git/            # DELIVERY-PROVIDER PACK — the git capability owning the delivery surface
+│   ├── skills/init/SKILL.md   # /wf-git:init — self-registration
+│   └── capabilities/git/      # manifest.md + fragments/delivery.md (branch-create/commit/push-upstream/pr-create)
+├── plugins/wf-ado/            # TRACKER-PROVIDER PACK — the ado capability owning the tracker surface
+│   ├── skills/init/SKILL.md   # /wf-ado:init
+│   └── capabilities/ado/      # manifest.md + fragments/tracker.md (Azure DevOps work-item bindings)
+├── plugins/wf-linear/         # TRACKER-PROVIDER PACK — the linear capability (second, independent tracker binding)
+│   ├── skills/init/SKILL.md   # /wf-linear:init
+│   └── capabilities/linear/   # manifest.md + fragments/tracker.md (Linear MCP bindings)
 ├── docs/ROADMAP.md            # committed grounding doc
 └── _local/                    # gitignored: research notes, working tracking
 ```
@@ -160,6 +169,8 @@ The current skills are v1-shaped. Their v2 homes:
 | | `qa-host`, `test-page` Angular scaffolding → an `angular` stack capability: `qa-execution` |
 
 QA splits cleanly: orchestration (`qa-gen` plan structure, the `qa-run`/`qa-followup` loop, baseline-health) stays core; the browser **engine** and the stack **test-host** are provider capabilities; parity is a migration fragment.
+
+**Delivery & tracker knowledge has fully extracted (WF-119 charter, closed at WF-137).** `init`, `branch`, `commit`, and `pr` stay **core** — they are no longer "core-with-git-inline". They now speak only the abstract delivery/tracker **contract operations** (`branch-create`, `commit`, `push-upstream`, `pr-create`, `current-branch-query`, `workspace-root-resolve`; `get`/`create_umbrella`/`create_child`/`update`/`list_children`/`post_comment`/`set_status`/`attach_link`), reached via **direct provider resolution**. The concrete git mechanics live in the `wf-git` **delivery `provider`** pack; the Azure-DevOps and Linear mechanics in the `wf-ado` and `wf-linear` **tracker `provider`** packs. With no delivery/tracker provider registered, core degrades to a **silent, local-only, `T<NNN>`-id, git-free bare-core mode**: every branch gate skips with a stated reason, id inference and workspace-root resolve via the plain-directory fallback, and no capability term surfaces.
 
 ---
 

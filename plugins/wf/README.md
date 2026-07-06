@@ -1,8 +1,8 @@
-# wf — Spec-Driven Development harness for ADO tasks
+# wf — a domain-free Spec-Driven Development harness
 
-A Claude Code plugin for working on ADO-tracked tasks. It runs a gated **Spec-Driven Development** chain — spec → plan → tasks → implement → verify → qa — over each work item. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
+A Claude Code plugin that runs a gated **Spec-Driven Development** chain — spec → plan → tasks → implement → verify → qa — over each task. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
 
-Today the skills carry the **Compliance Risk** migration knowledge (C# / ASP.NET MVC → Angular / TypeScript) directly. That knowledge is being generalised into a pluggable **capability** so the core becomes stack- and domain-free — see [Direction](#direction) and [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
+**Core is tracker- and delivery-agnostic.** It names no tracker (Azure DevOps, Linear, …) and no VCS: work-item and branch/commit/PR mechanics enter through **capability packs** that register against the spine — `wf-git` (delivery provider), `wf-ado` / `wf-linear` (tracker providers). Stack/domain knowledge (migration, browser-QA, Angular test-host, node-ts) ships in `wf-caps`. With **no provider registered, the whole spine still runs fully local** — see [Bare-core](#bare-core-no-provider-registered).
 
 ## Install
 
@@ -85,6 +85,17 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 
 All default to zero-argument invocation — they infer context from the current branch.
 
+## Bare-core (no provider registered)
+
+Install `wf` alone — no `wf-git`, no tracker pack, an empty `## Capabilities` registry — and the spine still runs, fully local:
+
+- **Task ids** use the local `T<NNN>` scheme (minted by `/wf:spec`); task folders are `{task-root}/T<NNN>/`. Core never reconstructs an id from a prefix — the id is opaque.
+- **No git invocation of any kind (plumbing included).** Every skill's branch gate resolves delivery-surface ownership first and, finding none, **skips with a stated reason** (`Branch gate skipped — no delivery provider registered (bare-core mode)`) instead of erroring. Id inference and the **workspace root** resolve via the plain-directory fallback (the current working directory), never `rev-parse` or any other command.
+- **No tracker call and no capability term** in any artifact or output — `/wf:spec` writes a local `00_reqs.md` and continues; a mid-run tracker/MCP failure warns once and falls back to local-only.
+- `/wf:branch`, `/wf:commit`, `/wf:pr` are the **delivery** steps, not part of the bare-core spine — they require a registered delivery provider and return a clear `— Error` naming the remedy (install and run `/wf-git:init`) when none is active.
+
+Register `wf-git` (via its `/wf-git:init`) — and a tracker pack (`/wf-ado:init` or `/wf-linear:init`) — to light up branch/commit/PR and work-item integration; core degrades back to local-only the moment they're absent. Exactly one tracker provider may be active at a time (`wf-ado` XOR `wf-linear`; enforced by registry validation).
+
 > **Moved:** `migration-map` (→ `/wf-caps:migration-map`), `qa-host` (→ `/wf-caps:qa-host`), `test-page` (→ `/wf-caps:test-page`), and `test-node` (→ `/wf-caps:test-node`) now ship in the **wf-caps** plugin — `qa-host`/`test-page` as the `angular` stack capability (the `qa-execution` `surface: host` provider, composing with browser-qa's `surface: engine`), `test-node` as the `node-ts` capability. See [`plugins/wf-caps/README.md`](../wf-caps/README.md). Install `wf-caps` to use them.
 
 ## Per-task artifacts
@@ -96,9 +107,9 @@ _local/
 ├── config.md             # /wf:init project config — {wi-prefix}, {task-root}, {ado-project}, {verify-command}, the ## Capabilities registry, etc. (registry location is configurable via wf.config.js registryPath; defaults here)
 ├── profiles/             # /wf:init capability profile overrides — <capability>.profile.json, seeded on divergence from the capability's shipped default
 ├── qa-creds.md           # /wf-caps:qa-engine test credentials (per-project, shared across tasks)
-└── ADO-<id>/             # one folder per task
+└── <task-id>/            # one folder per task (tracker id when a tracker is registered, else local T<NNN>)
     ├── index.md              # per-task manifest — every wf:* skill updates a row here
-    ├── 00_reqs.md            # auto-fetched from ADO — source of truth
+    ├── 00_reqs.md            # requirements — fetched via the active tracker capability, or a local stub in bare-core
     ├── 01_spec.md            # LLM-authored spec (interpretation, may drift)
     ├── 02_plan.md            # checkbox-driven implementation plan
     ├── 03_tasks.md           # /wf:tasks decomposition — small, independently testable units
@@ -122,7 +133,7 @@ _local/
 
 `wf` is being reshaped into a **domain-free SDD engine**: a fixed phase spine (`spec → plan → tasks → implement → verify → qa`), a **capability registry** at a configurable location (`wf.config.js` `registryPath`, default `_local/config.md`), and a composed **constitution** — with all stack/domain/project knowledge moving out of core into composable **capabilities** (migration as an `adapter`, browser-automation QA and the Angular stack as their own capabilities). On `/wf:init`, each registered capability that ships a profile template gets a downstream **override** seeded into `_local/profiles/` **only when the project diverges** from the capability's shipped default template — the baseline shape, which may carry placeholder slots (hybrid precedence: downstream override > capability default). Composition is runtime inline-prose injection — no codegen.
 
-The skills above describe the plugin **as it ships today** (v1). The `tasks` and `constitution` phases, the registry, and the capability split are in progress — track them in Linear (team `WF`) and read the model in [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
+The tracker/delivery split has **shipped**: core carries zero git/tracker knowledge (branch/commit/PR speak only the abstract delivery contract; work items only the abstract tracker contract), the `wf-git`/`wf-ado`/`wf-linear` packs supply the concrete bindings, and bare-core runs fully local. The `tasks` and `constitution` phases and the capability registry are in place. Remaining stack/domain generalisation is tracked in Linear (team `WF`) against [`docs/ROADMAP.md`](../../docs/ROADMAP.md).
 
 ## Authoring
 

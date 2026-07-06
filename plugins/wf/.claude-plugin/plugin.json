@@ -1,6 +1,6 @@
 {
   "name": "wf",
-  "version": "0.34.1",
+  "version": "0.35.0",
   "description": "wf:* skill chain: spec/plan/implement plus verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core spine — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (migration, browser-qa, angular test-host, node-ts) ship in the wf-caps plugin.",
   "author": {
     "name": "Pavel Kalabin",
