@@ -15,7 +15,7 @@ From the marketplace that ships this plugin:
 
 Skills and agents are auto-discovered on install — no per-machine configuration.
 
-Some skills delegate work to **subagents** (the `*.md` files in this plugin's `agents/` folder) for context-isolated reasoning — e.g. `wf:classify` runs its rubric in a subagent so the classification reasoning doesn't pollute the caller's transcript, and `wf:run --auto` drives each chain phase through the `wf:phase-runner` subagent so the per-phase ADO fetch and codebase exploration never reach the orchestrator. Claude Code discovers these agents automatically, and they invoke each other via the **Task** tool (nested delegation works without any setup).
+Some skills delegate work to **subagents** (the `*.md` files in this plugin's `agents/` folder) for context-isolated reasoning — e.g. `wf:classify` runs its rubric in a subagent so the classification reasoning doesn't pollute the caller's transcript, and `wf:run --auto` drives each chain phase through the `wf:phase-runner` subagent so the per-phase tracker fetch and codebase exploration never reach the orchestrator. Claude Code discovers these agents automatically, and they invoke each other via the **Task** tool (nested delegation works without any setup).
 
 ## Before the first task in a new repo
 
@@ -28,7 +28,7 @@ Creates `_local/` for per-task artifacts, writes default config, gitignores itse
 ## Pick the flow (optional)
 
 ```
-/wf:triage <ado-id>    # score the task and recommend lite | full | split | blocked | clarify
+/wf:triage <id>    # score the task and recommend lite | full | split | blocked | clarify
 ```
 
 Cheap read-only advisor. Fetches `00_reqs.md` if absent, does a bounded repo scan, scores 5 dimensions (scope, clarity, design, risk, dependencies), and prints the exact next command to run. Safe to skip if you already know which flow fits.
@@ -36,8 +36,8 @@ Cheap read-only advisor. Fetches `00_reqs.md` if absent, does a bounded repo sca
 ## Drive the whole chain (optional)
 
 ```
-/wf:run <ado-id>          # default: walk the safe front of the chain hands-off, halting at the first gate
-/wf:run <ado-id> --step   # one phase at a time: name the next command and stop
+/wf:run <id>          # default: walk the safe front of the chain hands-off, halting at the first gate
+/wf:run <id> --step   # one phase at a time: name the next command and stop
 ```
 
 A state-aware dispatcher over the chain below. It reads the task folder's artifacts, works out which phase is done and which is next, and enforces the gate (stops before any source-writing, approval-gated, or browser phase) — routing to `/wf:lite` when triage says the task is small, and looping verify⇄fix and qa⇄followup (capped at 2 cycles each). **By default it runs the safe front of the chain itself** — `triage→spec→plan`, then `verify-spec→qa-gen` once `implement` has landed — driving each phase through the `wf:phase-runner` subagent (isolated context) and re-deriving state between them, halting before the first phase that writes product source or needs a human (`implement`, `verify-fix`, `qa-followup`, `qa-auto`). Pass `--step` to instead name one command at a time and stop. Resumable either way: after a phase finishes, `/clear` and run `/wf:run <id>` again — it re-derives where you are from the artifacts, so nothing is lost.
@@ -45,26 +45,26 @@ A state-aware dispatcher over the chain below. It reads the task folder's artifa
 ## Standard workflow for a new ticket
 
 ```
-/wf:spec <ado-id>      # fetch ADO requirements + write grounded spec
-/wf:plan <ado-id>      # build checkbox-driven implementation plan
-/wf:tasks <ado-id>     # decompose the plan into small, independently testable units
-/wf:implement <ado-id> # execute the plan step by step — does not commit
-/wf:commit <ado-id>    # commit current changes, terse auto-message (--push to push)
-/wf:pr <ado-id>        # commit+push, then open a GitHub PR from the wf artifacts
+/wf:spec <id>      # fetch the work item's requirements via the active tracker + write grounded spec
+/wf:plan <id>      # build checkbox-driven implementation plan
+/wf:tasks <id>     # decompose the plan into small, independently testable units
+/wf:implement <id> # execute the plan step by step — does not commit
+/wf:commit <id>    # commit current changes, terse auto-message (--push to push)
+/wf:pr <id>        # commit+push, then open a GitHub PR from the wf artifacts
 
-/wf:branch <ado-id>    # create task branch (auto-invoked by the others)
+/wf:branch <id>    # create task branch (auto-invoked by the others)
 ```
 
 `/wf:tasks` is the **decomposition gate** between `plan` and `implement` — the canonical Spec-Driven Development `tasks` phase. It reads the approved plan and writes `03_tasks.md`: an ordered list of small, independently testable units, each one a TDD-sized increment with its own way to prove it done. Because decomposition is gated separately from strategy, a task list can be regenerated without re-planning. It's optional on the standard chain (`/wf:implement` reads the plan directly) but recommended for larger items where the breakdown wants its own review. On top of the generic decomposition it **fires the `tasks` phase**, appending any task-list contributions the project's registered capabilities attach (additive, in registry order) — with none registered, the generic decomposition stands alone.
 
-`/wf:commit` authors the message in an isolated subagent (the diff never hits the main context): the first commit on the branch is `<id>: <task name>`, every later commit `<id>: <concise summary>` plus a bulleted what-changed body. `/wf:pr` first runs `/wf:commit --push` (a no-op when the tree is clean), then composes a PR body from the task's artifacts (reqs, spec, plan resolution, verify, QA), links the work item via `AB#<id>`, and opens the PR with `gh`.
+`/wf:commit` authors the message in an isolated subagent (the diff never hits the main context): the first commit on the branch is `<id>: <task name>`, every later commit `<id>: <concise summary>` plus a bulleted what-changed body. `/wf:pr` first runs `/wf:commit --push` (a no-op when the tree is clean), then composes a PR body from the task's artifacts (reqs, spec, plan resolution, verify, QA), links the work item through the active tracker's attach-link operation (when one is registered), and opens the PR through the active delivery provider.
 
-Once you're on the task branch, `<ado-id>` is optional — every `wf:*` skill infers it from the current branch name.
+Once you're on the task branch, `<id>` is optional — every `wf:*` skill infers it from the current branch name.
 
 ## Fast path for small tickets
 
 ```
-/wf:lite <ado-id>      # one-pass spec+plan+implement for S-complexity items
+/wf:lite <id>      # one-pass spec+plan+implement for S-complexity items
 ```
 
 Collapses spec→plan→implement into a single skill run with one approval gate. Writes `00_reqs.md` (trail) and a combined `lite.md` (mini-spec + plan + resolution). Use when the task is a 1–3 file change with no architectural or schema work. For anything ambiguous or cross-cutting, stay on the full chain above.
@@ -76,7 +76,7 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 | `/wf:constitution` | Establishes and re-runnably updates the project's composed constitution (core process articles + each capability's non-negotiables + project clauses, provenance-tagged, project clauses winning). Writes `_local/constitution.md` and maintains the `## Capabilities` registry; auto-invoked by `/wf:init`. |
 | `/wf:verify-spec` | Strict, evidence-based audit of the current branch against the task spec, aggregating any capability `finding`s at the `verify` phase. Use before opening a PR. |
 | `/wf:verify-fix` | Reads `04_verify.md`, auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous findings as open questions. Run after `/wf:verify-spec` to clear the obvious stuff. |
-| `/wf:classify` | Classifies an ADO task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
+| `/wf:classify` | Classifies a task into one of seven branch-type buckets (`feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) with calibrated confidence. Other skills call it when `--type` isn't passed. |
 | `/wf:index` | Updates one row in the per-task `index.md` manifest. Other skills call it after writing any artifact so the index stays in sync. Lean. |
 | `/wf:qa-gen` | Generate a QA plan for the task (`06_qa.md`). UI criteria become **browser** scenarios; backend criteria become **API** scenarios that exercise the endpoint over HTTP with a real token. On top of the generic plan it **fires the `qa-generation` phase**, aggregating any scenarios contributed by the project's registered capabilities (provenance-tagged) — with none registered, the generic plan stands alone. Every plan ends with a standing **Baseline health** suite — including a **visual-baseline** scenario carrying the `**Visual:** yes` marker (absolute visual-defect detection: overlap/clipping/crowding/mis-rendered controls; not pixel-diffing) for a browser target. A backend-only task is never a stub PASS. |
 | `/wf:qa-run` | Interactive walkthrough of `06_qa.md` — prompts the tester step by step for browser scenarios, presents `Type: API` scenarios as a request + ready curl command, then writes `07_qa-report.md`. Use when a human is the tester. |
@@ -100,11 +100,11 @@ Register `wf-git` (via its `/wf-git:init`) — and a tracker pack (`/wf-ado:init
 
 ## Per-task artifacts
 
-Each ADO ticket gets a folder under `_local/` in the downstream repo. The whole `_local/` tree is gitignored, so nothing these skills write ever leaks into a commit.
+Each task gets a folder under `_local/` in the downstream repo. The whole `_local/` tree is gitignored, so nothing these skills write ever leaks into a commit.
 
 ```
 _local/
-├── config.md             # /wf:init project config — {wi-prefix}, {task-root}, {ado-project}, {verify-command}, the ## Capabilities registry, etc. (registry location is configurable via wf.config.js registryPath; defaults here)
+├── config.md             # /wf:init project config — {task-root}, {verify-command}, the ## Capabilities registry, etc. (registry location is configurable via wf.config.js registryPath; defaults here). Each tracker/delivery pack adds its own section (e.g. ## Azure DevOps, ## Linear) via its own init.
 ├── profiles/             # /wf:init capability profile overrides — <capability>.profile.json, seeded on divergence from the capability's shipped default
 ├── qa-creds.md           # /wf-caps:qa-engine test credentials (per-project, shared across tasks)
 └── <task-id>/            # one folder per task (tracker id when a tracker is registered, else local T<NNN>)

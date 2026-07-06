@@ -26,7 +26,7 @@ Read `_local/config.md` for `{task-root}`. If missing, stop: "Run `/wf:init` fir
 
 | Argument          | Required | Description                                                                                                       |
 | ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
-| `<id>`            | NO       | Work item id — numeric or prefixed. Falls back to inferring from the current branch.                             |
+| `<id>`            | NO       | Task id — opaque (the active tracker's shape, or the local `T<NNN>` scheme when none is registered). Falls back to inferring from the current branch. |
 | `--draft`         | NO       | Open the PR as a draft.                                                                                           |
 | `--base <branch>` | NO       | Base branch for the PR. Defaults to the repo's `main` (or `master`).                                             |
 | `--no-commit`     | NO       | Skip the commit+push step and open a PR against exactly what's already pushed. (The branch must already exist on the remote.) |

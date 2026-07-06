@@ -40,7 +40,12 @@ pat='\bgit (rev-parse|branch|checkout|status|remote|fetch|push|commit|diff|log|s
 pat="$pat"'|\bgh (pr|repo|api|auth|issue|browse|run)\b'
 pat="$pat"'|\bADO\b|Azure DevOps|AB#|\bado-id\b'
 
-hits=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$pat" "$root/skills" "$root/agents" || true)
+hits=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$pat" "$root/skills" "$root/agents")
+rc=$?
+if [ "$rc" -ge 2 ]; then
+  echo "OUT-1: ERROR — grep failed (rc=$rc). This check requires PCRE grep (grep -P), which may be unavailable on this platform."
+  exit 2
+fi
 
 if [ -n "$hits" ]; then
   echo "OUT-1: FAIL — residual git/gh command or ADO strings in the wf spine bodies:"
