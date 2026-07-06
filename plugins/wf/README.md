@@ -100,7 +100,7 @@ Register `wf-git` (via its `/wf-git:init`) — and a tracker pack (`/wf-ado:init
 
 ## Per-task artifacts
 
-Each task gets a folder under `_local/` in the downstream repo. The whole `_local/` tree is gitignored, so nothing these skills write ever leaks into a commit.
+Each task gets a folder under `_local/` in the downstream repo. The whole `_local/` tree is excluded from version control, so nothing these skills write ever leaks into a commit.
 
 ```
 _local/

@@ -22,7 +22,7 @@ User-facing slash command for committing the current task changes with a concise
 | ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `<id>`      | NO       | Task id — the opaque shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered. Falls back to inferring from the current branch. |
 | `--push`    | NO       | Push after committing. Off by default. When set, a push is attempted even if there was nothing new to commit (syncs any unpushed commits).          |
-| `--staged`  | NO       | Commit only what is already staged. By default the delivery provider's `commit` operation stages all outstanding changes first (`_local/` is gitignored, so artifacts never leak in). |
+| `--staged`  | NO       | Commit only what is already staged. By default the delivery provider's `commit` operation stages all outstanding changes first (`_local/` is excluded from version control, so artifacts never leak in). |
 
 ---
 
