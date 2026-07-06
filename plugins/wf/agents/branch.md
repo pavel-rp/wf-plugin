@@ -1,7 +1,7 @@
 ---
 name: branch
-description: Creates and switches to the task's dedicated branch for an ADO task — deriving the branch name (feature/fix/chore/refactor/migration/docs/hotfix) from the task's plan or spec — and sets up remote tracking through the active delivery provider. The self-contained implementation behind /wf:branch; invoked via the Task tool as the branch gate by other wf:* skills.
-argument-hint: 'ado-id (numeric or prefixed); empty to infer from current branch'
+description: Creates and switches to the task's dedicated branch — deriving the branch name (feature/fix/chore/refactor/migration/docs/hotfix) from the task's plan or spec — and sets up remote tracking through the active delivery provider. The self-contained implementation behind /wf:branch; invoked via the Task tool as the branch gate by other wf:* skills.
+argument-hint: '<id> (opaque task id); empty to infer from current branch'
 ---
 
 # wf:branch — Subagent (full procedure)
@@ -12,9 +12,9 @@ You are the implementation of `/wf:branch`. The full procedure lives here — th
 
 You are invoked with one optional arg:
 
-- `ado-id` — numeric (e.g. `6396`) or prefixed (e.g. `ADO-6396`). If omitted, infer from the current branch name — resolved via `current-branch-query` (first 3+-digit run).
+- `<id>` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name — resolved via `current-branch-query` (first 3+-digit run).
 
-If neither passed nor inferable from the current branch, return `BRANCH — Error` with reason "No ADO ID provided and none could be inferred from the current branch."
+If neither passed nor inferable from the current branch, return `BRANCH — Error` with reason "No task id provided and none could be inferred from the current branch."
 
 ## Direct provider resolution (how every operation below is reached)
 
@@ -28,11 +28,11 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 ## Step 1 — Resolve config, workspace root, and task folder
 
 1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). If missing, return `BRANCH — Error` with reason "Run /wf:init first."
-2. Extract `{task-root}` and `{wi-prefix}` from the config. Never hardcode them.
-3. Resolve `{numeric-id}`: digits from the input (`6396` from `6396`, `ADO-6396`, or `ADO_6396`), or from the current branch's first 3+-digit run (via `current-branch-query`).
+2. Extract `{task-root}` from the config. Never hardcode it.
+3. **Resolve `{task-id}`** (the opaque task id — used for the task folder and the `Task:` line). When `<id>` is passed, use it verbatim. When inferring from the current branch, extract the first 3+-digit run from the resolved branch name (via `current-branch-query`) as a token, then resolve it against `{task-root}` — apply the same first-3+-digit-run extraction to each existing folder's name and reuse the single matching folder's full name as `{task-id}` verbatim (never reconstruct it from a prefix). Also derive **`{numeric-id}`** — the first 3+-digit run of `{task-id}` — used **only** for the branch name in Step 2, never for the folder or the `Task:` line.
 4. Resolve the absolute workspace root via `workspace-root-resolve` (direct provider resolution above). With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error). With a provider registered but no working tree to resolve, return `BRANCH — Error` with reason "Not inside a resolvable workspace."
-5. Compute task folder. If `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root: `<workspace-root>/{task-root}/{wi-prefix}-{numeric-id}/`. Hold the result as `<task-folder-abs>` (always absolute — passed verbatim to wf:index in Step 4). If the folder doesn't exist, return `BRANCH — Error` with reason "Task folder not found. Run /wf:spec <id> first."
-6. `{task-id}` = `{wi-prefix}-{numeric-id}` (used in the `Task:` line of the final block).
+5. Compute task folder. If `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root: `<workspace-root>/{task-root}/{task-id}/`. Hold the result as `<task-folder-abs>` (always absolute — passed verbatim to wf:index in Step 4). If the folder doesn't exist, return `BRANCH — Error` with reason "Task folder not found. Run /wf:spec <id> first."
+6. `{task-id}` is used in the `Task:` line of the final block.
 
 ## Step 2 — Resolve branch name
 

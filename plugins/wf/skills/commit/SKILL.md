@@ -1,6 +1,6 @@
 ---
 name: commit
-description: Commits the current task changes with a terse, auto-authored message — the first commit on the branch gets a subject of the id then the task name, every later commit the id then a concise summary, followed by a bulleted what-changed body. Diff reading and message authoring happen inside an isolated subagent so the main agent's context never sees the diff. Optional --push (off by default). Use to commit work on an ADO task branch — between implementation steps, once at the end, or whenever; safe to re-run (no-ops when there is nothing to commit).
+description: Commits the current task changes with a terse, auto-authored message — the first commit on the branch gets a subject of the id then the task name, every later commit the id then a concise summary, followed by a bulleted what-changed body. Diff reading and message authoring happen inside an isolated subagent so the main agent's context never sees the diff. Optional --push (off by default). Use to commit work on a task branch — between implementation steps, once at the end, or whenever; safe to re-run (no-ops when there is nothing to commit).
 allowed-tools: [Bash]
 ---
 
@@ -15,12 +15,12 @@ User-facing slash command for committing the current task changes with a concise
 ## Command Syntax
 
 ```
-/wf:commit [<ado-id>] [--push] [--staged]
+/wf:commit [<id>] [--push] [--staged]
 ```
 
 | Argument    | Required | Description                                                                                                                                          |
 | ----------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `<ado-id>`  | NO       | ADO work item ID — numeric (`6396`) or prefixed (`ADO-6396`). Falls back to inferring from the current branch.                                  |
+| `<id>`      | NO       | Task id — the opaque shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered. Falls back to inferring from the current branch. |
 | `--push`    | NO       | Push after committing. Off by default. When set, a push is attempted even if there was nothing new to commit (syncs any unpushed commits).          |
 | `--staged`  | NO       | Commit only what is already staged. By default the delivery provider's `commit` operation stages all outstanding changes first (`_local/` is gitignored, so artifacts never leak in). |
 
@@ -30,7 +30,7 @@ User-facing slash command for committing the current task changes with a concise
 
 Invoke the **Task** tool with `subagent_type: wf:commit`, passing:
 
-- `ado-id` — the user-supplied ID, or omit to let the subagent infer from the current branch.
+- `<id>` — the user-supplied id, or omit to let the subagent infer from the current branch.
 - `push` — `true` if `--push` was passed, else `false`.
 - `staged` — `true` if `--staged` was passed, else `false`.
 
@@ -61,7 +61,7 @@ Success:
 ```
 COMMIT — <committed | nothing-to-commit>
 
-Task: {wi-prefix}-{id} — <title or n/a>
+Task: {task-id} — <title or n/a>
 Subject: <id>: <subject>          (omitted when nothing-to-commit)
 Files: <n> changed (+<a> -<d>)    (omitted when nothing-to-commit)
 Push: <pushed (origin/<branch>) | up-to-date (origin/<branch>) | not-pushed | failed (<reason>)>

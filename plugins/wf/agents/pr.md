@@ -12,7 +12,7 @@ You are the PR-composition-and-creation half of `/wf:pr`. The `/wf:pr` host has 
 
 ## Inputs
 
-- `id` — numeric or prefixed. If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
+- `id` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
 - `draft` — boolean; open a draft PR. Default false.
 - `base` — base branch. If omitted, detect `main` (else `master`).
 
@@ -38,10 +38,10 @@ Every tracker operation below (`get`, `attach_link`) is reached the same way, pe
 ## Step 1 — Resolve config, workspace root, and task folder
 
 1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). Missing → `PR — Error`, reason "Run /wf:init first."
-2. Extract `{task-root}` and `{wi-prefix}`. Resolve `{numeric-id}` (input, or the current branch's first 3+-digit run via `current-branch-query`). None → `PR — Error`, reason "No id provided and none could be inferred from the current branch."
+2. **Resolve `{task-id}`** (the opaque task id): use the `id` input verbatim when passed; when inferring, extract the first 3+-digit run from the current branch (via `current-branch-query`) as a token and resolve it against `{task-root}` by first-3+-digit-run folder-name matching, reusing the single matching folder's full name (never reconstruct from a prefix). None → `PR — Error`, reason "No id provided and none could be inferred from the current branch." Also derive **`{numeric-id}`** — the first 3+-digit run of `{task-id}` — used only for the branch-name match (Step 2) and the PR title (Step 3), never for the task folder.
 3. Resolve the absolute workspace root via `workspace-root-resolve`. With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error); with a provider registered but no working tree to resolve, return `PR — Error`, reason "Not inside a resolvable workspace."
-4. Task folder: `<workspace-root>/{task-root}/{wi-prefix}-{numeric-id}/` (or `{task-root}` as-is if absolute) → `<task-folder-abs>`. If it doesn't exist → `PR — Error`, reason "Task folder not found. Run /wf:spec first."
-5. `{task-id}` = `{wi-prefix}-{numeric-id}`.
+4. Task folder: `<workspace-root>/{task-root}/{task-id}/` (or `{task-root}` as-is if absolute) → `<task-folder-abs>`. If it doesn't exist → `PR — Error`, reason "Task folder not found. Run /wf:spec first."
+5. `{task-id}` is the opaque id resolved in step 2 (used for `get({task-id})` and the `Task:` line).
 
 ## Step 2 — Branch and base
 

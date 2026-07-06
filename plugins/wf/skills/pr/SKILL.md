@@ -14,7 +14,7 @@ Opens a PR for the current task through the project's active delivery provider. 
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}` and `{wi-prefix}`. If missing, stop: "Run `/wf:init` first."
+Read `_local/config.md` for `{task-root}`. If missing, stop: "Run `/wf:init` first."
 
 ---
 
@@ -97,7 +97,7 @@ Emit the subagent's `PR —` block verbatim as this skill's final output.
 ```
 PR — <created | exists>
 
-Task: {wi-prefix}-{id} — <title>
+Task: {task-id} — <title>
 PR: <url>
 Base: <base> ← <branch>
 Body sources: <comma-separated artifacts that fed the body, e.g. reqs, spec, plan, verify, qa>

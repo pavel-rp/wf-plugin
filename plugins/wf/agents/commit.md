@@ -1,7 +1,7 @@
 ---
 name: commit
 description: Authors a terse conventional-style commit message from the pending change content in an isolated context and commits through the active delivery provider (optionally pushing), keeping the full diff out of the caller's transcript. The implementation behind /wf:commit.
-argument-hint: 'ado-id (optional); push (bool); staged (bool)'
+argument-hint: '<id> (optional); push (bool); staged (bool)'
 ---
 
 # wf:commit — Subagent (full procedure)
@@ -12,7 +12,7 @@ You are the implementation of `/wf:commit`. The full procedure lives here — th
 
 ## Inputs
 
-- `ado-id` — numeric (`6396`) or prefixed (`ADO-6396`). If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
+- `<id>` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
 - `push` — boolean; when true, push after committing (and even when there is nothing to commit). Default false.
 - `staged` — boolean; when true, commit only the already-staged set. Default false (stage all changes first).
 
@@ -28,17 +28,17 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 ## Step 1 — Resolve config, workspace root, and task folder
 
 1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). If missing, return `COMMIT — Error` with reason "Run /wf:init first."
-2. Extract `{task-root}` and `{wi-prefix}`. Never hardcode them.
-3. Resolve `{numeric-id}`: digits from the input, or the current branch's first 3+-digit run (via `current-branch-query`). If neither, return `COMMIT — Error` with reason "No ADO ID provided and none could be inferred from the current branch."
+2. Extract `{task-root}`. Never hardcode it.
+3. **Resolve `{task-id}`** (the opaque task id): use `<id>` verbatim when passed. When inferring, extract the first 3+-digit run from the current branch (via `current-branch-query`) as a token and resolve it against `{task-root}` by first-3+-digit-run folder-name matching, reusing the single matching folder's full name (never reconstruct from a prefix); if no folder exists yet (a first commit before `/wf:spec`), hold the bare token as `{task-id}` — the title source is unavailable anyway, and Step 4 falls back. If no token can be extracted at all, return `COMMIT — Error` with reason "No task id provided and none could be inferred from the current branch." Also derive **`{numeric-id}`** — the first 3+-digit run of `{task-id}` — used only for the branch-name match (Step 2) and the commit subject (Step 4), never for the task folder.
 4. Resolve the absolute workspace root via `workspace-root-resolve`. With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error); with a provider registered but no working tree to resolve, return `COMMIT — Error` with reason "Not inside a resolvable workspace."
-5. Compute the task folder: if `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root → `<workspace-root>/{task-root}/{wi-prefix}-{numeric-id}/`. Hold as `<task-folder-abs>`. It may not exist yet (commit can run before `/wf:spec`) — that is not fatal here; it only limits the first-commit title source (Step 4).
-6. `{task-id}` = `{wi-prefix}-{numeric-id}`.
+5. Compute the task folder: if `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root → `<workspace-root>/{task-root}/{task-id}/`. Hold as `<task-folder-abs>`. It may not exist yet (commit can run before `/wf:spec`) — that is not fatal here; it only limits the first-commit title source (Step 4).
+6. `{task-id}` is the opaque id resolved in step 3 (used in the `Task:` line).
 
 ## Step 2 — Branch gate
 
 1. Resolve the current branch via `current-branch-query`. Its detached-HEAD signal (the literal `HEAD`) → return `COMMIT — Error` with reason "Detached HEAD; cannot commit task work from this state."
 2. If the branch name contains `/{numeric-id}-` (e.g. `feature/6396-…`, `fix/6396-…`), you are on the task branch — continue to Step 3.
-3. Otherwise invoke the **Task** tool with `subagent_type: wf:branch`, passing `ado-id: {numeric-id}`.
+3. Otherwise invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}`.
    - On `BRANCH — created`/`switched`/`already-active`, continue to Step 3.
    - On `BRANCH — Error`, return `COMMIT — Error` with the subagent's reason. (A dirty worktree blocks the switch — to commit into a task branch you must already be on it.)
 
@@ -53,9 +53,9 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 2. **Read the pending change content** that is about to be recorded — the full outstanding diff when `<staged>` is false (the `commit` operation stages everything before recording), or just the already-staged content when `<staged>` is true. This is the large input that stays entirely in your isolated context. No delivery operation covers message-authoring content, so this stays a direct read — described here by outcome, never as a literal diff command.
 3. **Author the message.**
 
-   **Subject** — always `<id>: <text>`, where `<id>` is `{numeric-id}` with no `ADO-` prefix and no brackets:
+   **Subject** — always `<id>: <text>`, where `<id>` is `{numeric-id}` (the bare digit run — no prefix and no brackets):
 
-   - `<is-first>` true → `<text>` is the **ADO task name**. Source it from the task folder, first available wins: `00_reqs.md` (authoritative title), `01_spec.md`, `02_plan.md`, `lite.md` (the H1 heading or a `**Title:**` / `Title:` metadata field). If the task folder or a title is unavailable, fall back to a concise imperative summary of the pending diff.
+   - `<is-first>` true → `<text>` is the **task name**. Source it from the task folder, first available wins: `00_reqs.md` (authoritative title), `01_spec.md`, `02_plan.md`, `lite.md` (the H1 heading or a `**Title:**` / `Title:` metadata field). If the task folder or a title is unavailable, fall back to a concise imperative summary of the pending diff.
    - `<is-first>` false → `<text>` is a **concise imperative summary** of the pending diff (≤ ~65 chars). State what changed, not how.
 
    **Body** — a bulleted list of what's done, not how. As terse as possible; dedupe across files (one bullet may cover several files that serve the same change). Each bullet is a short phrase, no trailing period. Omit the body entirely if the subject already says everything.
