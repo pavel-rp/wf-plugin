@@ -82,8 +82,9 @@ diverges** from the capability's default `profile.template.json` (the four Angul
 — web-root, routing-module, test-host-root, verify-command); `qa-host`/`test-page` read those
 paths from the profile, so a different Angular project retargets them without editing the
 skills. `node-ts` attaches one `implement | guidance` fragment (test-authoring idioms for
-pure-helper Node/TS unit tests, self-scoped to test authoring) and ships no profile; when
-registered, a core skill firing `implement` aggregates those idioms in registry order.
+pure-helper Node/TS unit tests, self-scoped to test authoring) and ships no profile; with
+node-ts registered, any consumer that fires the `implement` phase and honors registry
+`guidance` (per the registry contract) aggregates those idioms in registry order.
 
 ## How it composes
 

@@ -52,11 +52,12 @@ Read off the columns:
   target needing the Angular runtime), it contributes the empty guidance (the no-op), so it
   never misdirects the phase's production-idiom authoring.
 
-This is the capability-paired `implement`-guidance path `tt` (WF-178) aggregates: with node-ts
-registered, `tt` follows these idioms; unregistered, this fragment no-ops and `tt` falls back
-to its discover-and-match default. If a further phase contribution is later warranted (e.g. a
-`tasks` decomposition or a `qa-execution` provider for pure-helper runs), it is added as a new
-row here.
+This row is the capability-paired `implement`-guidance path that the **planned** `tt` skill
+(WF-178) is intended to aggregate: with node-ts registered, an `implement`-guidance consumer
+follows these idioms; unregistered, this fragment no-ops and such a consumer falls back to
+its own discover-and-match default. If a further phase contribution is later warranted (e.g.
+a `tasks` decomposition or a `qa-execution` provider for pure-helper runs), it is added as a
+new row here.
 
 ## Skills
 
