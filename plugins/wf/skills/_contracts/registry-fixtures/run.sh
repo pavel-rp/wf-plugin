@@ -67,8 +67,8 @@ assert() {
 # --- Passing cases -----------------------------------------------------------
 assert "single-row registry passes"   pass-single.md - 0 "Validation passed"
 assert "multi-row non-overlap passes" pass-multi.md  - 0 "Validation passed"
-# WF-26: angular (provider surface: host) + node-ts (skills-only) compose with
-# browser-qa (provider surface: engine) — different surfaces, no partition collision.
+# WF-26: angular (provider surface: host) + node-ts (implement-guidance fragment, WF-177)
+# compose with browser-qa (provider surface: engine) — different surfaces, no partition collision.
 assert "stack caps compose passes"    pass-stack.md  - 0 "Validation passed" "angular" "node-ts"
 # WF-99: a plugin-anchored Path (`plugin:testpkg/caps/solo`) resolves via the
 # co-located `## Plugin Roots` mapping to the real caps/solo manifest.
