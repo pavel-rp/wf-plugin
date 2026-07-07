@@ -2,7 +2,8 @@
 
 Exercises WF-26: the `angular` capability's `qa-execution` provider `surface: host` composes
 with `browser-qa`'s `surface: engine` (different surfaces — no partition collision), `node-ts`
-is a skills-only `feature` with no fragment rows, and all four capability names are unique +
+attaches a single `implement | guidance` fragment (WF-177 — aggregate kind, empty scope, no
+partition accounting), and all four capability names are unique +
 filesystem-safe. Paths point at the **real** capability folders (the validator resolves
 repo-relative paths against the real repo root), so this fixture also asserts the shipped
 manifests parse. WF-126: all four wf-caps manifests now carry `requires: git, ado`, so `git`
