@@ -1,9 +1,9 @@
 # node-ts capability manifest
 
-**Version:** 1.0.1 (WF-126 — `requires: git, ado` declared)
+**Version:** 1.1.0 (WF-177 — `implement`-phase test-authoring guidance fragment added)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Capability:** node-ts (registered in the downstream `_local/config.md` `## Capabilities` table)
-**Kind:** feature (ships its own skill; attaches no phase fragments)
+**Kind:** feature (ships its own skill; also attaches one phase fragment via the registry)
 **Model:** claude-opus-4-8
 
 ---
@@ -29,11 +29,35 @@ git-based delivery and tracker-backed work-item tracking are available downstrea
 
 ## Fragments
 
-node-ts attaches **no** phase fragments today — it contributes its skill natively and
-nothing to the SDD spine. There is no fragments table. (Per the contract, a capability that
-attaches no fragment no-ops at every phase; this manifest declares that explicitly.) If a
-future phase contribution is warranted (e.g. a `tasks` decomposition or `qa-execution`
-provider for pure-helper runs), it is added here then.
+Each row attaches one fragment to one phase, typed by the contribution taxonomy. The schema
+is the v2 shape fixed by `capability-registry.contract.md`:
+`phase | contribution-kind | dispatch | scope`. Inline paths are forward-slash, **relative to
+this capability's registry path** (so `fragments/test-authoring.md` resolves to
+`plugins/wf-caps/capabilities/node-ts/fragments/test-authoring.md`). `scope` is empty (`—`)
+for aggregate kinds; `guidance` aggregates additively, so it carries no ownership scope token.
+
+| phase     | contribution-kind | dispatch                              | scope |
+|-----------|-------------------|---------------------------------------|-------|
+| implement | guidance          | `inline: fragments/test-authoring.md` | —     |
+
+Read off the columns:
+
+- **test-authoring** (`implement | guidance | inline: fragments/test-authoring.md`) — the
+  Node/TS **pure-helper unit-test-authoring** guidance. A core skill firing the `implement`
+  phase with node-ts active reads `fragments/test-authoring.md` and follows it in-context,
+  contributing its test-authoring idioms to the phase's authoring guidance. `guidance`
+  aggregates **additively in registry order** (general → specific), so the row carries no
+  provenance tag and no ownership scope. The fragment is **self-scoped to test authoring**:
+  when the `implement` work authors no pure-helper unit test (a production-only change, or a
+  target needing the Angular runtime), it contributes the empty guidance (the no-op), so it
+  never misdirects the phase's production-idiom authoring.
+
+This row is the capability-paired `implement`-guidance path that the **planned** `tt` skill
+(WF-178) is intended to aggregate: with node-ts registered, an `implement`-guidance consumer
+follows these idioms; unregistered, this fragment no-ops and such a consumer falls back to
+its own discover-and-match default. If a further phase contribution is later warranted (e.g.
+a `tasks` decomposition or a `qa-execution` provider for pure-helper runs), it is added as a
+new row here.
 
 ## Skills
 

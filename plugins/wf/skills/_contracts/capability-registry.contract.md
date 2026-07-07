@@ -1,9 +1,9 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.4.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation)
+**Version:** 2.5.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis)
 **Status:** authoritative source of truth for the core↔capability boundary semantics
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
-**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.3.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
+**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.4.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 
@@ -178,9 +178,12 @@ Mapping semantics:
 1. **Resolution.** For a registry row whose `Path` is `plugin:<name>/<rel-path>`, core
    looks `<name>` up in this table and resolves `<root>/<rel-path>/manifest.md`. A
    **repo-relative** `Root` is joined to the repo root; an **absolute** `Root` is used
-   as-is. A `plugin:` `Path` whose `<name>` has **no** row here is **unmapped** — the
-   validator errors on it (naming the plugin); the runtime **no-ops** that row
-   (fail-safe), exactly like a missing manifest.
+   as-is. This **recorded** root is tried **first**; when it dangles (a pack upgrade or
+   machine move left it pointing at a directory that no longer exists), resolution
+   **self-heals** via Claude Code's install manifest — see "Recorded-root-first
+   resolution with install-manifest self-heal" below. A `plugin:` `Path` whose `<name>`
+   has **no** row here is **unmapped** — the validator errors on it (naming the plugin);
+   the runtime **no-ops** that row (fail-safe), exactly like a missing manifest.
 
 2. **`Root` shape — deliberately distinct from `Path`/`registryPath`.** `Root`
    **may be absolute or drive-prefixed** (a plugin install root is absolute *by
@@ -206,6 +209,88 @@ Mapping semantics:
    plugin-anchored row can resolve, and repo-relative resolution is unchanged. This
    mirrors the empty-registry / inert-phase no-op: the mapping matters only when a
    `plugin:` `Path` is present.
+
+#### Recorded-root-first resolution with install-manifest self-heal
+
+A recorded `Root` can **dangle**: a pack upgrade — or a machine move — can relocate a
+plugin's install root, leaving its `## Plugin Roots` row pointing at a directory that
+no longer exists even though the pack is still installed. Resolution therefore tries
+the recorded root **first** and, only when it dangles, **self-heals** from Claude
+Code's install manifest. This recovers the current root without a re-init, and is
+**in-memory only** — core reads the manifest to resolve a root for the current run; it
+**never** writes another plugin's root back (writing the `## Plugin Roots` table stays
+the pack init skill's job, per rule 3 above).
+
+**Resolution algorithm (runtime-followed).** For a registry row whose `Path` is
+`plugin:<plugin-name>/<rel-path>`, core resolves the plugin root in this order:
+
+1. **Recorded root first.** Take the `Root` recorded for `<plugin-name>` in
+   `## Plugin Roots` (repo-relative joined to the repo root; absolute as-is) and
+   resolve `<root>/<rel-path>/manifest.md`. If that manifest file **exists on disk**
+   (the recorded root is live), use it — done.
+2. **Dangling → install-manifest fallback.** If the recorded root is **dangling** — its
+   `<root>/<rel-path>/manifest.md` is not present on disk — read Claude Code's install
+   manifest — the non-versioned file at `~/.claude/plugins/installed_plugins.json` —
+   and recover the plugin's current install root from it:
+   1. **Marketplace-exact key.** Derive core's own marketplace by matching core's
+      `${CLAUDE_PLUGIN_ROOT}` against the manifest, and form the exact sibling key
+      `<plugin-name>@wf-marketplace` (the marketplace that ships core). Look that exact
+      key up **first**; only when it is **absent** from the manifest, fall back to
+      matching on the bare `<plugin-name>` (the left-of-`@` segment) alone.
+   2. **Path normalization.** Normalize every path read from the manifest
+      backslash→forward-slash before use, so a manifest written on one OS resolves on
+      another.
+   3. **Prefer an existing `installPath`.** When more than one record matches for a
+      scope, select the record whose `installPath` **exists on disk**, so a stale
+      record never shadows the live one.
+   Resolve `<recovered-root>/<rel-path>/manifest.md` from the recovered root and use it.
+3. **Still unrecoverable.** If neither the recorded root nor the install-manifest
+   fallback yields a readable `manifest.md` (manifest absent or unparseable, no matching
+   record, or the recovered directory also missing), the row resolves to **no readable
+   manifest** — the validator errors on it (naming the plugin), and the runtime
+   **no-ops** that row (fail-safe, exactly like an unmapped row or a missing manifest).
+   A write that needs this capability's provider surface then surfaces the residual
+   diagnosis below instead of silently misreporting "no provider."
+
+**Residual "registered-but-unrecoverable" diagnosis (runtime-followed).** When a
+**write** for a provider surface `<S>` — a `delivery` or `tracker` surface (see the
+surface sections below) — finds **zero readable** providers for `<S>`, the outcome
+splits two ways, and the two are **never** conflated:
+
+- **(a) Genuine "no provider."** Every registered capability's manifest is **readable**
+  and none is scoped to `<S>`. Emit the pre-existing "no `<S>` provider registered"
+  message, unchanged and correct, and name the remedy (register a capability that owns
+  `<S>` in the `## Capabilities` registry).
+- **(b) Registered-but-unrecoverable.** One or more registered capabilities have an
+  **unreadable** manifest (step 3 above). Name those pack(s) as **candidates** — taken
+  from the `## Capabilities` row, which carries only `Capability` + `Path`, never a
+  `scope` — and **hedge** the surface attribution: *"registered pack(s) [X, …] have an
+  unrecoverable manifest at that path; if one is your `<S>` provider, fix its stale root
+  / re-run its init."* List **all** unreadable-manifest packs when more than one.
+  **Never** assert that a named pack owns surface `<S>`: a capability's `scope` lives
+  only in its (now unreadable) manifest, so surface ownership is unknowable precisely
+  when the manifest cannot be read — asserting it would reintroduce the very
+  misdiagnosis this resolution kills.
+
+**Surfacing by site (runtime-followed).** The same split surfaces differently by where
+the operation runs: a **delivery write** surfaces case (b) **loudly** (it blocks, like
+the genuine-no-provider delivery write); a **tracker write** emits it as the
+**warn-once**, then continues local-only (per the tracker degradation rules); a
+**read** on either surface stays **silent local-only** and emits nothing (a read always
+resolves to something usable via its plain-directory fallback).
+
+**Rationale and dependency bound (reference).** Recorded-root-first keeps the common
+path a single table read with **zero** manifest dependency; the install manifest is
+consulted **only** to recover from a dangling root, and that dependency is **bounded to
+recovering the plugin root** — on an absent or unparseable manifest, resolution
+degrades to the truthful "re-run init" remedy (step 3 / the residual diagnosis),
+**never** to total breakage of unrelated resolution. The hedged, candidate-naming form
+exists because the failure that triggers it (an unreadable manifest) is exactly the
+failure that makes surface ownership unknowable — so the diagnosis names *candidates*
+and prescribes the fix (re-run the pack's init to rewrite its `## Plugin Roots` root)
+without ever asserting an ownership it cannot verify. Resolution stays in-memory
+throughout: core still only ever **reads** the `## Plugin Roots` table and never writes
+another plugin's root.
 
 The mapping names **no** concrete plugin or capability; it is the generic
 `<plugin-name>` → root shape every pack's install root plugs into. Its location and
@@ -358,7 +443,14 @@ whichever provider or bare-core path resolves it.
   …) invoked by a user-initiated skill with **no** `delivery`-surface owner active
   states **plainly** that no delivery provider is registered and **names the
   remedy** (register a capability that owns the `delivery` surface in the
-  `## Capabilities` registry) — it does not fail silently or guess a fallback.
+  `## Capabilities` registry) — it does not fail silently or guess a fallback. That
+  plain "no delivery provider" statement is the **genuine-no-provider** case (a) of the
+  residual diagnosis; when the zero-provider result instead arises because a
+  **registered** capability's manifest is **unrecoverable** (its recorded root dangles
+  and the install-manifest self-heal fails), the delivery write surfaces the
+  **registered-but-unrecoverable** diagnosis **loudly** instead — naming the candidate
+  pack(s) and hedging surface attribution per "Recorded-root-first resolution with
+  install-manifest self-heal" (`## Plugin Roots`).
 
 **Single-shot-publish idempotency.** A delivery operation whose result is an
 id or URL (`pr-create` is the canonical case) has that returned id/URL
@@ -434,6 +526,15 @@ deterministic local id with **no** tracker call at all.
   was configured **warns once**, naming the failing operation and the error,
   then **continues local-only** for the remainder of the run. A tracker failure
   never blocks a local artifact write.
+- **Registered-but-unrecoverable provider** — when the `tracker` surface has **zero
+  readable** providers because a **registered** capability's manifest is unrecoverable
+  (recorded root dangling and the install-manifest self-heal failed), a tracker
+  **write** emits the residual **registered-but-unrecoverable** diagnosis as the
+  **warn-once** (candidate pack(s) named, surface attribution hedged, per
+  "Recorded-root-first resolution with install-manifest self-heal" in
+  `## Plugin Roots`), then continues local-only; a tracker **read** stays **silent
+  local-only**. This is distinct from the unconfigured case above (no registered
+  tracker at all), which stays silent.
 
 **Single-shot-publish idempotency.** A tracker write whose result is an id
 (`create_umbrella` and `create_child` are the canonical cases) has that returned
