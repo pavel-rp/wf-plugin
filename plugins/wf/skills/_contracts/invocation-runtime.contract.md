@@ -1,9 +1,9 @@
 # Capability invocation runtime (the registry-iterating, per-phase-injecting substrate)
 
-**Version:** 2.3.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface)
+**Version:** 2.4.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface; WF-199 — recorded-root-first self-heal fallback (referencing the port) and the write-side registered-but-unrecoverable diagnosis split)
 **Status:** authoritative source of truth for HOW a core skill invokes active capabilities at a phase
 **Supersedes:** `invocation-mechanism.contract.md` (v1.0.0, WF-10) — the single-manifest, three-named-seam runtime, kept intact as the frozen N=1 substrate this generalises
-**Executes the port:** `capability-registry.contract.md` (v2.4.0, WF-21; WF-99; WF-120; WF-121; WF-179) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
+**Executes the port:** `capability-registry.contract.md` (v2.5.0, WF-21; WF-99; WF-120; WF-121; WF-179; WF-199) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
 
@@ -101,7 +101,7 @@ change to how the registry is read. The registry shape and column meaning are fi
 - Each row carries a `Capability` **name** and a `Path`. Core uses the
   path to locate the manifest; it **never** hardcodes a folder, and it **never** uses
   the name to key a code path (see "Generic-only branch rule").
-- **`Path` resolution — both shapes (WF-99).** The port
+- **`Path` resolution — both shapes (WF-99), recorded-root-first with self-heal (WF-199).** The port
   (`capability-registry.contract.md`) defines `Path` as accepting two shapes: a
   repo-relative folder and a plugin-anchored token `plugin:<plugin-name>/<rel-path>`.
   This runtime resolves **both**. A **repo-relative** `Path` resolves against the repo
@@ -109,12 +109,22 @@ change to how the registry is read. The registry shape and column meaning are fi
   Roots` mapping** (co-located with the registry at the `registryPath`-resolved
   location): core looks `<plugin-name>` up in that table, joins `<root>/<rel-path>`
   (an absolute `Root` as-is; a repo-relative `Root` against the repo root), and reads
-  its `manifest.md`. This supplies the `<plugin-name>` → install-root datum
+  its `manifest.md`. That recorded root is the **first** attempt; when it **dangles**
+  (a pack upgrade or machine move relocated the install root), core **self-heals** by
+  recovering the plugin's current install root from Claude Code's install manifest —
+  exactly per the port's **"Recorded-root-first resolution with install-manifest
+  self-heal"** (`## Plugin Roots`): recorded-root-first, then the install-manifest
+  fallback (marketplace-exact `<plugin-name>@wf-marketplace` key with left-of-`@`
+  fallback, backslash→forward-slash normalization, prefer-existing-`installPath`
+  selection), **in-memory only**. This runtime **executes** that algorithm; it does not
+  redefine it. The mapping supplies the `<plugin-name>` → install-root datum
   `${CLAUDE_PLUGIN_ROOT}` alone could not (it resolves only to the *executing* plugin's
   root); the mapping is written by a pack-owned init skill, core only reads it. A
   plugin-anchored `Path` whose `<plugin-name>` has **no** `## Plugin Roots` row is
-  **unmapped** → the row **no-ops** (fail-safe, same as a missing manifest; the
-  validator is what errors on it). Existing repo-relative resolution behaviour is
+  **unmapped**, and a mapped row where **neither** the recorded root **nor** the
+  self-heal yields a readable manifest is **unrecoverable** → in both cases the row
+  **no-ops** (fail-safe, same as a missing manifest; the validator is what errors on
+  it). Existing repo-relative resolution behaviour is
   **unchanged** — this is an additive resolution rule, not a change to how a
   repo-relative `Path` resolves.
 - **Registry order is the injection order** — general → specific. Core walks the rows
@@ -306,6 +316,22 @@ resolves to operationally for each surface (the workspace-root plain-directory
 fallback and a plain "no delivery provider registered" statement for delivery;
 the silent local-only `T<NNN>` id fallback and degradation rules for tracker).
 
+**Write-side diagnosis split (WF-199).** A scope-equality filter can match zero
+*readable* rows for two distinct reasons, and a **write** must not conflate them.
+Either **(a)** no registered capability owns `<S>` at all (every manifest is readable),
+or **(b)** a registered capability that *might* own `<S>` has an **unrecoverable**
+manifest (its recorded root dangled and the port's self-heal, §1, recovered nothing),
+so its row never becomes a readable provider row. Core resolves this exactly per the
+port's **"Residual 'registered-but-unrecoverable' diagnosis"** and **"Surfacing by
+site"** (`capability-registry.contract.md`, `## Plugin Roots`): case (a) emits the
+unchanged "no `<S>` provider registered" message; case (b) names the
+unreadable-manifest pack(s) as **candidates** from the `## Capabilities` row and
+**hedges** surface attribution (never asserting a candidate owns `<S>`). Surfacing
+follows the port: a **delivery** write surfaces (b) **loudly**, a **tracker** write
+emits it as the **warn-once** (then continues local-only), and a **read** on either
+surface stays **silent local-only**. This runtime executes that diagnosis; the port
+defines it.
+
 Direct provider resolution introduces no new primitive and no new aggregation
 policy — it is the existing registry-iteration / manifest-read / dispatch
 substrate, entered through a scope filter instead of a phase filter, for the
@@ -323,7 +349,7 @@ result of the firing kind's declared shape and lets the surrounding SDD skeleton
 proceed exactly as if nothing were attached) in any of these cases:
 
 1. the `## Capabilities` registry is **empty or absent** (zero rows to iterate), **or**
-2. a registry row's manifest at `<path>/manifest.md` does **not exist** — including a plugin-anchored `Path` whose `<plugin-name>` is **unmapped** in `## Plugin Roots`, which resolves to no readable manifest (fail-safe; the validator errors on it), **or**
+2. a registry row's manifest at `<path>/manifest.md` does **not exist** — including a plugin-anchored `Path` whose `<plugin-name>` is **unmapped** in `## Plugin Roots`, **or** whose recorded root **dangles** and the port's install-manifest self-heal (§1) still recovers no readable manifest; either resolves to no readable manifest (fail-safe; the validator errors on it), **or**
 3. a manifest exists but has **no fragment row** for the firing phase, **or**
 4. a fragment row exists but its `dispatch` is neither `inline:` nor `subagent:` (a malformed or unrecognized kind — see fail-safe).
 
