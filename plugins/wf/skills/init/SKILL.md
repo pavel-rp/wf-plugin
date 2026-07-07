@@ -137,6 +137,15 @@ The three **API** keys are used only by the backend-exercise path (`Type: API` s
 | **Migration Pattern** | `<MIGRATION_PATTERN: filename glob for migration scripts>` |
 | **History Table** | `<HISTORY_TABLE: schema-qualified migration history table>` |
 
+## Seed
+
+| Key | Value |
+|-----|-------|
+| **Architecture Doc** | `<ARCHITECTURE_DOC: repo-relative path (forward slashes) to the default architecture/design doc /wf:seed parses when called with no argument>` |
+| **Backlog Path** | `{task-root}/BACKLOG.md` |
+
+The two keys `/wf:seed` reads. **Architecture Doc** is the doc parsed on a zero-argument `/wf:seed` — leave the placeholder until you have an architecture/design doc to seed action items from (or always pass the doc explicitly: `/wf:seed <doc>`). **Backlog Path** is where the append-only backlog is written; the `{task-root}/BACKLOG.md` default suits most projects. A repo initialized before this section existed simply has no `## Seed` keys — `/wf:seed` degrades gracefully (the explicit-doc form still works, and Backlog Path falls back to the same default).
+
 ## Capabilities
 
 <!-- init directive (strip before writing — never emit this comment to any file):
