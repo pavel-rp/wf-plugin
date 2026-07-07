@@ -165,7 +165,7 @@ The current skills are v1-shaped. Their v2 homes:
 | `spec`, `plan`, `tasks` (new), `implement`, `run` | `migration-map` → `migration` (adapter): `verify` `finding` (1:1 audit of an *implemented* migration — not a `plan` artifact) |
 | `verify-spec`, `qa-gen`, `qa-run`, `qa-followup` (orchestration only) | `rule-audit` parity logic → `migration`: `verify` `finding` + constitution `article`s |
 | `init`, `constitution` (new), `branch`, `commit`, `pr` | parity-suite → `migration`: `qa-generation` `scenario` |
-| `classify`, `triage`, `index`, `lite` | `qa-auto` browser driving → `browser-qa` (feature): `qa-execution` `provider` |
+| `classify`, `triage`, `index`, `lite`, `seed` | `qa-auto` browser driving → `browser-qa` (feature): `qa-execution` `provider` |
 | | `qa-host`, `test-page` Angular scaffolding → an `angular` stack capability: `qa-execution` |
 
 QA splits cleanly: orchestration (`qa-gen` plan structure, the `qa-run`/`qa-followup` loop, baseline-health) stays core; the browser **engine** and the stack **test-host** are provider capabilities; parity is a migration fragment.
