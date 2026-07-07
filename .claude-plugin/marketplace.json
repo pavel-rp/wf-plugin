@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.45.0",
+  "version": "0.46.0",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-git delivery, wf-ado tracker, wf-linear tracker).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -21,8 +21,8 @@
     {
       "name": "wf-caps",
       "source": "./plugins/wf-caps",
-      "version": "0.12.0",
-      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map), the browser-qa capability (qa-engine), the angular stack capability (qa-host + test-page, qa-execution host provider), and the node-ts stack capability (test-node).",
+      "version": "0.13.0",
+      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map), the audit capability (five domain-free adversarial verify lenses), the browser-qa capability (qa-engine), the angular stack capability (qa-host + test-page, qa-execution host provider), and the node-ts stack capability (test-node).",
       "author": {
         "name": "Pavel Kalabin"
       },
