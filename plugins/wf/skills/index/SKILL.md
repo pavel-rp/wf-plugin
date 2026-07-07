@@ -93,146 +93,34 @@ The only delivery operation this file invokes — `current-branch-query` (the br
 - `summary` — the caller-supplied summary string
 - `calling-skill` — the slash command name of the upstream skill that invoked `/wf:index` (or `/wf:index` if invoked directly)
 
-Use the subagent's `INDEX — Updated` block as this skill's output verbatim. Do **not** read or execute the Procedure section below — that's the subagent's job.
+Use the subagent's `INDEX — Updated` block as this skill's output verbatim. Do **not** read or execute the subagent's procedure in `plugins/wf/agents/index.md` — that's the subagent's job.
 
 ---
 
 ## Slot Catalogue
 
-Documentation for callers. Pass one of these slot keys (or any other alphanumeric key for a custom slot — the subagent appends it to the table on first sight).
-
-| Slot key        | Type   | File / Folder           |
-| --------------- | ------ | ----------------------- |
-| `triage`        | file   | `triage.md`             |
-| `reqs`          | file   | `00_reqs.md`            |
-| `spec`          | file   | `01_spec.md`            |
-| `plan`          | file   | `02_plan.md`            |
-| `tasks`         | file   | `03_tasks.md`           |
-| `migration-map` | file   | `03_migration-map.md`   |
-| `verify`        | file   | `04_verify.md`          |
-| `verify-fix`    | file   | `05_verify-fix.md`      |
-| `qa`            | file   | `06_qa.md`              |
-| `qa-report`     | file   | `07_qa-report.md`       |
-| `qa-host`       | string | —                       |
-| `qa-fix`        | file   | `08_qa-fix.md`          |
-| `lite`          | file   | `lite.md`               |
-| `branch`        | string | —                       |
-| `classify`      | string | —                       |
-| `commit`        | string | —                       |
-| `pr`            | string | —                       |
-| `tests`         | folder | `tests/`                |
-| `page-tests`    | string | —                       |
-| `research`      | folder | `research/`             |
-| `assets`        | folder | `assets/`               |
-| `artifacts`     | folder | `artifacts/`            |
-
-Status cells are auto-derived by the subagent — callers don't compute them. File slots resolve to `[open](filename)` or `N/A`. String slots are always `N/A`. Folder slots show `<n> files` or `empty`.
+The authoritative slot catalogue — keys, types, filenames, and the status-cell derivation rules — lives in `plugins/wf/agents/index.md` (its single post-split home; no second table is kept here to drift). Callers pass one of its slot keys, or any other alphanumeric+hyphen key for a custom slot — the subagent appends unknown keys to the table as custom rows on first sight. Status cells are auto-derived by the subagent — callers don't compute them.
 
 ---
 
-## Procedure (subagent execution — caller, skip this section)
+## Procedure
 
-This section is the subagent's body. The subagent (`agents/index.md`) is a thin redirect that reads this section and executes it. The host LLM running `/wf:index` directly should NOT read this section — it stops at Phase 2.
-
-### Inputs
-
-The subagent is invoked with:
-
-- `task-folder` — absolute path to `{task-root}/{task-id}/`
-- `slot` — slot key (alphanumeric + hyphen)
-- `summary` — one-line description (≤80 chars)
-- `calling-skill` — slash command name of the upstream invoker (e.g. `/wf:classify`)
-
-If any of `task-folder`, `slot`, `summary` is missing/empty, return the error variant of the Final Output block and stop.
-
-### Steps
-
-1. **Read** `<task-folder>/index.md`. If it doesn't exist, write the seed template (below), substituting `{task-id}` from the task folder's basename into the H1 (e.g. `_local/T042/` → `# T042 — Index`).
-
-2. **Compute the status cell** from the slot's type (look up in the Slot Catalogue):
-   - **file slot:** check existence of `<task-folder>/<filename>`. Present → `[open](<filename>)`. Absent → `N/A`.
-   - **string slot:** always `N/A`.
-   - **folder slot:** count regular files recursively under `<task-folder>/<folder>/`. Missing or zero → `empty`. Otherwise → `<n> files`.
-   - **custom slot** (not in catalogue): `N/A`.
-
-3. **Find the row** whose first cell exactly equals `` `<slot>` `` (backtick-wrapped slot key).
-   - **Found:** use `Edit` to replace the row's status and summary cells. Preserve all other rows verbatim. Approximate the existing column padding (exact alignment isn't required, but don't collapse to single-space).
-   - **Not found** (custom slot): use `Edit` to insert a new row immediately before the `---` separator that follows the table. Format: `` | `<slot>` | <status> | <summary> | ``.
-
-4. **Update the footer.** Replace the existing `**Last touched:** …` line with: `**Last touched:** <YYYY-MM-DD HH:mm> by <calling-skill> (<model identifier>)`. Use the current local date/time. If you can't determine the model identifier, write `unknown`.
-
-5. **Verify.** Re-read the file. Confirm: (a) the slot's row exists exactly once, (b) its status and summary cells hold the new values, (c) the footer is updated. If any check fails, return the error variant of the Final Output block. Do not leave the file half-broken — restore previous content if you can.
-
-### Seed template (when `index.md` doesn't exist)
-
-```markdown
-# {task-id} — Index
-
-Catalog of artifacts and small results for this task. Every `wf:*` skill updates its row after writing. Underlying files are the source of detailed truth; this index is a manifest for orientation.
-
-| Slot            | Status | Summary |
-| --------------- | ------ | ------- |
-| `triage`        | N/A    | —       |
-| `reqs`          | N/A    | —       |
-| `spec`          | N/A    | —       |
-| `plan`          | N/A    | —       |
-| `tasks`         | N/A    | —       |
-| `migration-map` | N/A    | —       |
-| `verify`        | N/A    | —       |
-| `verify-fix`    | N/A    | —       |
-| `qa`            | N/A    | —       |
-| `qa-report`     | N/A    | —       |
-| `qa-host`       | N/A    | —       |
-| `qa-fix`        | N/A    | —       |
-| `lite`          | N/A    | —       |
-| `branch`        | N/A    | —       |
-| `classify`      | N/A    | —       |
-| `commit`        | N/A    | —       |
-| `pr`            | N/A    | —       |
-| `tests`         | empty  | —       |
-| `page-tests`    | N/A    | —       |
-| `research`      | empty  | —       |
-| `assets`        | empty  | —       |
-| `artifacts`     | empty  | —       |
-
----
-
-**Last touched:** —
-```
+The subagent's complete procedure — inputs contract, status derivation, row find/edit/insert, footer update, post-write verification, and the seed template — lives in `plugins/wf/agents/index.md`. The subagent boots on that file alone and never reads this one; no procedure text is kept here, where a second authoritative copy would drift.
 
 ---
 
 ## Edge Cases
 
-- **`index.md` exists with malformed structure** (column count differs, header missing, etc.): stop with: "Existing index.md doesn't match the canonical template — fix manually or delete to let `/wf:index` reseed." Do not attempt to repair.
-- **Slot key with `|` or other markdown-table-breaking chars:** stop with: "Slot keys are alphanumeric + hyphen only."
-- **Summary contains `|`:** caller is responsible for escaping (`\|`); pass through verbatim.
-- **Empty summary:** stop. Pass `"—"` to clear a row.
-- **Custom slot already present** (added earlier by previous custom-slot call): update in place rather than re-appending.
+- **`_local/config.md` missing:** stop — "Run `/wf:init` first."
+- **No id provided and branch inference fails** (no numeric token extractable, zero matching task folders, or more than one match): stop — pass the id explicitly: `/wf:index <id> <slot> "<summary>"`.
+- **Task folder not found:** stop — "Run `/wf:spec {task-id}` first to bootstrap it."
+- **Malformed slot key** (whitespace or special chars beyond alphanumeric + hyphen): stop and report before delegating.
+- Write-path edge cases (malformed existing `index.md`, summary escaping, empty summary, repeat custom-slot calls) are the subagent's — see `plugins/wf/agents/index.md`.
 
 ---
 
 ## Final Output
 
-Success:
-
-```
-INDEX — Updated
-
-Task: {task-id}
-Slot: <slot>
-Status: <new status>
-Summary: <new summary>
-File: {task-root}/{task-id}/index.md
-```
-
-Failure (subagent procedure unable to complete safely):
-
-```
-INDEX — Error
-
-Reason: <one sentence — what went wrong>
-File: {task-root}/{task-id}/index.md (unchanged)
-```
+This skill's output is the subagent's final block, forwarded verbatim — `INDEX — Updated` on success, `INDEX — Error` on failure. The authoritative block shapes are defined in `plugins/wf/agents/index.md`; no second copy is kept here.
 
 **The final output block must always be the very last thing output to chat.**

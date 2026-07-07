@@ -35,7 +35,7 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 | audit | adapter | `plugins/wf-caps/capabilities/audit` | `verify` findings — five adversarial lenses (correctness, security, convention, consistency, operational) | phase fragments + five read-only auditor agents (`wf-caps:correctness-auditor`, `-security-`, `-convention-`, `-consistency-`, `-operational-auditor`). Dependency-free — no `requires:`, so it composes in bare-core too. A profile `lenses` knob selects the subset that runs |
 | browser-qa | feature | `plugins/wf-caps/capabilities/browser-qa` | `qa-execution` provider (`surface: engine`) | the `/wf-caps:qa-engine` browser-automation engine, dispatched by core's `/wf:qa-auto` |
 | angular | feature | `plugins/wf-caps/capabilities/angular` | `qa-execution` provider (`surface: host`) | the `/wf-caps:qa-host` + `/wf-caps:test-page` Angular test-host skills; ships a `profile-template:` (web-root, routing-module, test-host-root, verify-command) seeded downstream on divergence |
-| node-ts | feature | `plugins/wf-caps/capabilities/node-ts` | — (skills-only; no phase fragments) | the `/wf-caps:test-node` pure-helper Node test harness |
+| node-ts | feature | `plugins/wf-caps/capabilities/node-ts` | `implement` guidance (test-authoring idioms) | the `/wf-caps:test-node` pure-helper Node test harness |
 
 ### Prerequisites
 
@@ -85,7 +85,10 @@ also seeds an `_local/profiles/angular.profile.json` override on `init` **when t
 diverges** from the capability's default `profile.template.json` (the four Angular stack paths
 — web-root, routing-module, test-host-root, verify-command); `qa-host`/`test-page` read those
 paths from the profile, so a different Angular project retargets them without editing the
-skills. `node-ts` is skills-only — it attaches no phase fragment and ships no profile.
+skills. `node-ts` attaches one `implement | guidance` fragment (test-authoring idioms for
+pure-helper Node/TS unit tests, self-scoped to test authoring) and ships no profile; with
+node-ts registered, any consumer that fires the `implement` phase and honors registry
+`guidance` (per the registry contract) aggregates those idioms in registry order.
 
 ## How it composes
 
