@@ -25,7 +25,7 @@ Both write `07_qa-report.md` in the format documented at [`references/report-for
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}`. If absent, stop with: "Run `/wf:init` first." Also read `{qa-baseline-ignore}` if present (the allowlist of known-benign console messages / request patterns the Baseline health suite tolerates) — it's optional; treat an absent key as an empty list.
+Read `_local/config.md` for `{task-root}`. If absent, stop with: "Run `/wf:init` first." Also read `{qa-baseline-ignore}` if present (the allowlist of known-benign console messages / request patterns the Baseline health suite tolerates) — it's optional; treat an absent key as an empty list. Also read `{qa-rules}` if present (the path to the project QA-rules artifact written by `/wf:qa-init`, which supplies the severity rubric the report resolves — see [`references/report-format.md`](references/report-format.md)) — it's optional; treat an absent or `<none>` key as not set, and the report falls back to its built-in severity default.
 
 `00_reqs.md` is the authoritative spec. `01_spec.md` is consulted only if reqs are too thin to derive testable criteria. **Never derive cases from the implementation** — see the black-box rule under Phase 3.
 

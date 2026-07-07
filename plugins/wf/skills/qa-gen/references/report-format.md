@@ -147,11 +147,13 @@ Free-form notes recorded during the run (manual mode) or surfaced by the agent (
 |---|---|---|---|---|
 | 1 | TC-002 | step 2 | High | Save toast shows "Forbidden" instead of "Saved" — likely auth scope regression |
 
-Severity rubric (default — projects can override in `_local/config.md` `qa-rules` if added later):
+Severity rubric — resolved by the `{qa-rules}` key in `_local/config.md`:
 
-- **High** — data correctness, auth, security, or release-blocker (P0 scenario failed).
-- **Medium** — UX or important flow regression (P1 scenario failed).
-- **Low** — visual or polish issue (P2 scenario failed).
+- **`{qa-rules}` set** — resolve the rubric from the project QA-rules artifact it points at (written by `/wf:qa-init`): use that artifact's `## Severity rubric` High / Medium / Low definitions in place of the defaults below.
+- **`{qa-rules}` unset, `<none>`, the artifact is absent, or the artifact has no `## Severity rubric` section** — use the built-in default:
+  - **High** — data correctness, auth, security, or release-blocker (P0 scenario failed).
+  - **Medium** — UX or important flow regression (P1 scenario failed).
+  - **Low** — visual or polish issue (P2 scenario failed).
 
 Omit the section entirely when the run is PASS — no defects, no header.
 ```
