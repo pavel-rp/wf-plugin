@@ -15,7 +15,7 @@ From the marketplace that ships this plugin:
 
 Skills and agents are auto-discovered on install — no per-machine configuration.
 
-Some skills delegate work to **subagents** (the `*.md` files in this plugin's `agents/` folder) for context-isolated reasoning — e.g. `wf:classify` runs its rubric in a subagent so the classification reasoning doesn't pollute the caller's transcript, and `wf:run --auto` drives each chain phase through the `wf:phase-runner` subagent so the per-phase tracker fetch and codebase exploration never reach the orchestrator. Claude Code discovers these agents automatically, and they invoke each other via the **Task** tool (nested delegation works without any setup).
+Some skills delegate work to **subagents** (the `*.md` files in this plugin's `agents/` folder) for context-isolated reasoning — e.g. `wf:classify` runs its rubric in a subagent so the classification reasoning doesn't pollute the caller's transcript, and `wf:run --auto` drives each chain phase through the `wf:phase-runner` subagent so the per-phase tracker fetch and codebase exploration never reach the orchestrator. `wf:context-distiller` reads bulk delivery output — a failing CI log or a batch of PR review-comment bodies — in its own isolated context and returns only a compact structured verdict, so a caller reasoning over that bulk (a PR-review loop, a retrospective report) never ingests it. Claude Code discovers these agents automatically, and they invoke each other via the **Task** tool (nested delegation works without any setup).
 
 ## Before the first task in a new repo
 
