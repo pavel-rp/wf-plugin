@@ -32,17 +32,21 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 | Capability | Kind | Path | Attaches | Provides |
 |---|---|---|---|---|
 | migration | adapter | `plugins/wf-caps/capabilities/migration` | `tasks` task-list; `verify` findings; `qa-generation` scenarios | phase fragments (the `/wf-caps:migration-map` skill ships natively) |
+| audit | adapter | `plugins/wf-caps/capabilities/audit` | `verify` findings — five adversarial lenses (correctness, security, convention, consistency, operational) | phase fragments + five read-only auditor agents (`wf-caps:correctness-auditor`, `-security-`, `-convention-`, `-consistency-`, `-operational-auditor`). Dependency-free — no `requires:`, so it composes in bare-core too. A profile `lenses` knob selects the subset that runs |
 | browser-qa | feature | `plugins/wf-caps/capabilities/browser-qa` | `qa-execution` provider (`surface: engine`) | the `/wf-caps:qa-engine` browser-automation engine, dispatched by core's `/wf:qa-auto` |
 | angular | feature | `plugins/wf-caps/capabilities/angular` | `qa-execution` provider (`surface: host`) | the `/wf-caps:qa-host` + `/wf-caps:test-page` Angular test-host skills; ships a `profile-template:` (web-root, routing-module, test-host-root, verify-command) seeded downstream on divergence |
 | node-ts | feature | `plugins/wf-caps/capabilities/node-ts` | `implement` guidance (test-authoring idioms) | the `/wf-caps:test-node` pure-helper Node test harness |
 
 ### Prerequisites
 
-Every capability this pack ships declares `requires: git, ado` — each assumes a
-`delivery` provider and a `tracker` provider are already active in the registry.
+Every capability this pack ships **except `audit`** declares `requires: git, ado` — each
+assumes a `delivery` provider and a `tracker` provider are already active in the registry.
 Install and run `/wf-git:init` and `/wf-ado:init` (either order, before or alongside
 `/wf-caps:init`) so `git` and `ado` are registered first; otherwise `validate-registry.sh`
-CHECK 7 fails, naming the wf-caps capability, the missing capability, and the remedy.
+CHECK 7 fails, naming the wf-caps capability, the missing capability, and the remedy. The
+`audit` capability declares **no `requires:`** — its five lenses are pure read-only
+reasoning and reach no provider, so it also composes in bare-core mode (no provider
+registered).
 
 ### Registering a capability downstream
 
