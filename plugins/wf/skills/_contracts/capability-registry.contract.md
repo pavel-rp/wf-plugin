@@ -226,12 +226,12 @@ the pack init skill's job, per rule 3 above).
 
 1. **Recorded root first.** Take the `Root` recorded for `<plugin-name>` in
    `## Plugin Roots` (repo-relative joined to the repo root; absolute as-is) and
-   resolve `<root>/<rel-path>/manifest.md`. If that directory **exists on disk**, use
-   it — done.
-2. **Dangling → install-manifest fallback.** If the recorded root does not resolve to
-   an existing directory, read Claude Code's install manifest — the non-versioned file
-   at `~/.claude/plugins/installed_plugins.json` — and recover the plugin's current
-   install root from it:
+   resolve `<root>/<rel-path>/manifest.md`. If that manifest file **exists on disk**
+   (the recorded root is live), use it — done.
+2. **Dangling → install-manifest fallback.** If the recorded root is **dangling** — its
+   `<root>/<rel-path>/manifest.md` is not present on disk — read Claude Code's install
+   manifest — the non-versioned file at `~/.claude/plugins/installed_plugins.json` —
+   and recover the plugin's current install root from it:
    1. **Marketplace-exact key.** Derive core's own marketplace by matching core's
       `${CLAUDE_PLUGIN_ROOT}` against the manifest, and form the exact sibling key
       `<plugin-name>@wf-marketplace` (the marketplace that ships core). Look that exact

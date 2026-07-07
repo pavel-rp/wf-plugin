@@ -320,8 +320,9 @@ the silent local-only `T<NNN>` id fallback and degradation rules for tracker).
 *readable* rows for two distinct reasons, and a **write** must not conflate them.
 Either **(a)** no registered capability owns `<S>` at all (every manifest is readable),
 or **(b)** a registered capability that *might* own `<S>` has an **unrecoverable**
-manifest (its recorded root dangled and the port's self-heal, §1, recovered nothing),
-so its row never becomes a readable provider row. Core resolves this exactly per the
+manifest (its recorded root dangled and the install-manifest self-heal in §1 — which
+executes the port's `## Plugin Roots` algorithm — recovered nothing), so its row never
+becomes a readable provider row. Core resolves this exactly per the
 port's **"Residual 'registered-but-unrecoverable' diagnosis"** and **"Surfacing by
 site"** (`capability-registry.contract.md`, `## Plugin Roots`): case (a) emits the
 unchanged "no `<S>` provider registered" message; case (b) names the
@@ -349,7 +350,7 @@ result of the firing kind's declared shape and lets the surrounding SDD skeleton
 proceed exactly as if nothing were attached) in any of these cases:
 
 1. the `## Capabilities` registry is **empty or absent** (zero rows to iterate), **or**
-2. a registry row's manifest at `<path>/manifest.md` does **not exist** — including a plugin-anchored `Path` whose `<plugin-name>` is **unmapped** in `## Plugin Roots`, **or** whose recorded root **dangles** and the port's install-manifest self-heal (§1) still recovers no readable manifest; either resolves to no readable manifest (fail-safe; the validator errors on it), **or**
+2. a registry row's manifest at `<path>/manifest.md` does **not exist** — including a plugin-anchored `Path` whose `<plugin-name>` is **unmapped** in `## Plugin Roots`, **or** whose recorded root **dangles** and the install-manifest self-heal (§1, which executes the port's `## Plugin Roots` algorithm) still recovers no readable manifest; either resolves to no readable manifest (fail-safe; the validator errors on it), **or**
 3. a manifest exists but has **no fragment row** for the firing phase, **or**
 4. a fragment row exists but its `dispatch` is neither `inline:` nor `subagent:` (a malformed or unrecognized kind — see fail-safe).
 
