@@ -69,7 +69,7 @@ Reach for `/wf:seed` when an architecture or design doc carries an action-items 
    - **Architecture Doc** absent **and** no `<doc>` argument → stop per `## Edge Cases` ("no doc resolved").
    - **Backlog Path** absent → use `{task-root}/BACKLOG.md`.
 2. **Resolve the doc.** `<doc>` argument if given, else the **Architecture Doc** key. Read it. If it can't be read (missing/unreadable), stop per `## Edge Cases`.
-3. **Resolve the backlog path** per the key/fallback above. Hold it; do not create it yet.
+3. **Resolve the backlog path** per the key/fallback above, then **defensively confirm it stays inside `_local/`** — it must be a repo-relative, forward-slash path under `{task-root}` with **no** `..` segment and **no** absolute/drive prefix (no leading `/`, no `C:`-style prefix). If it violates that shape, do **not** write to it: fall back to `{task-root}/BACKLOG.md` and flag the rejected value loudly in the report (mirrors `/wf:init`'s defensive `registryPath` check). This keeps the Safety Rule "writes only inside `_local/`" total even against a misconfigured **Backlog Path**. Hold the resolved path; do not create it yet.
 
 ---
 
@@ -78,7 +78,7 @@ Reach for `/wf:seed` when an architecture or design doc carries an action-items 
 Parse the doc's action-items checklist:
 
 1. Collect every Markdown task-list line — `- [ ]` or `- [x]` (any indent). Strip the checkbox marker; the remaining text is the **item text**.
-2. For each item, record its **section anchor**: the nearest preceding Markdown heading (`#`…`######`). That heading text is the `§ <section>` part of the item's ref — it exists in the doc, so the ref resolves.
+2. For each item, record its **section anchor**: the nearest preceding Markdown heading (`#`…`######`). That heading text is the `§ <section>` part of the item's ref — it exists in the doc, so the ref resolves. **If an item has no preceding heading** (it sits above the first heading, or the doc has none), its anchor is the **doc itself** — the `Refs:` line is `<doc-path>` with **no** `§ <section>` suffix, which still resolves (the doc exists).
 3. Capture any immediately-nested sub-bullets under an item as its context (for the entry description).
 
 **No task-list items found anywhere in the doc** → stop per `## Edge Cases` ("no checklist"). Write nothing.
@@ -99,7 +99,7 @@ This mirrors the local `T<NNN>` scheme `/wf:spec` mints when no id is passed (th
 
 ## Phase 4: Dedup and append
 
-1. **Dedup key** = the item's ref anchor (`<doc-path> § <section>`) **plus** its normalized title (the item text trimmed, inner whitespace collapsed, lowercased, truncated to the heading length below). For each existing backlog entry, derive the same key from its `**Refs:**` line and `### T<NNN>:` heading title.
+1. **Dedup key** = the item's ref anchor (`<doc-path> § <section>`, or `<doc-path>` alone for a pre-heading item) **plus** its normalized title — the item text **truncated to exactly 80 characters** (the same cap the entry heading uses, below), then trimmed, inner whitespace collapsed, and lowercased. Apply the truncation and normalization identically when deriving the key from an existing backlog entry's `**Refs:**` line and `### T<NNN>:` heading title, so the match is deterministic and the re-run is idempotent.
 2. **Skip** any item whose key already appears in the backlog — it was seeded on a prior run. **Stage** every unmatched item, minting the next id from Phase 3 in doc order.
 3. **Append.** If the backlog doesn't exist, create it with the header template, then append the staged entries. If it exists, append the staged entries **after the last existing entry**, preserving every existing byte. Never rewrite or reorder what's already there.
 
@@ -118,11 +118,11 @@ Every write stays inside `_local/`.
 ### Per-entry template (one per appended item)
 
 ```markdown
-### T<NNN>: <item title — item text, truncated to ~80 chars>
+### T<NNN>: <item title — item text, truncated to exactly 80 chars>
 
 **Type:** <task type per /wf:classify, or — to defer to /wf:spec>
 **Complexity:** <S | M | L | —>
-**Refs:** <doc-path> § <section heading>
+**Refs:** <doc-path> § <section heading>   (drop the "§ <section heading>" suffix when the item precedes any heading)
 **Seeded:** <YYYY-MM-DD> by <model identifier>
 
 <1–3 sentences from the item text and its sub-bullets — the context /wf:spec resolves.>
@@ -140,6 +140,8 @@ Set `Type`/`Complexity` only when the item text makes them obvious; otherwise wr
 - **Re-run with no new items:** append nothing; report `0 new (<M> already seeded)`. Existing entries stay byte-stable.
 - **`_local/config.md` absent:** stop and direct the user to `/wf:init` (Prerequisites).
 - **`## Seed` section or a key absent:** not an error — Architecture Doc absent falls through to the no-doc stop above (only when no `<doc>` was passed); Backlog Path absent falls back to `{task-root}/BACKLOG.md`.
+- **Backlog Path resolves outside `_local/`** (absolute, drive-prefixed, or containing a `..` segment): do **not** write there — fall back to `{task-root}/BACKLOG.md` and flag the rejected value in the report. The Safety Rule's "writes only inside `_local/`" is never violated by a misconfigured key.
+- **Item precedes any heading** (or the doc has no headings): its `Refs:` anchor is the doc path alone (no `§ <section>`), which still resolves — never a stop condition on its own.
 - **Backlog exists but has no parseable `### T<NNN>:` headings:** treat the backlog's id set as empty (mint from `{task-root}` folders alone), warn once, and still append — never clobber the existing file.
 
 ---
