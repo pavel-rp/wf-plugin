@@ -1,14 +1,14 @@
 ---
 name: qa-init
-description: Builds or refreshes a project QA-rules artifact under _local/ that /wf:qa-gen consumes at generation time. Does a bounded read-only scan that detects the project's own stack, risk, and environment signals and reflects them back, asks a domain-free questionnaire (risk areas, environment, severity, acceptance), writes the rules file with a project severity rubric, and sets the qa-rules config key to the artifact path. Re-runnable: update mode merges newly-derived rules while preserving manual edits. Use before /wf:qa-gen to give the QA plan project-specific severity and risk rules, or to refresh them as the project evolves.
+description: Builds or refreshes a project QA-rules artifact under _local/ for the QA family — /wf:qa-gen reads it at plan-generation time, and the QA report's severity rubric (defined in qa-gen's report-format reference, applied by the run-assistants when 07_qa-report.md is written) resolves from it. Does a bounded read-only scan that detects the project's own stack, risk, and environment signals and reflects them back, asks a domain-free questionnaire (risk areas, environment, severity, acceptance), writes the rules file with a project severity rubric, and sets the qa-rules config key to the artifact path. Re-runnable: update mode merges newly-derived rules while preserving manual edits. Use before /wf:qa-gen to give the QA flow project-specific severity and risk rules, or to refresh them as the project evolves.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
 # /wf:qa-init — Project QA-rules builder
 
-Build or refresh a project **QA-rules artifact** — the file `/wf:qa-gen` resolves the report's severity rubric from, and the home for the project's risk, environment, and acceptance rules. The skill does a bounded, read-only scan that **detects** the project's own signals and **reflects** them back (it names no fixed stack — the taxonomy is discovered at runtime, never enumerated), asks a domain-free questionnaire seeded by those signals, writes one artifact under `_local/`, and sets the `{qa-rules}` config key to its path.
+Build or refresh a project **QA-rules artifact** — the file the QA report's severity rubric resolves from, and the home for the project's risk, environment, and acceptance rules. `/wf:qa-gen` reads the pointer at plan-generation time; the rubric itself is applied when `07_qa-report.md` is written — by the run-assistants (`/wf:qa-run`, `/wf:qa-auto`) following `qa-gen`'s report-format reference. The skill does a bounded, read-only scan that **detects** the project's own signals and **reflects** them back (it names no fixed stack — the taxonomy is discovered at runtime, never enumerated), asks a domain-free questionnaire seeded by those signals, writes one artifact under `_local/`, and sets the `{qa-rules}` config key to its path.
 
-This is the **one mechanism** behind the `qa-rules` hook: `/wf:qa-init` writes the artifact and sets the pointer; `/wf:qa-gen` reads `{qa-rules}` and its report resolves the severity rubric from that same artifact. With `{qa-rules}` unset, qa-gen falls back to its built-in default — nothing breaks.
+This is the **one mechanism** behind the `qa-rules` hook: `/wf:qa-init` writes the artifact and sets the pointer; `/wf:qa-gen` reads `{qa-rules}`, and the report format it defines resolves the severity rubric from that same artifact when the report is written. With `{qa-rules}` unset, the report format falls back to its built-in default — nothing breaks.
 
 **Read-mostly authoring skill.** It reads the repo, writes exactly one artifact under `_local/`, and updates the config key (also under `_local/`). It never touches source, and update mode never clobbers manual edits.
 
@@ -127,7 +127,7 @@ Write to the resolved path (inside `_local/`). Use the template below; substitut
 
 ## Phase 5: Set the pointer
 
-Set the `{qa-rules}` key in `_local/config.md` to the artifact's repo-relative path (forward slashes). This is what makes qa-init's output and the `report-format.md` severity hook **one mechanism** — with the key set, `/wf:qa-gen` resolves the rubric from this artifact; with it unset, qa-gen uses its built-in default.
+Set the `{qa-rules}` key in `_local/config.md` to the artifact's repo-relative path (forward slashes). This is what makes qa-init's output and the `report-format.md` severity hook **one mechanism** — with the key set, the QA report's severity rubric resolves from this artifact; with it unset, the report format's built-in default applies.
 
 - If the key is already set to the same path, leave it as-is.
 - If it was `<none>` / absent, set it now.
@@ -144,7 +144,7 @@ Set the `{qa-rules}` key in `_local/config.md` to the artifact's repo-relative p
 **Updated:** <YYYY-MM-DD HH:mm>
 **Model:** <model identifier>
 
-Consumed by `/wf:qa-gen` (severity rubric) and read by the QA run-assistants. Hand-edit freely — `/wf:qa-init` update mode merges new rules without discarding your edits.
+Read by `/wf:qa-gen` via `{qa-rules}`; the severity rubric below is applied by the QA run-assistants when the QA report is written. Hand-edit freely — `/wf:qa-init` update mode merges new rules without discarding your edits.
 
 ---
 
@@ -178,7 +178,7 @@ Consumed by `/wf:qa-gen` (severity rubric) and read by the QA run-assistants. Ha
 
 ## Severity rubric
 
-The rubric `/wf:qa-gen` resolves for the report's Defects section when `{qa-rules}` points here.
+The rubric the QA report's Defects section resolves when `{qa-rules}` points here — defined by `qa-gen`'s report format, applied by the run-assistants when `07_qa-report.md` is written.
 
 - **High** — <this project's release-blocker bar — e.g. data correctness, auth, security>.
 - **Medium** — <important-flow / UX regression bar>.
