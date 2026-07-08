@@ -124,6 +124,9 @@ assert "delivery branch-changes single owner passes" pass-delivery-branch-change
 # WF-154: a capability attaches a `finding` at the new `pre-commit` self-review seam (the
 # commit-path injection point) — the new phase is recognized and the reused kind validates clean.
 assert "pre-commit finding seam passes" pass-precommit-review.md - 0 "Validation passed" "precommit-review"
+# WF-160: the REAL shipped sr capability (plugins/wf-caps/capabilities/sr) validates clean — its
+# one `pre-commit | finding | inline:` row and its `article: precommit-self-review` clause pass.
+assert "real sr capability passes" pass-sr.md - 0 "Validation passed" "sr"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
