@@ -4,14 +4,13 @@
 **Role:** the runtime-read half of the git delivery provider — every input, guard, error path, and outcome mapping a delivery operation follows. Read at every delivery-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, rationale, edge-case matrix — never read at boot):** `delivery.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = delivery`, reads this file, and follows it in-context. No subagent, no phase gate.
+**Model:** claude-opus-4-8
 
 **Probe convention:** every git/gh probe below is judged by **exit code**, not stderr text — exit 0 means the probed thing exists/succeeded, non-zero means it does not. stderr is informational and discarded unless an operation's `Output` says to surface it as a reason.
 
 **Consumes, never derives:** every operation takes an already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>`; composing those from a tracker work item is the caller's job, not this file's.
 
 **Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · last-commit-timestamp-query.
-
----
 
 ## branch-create
 
@@ -29,8 +28,6 @@
 
 **Output:** `<state>` (`created` | `switched` | `already-active`), `<base-source>` (`origin/<base>` | `<base>` | `already existed`), `<tracking>` (`origin/<branch-name>` | `local-only (push failed)` | `local-only (no remote)` | `local-only (no upstream)`).
 
----
-
 ## branch-switch
 
 **Inputs:** `<branch-name>` (already-resolved, required — must exist locally or on origin).
@@ -44,8 +41,6 @@
 5. **Tracking.** `git rev-parse --abbrev-ref --symbolic-full-name @{u}` (exit 0 → `<tracking>`; non-zero → `local-only (no upstream)`).
 
 **Output:** `<state>` = `switched`, `<tracking>`.
-
----
 
 ## commit
 
@@ -62,8 +57,6 @@
 
 **Output:** `<state>` (`committed` | `nothing-to-commit`); on `committed`, the diffstat summary.
 
----
-
 ## push-upstream
 
 **Inputs:** `<branch>` (optional; defaults to the current branch).
@@ -79,8 +72,6 @@
 5. **Map the outcome.** Exit 0 → `pushed (<remote>/<remote-branch>)` (or `up-to-date (<remote>/<remote-branch>)` when git reports nothing to push and that can be distinguished) on the has-upstream path, or `pushed (origin/<branch>)` on the bootstrap path. Non-zero → `failed (<short reason>)` — **non-fatal** to any prior commit; do not undo it.
 
 **Output:** `<state>` (`pushed` | `up-to-date` | `failed (<reason>)`).
-
----
 
 ## pr-create
 
@@ -100,8 +91,6 @@
 
 **Output:** `<state>` (`created` | `exists`), `<url>`.
 
----
-
 ## pr-detect
 
 **Inputs:** `<branch>` (optional; defaults to the current branch).
@@ -116,8 +105,6 @@
 
 **Output:** `<found>` (bool); on found, `<url>` + `<state>`.
 
----
-
 ## workspace-root-resolve (read)
 
 **Inputs:** none.
@@ -129,8 +116,6 @@
 
 **Output:** the absolute workspace root, or a plain environment error.
 
----
-
 ## current-branch-query (read)
 
 **Inputs:** none.
@@ -141,8 +126,6 @@
 2. The literal value `HEAD` is a **detached-HEAD signal**, not an error — return it as such. Otherwise return the branch name.
 
 **Output:** the current branch name, or the literal `HEAD` (detached-HEAD signal).
-
----
 
 ## last-commit-timestamp-query (read)
 
