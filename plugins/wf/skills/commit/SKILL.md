@@ -52,7 +52,7 @@ The subagent owns every stop condition; each surfaces through the Final Output b
 - **Commit failure** — `COMMIT — Error` with the delivery provider's reason; the `commit` operation returning a failure aborts.
 - **Push failure under `--push`** — non-fatal to the commit; the `Push:` line reads `failed (<reason>)` while the commit itself stays intact.
 - **Index update failure** — non-fatal; the commit still succeeds and ` (index update failed)` is appended to the `Push:` line.
-- **No delivery provider registered** — `COMMIT — Error`; the capability registry has no active `provider` row scoped to `delivery`. States plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`). No delivery operation is attempted.
+- **No readable delivery provider (two-mode diagnosis)** — `COMMIT — Error`; no delivery operation is attempted. The subagent splits the reason by cause: **(a) genuinely unconfigured** (every registered manifest is readable and none is scoped to `delivery`) — states plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`); **(b) registered-but-unrecoverable** (a registered capability's manifest can't be read — its recorded root dangled and the install-manifest self-heal recovered nothing) — names the unreadable-manifest pack(s) as hedged candidates ("if one is your `delivery` provider, fix its stale root / re-run its init"), never asserting one owns the surface and never telling you to register a provider you already have.
 
 ---
 

@@ -63,8 +63,8 @@ Every tracker operation below (`get`) is reached the same way, per `plugins/wf/s
 
 1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
 2. Select the row(s) where `contribution-kind = provider` **and** `scope = tracker`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
-4. **Zero matching rows** — no capability owns the `tracker` surface. This is the silent local-only fallback — no tracker operation is attempted; every step below proceeds from local artifacts alone.
+3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned). A plugin-anchored `Path` resolves through the self-heal home — `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal" (recorded-root-first, then the install-manifest self-heal) — so a dangling-but-recoverable recorded root self-heals in-memory and the `get` just works instead of silently dropping the fetch.
+4. **Zero readable rows** — no capability's `tracker` manifest could be read (genuinely unconfigured, or registered-but-unrecoverable after the self-heal). Either way this `get` is a **read**, so it stays silent local-only — no tracker operation is attempted, no residual message, no capability term surfaces; every step below proceeds from local artifacts alone.
 
 ### Direct provider resolution (how `current-branch-query` is reached)
 
@@ -105,7 +105,7 @@ Every delivery operation below (`current-branch-query`) is reached the same way,
 Skip if `00_reqs.md` already exists in the task folder.
 
 1. **Fetch the work item.** Invoke `get(<id>)` via direct provider resolution to the tracker surface (above).
-   - **Unconfigured tracker** (the scope-equality filter matches zero rows) — silent local-only fallback, no prompt, no error: continue to step 2 with no fetched data.
+   - **Unconfigured tracker** (the scope-equality filter matches zero rows), or a **registered-but-unrecoverable** tracker whose manifest couldn't be read after the self-heal — silent local-only fallback, no prompt, no error, no residual message (a `get` is a read): continue to step 2 with no fetched data.
    - **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before.
    - **Mid-run failure** (a tracker was registered but the `get` call errors) — warn once, naming the operation and the error, then continue local-only from whatever context is available. The tracker call itself never hard-stops the run; lite's own empty-description gate (step 2) still applies when no usable description results.
 
@@ -287,7 +287,7 @@ If verification fails, do not commit. Report the error, revert if isolatable, ad
 
 ## Edge Cases
 
-- **Tracker fetch outcome (configured / unconfigured / failed):** **Unconfigured** (no active tracker-surface owner) — silent local-only fallback, no prompt, no error; proceed to Phase 1 step 2 with no fetched data. **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before. **Configured but the `get` call fails mid-run** — warn once, naming the operation and the error, then continue local-only from whatever context is available. The tracker call itself never hard-stops the run; but with no usable description resulting (the unconfigured/failed case with no pre-existing `00_reqs.md`), the empty-description gate below still applies — see the next bullet.
+- **Tracker fetch outcome (configured / unconfigured / unrecoverable / failed):** **Unconfigured** (no active tracker-surface owner) — silent local-only fallback, no prompt, no error; proceed to Phase 1 step 2 with no fetched data. **Registered-but-unrecoverable** (a registered capability's manifest couldn't be read — recorded root dangled, self-heal recovered nothing) — the install-manifest self-heal recovers the root when it can, and the `get` just works; when it stays unrecoverable the `get` is a read, so it too stays silent local-only with no residual message. **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before. **Configured but the `get` call fails mid-run** — warn once, naming the operation and the error, then continue local-only from whatever context is available. The tracker call itself never hard-stops the run; but with no usable description resulting (the unconfigured/unrecoverable/failed case with no pre-existing `00_reqs.md`), the empty-description gate below still applies — see the next bullet.
 - **Empty/minimal description:** Stop. `/wf:lite` expects the child description to be self-contained. Direct the user to `/wf:spec {id}`. This gate is independent of tracker state — it fires on content, not on a tracker call.
 - **Full-flow artifacts already exist** (`01_spec.md` or `02_plan.md`): Stop. The task is already in the full flow — continue with `/wf:implement {id}` instead.
 - **`lite.md` already exists and has unchecked steps:** Resume from the first unchecked step. Do not re-fetch or re-explore. Skip straight to Phase 5.
