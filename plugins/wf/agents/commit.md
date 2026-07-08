@@ -47,7 +47,7 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 1. Determine the base branch: `main`, falling back to `master` if `main` doesn't exist in this repository.
 2. Count the commits already introduced on this branch since the base branch. Zero → this is the **first commit** on the branch (`<is-first>` = true). Otherwise `<is-first>` = false.
 
-## Step 4 — Short-circuit nothing-to-commit, else author the message and commit
+## Step 4 — Short-circuit nothing-to-commit, else author the message, fire the pre-commit self-review seam, and commit
 
 1. **No readable delivery provider — the two-mode residual diagnosis.** A write cannot proceed when **zero readable** `delivery` providers resolve — whether self-resolution's scope-equality filter (`provider` + `scope: delivery`) matched no row, **or** a consumed forwarded record marks the surface unconfigured/unrecoverable. Return `COMMIT — Error` immediately and attempt no delivery operation of any kind — skip message authoring entirely, there is nothing to commit it with; a delivery write surfaces the residual **loudly** (it blocks). Split the reason per the residual diagnosis in `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal" (`<S>` = `delivery`):
    - **(a) Genuinely unconfigured** — every registered manifest is readable and none is scoped to `delivery`: the unchanged plain message "No delivery provider is registered. Register a capability that owns the `delivery` surface (e.g. install and run `/wf-git:init`)."
@@ -68,7 +68,12 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 
    Assemble the full message as: subject line, blank line, then the bullets.
 
-5. **Invoke `commit(<message>, <staged>)`.** This single operation absorbs staging (unless `<staged>` is true), the nothing-to-commit check, and the actual commit.
+5. **Fire the pre-commit self-review seam.** With a real pending change confirmed (item 2 did not short-circuit) and immediately before the commit operation below, fire the `pre-commit` phase exactly as a core phase-firing skill fires a phase (`invocation-runtime.ops.md` §"The moving parts"): walk the `## Capabilities` registry already read at Step 1, collect every `finding` fragment attached at the `pre-commit` phase in registry order, dispatch each per its `dispatch` kind (passing the staged change set from item 3 as the artifact under review), and aggregate the returned findings provenance-tagged (`capability-registry.ops.md` §"The pre-commit self-review seam"). This firing is a **phase resolution**, independent of and additional to the forwarded `delivery` resolution record from the Provider-resolution section — it reads the registry for `finding` fragments only, and neither consumes nor alters that record. Never name, require, or assume any capability here; the only branch you may take is zero contributing fragments vs one or more.
+   - **Zero `pre-commit` fragments** (empty registry, or no capability attaches at `pre-commit`) → the phase **no-ops**: no finding surfaces and the commit proceeds **byte-identically to a core with no seam**. This is the inert-when-unregistered default; the seam adds nothing observable.
+   - **An aggregated finding that gates** (a blocking finding) → **do not commit**: return `COMMIT — Error` with the blocking finding's provenance and reason. Skip the commit operation entirely; the commit did not happen.
+   - **Aggregated findings that only annotate** (non-blocking) → proceed to the commit operation below; keep the annotations in your isolated reasoning — they never enter the commit message.
+
+6. **Invoke `commit(<message>, <staged>)`.** This single operation absorbs staging (unless `<staged>` is true), the nothing-to-commit check, and the actual commit.
    - `<state>` = `nothing-to-commit` → skip to **Step 5** on the nothing-to-commit path (honoring `push`).
    - `<state>` = `committed` → continue to Step 5, carrying forward the operation's returned diffstat summary — `<n> changed (+<a> -<d>)` — for the `Files:` line.
    - Any other failure → return `COMMIT — Error` with the operation's reason. The commit itself did not happen.
