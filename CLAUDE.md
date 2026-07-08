@@ -167,7 +167,7 @@ The current skills are v1-shaped. Their v2 homes:
 | Stays **core** (generic) | Extracts to a **capability** |
 |---|---|
 | `spec`, `plan`, `tasks` (new), `implement`, `run` | `migration-map` → `migration` (adapter): `verify` `finding` (1:1 audit of an *implemented* migration — not a `plan` artifact) |
-| `verify-spec`, `qa-init`, `qa-gen`, `qa-run`, `qa-followup` (orchestration only) | `rule-audit` parity logic → `migration`: `verify` `finding` + constitution `article`s |
+| `verify-spec`, `qa-init`, `qa-gen`, `qa-run`, `qa-followup`, `tt` (orchestration only — `tt` reads the change set via the `delivery` surface, aggregates `implement` `guidance`, and authors tests on a framework-agnostic discover-and-match default, baking no stack) | `rule-audit` parity logic → `migration`: `verify` `finding` + constitution `article`s |
 | `init`, `constitution` (new), `branch`, `commit`, `pr`, `tf` | parity-suite → `migration`: `qa-generation` `scenario` |
 | `classify`, `triage`, `index`, `lite`, `seed`, `standup` | `qa-auto` browser driving → `browser-qa` (feature): `qa-execution` `provider` |
 | | `qa-host`, `test-page` Angular scaffolding → an `angular` stack capability: `qa-execution` |
