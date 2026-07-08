@@ -54,13 +54,14 @@ Emit ONLY the fragment's final block, verbatim, as the very last thing, with no 
 it — your reasoning and any bulk evidence stay in your isolated context:
 
 ```
-RETROSPECTIVE — <composed | not-registered | needs-verify>
+RETROSPECTIVE — <composed | not-registered | needs-verify | error>
 
 {task-id}: composite <PASS | PASS WITH WARNINGS | FAIL | —>
 Evidence: <local-only | delivery: PR review + CI>
 Report: {task-root}/{task-id}/09_retrospective.md
 ```
 
+The `error` status is the fragment's declared fail-safe branch (see its degradation summary).
 You cannot prompt the user. Where you cannot proceed (config absent, or you cannot write the
 artifact at all), do NOT block silently — return `RETROSPECTIVE — error` with a one-sentence
 reason. Your caller greps the block — and checks for the `09_retrospective.md` file on disk — to
