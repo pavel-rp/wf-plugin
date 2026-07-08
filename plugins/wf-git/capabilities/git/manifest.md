@@ -1,11 +1,11 @@
 # git capability manifest
 
-**Version:** 1.1.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics; WF-179 — bind the last-commit-timestamp-query read operation, mirroring workspace-root-resolve/current-branch-query)
-**Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
-**Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" (v2.3.0)
+**Version:** 1.2.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics; WF-179 — bind the last-commit-timestamp-query read operation, mirroring workspace-root-resolve/current-branch-query; WF-211 — split the delivery fragment into a bounded runtime-ops half (`fragments/delivery.ops.md`) + a reference half (`fragments/delivery.md`), repoint the dispatch, and refresh the contract pointers to the reshaped ops docs)
+**Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
+**Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** git (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** both (ships its own `/wf-git:init` skill; also attaches one phase fragment via the registry)
-**Model:** claude-sonnet-5
+**Model:** claude-opus-4-8
 
 ---
 
@@ -41,19 +41,19 @@ core's identical prose coexist without tripping the check.
 ## Fragments
 
 Each row attaches one fragment to one phase, typed by the contribution taxonomy. The
-schema is the v2 shape fixed by `capability-registry.contract.md`:
+schema is the v2 shape fixed by `capability-registry.ops.md` §"Manifest schema v2":
 `phase | contribution-kind | dispatch | scope`. The inline path is forward-slash,
-**relative to this capability's registry path** (so `fragments/delivery.md` resolves to
-`plugins/wf-git/capabilities/git/fragments/delivery.md`). `scope` is required for
+**relative to this capability's registry path** (so `fragments/delivery.ops.md` resolves
+to `plugins/wf-git/capabilities/git/fragments/delivery.ops.md`). `scope` is required for
 partitioned kinds; `provider` carries a **`surface`** enum token.
 
-| phase     | contribution-kind | dispatch                       | scope    |
-|-----------|--------------------|--------------------------------|----------|
-| implement | provider           | `inline: fragments/delivery.md` | delivery |
+| phase     | contribution-kind | dispatch                            | scope    |
+|-----------|-------------------|-------------------------------------|----------|
+| implement | provider          | `inline: fragments/delivery.ops.md` | delivery |
 
 Read off the column:
 
-- **delivery** (`implement | provider | inline: fragments/delivery.md | delivery`) —
+- **delivery** (`implement | provider | inline: fragments/delivery.ops.md | delivery`) —
   the git/GitHub **delivery execution provider**. This row's `phase: implement` is a
   **registration-only anchor** for registry validation — the SDD phase where a
   delivery operation is actually exercised in practice (the tail of an
@@ -62,9 +62,11 @@ Read off the column:
   procedure via **direct provider resolution**: it selects the row(s) where
   `contribution-kind = provider AND scope = delivery`, across the whole registry,
   regardless of that row's `phase` value, then dispatches per the row's `dispatch`
-  kind (here, `inline:` — read `fragments/delivery.md` and follow it in-context; no
-  subagent is spawned). See `invocation-runtime.contract.md` §"Direct provider
-  resolution" for the full procedure this reuses.
+  kind (here, `inline:` — read `fragments/delivery.ops.md`, the bounded runtime-ops
+  half, and follow it in-context; its rationale and edge-case reference is
+  `fragments/delivery.md`, never read at boot; no subagent is spawned). See
+  `invocation-runtime.ops.md` §"Direct provider resolution" for the full procedure this
+  reuses.
 
 `provider` is a **partitioned** kind: only the capability owning `surface: delivery`
 applies. Two capabilities claiming the same surface is a registry-validation error;
@@ -111,4 +113,4 @@ by hand:
 `delivery` surface dispatches branch/commit/push/PR operations to this capability's
 fragment; with no `delivery` provider registered, reads fall back silently to a
 plain-directory resolution and writes state plainly that no delivery provider is
-registered, per `capability-registry.contract.md` §"The delivery provider surface".
+registered, per `capability-registry.ops.md` §"The delivery provider surface".
