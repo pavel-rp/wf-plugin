@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.6.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half)
+**Version:** 2.7.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -410,14 +410,26 @@ already use — not a parallel mechanism.
 exemption.** A capability owning the `delivery` surface implements:
 
 - **Write side:** `branch-create`, `branch-switch`, `commit`, `push-upstream`,
-  `pr-create`, `pr-detect`.
-- **Read side**, consumed by core (e.g. for id inference): `workspace-root-resolve`,
-  `current-branch-query`, `last-commit-timestamp-query`.
+  `pr-create`, `pr-detect`, `pr-comment-post`, `review-thread-resolve`,
+  `pr-merge`.
+- **Read side**, consumed by core (e.g. for id inference and standup):
+  `workspace-root-resolve`, `current-branch-query`,
+  `last-commit-timestamp-query`, `pr-comments-read`, `checks-read`,
+  `activity-read`.
+
+The six operations added for the coupled PR-review, merge, and standup features
+(the Wave-4 opener) extend — never reshape — the same partitioned surface, each
+named abstractly: `pr-comment-post` posts a review comment on a pull request;
+`pr-comments-read` reads the review comments on one; `review-thread-resolve`
+marks a review thread resolved; `checks-read` reads a pull request's check
+results; `pr-merge` merges a pull request; and `activity-read` reads recent
+delivery activity (commits and pull requests) for a standup summary.
 
 No operation name, and no prose describing it, may contain a git/gh command
-string or a plumbing invocation. "Branch", "commit", "deliver", and "workspace
-root" are abstract vocabulary, not hits — a capability's own manifest and
-fragment prose is where any concrete tool binds to these names.
+string or a plumbing invocation. "Branch", "commit", "deliver", "workspace
+root", "review comment", "check", "merge", and "activity" are abstract
+vocabulary, not hits — a capability's own manifest and fragment prose is where
+any concrete tool binds to these names.
 
 **Phase anchor — registration only, not a firing gate.** A `delivery`-surface
 `provider` fragment is attached at the `implement` phase (the SDD phase where a
@@ -450,11 +462,15 @@ whichever provider or bare-core path resolves it.
 **Unconfigured-provider behaviour.**
 
 - **Reads** (`workspace-root-resolve`, `current-branch-query`,
-  `last-commit-timestamp-query`) fall back **silently** to the plain-directory
-  path — no error, no warning. A read operation always resolves to *something*
-  usable.
+  `last-commit-timestamp-query`, `pr-comments-read`, `checks-read`,
+  `activity-read`) fall back **silently** — no error, no warning. A read
+  operation always resolves to *something* usable: the first three via the
+  plain-directory path (below); `pr-comments-read`, `checks-read`, and
+  `activity-read` to an **empty result** (no review-comment, check, or
+  recent-activity context exists outside a delivery provider).
 - A **write** operation (`branch-create`, `commit`, `push-upstream`, `pr-create`,
-  …) invoked by a user-initiated skill with **no** `delivery`-surface owner active
+  `pr-comment-post`, `review-thread-resolve`, `pr-merge`, …) invoked by a
+  user-initiated skill with **no** `delivery`-surface owner active
   states **plainly** that no delivery provider is registered and **names the
   remedy** (register a capability that owns the `delivery` surface in the
   `## Capabilities` registry) — it does not fail silently or guess a fallback. That
@@ -467,14 +483,17 @@ whichever provider or bare-core path resolves it.
   install-manifest self-heal" (`## Plugin Roots`).
 
 **Single-shot-publish idempotency.** A delivery operation whose result is an
-id or URL (`pr-create` is the canonical case) has that returned id/URL
-**recorded as a metadata line in the local artifact that triggered it** — the
-same `**<label>:** <value>` metadata-line shape used elsewhere for per-artifact
-attribution (e.g. a model-attribution line). Before invoking that operation
-again for the same artifact, the caller **reads the metadata line back first**;
-a present value means the operation already ran and is treated as
-already-published — it is never re-invoked. This is the caller-side idempotency
-guard for an operation whose provider has no idempotency of its own.
+id or URL (`pr-create` is the canonical case; `pr-comment-post` is the second —
+its returned comment URL) has that returned id/URL **recorded as a metadata line
+in the local artifact that triggered it** — the same `**<label>:** <value>`
+metadata-line shape used elsewhere for per-artifact attribution (e.g. a
+model-attribution line). Before invoking that operation again for the same
+artifact, the caller **reads the metadata line back first**; a present value
+means the operation already ran and is treated as already-published — it is
+never re-invoked. This is the caller-side idempotency guard for an operation
+whose provider has no idempotency of its own. `pr-merge` needs no such recorded
+line: it guards by **detect-first** — a pull request already merged is a
+detectable no-op, so re-invoking it never double-merges.
 
 ---
 
