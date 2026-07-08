@@ -84,7 +84,9 @@ The capability owning `surface = delivery` implements — abstract names; zero g
 ## The tracker provider surface
 
 The capability owning `surface = tracker` implements — abstract names; zero tracker-product strings:
-`resolve_config`, `create_umbrella`, `create_child`, `update`, `get`, `list_children`, `post_comment`, `set_status`, `attach_link`.
+`resolve_config`, `create_umbrella`, `create_child`, `update`, `get`, `list_children`, `post_comment`, `set_status`, `attach_link`, `list_by_status`, `list_milestones`, `list_cycles`.
+
+**Query operations** (`list_by_status`, `list_milestones`, `list_cycles`) are read-only enumerations of the active tracker's own records — work items in a named workflow status, the milestones of a scope, the cycles (time-boxed iterations) of a scope. Each **consumes** an already-resolved status name / scope, never derives one, and performs no write. They inherit the degradation rules below unchanged: an **unconfigured** tracker yields an **empty result** — silent local-only, no prompt, no error (a read never warns); a **mid-run** failure after a tracker was configured **warns once** (naming the failing operation and the error) and continues local-only. They add nothing to the id-shape rule.
 
 **Id shape:** the active tracker supplies the task-id shape. With **no** tracker owner, core uses its local scheme `T<NNN>`: scan `{task-root}` for existing `T<NNN>`-prefixed task folders anywhere under it, take the highest number, increment by one, zero-pad to 3 digits — no tracker call at all.
 
