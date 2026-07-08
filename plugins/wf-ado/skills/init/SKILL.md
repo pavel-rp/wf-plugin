@@ -1,6 +1,6 @@
 ---
 name: init
-description: Onboards the wf-ado pack into a wf-initialized repo in one command — registers the pack's ado capability into the wf capability registry as a plugin-anchored row, records the pack's install root so core can resolve it, and interviews for (or carries forward) the Azure DevOps organization/project already recorded by /wf:init. Use once (after /wf:init) to activate ADO tracker binding without hand-editing _local/config.md; re-run to update after a pack upgrade.
+description: Onboards the wf-ado pack into a wf-initialized repo in one command — registers the pack's ado capability into the wf capability registry as a plugin-anchored row, records the pack's install root so core can resolve it, and interviews for (or carries forward) the Azure DevOps organization/project already recorded by /wf:init. Use once (after /wf:init) to activate ADO tracker binding without hand-editing _local/config.md; upgrades self-heal, so re-run only if resolution reports the pack unrecoverable or after relocating the pack.
 allowed-tools: [Read, Write, Edit, Bash]
 ---
 
@@ -204,14 +204,20 @@ still a placeholder.
 
 ## Phase 5: Self-check (the one in-repo runtime assertion)
 
-Resolve `ado` the way core will, to prove the wiring end-to-end:
+Resolve `ado` **the way core will** — including self-heal — to prove the wiring
+end-to-end. Follow `plugins/wf/skills/_contracts/capability-registry.ops.md`
+§"Recorded-root-first resolution with install-manifest self-heal" for the resolution
+steps; do not restate the algorithm here.
 
-1. Read the `## Plugin Roots` row for `wf-ado`; take its `Root`.
-2. Join `Root` + `/capabilities/ado` and confirm `<that>/manifest.md` is readable, and
-   that it equals `<pack-root>/capabilities/ado/manifest.md`.
-3. Record `PASS` (resolves + manifest readable) or `FAIL` (with the path that didn't
-   resolve) for the Final Output. A `FAIL` means the recorded root and the registry row
-   disagree — surface it loudly; do not report success.
+1. Resolve `plugin:wf-ado/capabilities/ado` per that section: the recorded `## Plugin
+   Roots` root first, then — if that root dangles — the install-manifest fallback.
+2. Record `PASS` when resolution yields a readable `manifest.md` by **either** route — a
+   recovered-via-fallback root counts as PASS, since a recorded root that went stale
+   after an upgrade is expected and self-heals, not a failure. Record `FAIL` only when
+   the pack is **unrecoverable** (neither route yields a readable manifest — the ops-doc
+   step-3 case).
+3. A `FAIL` means the pack is unrecoverable — surface it loudly and direct the user to
+   re-run `/wf-ado:init` (or fix a relocated pack); do not report success.
 
 ---
 
@@ -255,9 +261,9 @@ Azure DevOps:
 - ADO Organization    — <carried forward | set to <value>>
 - ADO Project         — <carried forward | set to <value>>
 - Work Item ID Prefix — <carried forward | set to <value>>
-Self-check: <PASS — plugin:wf-ado/capabilities/ado resolves | FAIL — <what didn't resolve>>
+Self-check: <PASS — plugin:wf-ado/capabilities/ado resolves (recorded root or self-heal) | FAIL — pack unrecoverable: <what didn't resolve>>
 
-Next: run any wf skill that needs the tracker (e.g. /wf:spec, /wf:lite, /wf:triage) — core resolves the ado capability for the tracker surface directly (no phase-firing gate). Re-run /wf-ado:init after a pack upgrade to refresh the install root.
+Next: run any wf skill that needs the tracker (e.g. /wf:spec, /wf:lite, /wf:triage) — core resolves the ado capability for the tracker surface directly (no phase-firing gate). Upgrades self-heal — re-run /wf-ado:init only if resolution reports the pack unrecoverable, or after relocating the pack.
 ```
 
 **The final-output block must always be the very last thing output to chat.**
