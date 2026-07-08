@@ -1,6 +1,6 @@
 # Capability registry — runtime ops
 
-**Version:** 1.1.0 (WF-200)
+**Version:** 1.2.0 (WF-200; WF-157 — delivery surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`)
 **Role:** the runtime-read half of the v2 core↔capability port — every schema, guard, error path, outcome mapping, and degradation rule a running skill follows. Self-sufficient at one level: no step below requires opening any further file.
 **Pair (flat sibling, read directly when needed):** `invocation-runtime.ops.md` — the phase-firing / provider-resolution procedure.
 **Reference (rationale, history, authoring guidance, validation detail — never read at boot):** `capability-registry.contract.md`.
@@ -71,15 +71,15 @@ Partition overlap — the same `surface` token or `source→target` pair claimed
 
 The capability owning `surface = delivery` implements — abstract names; zero git/gh command strings anywhere in core or in these names:
 
-- **Write side:** `branch-create`, `branch-switch`, `commit`, `push-upstream`, `pr-create`, `pr-detect`.
-- **Read side:** `workspace-root-resolve`, `current-branch-query`, `last-commit-timestamp-query`.
+- **Write side:** `branch-create`, `branch-switch`, `commit`, `push-upstream`, `pr-create`, `pr-detect`, `pr-comment-post`, `review-thread-resolve`, `pr-merge`.
+- **Read side:** `workspace-root-resolve`, `current-branch-query`, `last-commit-timestamp-query`, `pr-comments-read`, `checks-read`, `activity-read`.
 
 **Unconfigured (no `delivery` owner registered):**
 
-- **Reads fall back silently** — no error, no warning; a read always resolves to something usable. `workspace-root-resolve` → the workspace root as a **plain directory**, no VCS invocation (this is how core locates `wf.config.js` and `_local/` in bare-core mode — defined behaviour, not degradation). `last-commit-timestamp-query` → a plain-directory-safe filesystem read (no specific algorithm mandated).
-- **Writes state plainly** that no delivery provider is registered and **name the remedy** (register a capability owning the `delivery` surface) — never silent, never a guessed fallback. When zero readable providers is instead case (b) above, surface the registered-but-unrecoverable diagnosis **loudly**.
+- **Reads fall back silently** — no error, no warning; a read always resolves to something usable. `workspace-root-resolve` → the workspace root as a **plain directory**, no VCS invocation (this is how core locates `wf.config.js` and `_local/` in bare-core mode — defined behaviour, not degradation). `last-commit-timestamp-query` → a plain-directory-safe filesystem read (no specific algorithm mandated). `pr-comments-read`, `checks-read`, and `activity-read` → an **empty result** (no review-comment, check, or recent-activity context exists outside a delivery provider) — no error, no warning.
+- **Writes state plainly** that no delivery provider is registered and **name the remedy** (register a capability owning the `delivery` surface) — never silent, never a guessed fallback. This governs every write above, the new `pr-comment-post` / `review-thread-resolve` / `pr-merge` included. When zero readable providers is instead case (b) above, surface the registered-but-unrecoverable diagnosis **loudly**.
 
-**Single-shot-publish idempotency:** an operation returning an id/URL (`pr-create` canonical) records it as a `**<label>:** <value>` metadata line in the local artifact that triggered it; before re-invoking for the same artifact, the caller **reads that line back first** — a present value means already-published, never re-invoke.
+**Single-shot-publish idempotency:** an operation returning an id/URL (`pr-create` canonical; `pr-comment-post` likewise) records it as a `**<label>:** <value>` metadata line in the local artifact that triggered it; before re-invoking for the same artifact, the caller **reads that line back first** — a present value means already-published, never re-invoke. `pr-merge` guards instead by detect-first: a PR already merged is a no-op, never re-merged.
 
 ## The tracker provider surface
 

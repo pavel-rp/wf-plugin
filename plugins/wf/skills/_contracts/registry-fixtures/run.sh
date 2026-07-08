@@ -104,6 +104,9 @@ assert "plugin-anchored resolves passes" pass-plugin-anchored.md - 0 "Validation
 # fragment at `implement`, scope `delivery`) validates clean — CHECK 5 is already
 # phase-agnostic, so this exercises the existing overlap check with no code change.
 assert "delivery surface single owner passes" pass-delivery.md - 0 "Validation passed"
+# WF-157: the extended delivery provider composes with a tracker provider and a
+# qa-execution engine provider in one registry — three distinct surfaces, clean.
+assert "delivery composes with tracker + engine passes" pass-delivery-multi-surface.md - 0 "Validation passed" "delivery-owner" "tracker-owner" "engine-owner"
 # WF-121: a single capability owning the tracker provider surface (a `provider`
 # fragment at `spec`, scope `tracker`) validates clean — same phase-agnostic CHECK 5
 # path as delivery, exercised with a second surface token and a second phase.
@@ -125,6 +128,9 @@ assert "provider overlap named"       fail-provider-overlap.md - 1 "engine-owner
 assert "artifact overlap named"       fail-artifact-overlap.md - 1 "artifact-owner" "artifact-owner-2" "csharp→ts"
 # WF-120: two capabilities both claiming the delivery provider surface, both named.
 assert "delivery overlap named"       fail-delivery-overlap.md - 1 "delivery-owner" "delivery-owner-2" "delivery" "must not overlap"
+# WF-157: two delivery owners at DIFFERENT phases (implement vs spec) still overlap —
+# surface uniqueness is phase-agnostic; both named.
+assert "delivery overlap across phases named" fail-delivery-overlap-phases.md - 1 "delivery-owner" "delivery-owner-spec" "delivery" "must not overlap"
 # WF-121: two capabilities both claiming the tracker provider surface, both named.
 assert "tracker overlap named"        fail-tracker-overlap.md  - 1 "tracker-owner" "tracker-owner-2" "tracker" "must not overlap"
 # WF-136: the tracker contract's two independent provider bindings (ado, linear)

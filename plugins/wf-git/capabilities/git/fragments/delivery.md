@@ -151,6 +151,68 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   environment error for a registered provider — distinct from core's no-provider
   filesystem-read fallback.
 
+## pr-comments-read (read)
+
+- **Not-found is an empty result, not an error.** A branch with no open PR yields
+  an empty comment list (the read-side "always resolves to something usable"
+  guarantee); only a `gh` authentication failure is surfaced, naming the
+  `gh auth login` remedy — the same split as `pr-detect`.
+- **Both comment surfaces in one read.** PR-level / review-summary comments and
+  inline review-thread comments are distinct GitHub surfaces; reading both and
+  merging them hands the caller the whole review conversation, not half of it.
+
+## pr-comment-post
+
+- **PR-existence guard before posting (via `pr-detect`).** Posting to a branch
+  with no PR is meaningless; detecting first turns an opaque failure into the
+  specific "no open PR to comment on" error.
+- **Body via a `.git/`-internal scratch file.** Same rationale as `commit` /
+  `pr-create` — a rich, multi-line comment body survives intact and never
+  dirties the worktree.
+- **`<reply-to>` threads the reply.** A plain PR comment and a reply within an
+  existing review thread are different endpoints; `<reply-to>` routes to the
+  reply API so a review conversation stays threaded.
+- **Returned URL is the idempotency handle.** The posted comment's URL is
+  recorded by the caller as a metadata line and read back before re-invoke
+  (contract single-shot-publish), so a re-run never double-posts.
+
+## checks-read (read)
+
+- **Not-found / no-checks is an empty result.** A branch with no PR, or a PR
+  with no configured checks, yields an empty check list — not an error; only a
+  `gh` authentication failure is surfaced with the `gh auth login` remedy.
+
+## review-thread-resolve
+
+- **GraphQL, because REST has no resolve endpoint.** Resolving a review thread is
+  exposed only through the `resolveReviewThread` GraphQL mutation, so the
+  operation consumes a GraphQL thread **node id** (not a REST comment id) — the
+  caller supplies the already-resolved id.
+
+## pr-merge
+
+- **Detect-first idempotency (step 2).** A PR already `MERGED` is a no-op
+  returning `already-merged` — re-invoking `pr-merge` never double-merges. This
+  is the write-side analogue of `pr-create`'s existing-PR short-circuit; unlike
+  `pr-create`, no recorded metadata line is needed because the merged state is
+  itself detectable.
+- **Method is caller-chosen (consume, never derive).** `merge` / `squash` /
+  `rebase` is a policy the caller decides; the operation consumes it (defaulting
+  to `squash`) rather than baking a merge strategy into the provider.
+- **Merge-blockers surface verbatim.** Failing required checks, unresolved
+  conversations, or a not-mergeable state come back as `gh`'s own reason, so the
+  caller sees exactly why a merge was refused.
+
+## activity-read (read)
+
+- **Harmless degrade over hard error (standup must never block).** Unlike
+  `last-commit-timestamp-query`, a not-a-git-tree or unauthenticated-`gh` failure
+  yields an **empty** commit / PR list rather than an environment error — a
+  standup summary degrades to "no activity" and never blocks.
+- **Two streams, one view.** Recent commits (`git log --since`) and recent pull
+  requests (`gh pr list --search updated`) are independent sources; merging them
+  gives the standup a single recent-activity view.
+
 ---
 
 ## Edge cases reproduced
@@ -168,10 +230,19 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
 - **Detached HEAD** — `branch-create` step 1, `branch-switch` step 1, `commit` step 1,
   `push-upstream` step 1, `pr-detect` step 1, `pr-create` step 1 (the last three via
   `current-branch-query` when the branch input is omitted).
-- **`gh`-not-authenticated** — `pr-create` step 3, `pr-detect` step 2 (both name the
-  `gh auth login` remedy).
+- **`gh`-not-authenticated** — `pr-create` step 3, `pr-detect` step 2,
+  `pr-comments-read` step 2, `checks-read` step 2, `pr-comment-post` step 4,
+  `review-thread-resolve` step 1, `pr-merge` step 2 (all name the `gh auth login`
+  remedy). `activity-read` is the exception — it degrades an unauthenticated `gh`
+  to an empty PR list rather than erroring.
 - **No commits / not a git working tree** — `last-commit-timestamp-query` step 2 (plain
-  environment error, distinct from core's no-provider fallback).
+  environment error, distinct from core's no-provider fallback); `activity-read`
+  step 1 degrades the same condition to an empty commit list instead.
+- **No open PR (read side)** — `pr-comments-read` step 2, `checks-read` step 2 (a
+  valid empty result, never an error — the read-side "always resolves to
+  something usable" guarantee).
+- **Already-merged PR** — `pr-merge` step 2 (`already-merged` no-op, never a
+  double-merge — the detect-first idempotency).
 
 Two further behaviours are preserved by the guard coverage above rather than as matrix
 rows: **nothing-to-commit** (`commit` step 3, a valid no-op) and the **no-provider

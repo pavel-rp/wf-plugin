@@ -1,6 +1,6 @@
 # git delivery provider — runtime ops
 
-**Version:** 1.2.0 (WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation)
+**Version:** 1.3.0 (WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`)
 **Role:** the runtime-read half of the git delivery provider — every input, guard, error path, and outcome mapping a delivery operation follows. Read at every delivery-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, rationale, edge-case matrix — never read at boot):** `delivery.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = delivery`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -10,7 +10,7 @@
 
 **Consumes, never derives:** every operation takes an already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>`; composing those from a tracker work item is the caller's job, not this file's.
 
-**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · last-commit-timestamp-query.
+**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · last-commit-timestamp-query · pr-comments-read · pr-comment-post · checks-read · review-thread-resolve · pr-merge · activity-read.
 
 ## branch-create
 
@@ -137,3 +137,79 @@
 2. Success → the timestamp. Failure (no commits yet, or not inside a git working tree) → a genuine **environment error** to surface plainly — distinct from core's no-provider fallback, which this file does not implement.
 
 **Output:** the last commit's timestamp, or a plain environment error.
+
+## pr-comments-read (read)
+
+**Inputs:** `<branch>` (optional; defaults to the current branch).
+
+**Procedure:**
+
+1. **Resolve `<branch>` if omitted.** Run `current-branch-query`; its `HEAD` signal → no branch context → return an **empty result** (no PR to read comments from).
+2. **Resolve the PR number.** `gh pr view <branch> --json number` — `gh` authentication error → error: "`gh` is not authenticated. Run `gh auth login`." No open PR → a valid **empty result**, not an error.
+3. **Read the comments in one pass.** `gh pr view <branch> --json comments,reviews` for the PR-level and review-summary comments, and `gh api repos/{owner}/{repo}/pulls/<number>/comments --paginate` for the inline review-thread comments. Discard nothing; merge both into one list.
+
+**Output:** the review comments (author, body, and thread/anchor where present), or an empty list.
+
+## pr-comment-post
+
+**Inputs:** `<body>` (already-composed, required). `<branch>` (optional; defaults to the current branch). `<reply-to>` (optional; a review-thread/comment id to reply within an existing thread).
+
+**Procedure:**
+
+1. **Resolve `<branch>` if omitted.** Run `current-branch-query`; its `HEAD` signal → error: "Detached HEAD; no branch to comment on."
+2. **Ensure a PR exists.** Run `pr-detect` for `<branch>`; not found → error: "No open PR for `<branch>` to comment on."
+3. **Body file.** Write `<body>` to `.git/WF_PRCOMMENT` (inside `.git/`, never tracked).
+4. **Post.** No `<reply-to>` → `gh pr comment <branch> --body-file .git/WF_PRCOMMENT`. With `<reply-to>` → `gh api repos/{owner}/{repo}/pulls/<number>/comments --field body=@.git/WF_PRCOMMENT --field in_reply_to=<reply-to>` (a threaded reply). Non-zero → error with `gh`'s reason. Remove the scratch file regardless of outcome (best effort).
+5. **Capture** the posted comment's URL from `gh`'s output.
+
+**Output:** `<state>` = `posted`, `<url>`.
+
+## checks-read (read)
+
+**Inputs:** `<branch>` (optional; defaults to the current branch).
+
+**Procedure:**
+
+1. **Resolve `<branch>` if omitted.** Run `current-branch-query`; its `HEAD` signal → return an **empty result** (no PR to read checks from).
+2. `gh pr checks <branch> --json name,state,bucket,link`.
+   - `gh` authentication error → error: "`gh` is not authenticated. Run `gh auth login`."
+   - No open PR, or no checks configured → a valid **empty result** (no checks), not an error.
+
+**Output:** the checks (name, state, link), or an empty list.
+
+## review-thread-resolve
+
+**Inputs:** `<thread-id>` (already-resolved review-thread node id, required — REST exposes no resolve endpoint, so the id is a GraphQL node id).
+
+**Procedure:**
+
+1. `gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' -F t=<thread-id>`.
+   - `gh` authentication error → error: "`gh` is not authenticated. Run `gh auth login`."
+   - Non-zero → error with `gh`'s reason (an unknown thread id, or one already resolved).
+
+**Output:** `<state>` = `resolved`.
+
+## pr-merge
+
+**Inputs:** `<branch>` (optional; defaults to the current branch). `<method>` (optional; `merge` | `squash` | `rebase`, default `squash`). `<delete-branch>` (optional bool, default false).
+
+**Procedure:**
+
+1. **Resolve `<branch>` if omitted.** Run `current-branch-query`; its `HEAD` signal → error: "Detached HEAD; no branch to merge a PR for."
+2. **Detect-first (idempotency).** `gh pr view <branch> --json url,state`. `gh` authentication error → error: "`gh` is not authenticated. Run `gh auth login`." State `MERGED` → valid no-op: `<state>` = `already-merged` with its URL, stop — **never** re-merge. No open PR → error: "No open PR for `<branch>` to merge."
+3. **Merge.** `gh pr merge <branch> --<method>` (from `<method>`), adding `--delete-branch` when `<delete-branch>` is true. Non-zero → error with `gh`'s reason (failing required checks, unresolved conversations, or a not-mergeable state — surface it).
+4. **Capture** the merged PR URL.
+
+**Output:** `<state>` (`merged` | `already-merged`), `<url>`.
+
+## activity-read (read)
+
+**Inputs:** `<since>` (optional; a git approxidate / duration window, default a recent window such as one day). `<limit>` (optional cap on pull requests).
+
+**Procedure:**
+
+1. **Recent commits.** `git log --since="<since>" --format=%h%x09%cd%x09%s` (reachable from HEAD). Not inside a git working tree → an **empty commit list** — a read never blocks a standup.
+2. **Recent pull requests.** `gh pr list --state all --limit <limit> --json number,title,state,updatedAt,url --search "updated:>=<since-date>"`. Any `gh` failure (unauthenticated, no remote) → an **empty PR list** — harmless degrade, never an error.
+3. **Merge** the two streams into a recent-activity view.
+
+**Output:** the recent commits + pull-request activity, or an empty result.

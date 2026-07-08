@@ -1,6 +1,6 @@
 # git capability manifest
 
-**Version:** 1.2.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics; WF-179 — bind the last-commit-timestamp-query read operation, mirroring workspace-root-resolve/current-branch-query; WF-211 — split the delivery fragment into a bounded runtime-ops half (`fragments/delivery.ops.md`) + a reference half (`fragments/delivery.md`), repoint the dispatch, and refresh the contract pointers to the reshaped ops docs)
+**Version:** 1.3.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics; WF-179 — bind the last-commit-timestamp-query read operation, mirroring workspace-root-resolve/current-branch-query; WF-211 — split the delivery fragment into a bounded runtime-ops half (`fragments/delivery.ops.md`) + a reference half (`fragments/delivery.md`), repoint the dispatch, and refresh the contract pointers to the reshaped ops docs; WF-157 — bind six PR-interaction/merge/activity operations in the delivery fragment: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** git (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -16,7 +16,9 @@ registry row in `_local/config.md`; it does not hardcode this path.
 
 git supplies the **delivery provider** — the concrete git/GitHub binding for every
 abstract delivery operation the capability-registry contract defines (branch, commit,
-push, pull-request write/read, plus the three read-side operations). It is the
+push, pull-request create/detect/comment/merge and review-thread resolution, plus the
+read-side workspace/branch/timestamp, PR-comment, CI-check, and recent-activity
+queries). It is the
 destination capability full-stack users register once core's own inline
 `branch`/`commit`/`pr` copy is later scrubbed (SUB-4, a separate task — not this one).
 It carries **zero** tracker-specific vocabulary: every operation consumes an
