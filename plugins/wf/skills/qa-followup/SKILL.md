@@ -52,12 +52,7 @@ Disambiguation: if a token contains a 3+-digit run, or exactly matches an existi
 
 ## Direct provider resolution (how `current-branch-query` and `last-commit-timestamp-query` are reached)
 
-Id inference, the Phase 2 branch gate, and the staleness check below all reach these operations the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section (qa-followup has no tracker-surface call site — it never fetches):
-
-1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
-2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
-4. **Zero matching rows** — no capability owns the `delivery` surface. Both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces.
+Id inference, the Phase 2 branch gate, and the staleness check below all reach `current-branch-query` and `last-commit-timestamp-query` by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces. (qa-followup has no tracker-surface call site — it never fetches.)
 
 ---
 
