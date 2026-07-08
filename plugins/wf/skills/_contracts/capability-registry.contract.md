@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.8.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`)
+**Version:** 2.9.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration))
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -414,8 +414,8 @@ exemption.** A capability owning the `delivery` surface implements:
   `pr-merge`.
 - **Read side**, consumed by core (e.g. for id inference and standup):
   `workspace-root-resolve`, `current-branch-query`,
-  `last-commit-timestamp-query`, `pr-comments-read`, `checks-read`,
-  `activity-read`.
+  `last-commit-timestamp-query`, `branch-changes-read`, `pr-comments-read`,
+  `checks-read`, `activity-read`.
 
 The six operations added for the coupled PR-review, merge, and standup features
 (the Wave-4 opener) extend — never reshape — the same partitioned surface, each
@@ -425,11 +425,20 @@ marks a review thread resolved; `checks-read` reads a pull request's check
 results; `pr-merge` merges a pull request; and `activity-read` reads recent
 delivery activity (commits and pull requests) for a standup summary.
 
+`branch-changes-read` (added later, again extending — never reshaping — the same
+partitioned surface) is the read operation that **enumerates what changed on the
+branch**: it returns the branch's changed-file set (the paths added, modified, or
+removed on the current branch relative to its base), so a core skill can learn
+which files a branch touched without any version-control vocabulary of its own.
+Like every read operation, it **consumes** an already-resolved branch context and
+takes no write; deriving that context (or a base ref) is the caller's job, not
+the operation's.
+
 No operation name, and no prose describing it, may contain a git/gh command
 string or a plumbing invocation. "Branch", "commit", "deliver", "workspace
-root", "review comment", "check", "merge", and "activity" are abstract
-vocabulary, not hits — a capability's own manifest and fragment prose is where
-any concrete tool binds to these names.
+root", "changes" / "changed files", "review comment", "check", "merge", and
+"activity" are abstract vocabulary, not hits — a capability's own manifest and
+fragment prose is where any concrete tool binds to these names.
 
 **Phase anchor — registration only, not a firing gate.** A `delivery`-surface
 `provider` fragment is attached at the `implement` phase (the SDD phase where a
@@ -459,15 +468,31 @@ not prescribe a specific algorithm (e.g. a directory's own modification time is
 illustrative only, not the mandated mechanism); the exact algorithm is left to
 whichever provider or bare-core path resolves it.
 
+**Branch-changes plain-directory-safe fallback.** When no active capability owns
+the `delivery` surface, `branch-changes-read` likewise resolves to a
+**plain-directory-safe filesystem read** — no VCS invocation of any kind — and
+falls back **silently** (no error, no warning), the same defined bare-core
+behaviour as `workspace-root-resolve` and `last-commit-timestamp-query`, not a
+degraded mode. As with those two, this contract does not prescribe a specific
+algorithm; the exact plain-directory enumeration is left to whichever bare-core
+path resolves it. This silent low-level fallback is deliberately **distinct**
+from a caller detecting that no delivery provider is registered: a core skill
+that must branch on provider presence (e.g. to decide whether a branch-scoped
+operation is meaningful) tests **surface ownership** in the `## Capabilities`
+registry separately — the two paths never conflate, so a silent read fallback
+never masks a caller's own provider-absence decision.
+
 **Unconfigured-provider behaviour.**
 
 - **Reads** (`workspace-root-resolve`, `current-branch-query`,
-  `last-commit-timestamp-query`, `pr-comments-read`, `checks-read`,
-  `activity-read`) fall back **silently** — no error, no warning. A read
-  operation always resolves to *something* usable: the first three via the
-  plain-directory path (below); `pr-comments-read`, `checks-read`, and
-  `activity-read` to an **empty result** (no review-comment, check, or
-  recent-activity context exists outside a delivery provider).
+  `last-commit-timestamp-query`, `branch-changes-read`, `pr-comments-read`,
+  `checks-read`, `activity-read`) fall back **silently** — no error, no warning.
+  A read operation always resolves to *something* usable: the first four via the
+  plain-directory path (below) — `branch-changes-read`'s own plain-directory-safe
+  read joins `workspace-root-resolve` and `last-commit-timestamp-query` here;
+  `pr-comments-read`, `checks-read`, and `activity-read` to an **empty result**
+  (no review-comment, check, or recent-activity context exists outside a delivery
+  provider).
 - A **write** operation (`branch-create`, `commit`, `push-upstream`, `pr-create`,
   `pr-comment-post`, `review-thread-resolve`, `pr-merge`, …) invoked by a
   user-initiated skill with **no** `delivery`-surface owner active
