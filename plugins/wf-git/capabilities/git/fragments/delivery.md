@@ -1,291 +1,179 @@
-# git capability — the `delivery` fragment
+# git capability — the `delivery` fragment (reference)
 
-**What this doc is:** an **inline reference doc**. A core skill reaches this file
-through **direct provider resolution** — it resolves the registry row where
-`contribution-kind = provider AND scope = delivery`, sees `dispatch: inline:
-fragments/delivery.md`, reads this file, and **follows it in-context**. No subagent is
-spawned; there is no phase-firing gate — any core skill, at any point in its own
-procedure, may invoke any operation below.
+**What this doc is:** the **reference half** of the git delivery provider — scope framing,
+per-operation rationale, and the edge-case regression matrix. It is **not read at a
+delivery-surface boot**; the runtime-read half is
+[`delivery.ops.md`](delivery.ops.md) (every input, guard, error path, and outcome
+mapping lives there). This file explains *why* those procedures are shaped as they are
+and serves as the regression checklist behind them.
 
-**Scope note:** this file is scoped to the git/gh **mechanics** of each operation only.
-Two concerns are explicitly **not** this file's job:
+**Model:** claude-opus-4-8
+
+---
+
+## How a core skill reaches this provider
+
+A core skill reaches the runtime-ops half through **direct provider resolution**: it
+resolves the registry row where `contribution-kind = provider AND scope = delivery`,
+sees `dispatch: inline: fragments/delivery.ops.md`, reads that file, and **follows it
+in-context**. No subagent is spawned; there is no phase-firing gate — any core skill, at
+any point in its own procedure, may invoke any operation. The full procedure this reuses
+is `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider
+resolution".
+
+## Scope
+
+The runtime-ops file is scoped to the git/gh **mechanics** of each operation only. Two
+concerns are explicitly **not** its job:
 
 - **Tracker-specific derivation** — composing a branch name from a work-item id and
-  title, composing a commit subject/PR title from a task's tracker record, or any
-  other value that depends on a tracker's id shape. Every operation below **consumes**
-  an already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>` — it never
+  title, composing a commit subject / PR title from a task's tracker record, or any
+  other value that depends on a tracker's id shape. Every operation **consumes** an
+  already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>` — it never
   derives one. That derivation is the caller's (core's) responsibility.
 - **The no-provider plain-directory fallback.** When no capability owns the `delivery`
   surface, `workspace-root-resolve` resolves as a plain directory and writes state
-  plainly that no delivery provider is registered — that is core's defined behaviour
-  for the unconfigured case, not a procedure this file implements.
+  plainly that no delivery provider is registered — that is core's defined behaviour for
+  the unconfigured case (see `capability-registry.ops.md` §"The delivery provider
+  surface"), not a procedure the ops file implements.
 
-Every git probe below relies on **exit codes**, not stderr text: exit 0 means the
-probed thing exists/succeeded; non-zero means it doesn't. The stderr message git or
+**Why exit codes, not stderr.** Every git probe relies on **exit codes**: exit 0 means
+the probed thing exists/succeeded; non-zero means it doesn't. The stderr message git or
 `gh` prints is informational only and is discarded unless an operation's `Output`
-explicitly says to surface it as an error reason.
+explicitly says to surface it as an error reason. This keeps the guards robust across git
+versions and locales, where stderr wording drifts but exit codes don't.
 
 ---
+
+## Per-operation rationale
+
+The runtime procedure for each operation is in [`delivery.ops.md`](delivery.ops.md); the
+notes below record the load-bearing choices behind them.
 
 ## branch-create
 
-**Inputs:** `<branch-name>` (already-resolved, required). `<base>` (optional; when
-omitted, determine it per the procedure below).
-
-**Procedure:**
-
-1. **Detached-HEAD guard.** `git rev-parse --abbrev-ref HEAD`. If the result equals
-   `HEAD` literally, return an error: "Detached HEAD; cannot create branches from this
-   state."
-2. **Already-on-target.** If the current branch already equals `<branch-name>`, this is
-   a valid no-op — set `<state>` = `already-active` and skip to step 8 (tracking).
-3. **Dirty-worktree guard.** `git status --porcelain`. Non-empty output → return an
-   error: "Uncommitted changes detected. Commit or stash before switching branches."
-4. **Existing branch of this exact name.** `git branch --list "<branch-name>"`. A match
-   → `git checkout <branch-name>`, set `<state>` = `switched`, `<base-source>` =
-   `already existed`, skip to step 8.
-5. **Determine the base.** If `<base>` was supplied, use it. Otherwise: `git rev-parse
-   --verify main` — exit 0 → `<base>` = `main`; non-zero → `<base>` = `master`. Discard
-   stderr either way.
-6. **Detect a remote and fetch.** `git remote get-url origin` — exit 0 → `<has-remote>`
-   = true, else false. When `<has-remote>` is true, `git fetch origin <base>`; a
-   non-zero exit here is a genuine error — return it: "Failed to fetch `<base>` from
-   origin." When `<has-remote>` is false, skip the fetch and branch from the local
-   base.
-7. **Create and switch.** With a remote: `git checkout -b <branch-name>
-   origin/<base>`, `<base-source>` = `origin/<base>`. Without one: `git checkout -b
-   <branch-name> <base>`, `<base-source>` = `<base>` (local). Set `<state>` =
-   `created`.
-8. **Tracking.** With a remote: `git push --set-upstream origin <branch-name>`. Exit 0
-   → `<tracking>` = `origin/<branch-name>`; non-zero (e.g. permissions) → `<tracking>`
-   = `local-only (push failed)` — the local branch is still valid; do **not** abort.
-   Without a remote: `<tracking>` = `local-only (no remote)`. For the `already-active`
-   / `switched` paths, instead derive `<tracking>` via `git rev-parse --abbrev-ref
-   --symbolic-full-name @{u}` (exit 0 → its output; non-zero → `local-only (no
-   upstream)`).
-
-**Output:** `<state>` (`created` | `switched` | `already-active`), `<base-source>`
-(`origin/<base>` | `<base>` | `already existed`), `<tracking>` (`origin/<branch-name>`
-| `local-only (push failed)` | `local-only (no remote)` | `local-only (no upstream)`).
-
----
+- **Detached-HEAD first (step 1).** Creating a branch from a detached HEAD silently
+  strands the new branch off no base; the guard refuses it up front.
+- **Already-on-target is a no-op, not an error (step 1).** Re-running `branch` for the
+  ticket you are already on must succeed idempotently, so the same current-branch probe
+  that detects detached HEAD also short-circuits to `already-active`.
+- **Dirty-worktree guard (step 2).** A checkout would carry uncommitted changes across
+  branches; refusing keeps the two branches' states clean.
+- **`main` → `master` base fallback (step 4).** Repos differ on the default trunk name;
+  probing `main` first and falling back to `master` covers both without configuration.
+- **Push-failure is non-fatal (step 7).** A permissions/network failure on the tracking
+  push must not discard a valid local branch — it degrades to `local-only (push failed)`.
 
 ## branch-switch
 
-**Inputs:** `<branch-name>` (already-resolved, required — must already exist locally or
-on the remote).
-
-**Procedure:**
-
-1. **Detached-HEAD guard** and **dirty-worktree guard**, identical to `branch-create`
-   steps 1 and 3.
-2. **Local match.** `git branch --list "<branch-name>"`. A match → `git checkout
-   <branch-name>`.
-3. **Remote-only match.** No local match → `git branch -r --list "origin/<branch-name>"`.
-   A match → `git checkout -t origin/<branch-name>` (creates the local branch tracking
-   the remote one).
-4. **Not found.** Neither a local nor a remote match → return an error: "Branch
-   `<branch-name>` does not exist locally or on origin."
-5. **Tracking.** `git rev-parse --abbrev-ref --symbolic-full-name @{u}` — exit 0 → its
-   output is `<tracking>`; non-zero → `local-only (no upstream)`.
-
-**Output:** `<state>` = `switched`, `<tracking>`.
-
----
+- **Same detached/dirty guards as branch-create (step 1).** Switching shares the two
+  preconditions that make a checkout safe.
+- **Local before remote-only (steps 2–3).** A local branch of the exact name wins; only
+  when none exists does a remote-only match create a tracking local branch via
+  `checkout -t`, so the operation works both for a branch that exists here and one that
+  only exists on origin.
 
 ## commit
 
-**Inputs:** `<message>` (already-authored, required). `<staged-only>` (optional bool,
-default false).
-
-**Procedure:**
-
-1. **Detached-HEAD guard**, identical to `branch-create` step 1 — commits require a
-   named branch.
-2. **Stage.** Unless `<staged-only>` is true, `git add -A`.
-3. **Nothing-to-commit check.** `git diff --staged --quiet`. Exit 0 (empty staged diff)
-   → this is a valid no-op, not an error — return `<state>` = `nothing-to-commit` and
-   stop here.
-4. **Write the message to a scratch file inside `.git/`** (never tracked, never dirties
-   the worktree) — e.g. `.git/WF_COMMITMSG`.
-5. `git commit -F <that file>`. Non-zero exit → return an error with the git failure
-   reason; remove the scratch file regardless of outcome (best effort).
-6. **Capture the stat.** `git show --stat --format= HEAD` (or `git diff --stat
-   HEAD~1 HEAD`) → a short "`<n>` changed (+`<a>` -`<d>`)" summary.
-
-**Output:** `<state>` (`committed` | `nothing-to-commit`), and on `committed` the
-short diffstat summary.
-
----
+- **Detached-HEAD guard (step 1).** A commit on a detached HEAD is unreachable by name;
+  commits require a named branch.
+- **Nothing-to-commit is a valid no-op (step 3).** An empty staged diff is not an error —
+  re-running `commit` with nothing new returns `nothing-to-commit` rather than failing.
+- **Message via a `.git/`-internal scratch file (steps 4–5).** Writing the message inside
+  `.git/` (never tracked) keeps multi-line and special-character messages intact without
+  ever dirtying the worktree.
 
 ## push-upstream
 
-**Inputs:** `<branch>` (optional; defaults to the current branch).
-
-**Procedure:**
-
-1. **Resolve `<branch>` if omitted.** Run `current-branch-query`. Its detached-HEAD
-   signal (the literal `HEAD`) → return an error: "Detached HEAD; no branch to push."
-   Otherwise use its result as `<branch>`.
-2. **Detect the configured upstream, scoped to `<branch>`** — via `git config`, never
-   the abbreviated `<branch>@{u}` ref (its remote and branch segments are joined by
-   `/` with no escaping, so it cannot be split back apart when a remote name or branch
-   name itself contains a `/`). Run `git config --get branch.<branch>.remote`.
-   - Non-zero exit (or empty output) → no upstream configured; skip to step 4.
-   - Output is the literal `.` → `<branch>` tracks another **local** branch, not a
-     remote — there is nothing to push upstream; return
-     `failed (tracks a local branch, not a remote)`.
-   - Otherwise → capture the output verbatim as `<remote>`, then run
-     `git config --get branch.<branch>.merge` and strip its `refs/heads/` prefix to
-     get `<remote-branch>`.
-3. **Push with an explicit two-sided refspec, scoped to `<branch>`.**
-   `git push <remote> <branch>:<remote-branch>`. Always name both sides explicitly —
-   **never** `git push <remote> <branch>` alone: when `<remote-branch>` differs from
-   `<branch>` (a real, supported git configuration), the same-name-only form silently
-   creates a *new* same-named branch on the remote while leaving the actually-tracked
-   branch stale, with exit 0 and no error surfaced. Skip to step 5.
-4. **No upstream configured — bootstrap to `origin`.**
-   `git push --set-upstream origin <branch>` (bootstrapping a new upstream still
-   defaults to `origin`, matching this capability's single-default-remote convention
-   elsewhere).
-5. **Map the outcome.** Exit 0 → `pushed (<remote>/<remote-branch>)` on the
-   has-upstream path (or `up-to-date (<remote>/<remote-branch>)` when git reports
-   nothing to push and that can be distinguished), or `pushed (origin/<branch>)` on
-   the bootstrap path. Non-zero → `failed (<short reason>)` — this failure is
-   **non-fatal** to any prior commit; do not undo it.
-
-**Output:** `<state>` (`pushed` | `up-to-date` | `failed (<reason>)`).
-
----
+- **Read the upstream from `git config`, in one probe (step 2).** The two values
+  (`branch.<b>.remote`, `branch.<b>.merge`) are read together with a single
+  `git config --get-regexp "^branch\.<branch>\.(remote|merge)$"` — a **probe
+  consolidation** (WF-211) that replaces the former two separate `git config --get`
+  reads with one, outcomes identical. The abbreviated `<branch>@{u}` ref is deliberately
+  **not** used: its remote and branch segments are joined by `/` with no escaping, so it
+  cannot be split back apart when a remote or branch name itself contains a `/`.
+- **Local-tracking branch (`remote == .`).** A branch tracking another local branch has
+  nothing to push upstream — returned as an explicit `failed (...)` rather than a
+  confusing push attempt.
+- **Explicit two-sided refspec (step 3).** `git push <remote> <branch>:<remote-branch>`
+  always names both sides. The same-name-only `git push <remote> <branch>` is unsafe:
+  when `<remote-branch>` differs from `<branch>` (a real, supported git configuration),
+  it silently creates a *new* same-named branch on the remote while leaving the tracked
+  branch stale, with exit 0 and no error surfaced.
+- **Push-failure is non-fatal (step 5).** A failed push never undoes a prior commit.
 
 ## pr-create
 
-**Inputs:** `<title>`, `<body>` (both already-composed, required). `<base>` (required).
-`<head>` (optional; defaults to the current branch). `<draft>` (optional bool, default
-false).
+- **Forward the resolved `<head>` into push-upstream (step 2).** pr-create resolves
+  `<head>` once (step 1) and passes it to `push-upstream`, so that operation does not
+  re-run `current-branch-query` — no redundant branch re-resolution across the two.
+- **Ensure-pushed before create (step 2).** An unpushed head yields an opaque
+  `gh pr create` failure; pushing first turns it into the specific "cannot open a PR for
+  an unpushed branch" error.
+- **Existing-PR short-circuit (step 3).** `gh pr view` before create is a **safety net**
+  against duplicate PRs; the *primary* guard is single-shot-publish idempotency below.
+- **Body via a `.git/`-internal scratch file (steps 4–5).** Same rationale as `commit`'s
+  message file — a rich PR body survives intact and never dirties the worktree.
 
-**Procedure:**
-
-1. **Resolve `<head>` if omitted.** Run `current-branch-query`. Its detached-HEAD
-   signal (the literal `HEAD`) → return an error: "Detached HEAD; no branch to open a
-   PR from." Otherwise use its result as `<head>`.
-2. **Ensure `<head>` is pushed.** Run `push-upstream` for `<head>` defensively — this is
-   idempotent even if the branch is already pushed. Check its returned `<state>`: on
-   `failed (<reason>)`, stop here and return an error — "Failed to push `<head>` —
-   cannot open a PR for an unpushed branch" — rather than letting an unpushed head fall
-   through to a less specific `gh pr create` failure in step 5.
-3. **Short-circuit on an existing PR.** `gh pr view <head> --json url,state`.
-   - `gh` errors with an authentication problem → return an error naming the remedy:
-     "`gh` is not authenticated. Run `gh auth login`."
-   - An open PR is found → return `<state>` = `exists` with its URL. **Never** create a
-     duplicate.
-   - Otherwise continue.
-4. **Write `<body>` to a scratch file inside `.git/`** (never tracked) — e.g.
-   `.git/WF_PRBODY`.
-5. `gh pr create --base <base> --head <head> --title "<title>" --body-file <that
-   file>`, adding `--draft` when `<draft>` is true. Non-zero exit → return an error
-   with the `gh` failure reason (surface an auth hint if relevant). Remove the scratch
-   file regardless of outcome (best effort).
-6. **Capture the created PR URL** from `gh`'s output. `<state>` = `created`.
-
-**Output:** `<state>` (`created` | `exists`), `<url>`.
-
-**Single-shot-publish idempotency (explicit).** This operation's own `gh pr view`
-check (step 3) is a **safety net**, not the primary guard. The *primary* guard is the
-caller: before invoking `pr-create` again for the same artifact, the caller reads back
-a `**PR:** <url>` metadata line already recorded in the artifact that triggered the
-first call. A present value means the operation already ran and must be treated as
+**Single-shot-publish idempotency (explicit).** This operation's own `gh pr view` check
+(step 3) is a **safety net**, not the primary guard. The *primary* guard is the caller:
+before invoking `pr-create` again for the same artifact, the caller reads back a
+`**PR:** <url>` metadata line already recorded in the artifact that triggered the first
+call. A present value means the operation already ran and must be treated as
 already-published — the caller never re-invokes `pr-create` for that artifact. This
 mirrors the contract's metadata-line attribution shape used elsewhere (e.g. model
-attribution).
-
----
+attribution). The same metadata-line shape is reused by the `tracker` surface's
+`create_umbrella` / `create_child`.
 
 ## pr-detect
 
-**Inputs:** `<branch>` (optional; defaults to the current branch).
-
-**Procedure:**
-
-1. **Resolve `<branch>` if omitted.** Run `current-branch-query`. Its detached-HEAD
-   signal (the literal `HEAD`) → return an error: "Detached HEAD; no branch to detect
-   a PR for." Otherwise use its result as `<branch>`.
-2. `gh pr view <branch> --json url,state`.
-   - `gh` errors with an authentication problem → return an error naming the remedy
-     ("`gh` is not authenticated. Run `gh auth login`.").
-   - Found → return the `<url>` and `<state>`.
-   - Not found → this is a **valid "no open PR" result**, not an error.
-
-**Output:** `<found>` (bool), and on found, `<url>` + `<state>`.
-
----
+- **Not-found is not an error (step 2).** A branch with no open PR is a valid result
+  (`<found>` = false), distinct from a `gh` authentication failure, which names the
+  `gh auth login` remedy.
 
 ## workspace-root-resolve (read)
 
-**Inputs:** none.
-
-**Procedure:**
-
-1. `git rev-parse --show-toplevel`.
-2. Success → return that absolute path.
-3. Failure (not inside a git working tree) — this is a genuine **environment error**
-   for a *registered* provider to surface plainly. This is explicitly distinct from
-   the contract's "no provider registered" plain-directory fallback, which is core's
-   own behaviour when the `delivery` surface has no owner at all — not something this
-   file implements.
-
-**Output:** the absolute workspace root, or a plain environment error.
-
----
+- **Failure is an environment error, not the no-provider fallback.** For a *registered*
+  provider, being outside a git working tree is a genuine environment error surfaced
+  plainly — explicitly distinct from core's own plain-directory resolution when the
+  `delivery` surface has no owner at all (which this provider does not implement).
 
 ## current-branch-query (read)
 
-**Inputs:** none.
-
-**Procedure:**
-
-1. `git rev-parse --abbrev-ref HEAD`.
-2. The literal value `HEAD` is a **detached-HEAD signal**, not an error — return it as
-   such so the caller can decide what to do.
-3. Otherwise return the branch name.
-
-**Output:** the current branch name, or the literal `HEAD` (detached-HEAD signal).
-
----
+- **`HEAD` is a signal, not an error.** The literal `HEAD` is returned verbatim as the
+  detached-HEAD signal so each caller decides what to do (create refuses, push/PR error,
+  etc.) rather than the read operation deciding for them.
 
 ## last-commit-timestamp-query (read)
 
-**Inputs:** none.
-
-**Procedure:**
-
-1. `git log -1 --format=%cd`.
-2. Success → return the timestamp.
-3. Failure (no commits yet, or not inside a git working tree) — this is a genuine
-   **environment error** for a *registered* provider to surface plainly. This is
-   explicitly distinct from the contract's own no-provider plain-directory-safe
-   fallback, which is core's own behaviour when the `delivery` surface has no owner
-   at all — not something this file implements.
-
-**Output:** the last commit's timestamp, or a plain environment error.
+- **Failure is an environment error, not the no-provider fallback.** As with
+  `workspace-root-resolve`, no commits yet / not a git working tree is a plain
+  environment error for a registered provider — distinct from core's no-provider
+  filesystem-read fallback.
 
 ---
 
 ## Edge cases reproduced
 
-A completeness self-check against today's `branch.md` / `commit.md` / `pr.md`:
+The regression checklist for the split: every row below must behave identically to the
+pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](delivery.ops.md).
 
-- **Dirty tree** — `branch-create` step 3, `branch-switch` step 1.
-- **Existing branch** — `branch-create` step 4 (exact-name match → `switched`),
+- **Dirty tree** — `branch-create` step 2, `branch-switch` step 1.
+- **Existing branch** — `branch-create` step 3 (exact-name match → `switched`),
   `branch-switch` steps 2–3 (local or remote-only match).
-- **No upstream** — `branch-create` step 8 (`local-only (no upstream)` derivation),
+- **No upstream** — `branch-create` step 7 (`local-only (no upstream)` derivation),
   `push-upstream` steps 2 & 4 (detects it, then bootstraps to `origin` when absent).
 - **Existing PR** — `pr-create` step 3 (`exists`, never duplicated), `pr-detect` step 2
   (found vs. not-found, the latter not an error).
 - **Detached HEAD** — `branch-create` step 1, `branch-switch` step 1, `commit` step 1,
-  `push-upstream` step 1, `pr-detect` step 1, `pr-create` step 1 (the latter three via
+  `push-upstream` step 1, `pr-detect` step 1, `pr-create` step 1 (the last three via
   `current-branch-query` when the branch input is omitted).
 - **`gh`-not-authenticated** — `pr-create` step 3, `pr-detect` step 2 (both name the
   `gh auth login` remedy).
-- **No commits / not a git working tree** — `last-commit-timestamp-query` step 3
-  (plain environment error, distinct from core's no-provider fallback).
+- **No commits / not a git working tree** — `last-commit-timestamp-query` step 2 (plain
+  environment error, distinct from core's no-provider fallback).
+
+Two further behaviours are preserved by the guard coverage above rather than as matrix
+rows: **nothing-to-commit** (`commit` step 3, a valid no-op) and the **no-provider
+plain-directory fallback** (core's own behaviour, which this fragment explicitly does not
+implement).
