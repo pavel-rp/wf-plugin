@@ -12,12 +12,13 @@
 # at fault — never a bare "validation failed."
 #
 # The fixed vocabularies (the 7 SDD phases, the 7 contribution kinds, the
-# partitioned-scope token shapes) are pinned to the v2 contract
-# `capability-registry.contract.md` (sections "The SDD phases", "The
-# contribution taxonomy"). They are stable contract vocabulary, not project
-# values, so an embedded allowlist here does not name a stack/domain/project
-# concern — no concrete capability, stack, or product name appears in any code
-# path below.
+# partitioned-scope token shapes) are pinned to the runtime-ops half of the v2
+# port, `capability-registry.ops.md` (sections "The SDD phases", "The
+# contribution taxonomy"; rationale and authoring detail live in the reference
+# half, `capability-registry.contract.md`). They are stable contract
+# vocabulary, not project values, so an embedded allowlist here does not name a
+# stack/domain/project concern — no concrete capability, stack, or product name
+# appears in any code path below.
 #
 # Model: claude-opus-4-8
 #

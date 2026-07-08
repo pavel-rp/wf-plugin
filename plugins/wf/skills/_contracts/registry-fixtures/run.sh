@@ -13,6 +13,10 @@
 # the validator resolves them against the real repo root exactly as it would in
 # production — fixture resolution is byte-identical to a real run.
 #
+# Since WF-208 this script also gates the ops-doc drift guards
+# (../check-ops-docs.sh: line budget, heading parity, cross-link anchors,
+# contract-pointer ban) as one additional assert in the same CI entry point.
+#
 # Model: claude-opus-4-8
 #
 # Usage:
@@ -128,6 +132,21 @@ assert "plugin root empty named"      fail-plugin-root-empty.md     - 1 "wf-caps
 assert "plugin root backslash named"  fail-plugin-root-backslash.md - 1 "wf-caps" "backslash"
 assert "plugin root dotdot named"     fail-plugin-root-dotdot.md    - 1 "wf-caps" "'..' segment"
 assert "plugin root duplicate named"  fail-plugin-root-dup.md       - 1 "wf-caps" "duplicate plugin root name"
+
+# --- WF-208: ops/reference drift guards ---------------------------------------
+# The contracts are split into runtime-ops docs (*.ops.md) + reference halves
+# (*.contract.md); check-ops-docs.sh keeps the pair from drifting (line budget,
+# heading parity, cross-link anchors, contract-pointer ban). Gated here so the
+# existing CI entry point covers it with no workflow change.
+echo ""
+echo "=== Ops-doc drift guards (check-ops-docs.sh) ==="
+if bash "$DIR/../check-ops-docs.sh"; then
+  printf 'PASS: %s\n' "ops-doc drift guards"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "ops-doc drift guards"
+  fail=$((fail + 1))
+fi
 
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
