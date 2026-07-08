@@ -1,6 +1,6 @@
 # Capability registry — runtime ops
 
-**Version:** 1.0.0 (WF-208)
+**Version:** 1.1.0 (WF-200)
 **Role:** the runtime-read half of the v2 core↔capability port — every schema, guard, error path, outcome mapping, and degradation rule a running skill follows. Self-sufficient at one level: no step below requires opening any further file.
 **Pair (flat sibling, read directly when needed):** `invocation-runtime.ops.md` — the phase-firing / provider-resolution procedure.
 **Reference (rationale, history, authoring guidance, validation detail — never read at boot):** `capability-registry.contract.md`.
@@ -28,6 +28,8 @@ Rules a boot follows:
 A second table (`| Plugin | Root |`) co-located with the registry. `Plugin` = the `plugin:` token's `<plugin-name>`, verbatim. `Root` = that plugin's install root — absolute or repo-relative, forward slashes only; a backslash or a `..` segment is invalid (validator-enforced). Per-machine, gitignored, written by the pack's own init skill — **core only reads it, never writes another plugin's root**. An absent/empty table only means no plugin-anchored row can resolve; repo-relative rows are unaffected.
 
 ## Recorded-root-first resolution with install-manifest self-heal
+
+This section is the **single runtime-loaded home** of the recovery algorithm (WF-200): surface-agnostic — one reference serves the `delivery` and `tracker` provider surfaces alike — and the only authoritative copy. A consumer needing plugin-root recovery reads and follows this section; no skill restates the install-manifest logic. The registry validator (`validate-registry.sh`) resolves recoverable rows through this same fallback against an injectable install-manifest path, erroring only on rows neither route recovers.
 
 Resolve a `plugin:<plugin-name>/<rel-path>` `Path` in this order — **in-memory only**:
 

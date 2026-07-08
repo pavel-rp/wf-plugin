@@ -20,20 +20,28 @@
 # stack/domain/project concern — no concrete capability, stack, or product name
 # appears in any code path below.
 #
-# Model: claude-opus-4-8
+# Model: claude-fable-5
 #
 # Usage:
-#   validate-registry.sh <registry-file> [registry-path-value]
+#   validate-registry.sh <registry-file> [registry-path-value] [install-manifest-path]
 #
 #   <registry-file>        Path to the registry file holding the `## Capabilities`
 #                          table (a self-contained fixture file, or the resolved
 #                          downstream registry). Required.
 #   [registry-path-value]  Optional override for the configured registryPath
-#                          string whose SHAPE is checked. When omitted, the value
-#                          is read from wf.config.js `registryPath` at the repo
-#                          root. The override exists so the shape check can be
-#                          exercised in isolation without a per-case config file;
-#                          real invocation passes only <registry-file>.
+#                          string whose SHAPE is checked. When omitted (or empty),
+#                          the value is read from wf.config.js `registryPath` at
+#                          the repo root. The override exists so the shape check
+#                          can be exercised in isolation without a per-case config
+#                          file; real invocation passes only <registry-file>.
+#   [install-manifest-path] Optional override for the install manifest the
+#                          recorded-root-first self-heal fallback reads (WF-200;
+#                          runtime algorithm: capability-registry.ops.md
+#                          §"Recorded-root-first resolution with install-manifest
+#                          self-heal"). When omitted (or empty), defaults to the
+#                          real ~/.claude/plugins/installed_plugins.json. Fixture
+#                          runs ALWAYS inject a fixture manifest here, so
+#                          validation never depends on the real machine manifest.
 #
 # Exit codes:
 #   0  — registry conforms (no errors; warnings allowed)
@@ -80,9 +88,16 @@ ok()   { printf '%bOK:%b %s\n'      "$GREEN"  "$NC" "$*"; }
 # ---------------------------------------------------------------------------
 REGISTRY="${1:-}"
 REGISTRY_PATH_OVERRIDE="${2:-}"
+# Install manifest read by the self-heal fallback (WF-200). An empty 3rd arg
+# means "not provided" — the real per-machine manifest applies (real runs);
+# fixture runs inject a fixture path so they never read the real manifest.
+INSTALL_MANIFEST="${3:-}"
+if [ -z "$INSTALL_MANIFEST" ]; then
+  INSTALL_MANIFEST="$HOME/.claude/plugins/installed_plugins.json"
+fi
 
 if [ -z "$REGISTRY" ]; then
-  echo "Usage: $(basename "$0") <registry-file> [registry-path-value]" >&2
+  echo "Usage: $(basename "$0") <registry-file> [registry-path-value] [install-manifest-path]" >&2
   exit 2
 fi
 if [ ! -f "$REGISTRY" ]; then
@@ -306,6 +321,49 @@ resolve_plugin_root() {
   return 1
 }
 
+# Recover a plugin's install root from the install manifest — the self-heal
+# fallback (WF-200; runtime algorithm: capability-registry.ops.md
+# §"Recorded-root-first resolution with install-manifest self-heal"). Echoes
+# the recovered root (backslash→forward-slash normalized; repo-relative joined
+# to REPO_ROOT — fixtures ship repo-relative installPaths so resolution is
+# machine-independent; a real manifest's absolute path is used as-is). Returns
+# non-zero, echoing nothing, when the manifest is absent, jq is unavailable,
+# the JSON is unparseable, or no matching record's installPath exists on disk
+# — the bounded-dependency degrade: the row stays unrecoverable, nothing else
+# breaks. In-memory only: this never writes any root anywhere.
+#
+# Match rule: the manifest keys records as `<plugin-name>@<marketplace>`; the
+# runtime looks up the marketplace-exact key first by deriving core's own
+# marketplace from ${CLAUDE_PLUGIN_ROOT} — an input a hermetic validation run
+# deliberately lacks — so the validator matches on the bare left-of-`@`
+# segment alone (the runtime's own fallback match). Across all matching
+# records it prefers one whose installPath EXISTS on disk, so a stale record
+# never shadows the live one.
+resolve_from_install_manifest() {
+  local needle="$1" mpaths p norm
+  [ -f "$INSTALL_MANIFEST" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  mpaths="$(jq -r --arg n "$needle" '
+      .plugins // {} | to_entries[]
+      | select((.key | split("@")[0]) == $n)
+      | .value[]?.installPath // empty
+    ' "$INSTALL_MANIFEST" 2>/dev/null)" || return 1
+  [ -n "$mpaths" ] || return 1
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    norm="$(printf '%s' "$p" | tr '\\' '/')"
+    case "$norm" in
+      /* | [A-Za-z]:*) ;;
+      *) norm="$REPO_ROOT/$norm" ;;
+    esac
+    if [ -d "$norm" ]; then
+      printf '%s' "$norm"
+      return 0
+    fi
+  done <<< "$mpaths"
+  return 1
+}
+
 # ===========================================================================
 # CHECK 2 — capability names unique.
 # ===========================================================================
@@ -357,23 +415,49 @@ while [ "$i" -lt "${#cap_paths[@]}" ]; do
   n="${cap_names[$i]}"
   case "$p" in
     plugin:*)
-      # plugin:<name>/<rel-path> — resolve via the `## Plugin Roots` mapping (WF-99).
+      # plugin:<name>/<rel-path> — recorded-root-first resolution with the
+      # install-manifest self-heal (WF-99 / WF-200; runtime algorithm:
+      # capability-registry.ops.md §"Recorded-root-first resolution with
+      # install-manifest self-heal"). The recorded `## Plugin Roots` root is
+      # tried FIRST; only when it is absent (no row) or dangling (no readable
+      # manifest under it) is the injectable install manifest consulted to
+      # recover the current root — a live recorded root never triggers a
+      # manifest read. The row errors, named, only when NEITHER route yields
+      # a readable manifest.md.
       tok="${p#plugin:}"        # <name>/<rel-path>
       pl_name="${tok%%/*}"      # <name>
       pl_rel="${tok#*/}"        # <rel-path>
       if [ "$pl_name" = "$tok" ] || [ -z "$pl_rel" ] || [ -z "$pl_name" ]; then
         err "capability \`$n\` has a malformed plugin-anchored path \`$p\` — expected \`plugin:<name>/<rel-path>\`."
-      elif ! pl_root="$(resolve_plugin_root "$pl_name")"; then
-        err "capability \`$n\` names plugin \`$pl_name\` in its path \`$p\`, but there is no \`## Plugin Roots\` entry for \`$pl_name\`."
       else
-        folder="$pl_root/$pl_rel"
-        if [ ! -d "$folder" ]; then
-          err "capability \`$n\` plugin-anchored path \`$p\` does not resolve to a directory (looked in \`$folder\` via plugin root \`$pl_name\`)."
-        elif [ ! -f "$folder/manifest.md" ]; then
-          err "capability \`$n\` plugin-anchored path \`$p\` is missing a \`manifest.md\` (expected \`$folder/manifest.md\`)."
+        resolved=""
+        primary_fail=""
+        if pl_root="$(resolve_plugin_root "$pl_name")"; then
+          folder="$pl_root/$pl_rel"
+          if [ -f "$folder/manifest.md" ]; then
+            resolved="$folder"
+            ok "capability \`$n\` plugin-anchored path \`$p\` resolves via plugin root \`$pl_name\` and carries a manifest.md."
+          elif [ ! -d "$folder" ]; then
+            primary_fail="plugin-anchored path \`$p\` does not resolve to a directory via its recorded root (looked in \`$folder\` via plugin root \`$pl_name\`)"
+          else
+            primary_fail="plugin-anchored path \`$p\` is missing a \`manifest.md\` (expected \`$folder/manifest.md\`)"
+          fi
         else
-          ok "capability \`$n\` plugin-anchored path \`$p\` resolves via plugin root \`$pl_name\` and carries a manifest.md."
-          manifest_files+=("$folder/manifest.md")
+          primary_fail="names plugin \`$pl_name\` in its path \`$p\`, but there is no \`## Plugin Roots\` entry for \`$pl_name\`"
+        fi
+        if [ -z "$resolved" ]; then
+          # Recorded root absent or dangling → install-manifest fallback.
+          # (Never reached when the recorded root resolved above.)
+          if heal_root="$(resolve_from_install_manifest "$pl_name")" \
+             && [ -f "$heal_root/$pl_rel/manifest.md" ]; then
+            resolved="$heal_root/$pl_rel"
+            ok "capability \`$n\` plugin-anchored path \`$p\` resolves via the install-manifest fallback (recovered root \`$heal_root\` for \`$pl_name\`) and carries a manifest.md."
+          else
+            err "capability \`$n\` $primary_fail, and the install manifest (\`$INSTALL_MANIFEST\`) recovers no live root for \`$pl_name\` — unrecoverable; re-run the pack's init to refresh its \`## Plugin Roots\` row."
+          fi
+        fi
+        if [ -n "$resolved" ]; then
+          manifest_files+=("$resolved/manifest.md")
           checkable_idx+=("$i")
         fi
       fi
