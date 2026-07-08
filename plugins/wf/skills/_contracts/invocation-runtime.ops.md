@@ -1,12 +1,12 @@
 # Capability invocation runtime — runtime ops
 
-**Version:** 1.0.0 (WF-208)
+**Version:** 1.1.0 (WF-208; WF-209 — run-scoped provider forwarding)
 **Role:** the runtime-read half of the invocation runtime — the exact procedure a core skill follows to fire an SDD phase or to resolve a provider surface, with every guard, no-op case, and fail-safe inline. One level deep: no step below requires opening anything beyond this file and its flat sibling below.
 **Pair (flat sibling, read directly when needed):** `capability-registry.ops.md` — the registry/mapping schemas, the recorded-root-first self-heal algorithm, the surface operation sets, and the degradation rules this procedure resolves against.
 **Reference (rationale, history, v1 lineage, worked demonstrations — never read at boot):** `invocation-runtime.contract.md`.
 **Model:** claude-fable-5
 
-**Contents:** the five moving parts · 1 registry iteration · 2 per-capability manifest read · 3 per-phase fragment collection · 4 per-fragment dispatch · 5 aggregation · direct provider resolution · no-op path · generic-only branch rule · fail-safe.
+**Contents:** the five moving parts · 1 registry iteration · 2 per-capability manifest read · 3 per-phase fragment collection · 4 per-fragment dispatch · 5 aggregation · direct provider resolution · run-scoped provider forwarding · no-op path · generic-only branch rule · fail-safe.
 
 ## The moving parts (the generalised procedure)
 
@@ -60,6 +60,24 @@ The `delivery` and `tracker` `provider` surfaces are invoked **whenever a core s
 **Unconfigured case** — the filter matches zero rows: structurally the same "zero matching contributors" shape as the no-op path below (scope-filtered instead of phase-filtered). What that no-op resolves to operationally per surface — the plain-directory read fallbacks, the "no delivery provider registered" write statement, the silent local-only `T<NNN>` tracker fallback — is stated in `capability-registry.ops.md` under the two surface sections.
 
 **Write-side diagnosis split** — zero *readable* rows for a surface `<S>` has two distinct causes, never conflated: **(a)** no registered capability owns `<S>` (every manifest readable) → the unchanged "no `<S>` provider registered" message; **(b)** a registered capability's manifest is **unrecoverable** (recorded root dangled, self-heal recovered nothing) → name the unreadable-manifest pack(s) as **candidates** and **hedge** surface attribution, never asserting ownership. **Surfacing:** delivery write — loud/blocking; tracker write — warn-once, then local-only; read on either surface — silent local-only. The full diagnosis text and remedy wording live in `capability-registry.ops.md` (residual diagnosis).
+
+## Run-scoped provider forwarding (resolve once, forward down)
+
+Direct provider resolution above is **per boot** — each subagent that needs a surface re-walks registry → manifest → fragment. A **delivery-chain run** (a `/wf:pr`, `/wf:commit`, or `/wf:branch` invocation plus every provider-operation boot it spawns) collapses that to **one resolution per required surface**: the run's **single resolution point** resolves once and **forwards** the result down its spawn messages.
+
+**Single resolution point** — the highest boot in the run that needs a surface. It runs direct provider resolution above **once per required surface**: one `## Capabilities` read, then one manifest+fragment read per surface (`delivery`, and `tracker` when the run needs it — both in that same pass, never a second registry walk). Every other provider-operation boot in the run **consumes the forwarded result** instead of resolving.
+
+**The forwarded result — the run-scoped resolution record.** Per resolved surface, the minimum a consumer needs to *dispatch* that surface's operations without re-resolving: the surface token, the resolved provider identity, and the resolved fragment path (the operation set to follow) — **or**, when the surface resolved to no readable provider, that surface's unconfigured/unrecoverable outcome, so the consumer emits the identical degraded behaviour. It carries **no fragment body**: the dispatch read (following the fragment) still happens inside the consuming boot's own isolated context, so diff/artifact bodies never reach the parent.
+
+**Channel — the spawn message.** No typed input channel reaches a subagent, so the record travels as **condensed prose appended to the spawn Task message** — an **optional, backward-compatible** extension of the spawn contract:
+
+- A boot that **receives** a record for a surface **skips resolution** for it (no registry/manifest/fragment read of its own), dispatches that surface's operations against the record, and **forwards it onward unchanged** to any nested provider-operation boot it spawns.
+- A boot that receives **no** record (invoked directly — top of its own chain) **self-resolves** per direct provider resolution above, then forwards its result down.
+- Because the extension is optional, an unextended spawn is unchanged: the callee self-resolves exactly as before.
+
+**Never to `wf:index`** — it invokes zero provider operations, so no record flows to it and its spawn is untouched.
+
+**Run-scoped only** — the record is one run's runtime value, never persisted or cached beyond the run. The next run re-resolves from the registry (a registry swap is picked up immediately), and core prose still names no concrete provider: the identity is a runtime value flowing through the generic slots.
 
 ## No-op path (the generalised `<none>` Null Object)
 
