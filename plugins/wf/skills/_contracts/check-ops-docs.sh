@@ -13,6 +13,13 @@
 #     delivery.md, 250-line ops budget — deliberately more generous than the
 #     contracts' 150 to leave headroom for the Wave-4 delivery operations
 #     WF-157 and WF-176 add to this same growing file.
+#   - the two tracker provider fragments (WF-213):
+#     ../../../wf-ado/capabilities/ado/fragments/tracker.ops.md and
+#     ../../../wf-linear/capabilities/linear/fragments/tracker.ops.md, each
+#     paired with its tracker.md, 250-line ops budget — the same generous
+#     ceiling as delivery, leaving headroom for the Wave-4 tracker query
+#     operations WF-158 adds (status/milestone/cycle enumeration) to these
+#     same growing files.
 #
 # These guards keep each pair from drifting apart, with plain bash + grep/sed/awk
 # — no new dependency:
@@ -40,6 +47,8 @@ set -u
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WFGIT_DIR="$(cd "$DIR/../../../wf-git/capabilities/git/fragments" 2>/dev/null && pwd || true)"
+WFADO_DIR="$(cd "$DIR/../../../wf-ado/capabilities/ado/fragments" 2>/dev/null && pwd || true)"
+WFLINEAR_DIR="$(cd "$DIR/../../../wf-linear/capabilities/linear/fragments" 2>/dev/null && pwd || true)"
 fails=0
 
 err() { printf 'ERROR: %s\n' "$*"; fails=$((fails + 1)); }
@@ -154,9 +163,21 @@ if [ -n "$WFGIT_DIR" ]; then
 else
   err "wf-git delivery fragments folder not found (expected at ../../../wf-git/capabilities/git/fragments)."
 fi
+if [ -n "$WFADO_DIR" ]; then
+  check_ops_docs "$WFADO_DIR" 250 ".md"
+else
+  err "wf-ado tracker fragments folder not found (expected at ../../../wf-ado/capabilities/ado/fragments)."
+fi
+if [ -n "$WFLINEAR_DIR" ]; then
+  check_ops_docs "$WFLINEAR_DIR" 250 ".md"
+else
+  err "wf-linear tracker fragments folder not found (expected at ../../../wf-linear/capabilities/linear/fragments)."
+fi
 
 check_links "$DIR"
 [ -n "$WFGIT_DIR" ] && check_links "$WFGIT_DIR"
+[ -n "$WFADO_DIR" ] && check_links "$WFADO_DIR"
+[ -n "$WFLINEAR_DIR" ] && check_links "$WFLINEAR_DIR"
 
 # ---------------------------------------------------------------------------
 # Summary + exit.
