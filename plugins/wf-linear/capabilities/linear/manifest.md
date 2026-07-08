@@ -1,9 +1,12 @@
 # linear capability manifest
 
-**Version:** 1.0.0 (WF-136 — second, independent tracker-provider capability, binding
-the contract's `tracker` surface to concrete Linear mechanics via `mcp__claude_ai_Linear__*`)
-**Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
-**Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" (v2.3.0)
+**Version:** 1.1.0 (WF-136 — second, independent tracker-provider capability, binding
+the contract's `tracker` surface to concrete Linear mechanics via `mcp__claude_ai_Linear__*`;
+WF-213 — split the tracker fragment into a bounded runtime-ops half
+(`fragments/tracker.ops.md`) + a reference half (`fragments/tracker.md`), repoint the
+dispatch, and refresh the contract pointers to the reshaped ops docs)
+**Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
+**Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** linear (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** both (ships its own `/wf-linear:init` skill; also attaches one phase fragment via the registry)
 **Model:** claude-sonnet-5
@@ -26,19 +29,19 @@ push/PR mechanics are the `delivery` surface's job (the `git` capability), not t
 ## Fragments
 
 Each row attaches one fragment to one phase, typed by the contribution taxonomy. The
-schema is the v2 shape fixed by `capability-registry.contract.md`:
+schema is the v2 shape fixed by `capability-registry.ops.md` §"Manifest schema v2":
 `phase | contribution-kind | dispatch | scope`. The inline path is forward-slash,
-**relative to this capability's registry path** (so `fragments/tracker.md` resolves to
-`plugins/wf-linear/capabilities/linear/fragments/tracker.md`). `scope` is required for
+**relative to this capability's registry path** (so `fragments/tracker.ops.md` resolves to
+`plugins/wf-linear/capabilities/linear/fragments/tracker.ops.md`). `scope` is required for
 partitioned kinds; `provider` carries a **`surface`** enum token.
 
-| phase | contribution-kind | dispatch                     | scope   |
-|-------|--------------------|-------------------------------|---------|
-| spec  | provider           | `inline: fragments/tracker.md` | tracker |
+| phase | contribution-kind | dispatch                         | scope   |
+|-------|--------------------|-----------------------------------|---------|
+| spec  | provider           | `inline: fragments/tracker.ops.md` | tracker |
 
 Read off the column:
 
-- **tracker** (`spec | provider | inline: fragments/tracker.md | tracker`) — the Linear
+- **tracker** (`spec | provider | inline: fragments/tracker.ops.md | tracker`) — the Linear
   **tracker execution provider**. This row's `phase: spec` is a
   **registration-only anchor** for registry validation — the SDD phase where a tracker
   operation is first exercised in practice (a task's umbrella/child issues are created
@@ -47,16 +50,17 @@ Read off the column:
   procedure via **direct provider resolution**: it selects the row(s) where
   `contribution-kind = provider AND scope = tracker`, across the whole registry,
   regardless of that row's `phase` value, then dispatches per the row's `dispatch`
-  kind (here, `inline:` — read `fragments/tracker.md` and follow it in-context; no
-  subagent is spawned). See `invocation-runtime.contract.md` §"Direct provider
-  resolution" for the full procedure this reuses.
+  kind (here, `inline:` — read `fragments/tracker.ops.md`, the bounded runtime-ops half,
+  and follow it in-context; its rationale and coverage reference is `fragments/tracker.md`,
+  never read at boot; no subagent is spawned). See `invocation-runtime.ops.md` §"Direct
+  provider resolution" for the full procedure this reuses.
 
 `provider` is a **partitioned** kind: only the capability owning `surface: tracker`
 applies. Two capabilities claiming the same surface is a registry-validation error —
 this is exactly how `linear` and `ado` are made mutually exclusive: **neither
 manifest names the other**; the overlap is caught structurally by the registry
-validator (`capability-registry.contract.md` §"Aggregation policy — `aggregate` vs
-`partition`") the moment both are registered together — no special-casing needed on
+validator (`capability-registry.ops.md` §"The contribution taxonomy (the fragment
+kinds)") the moment both are registered together — no special-casing needed on
 either side. Different surfaces (`engine`, `host`, `delivery`, `tracker`, …) compose
 freely — linear owns `tracker` only, so it composes alongside browser-qa, a stack
 capability, and git with no conflict.
@@ -104,7 +108,7 @@ table by hand:
 `/wf-linear:init` writes for you.) With `linear` registered, any core skill resolving
 the `tracker` surface dispatches work-item operations to this capability's fragment;
 with no `tracker` provider registered, core falls back silently to its own local
-`T<NNN>` id scheme, per `capability-registry.contract.md` §"The tracker provider
+`T<NNN>` id scheme, per `capability-registry.ops.md` §"The tracker provider
 surface".
 
 **Do not register `ado` and `linear` together** — both claim the `tracker` surface,
