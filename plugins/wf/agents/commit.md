@@ -16,14 +16,14 @@ You are the implementation of `/wf:commit`. The full procedure lives here — th
 - `push` — boolean; when true, push after committing (and even when there is nothing to commit). Default false.
 - `staged` — boolean; when true, commit only the already-staged set. Default false (stage all changes first).
 
-## Direct provider resolution (how every operation below is reached)
+## Provider resolution (resolve once, or consume a forwarded record)
 
-Every operation this file invokes — `workspace-root-resolve`, `current-branch-query`, `commit`, `push-upstream` — is reached the same way, per `invocation-runtime.contract.md` §"Direct provider resolution":
+Every operation this file invokes — `workspace-root-resolve`, `current-branch-query`, `commit`, `push-upstream` — is a **`delivery`-surface** operation. This agent obtains the `delivery` surface **once**, then dispatches every operation against it, per `invocation-runtime.ops.md` §"Run-scoped provider forwarding" and §"Direct provider resolution":
 
-1. Read the `## Capabilities` registry from `_local/config.md` — the contract's default-absent `registryPath` value — via the plain, cwd-relative bootstrap read Step 1 performs below. **Known limitation, unchanged from today:** this first read precedes any provider resolution, so it cannot itself honor a project-configured non-default `registryPath`, and assumes the current working directory is the repo root.
-2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
-4. **Zero matching rows** — no capability owns the `delivery` surface. Reads (`workspace-root-resolve`, `current-branch-query`) fall back silently to the plain-directory / already-known-branch value; a write (`commit`, `push-upstream`) cannot proceed — see Step 4's no-delivery-provider path (Step 5 never needs its own — it is unreachable when no provider is registered, since Step 4 already returned an error).
+1. **Consume a forwarded record when present.** If the spawn message carried a forwarded run-scoped resolution record for the `delivery` surface (a parent boot in this run already resolved it), use its provider identity and resolved fragment path directly — perform **no** registry/manifest/fragment read of your own.
+2. **Otherwise self-resolve once** as the top of your own chain. Read the `## Capabilities` registry from `_local/config.md` — the default-absent `registryPath` value — via the plain, cwd-relative bootstrap read Step 1 performs below; select the single row where `contribution-kind = provider` **and** `scope = delivery` across the whole registry (a scope filter, independent of the row's phase value); read that capability's `manifest.md` once and dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent). A plugin-anchored `Path` resolves through the self-heal home — `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal". **Known limitation, unchanged from today:** this bootstrap read precedes any provider resolution, so it cannot honor a project-configured non-default `registryPath`, and assumes the current working directory is the repo root.
+3. **Forward the resolved `delivery` record onward** to the nested `wf:branch` spawn (Step 2), so that boot consumes it and never re-resolves.
+4. **Zero `delivery` owner** (self-resolve matched no row, or the forwarded record marks the surface unconfigured/unrecoverable). Reads (`workspace-root-resolve`, `current-branch-query`) fall back silently to the plain-directory / already-known-branch value; a write (`commit`, `push-upstream`) cannot proceed — see Step 4's no-delivery-provider path (Step 5 never needs its own — it is unreachable when no provider is registered, since Step 4 already returned an error).
 
 ## Step 1 — Resolve config, workspace root, and task folder
 
@@ -38,7 +38,7 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 
 1. Resolve the current branch via `current-branch-query`. Its detached-HEAD signal (the literal `HEAD`) → return `COMMIT — Error` with reason "Detached HEAD; cannot commit task work from this state."
 2. If the branch name contains `/{numeric-id}-` (e.g. `feature/6396-…`, `fix/6396-…`), you are on the task branch — continue to Step 3.
-3. Otherwise invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}`.
+3. Otherwise invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` **and the forwarded `delivery` resolution record** from the Provider-resolution section above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving.
    - On `BRANCH — created`/`switched`/`already-active`, continue to Step 3.
    - On `BRANCH — Error`, return `COMMIT — Error` with the subagent's reason. (A dirty worktree blocks the switch — to commit into a task branch you must already be on it.)
 
