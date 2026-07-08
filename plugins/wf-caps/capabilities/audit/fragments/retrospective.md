@@ -20,11 +20,13 @@ composition · report artifact · degradation summary · final block.
 ## Registry-membership gate (run first)
 
 Read the `## Capabilities` registry at the `registryPath`-resolved location (repo-root
-`wf.config.js` `registryPath`; **default `_local/config.md`** when absent). If **no row
-registers the audit capability** (by convention its `Capability` name is `audit` — the same
-identity the five lenses gate on via `audit.profile.json`), emit `RETROSPECTIVE — not-registered`
-and stop: write nothing. Registration is the whole on/off control — registered → the report may
-emit; unregistered → neither the lenses nor this report run. Never surface this as an error.
+`wf.config.js` `registryPath`; **default `_local/config.md`** when absent). If **no row registers
+the audit capability** (by convention its `Capability` name is `audit`, resolving to this
+capability's manifest), emit `RETROSPECTIVE — not-registered` and stop: write nothing. This is the
+**same registry membership** a core skill firing `verify` walks to resolve and dispatch the five
+lens rows — the identical on/off datum (the `lenses` profile is only the subset selector applied
+*after* dispatch, never the gate). Registered → the report may emit; unregistered → neither the
+lenses nor this report run. Never surface this as an error.
 
 ## Inputs to compose (read, in order)
 
@@ -69,6 +71,9 @@ Compose these sections (grounded in the artifacts above — never invented):
 - **Composite verdict** — `PASS | PASS WITH WARNINGS | FAIL`, derived from: the `04_verify.md`
   verdict, the lens `fail` findings (any drives FAIL), a distilled **code-class** CI failure
   (drives FAIL; an `infra/transient` one does not), and any `valid` distilled review finding.
+  Map the verify verdict thus: `FAIL` or any lens `fail` or a code-class CI failure → `FAIL`; a
+  verify `PARTIAL`, a lens `warn`, or a `valid` review finding → at least `PASS WITH WARNINGS`;
+  `PASS` with none of those → `PASS`.
 - **Spec-conformance summary** — carried from `04_verify.md` (do not recompute).
 - **Lens-findings roll-up** — the audit lenses' findings from `04_verify.md`, provenance-tagged.
 - **Delivery evidence** — the distilled PR-review verdicts and CI diagnosis. **Present only when a
@@ -100,17 +105,19 @@ catalogue it: invoke `wf:index` (Task tool, `subagent_type: wf:index`) with the 
 
 - audit **not registered** → `RETROSPECTIVE — not-registered`; nothing written.
 - `04_verify.md` **absent** → `RETROSPECTIVE — needs-verify`; direct to `/wf:verify-spec`.
-- **no delivery provider** → local-only composite (spec-conformance + lens findings +
-  retrospective); no evidence section, no provider term, no error.
-- a configured delivery provider **failing mid-run** → warn once, continue local-only (per the
-  provider contract); local artifacts remain the source of truth.
+- **no delivery provider** (or a registered one whose reads return empty) → local-only composite
+  (spec-conformance + lens findings + retrospective); no evidence section, no provider term. A
+  delivery **read** degrades **silently** local-only per the delivery-surface contract — never a
+  warning, never an error; the local composite is the source of truth.
+- **cannot proceed at all** (config absent, or the report artifact cannot be written) →
+  `RETROSPECTIVE — error` with a one-sentence reason; leave nothing partial behind.
 
 ## Final block
 
 Emit exactly one, as the very last thing:
 
 ```
-RETROSPECTIVE — <composed | not-registered | needs-verify>
+RETROSPECTIVE — <composed | not-registered | needs-verify | error>
 
 {task-id}: composite <PASS | PASS WITH WARNINGS | FAIL | —>
 Evidence: <local-only | delivery: PR review + CI>
