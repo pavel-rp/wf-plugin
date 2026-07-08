@@ -527,7 +527,7 @@ exemption.** A capability owning the `tracker` surface implements:
 - `list_by_status` — enumerate the work items currently in a named workflow
   status.
 - `list_milestones` — enumerate the milestones defined for a scope.
-- `list_cycles` — enumerate the cycles (time-boxed iterations) defined for a
+- `list_cycles` — enumerate the cycles (time-boxed work periods) defined for a
   scope.
 
 The last three are **read-only query operations**: they enumerate the active
