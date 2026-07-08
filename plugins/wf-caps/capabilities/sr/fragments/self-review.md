@@ -41,9 +41,8 @@ bugs a confident author drops on the happy path:
 
 The remaining rubric checks (silent data loss, error handling, backward compatibility,
 untested branches) still apply when a staged hunk trips one — but this pre-commit pass leads
-with the fast subset above and stays proportional to a pre-commit gate, not a full audit. The
-thorough branch-wide sweep is the audit capability's `verify` lens; this is the cheap pass that
-catches the same class before it lands.
+with the fast subset above and stays proportional to a pre-commit gate, not the full
+branch-wide audit the `verify` lens runs.
 
 ## The finding shape you return
 
