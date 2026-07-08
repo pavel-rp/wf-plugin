@@ -1,6 +1,6 @@
 ---
 name: init
-description: Onboards the wf-caps pack into a wf-initialized repo in one command — registers the pack's capabilities into the wf capability registry as plugin-anchored rows and records the pack's install root so core can resolve them, then seeds each capability's profile. Use once (after /wf:init) to activate wf-caps without hand-editing _local/config.md; re-run to update. Optionally pass a subset of capability names to register only those.
+description: Onboards the wf-caps pack into a wf-initialized repo in one command — registers the pack's capabilities into the wf capability registry as plugin-anchored rows and records the pack's install root so core can resolve them, then seeds each capability's profile. Use once (after /wf:init) to activate wf-caps without hand-editing _local/config.md; upgrades self-heal, so re-run only if resolution reports a capability unrecoverable or after relocating the pack. Optionally pass a subset of capability names to register only those.
 allowed-tools: [Read, Write, Edit, Glob, Bash]
 ---
 
@@ -125,11 +125,11 @@ This is exactly what `/wf:init` would do on its next run now that the rows resol
 
 ## Phase 5: Self-check (the one in-repo runtime assertion)
 
-Pick one capability from the selected set and resolve it **the way core will**, to prove the wiring end-to-end:
+Pick one capability from the selected set and resolve it **the way core will** — including self-heal — to prove the wiring end-to-end. Follow `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal" for the resolution steps; do not restate the algorithm here.
 
-1. Read the `## Plugin Roots` row for `wf-caps`; take its `Root`.
-2. Join `Root` + `/capabilities/<name>` and confirm `<that>/manifest.md` is readable, and that it equals `<pack-root>/capabilities/<name>/manifest.md`.
-3. Record `PASS` (resolves + manifest readable) or `FAIL` (with the path that didn't resolve) for the Final Output. A `FAIL` means the recorded root and the registry rows disagree — surface it loudly; do not report success.
+1. Resolve `plugin:wf-caps/capabilities/<name>` per that section: the recorded `## Plugin Roots` root first, then — if that root dangles — the install-manifest fallback.
+2. Record `PASS` when resolution yields a readable `manifest.md` by **either** route — a recovered-via-fallback root counts as PASS, since a recorded root that went stale after an upgrade is expected and self-heals, not a failure. Record `FAIL` only when the capability is **unrecoverable** (neither route yields a readable manifest — the ops-doc step-3 case).
+3. A `FAIL` means the pack is unrecoverable — surface it loudly and direct the user to re-run `/wf-caps:init` (or fix a relocated pack); do not report success.
 
 ---
 
@@ -158,9 +158,9 @@ Registered:
 Profiles:
 - <capability> — <seeded override [seeded by <model id>] | default in use | skipped — no template>
   (one line per newly-registered capability; "none" when all were already registered)
-Self-check:   <PASS — plugin:wf-caps/capabilities/<name> resolves | FAIL — <what didn't resolve>>
+Self-check:   <PASS — plugin:wf-caps/capabilities/<name> resolves (recorded root or self-heal) | FAIL — pack unrecoverable: <what didn't resolve>>
 
-Next: run any wf phase (e.g. /wf:verify, /wf:qa-gen) — core now resolves the pack's capabilities. Re-run /wf-caps:init after a pack upgrade to refresh the install root.
+Next: run any wf phase (e.g. /wf:verify, /wf:qa-gen) — core now resolves the pack's capabilities. Upgrades self-heal — re-run /wf-caps:init only if resolution reports a capability unrecoverable, or after relocating the pack.
 ```
 
 Attach `seeded by <model id>` only to a `seeded override` whose profile format has no schema-permitted attribution slot (per the seeding convention); use the current model id from the runtime, or `unknown`.
