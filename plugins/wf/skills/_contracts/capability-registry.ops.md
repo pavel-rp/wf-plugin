@@ -1,12 +1,12 @@
 # Capability registry — runtime ops
 
-**Version:** 1.4.0 (WF-200; WF-157 — delivery surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery surface gains one read operation: `branch-changes-read` (branch-changes enumeration))
+**Version:** 1.5.0 (WF-200; WF-157 — delivery surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam fired by the commit path before recording a commit, reusing the `finding` kind)
 **Role:** the runtime-read half of the v2 core↔capability port — every schema, guard, error path, outcome mapping, and degradation rule a running skill follows. Self-sufficient at one level: no step below requires opening any further file.
 **Pair (flat sibling, read directly when needed):** `invocation-runtime.ops.md` — the phase-firing / provider-resolution procedure.
 **Reference (rationale, history, authoring guidance, validation detail — never read at boot):** `capability-registry.contract.md`.
 **Model:** claude-fable-5
 
-**Contents:** the `## Capabilities` registry · the `## Plugin Roots` mapping · recorded-root-first self-heal + residual diagnosis · the SDD phases · the contribution taxonomy · the delivery provider surface · the tracker provider surface · the constitution composition rule · manifest schema v2 · the profile-seeding convention.
+**Contents:** the `## Capabilities` registry · the `## Plugin Roots` mapping · recorded-root-first self-heal + residual diagnosis · the SDD phases · the contribution taxonomy · the delivery provider surface · the tracker provider surface · the pre-commit self-review seam · the constitution composition rule · manifest schema v2 · the profile-seeding convention.
 
 ## The `## Capabilities` registry (the selector)
 
@@ -51,7 +51,7 @@ Resolve a `plugin:<plugin-name>/<rel-path>` `Path` in this order — **in-memory
 ## The SDD phases (the injection points)
 
 Fixed spine — a manifest may attach fragments only to these; the constitution is **not** a phase:
-`spec` (authoring hub; tracker `provider` anchor) · `plan` (`artifact`) · `tasks` (`task-list`) · `implement` (authoring hub; delivery `provider` anchor) · `verify` (`finding`) · `qa-generation` (`scenario`) · `qa-execution` (`provider`).
+`spec` (authoring hub; tracker `provider` anchor) · `plan` (`artifact`) · `tasks` (`task-list`) · `implement` (authoring hub; delivery `provider` anchor) · `verify` (`finding`) · `qa-generation` (`scenario`) · `qa-execution` (`provider`) · `pre-commit` (`finding`; the commit-path self-review seam — operation-time, **not** a gated artifact phase; see "The pre-commit self-review seam" below).
 
 ## The contribution taxonomy (the fragment kinds)
 
@@ -60,7 +60,7 @@ Fixed spine — a manifest may attach fragments only to these; the constitution 
 | `guidance` | `spec`, `implement` | aggregate — follow every contributor in registry order; most-specific (last) wins on conflict |
 | `task-list` | `tasks` | aggregate — append every contributor's tasks |
 | `artifact` | `plan` | partition — one owner per `source→target` pair |
-| `finding` | `verify` | aggregate, provenance-tagged (order cosmetic) |
+| `finding` | `verify`, `pre-commit` | aggregate, provenance-tagged (order cosmetic) |
 | `scenario` | `qa-generation` | aggregate, provenance-tagged |
 | `provider` | `qa-execution`; `implement` (delivery); `spec` (tracker) | partition — one owner per `surface` token; different surfaces compose |
 | `article` | constitution | aggregate with provenance; precedence per the constitution rule below |
@@ -97,6 +97,14 @@ The capability owning `surface = tracker` implements — abstract names; zero tr
 - **Registered-but-unrecoverable provider** → a tracker **write** emits the residual diagnosis above as the warn-once, then continues local-only; a tracker **read** stays silent local-only.
 
 **Single-shot-publish idempotency:** same metadata-line guard as delivery (`create_umbrella` / `create_child` canonical) — before re-invoking for the **same artifact/slot**, read that slot's line back first; a present value for that slot = already published, never re-invoke.
+
+## The pre-commit self-review seam
+
+The commit path fires the `pre-commit` phase **immediately before it records a commit** — on **every** route to a commit (a direct commit and every programmatic commit that reaches the same commit operation) and **only when a real change is pending** (never on the nothing-to-commit path, where nothing is recorded). Firing is the ordinary phase firing (`invocation-runtime.ops.md` §"The moving parts"): walk `## Capabilities`, collect every `finding` fragment attached at `pre-commit`, dispatch each, aggregate provenance-tagged in registry order. It reuses the `finding` kind — **no new kind**.
+
+- **Empty result → no-op, byte-identical.** Empty/absent registry, or no capability attaching a `pre-commit` fragment → the phase produces its empty result: no finding surfaces, no capability term appears, and the commit proceeds **exactly as with no seam** (the inert-when-unregistered default).
+- **Gate vs annotate — the contributor decides.** A contributed finding either **gates** (blocks the commit) or merely **annotates** (the commit proceeds); which one is the finding's own signal, not core's. Core fires, aggregates, and — if any aggregated finding signals a block — **does not record the commit**; otherwise it proceeds. Core names, requires, and assumes **no** capability here, exactly as at `verify`.
+- **A phase firing, not a provider resolution.** Independent of the `delivery` surface's direct resolution used for the commit operation itself: a run's forwarded `delivery` record serves the delivery operations only; the `pre-commit` firing reads the registry for `finding` fragments and touches neither the record nor the surface.
 
 ## The constitution composition rule
 

@@ -11,7 +11,7 @@
 # Every error names the SPECIFIC row / name / path / scope / clause / fragment
 # at fault — never a bare "validation failed."
 #
-# The fixed vocabularies (the 7 SDD phases, the 7 contribution kinds, the
+# The fixed vocabularies (the 8 SDD phases, the 7 contribution kinds, the
 # partitioned-scope token shapes) are pinned to the runtime-ops half of the v2
 # port, `capability-registry.ops.md` (sections "The SDD phases", "The
 # contribution taxonomy"; rationale and authoring detail live in the reference
@@ -487,8 +487,9 @@ done
 # v2 contract.
 # ===========================================================================
 
-# The 7 SDD phases (contract: "The SDD phases").
-VALID_PHASES=" spec plan tasks implement verify qa-generation qa-execution "
+# The 8 SDD phases (contract: "The SDD phases") — `pre-commit` (WF-154) is the
+# operation-time commit-path self-review seam; it reuses the `finding` kind.
+VALID_PHASES=" spec plan tasks implement verify qa-generation qa-execution pre-commit "
 # The 7 contribution kinds (contract: "The contribution taxonomy").
 VALID_KINDS=" guidance task-list artifact finding scenario provider article "
 
