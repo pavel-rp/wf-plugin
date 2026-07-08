@@ -99,7 +99,7 @@ Fixes belong on the branch the report was produced against. Extract the first 3+
 
 1. **Resolve delivery-surface ownership first** (the scope-equality filter from "Direct provider resolution" above, applied before any branch read). **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and continue to Phase 3. **One matching row** — resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above), then apply steps 2–3.
 2. **If the branch name contains `/{numeric-id}-`** — proceed.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose. (Do NOT call `/wf:branch` — that loads its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the reason.
+3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. (Do NOT call `/wf:branch` — that loads its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the reason.
 
 ---
 
