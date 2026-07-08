@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-git, wf-ado, wf-linear packs)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-git, wf-ado, wf-linear, wf-review packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -72,6 +72,10 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 ├── plugins/wf-linear/         # TRACKER-PROVIDER PACK — the linear capability (second, independent tracker binding)
 │   ├── skills/init/SKILL.md   # /wf-linear:init
 │   └── capabilities/linear/   # manifest.md + fragments/tracker.md (Linear MCP bindings)
+├── plugins/wf-review/         # PR-REVIEW FEATURE PACK — the pr-review feature capability (user-invoked, no core seam)
+│   ├── skills/address-pr/SKILL.md  # /wf-review:address-pr — verify review comments/CI, address the valid ones
+│   ├── skills/review-pr/SKILL.md   # /wf-review:review-pr — review a PR, post verified findings
+│   └── capabilities/pr-review/     # manifest.md (kind: feature; no fragment; routes through the delivery provider)
 ├── docs/ROADMAP.md            # committed grounding doc
 └── _local/                    # gitignored: research notes, working tracking
 ```
