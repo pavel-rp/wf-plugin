@@ -17,7 +17,12 @@
 # (../check-ops-docs.sh: line budget, heading parity, cross-link anchors,
 # contract-pointer ban) as one additional assert in the same CI entry point.
 #
-# Model: claude-opus-4-8
+# Since WF-200 every plugin-anchored case injects the fixture install manifest
+# (installed_plugins.fixture.json) as the validator's 3rd arg, so the
+# recorded-root-first self-heal fallback is exercised hermetically — the suite
+# never reads the real ~/.claude/plugins/installed_plugins.json.
+#
+# Model: claude-fable-5
 #
 # Usage:
 #   bash plugins/wf/skills/_contracts/registry-fixtures/run.sh
@@ -30,23 +35,32 @@ VALIDATOR="$DIR/../validate-registry.sh"
 pass=0
 fail=0
 
-# assert <name> <fixture> <registry-path-override|-> <expected-exit> [required-substring ...]
+# assertm <name> <fixture> <registry-path-override|-> <install-manifest|-> <expected-exit> [required-substring ...]
 #
 # Runs the validator on <fixture>. When <registry-path-override> is not `-`, it
 # is passed as the validator's 2nd arg (the registryPath shape-check seam);
-# `-` means "read registryPath from wf.config.js as in a real run." Then checks
-# the exit code matches and that every required substring appears in the output.
-# Output is captured (not a TTY), so the validator emits no color codes — plain-
-# text matching is exact.
-assert() {
-  local name="$1" fixture="$2" override="$3" want_exit="$4"; shift 4
+# `-` means "read registryPath from wf.config.js as in a real run." When
+# <install-manifest> is not `-`, `$DIR/<install-manifest>` is passed as the
+# validator's 3rd arg — the injectable install-manifest path its self-heal
+# fallback reads (WF-200) — so every plugin-anchored fixture resolves against a
+# fixture manifest and no assert ever reads (or depends on) the real machine
+# manifest; `-` omits the arg. Then checks the exit code matches and that every
+# required substring appears in the output. Output is captured (not a TTY), so
+# the validator emits no color codes — plain-text matching is exact.
+assertm() {
+  local name="$1" fixture="$2" override="$3" manifest="$4" want_exit="$5"; shift 5
   local out got_exit ok=1 sub
 
-  if [ "$override" = "-" ]; then
-    out="$(bash "$VALIDATOR" "$DIR/$fixture" 2>&1)"
-  else
-    out="$(bash "$VALIDATOR" "$DIR/$fixture" "$override" 2>&1)"
+  [ "$override" = "-" ] && override=""
+  local args=("$DIR/$fixture")
+  if [ "$manifest" != "-" ]; then
+    # Positional 3rd arg needs a 2nd; an empty registry-path override means
+    # "read registryPath from wf.config.js" (the validator treats it as unset).
+    args+=("$override" "$DIR/$manifest")
+  elif [ -n "$override" ]; then
+    args+=("$override")
   fi
+  out="$(bash "$VALIDATOR" "${args[@]}" 2>&1)"
   got_exit=$?
 
   if [ "$got_exit" -ne "$want_exit" ]; then
@@ -66,6 +80,15 @@ assert() {
   else
     fail=$((fail + 1))
   fi
+}
+
+# assert <name> <fixture> <registry-path-override|-> <expected-exit> [required-substring ...]
+#
+# Back-compat form of assertm with no install-manifest injection (for fixtures
+# with no plugin-anchored rows, where the self-heal fallback can never fire).
+assert() {
+  local name="$1" fixture="$2" override="$3" want_exit="$4"; shift 4
+  assertm "$name" "$fixture" "$override" - "$want_exit" "$@"
 }
 
 # --- Passing cases -----------------------------------------------------------
@@ -123,10 +146,32 @@ assert "two-dependency requires unsatisfied named" fail-requires-git-ado.md - 1 
 assert "co-active conflicts named"    fail-conflicts.md     - 1 "conflicter" "solo" "declares a conflict"
 assert "article contradiction named"  fail-article.md       - 1 "article-yes" "article-no" "commit-signing"
 # WF-99: plugin-anchored resolution failures — unmapped plugin, and mapped-but-dangling.
-assert "unmapped plugin root named"   fail-plugin-root-missing.md  - 1 "testpkg" "Plugin Roots"
-assert "dangling plugin manifest named" fail-plugin-root-dangling.md - 1 "ghost" "does not resolve to a directory"
+# Since WF-200 these inject the fixture manifest (hermetic): its `testpkg` decoy
+# record points at a dead installPath, so the self-heal fallback recovers nothing
+# and each case still errors, naming the offender.
+assertm "unmapped plugin root named"   fail-plugin-root-missing.md  - installed_plugins.fixture.json 1 "testpkg" "Plugin Roots"
+assertm "dangling plugin manifest named" fail-plugin-root-dangling.md - installed_plugins.fixture.json 1 "ghost" "does not resolve to a directory"
 # WF-99: mapped plugin, resolved dir exists but no manifest.md.
-assert "plugin manifest missing named" fail-plugin-manifest-missing.md - 1 "nomani" "manifest.md"
+assertm "plugin manifest missing named" fail-plugin-manifest-missing.md - installed_plugins.fixture.json 1 "nomani" "manifest.md"
+
+# --- WF-200: recorded-root-first self-heal via the injectable install manifest ---
+# All plugin-anchored self-heal cases run against the fixture manifest
+# (installed_plugins.fixture.json) — never the real ~/.claude manifest — and its
+# installPaths are repo-relative, so the outcomes are machine-independent.
+# Pass: `healpkg` has NO `## Plugin Roots` entry; the manifest's stale record
+# (dead installPath) is skipped (prefer-existing-installPath) and the live
+# record's backslashed repo-relative installPath normalizes and resolves.
+assertm "self-heal recovers unmapped plugin" pass-self-heal.md - installed_plugins.fixture.json 0 "Validation passed" "install-manifest fallback" "healpkg"
+# Pass: `healpkg` is mapped but its recorded root dangles — healed the same way.
+assertm "self-heal recovers dangling root" pass-self-heal-dangling.md - installed_plugins.fixture.json 0 "Validation passed" "install-manifest fallback"
+# Fail: `lostpkg`'s recorded root dangles AND its manifest record's installPath
+# is dead — unrecoverable; the row is named with the re-run-init remedy.
+assertm "unrecoverable row named after self-heal" fail-self-heal.md - installed_plugins.fixture.json 1 "lost" "unrecoverable" "re-run the pack's init"
+# OUT-3 recorded-root-first proof: `testpkg`'s recorded root is LIVE while the
+# injected manifest carries only a DECOY testpkg record pointing at a dead path —
+# the run passes via the recorded root, so the fallback was never consulted (a
+# fallback-first implementation would recover nothing and fail).
+assertm "recorded root first — fallback never consulted" pass-plugin-anchored.md - installed_plugins.fixture.json 0 "Validation passed" "via plugin root"
 # WF-99: CHECK 4a plugin-root shape — empty / backslash / '..' segment.
 assert "plugin root empty named"      fail-plugin-root-empty.md     - 1 "wf-caps" "needs a Root"
 assert "plugin root backslash named"  fail-plugin-root-backslash.md - 1 "wf-caps" "backslash"

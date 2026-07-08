@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.50.0",
+  "version": "0.51.0",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-git delivery, wf-ado tracker, wf-linear tracker).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -11,7 +11,7 @@
     {
       "name": "wf",
       "source": "./plugins/wf",
-      "version": "0.39.0",
+      "version": "0.40.0",
       "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities ship in the wf-caps plugin.",
       "author": {
         "name": "Pavel Kalabin"
