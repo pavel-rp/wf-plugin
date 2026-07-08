@@ -149,6 +149,14 @@ The three **API** keys are used only by the backend-exercise path (`Type: API` s
 
 The two keys `/wf:seed` reads. **Architecture Doc** is the doc parsed on a zero-argument `/wf:seed` — leave the placeholder until you have an architecture/design doc to seed action items from (or always pass the doc explicitly: `/wf:seed <doc>`). **Backlog Path** is where the append-only backlog is written; the `{task-root}/BACKLOG.md` default suits most projects. A repo initialized before this section existed simply has no `## Seed` keys — `/wf:seed` degrades gracefully (the explicit-doc form still works, and Backlog Path falls back to the same default).
 
+## Standup
+
+| Key | Value |
+|-----|-------|
+| **Standup Statuses** | `<none>` |
+
+The default tracker workflow statuses `/wf:standup` enumerates open work items for, comma-separated in significance order (most active first — e.g. the in-progress status before the not-started one). Status names are tracker-specific, so this ships as `<none>`: leave it until you know your tracker's status names, then set them (or always pass `--status` explicitly). When `<none>` or absent, `/wf:standup` skips only the by-status work-item section and still renders milestones, cycles, recent activity, and local in-flight tasks. A repo initialized before this section existed simply has no `## Standup` key — `/wf:standup` degrades gracefully the same way.
+
 ## Capabilities
 
 <!-- init directive (strip before writing — never emit this comment to any file):
