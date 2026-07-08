@@ -1,6 +1,6 @@
 # Audit capability manifest
 
-**Version:** 1.0.0 (WF-155 — five adversarial verify lenses)
+**Version:** 1.1.0 (WF-155 — five adversarial verify lenses; WF-159 — optional composite retrospective report)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md`
 **Capability:** audit (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -20,6 +20,12 @@ each — with no lens named in core. Registered → the five lenses' findings ag
 provenance-tagged, on the same footing as generic requirements. Unregistered → the phase
 finds no rows and produces nothing (the byte-identical no-op). Registry membership is the
 whole on/off toggle; the capability adds no core machinery.
+
+Beyond the five phase lenses, the capability ships **one optional, on-request output** — a
+composite retrospective / umbrella-verification report (§"Composite retrospective report"). It is
+**not** a phase fragment: it composes *over* the lens findings the `verify` phase already
+produced, so it runs only when a caller requests it, gated by the **same registry membership** as
+the lenses. It adds no new always-on core surface.
 
 ## Fragments
 
@@ -80,9 +86,38 @@ list — so a subset runs only the selected lenses, with **no change to any core
 Precedence is **downstream override > capability default**; seeding is idempotent
 (skip-if-present).
 
+## Composite retrospective report
+
+The capability's **optional, on-request** additional output — a process-retrospective and
+composite (umbrella) verification over a **completed** task. Deliberately **not** a fragments-table
+row: a phase fragment auto-fires on every phase firing, whereas this report is requested, once, over
+a task whose `verify` phase has already run. It rides no core phase and adds no always-on core
+surface — it is dispatched via the **Task** tool on request.
+
+- **Dispatch:** `subagent: wf-caps:audit-retrospective` (`plugins/wf-caps/agents/audit-retrospective.md`).
+- **Procedure (boot doc):** `fragments/retrospective.md` — the agent reads and follows it, holding
+  no logic of its own (the same agent+rubric split the five lenses use).
+- **Gate (the same toggle as the lenses):** the agent's first step reads the `## Capabilities`
+  registry and no-ops (`RETROSPECTIVE — not-registered`, nothing written) unless the audit
+  capability is registered — the identical on/off datum registry membership gives the lenses.
+- **Composition:** the `verify` report's spec-conformance verdict + the aggregated lens findings
+  (read from `04_verify.md`; never re-derived) + a process retrospective, **folding in** PR-review
+  and CI evidence via the `delivery` provider's `pr-comments-read` / `checks-read` /
+  `activity-read` reads (direct provider resolution) — the **bulk** (review-comment bodies, failing
+  logs) distilled through `wf:context-distiller` so it never enters the report's own context.
+- **Degradation:** with no `delivery` provider registered, those three reads resolve to an empty
+  result (per the delivery-surface unconfigured-reads rule) — the report degrades to a
+  spec-conformance + lens-findings retrospective with **no** PR/CI section and no provider term.
+  Absent `04_verify.md` → the report stops and directs the requester to `/wf:verify-spec` rather
+  than emit a hollow composite.
+- **Artifact:** `{task-root}/{task-id}/09_retrospective.md`, carrying model attribution and no
+  AI-attribution/promotional content; catalogued via `wf:index` under the `retrospective` slot.
+
 ## Dependencies
 
 This capability declares **no `requires:`** — the five lenses are pure read-only reasoning
-over the work under review and reach no `delivery` or `tracker` provider. It therefore
-composes in **bare-core** mode too (no provider registered), unlike the pack's
-provider-dependent capabilities.
+over the work under review and reach no `delivery` or `tracker` provider. The composite
+retrospective report *optionally* reaches the `delivery` provider's **read-side** operations, but
+**degrades to an empty result** when none is registered (it never blocks), so it adds no
+dependency either. The capability therefore composes in **bare-core** mode too (no provider
+registered), unlike the pack's provider-dependent capabilities.

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.55.0",
-  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-git delivery, wf-ado tracker, wf-linear tracker).",
+  "version": "0.56.0",
+  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
   "owner": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
@@ -21,8 +21,8 @@
     {
       "name": "wf-caps",
       "source": "./plugins/wf-caps",
-      "version": "0.14.1",
-      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map), the audit capability (five domain-free adversarial verify lenses), the browser-qa capability (qa-engine), the angular stack capability (qa-host + test-page, qa-execution host provider), and the node-ts stack capability (test-node).",
+      "version": "0.15.0",
+      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map), the audit capability (five domain-free adversarial verify lenses plus an optional composite retrospective report), the browser-qa capability (qa-engine), the angular stack capability (qa-host + test-page, qa-execution host provider), and the node-ts stack capability (test-node).",
       "author": {
         "name": "Pavel Kalabin"
       },
@@ -53,6 +53,16 @@
       "source": "./plugins/wf-linear",
       "version": "0.2.0",
       "description": "wf tracker-provider pack: the linear capability owning the wf capability-registry's tracker surface (Linear issue get/create/update/list-children/comment/status/attachment bindings and status/milestone/cycle queries via mcp__claude_ai_Linear__* tools). A second, independent binding of the tracker contract alongside wf-ado. Ships /wf-linear:init for one-command self-registration.",
+      "author": {
+        "name": "Pavel Kalabin"
+      },
+      "category": "development"
+    },
+    {
+      "name": "wf-review",
+      "source": "./plugins/wf-review",
+      "version": "0.1.0",
+      "description": "wf PR-review feature pack: the pr-review feature capability shipping the user-invoked /wf-review:address-pr and /wf-review:review-pr skills. Reads/verifies/addresses review comments and CI failures and posts verified findings entirely through the delivery provider's PR-interaction operations (pr-comments-read/pr-comment-post/checks-read/review-thread-resolve), treating review-tool output as hypothesis. Composes natively on install; no core seam fired or required.",
       "author": {
         "name": "Pavel Kalabin"
       },
