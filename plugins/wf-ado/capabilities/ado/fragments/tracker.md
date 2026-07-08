@@ -142,6 +142,31 @@ it.
 - **Grounding:** Grounded — the literal-embed convention is already in production use in
   `plugins/wf/agents/pr.md`, corroborated by `plugins/wf/skills/pr/SKILL.md`.
 
+## list_by_status
+
+- **A work-item query, unexercised in this codebase.** ADO filters work items by
+  `[System.State]` through a WIQL query; no skill here has ever run a WIQL query (only
+  single-id `get`/`update` calls), so the query-tool name is unverified. A read: an
+  unconfigured tracker returns an empty result and never warns, per the contract's
+  degradation rules.
+- **Grounding:** Unverified — tool name not yet confirmed.
+
+## list_milestones
+
+- **ADO has no first-class milestone entity — iteration paths stand in.** The project's
+  iteration classification nodes (the Iteration hierarchy) are ADO's native coarse
+  schedule markers; enumerating them is the honest binding for an abstract "milestone"
+  enumeration. Deliberately distinct from `list_cycles` (a team's subscribed iterations),
+  so the two do not collapse into one call.
+- **Grounding:** Unverified — tool name not yet confirmed.
+
+## list_cycles
+
+- **A team's iterations (sprints) are ADO's time-boxed cycles.** Read via the team's
+  iteration subscription (team settings), distinct from the project-wide iteration paths
+  `list_milestones` reads. Never exercised here.
+- **Grounding:** Unverified — tool name not yet confirmed.
+
 ---
 
 ## Coverage table
@@ -162,5 +187,8 @@ provider surface"), bound to exactly one `## ` section in `tracker.ops.md`, none
 | `post_comment`     | `post_comment`  | unverified — tool name not yet confirmed |
 | `set_status`       | `set_status`    | grounded — field usage to confirm        |
 | `attach_link`      | `attach_link`   | grounded                                 |
+| `list_by_status`   | `list_by_status`| unverified — tool name not yet confirmed |
+| `list_milestones`  | `list_milestones`| unverified — tool name not yet confirmed |
+| `list_cycles`      | `list_cycles`   | unverified — tool name not yet confirmed |
 
-All nine operations are bound; none is unbound.
+All twelve operations are bound; none is unbound.
