@@ -151,6 +151,25 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   environment error for a registered provider — distinct from core's no-provider
   filesystem-read fallback.
 
+## branch-changes-read (read)
+
+- **Merge-base (three-dot) diff, so the base's own history never leaks in.**
+  `git diff --name-status <base>...HEAD` diffs HEAD against the merge base of
+  HEAD and `<base>`, so files already landed on `<base>` are excluded — the set
+  is exactly what *this branch* changed, not everything that differs between two
+  tips. The `main` → `master` base fallback matches `branch-create`, so a repo on
+  either trunk name resolves without configuration.
+- **Committed and uncommitted, one set.** A branch mid-implementation has both
+  committed divergence and in-progress edits; folding `git status --porcelain`
+  into the merge-base diff hands the caller every path the branch touched, not
+  only the committed half. An empty set (no divergence, clean tree) is a valid
+  result, never an error.
+- **Failure is an environment error, not the no-provider fallback.** As with
+  `workspace-root-resolve` / `last-commit-timestamp-query`, not being inside a git
+  working tree is a plain environment error for a registered provider — distinct
+  from core's no-provider plain-directory read fallback, which this fragment does
+  not implement.
+
 ## pr-comments-read (read)
 
 - **Not-found is an empty result, not an error.** A branch with no open PR yields
@@ -236,8 +255,11 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   remedy). `activity-read` is the exception — it degrades an unauthenticated `gh`
   to an empty PR list rather than erroring.
 - **No commits / not a git working tree** — `last-commit-timestamp-query` step 2 (plain
-  environment error, distinct from core's no-provider fallback); `activity-read`
+  environment error, distinct from core's no-provider fallback); `branch-changes-read`
+  step 4 output (same plain environment error for a registered provider); `activity-read`
   step 1 degrades the same condition to an empty commit list instead.
+- **No divergence / clean tree (read side)** — `branch-changes-read` step 4 (an empty
+  changed-file set is a valid result, never an error).
 - **No open PR (read side)** — `pr-comments-read` step 2, `checks-read` step 2 (a
   valid empty result, never an error — the read-side "always resolves to
   something usable" guarantee).
