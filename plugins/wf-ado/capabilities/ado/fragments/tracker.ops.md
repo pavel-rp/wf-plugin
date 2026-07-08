@@ -1,6 +1,6 @@
 # ado tracker provider — runtime ops
 
-**Version:** 1.1.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211)
+**Version:** 1.2.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`)
 **Role:** the runtime-read half of the ado tracker provider — every input, guard, tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, grounding legend, per-operation grounding status, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -14,7 +14,7 @@
 
 **Reducible probe list (spec pin):** none. Each write is a single MCP call, `get` is a single `expand: "all"` fetch, and `resolve_config` is a pure local read — there is no probe pair to consolidate. Every operation's call count is unchanged by this split.
 
-**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link.
+**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles.
 
 ## resolve_config
 
@@ -122,3 +122,36 @@
 2. Zero MCP calls — the "attachment" is a side effect of Azure Boards' own PR-body parsing, triggered by the literal text making it into the merged PR.
 
 **Output:** none directly observable by the caller; the link appears on the work item once Azure Boards processes the merge.
+
+## list_by_status
+
+**Inputs:** target status name; project scope from config (`{ado-project}`).
+
+**Procedure:**
+
+1. Enumerate the work items currently in the named workflow status within `{ado-project}` (from config) — a work-item query filtered on `[System.State] = <status>` (WIQL shape: `SELECT [System.Id], [System.Title], [System.State] FROM WorkItems WHERE [System.State] = '<status>' AND [System.TeamProject] = '{ado-project}'`).
+2. Tool: `<VERIFY: WIQL/work-item-query tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
+
+**Output:** the matching work items (id + title + state), or an empty list when none match — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+
+## list_milestones
+
+**Inputs:** project scope from config (`{ado-project}`).
+
+**Procedure:**
+
+1. Enumerate the project's milestone markers in `{ado-project}` (from config). Azure DevOps has no first-class milestone entity; its native schedule markers are **iteration paths** — enumerate the project's iteration classification nodes (the Iteration hierarchy), each node standing in for a milestone.
+2. Tool: `<VERIFY: classification-node/iteration tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
+
+**Output:** the project's milestones (name + path, plus a date where the node carries one), or an empty list — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+
+## list_cycles
+
+**Inputs:** scope from config — the team whose cycles to enumerate (`{ado-project}`'s default team unless a team is configured).
+
+**Procedure:**
+
+1. Enumerate the time-boxed cycles the team is working in — in Azure DevOps, a **team's iterations** (the sprints the team subscribes to via team settings), distinct from the project-wide iteration paths `list_milestones` reads.
+2. Tool: `<VERIFY: team-iterations tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
+
+**Output:** the team's cycles (name + start/finish where present), or an empty list — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.

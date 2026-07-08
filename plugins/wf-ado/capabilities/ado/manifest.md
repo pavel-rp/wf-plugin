@@ -1,10 +1,11 @@
 # ado capability manifest
 
-**Version:** 1.1.0 (WF-123 — initial tracker-provider capability, binding SUB-2/WF-121's
+**Version:** 1.2.0 (WF-123 — initial tracker-provider capability, binding SUB-2/WF-121's
 `tracker` contract to concrete Azure DevOps mechanics; WF-213 — split the tracker fragment
 into a bounded runtime-ops half (`fragments/tracker.ops.md`) + a reference half
 (`fragments/tracker.md`), repoint the dispatch, and refresh the contract pointers to the
-reshaped ops docs)
+reshaped ops docs; WF-158 — bind the tracker surface's three new read-only query
+operations (`list_by_status`, `list_milestones`, `list_cycles`) in the fragment)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** ado (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -21,7 +22,7 @@ registry row in `_local/config.md`; it does not hardcode this path.
 ado supplies the **tracker provider** — the concrete Azure DevOps binding for every
 abstract tracker operation the capability-registry contract defines (resolve config,
 create/update/fetch a work item, list a parent's children, comment, move status, attach
-a link). It is the destination capability full-stack users register once core's own
+a link, and enumerate work items by status, milestones, or cycles). It is the destination capability full-stack users register once core's own
 inline ADO-specific copy (the ADO work-item MCP calls in `spec`/`lite`/`triage`, `pr`'s
 `AB#<id>` embed) is later scrubbed (SUB-6/SUB-12–20, separate tasks — not this one). It
 carries **zero** delivery-specific vocabulary: branch/commit/push/PR mechanics are the

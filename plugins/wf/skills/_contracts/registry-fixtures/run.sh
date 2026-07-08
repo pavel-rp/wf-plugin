@@ -114,6 +114,10 @@ assert "tracker surface single owner passes" pass-tracker.md - 0 "Validation pas
 # WF-126: a wf-caps-shaped capability requiring both `git` and `ado`, with both
 # satisfied, validates clean.
 assert "two-dependency requires satisfied passes" pass-requires-git-ado.md - 0 "Validation passed"
+# WF-158: a concrete tracker provider (`ado`, whose surface now carries the query
+# operations) composes with a `delivery` provider — the surface pairing a cross-tracker
+# briefing needs; two distinct surfaces, clean.
+assert "tracker composes with delivery passes" pass-tracker-delivery.md - 0 "Validation passed" "ado" "delivery-owner"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
@@ -137,6 +141,10 @@ assert "tracker overlap named"        fail-tracker-overlap.md  - 1 "tracker-owne
 # cannot both own the tracker surface — named by their real capability names, not
 # the generic tracker-owner/-2 stand-ins above.
 assert "ado vs linear tracker overlap named" fail-tracker-overlap-ado-linear.md - 1 "ado" "linear" "tracker" "must not overlap"
+# WF-158: two tracker claimants (`ado` + `tracker-owner`) amid a `delivery` provider —
+# the tracker partition collision is named (both offenders), undistracted by the extra
+# delivery surface.
+assert "tracker overlap amid delivery named" fail-tracker-delivery-overlap.md - 1 "ado" "tracker-owner" "tracker" "must not overlap"
 assert "bad phase named"              fail-bad-phase.md     - 1 "bad-phase" "unknown phase" "deploy"
 assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unknown contribution-kind" "assertion"
 # Glob metacharacters must NOT bypass the phase/kind allowlist. The interpolated

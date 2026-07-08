@@ -1,6 +1,6 @@
 # linear tracker provider — runtime ops
 
-**Version:** 1.1.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211)
+**Version:** 1.2.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`)
 **Role:** the runtime-read half of the linear tracker provider — every input, guard, MCP tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (grounding legend, per-operation grounding status, scope framing, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -15,7 +15,7 @@
 - **Linear Team** — the team new issues are created under. Required for every write operation below; unset (still the `<...>` bracket placeholder, or the section missing entirely) means **unconfigured** — see `resolve_config`.
 - **Linear Project** — optional secondary scoping. The literal value `none` (no brackets) means "do not scope created issues to a project"; any other non-bracketed value is a project name to resolve.
 
-**Team/project id resolution (shared by every write below).** `save_issue` and the status/label lookups need Linear's internal `teamId` (and, when configured, `projectId`), not the human-readable name in config. Resolve once per run and reuse:
+**Team/project id resolution (shared by every write and query below).** `save_issue`, the status/label lookups, and the query operations all need Linear's internal `teamId` (and, when configured, `projectId`), not the human-readable name in config. Resolve once per run and reuse:
 
 1. `teamId` — call `mcp__claude_ai_Linear__list_teams`, match the configured **Linear Team** value against each team's key or name, take the matching team's id.
 2. `projectId` — only when **Linear Project** is not the literal `none`: call `mcp__claude_ai_Linear__list_projects`, match the configured value against a project's name (scoped to the resolved team, when the tool supports narrowing), take the matching project's id.
@@ -24,7 +24,7 @@ Cache both within the run; **do not re-resolve per call**.
 
 **Reducible probe list (spec pin):** none beyond what is already consolidated here. Team/project id resolution above is already **resolve-once-per-run-and-cache** — the single probe consolidation this fragment carries. `set_status`'s status-id lookup is deliberately **per-call and uncached** (workflow states differ by team; a cached id is not portable) and must not be reduced. Every other operation is a single MCP call. All per-operation call counts are unchanged by this split.
 
-**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link.
+**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles.
 
 ## resolve_config
 
@@ -127,3 +127,34 @@ Cache both within the run; **do not re-resolve per call**.
 1. Call `mcp__claude_ai_Linear__create_attachment` with `issueId: <issue-id>`, `url`. Always an unconditional, explicit attachment call — this fragment makes no claim that Linear auto-links a PR from body text (that would depend on a workspace-level Linear↔GitHub integration this fragment cannot assume).
 
 **Output:** confirmation the link is attached (the tool's response).
+
+## list_by_status
+
+**Inputs:** target status name; team scope (and project scope when **Linear Project** is configured).
+
+**Procedure:**
+
+1. Resolve `status_name` to a state id via `mcp__claude_ai_Linear__list_issue_statuses` scoped to the resolved team. Do this lookup **fresh each call** — do not cache status ids across a run (workflow states differ by team; a cached id is not portable). Same discipline as `set_status`.
+2. Call `mcp__claude_ai_Linear__list_issues` filtered to that `stateId`, scoped by the resolved `teamId` (and `projectId` when **Linear Project** is configured).
+
+**Output:** the matching issues (id + title + status), or an empty list when none match — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+
+## list_milestones
+
+**Inputs:** project scope (the resolved `projectId`; Linear milestones are a project-scoped concept).
+
+**Procedure:**
+
+1. Call `mcp__claude_ai_Linear__list_milestones` scoped to the resolved `projectId` (from "Team/project id resolution" above). When **Linear Project** is the literal `none` (no project configured), there is no project to enumerate milestones for — return an **empty list**, not an error.
+
+**Output:** the project's milestones (id + name + target date where present), or an empty list — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+
+## list_cycles
+
+**Inputs:** team scope (the resolved `teamId`; Linear cycles are a team-scoped concept).
+
+**Procedure:**
+
+1. Call `mcp__claude_ai_Linear__list_cycles` filtered to the resolved `teamId` (from "Team/project id resolution" above).
+
+**Output:** the team's cycles (id + name + start/end where present), or an empty list — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.

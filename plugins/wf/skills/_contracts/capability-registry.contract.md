@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.7.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`)
+**Version:** 2.8.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -503,7 +503,8 @@ detectable no-op, so re-invoking it never double-merges.
 
 Core has no vocabulary of its own for issue-tracker operations — creating a
 top-level work item, nesting a child work item beneath it, commenting, moving a
-status, attaching a link — so a capability that wants to bind that behaviour to
+status, attaching a link, enumerating work items by workflow status, milestones,
+or cycles — so a capability that wants to bind that behaviour to
 core has nothing to attach to. The **tracker provider surface** is a `provider`
 fragment, scoped by the **`tracker`** `surface` token, that fills this gap using
 the same partitioned-ownership mechanism the `delivery` surface already uses —
@@ -523,11 +524,25 @@ exemption.** A capability owning the `tracker` surface implements:
 - `post_comment` — post a comment on a work item.
 - `set_status` — move a work item to a named workflow status.
 - `attach_link` — attach an external URL to a work item.
+- `list_by_status` — enumerate the work items currently in a named workflow
+  status.
+- `list_milestones` — enumerate the milestones defined for a scope.
+- `list_cycles` — enumerate the cycles (time-boxed work periods) defined for a
+  scope.
+
+The last three are **read-only query operations**: they enumerate the active
+tracker's own records, consume an already-resolved status name / scope (never
+derive one), and take no write. They inherit the degradation rules below — an
+unconfigured tracker returns an **empty result** (silent local-only, a read
+never warns); a mid-run failure warns once and continues local-only — and add
+nothing to the id-shape rule. They exist because a prioritized cross-tracker
+briefing needs them without baking any tracker-product string.
 
 No operation name, and no prose describing it, may contain a concrete
 tracker-product name, API shape, or vocabulary term. "Work item", "umbrella",
-"child", and "status" are abstract vocabulary, not hits — a capability's own
-manifest and fragment prose is where any concrete tracker binds to these names.
+"child", "status", "milestone", and "cycle" are abstract vocabulary, not hits —
+a capability's own manifest and fragment prose is where any concrete tracker
+binds to these names.
 
 **Phase anchor — registration only, not a firing gate.** A `tracker`-surface
 `provider` fragment is attached at the `spec` phase (the SDD phase where a

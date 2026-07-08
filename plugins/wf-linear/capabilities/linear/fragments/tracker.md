@@ -158,6 +158,29 @@ notes below record each binding's grounding status and the load-bearing choices 
   `attach_link` is always an unconditional, explicit `create_attachment` call.
 - **Grounding:** Tool confirmed; parameter shape per draft.
 
+## list_by_status
+
+- **Reuses `set_status`'s fresh-lookup discipline.** The status name is resolved to a
+  `stateId` per call via `list_issue_statuses` (states differ by team; a cached id is not
+  portable), then `list_issues` is filtered by that state and the resolved team/project
+  scope. A read: an unconfigured tracker returns an empty result and never warns.
+- **Grounding:** Tool confirmed (`list_issues`, `list_issue_statuses` are live in this
+  session's MCP catalog); filter shape unexercised here.
+
+## list_milestones
+
+- **Linear milestones are project-scoped.** `list_milestones` enumerates a project's
+  milestones; with no project configured (**Linear Project** = `none`) there is nothing to
+  enumerate, so the op returns an empty list rather than erroring.
+- **Grounding:** Tool confirmed (`list_milestones`); filter shape unexercised here.
+
+## list_cycles
+
+- **Linear cycles are team-scoped.** `list_cycles` enumerates the resolved team's cycles —
+  Linear's first-class time-boxed iteration, a cleaner match than ado's iteration-path
+  stand-in for the same abstract operation.
+- **Grounding:** Tool confirmed (`list_cycles`); filter shape unexercised here.
+
 ---
 
 ## Coverage table
@@ -178,8 +201,11 @@ provider surface"), bound to exactly one `## ` section in `tracker.ops.md`, none
 | `post_comment`     | `post_comment`  | tool confirmed; parameter shape per draft |
 | `set_status`       | `set_status`    | tool confirmed; parameter shape per draft |
 | `attach_link`      | `attach_link`   | tool confirmed; parameter shape per draft |
+| `list_by_status`   | `list_by_status`| tool confirmed; filter shape unexercised  |
+| `list_milestones`  | `list_milestones`| tool confirmed; filter shape unexercised  |
+| `list_cycles`      | `list_cycles`   | tool confirmed; filter shape unexercised  |
 
-All nine operations are bound; none is unbound.
+All twelve operations are bound; none is unbound.
 
 **Not e2e-observed (accepted, per WF-136's scope):** `create_umbrella`, `create_child`,
 and `update` have no create-consuming core touchpoint in this codebase today — no core

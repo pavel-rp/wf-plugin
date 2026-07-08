@@ -1,10 +1,12 @@
 # linear capability manifest
 
-**Version:** 1.1.0 (WF-136 — second, independent tracker-provider capability, binding
+**Version:** 1.2.0 (WF-136 — second, independent tracker-provider capability, binding
 the contract's `tracker` surface to concrete Linear mechanics via `mcp__claude_ai_Linear__*`;
 WF-213 — split the tracker fragment into a bounded runtime-ops half
 (`fragments/tracker.ops.md`) + a reference half (`fragments/tracker.md`), repoint the
-dispatch, and refresh the contract pointers to the reshaped ops docs)
+dispatch, and refresh the contract pointers to the reshaped ops docs; WF-158 — bind the
+tracker surface's three new read-only query operations (`list_by_status`,
+`list_milestones`, `list_cycles`) in the fragment)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** linear (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -21,7 +23,7 @@ registry row in `_local/config.md`; it does not hardcode this path.
 linear supplies the **tracker provider** — the concrete Linear binding for every
 abstract tracker operation the capability-registry contract defines (resolve config,
 create/update/fetch an issue, list a parent's children, comment, move status, attach
-a link). It is a **second, independent** binding of the same surface `ado` binds — the
+a link, and enumerate work items by status, milestones, or cycles). It is a **second, independent** binding of the same surface `ado` binds — the
 existence of this pack is itself the proof that the tracker contract carries zero
 ADO-shaped assumption. It carries **zero** delivery-specific vocabulary: branch/commit/
 push/PR mechanics are the `delivery` surface's job (the `git` capability), not this one.
