@@ -121,6 +121,9 @@ assert "tracker composes with delivery passes" pass-tracker-delivery.md - 0 "Val
 # WF-176: the branch-changes-read read op extends the delivery surface without adding a
 # surface/phase/kind — a single owner still carries the whole (now-extended) surface, clean.
 assert "delivery branch-changes single owner passes" pass-delivery-branch-changes.md - 0 "Validation passed"
+# WF-154: a capability attaches a `finding` at the new `pre-commit` self-review seam (the
+# commit-path injection point) — the new phase is recognized and the reused kind validates clean.
+assert "pre-commit finding seam passes" pass-precommit-review.md - 0 "Validation passed" "precommit-review"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
@@ -154,6 +157,9 @@ assert "ado vs linear tracker overlap named" fail-tracker-overlap-ado-linear.md 
 assert "tracker overlap amid delivery named" fail-tracker-delivery-overlap.md - 1 "ado" "tracker-owner" "tracker" "must not overlap"
 assert "bad phase named"              fail-bad-phase.md     - 1 "bad-phase" "unknown phase" "deploy"
 assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unknown contribution-kind" "assertion"
+# WF-154: the `pre-commit` seam reuses `finding` — a fragment inventing a bespoke `self-review`
+# kind at it is rejected naming the offender (the phase is valid; the invented kind is not).
+assert "pre-commit bespoke kind rejected" fail-precommit-badkind.md - 1 "precommit-badkind" "unknown contribution-kind" "self-review"
 # Glob metacharacters must NOT bypass the phase/kind allowlist. The interpolated
 # value is quoted inside the case pattern (`*" $f_phase "*`), so `*` matches
 # literally and is rejected — these guard that quoting against an un-quoting

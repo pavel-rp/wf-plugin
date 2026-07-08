@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.9.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration))
+**Version:** 2.10.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -331,11 +331,20 @@ the authored artifacts.
 | `verify` | wf extension — checking | assert conformance to the spec + spec-derived invariants | `finding` |
 | `qa-generation` | wf extension — checking | scenarios derived from acceptance criteria | `scenario` |
 | `qa-execution` | wf extension — provider | the execution engine + environment | `provider` |
+| `pre-commit` | wf extension — delivery-path seam (operation-time; **not** a gated artifact) | a self-review of the staged change set that gates or annotates the commit about to be recorded | `finding` |
 
 The phase names are **fixed by this contract**. A capability's manifest may attach
 a fragment only to a phase named here; it may not invent a phase. The constitution
 (below) is **not** a phase in this spine — it is a cross-cutting constraint
 established at setup and enforced at `verify`.
+
+`pre-commit` is likewise **not** part of the linear artifact spine — it authors no
+gated markdown artifact and feeds no next phase. It is an **operation-time injection
+point** fired by the commit path immediately before a commit is recorded — the
+delivery-side analogue of the way the `verify` phase fires `finding`s — so a
+capability may inspect the staged change set and gate or annotate the commit without
+core naming it. Its firing semantics, empty-result no-op, and gate/annotate shape are
+fixed in "The pre-commit self-review seam" below.
 
 ---
 
@@ -353,7 +362,7 @@ without naming the capability. Each kind below states its phase(s) and its
 | authoring `guidance` | `spec`, `implement` | prose authoring direction (conventions, constraints, stack idioms) the core skill follows while authoring the artifact | **aggregate** — follow every contributor in registry order; most-specific (last) wins on conflict |
 | `task-list` | `tasks` | an opinionated decomposition into small, independently testable units | **aggregate** — append every contributor's tasks |
 | `artifact` | `plan` | a structured correspondence table / document derived in the plan phase | **partition by ownership** — only the owning capability applies (scope below) |
-| `finding` | `verify` | a conformance issue asserted against the work under review | **aggregate** — every contributor's findings, **provenance-tagged** |
+| `finding` | `verify`, `pre-commit` | a conformance issue asserted against the work under review (at `verify`) or against the staged change set about to be committed (at `pre-commit`) | **aggregate** — every contributor's findings, **provenance-tagged** |
 | `scenario` | `qa-generation` | an executable check derived from an acceptance criterion | **aggregate** — every contributor's scenarios, provenance-tagged |
 | `provider` | `qa-execution`, `implement`, `spec` | a capability that supplies *execution* (an engine or environment) or an *operation* (a delivery or tracker action), not a result | **partition by ownership** — one owner per surface (scope below); subagent dispatch (`qa-execution`) or direct resolve (`implement`, delivery surface; `spec`, tracker surface — see below) |
 | `article` | constitution (set up at `init`; enforced at `verify`) | a non-negotiable principle | **aggregate** with provenance; precedence rules below |
@@ -619,6 +628,53 @@ the same `**<label>:** <value>` metadata-line shape the `delivery` surface's
 same artifact/slot, the caller **reads the metadata line back first**; a present
 value means the operation already ran and is treated as already-published — it
 is never re-invoked.
+
+---
+
+### The pre-commit self-review seam
+
+> **Normative runtime text:** [the pre-commit self-review seam](capability-registry.ops.md#the-pre-commit-self-review-seam).
+
+Core has no place, of its own, where a capability may inspect a change **before it is
+recorded** — the phase spine ends its authoring at `implement` and its checking at
+`verify` (post-implementation) / `qa` (post-implementation), none of which sits on the
+commit path. The **pre-commit self-review seam** fills that gap. It is the `pre-commit`
+phase (the SDD-phases table above): an **operation-time injection point** fired by the
+commit path immediately **before** a commit is recorded, reusing the existing `finding`
+contribution kind — **no new kind** is introduced.
+
+- **Reuses `finding`, provenance-tagged (aggregate).** A pre-commit self-review is a
+  set of findings about the staged change set, exactly the shape `finding` already
+  carries at `verify`; the seam adds a second phase to `finding`, not a new taxonomy
+  kind. Multiple capabilities compose: every contributor's findings are aggregated in
+  registry order, each tagged with its source capability (order is cosmetic, as for
+  every `finding`).
+- **When it fires.** The core commit path fires it on **every** route to a commit — a
+  direct commit invocation and every programmatic commit (the PR and full-cycle paths
+  that reach the same commit operation) — immediately before the commit operation, and
+  **only when a real change is pending** (never on the nothing-to-commit path, where no
+  commit is recorded and there is nothing to review).
+- **Empty-result no-op — inert when unregistered.** With an **empty registry**, or a
+  registry in which **no** capability attaches a fragment at `pre-commit`, the phase
+  produces its declared empty result: **no finding surfaces, no term of any capability
+  appears, and the commit proceeds byte-identically to a core with no seam at all.**
+  This is the same "empty table = fully generic core / inert phase" guarantee the
+  registry already states, applied to the commit path.
+- **Gate or annotate — the contributor decides; core only fires and honors.** A
+  contributed finding may **gate** (block the commit) or merely **annotate** (record an
+  observation and let the commit proceed); which one is the **contributing
+  capability's** determination, carried in its finding, not core's. Core's role is
+  fixed and capability-agnostic: fire the phase, aggregate the findings, and — if any
+  aggregated finding signals a block — **not record the commit**; otherwise proceed.
+  Core names, requires, and assumes **no** capability at this seam, exactly as it names
+  none at `verify`.
+- **A phase firing, not a provider resolution.** The seam is fired the way any core
+  phase-firing skill fires a phase (walk the registry, collect the phase's fragments,
+  dispatch, aggregate) — **distinct from** the direct resolution of the `delivery`
+  `provider` surface the commit path also uses for the commit operation itself. The two
+  never conflate: a run's forwarded `delivery` resolution record serves the delivery
+  operations only; the `pre-commit` firing reads the registry for `finding` fragments
+  independently and alters neither the forwarded record nor the delivery surface.
 
 ---
 
