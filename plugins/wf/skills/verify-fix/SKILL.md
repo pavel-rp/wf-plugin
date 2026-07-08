@@ -56,12 +56,7 @@ Treat as an explicit override. Useful when the report lives outside `{task-root}
 
 ## Direct provider resolution (how `current-branch-query` and `last-commit-timestamp-query` are reached)
 
-Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch id inference above and the Phase 1 branch gate) and `last-commit-timestamp-query` (Phase 2's staleness check) — is reached the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section:
-
-1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
-2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
-4. **Zero matching rows** — no capability owns the `delivery` surface. Both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces.
+Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch id inference above and the Phase 1 branch gate) and `last-commit-timestamp-query` (Phase 2's staleness check) — is reached by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces.
 
 ---
 
@@ -92,7 +87,7 @@ Before editing any code, verify the current branch matches the audit's target. E
 
 1. **Resolve delivery-surface ownership first** — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of direct provider resolution (see "Direct provider resolution" above), applied before any branch read. **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no hard stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and proceed (the gate is satisfied). **One matching row** — resolve the current branch via `current-branch-query`, then apply steps 2–3.
 2. **If the branch name contains `/{numeric-id}-`** (the token defined above, e.g. `feature/6756-...`) — proceed.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the subagent's reason.
+3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the subagent's reason.
 
 Rationale: the audit's evidence lines (`file:line`) are only meaningful on the branch that produced them. Fixing on `main` or an unrelated branch edits the wrong state.
 

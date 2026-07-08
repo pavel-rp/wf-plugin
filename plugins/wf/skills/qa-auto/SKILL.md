@@ -64,12 +64,7 @@ Disambiguation: if a token contains a 3+-digit run, or exactly matches an existi
 
 ## Direct provider resolution (how `current-branch-query` is reached)
 
-Id inference and the Phase 2 branch gate both reach `current-branch-query` the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section (qa-auto has no tracker-surface call site — it never fetches):
-
-1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
-2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
-4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
+Id inference and the Phase 2 branch gate both reach `current-branch-query` by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. (qa-auto has no tracker-surface call site — it never fetches.)
 
 ---
 
@@ -108,7 +103,7 @@ Id inference and the Phase 2 branch gate both reach `current-branch-query` the s
 
 Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** for the branch-name match below; it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
 
-Resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against, so the gate below is skipped). If the resolved branch doesn't match `*/{numeric-id}-*` and subagent invocation is available, invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose. If subagent invocation is unavailable, warn but continue — auto runs commonly happen on the task branch anyway.
+Resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against, so the gate below is skipped). If the resolved branch doesn't match `*/{numeric-id}-*` and subagent invocation is available, invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. If subagent invocation is unavailable, warn but continue — auto runs commonly happen on the task branch anyway.
 
 ---
 

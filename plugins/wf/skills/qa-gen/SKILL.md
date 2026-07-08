@@ -59,12 +59,7 @@ Examples:
 
 ## Direct provider resolution (how `current-branch-query` is reached)
 
-Id inference and the Phase 1 branch gate both reach `current-branch-query` the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution", mirroring `plugins/wf/agents/branch.md`'s own section (qa-gen has no tracker-surface call site — it never fetches):
-
-1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
-2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
-4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
+Id inference and the Phase 1 branch gate both reach `current-branch-query` by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. (qa-gen has no tracker-surface call site — it never fetches.)
 
 ---
 
@@ -95,7 +90,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` the s
 
 3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {task-id}` first to fetch requirements."
 
-4. **Branch gate.** Resolve delivery-surface ownership first — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of direct provider resolution. **Zero matching rows (bare-core mode)** — the gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and continue to step 5. **One matching row** — resolve the current branch via `current-branch-query`; if it doesn't match `/{numeric-id}-` (the token defined in step 1), invoke the **Task** tool with `subagent_type: wf:branch` and the resolved id. The subagent will create or switch to the task branch. If subagent invocation is unavailable, stop with: "Not on task branch and the Task tool isn't available. Run `/wf:branch {task-id}` manually, then re-run `/wf:qa-gen`."
+4. **Branch gate.** Resolve delivery-surface ownership first — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of direct provider resolution. **Zero matching rows (bare-core mode)** — the gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and continue to step 5. **One matching row** — resolve the current branch via `current-branch-query`; if it doesn't match `/{numeric-id}-` (the token defined in step 1), invoke the **Task** tool with `subagent_type: wf:branch`, passing the resolved id **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. The subagent will create or switch to the task branch. If subagent invocation is unavailable, stop with: "Not on task branch and the Task tool isn't available. Run `/wf:branch {task-id}` manually, then re-run `/wf:qa-gen`."
 
 5. **Resolve scope.** Default `full`. Accept `smoke`, `happy`, `full` — anything else stops with "Unknown scope: `<value>`. Use one of: smoke, happy, full."
 

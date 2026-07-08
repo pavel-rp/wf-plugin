@@ -93,12 +93,7 @@ Before touching any code, verify the current branch is correct for this task —
 
 ### Direct provider resolution (how `current-branch-query` and the wf:branch subagent's `branch-create` are reached)
 
-Reached the same way `plugins/wf/skills/plan/SKILL.md`'s Phase 0 and `plugins/wf/agents/branch.md` already use, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution":
-
-1. Read the `## Capabilities` registry from `_local/config.md`.
-2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
-4. **Zero matching rows** — no capability owns the `delivery` surface.
+Reached by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). Resolve the `delivery` surface once here, then forward that record to the `wf:branch` subagent the gate procedure below spawns, so it consumes the record instead of re-resolving. With zero readable `delivery` rows, no capability owns the `delivery` surface — the gate degrades to a no-op (below).
 
 **Gate procedure:**
 
@@ -106,7 +101,7 @@ Reached the same way `plugins/wf/skills/plan/SKILL.md`'s Phase 0 and `plugins/wf
 2. **Zero matching rows (bare-core mode)** — the gate degrades to a no-op: do not invoke `current-branch-query`, do not invoke the wf:branch subagent, no error, no hard stop. Report: "Branch gate skipped — no delivery provider registered (bare-core mode)." Continue directly to Phase 2.
 3. **One matching row** — resolve the current branch via `current-branch-query` (direct provider resolution above).
    - **If the branch name contains `/{numeric-id}-`** (e.g. `feature/6396-...`, `fix/6396-...`, `chore/6396-...`, etc.) — already on the task branch, proceed to Phase 2.
-   - **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` as its argument. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
+   - **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{id}` **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.)
      - On success (`BRANCH — created`/`switched`/`already-active`), continue directly to Phase 2.
      - On failure (`BRANCH — Error`), stop and surface the subagent's reason.
 
