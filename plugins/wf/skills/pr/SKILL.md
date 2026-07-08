@@ -39,6 +39,7 @@ Read `_local/config.md` for `{task-root}`. If missing, stop: "Run `/wf:init` fir
 
 - Read `_local/config.md` and the task folder.
 - Read-only resolution for ID/branch inference (`workspace-root-resolve`, `current-branch-query`).
+- Resolve providers once for the run (Phase 1.5): read the `## Capabilities` registry and, for each required surface (`delivery`, and `tracker`), that capability's `manifest.md` + fragment — small reads only; the diff and PR body stay inside the subagents.
 - Invoke the **Task** tool with `subagent_type` `wf:commit` and `wf:pr`.
 
 **Forbidden:**
@@ -53,9 +54,17 @@ Read `_local/config.md` for `{task-root}`. If missing, stop: "Run `/wf:init` fir
 
 Resolve `{task-id}` (the opaque task id — whatever shape the active tracker produced, or the local `T<NNN>` scheme): use the passed value verbatim. If none was passed, leave it unset and let the subagents infer it from the current branch — each resolves the branch-inferred token against `{task-root}` itself, so this skill never reconstructs an id from a prefix.
 
+## Phase 1.5 — Resolve providers once (the run's single resolution point)
+
+This host is the **single resolution point** for the `/wf:pr` run: it resolves each required provider surface **once** and forwards the result to the subagents it spawns, so `wf:commit`, both of `wf:pr`'s surfaces, and any nested `wf:branch` consume it without re-resolving (`invocation-runtime.ops.md` §"Run-scoped provider forwarding").
+
+Perform direct provider resolution (`invocation-runtime.ops.md` §"Direct provider resolution") **once per required surface**: one read of the `## Capabilities` registry (from `_local/config.md`, the default-absent `registryPath` value), then one `manifest.md` + fragment read for the `delivery` surface and one for the `tracker` surface — both in that same pass, never a second registry walk. A plugin-anchored `Path` resolves through the self-heal home (`capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). Hold each surface's **run-scoped resolution record** — its provider identity + resolved fragment path, or its unconfigured/unrecoverable outcome — to forward below.
+
+Only these small registry/manifest/fragment reads happen in the host; the diff and PR-body artifacts stay inside the subagents, so isolation is preserved. The records are run-scoped runtime values — no concrete provider is named in this skill.
+
 ## Phase 2 — Commit and push (unless --no-commit)
 
-Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing `id: {task-id}` (or omit `id` when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`.
+Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing `id: {task-id}` (or omit `id` when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`, **and the forwarded `delivery` resolution record from Phase 1.5** (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:commit` and the `wf:branch` it may nest consume it instead of re-resolving.
 
 Gate on its `COMMIT —` block:
 
@@ -74,6 +83,7 @@ Invoke the **Task** tool with `subagent_type: wf:pr`, passing:
 - `id` — `{task-id}` (omit when unset — the subagent infers it from the current branch)
 - `draft` — `true` if `--draft` was passed, else `false`
 - `base` — the `--base` value, or omit to let the subagent detect `main`/`master`
+- the forwarded `delivery` and `tracker` resolution records from Phase 1.5, so `wf:pr` consumes both surfaces without a resolution walk of its own (`invocation-runtime.ops.md` §"Run-scoped provider forwarding")
 
 Emit the subagent's `PR —` block verbatim as this skill's final output.
 

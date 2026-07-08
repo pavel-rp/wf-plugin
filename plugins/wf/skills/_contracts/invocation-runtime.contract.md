@@ -1,6 +1,6 @@
 # Capability invocation runtime (the registry-iterating, per-phase-injecting substrate)
 
-**Version:** 2.5.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface; WF-199 — recorded-root-first self-heal fallback (referencing the port) and the write-side registered-but-unrecoverable diagnosis split; WF-208 — ops/reference split: the runtime-followed text is extracted to `invocation-runtime.ops.md` (v1.0.0), leaving this contract as the reference half)
+**Version:** 2.6.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface; WF-199 — recorded-root-first self-heal fallback (referencing the port) and the write-side registered-but-unrecoverable diagnosis split; WF-208 — ops/reference split: the runtime-followed text is extracted to `invocation-runtime.ops.md` (v1.0.0), leaving this contract as the reference half; WF-209 — run-scoped provider forwarding, mirrored from the ops doc)
 **Status:** reference half of the invocation runtime — rationale, v1 lineage, worked demonstrations; **never read at boot**. The runtime-read half — the exact firing/resolution procedure with every guard, no-op case, and fail-safe — is `invocation-runtime.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `invocation-mechanism.contract.md` (v1.0.0, WF-10) — the single-manifest, three-named-seam runtime, kept intact as the frozen N=1 substrate this generalises
 **Executes the port:** `capability-registry.contract.md` (v2.6.0, WF-21; WF-99; WF-120; WF-121; WF-179; WF-199; WF-208) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
@@ -356,6 +356,30 @@ partitioned kind where "at most one match, invoked on demand" is the operative
 shape rather than "every contributor at a firing phase." A second surface
 (`tracker`) plugging into the same filter, unchanged, is exactly what proves the
 mechanism generalises — not a reason to add a third procedure.
+
+---
+
+## Run-scoped provider forwarding (resolve once, forward down)
+
+> **Normative runtime text:** [run-scoped provider forwarding](invocation-runtime.ops.md#run-scoped-provider-forwarding-resolve-once-forward-down).
+
+Direct provider resolution above is a **per-boot** entry point: on its own, each subagent in
+a delivery chain that needs a surface re-walks registry → manifest → fragment. WF-209 adds a
+**run-scoped** optimisation on top of it, introducing **no new primitive**: a delivery-chain
+run resolves each required surface **once**, at the run's single resolution point (the highest
+boot that needs the surface), and **forwards** the resolved **run-scoped resolution record** —
+the surface token, the resolved provider identity, and the resolved fragment path, or the
+surface's unconfigured/unrecoverable outcome — down its spawn messages as an **optional,
+backward-compatible** extension of the spawn contract. A boot that receives a record consumes
+it and forwards it onward; a boot invoked directly (top of its own chain) self-resolves and
+forwards. The record carries **no fragment body** — the dispatch read stays in the consumer's
+isolated context, so subagent isolation is unchanged. It is **never forwarded to `wf:index`**
+(zero provider operations), and it is **run-scoped** — never persisted; the next run
+re-resolves from the registry, so a registry swap is picked up immediately and core prose still
+names no concrete provider (the identity flows only as a run-scoped runtime value through the
+generic slots). The exact procedure — what the single resolution point reads, what a consumer
+skips, and how the degraded outcomes forward — is the ops doc's; this half records only the
+rationale.
 
 ---
 

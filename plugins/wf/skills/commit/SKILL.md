@@ -34,6 +34,8 @@ Invoke the **Task** tool with `subagent_type: wf:commit`, passing:
 - `push` — `true` if `--push` was passed, else `false`.
 - `staged` — `true` if `--staged` was passed, else `false`.
 
+This is a **direct invocation** — the top of its own delivery chain — so **no forwarded resolution record is passed**; the `wf:commit` subagent self-resolves the `delivery` surface once and forwards it to any `wf:branch` it nests (`invocation-runtime.ops.md` §"Run-scoped provider forwarding"). When another `wf:*` skill invokes `wf:commit` via the **Task** tool as part of a larger run, that parent forwards the record instead and the subagent consumes it.
+
 Emit the subagent's Final Output block (`COMMIT — committed`, `COMMIT — nothing-to-commit`, or `COMMIT — Error`) verbatim. **No narrative before or after the block** — the subagent owns the user-facing output; the diff and message-authoring reasoning stay in its isolated context.
 
 ---

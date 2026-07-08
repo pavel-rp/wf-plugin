@@ -30,6 +30,8 @@ Invoke the **Task** tool with `subagent_type: wf:branch`, passing:
 
 - `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
 
+This is a **direct invocation** — the top of its own delivery chain — so **no forwarded resolution record is passed**; the `wf:branch` subagent self-resolves the `delivery` surface once (`invocation-runtime.ops.md` §"Run-scoped provider forwarding"). When another `wf:*` skill invokes `wf:branch` via the **Task** tool as part of a larger run (e.g. `wf:commit`'s branch gate), that parent forwards its resolved `delivery` record and the subagent consumes it instead of re-resolving.
+
 Emit the subagent's Final Output block (`BRANCH — created`, `BRANCH — switched`, `BRANCH — already-active`, or `BRANCH — Error`) verbatim. **No narrative before or after the block** — the subagent already owns the user-facing output.
 
 ---
