@@ -5,9 +5,10 @@ capability owning the wf capability-registry's **`tracker`** `provider` surface
 (`plugins/wf/skills/_contracts/capability-registry.contract.md` §"The tracker
 provider surface"). It binds every abstract tracker operation —
 `resolve_config`, `create_umbrella`, `create_child`, `update`, `get`,
-`list_children`, `post_comment`, `set_status`, `attach_link` — to concrete Linear
-mechanics via the `mcp__claude_ai_Linear__*` MCP tools, so a `wf` core skill that
-needs to read or write an issue has a provider to dispatch to.
+`list_children`, `post_comment`, `set_status`, `attach_link`, `list_by_status`,
+`list_milestones`, `list_cycles` — to concrete Linear mechanics via the
+`mcp__claude_ai_Linear__*` MCP tools, so a `wf` core skill that needs to read,
+write, or enumerate issues has a provider to dispatch to.
 
 wf-linear is the **second, independent** binding of the tracker contract — proof
 that the contract carries no ADO-shaped assumption. It composes exactly like
@@ -20,7 +21,8 @@ one** tracker provider — `wf-ado` **or** `wf-linear`, never both.
 
 The **`mcp__claude_ai_Linear__*` MCP tools connected in the downstream session** —
 `get_issue`, `list_issues`, `save_issue`, `save_comment`, `create_attachment`,
-`list_issue_statuses`, `list_teams`, `list_projects`, at minimum (see
+`list_issue_statuses`, `list_milestones`, `list_cycles`, `list_teams`,
+`list_projects`, at minimum (see
 `capabilities/linear/fragments/tracker.md`'s per-operation bindings). Without
 them connected, an in-flight run's tracker calls fail at the MCP layer; the
 fragment's warn-once-continue rule (below) still applies, so a run degrades to
@@ -31,7 +33,7 @@ local-only rather than blocking.
 | Item | What it is |
 |---|---|
 | `capabilities/linear/manifest.md` | the `linear` capability's manifest — one `provider` fragment row scoped `tracker` |
-| `capabilities/linear/fragments/tracker.md` | the inline reference doc binding all nine tracker operations to Linear MCP mechanics, with a completeness coverage table |
+| `capabilities/linear/fragments/tracker.md` | the inline reference doc binding all twelve tracker operations to Linear MCP mechanics, with a completeness coverage table |
 | `/wf-linear:init` | one-command self-registration — records this pack's install root, registers the `linear` capability, and interviews for (or carries forward) the Linear team/project, mirroring `/wf-ado:init` (WF-123), `/wf-git:init` (WF-122), `/wf-caps:init` (WF-99) |
 
 ## Registering wf-linear downstream
