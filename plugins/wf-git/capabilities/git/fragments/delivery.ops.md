@@ -1,6 +1,6 @@
 # git delivery provider — runtime ops
 
-**Version:** 1.3.0 (WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`)
+**Version:** 1.4.0 (WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — the branch-changes enumeration read operation bound: `branch-changes-read`)
 **Role:** the runtime-read half of the git delivery provider — every input, guard, error path, and outcome mapping a delivery operation follows. Read at every delivery-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, rationale, edge-case matrix — never read at boot):** `delivery.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = delivery`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -10,7 +10,7 @@
 
 **Consumes, never derives:** every operation takes an already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>`; composing those from a tracker work item is the caller's job, not this file's.
 
-**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · last-commit-timestamp-query · pr-comments-read · pr-comment-post · checks-read · review-thread-resolve · pr-merge · activity-read.
+**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · pr-comment-post · checks-read · review-thread-resolve · pr-merge · activity-read.
 
 ## branch-create
 
@@ -137,6 +137,19 @@
 2. Success → the timestamp. Failure (no commits yet, or not inside a git working tree) → a genuine **environment error** to surface plainly — distinct from core's no-provider fallback, which this file does not implement.
 
 **Output:** the last commit's timestamp, or a plain environment error.
+
+## branch-changes-read (read)
+
+**Inputs:** `<base>` (optional; the ref the branch is diffed against — determined below when omitted).
+
+**Procedure:**
+
+1. **Resolve the base.** Use `<base>` if supplied; else `git rev-parse --verify main` (exit 0 → `main`, non-zero → `master`) — the same base fallback `branch-create` uses.
+2. **Committed divergence.** `git diff --name-status <base>...HEAD` — the three-dot (merge-base) diff, so files already on `<base>` never appear; each line is a change status (`A`/`M`/`D`/`R…`) and its path.
+3. **Uncommitted working-tree changes.** `git status --porcelain` — fold in any staged, unstaged, or untracked path not already present, so a branch's in-progress edits are visible too.
+4. **Merge** the two into one changed-file set keyed by path (a path present in both keeps its most-recent status); an empty set is a valid result (no divergence and a clean tree).
+
+**Output:** the changed-file set (each entry a path + its change status), or an empty set. Not inside a git working tree → a genuine **environment error** to surface plainly — distinct from core's no-provider plain-directory fallback, which this file does not implement.
 
 ## pr-comments-read (read)
 
