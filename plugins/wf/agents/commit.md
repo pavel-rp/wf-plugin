@@ -47,11 +47,14 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 1. Determine the base branch: `main`, falling back to `master` if `main` doesn't exist in this repository.
 2. Count the commits already introduced on this branch since the base branch. Zero → this is the **first commit** on the branch (`<is-first>` = true). Otherwise `<is-first>` = false.
 
-## Step 4 — Author the message, then commit
+## Step 4 — Short-circuit nothing-to-commit, else author the message and commit
 
 1. **No-delivery-provider path.** If the scope-equality filter (`provider` + `scope: delivery`) matches zero rows across the registry, return `COMMIT — Error` immediately with reason "No delivery provider is registered. Register a capability that owns the `delivery` surface (e.g. install and run `/wf-git:init`)." No delivery operation of any kind is attempted — skip message authoring entirely, there is nothing to commit it with.
-2. **Read the pending change content** that is about to be recorded — the full outstanding diff when `<staged>` is false (the `commit` operation stages everything before recording), or just the already-staged content when `<staged>` is true. This is the large input that stays entirely in your isolated context. No delivery operation covers message-authoring content, so this stays a direct read — described here by outcome, never as a literal diff command.
-3. **Author the message.**
+2. **Nothing-to-commit short-circuit.** With a delivery provider confirmed (the no-delivery-provider path above did not fire) and *before* authoring anything, determine whether the set the pending-change-content read below would capture is empty — the full outstanding diff when `<staged>` is false, or just the already-staged content when `<staged>` is true (unstaged changes then don't count). Determine it **by outcome** through the same direct-read convention that read uses, **never** as a named provider command, so this early gate and the provider `commit` operation's own absorbed nothing-to-commit check agree on exactly what counts.
+   - **The set is non-empty** (a pending change exists) → fall through and run the normal path (read content, author, commit) unchanged; the provider `commit` operation's absorbed nothing-to-commit check remains the authoritative decision.
+   - **The set is empty** (nothing to record, honoring `<staged>`) → this is the **nothing-to-commit** result: skip message authoring and the `commit` invocation entirely and go straight to **Step 5** on the nothing-to-commit path (honoring `push`). The `commit` write operation is never reached through the authoring path; Step 5 still runs, pushing per `push`.
+3. **Read the pending change content** that is about to be recorded — the full outstanding diff when `<staged>` is false (the `commit` operation stages everything before recording), or just the already-staged content when `<staged>` is true. This is the large input that stays entirely in your isolated context. No delivery operation covers message-authoring content, so this stays a direct read — described here by outcome, never as a literal diff command.
+4. **Author the message.**
 
    **Subject** — always `<id>: <text>`, where `<id>` is `{numeric-id}` (the bare digit run — no prefix and no brackets):
 
@@ -62,7 +65,7 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 
    Assemble the full message as: subject line, blank line, then the bullets.
 
-4. **Invoke `commit(<message>, <staged>)`.** This single operation absorbs staging (unless `<staged>` is true), the nothing-to-commit check, and the actual commit.
+5. **Invoke `commit(<message>, <staged>)`.** This single operation absorbs staging (unless `<staged>` is true), the nothing-to-commit check, and the actual commit.
    - `<state>` = `nothing-to-commit` → skip to **Step 5** on the nothing-to-commit path (honoring `push`).
    - `<state>` = `committed` → continue to Step 5, carrying forward the operation's returned diffstat summary — `<n> changed (+<a> -<d>)` — for the `Files:` line.
    - Any other failure → return `COMMIT — Error` with the operation's reason. The commit itself did not happen.
