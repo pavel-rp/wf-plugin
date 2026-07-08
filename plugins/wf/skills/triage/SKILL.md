@@ -53,21 +53,13 @@ Reach for `/wf:triage` at the very start of a ticket, before deciding between `/
 
 ### Direct provider resolution (how `get` is reached)
 
-Every tracker operation below (`get`) is reached the same way, per `plugins/wf/skills/_contracts/invocation-runtime.contract.md` §"Direct provider resolution" — mirroring `plugins/wf/skills/spec/SKILL.md`'s own tracker-surface section:
+Every tracker operation below (`get`) is reached by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `tracker` surface). A plugin-anchored `Path` resolves through the self-heal home — `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal" (recorded-root-first, then the install-manifest self-heal) — so a dangling-but-recoverable recorded root self-heals in-memory and the `get` just works instead of silently dropping the fetch.
 
-1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
-2. Select the row(s) where `contribution-kind = provider` **and** `scope = tracker`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned). A plugin-anchored `Path` resolves through the self-heal home — `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal" (recorded-root-first, then the install-manifest self-heal) — so a dangling-but-recoverable recorded root self-heals in-memory and the `get` just works instead of silently dropping the fetch.
-4. **Zero readable rows** — no capability's `tracker` manifest could be read (genuinely unconfigured, or registered-but-unrecoverable after the self-heal). Either way this `get` is a **read**, so it stays silent local-only — no tracker operation is attempted, no residual message, no capability term surfaces; every step below proceeds from local artifacts alone.
+**Zero readable rows** — no capability's `tracker` manifest could be read (genuinely unconfigured, or registered-but-unrecoverable after the self-heal). Either way this `get` is a **read**, so it stays silent local-only — no tracker operation is attempted, no residual message, no capability term surfaces; every step below proceeds from local artifacts alone.
 
 ### Direct provider resolution (how `current-branch-query` is reached)
 
-Every delivery operation below (`current-branch-query`) is reached the same way, per the same contract section — mirroring `plugins/wf/agents/branch.md`'s own delivery-surface section:
-
-1. Read the `## Capabilities` registry from `_local/config.md` (the contract's default-absent `registryPath` value).
-2. Select the row(s) where `contribution-kind = provider` **and** `scope = delivery`, across the whole registry (a scope filter, independent of which phase value the row itself carries).
-3. Read that capability's `manifest.md` at its registry path, then dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent is spawned).
-4. **Zero matching rows** — no capability owns the `delivery` surface. `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
+`current-branch-query` is reached by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
 
 ---
 
