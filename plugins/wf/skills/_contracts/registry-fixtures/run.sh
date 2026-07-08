@@ -118,6 +118,9 @@ assert "two-dependency requires satisfied passes" pass-requires-git-ado.md - 0 "
 # operations) composes with a `delivery` provider — the surface pairing a cross-tracker
 # briefing needs; two distinct surfaces, clean.
 assert "tracker composes with delivery passes" pass-tracker-delivery.md - 0 "Validation passed" "ado" "delivery-owner"
+# WF-176: the branch-changes-read read op extends the delivery surface without adding a
+# surface/phase/kind — a single owner still carries the whole (now-extended) surface, clean.
+assert "delivery branch-changes single owner passes" pass-delivery-branch-changes.md - 0 "Validation passed"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
@@ -135,6 +138,10 @@ assert "delivery overlap named"       fail-delivery-overlap.md - 1 "delivery-own
 # WF-157: two delivery owners at DIFFERENT phases (implement vs spec) still overlap —
 # surface uniqueness is phase-agnostic; both named.
 assert "delivery overlap across phases named" fail-delivery-overlap-phases.md - 1 "delivery-owner" "delivery-owner-spec" "delivery" "must not overlap"
+# WF-176: the branch-changes read op cannot be split to a SECOND delivery owner — the
+# surface is partitioned by its scope token alone, so a second `delivery` claimant
+# collides with the existing owner; both named.
+assert "delivery branch-changes split named" fail-delivery-branch-changes-split.md - 1 "delivery-owner" "delivery-owner-2" "delivery" "must not overlap"
 # WF-121: two capabilities both claiming the tracker provider surface, both named.
 assert "tracker overlap named"        fail-tracker-overlap.md  - 1 "tracker-owner" "tracker-owner-2" "tracker" "must not overlap"
 # WF-136: the tracker contract's two independent provider bindings (ado, linear)
