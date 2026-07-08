@@ -1,11 +1,13 @@
 # Capability invocation runtime (the registry-iterating, per-phase-injecting substrate)
 
-**Version:** 2.4.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface; WF-199 — recorded-root-first self-heal fallback (referencing the port) and the write-side registered-but-unrecoverable diagnosis split)
-**Status:** authoritative source of truth for HOW a core skill invokes active capabilities at a phase
+**Version:** 2.5.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface; WF-199 — recorded-root-first self-heal fallback (referencing the port) and the write-side registered-but-unrecoverable diagnosis split; WF-208 — ops/reference split: the runtime-followed text is extracted to `invocation-runtime.ops.md` (v1.0.0), leaving this contract as the reference half)
+**Status:** reference half of the invocation runtime — rationale, v1 lineage, worked demonstrations; **never read at boot**. The runtime-read half — the exact firing/resolution procedure with every guard, no-op case, and fail-safe — is `invocation-runtime.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `invocation-mechanism.contract.md` (v1.0.0, WF-10) — the single-manifest, three-named-seam runtime, kept intact as the frozen N=1 substrate this generalises
-**Executes the port:** `capability-registry.contract.md` (v2.5.0, WF-21; WF-99; WF-120; WF-121; WF-179; WF-199) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
+**Executes the port:** `capability-registry.contract.md` (v2.6.0, WF-21; WF-99; WF-120; WF-121; WF-179; WF-199; WF-208) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
+
+> **Ops/reference split (WF-208).** This contract is the **reference half** — read at authoring and validation time, never at boot. The **runtime-read half** is [`invocation-runtime.ops.md`](invocation-runtime.ops.md): bounded (≤150 lines), self-sufficient one level deep, the normative home for the whole runtime-followed procedure. Sections below carrying a "Normative runtime text" pointer keep their narrative as background; a boot follows the ops doc, never this file.
 
 ---
 
@@ -77,6 +79,8 @@ is **exactly v1's `<none>`** absent state. Backward compatibility is structural.
 
 ## The moving parts (the generalised procedure)
 
+> **Normative runtime text:** [the moving parts](invocation-runtime.ops.md#the-moving-parts-the-generalised-procedure).
+
 A core skill firing a phase performs these steps, in order. Each is a distinct,
 greppable section below.
 
@@ -89,6 +93,8 @@ greppable section below.
 ---
 
 ## 1. Registry iteration
+
+> **Normative runtime text:** [1. Registry iteration](invocation-runtime.ops.md#1-registry-iteration).
 
 Core reads the **`## Capabilities` registry** from its **configurable location** —
 resolved from the repo-root `wf.config.js` `registryPath` key, **defaulting to
@@ -143,6 +149,8 @@ the rows, or test whether a specific one is present.
 
 ## 2. Per-capability manifest read
 
+> **Normative runtime text:** [2. Per-capability manifest read](invocation-runtime.ops.md#2-per-capability-manifest-read).
+
 For each registry row, core reads exactly one **manifest** at a contracted, fixed
 path under that row's path:
 
@@ -185,6 +193,8 @@ Core references the fragments table by the **column names the port fixes**
 
 ## 3. Per-phase fragment collection
 
+> **Normative runtime text:** [3. Per-phase fragment collection](invocation-runtime.ops.md#3-per-phase-fragment-collection).
+
 To fire a given phase, core selects from the parsed manifest **only** the fragment
 rows whose `phase` column equals the firing phase. All other rows are ignored for
 this firing — a capability contributes to a phase only if it has a row for that phase.
@@ -206,6 +216,8 @@ active capability's matching rows, ordered by registry order.
 
 ## 4. Per-fragment dispatch
 
+> **Normative runtime text:** [4. Per-fragment dispatch](invocation-runtime.ops.md#4-per-fragment-dispatch).
+
 For each collected fragment, core dispatches on its `dispatch` kind — the **same two
 kinds** the v1 substrate used, unchanged:
 
@@ -223,6 +235,8 @@ through the fragment row, never by naming the capability.
 ---
 
 ## 5. Aggregation
+
+> **Normative runtime text:** [5. Aggregation](invocation-runtime.ops.md#5-aggregation).
 
 Once the firing phase's contributors are dispatched, core combines their results per
 the **firing contribution kind's aggregation policy**. The policies are fixed by
@@ -268,6 +282,8 @@ applies the single owner. Two partitioned kinds carry an ownership **scope** tok
 ---
 
 ## Direct provider resolution (the delivery and tracker invocation modes)
+
+> **Normative runtime text:** [direct provider resolution](invocation-runtime.ops.md#direct-provider-resolution-the-delivery-and-tracker-invocation-modes).
 
 The five moving parts above assume a phase *fires* and its contributors
 *aggregate*. That model fits `qa-execution`'s `provider` (invoked when the
@@ -345,6 +361,8 @@ mechanism generalises — not a reason to add a third procedure.
 
 ## No-op path (the generalised `<none>` Null Object)
 
+> **Normative runtime text:** [no-op path](invocation-runtime.ops.md#no-op-path-the-generalised-none-null-object).
+
 A phase — or an individual capability's part of it — **no-ops** (produces the empty
 result of the firing kind's declared shape and lets the surrounding SDD skeleton
 proceed exactly as if nothing were attached) in any of these cases:
@@ -363,6 +381,8 @@ Null Object: the contracts carry the seam, the skill bodies stay capability-free
 
 ### Generic-only branch rule
 
+> **Normative runtime text:** [generic-only branch rule](invocation-runtime.ops.md#generic-only-branch-rule).
+
 The **only** branch a core skill may evaluate around a phase firing is the generic
 one: **the registry has zero contributing fragments for this phase** vs. **one or
 more**. A core skill body must **never**:
@@ -378,6 +398,8 @@ Core iterates rows and dispatches on each fragment's declared kind; it never spe
 cases a row.
 
 ### Fail-safe
+
+> **Normative runtime text:** [fail-safe](invocation-runtime.ops.md#fail-safe).
 
 A collected fragment row whose `dispatch` kind is neither `inline:` nor `subagent:`
 (a malformed or unrecognized dispatch) is treated as a **no-op**, exactly as the v1

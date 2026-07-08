@@ -1,11 +1,13 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.5.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis)
-**Status:** authoritative source of truth for the core↔capability boundary semantics
+**Version:** 2.6.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half)
+**Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
-**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.4.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
+**Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (capability-agnostic; ships inside the plugin)
+
+> **Ops/reference split (WF-208).** This contract is the **reference half** — read at authoring and validation time, never at boot. The **runtime-read half** is [`capability-registry.ops.md`](capability-registry.ops.md): bounded (≤150 lines), self-sufficient one level deep, the normative home for every runtime-followed clause. Sections below carrying a "Normative runtime text" pointer keep their narrative as background; a boot follows the ops doc, never this file.
 
 ---
 
@@ -62,6 +64,8 @@ generalisation of a shape v1 already proved at N=1.
 ---
 
 ## The `## Capabilities` registry (the selector)
+
+> **Normative runtime text:** [the `## Capabilities` registry](capability-registry.ops.md#the--capabilities-registry-the-selector).
 
 Core reads a **registry** of active capabilities — a `## Capabilities` table at a
 **configurable location**, resolved from the repo-root `wf.config.js` `registryPath`
@@ -156,6 +160,8 @@ The `Path` column accepts two token shapes; **both resolve at runtime** (WF-99):
 
 ### The `## Plugin Roots` mapping
 
+> **Normative runtime text:** [the `## Plugin Roots` mapping](capability-registry.ops.md#the--plugin-roots-mapping).
+
 The datum that resolves a plugin-anchored `Path` is a second table, **co-located with
 the `## Capabilities` registry** at the `registryPath`-resolved location (default
 `_local/config.md`, gitignored):
@@ -211,6 +217,8 @@ Mapping semantics:
    `plugin:` `Path` is present.
 
 #### Recorded-root-first resolution with install-manifest self-heal
+
+> **Normative runtime text:** [recorded-root-first resolution with install-manifest self-heal](capability-registry.ops.md#recorded-root-first-resolution-with-install-manifest-self-heal).
 
 A recorded `Root` can **dangle**: a pack upgrade — or a machine move — can relocate a
 plugin's install root, leaving its `## Plugin Roots` row pointing at a directory that
@@ -295,12 +303,14 @@ another plugin's root.
 The mapping names **no** concrete plugin or capability; it is the generic
 `<plugin-name>` → root shape every pack's install root plugs into. Its location and
 shape are fixed here (a downstream-visible contract, like a phase name); executing the
-resolution is owned by the runtime (`invocation-runtime.contract.md`), writing it by a
+resolution is owned by the runtime (`invocation-runtime.ops.md`), writing it by a
 pack-owned init skill, and checking it by the validator.
 
 ---
 
 ## The SDD phases (the injection points)
+
+> **Normative runtime text:** [the SDD phases](capability-registry.ops.md#the-sdd-phases-the-injection-points).
 
 Core ships a fixed **SDD lifecycle spine** — the canonical Spec-Driven Development
 phases (Specify → Plan → Tasks → Implement) plus `wf`'s `verify` / `qa` extension.
@@ -330,6 +340,8 @@ established at setup and enforced at `verify`.
 ---
 
 ## The contribution taxonomy (the fragment kinds)
+
+> **Normative runtime text:** [the contribution taxonomy](capability-registry.ops.md#the-contribution-taxonomy-the-fragment-kinds).
 
 A capability attaches each fragment under exactly one **contribution kind**. Core
 defines a fixed, small taxonomy so it can render any capability's output uniformly
@@ -384,6 +396,8 @@ only when a real second owner of the same surface or pair appears.
 
 ### The delivery provider surface
 
+> **Normative runtime text:** [the delivery provider surface](capability-registry.ops.md#the-delivery-provider-surface).
+
 Core has no vocabulary of its own for version-control / delivery operations —
 creating a branch, committing, pushing, opening or detecting a pull request — so
 a capability that wants to bind that behaviour to core has nothing to attach to.
@@ -413,7 +427,7 @@ that phase's fragment collection, the `implement` phase attachment here is an
 **ownership anchor for registry validation only** — it does not restrict *when*
 a core skill may invoke a delivery operation. Any core skill, at any point in its
 own procedure, resolves the `delivery` surface directly. The runtime mechanics of
-that direct resolution are defined in `invocation-runtime.contract.md`'s "Direct
+that direct resolution are defined in `invocation-runtime.ops.md`'s "Direct
 provider resolution" section — this contract states the surface's existence and
 semantics; that document states how core reaches it.
 
@@ -466,6 +480,8 @@ guard for an operation whose provider has no idempotency of its own.
 
 ### The tracker provider surface
 
+> **Normative runtime text:** [the tracker provider surface](capability-registry.ops.md#the-tracker-provider-surface).
+
 Core has no vocabulary of its own for issue-tracker operations — creating a
 top-level work item, nesting a child work item beneath it, commenting, moving a
 status, attaching a link — so a capability that wants to bind that behaviour to
@@ -502,7 +518,7 @@ items are created at authoring time). Exactly like the `delivery` surface's
 validation only** — it does not restrict *when* a core skill may invoke a
 tracker operation. Any core skill, at any point in its own procedure, resolves
 the `tracker` surface directly, via the same "Direct provider resolution"
-procedure in `invocation-runtime.contract.md` the `delivery` surface already
+procedure in `invocation-runtime.ops.md` the `delivery` surface already
 uses — this contract states the surface's existence and semantics; that
 document states how core reaches it.
 
@@ -549,6 +565,8 @@ is never re-invoked.
 
 ## The constitution composition rule
 
+> **Normative runtime text:** [the constitution composition rule](capability-registry.ops.md#the-constitution-composition-rule).
+
 The constitution is a set of **non-negotiable principles** — **composed, not
 authored** as a single baked file (no compile step; see "What this contract is
 NOT"). At the contract level it is governed by these rules:
@@ -577,6 +595,8 @@ WF-7).
 ---
 
 ## Manifest schema v2 (the capability side, at the contract level)
+
+> **Normative runtime text:** [manifest schema v2](capability-registry.ops.md#manifest-schema-v2-the-capability-side-at-the-contract-level).
 
 Every capability folder named in the registry carries one `manifest.md` at
 `<path>/manifest.md`. This contract declares its **v2 shape** (the capability
@@ -622,6 +642,8 @@ machinery), while **phase fragments compose via the registry** at runtime.
 ---
 
 ## The profile-seeding convention (capability-agnostic)
+
+> **Normative runtime text:** [the profile-seeding convention](capability-registry.ops.md#the-profile-seeding-convention-capability-agnostic).
 
 A capability's contract slots are filled by a downstream **profile** — the
 concrete project values, distinct from the capability's behaviour. So that any
