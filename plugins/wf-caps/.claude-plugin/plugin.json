@@ -1,7 +1,7 @@
 {
   "name": "wf-caps",
-  "version": "0.16.1",
-  "description": "wf default-capabilities pack — non-core, stack/domain-specific capabilities for the wf workflow, composed with wf core via the capability registry. Ships the migration capability (migration-map: C#/MVC -> Angular/TS mapping), the audit capability (five domain-free adversarial verify lenses: correctness, security, convention, consistency, operational, plus an optional composite retrospective report), the sr capability (self-review: a lightweight pre-commit adversarial self-review lens reusing the audit correctness rubric, gating/annotating the staged change), the browser-qa capability (qa-engine: stack-agnostic browser-automation QA engine), the angular stack capability (qa-host + test-page: Angular test-host scaffolding, qa-execution host provider), and the node-ts stack capability (test-node: pure-helper Node test harness).",
+  "version": "0.17.0",
+  "description": "wf default-capabilities pack — non-core, stack/domain-specific capabilities for the wf workflow, composed with wf core via the capability registry. Ships the migration capability (migration-map: C#/MVC -> Angular/TS mapping), the audit capability (five domain-free adversarial verify lenses: correctness, security, convention, consistency, operational, plus an optional composite retrospective report), the sr capability (self-review: a lightweight pre-commit adversarial self-review lens reusing the audit correctness rubric, gating/annotating the staged change), the angular stack capability (qa-host + test-page: Angular test-host scaffolding, qa-execution host provider), and the node-ts stack capability (test-node: pure-helper Node test harness). (The browser-qa engine capability was extracted into the standalone wf-browser-qa plugin.)",
   "author": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"

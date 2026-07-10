@@ -3,7 +3,8 @@
 Claude Code marketplace hosting the `wf` core plugin and the `wf-caps` default-capabilities pack:
 
 - **[wf](plugins/wf/)** — the domain-free Spec-Driven Development spine: a `wf:*` skill chain for spec → plan → implement → verify → QA → commit/PR, carrying zero stack, domain, or project knowledge.
-- **[wf-caps](plugins/wf-caps/)** — the default stack/domain-capabilities pack that attaches to the spine (migration, browser-qa, the angular test host, and the node-ts test harness).
+- **[wf-caps](plugins/wf-caps/)** — the default stack/domain-capabilities pack that attaches to the spine (migration, the angular test host, and the node-ts test harness).
+- **[wf-browser-qa](plugins/wf-browser-qa/)** — the standalone browser-QA feature pack: a stack-agnostic browser-automation QA engine (`qa-execution` engine provider) that core's `/wf:qa-auto` dispatches to.
 
 ## Install
 

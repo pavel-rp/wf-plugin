@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.62.0",
-  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
+  "version": "0.63.0",
+  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-browser-qa browser-QA engine, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
   "owner": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
@@ -21,8 +21,18 @@
     {
       "name": "wf-caps",
       "source": "./plugins/wf-caps",
-      "version": "0.16.1",
-      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map), the audit capability (five domain-free adversarial verify lenses plus an optional composite retrospective report), the sr capability (a lightweight pre-commit adversarial self-review lens reusing the audit correctness rubric), the browser-qa capability (qa-engine), the angular stack capability (qa-host + test-page, qa-execution host provider), and the node-ts stack capability (test-node).",
+      "version": "0.17.0",
+      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map), the audit capability (five domain-free adversarial verify lenses plus an optional composite retrospective report), the sr capability (a lightweight pre-commit adversarial self-review lens reusing the audit correctness rubric), the angular stack capability (qa-host + test-page, qa-execution host provider), and the node-ts stack capability (test-node). The browser-qa engine capability was extracted into the standalone wf-browser-qa plugin.",
+      "author": {
+        "name": "Pavel Kalabin"
+      },
+      "category": "development"
+    },
+    {
+      "name": "wf-browser-qa",
+      "source": "./plugins/wf-browser-qa",
+      "version": "0.1.0",
+      "description": "wf browser-QA feature pack: the browser-qa capability owning the wf capability-registry's qa-execution engine surface. Ships /wf-browser-qa:qa-engine, a stack-agnostic in-thread browser-automation QA engine that drives any web app, reaches browser-level preconditions, captures console/network, screenshots on FAIL, and emits per-scenario verdict blocks; core's /wf:qa-auto dispatches the per-scenario browser drive to it. Tracker-agnostic (requires: git only). Ships /wf-browser-qa:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
       },

@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-git, wf-ado, wf-linear, wf-review packs)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-browser-qa, wf-git, wf-ado, wf-linear, wf-review packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -63,6 +63,11 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   └── capabilities/migration/ # the migration capability: manifest + fragments + profile
 │       ├── manifest.md         # how it attaches to the spine
 │       └── fragments/          # v2 fragment prose the migration capability attaches to the spine
+├── plugins/wf-browser-qa/     # BROWSER-QA FEATURE PACK — the browser-qa capability owning the qa-execution engine surface
+│   ├── skills/init/SKILL.md   # /wf-browser-qa:init — self-registration
+│   ├── skills/qa-engine/      # /wf-browser-qa:qa-engine — stack-agnostic browser-automation QA engine (+ references/preconditions.md)
+│   ├── agents/qa-engine.md    # wf-browser-qa:qa-engine — the engine's provider-dispatch subagent
+│   └── capabilities/browser-qa/ # manifest.md (qa-execution | provider | surface: engine; requires: git — tracker-agnostic)
 ├── plugins/wf-git/            # DELIVERY-PROVIDER PACK — the git capability owning the delivery surface
 │   ├── skills/init/SKILL.md   # /wf-git:init — self-registration
 │   └── capabilities/git/      # manifest.md + fragments/delivery.md (branch-create/commit/push-upstream/pr-create)
