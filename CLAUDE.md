@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-browser-qa, wf-node-ts, wf-git, wf-ado, wf-linear, wf-review packs)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-browser-qa, wf-node-ts, wf-audit, wf-git, wf-ado, wf-linear, wf-review packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -72,6 +72,12 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── skills/init/SKILL.md   # /wf-node-ts:init — self-registration
 │   ├── skills/test-node/      # /wf-node-ts:test-node — Node unit-test harness for pure TS helpers
 │   └── capabilities/node-ts/  # manifest.md + fragments/test-authoring.md (implement | guidance; requires: git — tracker-agnostic)
+├── plugins/wf-audit/          # AUDIT + SELF-REVIEW PACK — the audit capability (five verify-phase adversarial lenses + optional retrospective) co-located with sr (the pre-commit self-review lens)
+│   ├── skills/init/SKILL.md   # /wf-audit:init — self-registers both capabilities
+│   ├── agents/{consistency,convention,correctness,operational,security}-auditor.md # the five verify-phase lenses
+│   ├── agents/audit-retrospective.md # the optional composite retrospective/umbrella-verification agent
+│   ├── capabilities/audit/    # manifest.md + profile.template.json + fragments/{consistency,convention,correctness,finding-contract,operational,retrospective,security}.md (verify | finding, five rows; no requires)
+│   └── capabilities/sr/       # manifest.md + fragments/self-review.md (pre-commit | finding; reuses capabilities/audit/fragments/correctness.md intra-plugin; no requires)
 ├── plugins/wf-git/            # DELIVERY-PROVIDER PACK — the git capability owning the delivery surface
 │   ├── skills/init/SKILL.md   # /wf-git:init — self-registration
 │   └── capabilities/git/      # manifest.md + fragments/delivery.md (branch-create/commit/push-upstream/pr-create)
