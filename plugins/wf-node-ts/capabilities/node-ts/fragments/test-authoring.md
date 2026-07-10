@@ -1,7 +1,7 @@
 # `test-authoring` fragment — node-ts capability (implement-phase guidance)
 
 **Version:** 1.0.0 (WF-177 — the node-ts `implement`-phase test-authoring guidance fragment)
-**Wired by:** `plugins/wf-caps/capabilities/node-ts/manifest.md` (`implement | guidance | inline: fragments/test-authoring.md`)
+**Wired by:** `plugins/wf-node-ts/capabilities/node-ts/manifest.md` (`implement | guidance | inline: fragments/test-authoring.md`)
 **Model:** claude-opus-4-8
 
 ---

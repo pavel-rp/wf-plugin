@@ -1,6 +1,6 @@
 # node-ts capability manifest
 
-**Version:** 1.1.0 (WF-177 — `implement`-phase test-authoring guidance fragment added)
+**Version:** 1.2.0 (WF-256 — extracted into the standalone `wf-node-ts` plugin; tracker-agnostic, `requires: git` only)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Capability:** node-ts (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** feature (ships its own skill; also attaches one phase fragment via the registry)
@@ -21,11 +21,13 @@ names the Node test runner and the `_local/_testkit` harness.
 
 ## Requires
 
-requires: git, ado
+requires: git
 
-This capability assumes a `delivery` provider (`git`) and a `tracker` provider (`ado`)
-are both registered in the capability registry — the wf-caps pack is built assuming
-git-based delivery and tracker-backed work-item tracking are available downstream.
+This capability assumes only a `delivery` provider (`git`) is registered in the capability
+registry — the `git` delivery guard fires so branch/commit/PR operations resolve. It is
+**tracker-agnostic**: it names no work-item tracker, so a consumer on any tracker (or none)
+can register it. (Historically this manifest also required `ado`; WF-256 dropped that token
+when the capability was extracted into the standalone `wf-node-ts` plugin.)
 
 ## Fragments
 
@@ -33,7 +35,7 @@ Each row attaches one fragment to one phase, typed by the contribution taxonomy.
 is the v2 shape fixed by `capability-registry.contract.md`:
 `phase | contribution-kind | dispatch | scope`. Inline paths are forward-slash, **relative to
 this capability's registry path** (so `fragments/test-authoring.md` resolves to
-`plugins/wf-caps/capabilities/node-ts/fragments/test-authoring.md`). `scope` is empty (`—`)
+`plugins/wf-node-ts/capabilities/node-ts/fragments/test-authoring.md`). `scope` is empty (`—`)
 for aggregate kinds; `guidance` aggregates additively, so it carries no ownership scope token.
 
 | phase     | contribution-kind | dispatch                              | scope |
@@ -62,12 +64,12 @@ new row here.
 ## Skills
 
 As a `feature` capability, node-ts ships its skill natively (install the plugin → the
-`/wf-caps:test-node` command is discoverable; native plugin composition handles loading).
+`/wf-node-ts:test-node` command is discoverable; native plugin composition handles loading).
 Documented for reference:
 
 ```
 skills:
-  - plugins/wf-caps/skills/test-node/  # /wf-caps:test-node — Node test harness for pure TS helpers
+  - plugins/wf-node-ts/skills/test-node/  # /wf-node-ts:test-node — Node test harness for pure TS helpers
 ```
 
 ## Profile seed template
@@ -79,16 +81,20 @@ convention, a capability that declares no `profile-template:` seeds nothing (the
 ## Downstream registration
 
 This repo ships the capability + its skill; it does **not** carry a `_local/config.md` (that
-lives in each consuming project). To activate node-ts downstream, add a row to the consuming
-project's `_local/config.md` `## Capabilities` table:
+lives in each consuming project). **One command (recommended): `/wf-node-ts:init`** — after
+`/wf:init` has bootstrapped the repo, it records the pack's install root in the gitignored
+`## Plugin Roots` mapping and writes the plugin-anchored `## Capabilities` row, so core
+resolves the capability on a **plugin-only install** (no vendored `plugins/wf-node-ts/...`
+in the consuming repo):
 
 ```markdown
 ## Capabilities
 
-| Capability | Path                                 |
-|------------|--------------------------------------|
-| node-ts    | plugins/wf-caps/capabilities/node-ts |
+| Capability | Path                                     |
+|------------|-------------------------------------------|
+| node-ts    | plugin:wf-node-ts/capabilities/node-ts   |
 ```
 
-(Or the plugin-anchored `Path` form `plugin:wf-caps/capabilities/node-ts` once cross-plugin
-path resolution lands — see the registry contract's "two `Path` shapes".)
+**Manual (escape hatch)** — when the pack **is** vendored in the consuming repo, add a
+repo-relative row by hand instead: `| node-ts | plugins/wf-node-ts/capabilities/node-ts |`.
+See the registry contract's "two `Path` shapes".

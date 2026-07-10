@@ -20,12 +20,12 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 | `/wf-caps:migration-map` | migration | 1:1 C#/MVC -> Angular/TS mapping table |
 | `/wf-caps:qa-host` | angular | routed Angular test-host scaffolder (+ ephemeral backend-controller analog) — the `qa-execution` `surface: host` provider |
 | `/wf-caps:test-page` | angular | browser-run black-box DI-level tests injected into the Angular sandbox page |
-| `/wf-caps:test-node` | node-ts | Node unit-test harness for pure TS helpers (no Angular runtime) |
 
 > **Status — staged build.** This pack was populated one slice per PR (migration → browser-qa →
 > the Angular/Node-TS stack cluster) and is now being **fragmented** into proper per-capability
 > packs: `browser-qa` was extracted into the standalone [`wf-browser-qa`](../wf-browser-qa/)
-> plugin (WF-255). See `CLAUDE.md` and `docs/ROADMAP.md`.
+> plugin (WF-255), and `node-ts` into the standalone [`wf-node-ts`](../wf-node-ts/) plugin
+> (WF-256). See `CLAUDE.md` and `docs/ROADMAP.md`.
 
 ## Capabilities
 
@@ -35,7 +35,6 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 | audit | adapter | `plugins/wf-caps/capabilities/audit` | `verify` findings — five adversarial lenses (correctness, security, convention, consistency, operational) | phase fragments + five read-only auditor agents (`wf-caps:correctness-auditor`, `-security-`, `-convention-`, `-consistency-`, `-operational-auditor`). Dependency-free — no `requires:`, so it composes in bare-core too. A profile `lenses` knob selects the subset that runs. Also ships one optional, on-request composite retrospective / umbrella-verification report (`wf-caps:audit-retrospective`), gated by the same registry membership — it composes the `verify` report + distilled PR/CI evidence via the delivery provider, degrading to a local-only spec-conformance + lens-findings retrospective when none is registered |
 | sr | adapter | `plugins/wf-caps/capabilities/sr` | `pre-commit` finding — one lightweight adversarial self-review lens on the staged change | one inline `finding` fragment (no skill, no agent). Fills the WF-154 `pre-commit` commit-path seam: the commit agent fires it immediately before recording a commit, and the lens flags systematic-miss bugs (ignored returns, missing null guards, unvalidated data, happy-path oversights) with a concrete `file:line`, gating (`fail`) or annotating (`warn`). **Reuses** the audit capability's owned correctness rubric — single-sourced, never re-authored — as its lighter pre-commit counterpart. Read-only (writes nothing; proposes fixes in-finding). Dependency-free — no `requires:`, so it composes in bare-core too; unregistered → the seam no-ops and the commit is byte-identical |
 | angular | feature | `plugins/wf-caps/capabilities/angular` | `qa-execution` provider (`surface: host`) | the `/wf-caps:qa-host` + `/wf-caps:test-page` Angular test-host skills; ships a `profile-template:` (web-root, routing-module, test-host-root, verify-command) seeded downstream on divergence |
-| node-ts | feature | `plugins/wf-caps/capabilities/node-ts` | `implement` guidance (test-authoring idioms) | the `/wf-caps:test-node` pure-helper Node test harness |
 
 ### Prerequisites
 
@@ -79,19 +78,17 @@ stack-agnostic browser-automation **engine** (`surface: engine`) is no longer pa
 pack — it ships in the standalone [`wf-browser-qa`](../wf-browser-qa/) plugin (WF-255); core's
 `/wf:qa-auto` dispatches the per-scenario browser drive to that engine.
 
-The `angular` and `node-ts` stack capabilities register the same way (each on its own
-repo-relative path row). `angular` owns the `qa-execution` `surface: host` — it **composes
-with** the `browser-qa` engine's `surface: engine` (now shipped by the standalone
-[`wf-browser-qa`](../wf-browser-qa/) plugin — different surfaces, no partition collision): the
-engine drives the browser, the host scaffolds the runnable surface. Registering `angular`
-also seeds an `_local/profiles/angular.profile.json` override on `init` **when the project
-diverges** from the capability's default `profile.template.json` (the four Angular stack paths
-— web-root, routing-module, test-host-root, verify-command); `qa-host`/`test-page` read those
-paths from the profile, so a different Angular project retargets them without editing the
-skills. `node-ts` attaches one `implement | guidance` fragment (test-authoring idioms for
-pure-helper Node/TS unit tests, self-scoped to test authoring) and ships no profile; with
-node-ts registered, any consumer that fires the `implement` phase and honors registry
-`guidance` (per the registry contract) aggregates those idioms in registry order.
+`angular` owns the `qa-execution` `surface: host` — it **composes with** the `browser-qa`
+engine's `surface: engine` (now shipped by the standalone [`wf-browser-qa`](../wf-browser-qa/)
+plugin — different surfaces, no partition collision): the engine drives the browser, the host
+scaffolds the runnable surface. Registering `angular` also seeds an
+`_local/profiles/angular.profile.json` override on `init` **when the project diverges** from
+the capability's default `profile.template.json` (the four Angular stack paths — web-root,
+routing-module, test-host-root, verify-command); `qa-host`/`test-page` read those paths from
+the profile, so a different Angular project retargets them without editing the skills. The
+Node/TS pure-helper test harness (`node-ts`: one `implement | guidance` fragment, test-authoring
+idioms) is no longer part of this pack — it ships in the standalone
+[`wf-node-ts`](../wf-node-ts/) plugin (WF-256).
 
 ## How it composes
 

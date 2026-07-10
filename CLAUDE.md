@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-browser-qa, wf-git, wf-ado, wf-linear, wf-review packs)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-browser-qa, wf-node-ts, wf-git, wf-ado, wf-linear, wf-review packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -68,6 +68,10 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── skills/qa-engine/      # /wf-browser-qa:qa-engine — stack-agnostic browser-automation QA engine (+ references/preconditions.md)
 │   ├── agents/qa-engine.md    # wf-browser-qa:qa-engine — the engine's provider-dispatch subagent
 │   └── capabilities/browser-qa/ # manifest.md (qa-execution | provider | surface: engine; requires: git — tracker-agnostic)
+├── plugins/wf-node-ts/        # NODE/TS STACK PACK — the node-ts capability owning the implement-phase test-authoring guidance
+│   ├── skills/init/SKILL.md   # /wf-node-ts:init — self-registration
+│   ├── skills/test-node/      # /wf-node-ts:test-node — Node unit-test harness for pure TS helpers
+│   └── capabilities/node-ts/  # manifest.md + fragments/test-authoring.md (implement | guidance; requires: git — tracker-agnostic)
 ├── plugins/wf-git/            # DELIVERY-PROVIDER PACK — the git capability owning the delivery surface
 │   ├── skills/init/SKILL.md   # /wf-git:init — self-registration
 │   └── capabilities/git/      # manifest.md + fragments/delivery.md (branch-create/commit/push-upstream/pr-create)
