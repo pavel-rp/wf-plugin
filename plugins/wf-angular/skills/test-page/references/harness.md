@@ -1,4 +1,4 @@
-# wf-caps:test-page — the harness (`_page-tests/harness.ts`)
+# wf-angular:test-page — the harness (`_page-tests/harness.ts`)
 
 Shared runner + assertion helpers. Minimal — no framework. Created on first run; reused thereafter. Keep it framework-free — no imports beyond `@angular/core` types (and those are type-only — the runner doesn't need DI).
 
@@ -8,13 +8,13 @@ Shared runner + assertion helpers. Minimal — no framework. Created on first ru
 
   ```
   ==== PAGE-TEST RUN <iso-timestamp> ====
-  SUITE CraSharedStateService
+  SUITE AppSharedStateService
     PASS freshly created service returns null from getSelectedFilterTypeNum()
     PASS setSkipEmptyCategories(true) is visible via getSkipEmptyCategories()
     FAIL setStartDate(Date) round-trips via getStartDate()
       Error: assertEqual failed: expected Date(2025-01-01), got null
-      at _page-tests/cra-shared-state.page-test.ts:42:9
-  DONE CraSharedStateService: 2 passed, 1 failed, 0 skipped (47ms)
+      at _page-tests/app-shared-state.page-test.ts:42:9
+  DONE AppSharedStateService: 2 passed, 1 failed, 0 skipped (47ms)
   ==== PAGE-TEST END ====
   ```
 

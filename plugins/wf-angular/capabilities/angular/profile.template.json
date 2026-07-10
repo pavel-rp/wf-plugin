@@ -1,6 +1,11 @@
 {
-  "web-root": "<WEB_ROOT: repo-relative root of the Angular web project, forward slashes — e.g. AuditTrakker.Web/src/app/code-trakker>",
-  "routing-module": "<ROUTING_MODULE: repo-relative path to the routing module the test-host route is added to, forward slashes — e.g. AuditTrakker.Web/src/app/code-trakker/code-trakker-routing.module.ts>",
-  "test-host-root": "<TEST_HOST_ROOT: repo-relative root under which routed <kebab>-test/ host folders and the sandbox module-test component live, forward slashes — e.g. AuditTrakker.Web/src/app/code-trakker>",
-  "verify-command": "<VERIFY_COMMAND: the shell command that typechecks/builds the stack so a scaffold can be verified before handoff — e.g. npx tsc -p AuditTrakker.Web/tsconfig.json --noEmit>"
+  "web-root": "<WEB_ROOT: repo-relative root of the Angular web project, forward slashes — e.g. src/app/features/widgets>",
+  "routing-module": "<ROUTING_MODULE: repo-relative path to the routing module the test-host route is added to, forward slashes — e.g. src/app/features/widgets/widgets-routing.module.ts>",
+  "routing-module-class": "<ROUTING_MODULE_CLASS: exported class name of that routing module — the class whose static components array gains the test-host component — e.g. WidgetsRoutingModule>",
+  "test-host-root": "<TEST_HOST_ROOT: repo-relative root under which routed <kebab>-test/ host folders and the sandbox module-test component live, forward slashes — e.g. src/app/features/widgets>",
+  "route-prefix": "<ROUTE_PREFIX: app route segment the test hosts mount under, no leading/trailing slash — the host URL is /<route-prefix>/<kebab>-test — e.g. widgets>",
+  "sandbox-host-folder": "<SANDBOX_HOST_FOLDER: folder name (under test-host-root) of the long-standing sandbox module-test host that page-tests inject into — e.g. widgets-module-test>",
+  "sandbox-host-component": "<SANDBOX_HOST_COMPONENT: class name of that sandbox module-test host component page-tests inject into — e.g. WidgetsModuleTestComponent>",
+  "route-guards": "<ROUTE_GUARDS: comma-separated route-guard class names applied via canActivate on the scaffolded test-host route, or empty for none — e.g. SessionGuard, ScopeGuard>",
+  "verify-command": "<VERIFY_COMMAND: the shell command that typechecks/builds the stack so a scaffold can be verified before handoff — e.g. npx tsc -p tsconfig.json --noEmit>"
 }

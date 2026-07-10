@@ -1,6 +1,6 @@
 # angular capability manifest
 
-**Version:** 1.0.1 (WF-126 — `requires: git, ado` declared)
+**Version:** 1.1.0 (WF-258 — genericized + extracted to wf-angular; `requires:` drops `ado`, keeps `git`)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Capability:** angular (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** feature (ships its own skills; also attaches one phase fragment via the registry)
@@ -19,16 +19,21 @@ backend-controller analog), and the DI-level black-box page-test harness (`test-
 injects spec-derived tests into the stack's sandbox component. Both are **stack-specific**:
 they name the Angular runtime (DI, zone.js, `HttpClient`), the stack's routing module, and
 the stack's web/test-host paths — which is exactly why they belong in a stack capability and
-not in domain-free core. The concrete project paths these skills consume live in the
+not in domain-free core. **Every project-specific token in the scaffolded output** — the
+web/test-host/routing paths, the routing-module class, the route prefix, the sandbox host
+folder/component, and the route guards — is **profile-slot-driven**, so scaffolding a
+differently-named app emits no borrowed identifiers. The concrete slot values live in the
 capability's **profile** (below), not in the skill bodies.
 
 ## Requires
 
-requires: git, ado
+requires: git
 
-This capability assumes a `delivery` provider (`git`) and a `tracker` provider (`ado`)
-are both registered in the capability registry — the wf-caps pack is built assuming
-git-based delivery and tracker-backed work-item tracking are available downstream.
+This capability assumes a `delivery` provider (`git`) is registered in the capability
+registry — the scaffolders infer targets from the branch diff and index their artifacts via
+the delivery surface. It is **tracker-agnostic**: it names no work-item tracker, so it
+declares no `tracker` requirement and composes whether or not an `ado`/`linear` provider is
+registered.
 
 ## Fragments
 
@@ -38,16 +43,16 @@ schema is the v2 shape fixed by `capability-registry.contract.md`:
 subagent invoked via the Task tool. `scope` is required for partitioned kinds; `provider`
 carries a **`surface`** enum token.
 
-| phase         | contribution-kind | dispatch                      | scope |
-|---------------|-------------------|-------------------------------|-------|
-| qa-execution  | provider          | `subagent: wf-caps:qa-host`   | host  |
+| phase         | contribution-kind | dispatch                        | scope |
+|---------------|-------------------|---------------------------------|-------|
+| qa-execution  | provider          | `subagent: wf-angular:qa-host`  | host  |
 
 Read off the columns:
 
-- **qa-host** (`qa-execution | provider | subagent: wf-caps:qa-host | host`) — the Angular
+- **qa-host** (`qa-execution | provider | subagent: wf-angular:qa-host | host`) — the Angular
   **test-host execution provider**. A core skill orchestrating `qa-execution` walks the
   registry, finds the `provider` row that owns `surface: host`, and dispatches the
-  host-scaffolding work to it via the Task tool (`subagent_type: wf-caps:qa-host`). It
+  host-scaffolding work to it via the Task tool (`subagent_type: wf-angular:qa-host`). It
   scaffolds a routed test-host page (or wires an ephemeral backend endpoint) so a scenario
   has a runnable URL/endpoint, then returns its `QA-HOST — …` block. The orchestrator owns
   run lifecycle; the host provider owns only the stack-specific scaffolding surface.
@@ -62,23 +67,24 @@ other owns the browser drive).
 ## Skills
 
 As a `feature` capability, angular ships its skills natively (install the plugin → the
-`/wf-caps:*` commands are discoverable; native plugin composition handles loading). Documented
-for reference:
+`/wf-angular:*` commands are discoverable; native plugin composition handles loading).
+Documented for reference:
 
 ```
 skills:
-  - plugins/wf-caps/skills/qa-host/    # /wf-caps:qa-host — routed Angular test-host scaffolder (the host provider dispatch target)
-  - plugins/wf-caps/skills/test-page/  # /wf-caps:test-page — browser-run black-box DI-level tests for Angular targets
+  - plugins/wf-angular/skills/qa-host/    # /wf-angular:qa-host — routed Angular test-host scaffolder (the host provider dispatch target)
+  - plugins/wf-angular/skills/test-page/  # /wf-angular:test-page — browser-run black-box DI-level tests for Angular targets
 agents:
-  - plugins/wf-caps/agents/qa-host.md  # wf-caps:qa-host — the host scaffolder's subagent companion (the qa-execution host-provider dispatch target)
+  - plugins/wf-angular/agents/qa-host.md  # wf-angular:qa-host — the host scaffolder's subagent companion (the qa-execution host-provider dispatch target)
 ```
 
-The fragment row's `subagent: wf-caps:qa-host` resolves to that companion — a thin redirect
-that reads the `/wf-caps:qa-host` skill and executes it in an isolated context, mirroring
-how browser-qa ships `agents/qa-engine.md` for its `engine` surface. The agent holds no procedural
-logic of its own (skill-primary, thin agent); the scaffolding lives in the skill. It declares
-**no** `tools:` field, so it inherits the full session catalog — including the `Write`/`Edit`/`Bash`
-tools the host scaffolding and typecheck need (per `CLAUDE.md` §8).
+The fragment row's `subagent: wf-angular:qa-host` resolves to that companion — a thin
+redirect that reads the `/wf-angular:qa-host` skill and executes it in an isolated context,
+mirroring how browser-qa ships `agents/qa-engine.md` for its `engine` surface. The agent
+holds no procedural logic of its own (skill-primary, thin agent); the scaffolding lives in
+the skill. It declares **no** `tools:` field, so it inherits the full session catalog —
+including the `Write`/`Edit`/`Bash` tools the host scaffolding and typecheck need (per
+`CLAUDE.md` §8).
 
 ## Deferred fragments
 
@@ -94,38 +100,39 @@ attaches the single host-provider fragment above and nothing else.
 This capability ships a human-fillable **profile seed template** declared via the v2 manifest
 `profile-template:` field (`capability-registry.contract.md` §"Manifest schema v2"). The path
 is forward-slash, **relative to this capability's registry path** (so it resolves to
-`plugins/wf-caps/capabilities/angular/profile.template.json`):
+`<capability-path>/profile.template.json` under the resolved `wf-angular` install root):
 
 ```
 profile-template: profile.template.json
 ```
 
 The template ships as the capability's **authoritative default template** — the baseline
-shape a project overrides; it carries angle-bracketed placeholder slots (per the contract's
-placeholder syntax) for the four Angular stack paths the moved skills consume:
-`web-root`, `routing-module`, `test-host-root`, and `verify-command`. `init` (WF-9) seeds a
-downstream **override** at `_local/profiles/angular.profile.json` **only when the project
-diverges** from the default (skip-if-present, never overwrites). Precedence is **downstream
-override > capability default**: where a project sets no override, the capability default
-applies; where it diverges, the project fills the four slots in the override. This absorbs
-WF-5 — the Angular stack paths that were headed for bare `_local/` now live in the
-capability's profile.
+shape a project overrides; it carries neutral angle-bracketed placeholder slots (per the
+contract's placeholder syntax) for **every** project-specific token the moved skills emit:
+the four Angular stack paths (`web-root`, `routing-module`, `test-host-root`,
+`verify-command`), the routing-module class (`routing-module-class`), the test-host route
+prefix (`route-prefix`), the sandbox host folder and component (`sandbox-host-folder`,
+`sandbox-host-component`), and the route guards (`route-guards`). `init` seeds a downstream
+**override** at `_local/profiles/angular.profile.json` **only when the project diverges**
+from the default (skip-if-present, never overwrites). Precedence is **downstream override >
+capability default**: where a project sets no override, the capability default applies; where
+it diverges, the project fills the slots in the override. No slot carries a borrowed
+identifier — the placeholders name generic example values only.
 
 ## Downstream registration
 
-This repo ships the capability + its skills; it does **not** carry a `_local/config.md` (that
-lives in each consuming project). To activate angular downstream, add a row to the consuming
-project's `_local/config.md` `## Capabilities` table:
+This repo ships the capability + its skills inside the `wf-angular` plugin; it does **not**
+carry a `_local/config.md` (that lives in each consuming project). To activate angular
+downstream, run `/wf-angular:init` — it records the pack's install root in the `## Plugin
+Roots` table and appends the plugin-anchored capability row:
 
 ```markdown
 ## Capabilities
 
 | Capability | Path                                 |
 |------------|--------------------------------------|
-| angular    | plugins/wf-caps/capabilities/angular |
+| angular    | plugin:wf-angular/capabilities/angular |
 ```
 
-(Or the plugin-anchored `Path` form `plugin:wf-caps/capabilities/angular` once cross-plugin
-path resolution lands — see the registry contract's "two `Path` shapes".) On `init`, the
-`angular` profile seeds `_local/profiles/angular.profile.json` on divergence from the shipped
-default template.
+On `init`, the `angular` profile seeds `_local/profiles/angular.profile.json` on divergence
+from the shipped default template.

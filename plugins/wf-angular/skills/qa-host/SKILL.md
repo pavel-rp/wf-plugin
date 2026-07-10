@@ -1,31 +1,36 @@
 ---
 name: qa-host
-description: Scaffolds a routed Angular test-host page for a component that lacks one — creates a `<kebab>-test/` host folder under the stack's configured web root with a real-DI component + status-panel template, plus the three standard edits to the stack's routing module (import, child route with auth+entity guards, static-components array). Stack paths come from the angular capability profile. The `augment` mode retrofits type-driven input controls and output observation onto an existing host. The `api-probe`/`api-revert` modes are the backend analog — they temporarily wire a service/repository method to the most appropriate controller (an ephemeral, sentinel-marked endpoint reverted before commit) so a backend QA scenario can exercise it over HTTP, or resolve the route when the endpoint already exists. Idempotent — re-invoking on an existing host returns its route URL. Use when /wf:qa-auto or /wf:qa-followup needs a runnable URL or endpoint (or a missing control) for a component or service still in development.
+description: Scaffolds a routed Angular test-host page for a component that lacks one — creates a `<kebab>-test/` host folder under the stack's configured web root with a real-DI component + status-panel template, plus the three standard edits to the stack's routing module (import, child route with the configured route guards, static-components array). Every project-specific token — web/test-host paths, routing-module class, route prefix, sandbox host, and route guards — comes from the angular capability profile. The `augment` mode retrofits type-driven input controls and output observation onto an existing host. The `api-probe`/`api-revert` modes are the backend analog — they temporarily wire a service/repository method to the most appropriate controller (an ephemeral, sentinel-marked endpoint reverted before commit) so a backend QA scenario can exercise it over HTTP, or resolve the route when the endpoint already exists. Idempotent — re-invoking on an existing host returns its route URL. Use when /wf:qa-auto or /wf:qa-followup needs a runnable URL or endpoint (or a missing control) for a component or service still in development.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
-# /wf-caps:qa-host — Routed Angular test-host scaffolder
+# /wf-angular:qa-host — Routed Angular test-host scaffolder
 
 Scaffolds a persistent, routed test-host page for an Angular component that doesn't yet have a route in the running app. The host mounts the target via its selector, wires real DI services for any `@Input` initial values, and translates each `@Output` event into an incrementing counter surfaced in the template — so a tester (human via `/wf:qa-run` or agent via `/wf:qa-auto`) can drive the component end-to-end and verify observed behavior from the DOM alone.
 
-The host is **git-tracked source**, not a local sandbox. Once scaffolded, it stays until you delete it via `/wf-caps:qa-host clean <component>`. Multiple components, each with its own `<kebab>-test/` folder, coexist under `{test-host-root}/`. Reference shape: the existing `level-and-period-picker-test/` and `risk-and-specialty-picker-test/`.
+The host is **git-tracked source**, not a local sandbox. Once scaffolded, it stays until you delete it via `/wf-angular:qa-host clean <component>`. Multiple components, each with its own `<kebab>-test/` folder, coexist under `{test-host-root}/`.
 
 `new` scaffolds a deliberately minimal host (inputs seeded from DI, outputs counted). When a scenario needs to **vary** an input the host pinned, or **observe** an output the host didn't wire, use `augment <component>` (below) to grow that host in place — don't `clean` + `new`. This minimal-then-augment split is intentional: scaffolding can't know which inputs a future scenario will drive, so it stays small and `augment` adds exactly the controls a scenario needs.
 
-For DI-level black-box tests (component method behavior verified via `injector.get(...)`) use `/wf-caps:test-page`. This skill is for full QA flows — clicks, observed UI, real state transitions — that need a routable URL.
+For DI-level black-box tests (component method behavior verified via `injector.get(...)`) use `/wf-angular:test-page`. This skill is for full QA flows — clicks, observed UI, real state transitions — that need a routable URL.
 
 **Backend mode.** A backend QA scenario (`Type: API`) needs an HTTP endpoint to exercise, not a routed page. `api-probe <Service>.<method>` resolves the real route if an endpoint already exists, or — when the deliverable is a service with no endpoint — temporarily wires it to the most appropriate controller as an **ephemeral** `__qa` action and returns that route; `api-revert` removes the wiring. Unlike the Angular host, the backend host is a run fixture that must never reach a commit. The full procedure (controller selection, the ephemeral action shape, the rebuild-before-live constraint, revert, safety) lives in [`references/backend-host.md`](references/backend-host.md).
 
 ## Stack profile (read first)
 
-This skill carries no project path. The four Angular stack paths come from the `angular` capability's **profile**: read them from the downstream override `_local/profiles/angular.profile.json` when present, else from the capability default template `plugins/wf-caps/capabilities/angular/profile.template.json` (precedence: **override > capability default**). If neither resolves, stop and direct the user to `/wf:init` (which seeds the override on divergence). The slots, referenced as placeholders below:
+This skill carries no project token. Every project-specific value comes from the `angular` capability's **profile**: read it from the downstream override `_local/profiles/angular.profile.json` when present, else from the capability default template `profile.template.json` under the capability's registry path (precedence: **override > capability default**). If neither resolves, stop and direct the user to `/wf:init` (which seeds the override on divergence). The slots, referenced as placeholders below:
 
-- `{web-root}` — repo-relative root of the Angular web project (e.g. `AuditTrakker.Web/src/app/code-trakker`).
-- `{routing-module}` — the routing module the test-host route is added to (e.g. `…/code-trakker-routing.module.ts`).
+- `{web-root}` — repo-relative root of the Angular web project.
+- `{routing-module}` — the routing module the test-host route is added to.
+- `{routing-module-class}` — the exported class name of that routing module (its `.components` static array gains the test-host component).
 - `{test-host-root}` — root under which `<kebab>-test/` host folders and the sandbox module-test component live (often equal to `{web-root}`).
+- `{route-prefix}` — the app route segment the test hosts mount under; the host URL is `/{route-prefix}/<kebab>-test`.
+- `{sandbox-host-folder}` — the folder name (under `{test-host-root}`) of the sandbox module-test host that the module-test hub link is added to.
+- `{sandbox-host-component}` — the class name of that sandbox module-test host component.
+- `{route-guards}` — the route-guard class names applied via `canActivate` on the scaffolded route (comma-separated, or empty for none).
 - `{verify-command}` — the typecheck/build command run before reporting success.
 
-Concrete paths in the procedures below (`AuditTrakker.Web/...`, `code-trakker-routing.module.ts`, …) are **illustrative examples of one filled profile**; substitute the resolved slot value. Stack identifiers that are not project paths — the sandbox component name `CodeTrakkerModuleTestComponent`, selectors, Angular DI/zone.js — are the stack's and stay as-is.
+Every concrete identifier below (`<kebab>-test`, the routing-module class, the sandbox host, the route guards) is rendered from a slot — substitute the resolved value. Stack identifiers that are not project tokens — selectors, Angular DI/zone.js — are the stack's and stay as-is.
 
 ## When to use this
 
@@ -37,9 +42,9 @@ Fit:
 
 Not fit:
 - Component already routed in the real app — use that route, don't scaffold a parallel host.
-- DI-level / signature-only assertions — use `/wf-caps:test-page`.
-- Pure helper functions — use `/wf-caps:test-node`.
-- A backend method you want a *lasting* automated smoke test for (not a one-off exercise) — use `/wf-caps:test-page backend-smoke` instead; `api-probe` is ephemeral by design.
+- DI-level / signature-only assertions — use `/wf-angular:test-page`.
+- Pure helper functions — use `/wf-node-ts:test-node`.
+- A backend method you want a *lasting* automated smoke test for (not a one-off exercise) — use `/wf-angular:test-page backend-smoke` instead; `api-probe` is ephemeral by design.
 
 ---
 
@@ -49,7 +54,7 @@ Parse the first token. Recognized forms:
 
 ### empty (no arguments) → infer target from branch and scaffold
 
-1. Resolve `{ado-id}` from `git branch --show-current` (first 3+-digit run). If extraction fails, stop with: "Can't infer target. Pass `<component-path>` explicitly: `/wf-caps:qa-host new <path>`."
+1. Resolve `{task-id}` from `git branch --show-current` (first 3+-digit run). If extraction fails, stop with: "Can't infer target. Pass `<component-path>` explicitly: `/wf-angular:qa-host new <path>`."
 2. Find candidate components from the branch diff (union of `git diff --name-only main...HEAD`, `git diff --name-only HEAD`, untracked). Filter to `*.component.ts` under `{web-root}`, excluding existing `*-test/*-test.component.ts`.
 3. Drop candidates already routed (grep `{routing-module}` for the kebab-name).
 4. Pick or ask: 0 → stop with "no new unrouted Angular components on this branch"; 1 → scaffold; 2+ → list, ask which.
@@ -68,12 +73,12 @@ Steps:
    - `@Output` declarations — name + event type.
    - Constructor service deps — type + import path.
 
-2. **Compute host names.** Given target kebab `level-and-period-picker`:
-   - Folder: `{test-host-root}/level-and-period-picker-test/`
-   - Files: `level-and-period-picker-test.component.ts` + `.component.html`
-   - Class: `LevelAndPeriodPickerTestComponent`
-   - Selector: `app-level-and-period-picker-test`
-   - Route path: `level-and-period-picker-test`
+2. **Compute host names.** Given target kebab `date-range-picker`:
+   - Folder: `{test-host-root}/date-range-picker-test/`
+   - Files: `date-range-picker-test.component.ts` + `.component.html`
+   - Class: `DateRangePickerTestComponent`
+   - Selector: `app-date-range-picker-test`
+   - Route path: `date-range-picker-test`
 
 3. **Idempotence.** If the folder exists with both files, run the `route` flow instead and exit (returns the existing URL). Don't overwrite a hand-edited host.
 
@@ -231,7 +236,7 @@ Steps:
        border-bottom: none
    ```
 
-   Use this layout/style as the baseline visual pattern (same family as `user-access-level-assign-test`).
+   Use this layout/style as the baseline visual pattern (same family as any existing `<kebab>-test` host in the tree).
 
 7. **Three edits to `{routing-module}`:**
 
@@ -243,50 +248,52 @@ Steps:
    b. **Child route** appended to the test-route group inside the root path's `children:` array:
       ```ts
       {
-        path: '<kebab>-test', component: <Pascal>TestComponent, canActivate: [AuthGuard, SetEntityGuard]
+        path: '<kebab>-test', component: <Pascal>TestComponent, canActivate: [{route-guards}]
       },
       ```
 
-   c. **Static components** array entry on `CodeTrakkerRoutingModule.components`:
+      Render `canActivate: [{route-guards}]` from the profile's `{route-guards}` slot (e.g. `[SessionGuard, ScopeGuard]`). If `{route-guards}` is empty, omit the `canActivate` key entirely.
+
+   c. **Static components** array entry on `{routing-module-class}.components`:
       ```ts
       <Pascal>TestComponent,
       ```
 
    Use `Edit` with exact-string matches. If any of the three is already present, leave it alone (idempotent).
 
-8. **Add navigation link in the sandbox module-test component's template** — `{test-host-root}/code-trakker-module-test/code-trakker-module-test.component.html`:
+8. **Add navigation link in the sandbox module-test component's template** — `{test-host-root}/{sandbox-host-folder}/{sandbox-host-folder}.component.html`:
 
    Append a link to the new test host in the Test Area card body. Example:
    ```html
    <p class="mt-2">
-     <a routerLink="/code-trakker/<kebab>-test" class="btn btn-sm btn-outline-primary">
+     <a routerLink="/{route-prefix}/<kebab>-test" class="btn btn-sm btn-outline-primary">
        Test → <kebab>-test
      </a>
    </p>
    ```
 
-   This makes the test page discoverable from the module-test hub page.
+   This makes the test page discoverable from the module-test hub page. Skip this step if `{sandbox-host-folder}` is not configured (no sandbox hub in the project).
 
 9. **Typecheck.** Run `{verify-command}` (from the `angular` profile — see "Stack profile"). On exit-0, continue. On errors touching the new files or the routing module's three markers, do NOT report success — show the TSC output, identify likely cause, offer to fix or roll back (delete the new folder + reverse the routing edits). Errors only in untouched files are flagged as pre-existing.
 
-10. **Report:** new folder + files, the route URL (`/code-trakker/<kebab>-test` relative to the app root), `Typecheck: PASS`, login+entity reminder.
+10. **Report:** new folder + files, the route URL (`/{route-prefix}/<kebab>-test` relative to the app root), `Typecheck: PASS`, login+entity reminder.
 
-After typecheck passes, invoke `/wf:index <ado-id> qa-host "<kebab>-test · /code-trakker/<kebab>-test"` (string slot — file lives in source tree, not under `_local/`).
+After typecheck passes, invoke `/wf:index <task-id> qa-host "<kebab>-test · /{route-prefix}/<kebab>-test"` (string slot — file lives in source tree, not under `_local/`).
 
 ### `augment <component>` → add controls / observation to an EXISTING host
 
 Used when a host already exists but a QA scenario can't run because the host **pins an `@Input` the scenario must vary**, **lacks a control to reach a required state**, or **doesn't surface an `@Output` the scenario must observe**. This is the retrofit path: `new` scaffolds a minimal host; `augment` grows it per scenario need *without* re-scaffolding or clobbering hand edits. `/wf:qa-followup` drives this automatically when it triages a host-capability block — it is the primary way the harness gets unblocked.
 
-The caller (`/wf:qa-followup`) supplies each needed control/observation as an identifier drawn from the scenario's block reason via `--control`/`--observe`/`--show`; this provider validates those identifiers against the target's real `@Input`/`@Output` surface and wires them, rejecting any it can't find. That validate-and-wire step against the concrete surface is the stack-specific part this provider owns. Worked examples: a host that hardcodes `showLabel=true` → `--control showLabel`; "no control to set `selectedReportPeriodIds`" → `--control selectedReportPeriodIds`; "`userAccessLevelChanged` never observed" → `--observe userAccessLevelChanged`. The block reasons are capability-neutral (a pinned control, a missing control, an unwired observation); resolving each identifier to the target's concrete `@Input`/`@Output` and wiring it is this provider's job.
+The caller (`/wf:qa-followup`) supplies each needed control/observation as an identifier drawn from the scenario's block reason via `--control`/`--observe`/`--show`; this provider validates those identifiers against the target's real `@Input`/`@Output` surface and wires them, rejecting any it can't find. That validate-and-wire step against the concrete surface is the stack-specific part this provider owns. Worked examples: a host that hardcodes `showLabel=true` → `--control showLabel`; "no control to set `selectedIds`" → `--control selectedIds`; "`valueChanged` never observed" → `--observe valueChanged`. The block reasons are capability-neutral (a pinned control, a missing control, an unwired observation); resolving each identifier to the target's concrete `@Input`/`@Output` and wiring it is this provider's job.
 
 ```
-/wf-caps:qa-host augment <component> [--control <input>]... [--observe <output>]... [--show <input>]...
+/wf-angular:qa-host augment <component> [--control <input>]... [--observe <output>]... [--show <input>]...
 ```
 
 Steps:
 
 1. **Resolve target** as in `new` step 1 (signature-only — re-read `@Input`/`@Output` declarations to get types). Compute kebab/host names.
-2. **Require an existing host.** The `<kebab>-test/` folder must exist with both files. If not, stop: "No host to augment — run `/wf-caps:qa-host new <path>` first." Never scaffold from `augment`.
+2. **Require an existing host.** The `<kebab>-test/` folder must exist with both files. If not, stop: "No host to augment — run `/wf-angular:qa-host new <path>` first." Never scaffold from `augment`.
 3. **Validate the named targets.** Each `--control`/`--show` name must be a real `@Input`, each `--observe` a real `@Output`, on the resolved target. If any isn't, stop and list the available `@Input`/`@Output` names — don't guess a near-match.
 4. **Read the current host** `.ts` and `.html`. Every edit below is **additive and idempotent**: grep for the target's handle first (the `data-qa` attribute, the handler name, or the binding) and skip it if already present, so re-running is a no-op and hand edits survive.
 5. **`--control <input>`** — make the input driveable from the UI. Use **plain property/event binding, never `[(ngModel)]`** (so the augment never depends on `FormsModule` being imported). Pick the widget from the input's type:
@@ -302,7 +309,7 @@ Steps:
 8. **Typecheck** with `{verify-command}`. Same handling as `new` step 9: on errors touching the host files, show the TSC output and offer to revert just the augment edits — don't report success.
 9. **Report** what was added per target (`control` / `observe` / `show` / `already present`), the unchanged route URL, `Typecheck: PASS`.
 
-After typecheck passes, invoke `/wf:index <ado-id> qa-host "<kebab>-test · augmented: <one-line summary of what was added>"`.
+After typecheck passes, invoke `/wf:index <task-id> qa-host "<kebab>-test · augmented: <one-line summary of what was added>"`.
 
 ### `route <component>` → look up the URL only
 
@@ -310,7 +317,7 @@ Used by `/wf:qa-auto` when a `Host required:` precondition fires and the host mi
 
 1. Resolve target as in `new` step 1.
 2. Compute kebab-name.
-3. If `{test-host-root}/<kebab>-test/` exists with both `.ts` and `.html` files, output route: `/code-trakker/<kebab>-test` (the stack's test-host route prefix). Otherwise output: `not scaffolded — run /wf-caps:qa-host new <path> first`.
+3. If `{test-host-root}/<kebab>-test/` exists with both `.ts` and `.html` files, output route: `/{route-prefix}/<kebab>-test` (the profile's route prefix + `<kebab>-test`). Otherwise output: `not scaffolded — run /wf-angular:qa-host new <path> first`.
 
 ### `clean <component>` → remove the host
 
@@ -334,19 +341,17 @@ Removes the sentinel-delimited `__qa` action(s) and restores the controller. `<t
 
 ### Anything else → freeform
 
-If the user typed something like "make a host for the period picker", interpret: locate the target, follow `new`. "Expose/exercise the provider-group service" → follow `api-probe`.
+If the user typed something like "make a host for the date-range picker", interpret: locate the target, follow `new`. "Expose/exercise the widget service" → follow `api-probe`.
 
 ---
 
 ## Conventions
 
-(matches the existing `level-and-period-picker-test` reference)
-
 - Folder: `{test-host-root}/<kebab>-test/`
 - Files: `<kebab>-test.component.ts` + `.html`
 - Class: `<Pascal>TestComponent`, selector `app-<kebab>-test`, `standalone: false`
-- Route: `path: '<kebab>-test'` with `canActivate: [AuthGuard, SetEntityGuard]`
-- Routing edits live in `{routing-module}` (NOT `code-trakker.module.ts` or `app.module.ts`)
+- Route: `path: '<kebab>-test'` with `canActivate: [{route-guards}]` (omit `canActivate` when `{route-guards}` is empty)
+- Routing edits live in `{routing-module}` (NOT the feature module or the root app module)
 - DI services are real — no mocks. The host's whole point is exercising the target against the real runtime.
 
 ---
@@ -414,14 +419,14 @@ QA-HOST — Complete
 Task:        {wi-prefix}-{id}
 Target:      <component-path>
 Host:        {test-host-root}/<kebab>-test/
-Route:       /code-trakker/<kebab>-test (the stack's test-host route prefix + <kebab>-test)
+Route:       /{route-prefix}/<kebab>-test (the profile's route prefix + <kebab>-test)
 Edits:       <kebab>-test/<kebab>-test.component.ts (new)
              <kebab>-test/<kebab>-test.component.html (new)
              {routing-module} (3 edits: import, route, static-components)
 
 Typecheck:   PASS
 
-Next:        Login to the app + select entity, then navigate to <app-base>/code-trakker/<kebab>-test.
+Next:        Login to the app + select entity/context if guarded, then navigate to <app-base>/{route-prefix}/<kebab>-test.
              /wf:qa-auto picks up this host automatically when a scenario's preconditions say `Host required: <component>`.
 ```
 
