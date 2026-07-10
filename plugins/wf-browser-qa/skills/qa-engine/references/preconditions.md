@@ -1,6 +1,6 @@
-# wf-caps:qa-engine — Precondition handling (browser-level state)
+# wf-browser-qa:qa-engine — Precondition handling (browser-level state)
 
-How `/wf-caps:qa-engine` reaches the **browser-level** state each scenario asserts in its `Preconditions:` block. Loaded from `SKILL.md` Phase 5a step 1.
+How `/wf-browser-qa:qa-engine` reaches the **browser-level** state each scenario asserts in its `Preconditions:` block. Loaded from `SKILL.md` Phase 5a step 1.
 
 The engine's default disposition is **"reach the precondition, run the test"** — not "BLOCKED if state isn't already there." Skip to BLOCKED only when the precondition genuinely can't be reached via the recipes here.
 

@@ -4,11 +4,11 @@ description: Stack-agnostic browser-automation QA engine. Drives a web app in-th
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
-# /wf-caps:qa-engine — Stack-agnostic browser-automation QA engine
+# /wf-browser-qa:qa-engine — Stack-agnostic browser-automation QA engine
 
 The browser-driving **execution surface** for QA. It loads the browser-automation tools, authenticates once against the running app, then drives each scenario's steps, recording a verdict per scenario in the shared report format. It is **stack-agnostic** — it names no framework, database tool, or host-scaffolding wiring; it works against any web UI (React, jQuery, plain HTML, anything a browser can drive).
 
-This skill is the dispatch target of the **browser-qa** capability's `qa-execution | provider | surface: engine` fragment. A core orchestrator (today `wf:qa-auto`) owns the run lifecycle — task/plan resolution, resume/batch, report rollup — and dispatches the per-scenario drive here via the **Task** tool (`subagent_type: wf-caps:qa-engine`). The engine drives the browser in an isolated context so the orchestrator's context stays small. It can also be invoked directly (`/wf-caps:qa-engine`) to drive scenarios against a running app.
+This skill is the dispatch target of the **browser-qa** capability's `qa-execution | provider | surface: engine` fragment. A core orchestrator (today `wf:qa-auto`) owns the run lifecycle — task/plan resolution, resume/batch, report rollup — and dispatches the per-scenario drive here via the **Task** tool (`subagent_type: wf-browser-qa:qa-engine`). The engine drives the browser in an isolated context so the orchestrator's context stays small. It can also be invoked directly (`/wf-browser-qa:qa-engine`) to drive scenarios against a running app.
 
 The engine **reaches preconditions, not just observes them**. If a scenario asserts "cleared localStorage" or "fresh session", the engine clears the browser storage to that state and runs the test. Selective writes (a seeded key, a single removed key) are reverted before moving on; a full storage clear becomes the new baseline rather than being reverted. Recipes per precondition shape live in [`references/preconditions.md`](references/preconditions.md). Default disposition: reach the state and run; mark BLOCKED only when a precondition genuinely cannot be reached (e.g., network throttling, which the browser-automation tools don't expose). The engine reaches **browser-level** state only — storage, URL, viewport. Anything that needs a database or backend-host write is out of this engine's scope (a separate stack capability owns those).
 
@@ -42,7 +42,7 @@ So this engine drives the browser in its own thread (already isolated from the o
 ## Command Syntax
 
 ```
-/wf-caps:qa-engine [<task-id>] [--suite <suite-name>] [--reset-creds] [--batch <N>] [--resume] [--only <TC-list>]
+/wf-browser-qa:qa-engine [<task-id>] [--suite <suite-name>] [--reset-creds] [--batch <N>] [--resume] [--only <TC-list>]
 ```
 
 ### Arguments
@@ -306,7 +306,7 @@ After the loop completes (or stops at batch / abort):
 
 **Report header / rollup ownership.** When dispatched by an orchestrator, return the per-scenario verdict blocks plus the full-run baseline verdict for the orchestrator to merge into the run-level header (`Mode`, `Tester`, `Driver model`, `App`, `Status`), Summary table, and traceability matrix. When invoked **directly** with empty input, write the complete report yourself per [`../../../wf/skills/qa-gen/references/report-format.md`](../../../wf/skills/qa-gen/references/report-format.md):
 
-- `Mode: agentic`, `Tester: wf-caps:qa-engine`, `Driver model:` current model id, `App:` base URL from creds, `Status:` deterministic from the PASS/FAIL/INCOMPLETE rule.
+- `Mode: agentic`, `Tester: wf-browser-qa:qa-engine`, `Driver model:` current model id, `App:` base URL from creds, `Status:` deterministic from the PASS/FAIL/INCOMPLETE rule.
 - Summary table; traceability matrix rolled up from per-scenario `Validates: SC-N` references and verdicts; per-suite results (PASS = one line, FAIL/BLOCKED = full step table); Notes & Observations; Defects table (one row per FAIL, severity from priority P0→High / P1→Medium / P2→Low).
 - On direct invocation, if the Task tool is available, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`.
 
@@ -355,11 +355,11 @@ Top defects:
 
 <if INCOMPLETE due to batch:>
 Reached batch ceiling.
-Next: /wf-caps:qa-engine <task-id> --resume
+Next: /wf-browser-qa:qa-engine <task-id> --resume
 
 <if INCOMPLETE due to abort:>
 Run interrupted.
-Next: /wf-caps:qa-engine <task-id> --resume
+Next: /wf-browser-qa:qa-engine <task-id> --resume
 
 <if FAIL:>
 Next: triage and fix the defects, then re-run the failing scenarios with --only

@@ -6,17 +6,20 @@ attaches a single `implement | guidance` fragment (WF-177 — aggregate kind, em
 partition accounting), and all four capability names are unique +
 filesystem-safe. Paths point at the **real** capability folders (the validator resolves
 repo-relative paths against the real repo root), so this fixture also asserts the shipped
-manifests parse. WF-126: all four wf-caps manifests now carry `requires: git, ado`, so `git`
-and `ado` are registered here too — pointing at the real `wf-git`/`wf-ado` capability folders
-— so the registry satisfies those requirements and stays green.
+manifests parse. WF-126: the migration/angular/node-ts wf-caps manifests carry
+`requires: git, ado`, so `git` and `ado` are registered here too — pointing at the real
+`wf-git`/`wf-ado` capability folders — so the registry satisfies those requirements and stays
+green. WF-255: `browser-qa` now ships in the standalone `wf-browser-qa` plugin (its path
+repointed) and is tracker-agnostic (`requires: git` only), so it stays green on the `git`
+provider alone.
 
 ## Capabilities
 
-| Capability | Path                                    |
-|------------|-----------------------------------------|
-| migration  | plugins/wf-caps/capabilities/migration  |
-| browser-qa | plugins/wf-caps/capabilities/browser-qa |
-| angular    | plugins/wf-caps/capabilities/angular    |
-| node-ts    | plugins/wf-caps/capabilities/node-ts    |
-| git        | plugins/wf-git/capabilities/git         |
-| ado        | plugins/wf-ado/capabilities/ado         |
+| Capability | Path                                          |
+|------------|-----------------------------------------------|
+| migration  | plugins/wf-caps/capabilities/migration        |
+| browser-qa | plugins/wf-browser-qa/capabilities/browser-qa |
+| angular    | plugins/wf-caps/capabilities/angular          |
+| node-ts    | plugins/wf-caps/capabilities/node-ts          |
+| git        | plugins/wf-git/capabilities/git               |
+| ado        | plugins/wf-ado/capabilities/ado               |

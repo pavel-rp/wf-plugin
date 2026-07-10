@@ -37,7 +37,7 @@ commands are already discoverable from installing the plugin; this skill wires t
 
 | Argument       | Required | Description |
 | -------------- | -------- | ----------- |
-| `<capability>` | NO       | Zero or more capability names to register (e.g. `migration browser-qa`). **Default (no args): register every capability the pack ships** (each `capabilities/<name>/` folder with a `manifest.md`). A subset registers only the named ones. |
+| `<capability>` | NO       | Zero or more capability names to register (e.g. `migration angular`). **Default (no args): register every capability the pack ships** (each `capabilities/<name>/` folder with a `manifest.md`). A subset registers only the named ones. |
 
 **Validation:**
 

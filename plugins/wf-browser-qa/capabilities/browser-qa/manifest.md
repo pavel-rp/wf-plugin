@@ -1,6 +1,6 @@
 # browser-qa capability manifest
 
-**Version:** 1.0.1 (WF-126 — `requires: git, ado` declared)
+**Version:** 1.1.0 (WF-255 — extracted into the standalone `wf-browser-qa` plugin; tracker-agnostic, `requires: git` only)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Capability:** browser-qa (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** feature (ships its own skill + agent; also attaches one phase fragment via the registry)
@@ -24,11 +24,13 @@ preconditions (`localStorage` / `sessionStorage` / cookies, URL, viewport).
 
 ## Requires
 
-requires: git, ado
+requires: git
 
-This capability assumes a `delivery` provider (`git`) and a `tracker` provider (`ado`)
-are both registered in the capability registry — the wf-caps pack is built assuming
-git-based delivery and tracker-backed work-item tracking are available downstream.
+This capability assumes only a `delivery` provider (`git`) is registered in the capability
+registry — the `git` delivery guard fires so branch/commit/PR operations resolve. It is
+**tracker-agnostic**: it names no work-item tracker, so a consumer on any tracker (or none)
+can register it. (Historically this manifest also required `ado`; WF-255 dropped that token
+when the capability was extracted into the standalone `wf-browser-qa` plugin.)
 
 ## Fragments
 
@@ -40,15 +42,15 @@ carries a **`surface`** enum token.
 
 | phase         | contribution-kind | dispatch                     | scope  |
 |---------------|-------------------|------------------------------|--------|
-| qa-execution  | provider          | `subagent: wf-caps:qa-engine`| engine |
+| qa-execution  | provider          | `subagent: wf-browser-qa:qa-engine`| engine |
 
 Read off the columns:
 
-- **qa-engine** (`qa-execution | provider | subagent: wf-caps:qa-engine | engine`) — the
+- **qa-engine** (`qa-execution | provider | subagent: wf-browser-qa:qa-engine | engine`) — the
   browser-automation **execution provider**. A core skill orchestrating `qa-execution`
   (today: `wf:qa-auto`) walks the registry, finds the `provider` row that owns
   `surface: engine`, and dispatches the per-scenario browser drive to it via the Task tool
-  (`subagent_type: wf-caps:qa-engine`). The engine reasons in an isolated context and
+  (`subagent_type: wf-browser-qa:qa-engine`). The engine reasons in an isolated context and
   returns per-scenario verdict block(s) in the shared report format; the orchestrator owns
   run lifecycle (resume / batch / report rollup) and never drives the browser itself.
 
@@ -61,36 +63,40 @@ own `host` alongside this one with no conflict.
 ## Skills
 
 As a `feature` capability, browser-qa ships its skill + agent natively (install the plugin →
-the `/wf-caps:*` command and the subagent are discoverable; native plugin composition handles
+the `/wf-browser-qa:*` command and the subagent are discoverable; native plugin composition handles
 loading). Documented for reference:
 
 ```
 skills:
-  - plugins/wf-caps/skills/qa-engine/   # /wf-caps:qa-engine — the browser-automation engine
+  - plugins/wf-browser-qa/skills/qa-engine/   # /wf-browser-qa:qa-engine — the browser-automation engine
 agents:
-  - plugins/wf-caps/agents/qa-engine.md # wf-caps:qa-engine — the engine's subagent companion (the provider dispatch target)
+  - plugins/wf-browser-qa/agents/qa-engine.md # wf-browser-qa:qa-engine — the engine's subagent companion (the provider dispatch target)
 ```
 
-The fragment row's `subagent: wf-caps:qa-engine` resolves to that companion; the agent
+The fragment row's `subagent: wf-browser-qa:qa-engine` resolves to that companion; the agent
 declares **no** `tools:` field, so it inherits the full session catalog — including the
 browser-automation MCP tools the engine drives (per `CLAUDE.md` §8).
 
 ## Downstream registration
 
 This repo ships the capability + its docs; it does **not** carry a `_local/config.md` (that
-lives in each consuming project). To activate browser-qa downstream, add a row to the
-consuming project's `_local/config.md` `## Capabilities` table:
+lives in each consuming project). **One command (recommended): `/wf-browser-qa:init`** — after
+`/wf:init` has bootstrapped the repo, it records the pack's install root in the gitignored
+`## Plugin Roots` mapping and writes the plugin-anchored `## Capabilities` row, so core
+resolves the capability on a **plugin-only install** (no vendored `plugins/wf-browser-qa/...`
+in the consuming repo):
 
 ```markdown
 ## Capabilities
 
 | Capability | Path                                    |
 |------------|-----------------------------------------|
-| browser-qa | plugins/wf-caps/capabilities/browser-qa |
+| browser-qa | plugin:wf-browser-qa/capabilities/browser-qa |
 ```
 
-(Or the plugin-anchored `Path` form `plugin:wf-caps/capabilities/browser-qa` once
-cross-plugin path resolution lands — see the registry contract's "two `Path` shapes".)
+**Manual (escape hatch)** — when the pack **is** vendored in the consuming repo, add a
+repo-relative row by hand instead: `| browser-qa | plugins/wf-browser-qa/capabilities/browser-qa |`.
+See the registry contract's "two `Path` shapes".
 
 ## Profile seed template
 
