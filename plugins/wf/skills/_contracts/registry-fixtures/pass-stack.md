@@ -6,13 +6,16 @@ attaches a single `implement | guidance` fragment (WF-177 — aggregate kind, em
 partition accounting), and all four capability names are unique +
 filesystem-safe. Paths point at the **real** capability folders (the validator resolves
 repo-relative paths against the real repo root), so this fixture also asserts the shipped
-manifests parse. WF-126: the migration/angular wf-caps manifests carry
-`requires: git, ado`, so `git` and `ado` are registered here too — pointing at the real
-`wf-git`/`wf-ado` capability folders — so the registry satisfies those requirements and stays
-green. WF-255: `browser-qa` now ships in the standalone `wf-browser-qa` plugin (its path
-repointed) and is tracker-agnostic (`requires: git` only), so it stays green on the `git`
-provider alone. WF-256: `node-ts` now ships in the standalone `wf-node-ts` plugin (its path
-repointed) and is likewise tracker-agnostic (`requires: git` only).
+manifests parse. After the OUT-7 tracker-agnostic drops (WF-255/256/258), only `migration`
+(which stays in wf-caps) still carries `requires: git, ado`; the three extracted caps
+(`browser-qa`, `node-ts`, `angular`) carry `requires: git` only. `git` and `ado` are both
+registered here — pointing at the real `wf-git`/`wf-ado` capability folders — so `migration`'s
+`git, ado` requirement and the three extracted caps' `git` requirement are all satisfied and
+the registry stays green. WF-255: `browser-qa` ships in the standalone `wf-browser-qa` plugin
+(path repointed). WF-256: `node-ts` ships in the standalone `wf-node-ts` plugin (path
+repointed). WF-258: `angular` ships in the standalone `wf-angular` plugin (path repointed) and
+dropped `ado`, so it stays green on the `git` provider alone while composing (`surface: host`)
+with `browser-qa`'s `surface: engine`.
 
 ## Capabilities
 
@@ -20,7 +23,7 @@ repointed) and is likewise tracker-agnostic (`requires: git` only).
 |------------|-----------------------------------------------|
 | migration  | plugins/wf-caps/capabilities/migration        |
 | browser-qa | plugins/wf-browser-qa/capabilities/browser-qa |
-| angular    | plugins/wf-caps/capabilities/angular          |
+| angular    | plugins/wf-angular/capabilities/angular       |
 | node-ts    | plugins/wf-node-ts/capabilities/node-ts       |
 | git        | plugins/wf-git/capabilities/git               |
 | ado        | plugins/wf-ado/capabilities/ado               |
