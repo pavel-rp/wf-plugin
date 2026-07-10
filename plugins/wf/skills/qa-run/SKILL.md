@@ -10,7 +10,7 @@ Reads `06_qa.md` (from `/wf:qa-gen`), presents each scenario step-by-step via th
 
 **The skill is the test lead. The user is the tester. One step at a time.**
 
-Scenarios carry a `Type:` — `browser` (default) or `API`. Browser scenarios are walked step-by-step in the running app. **API** scenarios (backend tasks) are presented as a request block plus a ready-to-paste HTTP request; the tester runs it and reports the status code and response, which the skill checks against the scenario's assertions. When an API scenario needs an endpoint that doesn't exist yet (`Backend host required:`), the skill tells the tester to wire it first with `/wf-caps:qa-host api-probe <Service>.<method>` (and revert with `api-revert` after) — the manual analog of what `/wf:qa-auto` does automatically.
+Scenarios carry a `Type:` — `browser` (default) or `API`. Browser scenarios are walked step-by-step in the running app. **API** scenarios (backend tasks) are presented as a request block plus a ready-to-paste HTTP request; the tester runs it and reports the status code and response, which the skill checks against the scenario's assertions. When an API scenario needs an endpoint that doesn't exist yet (`Backend host required:`), the skill tells the tester to wire it first with `/wf-angular:qa-host api-probe <Service>.<method>` (and revert with `api-revert` after) — the manual analog of what `/wf:qa-auto` does automatically.
 
 For an autonomous run (no human in the loop), use `/wf:qa-auto` instead. The two write the same report file in the same format — only the `Mode` and `Tester` fields differ.
 
@@ -152,7 +152,7 @@ Assertions:
   2. <assertion> → <expected>
 ```
 
-If a precondition is `Backend host required: <Service>.<method>`, tell the tester to run `/wf-caps:qa-host api-probe <Service>.<method>` first (it prints the route to call; ephemeral routes need the backend host rebuilt before they respond, as the provider notes), and to run `/wf-caps:qa-host api-revert <Service>.<method>` when done. Ask the tester to paste the status code and response, then judge each assertion **Pass**/**Fail** from what they report (same verdict rules as below). Record the observed status/response on FAIL.
+If a precondition is `Backend host required: <Service>.<method>`, tell the tester to run `/wf-angular:qa-host api-probe <Service>.<method>` first (it prints the route to call; ephemeral routes need the backend host rebuilt before they respond, as the provider notes), and to run `/wf-angular:qa-host api-revert <Service>.<method>` when done. Ask the tester to paste the status code and response, then judge each assertion **Pass**/**Fail** from what they report (same verdict rules as below). Record the observed status/response on FAIL.
 
 For **browser** scenarios, walk one step at a time. For each step, present:
 
