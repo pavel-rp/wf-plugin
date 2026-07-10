@@ -2,7 +2,7 @@
 
 A Claude Code plugin that runs a gated **Spec-Driven Development** chain — spec → plan → tasks → implement → verify → qa — over each task. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
 
-**Core is tracker- and delivery-agnostic** — it names no tracker (Azure DevOps, Linear, …) and issues no VCS command of its own. Work-item and branch/commit/PR mechanics enter through **capability packs** that register against the spine: `wf-git` supplies the delivery (git) provider, `wf-ado` / `wf-linear` the tracker providers. Stack/domain knowledge (migration, browser-QA, Angular test-host, node-ts) ships in `wf-caps`. With **no provider registered, the whole spine still runs fully local** — see [Bare-core](#bare-core-no-provider-registered).
+**Core is tracker- and delivery-agnostic** — it names no tracker (Azure DevOps, Linear, …) and issues no VCS command of its own. Work-item and branch/commit/PR mechanics enter through **capability packs** that register against the spine: `wf-git` supplies the delivery (git) provider, `wf-ado` / `wf-linear` the tracker providers. Stack/domain knowledge ships in its own pack: migration in `wf-caps`, browser-QA in `wf-browser-qa`, the Angular test-host in `wf-angular`, node-ts in `wf-node-ts`. With **no provider registered, the whole spine still runs fully local** — see [Bare-core](#bare-core-no-provider-registered).
 
 ## Install
 
@@ -85,7 +85,7 @@ Collapses spec→plan→implement into a single skill run with one approval gate
 | `/wf:qa-init` | Build or refresh the project QA-rules artifact (`_local/wf-qa.md`) for the QA family — `/wf:qa-gen` reads the `{qa-rules}` pointer at plan-generation time, and the report severity rubric (defined in qa-gen's report format, applied by `/wf:qa-run`/`/wf:qa-auto` when `07_qa-report.md` is written) resolves from the artifact. A bounded read-only scan detects the project's own stack/risk/environment signals and reflects them into a domain-free questionnaire (risk areas, environment, severity, acceptance), then writes the rules (including the severity rubric) and sets `{qa-rules}` to the artifact path. Re-runnable: update mode merges newly-derived rules while preserving manual edits. |
 | `/wf:qa-gen` | Generate a QA plan for the task (`06_qa.md`). UI criteria become **browser** scenarios; backend criteria become **API** scenarios that exercise the endpoint over HTTP with a real token. On top of the generic plan it **fires the `qa-generation` phase**, aggregating any scenarios contributed by the project's registered capabilities (provenance-tagged) — with none registered, the generic plan stands alone. Every plan ends with a standing **Baseline health** suite — including a **visual-baseline** scenario carrying the `**Visual:** yes` marker (absolute visual-defect detection: overlap/clipping/crowding/mis-rendered controls; not pixel-diffing) for a browser target. A backend-only task is never a stub PASS. |
 | `/wf:qa-run` | Interactive walkthrough of `06_qa.md` — prompts the tester step by step for browser scenarios, presents `Type: API` scenarios as a request + ready curl command, then writes `07_qa-report.md`. Use when a human is the tester. |
-| `/wf:qa-auto` | Autonomous QA run **orchestrator**. Resolves the task/plan, enforces the branch gate, manages run lifecycle (resume / `--batch` / `--only`), and **dispatches the per-scenario drive to the `qa-execution` engine** registered in the capability registry — it names no stack and drives no browser itself. Assembles `07_qa-report.md` with the Summary, traceability matrix, and full-run console/network rollup; a `**Visual:** yes` scenario carries a `**Visual:**` evidence sub-block (screenshot + geometry findings + rubric verdict) even on PASS. Requires a registered execution capability (e.g. `wf-caps` browser-qa); stops cleanly if none is active. Use `--batch <N>` + `--resume` to chunk long runs across context windows. |
+| `/wf:qa-auto` | Autonomous QA run **orchestrator**. Resolves the task/plan, enforces the branch gate, manages run lifecycle (resume / `--batch` / `--only`), and **dispatches the per-scenario drive to the `qa-execution` engine** registered in the capability registry — it names no stack and drives no browser itself. Assembles `07_qa-report.md` with the Summary, traceability matrix, and full-run console/network rollup; a `**Visual:** yes` scenario carries a `**Visual:**` evidence sub-block (screenshot + geometry findings + rubric verdict) even on PASS. Requires a registered execution capability (e.g. `wf-browser-qa` browser-qa); stops cleanly if none is active. Use `--batch <N>` + `--resume` to chunk long runs across context windows. |
 | `/wf:qa-followup` | Follows up a QA report: triages every non-PASS scenario, unblocks harness blocks, root-causes FAIL defects, writes a checkbox remediation plan (`08_qa-fix.md`), gates on a single approval, applies fixes, and recommends a fresh QA pass. The QA chain's plan-then-implement defect-fixer. |
 
 All default to zero-argument invocation — they infer context from the current branch.
@@ -101,7 +101,7 @@ Install `wf` alone — no `wf-git`, no tracker pack, an empty `## Capabilities` 
 
 Register `wf-git` (via its `/wf-git:init`) — and a tracker pack (`/wf-ado:init` or `/wf-linear:init`) — to light up branch/commit/PR and work-item integration; core degrades back to local-only the moment they're absent. Exactly one tracker provider may be active at a time (`wf-ado` XOR `wf-linear`; enforced by registry validation).
 
-> **Moved:** `migration-map` (→ `/wf-caps:migration-map`), `qa-host` (→ `/wf-caps:qa-host`), `test-page` (→ `/wf-caps:test-page`), and `test-node` (→ `/wf-caps:test-node`) now ship in the **wf-caps** plugin — `qa-host`/`test-page` as the `angular` stack capability (the `qa-execution` `surface: host` provider, composing with browser-qa's `surface: engine`), `test-node` as the `node-ts` capability. See [`plugins/wf-caps/README.md`](../wf-caps/README.md). Install `wf-caps` to use them.
+> **Moved:** `migration-map` (→ `/wf-caps:migration-map`) stays in the **wf-caps** plugin. `qa-host` and `test-page` (→ `/wf-angular:qa-host`, `/wf-angular:test-page`) now ship in the **wf-angular** plugin as the `angular` stack capability (the `qa-execution` `surface: host` provider, composing with browser-qa's `surface: engine`); `test-node` (→ `/wf-node-ts:test-node`) ships in the **wf-node-ts** plugin as the `node-ts` capability. See [`plugins/wf-caps/README.md`](../wf-caps/README.md), [`plugins/wf-angular/README.md`](../wf-angular/README.md), and [`plugins/wf-node-ts/README.md`](../wf-node-ts/README.md). Install the relevant pack to use each.
 
 ## Per-task artifacts
 
@@ -111,7 +111,7 @@ Each task gets a folder under `_local/` in the downstream repo. The whole `_loca
 _local/
 ├── config.md             # /wf:init project config — {task-root}, {verify-command}, the ## Capabilities registry, etc. (registry location is configurable via wf.config.js registryPath; defaults here). Each tracker/delivery pack adds its own section (e.g. ## Azure DevOps, ## Linear) via its own init.
 ├── profiles/             # /wf:init capability profile overrides — <capability>.profile.json, seeded on divergence from the capability's shipped default
-├── qa-creds.md           # /wf-caps:qa-engine test credentials (per-project, shared across tasks)
+├── qa-creds.md           # /wf-browser-qa:qa-engine test credentials (per-project, shared across tasks)
 └── <task-id>/            # one folder per task (tracker id when a tracker is registered, else local T<NNN>)
     ├── index.md              # per-task manifest — every wf:* skill updates a row here
     ├── 00_reqs.md            # requirements — fetched via the active tracker capability, or a local stub in bare-core
@@ -126,7 +126,7 @@ _local/
     ├── 08_qa-fix.md          # /wf:qa-followup remediation plan + fix log
     ├── triage.md             # /wf:triage advisor output
     ├── lite.md               # /wf:lite fast-path output
-    ├── tests/                # /wf-caps:test-node Node test files (.test.ts)
+    ├── tests/                # /wf-node-ts:test-node Node test files (.test.ts)
     ├── research/             # exploration notes
     ├── assets/               # mockups, screenshots, traces
     └── artifacts/            # diffs, screenshots, API responses from /wf:qa-auto captures
