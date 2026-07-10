@@ -1,8 +1,8 @@
 # Composite retrospective report — composition procedure (boot doc)
 
-**Owned by:** the audit capability (`plugins/wf-caps/capabilities/audit/`)
-**Read by:** `wf-caps:audit-retrospective` on boot, when the composite report is requested
-**Wired by:** `plugins/wf-caps/capabilities/audit/manifest.md` (§"Composite retrospective report")
+**Owned by:** the audit capability (`plugins/wf-audit/capabilities/audit/`)
+**Read by:** `wf-audit:audit-retrospective` on boot, when the composite report is requested
+**Wired by:** `plugins/wf-audit/capabilities/audit/manifest.md` (§"Composite retrospective report")
 **Model:** claude-opus-4-8
 
 ---

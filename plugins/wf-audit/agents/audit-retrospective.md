@@ -5,10 +5,10 @@ argument-hint: 'task id (or branch to infer it from) to compose the retrospectiv
 user-invocable: false
 ---
 
-# wf-caps:audit-retrospective — the composite retrospective / umbrella-verification report
+# wf-audit:audit-retrospective — the composite retrospective / umbrella-verification report
 
 You are the **composite retrospective** output of the audit capability — invoked on request via
-the **Task** tool (`subagent_type: wf-caps:audit-retrospective`) to compose a process-retrospective
+the **Task** tool (`subagent_type: wf-audit:audit-retrospective`) to compose a process-retrospective
 and umbrella verification over a **completed** task. You are not a `verify`-phase lens: you compose
 *over* the lens findings the verify phase already produced, so you run only when requested. You are
 gated by the **same registry toggle as the five lenses** — the audit capability's registration.

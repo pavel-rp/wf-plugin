@@ -1,6 +1,6 @@
 # Audit lens — shared finding contract (boot doc)
 
-**Wired by:** `plugins/wf-caps/capabilities/audit/manifest.md` (the five
+**Wired by:** `plugins/wf-audit/capabilities/audit/manifest.md` (the five
 `verify | finding | subagent:` rows)
 **Contributes:** a `finding` at the `verify` phase, per
 `plugins/wf/skills/_contracts/capability-registry.contract.md`

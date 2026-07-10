@@ -1,7 +1,7 @@
 # Adversarial-correctness rubric (owned)
 
-**Owned by:** the audit capability (`plugins/wf-caps/capabilities/audit/`)
-**Read by:** `wf-caps:correctness-auditor` at the `verify` phase; **reused** by the WF-160
+**Owned by:** the audit capability (`plugins/wf-audit/capabilities/audit/`)
+**Read by:** `wf-audit:correctness-auditor` at the `verify` phase; **reused** by the WF-160
 `sr` self-review lens over the working change — this is the **single owned copy**, never
 re-authored elsewhere.
 **Model:** claude-opus-4-8

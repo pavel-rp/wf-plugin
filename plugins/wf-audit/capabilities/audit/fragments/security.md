@@ -1,7 +1,7 @@
 # Security lens rubric
 
-**Owned by:** the audit capability (`plugins/wf-caps/capabilities/audit/`)
-**Read by:** `wf-caps:security-auditor` at the `verify` phase
+**Owned by:** the audit capability (`plugins/wf-audit/capabilities/audit/`)
+**Read by:** `wf-audit:security-auditor` at the `verify` phase
 **Model:** claude-opus-4-8
 
 ---
