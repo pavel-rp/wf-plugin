@@ -20,8 +20,8 @@ The line is **existence/shape (static)** vs **behavior through a call (API)**.
 
 | Criterion describes… | Category | Why |
 |---|---|---|
-| "type `ProviderGroup` is exported", "DTO has field `Name`", "method signature is `(int) => Task<List<T>>`" | **Build/static** | Verified by compile / grep. No runtime behavior. |
-| "endpoint returns the provider groups for the access level", "repository filters out inactive rows", "POST creates the record and returns 201", "service returns an empty list when none match" | **API** | A behavior only a real call can confirm. Exercise it. |
+| "type `Widget` is exported", "DTO has field `Name`", "method signature is `(int) => Task<List<T>>`" | **Build/static** | Verified by compile / grep. No runtime behavior. |
+| "endpoint returns the widgets for the access level", "repository filters out inactive rows", "POST creates the record and returns 201", "service returns an empty list when none match" | **API** | A behavior only a real call can confirm. Exercise it. |
 
 Split a straddling criterion the same way Phase 3 already splits wiring-vs-behavior: "the service is registered in DI **and** its method returns the right shape" → registration half is **Build/static**, the returns-the-right-shape half is **API**. Don't double-count.
 
@@ -60,7 +60,7 @@ Same outer shape as a browser scenario (`Validates` / `Priority` / `Precondition
 **Preconditions:**
 
 - Authenticated session (the runner reuses the logged-in token).
-- <Data state, if any — same shapes/recipes as browser scenarios, e.g. "At least one ProviderGroup exists for access level 123">
+- <Data state, if any — same shapes/recipes as browser scenarios, e.g. "At least one Widget exists for access level 123">
 - Backend host required: <Service>.<method>   <!-- ONLY when no endpoint exists yet; omit otherwise -->
 
 **Request:**
