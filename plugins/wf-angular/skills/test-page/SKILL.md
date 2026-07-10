@@ -1,35 +1,38 @@
 ---
 name: test-page
-description: Scaffolds black-box TypeScript tests for Angular-runtime targets — behavioral (services, components, pipes, guards, interceptors, directives) and wiring/registration (state models, app initializers, modules, routes, DI configs) — and injects them into the CodeTrakkerModuleTestComponent sandbox page. The user loads the page in a browser and pastes the console output back for verdict. Tests derive from the spec, not the implementation. Use when a target needs the Angular runtime (DI, zone.js, HttpClient) and can't be exercised by /wf-caps:test-node.
+description: Scaffolds black-box TypeScript tests for Angular-runtime targets — behavioral (services, components, pipes, guards, interceptors, directives) and wiring/registration (state models, app initializers, modules, routes, DI configs) — and injects them into the stack's configured sandbox module-test page (a profile slot). The user loads the page in a browser and pastes the console output back for verdict. Tests derive from the spec, not the implementation. Use when a target needs the Angular runtime (DI, zone.js, HttpClient) and can't be exercised by /wf-node-ts:test-node.
 user-invocable: true
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
-# /wf-caps:test-page — Browser-run black-box tests for Angular targets
+# /wf-angular:test-page — Browser-run black-box tests for Angular targets
 
-Some migration targets (Angular services, components, pipes, guards,
-interceptors, directives) can't be tested with `/wf-caps:test-node` because they
-need the Angular runtime — DI, zone.js, `HttpClient`, observable-store,
-Kendo, RxJS-with-NgZone, etc.
+Some Angular-runtime targets (services, components, pipes, guards,
+interceptors, directives) can't be tested with `/wf-node-ts:test-node`
+because they need the Angular runtime — DI, zone.js, `HttpClient`,
+observable-store, Kendo, RxJS-with-NgZone, etc.
 
-This skill installs a **black-box test harness** into the existing
-`CodeTrakkerModuleTestComponent` (a long-standing sandbox page). You
-scaffold test files once, the user loads
-`/code-trakker/code-trakker-module-test` in the running app, and the
-suite runs in the real browser context and prints delimited results to
-`console.log`. The user pastes the log back into chat; the model
-verifies pass/fail against the spec.
+This skill installs a **black-box test harness** into the stack's
+configured sandbox module-test component (a long-standing sandbox page).
+You scaffold test files once, the user loads the sandbox host route in
+the running app, and the suite runs in the real browser context and
+prints delimited results to `console.log`. The user pastes the log back
+into chat; the model verifies pass/fail against the spec.
 
 ---
 
 ## Stack profile (read first)
 
-This skill carries no project path. The Angular stack paths come from the `angular` capability's **profile**: read them from the downstream override `_local/profiles/angular.profile.json` when present, else from the capability default template `plugins/wf-caps/capabilities/angular/profile.template.json` (precedence: **override > capability default**). If neither resolves, stop and direct the user to `/wf:init` (which seeds the override on divergence). The slots this skill uses, referenced as placeholders below:
+This skill carries no project token. The Angular stack values come from the `angular` capability's **profile**: read them from the downstream override `_local/profiles/angular.profile.json` when present, else from the capability default template `profile.template.json` under the capability's registry path (precedence: **override > capability default**). If neither resolves, stop and direct the user to `/wf:init` (which seeds the override on divergence). The slots this skill uses, referenced as placeholders below:
 
-- `{test-host-root}` — root under which the sandbox module-test component and its `_page-tests/` folder live (e.g. `AuditTrakker.Web/src/app/code-trakker`). The sandbox component folder is `{test-host-root}/code-trakker-module-test/`.
+- `{test-host-root}` — root under which the sandbox module-test component and its `_page-tests/` folder live. The sandbox component folder is `{test-host-root}/{sandbox-host-folder}/`.
+- `{sandbox-host-folder}` — the folder name of the sandbox module-test host that page-tests inject into.
+- `{sandbox-host-component}` — the class name of that sandbox module-test host component.
+- `{route-prefix}` — the app route segment the sandbox host mounts under; its URL is `/{route-prefix}/{sandbox-host-folder}`.
+- `{route-guards}` — the route guards the sandbox host sits behind (comma-separated, or empty).
 - `{verify-command}` — the typecheck/build command run before handoff.
 
-Concrete paths in the procedures below (`AuditTrakker.Web/...`) are **illustrative examples of one filled profile**; substitute the resolved slot value. Stack identifiers that are not project paths — the sandbox component name `CodeTrakkerModuleTestComponent` / `code-trakker-module-test`, Angular DI/zone.js/`HttpClient` — are the stack's and stay as-is.
+Every concrete identifier below is rendered from a slot; substitute the resolved value. Stack identifiers that are not project tokens — Angular DI/zone.js/`HttpClient` — are the stack's and stay as-is.
 
 ---
 
@@ -38,11 +41,11 @@ Concrete paths in the procedures below (`AuditTrakker.Web/...`) are **illustrati
 When scaffolding tests, you derive cases from the **spec**, not from the
 implementation. Your inputs, in order of preference:
 
-1. `_local/ADO-<id>/00_reqs.md` — the ADO-authored requirements (source
+1. `_local/ADO-<id>/00_reqs.md` — the tracker-authored requirements (source
    of truth).
 2. `_local/ADO-<id>/01_spec.md` — the LLM-authored spec, only if the
    requirements are thin. Prefer `00_reqs.md` when both exist.
-3. The C# / MVC source the target was migrated from, if the spec
+3. The source the target was derived from, if the spec
    references it. Read it the same way — as a behavioral contract, not
    a template to copy.
 
@@ -55,7 +58,7 @@ works. The whole value of this harness is that the tests fail loudly
 when implementation drifts from spec — they cannot do that if they were
 derived from the implementation.
 
-If the spec is ambiguous, flag the ambiguity in a `//MIGRATION QUESTION
+If the spec is ambiguous, flag the ambiguity in a `//SPEC QUESTION
 (<initials>):` comment inside the test file and test the stricter
 interpretation. Do not guess from the code.
 
@@ -72,7 +75,7 @@ The target declares methods with observable input/output. Tests exercise them:
 
 ```ts
 test('setStartDate(Date) round-trips via getStartDate()', () => {
-  const svc = injector.get(CraSharedStateService);
+  const svc = injector.get(AppSharedStateService);
   const d = new Date('2025-01-01');
   svc.setStartDate(d);
   assertDeepEqual(svc.getStartDate(), d);
@@ -92,17 +95,17 @@ providers, or routes into the runtime. Tests verify the registration
 landed, without reaching into any one implementation:
 
 ```ts
-test('DI resolution: CraSharedStateService is provided and constructible', () => {
-  assertTruthy(injector.get(CraSharedStateService));
+test('DI resolution: AppSharedStateService is provided and constructible', () => {
+  assertTruthy(injector.get(AppSharedStateService));
 });
 
-test('AppState.craShared is seeded with initialCraSharedState', () => {
+test('AppState.appShared is seeded with initialAppSharedState', () => {
   const appState = injector.get(AppStateService).state;
-  assertDeepEqual(appState.craShared, initialCraSharedState);
+  assertDeepEqual(appState.appShared, initialAppSharedState);
 });
 
-test('rehydrate chain: CraSharedStateService singleton is live after init', () => {
-  const svc = injector.get(CraSharedStateService);
+test('rehydrate chain: AppSharedStateService singleton is live after init', () => {
+  const svc = injector.get(AppSharedStateService);
   assertTruthy(svc);
   assertTruthy(svc.state);  // rehydrated slice exists
 });
@@ -142,11 +145,12 @@ Fit:
 
 Not fit:
 - Pure helper functions (`state.helpers.ts::fixDate`, etc.) — use
-  `/wf-caps:test-node` instead. This harness is heavier and slower.
+  `/wf-node-ts:test-node` instead. This harness is heavier and slower.
 - Full user flows across pages — use Chrome MCP / `/run-tests`.
 - Anything that needs a specific logged-in user, entity selection, or
-  backend data. The test page is behind `AuthGuard` and `SetEntityGuard`;
-  if the required state isn't trivially reachable, call it out and stop.
+  backend data. The test page sits behind the stack's route guards
+  (`{route-guards}`); if the required state isn't trivially reachable,
+  call it out and stop.
 
 ---
 
@@ -156,11 +160,11 @@ Parse the first token. Recognized forms:
 
 ### empty (no arguments)  → infer target from branch and scaffold
 
-Default mode. When `/wf-caps:test-page` is invoked with no arguments, pick a sensible target automatically and run the `new` flow on it.
+Default mode. When `/wf-angular:test-page` is invoked with no arguments, pick a sensible target automatically and run the `new` flow on it.
 
 Steps:
 
-1. **Resolve the ADO ID** from the current branch: extract the first 3+-digit run from `git branch --show-current`. If extraction fails (e.g., on `main`), stop: "Can't infer an ADO ID from the current branch. Pass an explicit target: `/wf-caps:test-page new <ado-id> <src-path>`."
+1. **Resolve the ADO ID** from the current branch: extract the first 3+-digit run from `git branch --show-current`. If extraction fails (e.g., on `main`), stop: "Can't infer an ADO ID from the current branch. Pass an explicit target: `/wf-angular:test-page new <ado-id> <src-path>`."
 
 2. **Find candidate targets.** In order of preference:
    - Read `_local/ADO-<id>/02_plan.md` if present — extract paths from the `Relevant Files` section (Must change + May change).
@@ -171,18 +175,18 @@ Steps:
    - Filter to Angular-runtime eligible files. Two archetype-linked categories (see "Test archetypes" above):
      - **Behavioral**: `.service.ts`, `.component.ts`, `.pipe.ts`, `.guard.ts`, `.interceptor.ts`, `.directive.ts`.
      - **Wiring**: `.models.ts`, `.initializer.ts`, `.module.ts`, `.routes.ts`, `.config.ts`.
-   - Drop pure helpers and utilities (`*.helpers.ts`, `*.utils.ts`) — those belong to `/wf-caps:test-node`.
+   - Drop pure helpers and utilities (`*.helpers.ts`, `*.utils.ts`) — those belong to `/wf-node-ts:test-node`.
    - Drop targets that already have a sibling `<suite-name>.page-test.ts` under `_page-tests/` (already scaffolded). Re-scaffolding isn't supported here — use `clean` then `new` explicitly.
 
 3. **Pick or ask:**
-   - **0 eligible, 0 changed `.ts` files at all** → stop: "No Angular targets in this branch's changes. Use `/wf-caps:test-node` for pure helpers, or pass a target explicitly: `/wf-caps:test-page new <ado-id> <src-path>`."
-   - **0 eligible, but changed `.ts` files exist** → diagnostic mode. List each changed `.ts` file with a one-line exclusion reason (`pure helper → /wf-caps:test-node`, `already has a page-test`, `unrecognized suffix (<name>.ts)`, etc.) and ask: `None of these match the eligible-suffix list. Proceed with a wiring-test scaffold on <best-guess>, or pick another? (yes / <filename> / skip)`. The user's reply decides whether to bypass the filter for one file. Do not silently bypass — and do not try to guess when the file has no Angular imports at all (`grep -l '@angular' <file>` → empty) — tell the user it looks like node-territory in that case.
+   - **0 eligible, 0 changed `.ts` files at all** → stop: "No Angular targets in this branch's changes. Use `/wf-node-ts:test-node` for pure helpers, or pass a target explicitly: `/wf-angular:test-page new <ado-id> <src-path>`."
+   - **0 eligible, but changed `.ts` files exist** → diagnostic mode. List each changed `.ts` file with a one-line exclusion reason (`pure helper → /wf-node-ts:test-node`, `already has a page-test`, `unrecognized suffix (<name>.ts)`, etc.) and ask: `None of these match the eligible-suffix list. Proceed with a wiring-test scaffold on <best-guess>, or pick another? (yes / <filename> / skip)`. The user's reply decides whether to bypass the filter for one file. Do not silently bypass — and do not try to guess when the file has no Angular imports at all (`grep -l '@angular' <file>` → empty) — tell the user it looks like node-territory in that case.
    - **1 candidate** → scaffold for it; no prompt needed. Archetype falls out of the suffix and the spec (see the `new` flow below).
    - **2+ candidates** → list them annotated with their archetype guess (`behavioral` / `wiring`) and ask the user which to scaffold. Offer "all" as an explicit option.
 
 4. **Scaffold and inject** following the `new` flow below (read spec → write `.page-test.ts` → inject harness into component).
 
-5. **Report** the scaffolded suite(s) and the run instructions: the user opens `/code-trakker/code-trakker-module-test` in the running dev server, copies the `==== PAGE-TEST RUN ...` block from devtools console, and pastes it back for verdict.
+5. **Report** the scaffolded suite(s) and the run instructions: the user opens `/{route-prefix}/{sandbox-host-folder}` in the running dev server, copies the `==== PAGE-TEST RUN ...` block from devtools console, and pastes it back for verdict.
 
 ### `new <ado-id> <src-path> [suite-name]`  → scaffold + inject
 
@@ -190,10 +194,10 @@ Steps:
   `ADO-<digits>`. Verify `_local/<ADO-id>/` exists; if not, ask the user
   before creating it.
 - `<src-path>`: path to the target TS module, relative to repo root or
-  absolute. Example: `AuditTrakker.Web/src/app/state/cra-shared-state.service.ts`.
+  absolute. Example: `{web-root}/state/app-shared-state.service.ts`.
 - `[suite-name]`: optional. If omitted, derive from the src filename
   (kebab-case, drop `.service`/`.component`/etc. suffix). Example:
-  `cra-shared-state.service.ts` → `cra-shared-state`.
+  `app-shared-state.service.ts` → `app-shared-state`.
 
 Steps:
 1. **Read the spec first.** Open `_local/<ADO-id>/00_reqs.md` (fall back
@@ -213,13 +217,13 @@ Steps:
    public signatures, read the target — signatures only. Stop reading at
    the first `{` of any method body.
 3. Ensure the harness exists (see "Bootstrap" below).
-4. Write `{test-host-root}/code-trakker-module-test/_page-tests/<suite-name>.page-test.ts`.
+4. Write `{test-host-root}/{sandbox-host-folder}/_page-tests/<suite-name>.page-test.ts`.
    The file exports `export async function run(injector: Injector): Promise<void>` and
    calls `runSuite('<SuiteName>', (test) => { ... })` with one `test(...)`
    per spec-grounded case (behavioral or wiring — see "Test archetypes").
    Each test name should echo the spec wording so a failure pinpoints the
    regressed requirement.
-5. Inject the harness call into `code-trakker-module-test.component.ts`
+5. Inject the harness call into `{sandbox-host-folder}.component.ts`
    (see "Component injection" below). Replace any existing
    `PAGE-TEST-HARNESS-*` block — one suite at a time. If the user wants
    multiple suites in one page load, chain them inside the same
@@ -240,7 +244,7 @@ Steps:
      target rename), and offer two paths:
      (a) fix the specific error and re-run the typecheck;
      (b) roll back — delete the new `.page-test.ts`, then run
-         `/wf-caps:test-page clean` to remove the component markers.
+         `/wf-angular:test-page clean` to remove the component markers.
      Wait for the user's choice.
    - **Errors only in files this skill did not touch** → flag as
      pre-existing: the repo was already broken before the scaffold.
@@ -253,7 +257,7 @@ Steps:
      cases it contains.
    - The component file was modified (show the injected block).
    - `Typecheck: PASS` (always include — makes the verification visible).
-   - A one-liner for the user: "open `/code-trakker/code-trakker-module-test`
+   - A one-liner for the user: "open `/{route-prefix}/{sandbox-host-folder}`
      in the running dev server; copy the `==== PAGE-TEST RUN ...` block
      from devtools console and paste it back here."
 
@@ -268,7 +272,7 @@ only — the index is not updated again.
 
 ### `clean`  → remove the harness injection
 
-1. Open `code-trakker-module-test.component.ts`.
+1. Open `{sandbox-host-folder}.component.ts`.
 2. Remove the marked block inside `ngOnInit` (`// PAGE-TEST-HARNESS-BEGIN`
    … `// PAGE-TEST-HARNESS-END`).
 3. Remove the marked injector field (`// PAGE-TEST-HARNESS-INJECTOR-BEGIN`
@@ -292,7 +296,7 @@ follow the `new` flow.
 
 ## Test file conventions
 
-File location: `{test-host-root}/code-trakker-module-test/_page-tests/<suite-name>.page-test.ts`
+File location: `{test-host-root}/{sandbox-host-folder}/_page-tests/<suite-name>.page-test.ts`
 
 Filename must end in `.page-test.ts`. The `_page-tests/` folder is
 git-excluded (see "Bootstrap") so nothing from this skill enters
@@ -304,18 +308,18 @@ Shape:
 import { Injector } from '@angular/core';
 import { runSuite, assertEqual, assertDeepEqual, assertNull, assertInstanceOf, assertTruthy } from './harness';
 // Signature-only import from the target — do NOT read its implementation.
-import { CraSharedStateService } from '../../../state/cra-shared-state.service';
+import { AppSharedStateService } from '../../../state/app-shared-state.service';
 
 export async function run(injector: Injector): Promise<void> {
-  await runSuite('CraSharedStateService', (test) => {
+  await runSuite('AppSharedStateService', (test) => {
 
     test('freshly created service returns null from getSelectedFilterTypeNum()', () => {
-      const svc = injector.get(CraSharedStateService);
+      const svc = injector.get(AppSharedStateService);
       assertNull(svc.getSelectedFilterTypeNum());
     });
 
     test('setSkipEmptyCategories(true) is visible via getSkipEmptyCategories()', () => {
-      const svc = injector.get(CraSharedStateService);
+      const svc = injector.get(AppSharedStateService);
       svc.setSkipEmptyCategories(true);
       assertEqual(svc.getSkipEmptyCategories(), true);
     });
@@ -356,7 +360,7 @@ Full API surface, output format, and the complete assertion-helper list: [refere
 
 ## Component injection
 
-Target: `{test-host-root}/code-trakker-module-test/code-trakker-module-test.component.ts`.
+Target: `{test-host-root}/{sandbox-host-folder}/{sandbox-host-folder}.component.ts`.
 
 Two marker-wrapped edits (`PAGE-TEST-HARNESS-INJECTOR-*` for the `Injector` field, `PAGE-TEST-HARNESS-*` for the `runSuite` call inside `ngOnInit`) so the `clean` subcommand can reverse them surgically. Required during the `new` flow and reversed during `clean`.
 
@@ -374,11 +378,11 @@ Full steps and exact commands: [references/bootstrap.md](references/bootstrap.md
 
 ## Running the tests (what the user does)
 
-After `/wf-caps:test-page new ...` reports success, the user:
+After `/wf-angular:test-page new ...` reports success, the user:
 
-1. Has the Angular dev server running (`npm start` under `AuditTrakker.Web/`,
+1. Has the Angular dev server running (`npm start` under `{web-root}`,
    or one of the optimized-serve variants from user memory).
-2. Navigates to `https://localhost:4200/code-trakker/code-trakker-module-test`
+2. Navigates to `https://localhost:4200/{route-prefix}/{sandbox-host-folder}`
    (login + entity selection required — same as any guarded page).
 3. Opens devtools → console. Finds the block between
    `==== PAGE-TEST RUN ...` and `==== PAGE-TEST END ====`.
@@ -419,7 +423,7 @@ weak, tightening it would actually probe X" than a false green.
 - **Target needs a provider the sandbox page doesn't have.** `injector.get(X)`
   throws `NullInjectorError`. The target depends on something that's
   usually provided by a feature module not loaded on this page. Options:
-  add `providers: [X]` to `CodeTrakkerModuleTestComponent`'s `@Component`
+  add `providers: [X]` to `{sandbox-host-component}`'s `@Component`
   decorator (only for test-safe providers), or switch to a different
   host component. Call it out — do not silently inject providers that
   change production behavior.
@@ -456,7 +460,7 @@ TEST-PAGE — scaffolded
 
 Suite:     <suite-name>.page-test.ts (<n> cases)
 Typecheck: PASS
-Next:      open /code-trakker/code-trakker-module-test in the dev server, run the suite, paste the ==== PAGE-TEST RUN … PAGE-TEST END ==== block back here.
+Next:      open /{route-prefix}/{sandbox-host-folder} in the dev server, run the suite, paste the ==== PAGE-TEST RUN … PAGE-TEST END ==== block back here.
 ```
 
 Verdict (after the user pastes the run block):
@@ -470,7 +474,7 @@ Next:   <branched on the result — see below>
 
 The verdict `Next:` branches:
 
-- **pass** → `none — utility. Tighten the suite if a green looks weak, or add more cases via /wf-caps:test-page <id> <component>.`
+- **pass** → `none — utility. Tighten the suite if a green looks weak, or add more cases via /wf-angular:test-page <id> <component>.`
 - **fail (implementation wrong)** → `fix the source, re-run the suite in the browser, paste the block back.`
 - **fail (test mis-read the spec)** → `rewrite the test (offer to), re-run, paste back.`
 

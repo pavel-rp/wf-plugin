@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-browser-qa, wf-node-ts, wf-audit, wf-git, wf-ado, wf-linear, wf-review packs)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-browser-qa, wf-node-ts, wf-audit, wf-angular, wf-git, wf-ado, wf-linear, wf-review packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -78,6 +78,12 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── agents/audit-retrospective.md # the optional composite retrospective/umbrella-verification agent
 │   ├── capabilities/audit/    # manifest.md + profile.template.json + fragments/{consistency,convention,correctness,finding-contract,operational,retrospective,security}.md (verify | finding, five rows; no requires)
 │   └── capabilities/sr/       # manifest.md + fragments/self-review.md (pre-commit | finding; reuses capabilities/audit/fragments/correctness.md intra-plugin; no requires)
+├── plugins/wf-angular/        # ANGULAR STACK PACK — the angular capability owning the qa-execution host surface (genericized: every scaffolded token is a profile slot)
+│   ├── skills/init/SKILL.md   # /wf-angular:init — self-registration + profile seed
+│   ├── skills/qa-host/        # /wf-angular:qa-host — routed Angular test-host scaffolder (+ references/backend-host.md; the host provider dispatch target)
+│   ├── skills/test-page/      # /wf-angular:test-page — browser-run black-box DI-level test harness (+ references/{backend-smoke,bootstrap,component-injection,harness}.md)
+│   ├── agents/qa-host.md      # wf-angular:qa-host — the host scaffolder's provider-dispatch subagent
+│   └── capabilities/angular/  # manifest.md + profile.template.json (qa-execution | provider | surface: host; requires: git — tracker-agnostic)
 ├── plugins/wf-git/            # DELIVERY-PROVIDER PACK — the git capability owning the delivery surface
 │   ├── skills/init/SKILL.md   # /wf-git:init — self-registration
 │   └── capabilities/git/      # manifest.md + fragments/delivery.md (branch-create/commit/push-upstream/pr-create)

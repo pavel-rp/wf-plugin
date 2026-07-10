@@ -1,4 +1,4 @@
-# wf-caps:qa-host — Backend test-host (ephemeral controller wiring)
+# wf-angular:qa-host — Backend test-host (ephemeral controller wiring)
 
 The backend analog of the Angular test-host. Where `new`/`augment` scaffold a **permanent, git-tracked** Angular page for an un-routed component, the backend host **temporarily** exposes a service/repository method over HTTP so a QA scenario can exercise it with a real token — then reverts the wiring so nothing un-shippable reaches a commit.
 
@@ -21,7 +21,7 @@ Loaded from `SKILL.md` when the first token is `api-probe` / `api-revert`, and b
 ## api-probe — locate or wire an endpoint
 
 ```
-/wf-caps:qa-host api-probe <target>
+/wf-angular:qa-host api-probe <target>
 ```
 
 `<target>` — `<Service>.<method>` (preferred), or a `<Service>` / `<Repository>` class name (then pick the new/changed public method from the branch diff), or an existing route. Skill greps for the `.cs` file when given a class/method form.
@@ -46,7 +46,7 @@ Steps:
 
 Choose, in priority order:
 
-1. **Same domain area.** A controller whose name or feature folder matches the service: `ProviderGroupService` → `ProviderGroupsController`, or the controller sitting in the same feature folder as the service. This keeps the temp route discoverable and its auth/entity context correct.
+1. **Same domain area.** A controller whose name or feature folder matches the service: `WidgetService` → `WidgetsController`, or the controller sitting in the same feature folder as the service. This keeps the temp route discoverable and its auth/entity context correct.
 2. **Already injects the service (or a sibling).** A controller whose constructor already takes the target service, or a service from the same namespace — its auth and entity-resolution filters already fit the data the method touches.
 3. **A general/dev/diagnostics controller** if the project has one.
 
@@ -61,7 +61,7 @@ Read only signatures of the chosen controller: its class-level `[Route]`, `[Auth
 Inject a single action, wrapped in sentinels, using **parameter injection (`[FromServices]`)** so the constructor is never touched (smaller, self-contained, trivially revertible). Keep the controller's existing class-level auth — the token the runner carries then authorizes the call exactly as a real endpoint would.
 
 ```csharp
-// >>> WF-QA-EPHEMERAL ADO-<id> — DO NOT COMMIT — revert: /wf-caps:qa-host api-revert <Service>.<method>
+// >>> WF-QA-EPHEMERAL ADO-<id> — DO NOT COMMIT — revert: /wf-angular:qa-host api-revert <Service>.<method>
 [HttpGet("__qa/<method-kebab>")]
 public async Task<IActionResult> __Qa_<Method>(
     [FromServices] <ServiceType> svc,
@@ -87,8 +87,8 @@ Rules for the action:
 ## api-revert — remove the wiring
 
 ```
-/wf-caps:qa-host api-revert <target>      # remove the one target's ephemeral block
-/wf-caps:qa-host api-revert --all         # sweep every WF-QA-EPHEMERAL block in the repo
+/wf-angular:qa-host api-revert <target>      # remove the one target's ephemeral block
+/wf-angular:qa-host api-revert --all         # sweep every WF-QA-EPHEMERAL block in the repo
 ```
 
 Steps:
@@ -116,7 +116,7 @@ A `.cs` controller edit is not live until the API recompiles. Two cases:
 
 ## Safety rules
 
-This is the one place `wf-caps:qa-host` edits a **pre-existing** source file (a controller) rather than only new files under a test-host folder. The carve-out is tight:
+This is the one place `wf-angular:qa-host` edits a **pre-existing** source file (a controller) rather than only new files under a test-host folder. The carve-out is tight:
 
 - **Allowed:** insert/remove exactly one sentinel-delimited ephemeral action per target inside an existing controller; combine route templates and read class/constructor/DTO signatures to do so; run `{verify-command}`.
 - **Forbidden:** edit any controller line outside a `WF-QA-EPHEMERAL` block; touch the constructor, fields, usings, or any product action; add business logic to the ephemeral action beyond resolve-and-forward; create a new controller; leave a sentinel block behind after `api-revert`; commit (the runner/user commits, and only after `api-revert`).
@@ -141,7 +141,7 @@ Route:       <full resolved __qa route>
 Controller:  <path/to/SomethingController.cs> (1 ephemeral action added)
 Reminder:    API must rebuild/hot-reload before this route responds.
              Ephemeral — reverted automatically at end of run, or run
-             /wf-caps:qa-host api-revert <Service>.<method> (or --all) before committing.
+             /wf-angular:qa-host api-revert <Service>.<method> (or --all) before committing.
 
 <REVERTED:>
 Removed:     <N> ephemeral block(s) from <files>

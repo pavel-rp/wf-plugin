@@ -1,6 +1,0 @@
-{
-  "web-root": "<WEB_ROOT: repo-relative root of the Angular web project, forward slashes — e.g. AuditTrakker.Web/src/app/code-trakker>",
-  "routing-module": "<ROUTING_MODULE: repo-relative path to the routing module the test-host route is added to, forward slashes — e.g. AuditTrakker.Web/src/app/code-trakker/code-trakker-routing.module.ts>",
-  "test-host-root": "<TEST_HOST_ROOT: repo-relative root under which routed <kebab>-test/ host folders and the sandbox module-test component live, forward slashes — e.g. AuditTrakker.Web/src/app/code-trakker>",
-  "verify-command": "<VERIFY_COMMAND: the shell command that typechecks/builds the stack so a scaffold can be verified before handoff — e.g. npx tsc -p AuditTrakker.Web/tsconfig.json --noEmit>"
-}

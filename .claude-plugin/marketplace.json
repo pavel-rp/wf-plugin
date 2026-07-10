@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.65.0",
-  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
+  "version": "0.66.0",
+  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
   "owner": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
@@ -21,8 +21,8 @@
     {
       "name": "wf-caps",
       "source": "./plugins/wf-caps",
-      "version": "0.19.0",
-      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map) and the angular stack capability (qa-host + test-page, qa-execution host provider). The browser-qa engine capability was extracted into the standalone wf-browser-qa plugin; the node-ts stack capability was extracted into the standalone wf-node-ts plugin; the audit and sr capabilities were extracted into the standalone wf-audit plugin.",
+      "version": "0.20.0",
+      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map). The browser-qa engine capability was extracted into the standalone wf-browser-qa plugin; the node-ts stack capability into wf-node-ts; the audit and sr capabilities into wf-audit; the angular stack capability into wf-angular.",
       "author": {
         "name": "Pavel Kalabin"
       },
@@ -53,6 +53,16 @@
       "source": "./plugins/wf-audit",
       "version": "0.1.0",
       "description": "wf audit pack: the audit capability (five domain-free adversarial verify lenses plus an optional composite retrospective report) co-located with the sr capability (a lightweight pre-commit adversarial self-review lens reusing the audit correctness rubric intra-plugin). Dependency-free (no requires) — composes in bare-core mode. Ships /wf-audit:init for one-command self-registration of both capabilities.",
+      "author": {
+        "name": "Pavel Kalabin"
+      },
+      "category": "development"
+    },
+    {
+      "name": "wf-angular",
+      "source": "./plugins/wf-angular",
+      "version": "0.1.0",
+      "description": "wf Angular stack pack: the angular capability owning the wf capability-registry's qa-execution host surface. Ships /wf-angular:qa-host (routed Angular test-host scaffolder + ephemeral backend-controller analog) and /wf-angular:test-page (browser-run black-box DI-level test harness). Every project-specific token in the scaffolded output is profile-slot-driven, so scaffolding a differently-named app emits no borrowed identifiers; surface: host composes with browser-qa's surface: engine with no partition collision. Tracker-agnostic (requires: git only). Ships /wf-angular:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
       },
