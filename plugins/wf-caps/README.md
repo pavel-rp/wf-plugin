@@ -24,29 +24,26 @@ Skills extracted from `wf` core because they carry concrete stack/domain knowled
 > **Status — staged build.** This pack was populated one slice per PR (migration → browser-qa →
 > the Angular/Node-TS stack cluster) and is now being **fragmented** into proper per-capability
 > packs: `browser-qa` was extracted into the standalone [`wf-browser-qa`](../wf-browser-qa/)
-> plugin (WF-255), and `node-ts` into the standalone [`wf-node-ts`](../wf-node-ts/) plugin
-> (WF-256). See `CLAUDE.md` and `docs/ROADMAP.md`.
+> plugin (WF-255), `node-ts` into the standalone [`wf-node-ts`](../wf-node-ts/) plugin
+> (WF-256), and `audit`+`sr` into the standalone [`wf-audit`](../wf-audit/) plugin (WF-257).
+> See `CLAUDE.md` and `docs/ROADMAP.md`.
 
 ## Capabilities
 
 | Capability | Kind | Path | Attaches | Provides |
 |---|---|---|---|---|
 | migration | adapter | `plugins/wf-caps/capabilities/migration` | `tasks` task-list; `verify` findings; `qa-generation` scenarios | phase fragments (the `/wf-caps:migration-map` skill ships natively) |
-| audit | adapter | `plugins/wf-caps/capabilities/audit` | `verify` findings — five adversarial lenses (correctness, security, convention, consistency, operational) | phase fragments + five read-only auditor agents (`wf-caps:correctness-auditor`, `-security-`, `-convention-`, `-consistency-`, `-operational-auditor`). Dependency-free — no `requires:`, so it composes in bare-core too. A profile `lenses` knob selects the subset that runs. Also ships one optional, on-request composite retrospective / umbrella-verification report (`wf-caps:audit-retrospective`), gated by the same registry membership — it composes the `verify` report + distilled PR/CI evidence via the delivery provider, degrading to a local-only spec-conformance + lens-findings retrospective when none is registered |
-| sr | adapter | `plugins/wf-caps/capabilities/sr` | `pre-commit` finding — one lightweight adversarial self-review lens on the staged change | one inline `finding` fragment (no skill, no agent). Fills the WF-154 `pre-commit` commit-path seam: the commit agent fires it immediately before recording a commit, and the lens flags systematic-miss bugs (ignored returns, missing null guards, unvalidated data, happy-path oversights) with a concrete `file:line`, gating (`fail`) or annotating (`warn`). **Reuses** the audit capability's owned correctness rubric — single-sourced, never re-authored — as its lighter pre-commit counterpart. Read-only (writes nothing; proposes fixes in-finding). Dependency-free — no `requires:`, so it composes in bare-core too; unregistered → the seam no-ops and the commit is byte-identical |
 | angular | feature | `plugins/wf-caps/capabilities/angular` | `qa-execution` provider (`surface: host`) | the `/wf-caps:qa-host` + `/wf-caps:test-page` Angular test-host skills; ships a `profile-template:` (web-root, routing-module, test-host-root, verify-command) seeded downstream on divergence |
 
 ### Prerequisites
 
-Every capability this pack ships **except `audit` and `sr`** declares `requires: git, ado` —
-each assumes a `delivery` provider and a `tracker` provider are already active in the registry.
-Install and run `/wf-git:init` and `/wf-ado:init` (either order, before or alongside
-`/wf-caps:init`) so `git` and `ado` are registered first; otherwise `validate-registry.sh`
-CHECK 7 fails, naming the wf-caps capability, the missing capability, and the remedy. The
-`audit` and `sr` capabilities declare **no `requires:`** — both are pure read-only reasoning
-that reaches no provider (`audit`'s five lenses over the branch at `verify`; `sr`'s one
-lightweight lens over the staged change at `pre-commit`), so each also composes in bare-core
-mode (no provider registered).
+Every capability this pack ships declares `requires: git, ado` — each assumes a `delivery`
+provider and a `tracker` provider are already active in the registry. Install and run
+`/wf-git:init` and `/wf-ado:init` (either order, before or alongside `/wf-caps:init`) so
+`git` and `ado` are registered first; otherwise `validate-registry.sh` CHECK 7 fails, naming
+the wf-caps capability, the missing capability, and the remedy. (The dependency-free `audit`
+and `sr` capabilities — pure read-only reasoning that reaches no provider and composes in
+bare-core mode — now ship in the standalone [`wf-audit`](../wf-audit/) plugin.)
 
 ### Registering a capability downstream
 

@@ -1,7 +1,7 @@
 {
   "name": "wf-caps",
-  "version": "0.18.0",
-  "description": "wf default-capabilities pack — non-core, stack/domain-specific capabilities for the wf workflow, composed with wf core via the capability registry. Ships the migration capability (migration-map: C#/MVC -> Angular/TS mapping), the audit capability (five domain-free adversarial verify lenses: correctness, security, convention, consistency, operational, plus an optional composite retrospective report), the sr capability (self-review: a lightweight pre-commit adversarial self-review lens reusing the audit correctness rubric, gating/annotating the staged change), and the angular stack capability (qa-host + test-page: Angular test-host scaffolding, qa-execution host provider). (The browser-qa engine capability was extracted into the standalone wf-browser-qa plugin; the node-ts stack capability was extracted into the standalone wf-node-ts plugin.)",
+  "version": "0.19.0",
+  "description": "wf default-capabilities pack — non-core, stack/domain-specific capabilities for the wf workflow, composed with wf core via the capability registry. Ships the migration capability (migration-map: C#/MVC -> Angular/TS mapping) and the angular stack capability (qa-host + test-page: Angular test-host scaffolding, qa-execution host provider). (The browser-qa engine capability was extracted into the standalone wf-browser-qa plugin; the node-ts stack capability was extracted into the standalone wf-node-ts plugin; the audit and sr capabilities were extracted into the standalone wf-audit plugin.)",
   "author": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
@@ -12,7 +12,6 @@
     "wf",
     "capabilities",
     "migration",
-    "audit",
     "angular",
     "typescript",
     "qa",

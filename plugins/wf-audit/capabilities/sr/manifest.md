@@ -30,7 +30,7 @@ The lens is the **lightweight pre-commit counterpart** to the audit capability's
 `verify`-phase lenses: it applies the **same** owned adversarial-correctness discipline in a
 faster form over the *uncommitted* working diff, so a systematic-miss bug is caught before it
 lands rather than only at `verify`. It **reuses** the audit capability's owned
-adversarial-correctness rubric (`plugins/wf-caps/capabilities/audit/fragments/correctness.md`) —
+adversarial-correctness rubric (`plugins/wf-audit/capabilities/audit/fragments/correctness.md`) —
 the single owned copy — and **never re-authors a second correctness rubric**; the two
 capabilities are single-sourced against that one rubric so they cannot diverge.
 
@@ -52,7 +52,7 @@ capability's clause (project clauses still override, per the composition rule).
 Each row attaches one fragment to one phase, typed by the contribution taxonomy, in the v2
 shape `phase | contribution-kind | dispatch | scope`. The inline path is forward-slash,
 **relative to this capability's registry path** (so `fragments/self-review.md` resolves to
-`plugins/wf-caps/capabilities/sr/fragments/self-review.md`). `scope` is empty (`—`): `finding`
+`plugins/wf-audit/capabilities/sr/fragments/self-review.md`). `scope` is empty (`—`): `finding`
 is an aggregate kind (aggregated **with provenance**, order cosmetic), so it carries no
 ownership scope token — the same `finding` kind and shape the `verify` phase uses, reused at
 `pre-commit` with **no new kind**.

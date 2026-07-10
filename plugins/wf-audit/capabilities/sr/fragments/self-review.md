@@ -1,13 +1,13 @@
 # Pre-commit self-review lens (boot doc)
 
-**Wired by:** `plugins/wf-caps/capabilities/sr/manifest.md` (the one
+**Wired by:** `plugins/wf-audit/capabilities/sr/manifest.md` (the one
 `pre-commit | finding | inline:` row)
 **Contributes:** a `finding` at the `pre-commit` phase, per
 `plugins/wf/skills/_contracts/capability-registry.contract.md`
 **Read by:** the commit agent (`plugins/wf/agents/commit.md`, Step 4) when it fires the
 `pre-commit` seam — read-and-follow in its isolated context, no subagent
 **Reuses:** the audit capability's owned adversarial-correctness rubric
-(`plugins/wf-caps/capabilities/audit/fragments/correctness.md`) — the single owned copy, never
+(`plugins/wf-audit/capabilities/audit/fragments/correctness.md`) — the single owned copy, never
 re-authored here
 **Model:** claude-opus-4-8
 
@@ -23,7 +23,7 @@ edit source, stage, unstage, or run any command. Follow this exactly.
 ## The reused rubric (read first)
 
 Read the owned adversarial-correctness rubric once, on boot, alongside this file:
-`plugins/wf-caps/capabilities/audit/fragments/correctness.md` (two direct reads, one level
+`plugins/wf-audit/capabilities/audit/fragments/correctness.md` (two direct reads, one level
 deep, no further nesting — the same shape the audit lenses use). **Apply its checks; do not
 restate or re-derive them** — that rubric is the single owned copy, and re-authoring it here
 would let the two lenses drift.

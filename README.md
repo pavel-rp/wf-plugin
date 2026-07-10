@@ -6,6 +6,7 @@ Claude Code marketplace hosting the `wf` core plugin and the `wf-caps` default-c
 - **[wf-caps](plugins/wf-caps/)** — the default stack/domain-capabilities pack that attaches to the spine (migration and the angular test host).
 - **[wf-browser-qa](plugins/wf-browser-qa/)** — the standalone browser-QA feature pack: a stack-agnostic browser-automation QA engine (`qa-execution` engine provider) that core's `/wf:qa-auto` dispatches to.
 - **[wf-node-ts](plugins/wf-node-ts/)** — the standalone Node/TypeScript stack pack: a dependency-free unit-test harness for pure TS helpers (`implement`-phase test-authoring guidance).
+- **[wf-audit](plugins/wf-audit/)** — the standalone audit + self-review pack: five domain-free adversarial `verify` lenses plus an optional composite retrospective, co-located with the `pre-commit` self-review lens that reuses the audit correctness rubric.
 
 ## Install
 

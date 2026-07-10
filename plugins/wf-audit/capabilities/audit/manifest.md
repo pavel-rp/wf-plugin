@@ -36,11 +36,11 @@ registered subagent invoked via the Task tool. `scope` is empty (`—`) for aggr
 
 | phase  | contribution-kind | dispatch                              | scope |
 |--------|-------------------|---------------------------------------|-------|
-| verify | finding           | `subagent: wf-caps:correctness-auditor` | —     |
-| verify | finding           | `subagent: wf-caps:security-auditor`    | —     |
-| verify | finding           | `subagent: wf-caps:convention-auditor`  | —     |
-| verify | finding           | `subagent: wf-caps:consistency-auditor` | —     |
-| verify | finding           | `subagent: wf-caps:operational-auditor` | —     |
+| verify | finding           | `subagent: wf-audit:correctness-auditor` | —     |
+| verify | finding           | `subagent: wf-audit:security-auditor`    | —     |
+| verify | finding           | `subagent: wf-audit:convention-auditor`  | —     |
+| verify | finding           | `subagent: wf-audit:consistency-auditor` | —     |
+| verify | finding           | `subagent: wf-audit:operational-auditor` | —     |
 
 Read off the rows — one adversarial lens each, all firing at `verify`, all returning the
 generic `finding` shape:
@@ -71,7 +71,7 @@ is read-only (no source mutation, no provider/MCP reach) and shares the finding 
 This capability ships a **profile seed template** declared via the v2 manifest
 `profile-template:` field (`capability-registry.contract.md` §"Manifest schema v2"). The
 path is forward-slash, **relative to this capability's registry path** (so it resolves to
-`plugins/wf-caps/capabilities/audit/profile.template.json`):
+`plugins/wf-audit/capabilities/audit/profile.template.json`):
 
 ```
 profile-template: profile.template.json
@@ -79,7 +79,7 @@ profile-template: profile.template.json
 
 The template ships **concrete defaults** — all five lenses enabled — so the full fleet runs
 out of the box with no override. A project selects a subset by seeding an override at
-`_local/profiles/audit.profile.json` (via `init` / `/wf-caps:init`, on divergence, per the
+`_local/profiles/audit.profile.json` (via `init` / `/wf-audit:init`, on divergence, per the
 contract's capability-agnostic seeding convention). Each auditor reads the resolved profile
 on boot and self-no-ops (empty findings) when its own lens id is absent from the `lenses`
 list — so a subset runs only the selected lenses, with **no change to any core skill**.
@@ -94,7 +94,7 @@ row: a phase fragment auto-fires on every phase firing, whereas this report is r
 a task whose `verify` phase has already run. It rides no core phase and adds no always-on core
 surface — it is dispatched via the **Task** tool on request.
 
-- **Dispatch:** `subagent: wf-caps:audit-retrospective` (`plugins/wf-caps/agents/audit-retrospective.md`).
+- **Dispatch:** `subagent: wf-audit:audit-retrospective` (`plugins/wf-audit/agents/audit-retrospective.md`).
 - **Procedure (boot doc):** `fragments/retrospective.md` — the agent reads and follows it, holding
   no logic of its own (the same agent+rubric split the five lenses use).
 - **Gate (the same toggle as the lenses):** the agent's first step reads the `## Capabilities`

@@ -5,10 +5,10 @@ tools: [Read, Grep, Glob, Bash]
 user-invocable: false
 ---
 
-# wf-caps:consistency-auditor — the consistency lens
+# wf-audit:consistency-auditor — the consistency lens
 
 You are the **consistency** lens of the audit capability, dispatched only through the
-registry row `verify | finding | subagent: wf-caps:consistency-auditor`
+registry row `verify | finding | subagent: wf-audit:consistency-auditor`
 (`${CLAUDE_PLUGIN_ROOT}/capabilities/audit/manifest.md`) when a core skill fires the
 `verify` phase — never spawned by name from core. The caller supplies the **work under
 review** (the changed unit / files in scope). Read-only: inspect with Read / Grep / Glob
