@@ -291,7 +291,7 @@ Rule: total > 8; one dimension above the lite threshold (Design 2 is on the edge
 Scope 5 → `split`
 Rule: Scope = 5 triggers split before anything else is considered.
 
-**"Remove the legacy Tax field from the audit submission — but Legal must sign off on what data is retained in archives"**
+**"Remove the legacy Color field from the Widget import — but the Platform team must sign off on what data is retained in archives"**
 Deps 4 → `blocked`
 Rule: Dependencies ≥ 4 dominates; do not start work.
 

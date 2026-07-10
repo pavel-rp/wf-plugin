@@ -140,7 +140,7 @@ Cases come from criteria, not code. Implementation reads in Phase 2 are for **na
 | **Build/static** | Compilation, typecheck, lint, file existence | "module exports type X", "config includes key Y", "tsconfig includes path Z" | Listed in coverage matrix. No manual scenario. |
 | **Automated test** | Existing unit/integration test asserts the criterion directly | Matches an assertion you found in Phase 2 step 5 (incl. a `wf-caps:test-page backend-smoke` page-test) | Listed in coverage matrix with the test file path. No manual scenario. |
 | **Manual-browser** | Human or agent observes runtime behavior in the running app | "clicking Save shows a green toast", "dropdown filters list to entries matching the search" | One or more browser scenarios depending on scope. |
-| **API** | The behavior of an endpoint or service method, called over HTTP with a real token | "endpoint returns the provider groups for the access level", "repository filters out inactive rows", "POST creates the record and returns 201", "service returns an empty list when none match" | One or more API scenarios. Service-only methods get a `Backend host required:` precondition. See [`references/api-scenarios.md`](references/api-scenarios.md). |
+| **API** | The behavior of an endpoint or service method, called over HTTP with a real token | "endpoint returns the widgets for the access level", "repository filters out inactive rows", "POST creates the record and returns 201", "service returns an empty list when none match" | One or more API scenarios. Service-only methods get a `Backend host required:` precondition. See [`references/api-scenarios.md`](references/api-scenarios.md). |
 
 ### Classification signals
 
@@ -315,7 +315,7 @@ Scenarios aggregated from registered capabilities at the `qa-generation` phase, 
 **Preconditions:**
 
 - <Browser / app state — e.g., "Logged in as `admin@example.com`. Entity `Acme Corp` selected. On `/dashboard`.">
-- <Data state — e.g., "At least one open audit exists in the current entity.">
+- <Data state — e.g., "At least one active widget exists in the current entity.">
 - <Environment — e.g., "API server running. Network throttling off.">
 - <Host requirement, only when target was flagged host-missing in Phase 2 step 4 — e.g., "Host required: `<path to the un-routed component>`. `/wf:qa-auto` will scaffold or look up the route via `/wf-caps:qa-host`.">
 
@@ -323,9 +323,9 @@ Scenarios aggregated from registered capabilities at the `qa-generation` phase, 
 
 | # | Action | Expected Result |
 |---|---|---|
-| 1 | Click the **Add Period** button in the toolbar. | A modal titled "New Period" opens. The first input (`Start Date`) is focused. |
-| 2 | Type `2026-01-15` into the **Start Date** field. | The field shows `1/15/2026`. The **Save** button becomes enabled. |
-| 3 | Click **Save**. | Modal closes. A green toast appears with text `Period created`. The new period appears at the top of the list, highlighted for ~2 seconds. |
+| 1 | Click the **Add Widget** button in the toolbar. | A modal titled "New Widget" opens. The first input (`Name`) is focused. |
+| 2 | Type `Sample Widget` into the **Name** field. | The field shows `Sample Widget`. The **Save** button becomes enabled. |
+| 3 | Click **Save**. | Modal closes. A green toast appears with text `Widget created`. The new widget appears at the top of the list, highlighted for ~2 seconds. |
 
 **Teardown:**
 
@@ -425,8 +425,8 @@ Standing measurable checks — not derived from a spec criterion. Always present
 These rules apply when authoring scenarios — they're the difference between a plan a tester can run cold and a plan that punts back to the spec.
 
 - **Steps are concrete instructions.** Not "verify the feature works" but `Click **Save** with the form filled out as in step 2.` A tester unfamiliar with the project should be able to follow them without reading `00_reqs.md`.
-- **Expected results are observable.** Not "the system processes correctly" but "A green toast appears with text `Period created` and the URL changes to `/audits/123`." Cite specific selectors, labels, URLs, and toast text from the implementation reads in Phase 2.
-- **Preconditions are actionable.** Not "the system is in the right state" but "Logged in as `admin@example.com`. Navigate to `/audits/2026-Q1`."
+- **Expected results are observable.** Not "the system processes correctly" but "A green toast appears with text `Widget created` and the URL changes to `/widgets/123`." Cite specific selectors, labels, URLs, and toast text from the implementation reads in Phase 2.
+- **Preconditions are actionable.** Not "the system is in the right state" but "Logged in as `admin@example.com`. Navigate to `/widgets/42`."
 - **One assertion per step when possible.** If a step expects "modal closes AND toast appears AND list reorders", split it — a partial pass on a multi-assertion step is hard to record.
 - **Reference real values.** Use actual route paths, button labels, field names, API endpoints from the implementation. Don't write `<some-button>` placeholders.
 - **Mark environment requirements.** If a test needs a specific browser, viewport, network condition, auth state, or data fixture, say so in preconditions. Do not bury these in step text.
@@ -464,7 +464,7 @@ Default `full`. The same skill at the same scope on the same spec should produce
 - **A registered capability contributes scenarios.** Detected by firing the `qa-generation` phase in Phase 3.6. In addition to the normal spec-traced suites, the aggregated capability scenarios are rendered in their own provenance-tagged suite(s) after the spec suites and before Baseline health. Not a stop condition — capability scenarios are additive. With no capability registered (or none contributing at `qa-generation`), the generic plan stands alone and no capability term surfaces.
 - **`06_qa.md` already exists with annotated run results** (PASS/FAIL markers from a prior run). Stop and ask: "Existing `06_qa.md` has run annotations. Overwrite (loses results), append a new section, or rename the existing file as `06_qa.<timestamp>.md` first?" Default to renaming the prior file.
 - **Multiple scenarios collapse onto the same criterion at scope `smoke`.** Smoke is one-per-criterion. If you find yourself writing two smoke scenarios for the same `SC-N`, pick the one with the highest priority and drop the other. The coverage matrix shows one `TC-NNN` per criterion at `smoke`.
-- **Cross-feature dependencies.** If TC-005 requires TC-003 to have run successfully (e.g., "open the period created in TC-003"), state that as a precondition: `Depends on: TC-003 PASS`. Don't duplicate steps.
+- **Cross-feature dependencies.** If TC-005 requires TC-003 to have run successfully (e.g., "open the widget created in TC-003"), state that as a precondition: `Depends on: TC-003 PASS`. Don't duplicate steps.
 - **No diff against `main`.** The branch hasn't diverged yet. Allowed — generate scenarios from the spec alone. The implementation reads in Phase 2 step 4 simply yield no files; scenarios won't have implementation-grounded selectors and may use placeholder language. Note this at the top of `06_qa.md`: `**Implementation:** not yet on branch — selectors and route paths are best-effort from spec`.
 
 ---

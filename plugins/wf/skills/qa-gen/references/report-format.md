@@ -116,7 +116,7 @@ API scenarios use the same verdict shape, with the **Assertions** table in place
 
 `All assertions passed.` <optional one-line note, e.g. observed `200, array[3]`>
 
-**Fixtures:** routed to existing endpoint `/api/provider-groups` *(or `scaffolded ephemeral backend host __qa/provider-groups then reverted`)*
+**Fixtures:** routed to existing endpoint `/api/widgets` *(or `scaffolded ephemeral backend host __qa/widgets then reverted`)*
 
 #### TC-005: <title> — FAIL *(Type: API)*
 
@@ -125,10 +125,10 @@ API scenarios use the same verdict shape, with the **Assertions** table in place
 | 1 | HTTP status | 200 | 500 | FAIL |
 | 2 | Response is an array | true | — | not run |
 
-**Request:** `GET /api/provider-groups?accessLevelId=123`
+**Request:** `GET /api/widgets?categoryId=123`
 **Failure notes:** <description — e.g., "500 Internal Server Error; body: unhandled null-reference in the handler">
 **Response:** `artifacts/qa-api-TC-005-<timestamp>.json` *(agentic mode only — the API analog of a screenshot)*
-**Fixtures:** scaffolded ephemeral backend host `__qa/provider-groups` then reverted *(agentic mode only)*
+**Fixtures:** scaffolded ephemeral backend host `__qa/widgets` then reverted *(agentic mode only)*
 
 ---
 
