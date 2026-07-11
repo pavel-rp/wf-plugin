@@ -11,4 +11,4 @@ Every `## Plugin Roots` row needs a Root; an empty one is a validation error.
 
 | Plugin  | Root |
 |---------|------|
-| wf-caps |      |
+| testpkg |      |

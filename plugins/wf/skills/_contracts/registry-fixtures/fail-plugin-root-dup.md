@@ -12,5 +12,5 @@ validation error.
 
 | Plugin  | Root                                           |
 |---------|------------------------------------------------|
-| wf-caps | plugins/wf-caps                                |
-| wf-caps | plugins/wf/skills/_contracts/registry-fixtures |
+| testpkg | plugins/wf                                     |
+| testpkg | plugins/wf/skills/_contracts/registry-fixtures |

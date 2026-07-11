@@ -56,8 +56,11 @@ The committed boundary is **v1**, frozen across two contracts:
 
 **v1 is the N=1 case, not throwaway.** A registry with exactly one row reduces to
 v1's single active capability; the empty registry generalises v1's absent-state
-Null Object. The kept v1 reference capability under `plugins/wf-caps/capabilities/migration/` survives
-only as the worked single-row **example this contract resolves *to*** (see "Worked
+Null Object. The v1 reference capability (`migration`) — historically kept in-repo under
+`plugins/wf-caps/capabilities/migration/`, now hosted in the private `wf-caps` marketplace
+(moved out of this repo per WF-261; the paths below are illustrative of that external
+reference capability, not in-repo) — survives here only as the worked single-row
+**example this contract resolves *to*** (see "Worked
 single-row example") — never a core dependency. Everything below is the v2
 generalisation of a shape v1 already proved at N=1.
 
@@ -101,7 +104,7 @@ One row per active capability:
 | Column | Meaning |
 |--------|---------|
 | `Capability` | The capability's **name** — its identity, decoupled from where it lives so the binding survives the capability moving into a standalone add-on plugin. Used to locate config, never to key a core code path. |
-| `Path` | The location of the capability's `manifest.md` and reference docs, in **one of two accepted shapes** (forward slashes in both): (a) a **repo-relative folder** — the path relative to the marketplace repo root (e.g. `plugins/wf-caps/capabilities/migration`); or (b) a **plugin-anchored token** of the shape `plugin:<plugin-name>/<rel-path>`, naming a capability that lives *inside* an installed plugin (`<plugin-name>` is the plugin's manifest name; `<rel-path>` is forward-slash, relative to that plugin's install root). Core reads the manifest at `<path>/manifest.md`; it never hardcodes a folder. **Both shapes resolve at runtime** — the plugin-anchored token via the `## Plugin Roots` mapping (see "The two `Path` shapes" and "The `## Plugin Roots` mapping" below). |
+| `Path` | The location of the capability's `manifest.md` and reference docs, in **one of two accepted shapes** (forward slashes in both): (a) a **repo-relative folder** — the path relative to the marketplace repo root (e.g. `plugins/wf-audit/capabilities/audit`); or (b) a **plugin-anchored token** of the shape `plugin:<plugin-name>/<rel-path>`, naming a capability that lives *inside* an installed plugin (`<plugin-name>` is the plugin's manifest name; `<rel-path>` is forward-slash, relative to that plugin's install root). Core reads the manifest at `<path>/manifest.md`; it never hardcodes a folder. **Both shapes resolve at runtime** — the plugin-anchored token via the `## Plugin Roots` mapping (see "The two `Path` shapes" and "The `## Plugin Roots` mapping" below). |
 
 Registry semantics:
 
@@ -828,7 +831,10 @@ downstream-visible contract, like a phase name).
 
 ## Worked single-row example (what core resolves *to* at N=1)
 
-This traces the kept v1 reference capability under `plugins/wf-caps/capabilities/migration/` as the
+This traces the v1 reference capability (`migration`) — historically under
+`plugins/wf-caps/capabilities/migration/`, now hosted in the private `wf-caps` marketplace
+(moved out of this repo per WF-261; the paths here are illustrative of that external
+capability, not in-repo) — as the
 worked **N=1** registry — an **example a core skill resolves to**, never a
 dependency. With a single registry row, the v2 port reduces to v1:
 

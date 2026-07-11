@@ -11,4 +11,4 @@ A `## Plugin Roots` Root must not contain a `..` segment (traversal guard).
 
 | Plugin  | Root      |
 |---------|-----------|
-| wf-caps | ../escape |
+| testpkg | ../escape |
