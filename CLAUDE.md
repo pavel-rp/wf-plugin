@@ -26,7 +26,7 @@ Read this top-to-bottom once, then use it as a lookup. The two rules that govern
 
 **Core ships zero stack, domain, or project knowledge.** Everything specific is a capability.
 
-**Litmus test for every core change:** *would this still make sense for a totally different stack, domain, and project?* If a core skill names `AuditTrakker.Web`, `ComplianceRisk`, "CRA", "Angular", a C#→TS rule, or a 1:1-parity invariant, it's wrong — that knowledge belongs in a capability. After editing a core skill, grep it for stack/domain strings; **zero hits is part of "done".**
+**Litmus test for every core change:** *would this still make sense for a totally different stack, domain, and project?* If a core skill names `AcmeLedger.Web`, `RiskSuite`, "LRP", "Angular", a C#→TS rule, or a 1:1-parity invariant, it's wrong — that knowledge belongs in a capability. After editing a core skill, grep it for stack/domain strings; **zero hits is part of "done".**
 
 Sort anything new before you place it:
 
