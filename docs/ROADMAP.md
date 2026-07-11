@@ -1,6 +1,6 @@
 # wf Plugin — Roadmap & Milestones
 
-> **Read this before picking up any `WF-*` issue.** It is the grounding doc for anyone — human or agent — building the wf plugin. **Live tracking lives in Linear** (team `WF`, project *"WF Plugin — decoupling & Zach interop"*); this doc carries the durable model and direction, Linear carries current issue status. The full v2 design lives in `_local/research/capability-registry-v2-design-2026-06-25.md` (gitignored — may be absent on a fresh clone, so the essentials are carried here).
+> **Read this before picking up any `WF-*` issue.** It is the grounding doc for anyone — human or agent — building the wf plugin. **Live tracking lives in Linear** (team `WF`, project *"WF Plugin — decoupling & upstream interop"*); this doc carries the durable model and direction, Linear carries current issue status. The full v2 design lives in `_local/research/capability-registry-v2-design-2026-06-25.md` (gitignored — may be absent on a fresh clone, so the essentials are carried here).
 
 ---
 
@@ -14,13 +14,13 @@
 
 `wf` is a **domain-free SDD harness**. It ships only: a fixed **SDD phase spine**, a **capability registry** + composition mechanism, a **contribution taxonomy** for rendering any capability's output, and a small set of domain-free workflow skills. It carries **zero** stack, domain, or project knowledge.
 
-- **Core knows nothing** about any stack (Angular, .NET), domain (the CRA → Angular migration), or project. It exposes the phase spine, the registry selector, and the taxonomy — nothing else.
-- **Knowledge lives in capabilities of any granularity** — a single domain concern (`migration`), a stack (`angular`), a stack-agnostic feature (`browser-qa`), several at once, or a whole-project add-on that wraps existing skills (Zach's ADO pipeline is the motivating example). Core makes **no assumption** about a capability's shape or count — it composes whatever the registry lists.
+- **Core knows nothing** about any stack (Angular, .NET), domain (the LRP → Angular migration), or project. It exposes the phase spine, the registry selector, and the taxonomy — nothing else.
+- **Knowledge lives in capabilities of any granularity** — a single domain concern (`migration`), a stack (`angular`), a stack-agnostic feature (`browser-qa`), several at once, or a whole-project add-on that wraps existing skills (an upstream partner's ADO pipeline is the motivating example). Core makes **no assumption** about a capability's shape or count — it composes whatever the registry lists.
 - **Composition is runtime inline-prose injection — no codegen, no compile step.** Core re-reads the registry every run and follows each active capability's fragments in-context. Edit a fragment once and every project picks it up on the next run; nothing to rebuild or keep in sync.
 - **Per-project instance values live downstream** in the consuming repo's `_local/` (paths, the filled profile, the active registry).
-- The engine **interoperates with Zach's upstream** ADO pipeline (consume, don't absorb).
+- The engine **interoperates with the upstream partner's** ADO pipeline (consume, don't absorb).
 
-**Litmus test for every core change:** *would this still make sense for a totally different stack, domain, and project?* If a core skill names `AuditTrakker.Web`, `ComplianceRisk`, "CRA", "Angular", or a 1:1-parity rule, it's wrong — that knowledge belongs in a capability. After each migration, grep the core skill for stack/domain strings; **zero hits is part of "done".**
+**Litmus test for every core change:** *would this still make sense for a totally different stack, domain, and project?* If a core skill names `AcmeLedger.Web`, `RiskSuite`, "LRP", "Angular", or a 1:1-parity rule, it's wrong — that knowledge belongs in a capability. After each migration, grep the core skill for stack/domain strings; **zero hits is part of "done".**
 
 ---
 
@@ -29,7 +29,7 @@
 | Tier | Owns | Examples | Hard rule |
 |---|---|---|---|
 | **Core engine** (the `wf` plugin) | the SDD phase spine, the capability registry + the runtime compose/aggregate mechanism, the contribution taxonomy, and domain-free workflow skills | `spec`, `plan`, `tasks`, `implement`, `verify-spec`, `qa-gen`, `run`, `init`, `constitution`, `branch`, `commit`, `pr`, `classify`, `triage`, `index` | **Zero stack / domain / project knowledge.** Iterates the registry; assumes nothing about which capabilities exist or how many. |
-| **Capabilities** (any granularity) | reusable stack / domain / feature / project knowledge — phase fragments and/or their own skills | `migration` (adapter: mapping, parity, rule-audit, type-map); `angular` (stack: test-host scaffolding, stack idioms); `browser-qa` (feature: browser engine); a whole-project bundle (may wrap external skills, e.g. Zach's) | Provide fragments + their own contract/profile. Shipped as capability **plugins** alongside core in this marketplace — an interim `wf-caps` bundle now → per-capability plugins later. **Never inside core.** |
+| **Capabilities** (any granularity) | reusable stack / domain / feature / project knowledge — phase fragments and/or their own skills | `migration` (adapter: mapping, parity, rule-audit, type-map); `angular` (stack: test-host scaffolding, stack idioms); `browser-qa` (feature: browser engine); a whole-project bundle (may wrap external skills, e.g. an upstream partner's) | Provide fragments + their own contract/profile. Shipped as capability **plugins** alongside core in this marketplace — an interim `wf-caps` bundle now → per-capability plugins later. **Never inside core.** |
 | **Project `_local/`** | this repo's instance values | the active `## Capabilities` registry (at a **configurable location** — `wf.config.js` `registryPath`, default `_local/config.md`), each capability's **profile override** (seeded by `init` on divergence from the capability's shipped default — hybrid precedence: downstream override > capability default), per-repo paths, per-task artifacts | Gitignored. Downstream; never committed by the plugin. |
 
 ---
@@ -96,7 +96,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 ## Milestones
 
 1. **Extraction → v2 (straight to capability plugins).** Reshape core to the registry + SDD-phase + taxonomy model, make it stack- and domain-free, and extract the migration / Angular / browser-QA knowledge out of core **directly into capability plugins** wired through phase fragments. The non-core skills move first into a single interim **`wf-caps`** default-capabilities plugin (hosted beside core in this private marketplace), then fragment into per-capability plugins. We ship as plugins from the start — no transitional in-repo-folder stage to redo later. *(Absorbs the former "Add-on plugins" milestone.)*
-2. **Adopt Zach — upstream consume seam.** `/wf:spec` and `/wf:plan` consume Zach's committed Design / Backlog Decomposition (via the root ADO work item's attachment + a read-only parent-chain walk) as scope input; `00_reqs.md` stays the verification source of truth. Read-only, additive, no-op when absent.
+2. **Adopt the upstream partner — upstream consume seam.** `/wf:spec` and `/wf:plan` consume the upstream partner's committed Design / Backlog Decomposition (via the root ADO work item's attachment + a read-only parent-chain walk) as scope input; `00_reqs.md` stays the verification source of truth. Read-only, additive, no-op when absent.
 
 > **Known follow-on:** even after core is domain-free, QA orchestration stays core while the browser engine (`browser-qa` feature) and Angular test-host (`angular` stack) become capabilities — tracked as WF-25 / WF-26. The marketplace is multi-plugin: core (`wf`) + the interim `wf-caps` bundle now, fragmenting into per-capability plugins as each extraction lands.
 
@@ -155,17 +155,17 @@ Reshaped from the original v1 extraction plan (`WF-1`…`WF-10`) to the v2 regis
 
 - **Stage, don't big-bang.** This is prompt text with no compiler — a one-shot refactor fails *silently* (a worse QA plan, a false-positive verdict on the next real task). One issue = one branch/PR with its own acceptance check.
 - **No regression between stages.** Each wiring issue records the v1 behaviours it must preserve and checks the rewrite against them; the regression floor is the wiring PR's own diff — the inline logic it deletes must reappear, now sourced from a registry fragment. (A standalone eval-baseline task, `WF-4`, was tried and canceled as over-engineered — no eval harness exists and the floor is intrinsic to each PR's diff.)
-- **Core stays stack- AND domain-free — verify it.** After each migration, grep the core skill for stack/domain strings (`AuditTrakker.Web`, `ComplianceRisk`, `CRA`, `Angular`, parity invariants); **zero hits is part of Done**.
+- **Core stays stack- AND domain-free — verify it.** After each migration, grep the core skill for stack/domain strings (`AcmeLedger.Web`, `RiskSuite`, `LRP`, `Angular`, parity invariants); **zero hits is part of Done**.
 - **Design for arbitrary capabilities.** Never special-case the migration domain or assume one active capability — core composes whatever the registry lists (narrow, multiple, or a whole-project bundle).
 - **Reference the contract by slot / contribution-kind name — never read a profile or fragment "by heading".** If the shape must change, change the contract **and** its validator together.
 - **Freeze the interface, not the gold-plating.** Pin the contract *shape* with only the slots the current step needs; extend as later capabilities land.
-- **Don't entangle milestones.** Adopt-Zach is a separate track — keep it out of Extraction.
-- **Interoperate with Zach, don't absorb.** The consume seam is read-only against ADO; `00_reqs.md` stays the verification source of truth. Don't consume Zach's thinner `plan`/`implement`/`commit-task` commands.
+- **Don't entangle milestones.** The adopt-upstream-partner track is separate — keep it out of Extraction.
+- **Interoperate with the upstream partner, don't absorb.** The consume seam is read-only against ADO; `00_reqs.md` stays the verification source of truth. Don't consume the upstream partner's thinner `plan`/`implement`/`commit-task` commands.
 
 ---
 
 ## Pointers
 
-- **Tracking:** Linear team `WF`, project *"WF Plugin — decoupling & Zach interop"* (3 milestones). Live status lives there.
+- **Tracking:** Linear team `WF`, project *"WF Plugin — decoupling & upstream interop"* (3 milestones). Live status lives there.
 - **v2 design (full rationale):** `_local/research/capability-registry-v2-design-2026-06-25.md` (gitignored; may be absent on a fresh clone). Prior notes: `decoupled-profile-architecture-2026-06-24.md`, `reusability-vs-generic.md`.
 - **Authoring conventions:** repo-root [`CLAUDE.md`](../CLAUDE.md).
