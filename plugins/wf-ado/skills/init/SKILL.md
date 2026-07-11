@@ -22,7 +22,7 @@ wf-ado install root, so only this skill can capture and record it. With the root
 recorded and the capability row written, core resolves the pack's `ado` capability on
 a **plugin-only install** — no vendored `plugins/wf-ado/...` in the consuming repo.
 
-This mirrors `/wf-git:init` (WF-122) and `/wf-caps:init` (WF-99) exactly, simplified
+This mirrors `/wf-git:init` (WF-122) exactly, simplified
 for a single-capability pack — **plus one bespoke phase git never needed**: Phase 4
 below interviews for ADO organization + project, carrying forward any values a prior
 `/wf:init` run already wrote to `_local/config.md`'s `## Azure DevOps` section, rather

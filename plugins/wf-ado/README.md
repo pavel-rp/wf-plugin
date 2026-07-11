@@ -16,7 +16,7 @@ dispatch to.
 |---|---|
 | `capabilities/ado/manifest.md` | the `ado` capability's manifest — one `provider` fragment row scoped `tracker` |
 | `capabilities/ado/fragments/tracker.md` | the inline reference doc binding all twelve tracker operations to Azure DevOps mechanics, with a completeness coverage table |
-| `/wf-ado:init` | one-command self-registration — records this pack's install root, registers the `ado` capability, and interviews for (or carries forward) ADO organization/project, mirroring `/wf-caps:init` (WF-99) and `/wf-git:init` (WF-122) |
+| `/wf-ado:init` | one-command self-registration — records this pack's install root, registers the `ado` capability, and interviews for (or carries forward) ADO organization/project, mirroring `/wf-git:init` (WF-122) |
 
 ## Registering wf-ado downstream
 

@@ -22,8 +22,8 @@ recorded and the capability row written, core resolves the pack's `linear` capab
 on a **plugin-only install** — no vendored `plugins/wf-linear/...` in the consuming
 repo.
 
-This mirrors `/wf-ado:init` (WF-123), `/wf-git:init` (WF-122), and `/wf-caps:init`
-(WF-99) exactly, simplified for a single-capability pack — **plus one bespoke phase
+This mirrors `/wf-ado:init` (WF-123) and `/wf-git:init` (WF-122)
+exactly, simplified for a single-capability pack — **plus one bespoke phase
 git never needed**: Phase 4 below interviews for the Linear team + optional project,
 writing this pack's **own** `## Linear` section of `_local/config.md`. Unlike
 `/wf-ado:init`'s `## Azure DevOps` section, there is nothing to "carry forward" from

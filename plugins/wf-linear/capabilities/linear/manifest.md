@@ -75,7 +75,7 @@ As a `both` capability, linear ships its own skill natively (install the plugin 
 
 ```
 skills:
-  - plugins/wf-linear/skills/init/   # /wf-linear:init — self-registering onboarding + Linear interview (mirrors WF-123's /wf-ado:init, WF-122's /wf-git:init, WF-99's /wf-caps:init)
+  - plugins/wf-linear/skills/init/   # /wf-linear:init — self-registering onboarding + Linear interview (mirrors WF-123's /wf-ado:init, WF-122's /wf-git:init)
 ```
 
 ## Profile seed template
