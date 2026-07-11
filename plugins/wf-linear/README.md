@@ -34,7 +34,7 @@ local-only rather than blocking.
 |---|---|
 | `capabilities/linear/manifest.md` | the `linear` capability's manifest — one `provider` fragment row scoped `tracker` |
 | `capabilities/linear/fragments/tracker.md` | the inline reference doc binding all twelve tracker operations to Linear MCP mechanics, with a completeness coverage table |
-| `/wf-linear:init` | one-command self-registration — records this pack's install root, registers the `linear` capability, and interviews for (or carries forward) the Linear team/project, mirroring `/wf-ado:init` (WF-123), `/wf-git:init` (WF-122), `/wf-caps:init` (WF-99) |
+| `/wf-linear:init` | one-command self-registration — records this pack's install root, registers the `linear` capability, and interviews for (or carries forward) the Linear team/project, mirroring `/wf-ado:init` (WF-123), `/wf-git:init` (WF-122) |
 
 ## Registering wf-linear downstream
 

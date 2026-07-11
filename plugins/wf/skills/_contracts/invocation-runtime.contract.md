@@ -458,7 +458,9 @@ it depends only on the registry rows and the fixed manifest path.
 ### (b) Single-row registry → exactly v1 (the N=1 reduction)
 
 1. **Registry iteration.** The `## Capabilities` table has **one** row, whose `Path`
-   is `plugins/wf-caps/capabilities/migration/` *(example-the-runtime-resolves-to — by path only)*. Core
+   is `plugins/wf-caps/capabilities/migration/` *(example-the-runtime-resolves-to — by path only; the
+   `migration` reference capability now ships in the private `wf-caps` marketplace, moved out of this
+   repo per WF-261, so this path is illustrative, not in-repo)*. Core
    walks the single row.
 2. **Manifest read.** Core reads the manifest at that path and parses its fragments
    table. One row matches the firing phase *(example-the-runtime-resolves-to / superseded-v1: `verify | finding | inline: hooks/rule-audit.md | —` — the v1 `rule-audit` seam re-expressed in the v2 fragments-table shape; `scope` is empty because `finding` aggregates with provenance)*.

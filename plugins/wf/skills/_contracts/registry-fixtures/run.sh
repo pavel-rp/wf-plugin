@@ -111,7 +111,7 @@ assert "delivery composes with tracker + engine passes" pass-delivery-multi-surf
 # fragment at `spec`, scope `tracker`) validates clean — same phase-agnostic CHECK 5
 # path as delivery, exercised with a second surface token and a second phase.
 assert "tracker surface single owner passes" pass-tracker.md - 0 "Validation passed"
-# WF-126: a wf-caps-shaped capability requiring both `git` and `ado`, with both
+# WF-126: a capability requiring both `git` and `ado`, with both
 # satisfied, validates clean.
 assert "two-dependency requires satisfied passes" pass-requires-git-ado.md - 0 "Validation passed"
 # WF-158: a concrete tracker provider (`ado`, whose surface now carries the query
@@ -203,10 +203,10 @@ assertm "unrecoverable row named after self-heal" fail-self-heal.md - installed_
 # fallback-first implementation would recover nothing and fail).
 assertm "recorded root first — fallback never consulted" pass-plugin-anchored.md - installed_plugins.fixture.json 0 "Validation passed" "via plugin root"
 # WF-99: CHECK 4a plugin-root shape — empty / backslash / '..' segment.
-assert "plugin root empty named"      fail-plugin-root-empty.md     - 1 "wf-caps" "needs a Root"
-assert "plugin root backslash named"  fail-plugin-root-backslash.md - 1 "wf-caps" "backslash"
-assert "plugin root dotdot named"     fail-plugin-root-dotdot.md    - 1 "wf-caps" "'..' segment"
-assert "plugin root duplicate named"  fail-plugin-root-dup.md       - 1 "wf-caps" "duplicate plugin root name"
+assert "plugin root empty named"      fail-plugin-root-empty.md     - 1 "testpkg" "needs a Root"
+assert "plugin root backslash named"  fail-plugin-root-backslash.md - 1 "testpkg" "backslash"
+assert "plugin root dotdot named"     fail-plugin-root-dotdot.md    - 1 "testpkg" "'..' segment"
+assert "plugin root duplicate named"  fail-plugin-root-dup.md       - 1 "testpkg" "duplicate plugin root name"
 
 # --- WF-208: ops/reference drift guards ---------------------------------------
 # The contracts are split into runtime-ops docs (*.ops.md) + reference halves

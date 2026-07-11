@@ -33,8 +33,12 @@ jobs:
 
       - name: Each capability's fixture suite
         # Discover every capability fixtures suite by convention — never name a
-        # specific capability. Zero matches fails explicitly (a silent pass would
-        # mask a broken glob or a moved fixtures tree).
+        # specific capability, so any future capability that ships a fixtures
+        # run.sh is gated automatically. Zero matches is a valid skip: no
+        # capability currently vendored in this marketplace ships a fixtures
+        # run.sh (the migration reference capability, the only one that did,
+        # moved to the private wf-caps marketplace per WF-261). The registry-level
+        # suite above still gates the validator itself unconditionally.
         # `shell: bash` is explicit: the step relies on bash-only features
         # (`shopt -s nullglob`, arrays). ubuntu-latest defaults `run:` to bash,
         # but pinning it guards against a default fallback to sh.
@@ -43,8 +47,8 @@ jobs:
           shopt -s nullglob
           suites=(plugins/*/capabilities/*/fixtures/run.sh)
           if [ ${#suites[@]} -eq 0 ]; then
-            echo "ERROR: no capability fixture suites matched 'plugins/*/capabilities/*/fixtures/run.sh'." >&2
-            exit 1
+            echo "No capability fixture suites present (plugins/*/capabilities/*/fixtures/run.sh) — nothing to run."
+            exit 0
           fi
           failed=0
           for suite in "${suites[@]}"; do

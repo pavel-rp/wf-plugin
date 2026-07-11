@@ -1,7 +1,7 @@
 {
   "name": "wf",
-  "version": "0.48.3",
-  "description": "wf:* skill chain: spec/plan/implement plus verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core spine — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Migration ships in the wf-caps plugin; browser-qa, angular test-host, and node-ts each ship in their own plugin (wf-browser-qa, wf-angular, wf-node-ts).",
+  "version": "0.48.4",
+  "description": "wf:* skill chain: spec/plan/implement plus verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core spine — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (browser-qa, angular test-host, node-ts) each ship in their own plugin (wf-browser-qa, wf-angular, wf-node-ts).",
   "author": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"

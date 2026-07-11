@@ -20,7 +20,7 @@ wf-git install root, so only this skill can capture and record it. With the root
 recorded and the capability row written, core resolves the pack's `git` capability on
 a **plugin-only install** — no vendored `plugins/wf-git/...` in the consuming repo.
 
-This mirrors `/wf-caps:init` (WF-99) exactly, simplified for a single-capability pack:
+This follows the sibling packs' self-registering `/init` onboarding pattern, simplified for a single-capability pack:
 there is no capability-subset argument, because wf-git ships exactly one capability.
 
 **This is fragment/registry-side onboarding only.** It cannot register a `/command` — a
@@ -55,7 +55,7 @@ Takes no arguments — it always registers the single `git` capability this pack
 - Write/edit files under `_local/`.
 - Write the `## Plugin Roots` and `## Capabilities` tables to the **resolved registry
   location** — the one sanctioned write outside `_local/` (registering the pack is this
-  skill's whole purpose), mirroring `/wf:init`'s and `/wf-caps:init`'s registry-write
+  skill's whole purpose), mirroring `/wf:init`'s registry-write
   carve-out.
 
 **Forbidden:**

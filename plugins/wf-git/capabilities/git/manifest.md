@@ -85,7 +85,7 @@ As a `both` capability, git ships its own skill natively (install the plugin →
 
 ```
 skills:
-  - plugins/wf-git/skills/init/   # /wf-git:init — self-registering onboarding (mirrors WF-99's /wf-caps:init)
+  - plugins/wf-git/skills/init/   # /wf-git:init — self-registering onboarding (the sibling packs' self-registering /init pattern)
 ```
 
 ## Profile seed template

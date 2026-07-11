@@ -11,4 +11,4 @@ A `## Plugin Roots` Root must use forward slashes; a backslash is a validation e
 
 | Plugin  | Root      |
 |---------|-----------|
-| wf-caps | a\b/root  |
+| testpkg | a\b/root  |

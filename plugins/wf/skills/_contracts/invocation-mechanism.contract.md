@@ -43,9 +43,11 @@ two dispatch kinds, and dispatches per hook. Absence (`{domain}: <none>`) no-ops
 hook cleanly.
 
 This document defines **semantics and procedure**, not behavior of any one capability. It
-names zero domains. The worked demonstration below references the kept `plugins/wf-caps/capabilities/migration/`
-prototype by path only — as an example a core skill resolves *to*, never as something the
-core depends on.
+names zero domains. The worked demonstration below references the `migration` prototype —
+historically kept in-repo under `plugins/wf-caps/capabilities/migration/`, now hosted in the
+private `wf-caps` marketplace (moved out of this repo per WF-261; the paths are illustrative
+of that external prototype, not in-repo) — by path only, as an example a core skill resolves
+*to*, never as something the core depends on.
 
 ---
 
@@ -197,7 +199,9 @@ so most core code need not branch at all.
 
 ## Worked demonstration: `rule-audit`, active vs. `<none>`
 
-This traces the kept `plugins/wf-caps/capabilities/migration/` prototype (committed under this task) through the
+This traces the `migration` prototype — historically under `plugins/wf-caps/capabilities/migration/`,
+now hosted in the private `wf-caps` marketplace (moved out of this repo per WF-261; the paths
+are illustrative of that external prototype, not in-repo) — through the
 two resolutions. It is an **example a core skill resolves to** — the core depends on none
 of these paths; it depends only on the two config keys and the fixed manifest path.
 
