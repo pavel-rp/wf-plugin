@@ -2,7 +2,7 @@
 
 A Claude Code plugin that runs a gated **Spec-Driven Development** chain — spec → plan → tasks → implement → verify → qa — over each task. Each `wf:*` unit is a skill, invocable as a `/wf:…` slash command or auto-loaded by Claude when relevant.
 
-**Core is tracker- and delivery-agnostic** — it names no tracker (Azure DevOps, Linear, …) and issues no VCS command of its own. Work-item and branch/commit/PR mechanics enter through **capability packs** that register against the spine: `wf-git` supplies the delivery (git) provider, `wf-ado` / `wf-linear` the tracker providers. Stack/domain knowledge ships in its own pack: migration in `wf-caps`, browser-QA in `wf-browser-qa`, the Angular test-host in `wf-angular`, node-ts in `wf-node-ts`. With **no provider registered, the whole spine still runs fully local** — see [Bare-core](#bare-core-no-provider-registered).
+**Core is tracker- and delivery-agnostic** — it names no tracker (Azure DevOps, Linear, …) and issues no VCS command of its own. Work-item and branch/commit/PR mechanics enter through **capability packs** that register against the spine: `wf-git` supplies the delivery (git) provider, `wf-ado` / `wf-linear` the tracker providers. Stack/domain knowledge ships in its own pack: browser-QA in `wf-browser-qa`, the Angular test-host in `wf-angular`, node-ts in `wf-node-ts` (migration ships in `wf-caps`, hosted in a separate private marketplace). With **no provider registered, the whole spine still runs fully local** — see [Bare-core](#bare-core-no-provider-registered).
 
 ## Install
 
@@ -101,7 +101,7 @@ Install `wf` alone — no `wf-git`, no tracker pack, an empty `## Capabilities` 
 
 Register `wf-git` (via its `/wf-git:init`) — and a tracker pack (`/wf-ado:init` or `/wf-linear:init`) — to light up branch/commit/PR and work-item integration; core degrades back to local-only the moment they're absent. Exactly one tracker provider may be active at a time (`wf-ado` XOR `wf-linear`; enforced by registry validation).
 
-> **Moved:** `migration-map` (→ `/wf-caps:migration-map`) stays in the **wf-caps** plugin. `qa-host` and `test-page` (→ `/wf-angular:qa-host`, `/wf-angular:test-page`) now ship in the **wf-angular** plugin as the `angular` stack capability (the `qa-execution` `surface: host` provider, composing with browser-qa's `surface: engine`); `test-node` (→ `/wf-node-ts:test-node`) ships in the **wf-node-ts** plugin as the `node-ts` capability. See [`plugins/wf-caps/README.md`](../wf-caps/README.md), [`plugins/wf-angular/README.md`](../wf-angular/README.md), and [`plugins/wf-node-ts/README.md`](../wf-node-ts/README.md). Install the relevant pack to use each.
+> **Moved:** `migration-map` (→ `/wf-caps:migration-map`) ships in the **wf-caps** plugin, hosted in a separate private marketplace (moved out of this repo per WF-261). `qa-host` and `test-page` (→ `/wf-angular:qa-host`, `/wf-angular:test-page`) now ship in the **wf-angular** plugin as the `angular` stack capability (the `qa-execution` `surface: host` provider, composing with browser-qa's `surface: engine`); `test-node` (→ `/wf-node-ts:test-node`) ships in the **wf-node-ts** plugin as the `node-ts` capability. See [`plugins/wf-angular/README.md`](../wf-angular/README.md) and [`plugins/wf-node-ts/README.md`](../wf-node-ts/README.md). Install the relevant pack to use each.
 
 ## Per-task artifacts
 

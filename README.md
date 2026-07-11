@@ -1,9 +1,8 @@
 # wf-marketplace
 
-Claude Code marketplace hosting the `wf` core plugin and the `wf-caps` default-capabilities pack:
+Claude Code marketplace hosting the `wf` core plugin and its capability packs:
 
 - **[wf](plugins/wf/)** — the domain-free Spec-Driven Development spine: a `wf:*` skill chain for spec → plan → implement → verify → QA → commit/PR, carrying zero stack, domain, or project knowledge.
-- **[wf-caps](plugins/wf-caps/)** — the default stack/domain-capabilities pack that attaches to the spine (migration and the angular test host).
 - **[wf-browser-qa](plugins/wf-browser-qa/)** — the standalone browser-QA feature pack: a stack-agnostic browser-automation QA engine (`qa-execution` engine provider) that core's `/wf:qa-auto` dispatches to.
 - **[wf-node-ts](plugins/wf-node-ts/)** — the standalone Node/TypeScript stack pack: a dependency-free unit-test harness for pure TS helpers (`implement`-phase test-authoring guidance).
 - **[wf-audit](plugins/wf-audit/)** — the standalone audit + self-review pack: five domain-free adversarial `verify` lenses plus an optional composite retrospective, co-located with the `pre-commit` self-review lens that reuses the audit correctness rubric.
@@ -15,7 +14,6 @@ In Claude Code:
 ```
 /plugin marketplace add pavel-rp/wf-plugin
 /plugin install wf
-/plugin install wf-caps
 ```
 
 (Replace `pavel-rp/wf-plugin` with the repo's actual `owner/name` once pushed, or use a local path / full git URL.)
@@ -30,9 +28,9 @@ Then, in any git repo you want to work in:
 
 ## What's in the plugins
 
-Each plugin's skills are invoked under its own namespace: core `wf` skills as `/wf:<skill>` (`/wf:spec`, `/wf:plan`, `/wf:qa-auto`, …) and `wf-caps` skills as `/wf-caps:<skill>` (skill names are bare; the namespace prefix comes from the plugin).
+Each plugin's skills are invoked under its own namespace: core `wf` skills as `/wf:<skill>` (`/wf:spec`, `/wf:plan`, `/wf:qa-auto`, …), and each capability pack's skills as `/<pack>:<skill>` (skill names are bare; the namespace prefix comes from the plugin).
 
-See **[plugins/wf/README.md](plugins/wf/README.md)** for the full, authoritative core skill and subagent reference. In brief, the core skills cover triage → spec → plan → implement → verify → QA → commit/PR, plus a `/wf:run` dispatcher that drives the safe front of the chain hands-off. See **[plugins/wf-caps/README.md](plugins/wf-caps/README.md)** for the stack/domain capabilities that attach to the spine.
+See **[plugins/wf/README.md](plugins/wf/README.md)** for the full, authoritative core skill and subagent reference. In brief, the core skills cover triage → spec → plan → implement → verify → QA → commit/PR, plus a `/wf:run` dispatcher that drives the safe front of the chain hands-off. See each capability pack's README for the stack/domain capabilities that attach to the spine.
 
 ## Authoring
 

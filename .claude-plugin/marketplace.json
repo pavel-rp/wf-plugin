@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.66.2",
-  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-caps default-capabilities, wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
+  "version": "0.67.0",
+  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
   "owner": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
@@ -11,18 +11,8 @@
     {
       "name": "wf",
       "source": "./plugins/wf",
-      "version": "0.48.3",
-      "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Migration ships in the wf-caps plugin; browser-qa, angular test-host, and node-ts each ship in their own plugin.",
-      "author": {
-        "name": "Pavel Kalabin"
-      },
-      "category": "development"
-    },
-    {
-      "name": "wf-caps",
-      "source": "./plugins/wf-caps",
-      "version": "0.20.0",
-      "description": "wf default-capabilities pack: non-core, stack/domain-specific capabilities for the wf workflow. Ships the migration capability (migration-map). The browser-qa engine capability was extracted into the standalone wf-browser-qa plugin; the node-ts stack capability into wf-node-ts; the audit and sr capabilities into wf-audit; the angular stack capability into wf-angular.",
+      "version": "0.48.4",
+      "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (browser-qa, angular test-host, node-ts) each ship in their own plugin.",
       "author": {
         "name": "Pavel Kalabin"
       },

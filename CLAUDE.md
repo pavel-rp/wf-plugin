@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-caps, wf-browser-qa, wf-node-ts, wf-audit, wf-angular, wf-git, wf-ado, wf-linear, wf-review packs)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-browser-qa, wf-node-ts, wf-audit, wf-angular, wf-git, wf-ado, wf-linear, wf-review packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -56,13 +56,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   │   ├── <name>/SKILL.md     # e.g. spec, plan, implement, qa-gen, qa-init (auto-discovered → /wf:*)
 │   │   └── _contracts/        # v1 frozen foundation — sibling of the skill folders
 │   └── agents/<name>.md       # subagent companions (auto-discovered)
-├── plugins/wf-caps/           # DEFAULT-CAPABILITIES PLUGIN — non-core stack/domain skills + capabilities
-│   ├── .claude-plugin/plugin.json
-│   ├── skills/<name>/SKILL.md # e.g. migration-map (auto-discovered → /wf-caps:*)
-│   ├── agents/<name>.md
-│   └── capabilities/migration/ # the migration capability: manifest + fragments + profile
-│       ├── manifest.md         # how it attaches to the spine
-│       └── fragments/          # v2 fragment prose the migration capability attaches to the spine
+│                              # (the `migration` reference adapter capability — formerly plugins/wf-caps/ — now ships in the private wf-caps marketplace, moved out of this repo per WF-261; still the documented reference example in §4–§6)
 ├── plugins/wf-browser-qa/     # BROWSER-QA FEATURE PACK — the browser-qa capability owning the qa-execution engine surface
 │   ├── skills/init/SKILL.md   # /wf-browser-qa:init — self-registration
 │   ├── skills/qa-engine/      # /wf-browser-qa:qa-engine — stack-agnostic browser-automation QA engine (+ references/preconditions.md)
@@ -144,13 +138,13 @@ Phases are the **injection points**. A capability touches only the phases it has
 
 | Capability | Path                    |
 |------------|-------------------------|
-| migration  | plugins/wf-caps/capabilities/migration |
-| browser-qa | capabilities/browser-qa                |
+| audit      | plugins/wf-audit/capabilities/audit          |
+| browser-qa | plugin:wf-browser-qa/capabilities/browser-qa |
 ```
 
 Empty table = fully generic core. Name is decoupled from path so the binding survives a capability moving to a standalone plugin. Table order = deterministic injection order (general → specific).
 
-A `Path` is one of two shapes, **both runtime-resolved**: a repo-relative folder (for a vendored capability), or a **plugin-anchored** `plugin:<plugin-name>/<rel-path>` token (for a capability shipping inside an installed plugin). The plugin-anchored token resolves through a `## Plugin Roots` mapping (`| Plugin | Root |`) co-located with the registry — the `<plugin-name>→install-root` datum `${CLAUDE_PLUGIN_ROOT}` alone can't supply (it resolves only the *executing* plugin's root). That mapping is **per-machine, gitignored, and written by a pack's own init skill** — e.g. `/wf-caps:init` records wf-caps's install root and self-registers its capabilities as plugin-anchored rows, collapsing onboarding to one command (no hand-edited `_local/config.md`); core only reads the generic map. Full semantics: `capability-registry.contract.md` §"The `## Plugin Roots` mapping".
+A `Path` is one of two shapes, **both runtime-resolved**: a repo-relative folder (for a vendored capability), or a **plugin-anchored** `plugin:<plugin-name>/<rel-path>` token (for a capability shipping inside an installed plugin). The plugin-anchored token resolves through a `## Plugin Roots` mapping (`| Plugin | Root |`) co-located with the registry — the `<plugin-name>→install-root` datum `${CLAUDE_PLUGIN_ROOT}` alone can't supply (it resolves only the *executing* plugin's root). That mapping is **per-machine, gitignored, and written by a pack's own init skill** — e.g. `/wf-git:init` records wf-git's install root and self-registers its capability as a plugin-anchored row, collapsing onboarding to one command (no hand-edited `_local/config.md`); core only reads the generic map. Full semantics: `capability-registry.contract.md` §"The `## Plugin Roots` mapping".
 
 **Capability kinds:**
 
@@ -293,7 +287,7 @@ Default to **B** for read-only reasoning, **C** for action-oriented gates, **D**
 
 **Manifests.** `plugins/wf/.claude-plugin/plugin.json` carries `name` (`wf`), `version`, `description`, `author`, `repository`, `license`, `keywords`. `.claude-plugin/marketplace.json` carries the marketplace metadata and a `plugins[]` entry (`name`, `source: ./plugins/wf`, `version`, …). Run `claude plugin validate` before publishing; unrecognised fields warn, type mismatches fail.
 
-**Versioning — multi-plugin marketplace.** The marketplace hosts more than one plugin (`wf` core + `wf-caps`), each versioned independently. Two invariants:
+**Versioning — multi-plugin marketplace.** The marketplace hosts more than one plugin (`wf` core + capability packs such as `wf-git`, `wf-ado`, `wf-audit`), each versioned independently. Two invariants:
 
 - **Per plugin:** `plugins/<plugin>/.claude-plugin/plugin.json` → `version` **equals** that plugin's `version` in the `.claude-plugin/marketplace.json` `plugins[]` entry. Bump both together when that plugin changes.
 - **Marketplace:** `.claude-plugin/marketplace.json` → top-level `version` bumps on **any** change (a bump to any plugin, an added/removed plugin).
