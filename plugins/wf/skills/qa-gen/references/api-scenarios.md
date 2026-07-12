@@ -40,7 +40,7 @@ For each API criterion, decide how the behavior is reachable:
    Backend host required: <Service-or-Repository>.<method>
    ```
 
-   This is the backend analog of `Host required:` for an un-routed frontend component. `/wf:qa-auto` resolves it via `/wf-angular:qa-host api-probe` (scaffold-or-locate); the temporary endpoint is an ephemeral run fixture, reverted in teardown. Set the scenario's `Route:` to `via backend host` — the runner substitutes the real route after `api-probe` returns it.
+   This is the backend analog of `Host required:` for an un-routed frontend component. `/wf:qa-auto` resolves it via the registered `qa-execution` host provider's `api-probe` operation (scaffold-or-locate); the temporary endpoint is an ephemeral run fixture, reverted in teardown. Set the scenario's `Route:` to `via backend host` — the runner substitutes the real route after `api-probe` returns it.
 
 Determining which: grep the branch diff and the project's endpoint/route-handler root (`{api-controllers-root}` from config, or the stack's endpoint files as the active capability's backend material names them) for a handler that calls the target service method. If one is found, it's case 1; otherwise case 2. The concrete file-name patterns and route-declaration syntax are stack-specific — they live in the active backend capability's material, not here.
 
@@ -85,7 +85,7 @@ Same outer shape as a browser scenario (`Validates` / `Priority` / `Precondition
 Writing rules specific to API scenarios:
 
 - **One assertion per row.** Status is its own row; each shape/value check is its own row. A partial pass is then legible.
-- **Assert the contract, not the data.** Status code, array-ness vs object, presence and type of spec-named fields, and spec-stated edge behavior ("empty array when none match — use an id unlikely to have data, e.g. `0` or `-1`"). **Never assert exact row counts or specific values** — those depend on the database, exactly as `wf-angular:test-page backend-smoke` already cautions.
+- **Assert the contract, not the data.** Status code, array-ness vs object, presence and type of spec-named fields, and spec-stated edge behavior ("empty array when none match — use an id unlikely to have data, e.g. `0` or `-1`"). **Never assert exact row counts or specific values** — those depend on the database, exactly as the stack's backend-smoke page-test already cautions.
 - **Negative/error cases at `full` scope.** Bad input → 400, missing/forbidden → 401/403, not-found → 404 — when the spec defines them. These are first-class API scenarios, not afterthoughts.
 - **Route is real.** Use the actual route template from the endpoint's route/verb declaration (signature read — the stack's route-declaration syntax, whatever the active backend capability names it). Placeholder `via backend host` is allowed *only* for the service-only case, where the route doesn't exist until `api-probe` makes it.
 
