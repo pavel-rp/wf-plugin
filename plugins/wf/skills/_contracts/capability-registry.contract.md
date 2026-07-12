@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.10.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind)
+**Version:** 2.10.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -368,13 +368,23 @@ without naming the capability. Each kind below states its phase(s) and its
 | `finding` | `verify`, `pre-commit` | a conformance issue asserted against the work under review (at `verify`) or against the staged change set about to be committed (at `pre-commit`) | **aggregate** — every contributor's findings, **provenance-tagged** |
 | `scenario` | `qa-generation` | an executable check derived from an acceptance criterion | **aggregate** — every contributor's scenarios, provenance-tagged |
 | `provider` | `qa-execution`, `implement`, `spec` | a capability that supplies *execution* (an engine or environment) or an *operation* (a delivery or tracker action), not a result | **partition by ownership** — one owner per surface (scope below); subagent dispatch (`qa-execution`) or direct resolve (`implement`, delivery surface; `spec`, tracker surface — see below) |
-| `article` | constitution (set up at `init`; enforced at `verify`) | a non-negotiable principle | **aggregate** with provenance; precedence rules below |
+
+The taxonomy has **six** kinds. A **constitution `article` is not among them** — it
+is deliberately excluded, because an article is not a phase fragment: it attaches to
+the **constitution**, which "is *not* a phase in this spine" (see "The SDD phases"),
+so it can never legally sit in a manifest's fragments table (whose `phase` column
+accepts only an SDD phase). A capability declares its non-negotiable clauses instead
+with the dedicated **`article:` manifest key** (`article: <key> = <value>` — see
+"Manifest schema v2" and "The constitution composition rule"), a manifest key of the
+same family as `requires:` / `conflicts:`. Registry validation rejects a fragments-table
+row that names `article` as its contribution kind (WF-239).
 
 Authoring `guidance` and `task-list` are **authoring-side** kinds the hubs and the
-`tasks` derivation consume. `finding` / `scenario` / `article` are
+`tasks` derivation consume. `finding` / `scenario` are
 **provenance-carrying** kinds — each fragment's output is tagged with its
 contributing capability, so registry order is cosmetic for them (attribution is
-explicit). `artifact` and `provider` are **partitioned** — overlap is an error,
+explicit); the constitution's `article:` declarations carry provenance the same way.
+`artifact` and `provider` are **partitioned** — overlap is an error,
 not a merge.
 
 ### Aggregation policy — `aggregate` vs `partition`
@@ -382,8 +392,9 @@ not a merge.
 - **`aggregate`** — core follows **every** contributor at the phase, in **registry
   order** (general → specific). For additive authoring `guidance`, the most
   specific capability is injected last and therefore wins on any conflict. For
-  the provenance-carrying kinds (`finding`, `scenario`, `article`), order is
-  cosmetic — each contribution is tagged with its source capability.
+  the provenance-carrying kinds (`finding`, `scenario`), order is
+  cosmetic — each contribution is tagged with its source capability (the
+  constitution's `article:` declarations aggregate with provenance the same way).
 - **`partition`** — only the **owning** capability applies at the phase; no merge
   occurs. Overlapping ownership across active capabilities is a
   **registry-validation error** (WF-2's registry pass / WF-28), with both
@@ -689,10 +700,12 @@ The constitution is a set of **non-negotiable principles** — **composed, not
 authored** as a single baked file (no compile step; see "What this contract is
 NOT"). At the contract level it is governed by these rules:
 
-1. **Composed from `article` fragments with provenance.** Core contributes
-   domain-free **process** articles; each active capability contributes its own
-   non-negotiables. Articles aggregate through the registry, each tagged with its
-   source.
+1. **Composed from each capability's `article:` manifest-key declarations, with
+   provenance.** Core contributes domain-free **process** articles; each active
+   capability contributes its own non-negotiables via the `article:` manifest key
+   (an article is a manifest-key declaration, **not** a phase fragment — the
+   constitution is not a phase). Articles aggregate through the registry, each
+   tagged with its source.
 2. **Project clauses override capability clauses.** A clause recorded by the
    project (via the setup skill, WF-24) takes precedence over any capability's
    article, regardless of registry order. This precedence is distinct from
@@ -751,6 +764,18 @@ contract and the runtime own the rest):
   manifest stays conformant.
 - **`requires:` / `conflicts:`** — optional; resolved at registry validation
   (`requires:` satisfied; `conflicts:` not both active).
+- **`article:`** — **optional, repeatable.** A capability with non-negotiable
+  principles declares each one with an `article:` manifest key, of the shape
+  `article: <key> = <value>` — `<key>` names the clause (its identity), `<value>`
+  its stance. This is a **manifest key** of the same family as `requires:` /
+  `conflicts:`, **not** a fragments-table row: an article attaches to the
+  **constitution**, which is not an SDD phase, so it has no legal home in the
+  fragments table (whose `phase` column accepts only an SDD phase). The
+  `wf:constitution` skill composes these declarations provenance-tagged (see "The
+  constitution composition rule"); registry validation rejects two active
+  capabilities declaring the **same** `<key>` with **different** `<value>` as a
+  capability-vs-capability contradiction. A manifest with no `article:` key simply
+  contributes no constitution clause (the no-op path).
 
 A capability attaches only the fragments it provides; an unattached phase no-ops
 for that capability. Two composition mechanisms stay separate: **features compose
