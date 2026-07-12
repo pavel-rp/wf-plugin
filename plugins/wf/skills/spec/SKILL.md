@@ -1,7 +1,7 @@
 ---
 name: spec
 description: Writes a grounded task specification (01_spec.md) for a task by fetching requirements from the active tracker capability (when registered), exploring the current codebase, and resolving ambiguities interactively. Use when the user starts a new task and needs to document scope before planning.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:spec — Grounded task specification from a task id

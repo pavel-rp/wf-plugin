@@ -1,7 +1,7 @@
 ---
 name: run
 description: Drives a task through the wf:* pipeline by detecting the current phase from the task folder's artifacts, deciding the next phase, enforcing the inter-phase gate, and by default walking the safe front of the chain hands-off via the wf:phase-runner subagent — halting before any source-writing or gated phase — with a --step mode that instead names one command at a time. Resumable from any point after a context reset. wf:run writes nothing in its own context — each phase runs isolated, in its own subagent (default) or as its own native invocation (--step), so phase exploration never bleeds into the orchestrator. Use to walk spec→plan→implement→verify→qa as one tracked flow instead of remembering which slash command comes next.
-allowed-tools: [Read, Glob, Grep, Bash]
+allowed-tools: [Read, Glob, Grep, Bash, Task]
 ---
 
 # /wf:run — Pipeline driver for the wf:* chain
