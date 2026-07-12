@@ -89,7 +89,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 
 ### Staleness note
 
-`07_qa-report.md` carries no commit anchor, so this skill does a soft check: invoke `last-commit-timestamp-query` via **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above) and compare it against the report's own `Run date`. Interpret both values as calendar moments and compare chronologically — never a string compare. If the last-commit timestamp is after the report's `Run date`, print a one-line warning that some defects may already be addressed and continue — Phase 6 confirms each defect against current source before planning a fix, so a stale symptom is caught at diagnosis time. With zero matching delivery-provider rows, this falls back silently to a plain-directory-safe timestamp read (the contract's fallback) — no VCS invocation of any kind.
+`07_qa-report.md` carries no commit anchor, so this skill does a soft check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Report/spec staleness check": compare `last-commit-timestamp-query` (direct provider resolution to the `delivery` surface, see "Direct provider resolution" above) against the report's own `Run date`. If the branch has moved since, print a one-line warning that some defects may already be addressed and continue — Phase 6 confirms each defect against current source before planning a fix, so a stale symptom is caught at diagnosis time.
 
 ---
 
@@ -173,7 +173,7 @@ For each remaining DEFECT, in report order:
 3. **Decide plannable vs escalate.** Plannable when the root cause is identifiable AND the fix is bounded (a few files, no design call). Otherwise ESCALATE.
 4. **Write a checkbox step** per plannable defect into `08_qa-fix.md` using the template below, each traced to `TC-NNN` + `SC-N` + observed symptom + root-cause hypothesis.
 
-Write `08_qa-fix.md` now (rotate any existing file into `08_qa-fix.history.md` first — same pattern as `/wf:verify-fix`: prepend the old contents above a `---` separator, newest first). The file holds the unblock-pass table, the remediation plan, the escalations, and an empty fix log that Phase 8 fills.
+Write `08_qa-fix.md` now (rotate any existing file into `08_qa-fix.history.md` first, per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Artifact rotation into `.history.md`"). The file holds the unblock-pass table, the remediation plan, the escalations, and an empty fix log that Phase 8 fills.
 
 After writing, invoke `/wf:index <id> qa-fix "<u> unblocked · <d> planned · <e> escalated"`.
 

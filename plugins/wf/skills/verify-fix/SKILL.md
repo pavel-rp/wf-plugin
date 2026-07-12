@@ -109,13 +109,11 @@ If the report is malformed (no `## Requirements` heading, no verdict lines), sto
 
 ### Staleness check
 
-After parsing the header, invoke `last-commit-timestamp-query` via **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above) and compare it against the report's own `**Audited at:**` field. Interpret both values as calendar moments and compare chronologically — never a string compare.
+After parsing the header, run the staleness check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Report/spec staleness check", comparing `last-commit-timestamp-query` (direct provider resolution to the `delivery` surface, see "Direct provider resolution" above) against the report's own `**Audited at:**` field. If the branch has moved since, print a prominent warning at the top of Phase 4's plan:
 
-- **Last-commit timestamp at or before `Audited at`** — proceed normally.
-- **Last-commit timestamp after `Audited at`** — the branch has moved since the audit ran. Every cited `file:line` may now be wrong. Print a prominent warning at the top of Phase 4's plan:
-  `⚠ Audit ran at <audited-at>; the branch's last commit is now <last-commit-at>. Cited file:line citations may be stale — consider re-running `/wf:verify-spec` first.`
-  Continue anyway. Phase 5 step 2 (confirm `Found` state on disk) catches per-finding drift; the user can abort after seeing the plan if they'd rather re-audit.
-- **Audited at field absent, or either value can't be confidently parsed as a calendar moment** — older report format, or an unparseable timestamp. Skip the check silently — this is a soft/advisory check, not a hard gate.
+`⚠ Audit ran at <audited-at>; the branch's last commit is now <last-commit-at>. Cited file:line citations may be stale — consider re-running `/wf:verify-spec` first.`
+
+Continue anyway. Phase 5 step 2 (confirm `Found` state on disk) catches per-finding drift; the user can abort after seeing the plan if they'd rather re-audit.
 
 The dirty-tree flag in the header is informational; uncommitted changes since the audit are normal mid-fix and don't trigger a warning on their own.
 
@@ -231,13 +229,7 @@ After printing all questions, **stop**. Do not proceed to further edits in the s
 
 ## Phase 7: Write the Fix Log
 
-Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate before overwriting — same pattern as `/wf:verify-spec`:
-
-- Read the current `05_verify-fix.md` if it exists.
-- Prepend its contents to `05_verify-fix.history.md` (newest entry on top), followed by a `---` separator on its own line, followed by any prior history contents.
-- Then write the new `05_verify-fix.md`.
-
-This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations — the history file grows unbounded; prune manually if noisy.
+Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
 
 The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at [`references/verify-fix-template.md`](references/verify-fix-template.md). It is read only on this write path (Phase 7), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
 

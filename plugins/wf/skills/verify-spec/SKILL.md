@@ -213,22 +213,13 @@ finding that asserts non-conformance is a FAIL, exactly like a failed requiremen
 Two outputs, always both:
 
 1. **Full report** — written to the task folder's `04_verify.md`, which always holds the
-   latest run. Before overwriting, rotate the existing file's contents into the task
-   folder's `04_verify.history.md`:
-   - Read the current `04_verify.md` if it exists.
-   - Prepend its contents to `04_verify.history.md` (newest entry on top), followed by a
-     `---` separator on its own line, followed by any prior history contents.
-   - If `04_verify.md` doesn't exist yet (first audit), skip the rotation.
-   - If `04_verify.history.md` doesn't exist yet, create it from the rotated content
-     alone.
-
-   This gives a trail of every prior audit run at this path, so the user can compare
-   findings across iterations and see what a fix broke or regressed. Each archived entry
-   is self-identifying via its own header (`**Commit:** <SHA>`, `**Audited at:** <timestamp>`).
-   The history file grows unbounded — the user prunes it manually if it gets noisy.
-
-   When the `<path-to-00_reqs.md>` override form is used, write both files (`04_verify.md`
-   and `04_verify.history.md`) as siblings of that file instead.
+   latest run. Before overwriting, rotate the prior `04_verify.md` into
+   `04_verify.history.md` per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
+   §"Artifact rotation into `.history.md`". This gives a trail of every prior audit run at
+   this path, so the user can compare findings across iterations and see what a fix broke
+   or regressed. Each archived entry is self-identifying via its own header
+   (`**Commit:** <SHA>`, `**Audited at:** <timestamp>`). When the `<path-to-00_reqs.md>`
+   override form is used, write both files as siblings of that file instead.
 2. **Chat summary** — concise overview printed inline so the user can triage pass/fail
    without opening the file.
 
@@ -297,13 +288,11 @@ End with the final-output block (see below).
 
 ## Edge Cases
 
-- **Spec is stale**: compare the spec header's fetch/author date against the timestamp
-  returned by `last-commit-timestamp-query` (direct provider
-  resolution to the `delivery` surface, see "Direct provider resolution" above; with
-  zero matching delivery-provider rows this falls back silently to a
-  plain-directory-safe timestamp read). If that timestamp is after the
-  spec's fetch/author date, warn the user — the spec may have been updated since.
-  Continue anyway, but flag it.
+- **Spec is stale**: run the staleness check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
+  §"Report/spec staleness check", comparing `last-commit-timestamp-query` (direct
+  provider resolution to the `delivery` surface, see "Direct provider resolution" above)
+  against the spec header's fetch/author date. If the branch has moved since, warn the
+  user — the spec may have been updated since — and continue anyway, but flag it.
 - **Requirements reference files that no longer exist**: the file may have moved or been
   renamed. `Glob` for the basename before giving up. If truly missing, mark the
   dependent requirements UNVERIFIABLE and say why.
