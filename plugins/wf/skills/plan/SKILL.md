@@ -1,7 +1,7 @@
 ---
 name: plan
 description: Builds a checkbox-driven implementation plan (02_plan.md) with 3–7 independently verifiable steps, derived from the task's spec or requirements and grounded in codebase exploration. Use after /wf:spec to translate the spec into executable steps before implementing.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:plan — Checkbox-driven implementation plan from a spec

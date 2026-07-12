@@ -1,7 +1,7 @@
 ---
 name: qa-host
 description: Scaffolds a routed Angular test-host page for a component that lacks one — creates a `<kebab>-test/` host folder under the stack's configured web root with a real-DI component + status-panel template, plus the three standard edits to the stack's routing module (import, child route with the configured route guards, static-components array). Every project-specific token — web/test-host paths, routing-module class, route prefix, sandbox host, and route guards — comes from the angular capability profile. The `augment` mode retrofits type-driven input controls and output observation onto an existing host. The `api-probe`/`api-revert` modes are the backend analog — they temporarily wire a service/repository method to the most appropriate controller (an ephemeral, sentinel-marked endpoint reverted before commit) so a backend QA scenario can exercise it over HTTP, or resolve the route when the endpoint already exists. Idempotent — re-invoking on an existing host returns its route URL. Use when /wf:qa-auto or /wf:qa-followup needs a runnable URL or endpoint (or a missing control) for a component or service still in development.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf-angular:qa-host — Routed Angular test-host scaffolder
