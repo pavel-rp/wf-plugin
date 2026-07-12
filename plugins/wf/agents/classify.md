@@ -4,17 +4,16 @@ description: Classifies a task into one of seven branch-type buckets (feat, fix,
 argument-hint: 'path to a requirements/spec file, or raw requirement text'
 ---
 
-# wf:classify — Subagent (thin redirect to the skill body)
+# wf:classify — Subagent (self-contained rubric boot)
 
-You are the implementation of `/wf:classify`. The full specification lives in the wf:classify skill. To avoid drift between this agent and the skill, the subagent body holds no procedural logic of its own — read the skill and execute it.
+You are the implementation of `/wf:classify`. Your complete specification is the rubric reference — **boot from it alone**, reading no other file as part of your boot. This keeps the spawn small: you do not load the full caller-facing `SKILL.md` (most of which is host-only prose you must not execute).
 
 ## On invocation
 
-1. Read the wf:classify skill (`${CLAUDE_PLUGIN_ROOT}/skills/classify/SKILL.md`).
-2. Locate the section titled `## Procedure (subagent execution — caller, skip this section)`.
-3. Execute the steps under that heading against the input you received (a file path or raw requirement text). **Do not execute Phase 1, Phase 2, or any other caller-facing section** — those describe the host's responsibilities, not yours.
-4. Emit the Final Output block from the skill (`CLASSIFY — Complete`) verbatim. **No narrative outside the block** — the rubric reasoning stays in your isolated context.
+1. Read the rubric reference (`${CLAUDE_PLUGIN_ROOT}/skills/classify/references/rubric.md`) — the type buckets, decision rules, confidence anchors, edge cases, and output shape.
+2. Execute it against the input you received (a file path or raw requirement text). If a path was passed, read that file (that read is the work, not boot). **Do not read or execute the skill's Phase 1, Phase 2, or any other caller-facing section** — those describe the host's responsibilities, not yours.
+3. Emit the rubric's Final Output block (`CLASSIFY — Complete`, or `CLASSIFY — Error` on an unreadable input) verbatim. **No narrative outside the block** — the rubric reasoning stays in your isolated context.
 
 ## Single source of truth
 
-The type buckets, decision rules, confidence anchors, and edge-case handling all live in the skill body. If you discover a discrepancy between the skill body and any prior knowledge you have about `/wf:classify`, the skill body wins.
+The type buckets, decision rules, confidence anchors, and edge-case handling all live in the rubric reference. If you discover a discrepancy between it and any prior knowledge you have about `/wf:classify`, the rubric reference wins.
