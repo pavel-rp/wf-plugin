@@ -74,7 +74,7 @@ As a `both` capability, ado ships its own skill natively (install the plugin →
 
 ```
 skills:
-  - plugins/wf-ado/skills/init/   # /wf-ado:init — self-registering onboarding + ADO interview (mirrors WF-122's /wf-git:init)
+  - plugins/wf-ado/skills/init/   # /wf-ado:init — self-registering onboarding + ADO interview (follows the shared spine in plugins/wf/skills/_contracts/pack-onboarding.ops.md)
 ```
 
 ## Profile seed template
