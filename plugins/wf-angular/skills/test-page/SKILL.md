@@ -41,9 +41,9 @@ Every concrete identifier below is rendered from a slot; substitute the resolved
 When scaffolding tests, you derive cases from the **spec**, not from the
 implementation. Your inputs, in order of preference:
 
-1. `_local/ADO-<id>/00_reqs.md` — the tracker-authored requirements (source
+1. `_local/{task-id}/00_reqs.md` — the tracker-authored requirements (source
    of truth).
-2. `_local/ADO-<id>/01_spec.md` — the LLM-authored spec, only if the
+2. `_local/{task-id}/01_spec.md` — the LLM-authored spec, only if the
    requirements are thin. Prefer `00_reqs.md` when both exist.
 3. The source the target was derived from, if the spec
    references it. Read it the same way — as a behavioral contract, not
@@ -156,7 +156,7 @@ Not fit:
 
 ## Branch-based id inference
 
-When the empty-argument mode infers the ADO ID from the current branch, reach the branch name through the delivery contract's `current-branch-query`, never a direct `git` call — so the skill still degrades cleanly in git-free bare-core mode. Resolve the surface by the canonical resolve-once procedure in `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution": one `## Capabilities` read from `_local/config.md` (the default-absent `registryPath` value), then one manifest+fragment read for the row scoped to the `delivery` surface (a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory case — no error, no capability term surfaces — yielding no branch token, at which point the mode asks for an explicit target.
+When the empty-argument mode infers the `{task-id}` from the current branch, reach the branch name through the delivery contract's `current-branch-query`, never a direct `git` call — so the skill still degrades cleanly in git-free bare-core mode. Resolve the surface by the canonical resolve-once procedure in `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution": one `## Capabilities` read from `_local/config.md` (the default-absent `registryPath` value), then one manifest+fragment read for the row scoped to the `delivery` surface (a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory case — no error, no capability term surfaces — yielding no branch token, at which point the mode asks for an explicit target.
 
 ---
 
@@ -170,10 +170,10 @@ Default mode. When `/wf-angular:test-page` is invoked with no arguments, pick a 
 
 Steps:
 
-1. **Resolve the ADO ID** from the current branch: reach the branch name via the delivery contract's `current-branch-query` (see "Branch-based id inference" below; never call `git` directly for it) and extract the first 3+-digit run. If no branch token can be resolved (extraction fails, e.g. on `main`, or no delivery provider is registered in git-free bare-core mode), stop: "Can't infer an ADO ID from the current branch. Pass an explicit target: `/wf-angular:test-page new <ado-id> <src-path>`."
+1. **Resolve the `{task-id}`** from the current branch: reach the branch name via the delivery contract's `current-branch-query` (see "Branch-based id inference" below; never call `git` directly for it) and extract the first 3+-digit run. If no branch token can be resolved (extraction fails, e.g. on `main`, or no delivery provider is registered in git-free bare-core mode), stop: "Can't infer a task id from the current branch. Pass an explicit target: `/wf-angular:test-page new <task-id> <src-path>`."
 
 2. **Find candidate targets.** In order of preference:
-   - Read `_local/ADO-<id>/02_plan.md` if present — extract paths from the `Relevant Files` section (Must change + May change).
+   - Read `_local/{task-id}/02_plan.md` if present — extract paths from the `Relevant Files` section (Must change + May change).
    - Otherwise, take the union of three git views (users often want to scaffold before committing; committed-only misses that window):
      - `git diff --name-only main...HEAD` — committed on this branch.
      - `git diff --name-only HEAD` — uncommitted, tracked.
@@ -185,7 +185,7 @@ Steps:
    - Drop targets that already have a sibling `<suite-name>.page-test.ts` under `_page-tests/` (already scaffolded). Re-scaffolding isn't supported here — use `clean` then `new` explicitly.
 
 3. **Pick or ask:**
-   - **0 eligible, 0 changed `.ts` files at all** → stop: "No Angular targets in this branch's changes. Use `/wf-node-ts:test-node` for pure helpers, or pass a target explicitly: `/wf-angular:test-page new <ado-id> <src-path>`."
+   - **0 eligible, 0 changed `.ts` files at all** → stop: "No Angular targets in this branch's changes. Use `/wf-node-ts:test-node` for pure helpers, or pass a target explicitly: `/wf-angular:test-page new <task-id> <src-path>`."
    - **0 eligible, but changed `.ts` files exist** → diagnostic mode. List each changed `.ts` file with a one-line exclusion reason (`pure helper → /wf-node-ts:test-node`, `already has a page-test`, `unrecognized suffix (<name>.ts)`, etc.) and ask: `None of these match the eligible-suffix list. Proceed with a wiring-test scaffold on <best-guess>, or pick another? (yes / <filename> / skip)`. The user's reply decides whether to bypass the filter for one file. Do not silently bypass — and do not try to guess when the file has no Angular imports at all (`grep -l '@angular' <file>` → empty) — tell the user it looks like node-territory in that case.
    - **1 candidate** → scaffold for it; no prompt needed. Archetype falls out of the suffix and the spec (see the `new` flow below).
    - **2+ candidates** → list them annotated with their archetype guess (`behavioral` / `wiring`) and ask the user which to scaffold. Offer "all" as an explicit option.
@@ -194,11 +194,13 @@ Steps:
 
 5. **Report** the scaffolded suite(s) and the run instructions: the user opens `/{route-prefix}/{sandbox-host-folder}` in the running dev server, copies the `==== PAGE-TEST RUN ...` block from devtools console, and pastes it back for verdict.
 
-### `new <ado-id> <src-path> [suite-name]`  → scaffold + inject
+### `new <task-id> <src-path> [suite-name]`  → scaffold + inject
 
-- `<ado-id>`: ticket folder, e.g. `6757` or `ADO-6757`. Normalize to
-  `ADO-<digits>`. Verify `_local/<ADO-id>/` exists; if not, ask the user
-  before creating it.
+- `<task-id>`: the task folder name, matching the active tracker's id shape
+  (e.g. `WF-205`, `ADO-6757`, or the bare-core `T001`). Use it verbatim — do
+  **not** re-prefix or normalize it; this is the same `{task-id}` core
+  `/wf:qa-gen` reads the task artifacts under. Verify `_local/{task-id}/`
+  exists; if not, ask the user before creating it.
 - `<src-path>`: path to the target TS module, relative to repo root or
   absolute. Example: `{web-root}/state/app-shared-state.service.ts`.
 - `[suite-name]`: optional. If omitted, derive from the src filename
@@ -206,7 +208,7 @@ Steps:
   `app-shared-state.service.ts` → `app-shared-state`.
 
 Steps:
-1. **Read the spec first.** Open `_local/<ADO-id>/00_reqs.md` (fall back
+1. **Read the spec first.** Open `_local/{task-id}/00_reqs.md` (fall back
    to `01_spec.md` only if missing). Extract the requirements that apply
    to this target. **Pick the archetype** (see "Test archetypes" above)
    from the target suffix and spec wording:
@@ -268,7 +270,7 @@ Steps:
      from devtools console and paste it back here."
 
 **After typecheck passes** (and before the user runs the suite in the
-browser), invoke `/wf:index <ado-id> page-tests "<suite-name>.page-test.ts
+browser), invoke `/wf:index {task-id} page-tests "<suite-name>.page-test.ts
 · <n> cases · scaffolded"` to record the scaffold in the per-task index.
 Substitute the suite name and the test-case count. `page-tests` is a
 string slot — the file lives in the source tree (not under `_local/`),
@@ -288,14 +290,14 @@ only — the index is not updated again.
    matters.
 5. Report the file as restored.
 
-### `backend-smoke <ado-id> [suite-name]`  → Angular service method + page-test for a .NET endpoint
+### `backend-smoke <task-id> [suite-name]`  → Angular service method + page-test for a .NET endpoint
 
 Smoke-test a newly added .NET controller endpoint by adding a thin Angular service method and wiring it into the harness. Full procedure, argument handling, and runtime requirements in [references/backend-smoke.md](references/backend-smoke.md).
 
 ### anything else → freeform
 
 If the user typed something like "page-test the interceptor", interpret
-it: locate the target, find the most relevant ADO folder (or ask), and
+it: locate the target, find the most relevant task folder (or ask), and
 follow the `new` flow.
 
 ---

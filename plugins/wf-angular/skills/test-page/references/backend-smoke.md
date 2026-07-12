@@ -6,20 +6,20 @@ Smoke-test a newly added .NET controller endpoint by adding a thin Angular servi
 
 Some tasks are pure backend — a new controller endpoint, a ported repository method, etc. There's no Angular target to test yet, but the endpoint can be smoke-tested from the browser by adding a thin service method to the **closest existing Angular service** and wiring it into the page-test harness.
 
-Invoke with `/wf-angular:test-page backend-smoke <ado-id> [suite-name]`.
+Invoke with `/wf-angular:test-page backend-smoke <task-id> [suite-name]`.
 
 ## Arguments
 
-- `<ado-id>`: same normalization as the `new` subcommand.
+- `<task-id>`: same handling as the `new` subcommand — the task folder name, used verbatim (no re-prefixing/normalization).
 - `[suite-name]`: optional; derived from the controller/endpoint name if omitted (e.g., `OrdersController` → `orders-api`).
 
 ## Steps
 
-1. **Read the spec.** Open `_local/<ADO-id>/00_reqs.md` (fall back to `01_spec.md`). Identify the endpoint(s) added: route, HTTP method, query/body parameters, expected response shape.
+1. **Read the spec.** Open `_local/{task-id}/00_reqs.md` (fall back to `01_spec.md`). Identify the endpoint(s) added: route, HTTP method, query/body parameters, expected response shape.
 
 2. **Find the closest Angular service.** Convention: for `SomethingController` at route `api/something`, look for `something.service.ts` or `something-shared.service.ts` under the stack's web source root (the parent of the `angular` profile's `{web-root}`, e.g. `{web-root}/..`). If none exists, create one following the nearest sibling pattern (e.g., `OrdersService` for `OrdersController`). New services go in the same folder as their sibling and must be `providedIn: 'root'`.
 
-3. **Add the service method.** Mirror the endpoint signature. Mark the method with `//NOTE: Added for ADO-<id> endpoint smoke test` so it's clear this is forward work. The method is real production code — it will be used by the downstream Angular feature — so follow existing service patterns (use `HttpService`, `firstValueFrom`, `catchError(this.handleError)`). **The new service file is NOT git-excluded** — it's a legitimate deliverable, same as the backend endpoint itself.
+3. **Add the service method.** Mirror the endpoint signature. Mark the method with `//NOTE: Added for {task-id} endpoint smoke test` so it's clear this is forward work. The method is real production code — it will be used by the downstream Angular feature — so follow existing service patterns (use `HttpService`, `firstValueFrom`, `catchError(this.handleError)`). **The new service file is NOT git-excluded** — it's a legitimate deliverable, same as the backend endpoint itself.
 
 4. **Ensure the harness exists** — same Bootstrap as the `new` subcommand (see parent SKILL.md).
 
@@ -37,7 +37,7 @@ Invoke with `/wf-angular:test-page backend-smoke <ado-id> [suite-name]`.
 
 8. **Report** the new/modified service file, the page-test file, the component injection, and `Typecheck: PASS`. Remind the user the API backend must be running for these tests to pass.
 
-**After typecheck passes** (and before the user runs the suite), invoke `/wf:index <ado-id> page-tests "<suite-name>.page-test.ts · backend smoke · <n> cases"` to record the scaffold in the per-task index. The `backend smoke` token in the summary differentiates this from a behavioral/wiring page-test scaffold; the slot itself stays the same.
+**After typecheck passes** (and before the user runs the suite), invoke `/wf:index {task-id} page-tests "<suite-name>.page-test.ts · backend smoke · <n> cases"` to record the scaffold in the per-task index. The `backend smoke` token in the summary differentiates this from a behavioral/wiring page-test scaffold; the slot itself stays the same.
 
 ## Runtime requirements
 
