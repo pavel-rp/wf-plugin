@@ -98,59 +98,7 @@ The verdict's `Type` field is exactly one of: `feat`, `fix`, `chore`, `refactor`
 
 ## Procedure (subagent execution — caller, skip this section)
 
-This section is the subagent's body. The subagent (`agents/classify.md`) is a thin redirect that reads this section and executes it. The host LLM running `/wf:classify` directly should NOT read this section — it stops at Phase 2.
-
-### Inputs
-
-The subagent is invoked with one of:
-
-- A path to a markdown/text file — read it before classifying.
-- Raw requirement text inline — classify directly.
-
-If a path is passed but the file is missing, emit the `CLASSIFY — Error` variant of the Final Output block (see below) with `Reason: input file not found at <path>`. Do **not** emit a `CLASSIFY — Complete` block with a placeholder type — the `Type` field is contractually one of the seven buckets and downstream consumers parse it strictly.
-
-Strip any metadata block from the input (YAML frontmatter, `**Type:**`, `**Complexity:**`, `**Created:**`, etc.) so a prior classification label doesn't bias the rubric. Classify against title + description + acceptance criteria only.
-
-### Type buckets
-
-Pick exactly one:
-
-| Type | Meaning |
-| --- | --- |
-| `feat` | New functionality the system didn't have. Default when nothing else fits. |
-| `fix` | Corrects broken behavior in shipped code. |
-| `chore` | Maintenance: tooling, dependency bumps, config, non-code housekeeping. |
-| `refactor` | Internal code restructure with no behavior change. |
-| `migration` | Schema/data/platform migration: DB schema changes, data backfills, framework version bumps that require migration steps. |
-| `docs` | Documentation only — README, comments, design docs. No runtime code change. |
-| `hotfix` | Urgent production fix — explicitly tagged as production-critical or "urgent prod". Otherwise treat as `fix`. |
-
-### Decision rules — apply in order, first match wins
-
-1. **Explicit type in title.** If the title or description explicitly names a type tag (`[Refactor] …`, `Migration:`, `Hotfix:`, `Chore:`, `Docs:`), use it.
-2. **Urgent production fix** → `hotfix`. Signals: "urgent prod", "production outage", "emergency fix", "P0", "live site broken".
-3. **Schema/data/version migration** → `migration`. Signals: "migration", "migrate", "schema change", "alter table", "backfill", "upgrade framework to N", "upgrade ORM", "rename column".
-4. **Fix broken behavior** → `fix`. Signals: "fix", "bug", "broken", "error", "crash", "fails to", "wrong output", "regression".
-5. **Internal restructure, no behavior change** → `refactor`. Signals: "refactor", "restructure", "extract", "rename method", "consolidate", "no behavior change", "cleanup".
-6. **Docs only** → `docs`. Signals: "documentation", "README", "comments", "design doc", "ADR", "wiki update".
-7. **Maintenance/tooling/dependency** → `chore`. Signals: "chore", "tooling", "dependency", "bump", "upgrade packages", "CI config", ".gitignore".
-8. **Otherwise** → `feat`.
-
-**Ordering matters.** Rule 3 (migration) beats rule 4 (fix) — "migrate the broken table schema" is fundamentally a migration. Rule 2 (hotfix) beats rule 4 (fix) — urgency upgrades the bucket.
-
-### Confidence anchors
-
-Don't self-report a vibe. Use these criteria:
-
-- **high** — exactly one bucket clearly fits; no plausible second.
-- **medium** — primary bucket fits but a second is defensible (e.g., "refactor that also fixes a small bug", "migration triggered by a production hotfix"). Pick the dominant bucket; record the alternative.
-- **low** — no clear keyword anchor in any bucket; OR contradictory signals (e.g., "hotfix the docs migration"); OR input is < 1 sentence of meaningful description.
-
-When confidence is `medium` or `low`, the host may surface the alternative to the user. When `high`, the host proceeds silently.
-
-### Output
-
-Return ONLY the Final Output block (see below). No prose before or after — the rubric reasoning stays in your isolated context.
+The subagent's rubric — the type buckets, decision rules, confidence anchors, edge cases, and output shape — lives at [`references/rubric.md`](references/rubric.md). It is the single source of truth for the classification logic, read **only by the `wf:classify` subagent** on invocation (`agents/classify.md` boots from that reference alone). The host LLM running `/wf:classify` directly does NOT read it — it stops at Phase 2 and delegates. Moving the rubric out of this caller-facing body is what keeps a subagent spawn small (it no longer eagerly loads this whole file).
 
 ---
 
