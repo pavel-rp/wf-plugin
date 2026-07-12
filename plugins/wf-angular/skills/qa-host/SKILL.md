@@ -88,163 +88,9 @@ Steps:
 
 3. **Idempotence.** If the folder exists with both files, run the `route` flow instead and exit (returns the existing URL). Don't overwrite a hand-edited host.
 
-4. **Generate host TS.** Shape:
+4. **Generate host TS, HTML, and SASS.** The three scaffold archetypes — the component TS (inputs seeded from DI, outputs counted), the status-panel HTML (`data-qa` handles + mandatory 3-scenario panel), and the baseline SASS — live at [`references/scaffold-templates.md`](references/scaffold-templates.md). They are read only on this `new` write path, so they stay out of the boot body. Read that file, then emit each archetype with the resolved names (`<kebab>`, `<Pascal>`, `<Service>`, per-`@Input`/`@Output` slots) substituted: `<kebab>-test.component.ts`, `.component.html`, and `.component.sass` under the host folder. The reference carries the sensible-default rule, the `data-qa` handle convention, and the baseline visual pattern.
 
-   ```ts
-   import { Component, OnInit } from '@angular/core';
-   // Import services the target's constructor names — used to seed Inputs.
-   import { <Service> } from '<path>';
-
-   @Component({
-     selector: 'app-<kebab>-test',
-     templateUrl: './<kebab>-test.component.html',
-     styleUrls: ['./<kebab>-test.component.sass'],
-     standalone: false
-   })
-   export class <Pascal>TestComponent implements OnInit {
-     // Inputs to bind to <app-<kebab>>
-     <inputName>: <inputType> | null = <sensible-default>;
-
-     // Output counters — observable from the DOM via the status panel
-     <outputName>Count = 0;
-     testLogs: string[] = [];
-
-     constructor(private <service>: <Service>) {}
-
-     ngOnInit(): void {
-       // Seed Input values from services where applicable
-       this.<inputName> = this.<service>.get<X>() ?? null;
-     }
-
-     on<OutputName>(<event>: <eventType>): void {
-       this.<outputName>Count += 1;
-       this.addLog('<outputName> emitted');
-       // Re-read state if relevant so the panel reflects updates
-     }
-
-     clearLogs(): void {
-       this.testLogs = [];
-     }
-
-     resetData(): void {
-       // Re-seed inputs and counters for deterministic re-runs
-       this.clearLogs();
-     }
-
-     private addLog(message: string): void {
-       const timestamp = new Date().toLocaleTimeString();
-       this.testLogs.unshift(`[${timestamp}] ${message}`);
-       if (this.testLogs.length > 20) {
-         this.testLogs.pop();
-       }
-     }
-   }
-   ```
-
-   Sensible defaults: `null` for nullable, `false`/`0`/`''`/`[]` for primitives. Don't invent objects — leave as `null` and let the test override.
-
-5. **Generate host HTML.** Shape:
-
-   ```html
-   <div class="container-fluid test-host">
-     <h2><Pascal> Test Host</h2>
-
-     <div class="row">
-       <div class="col-md-8">
-         <div class="card">
-           <div class="card-header bg-info text-white">
-             <h5 class="mb-0">Component Under Test</h5>
-           </div>
-           <div class="card-body">
-             <app-<kebab>
-               [inputName]="inputName"
-               (outputName)="onOutputName($event)">
-             </app-<kebab>>
-           </div>
-         </div>
-
-         <div class="card mt-3">
-           <div class="card-header bg-secondary text-white">
-             <h5 class="mb-0">Test Controls</h5>
-           </div>
-           <div class="card-body">
-             <button class="btn btn-primary" (click)="resetData()">Reset Data</button>
-             <button class="btn btn-warning ms-2" (click)="clearLogs()">Clear Logs</button>
-           </div>
-         </div>
-       </div>
-
-       <div class="col-md-4">
-         <div class="card">
-           <div class="card-header bg-success text-white">
-             <h5 class="mb-0">Event Log</h5>
-           </div>
-           <div class="card-body log-container">
-             <div *ngIf="testLogs.length === 0" class="text-muted">
-               <em>No events logged yet. Interact with the component under test.</em>
-             </div>
-             <div *ngFor="let log of testLogs" class="log-entry">{{ log }}</div>
-           </div>
-         </div>
-
-         <div class="card mt-3 qa-host-status" data-qa="status-panel">
-           <div class="card-header bg-light">
-             <h5 class="mb-0">Observed State</h5>
-           </div>
-           <div class="card-body small">
-             <dl class="mb-0">
-               <dt>Input <inputName></dt>
-               <dd data-qa="<inputName>-value">{{ <inputName> | json }}</dd>
-               <dt><outputName> fire count</dt>
-               <dd data-qa="<outputName>-count">{{ <outputName>Count }}</dd>
-             </dl>
-           </div>
-         </div>
-
-         <div class="card mt-3 qa-host-scenarios" data-qa="scenario-panel">
-           <div class="card-header bg-light">
-             <h5 class="mb-0">Test Scenarios</h5>
-           </div>
-           <div class="card-body small">
-             <p><strong>Scenario 1:</strong> <happy-path interaction for primary action> -> expected UI/event outcome.</p>
-             <p><strong>Scenario 2:</strong> <secondary interaction or reverse action> -> expected UI/event outcome.</p>
-             <p><strong>Scenario 3:</strong> <guard/edge behavior> -> expected blocked/empty/error-safe outcome.</p>
-           </div>
-         </div>
-       </div>
-     </div>
-   </div>
-   ```
-
-   `data-qa="..."` attributes give scenarios stable handles for `read_page` / `run_playwright_code` assertions.
-   The scenario panel is mandatory. Always include at least 3 concise, component-specific scenario lines.
-
-6. **Generate host SASS.** Create `./<kebab>-test.component.sass` with the standard host styling:
-
-   ```sass
-   .test-host
-     padding: 20px
-     background-color: #f8f9fa
-
-   .log-container
-     max-height: 400px
-     overflow-y: auto
-     background-color: #f5f5f5
-     font-family: monospace
-     font-size: 12px
-     border-radius: 4px
-
-   .log-entry
-     padding: 4px 0
-     border-bottom: 1px solid #eee
-
-     &:last-child
-       border-bottom: none
-   ```
-
-   Use this layout/style as the baseline visual pattern (same family as any existing `<kebab>-test` host in the tree).
-
-7. **Three edits to `{routing-module}`:**
+5. **Three edits to `{routing-module}`:**
 
    a. **Import** appended to the test-component import group:
       ```ts
@@ -267,7 +113,7 @@ Steps:
 
    Use `Edit` with exact-string matches. If any of the three is already present, leave it alone (idempotent).
 
-8. **Add navigation link in the sandbox module-test component's template** — `{test-host-root}/{sandbox-host-folder}/{sandbox-host-folder}.component.html`:
+6. **Add navigation link in the sandbox module-test component's template** — `{test-host-root}/{sandbox-host-folder}/{sandbox-host-folder}.component.html`:
 
    Append a link to the new test host in the Test Area card body. Example:
    ```html
@@ -280,9 +126,9 @@ Steps:
 
    This makes the test page discoverable from the module-test hub page. Skip this step if `{sandbox-host-folder}` is not configured (no sandbox hub in the project).
 
-9. **Typecheck.** Run `{verify-command}` (from the `angular` profile — see "Stack profile"). On exit-0, continue. On errors touching the new files or the routing module's three markers, do NOT report success — show the TSC output, identify likely cause, offer to fix or roll back (delete the new folder + reverse the routing edits). Errors only in untouched files are flagged as pre-existing.
+7. **Typecheck.** Run `{verify-command}` (from the `angular` profile — see "Stack profile"). On exit-0, continue. On errors touching the new files or the routing module's three markers, do NOT report success — show the TSC output, identify likely cause, offer to fix or roll back (delete the new folder + reverse the routing edits). Errors only in untouched files are flagged as pre-existing.
 
-10. **Report:** new folder + files, the route URL (`/{route-prefix}/<kebab>-test` relative to the app root), `Typecheck: PASS`, login+entity reminder.
+8. **Report:** new folder + files, the route URL (`/{route-prefix}/<kebab>-test` relative to the app root), `Typecheck: PASS`, login+entity reminder.
 
 After typecheck passes, invoke `/wf:index <task-id> qa-host "<kebab>-test · /{route-prefix}/<kebab>-test"` (string slot — file lives in source tree, not under `_local/`).
 
@@ -312,7 +158,7 @@ Steps:
    Add the host field (typed, seeded from the input's existing default), wrap the control in a labelled block inside the **Test Controls** card with `data-qa="<input>-control"`, and ensure `<app-<kebab>>` binds `[<input>]="<input>"`.
 6. **`--observe <output>`** — if `(<output>)` isn't already wired on `<app-<kebab>>`, add the binding `(<output>)="on<Output>($event)"`, the `on<Output>` handler (increments `<output>Count`, `addLog`s), the `<output>Count = 0` field, and a `data-qa="<output>-count"` readout in the status panel.
 7. **`--show <input>`** — ensure a `data-qa="<input>-value"` readout exists in the status panel (`{{ <input> | json }}`).
-8. **Typecheck** with `{verify-command}`. Same handling as `new` step 9: on errors touching the host files, show the TSC output and offer to revert just the augment edits — don't report success.
+8. **Typecheck** with `{verify-command}`. Same handling as `new` step 7: on errors touching the host files, show the TSC output and offer to revert just the augment edits — don't report success.
 9. **Report** what was added per target (`control` / `observe` / `show` / `already present`), the unchanged route URL, `Typecheck: PASS`.
 
 After typecheck passes, invoke `/wf:index <task-id> qa-host "<kebab>-test · augmented: <one-line summary of what was added>"`.
