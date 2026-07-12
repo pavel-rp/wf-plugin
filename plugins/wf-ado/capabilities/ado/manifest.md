@@ -1,16 +1,18 @@
 # ado capability manifest
 
-**Version:** 1.2.0 (WF-123 — initial tracker-provider capability, binding SUB-2/WF-121's
+**Version:** 1.2.1 (WF-123 — initial tracker-provider capability, binding SUB-2/WF-121's
 `tracker` contract to concrete Azure DevOps mechanics; WF-213 — split the tracker fragment
 into a bounded runtime-ops half (`fragments/tracker.ops.md`) + a reference half
 (`fragments/tracker.md`), repoint the dispatch, and refresh the contract pointers to the
 reshaped ops docs; WF-158 — bind the tracker surface's three new read-only query
-operations (`list_by_status`, `list_milestones`, `list_cycles`) in the fragment)
+operations (`list_by_status`, `list_milestones`, `list_cycles`) in the fragment;
+WF-229 — add the symmetric `linear`-overlap warning this manifest lacked, mirroring the
+one the linear manifest already carries)
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** ado (registered in the downstream `_local/config.md` `## Capabilities` table)
 **Kind:** both (ships its own `/wf-ado:init` skill; also attaches one phase fragment via the registry)
-**Model:** claude-sonnet-5
+**Model:** claude-opus-4-8
 
 ---
 
@@ -105,3 +107,6 @@ by hand:
 `tracker` surface dispatches work-item operations to this capability's fragment; with
 no `tracker` provider registered, core falls back silently to its own local `T<NNN>`
 id scheme, per `capability-registry.ops.md` §"The tracker provider surface".
+
+**Do not register `ado` and `linear` together** — both claim the `tracker` surface,
+and partitioned ownership must not overlap (registry validation fails, naming both).
