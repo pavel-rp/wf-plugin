@@ -88,7 +88,7 @@ Id inference and the Phase 2 branch gate both reach `current-branch-query` by th
 
 ## Phase 1: Resolve task and plan
 
-1. **Resolve `<id>`.** If passed explicitly, use it verbatim as `{task-id}` — opaque, whatever shape the active tracker capability produces, or the local `T<NNN>` scheme. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run — the branch-inferred token. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the branch-inferred token (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass it explicitly: `/wf:qa-auto <id>`." More than one match — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass it explicitly: `/wf:qa-auto <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-auto <id>`."
+1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — direct provider resolution to the `delivery` surface, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-auto` in its stop messages.
 2. Locate `06_qa.md`. Stop if missing.
 3. Parse it: scope, suites, scenarios (TC-NNN with priority, validates, preconditions, steps, teardown). Filter by `--suite` if passed.
 4. **Resume / targeted re-run handling.**
@@ -103,7 +103,7 @@ Id inference and the Phase 2 branch gate both reach `current-branch-query` by th
 
 Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** for the branch-name match below; it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
 
-Resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above). With zero matching delivery-provider rows, this falls back silently to the plain-directory case (no branch to check against, so the gate below is skipped). If the resolved branch doesn't match `*/{numeric-id}-*` and subagent invocation is available, invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. If subagent invocation is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch — auto runs commonly happen on the task branch anyway)." and continue.
+Gate on the task branch per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Branch gate (bare-core aware)", using `{numeric-id}` for the branch-name match. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch — auto runs commonly happen on the task branch anyway)." and continue.
 
 ---
 
@@ -147,7 +147,7 @@ After the run completes (or stops at batch / abort):
 - Traceability matrix rolled up from per-scenario `Validates: SC-N` references and verdicts.
 - Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table (from the engine's verdict blocks).
 - Notes & Observations — any anomalies the engine surfaced (entity substitutions, retries, teardown failures).
-- Defects table — one row per FAIL, severity from priority (P0→High, P1→Medium, P2→Low), description from observed value.
+- Defects table — one row per FAIL, severity resolved per the rubric in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md) (§Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from observed value.
 
 If subagent invocation is available, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`.
 

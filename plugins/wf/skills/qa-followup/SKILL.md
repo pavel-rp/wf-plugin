@@ -81,7 +81,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 
 ## Phase 1: Resolve and load
 
-1. **Resolve `<id>`.** If passed explicitly, use it verbatim as `{task-id}` — opaque, whatever shape the active tracker capability produces, or the local `T<NNN>` scheme. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run — the branch-inferred token. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the branch-inferred token (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass it explicitly: `/wf:qa-followup <id>`." More than one match — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass it explicitly: `/wf:qa-followup <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-followup <id>`."
+1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — direct provider resolution to the `delivery` surface, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-followup` in its stop messages.
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. Stop if `07_qa-report.md` is missing (message above).
 3. **Parse `07_qa-report.md`** per [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md): the header (`Run date`, `Mode`, `Status`, `App`), the traceability matrix (`SC-N → scenarios → result`), each per-suite scenario block, and the Defects table. If the report has no `## Summary` and no per-suite results, stop: "Report is malformed — re-run `/wf:qa-auto`."
 4. **Filter by `--suite`** if passed.
@@ -89,7 +89,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 
 ### Staleness note
 
-`07_qa-report.md` carries no commit anchor, so this skill does a soft check: invoke `last-commit-timestamp-query` via **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above) and compare it against the report's own `Run date`. Interpret both values as calendar moments and compare chronologically — never a string compare. If the last-commit timestamp is after the report's `Run date`, print a one-line warning that some defects may already be addressed and continue — Phase 6 confirms each defect against current source before planning a fix, so a stale symptom is caught at diagnosis time. With zero matching delivery-provider rows, this falls back silently to a plain-directory-safe timestamp read (the contract's fallback) — no VCS invocation of any kind.
+`07_qa-report.md` carries no commit anchor, so this skill does a soft check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Report/spec staleness check": compare `last-commit-timestamp-query` (direct provider resolution to the `delivery` surface, see "Direct provider resolution" above) against the report's own `Run date`. If the branch has moved since, print a one-line warning that some defects may already be addressed and continue — Phase 6 confirms each defect against current source before planning a fix, so a stale symptom is caught at diagnosis time.
 
 ---
 
@@ -97,9 +97,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 
 Fixes belong on the branch the report was produced against. Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** for the branch-name match below; it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
 
-1. **Resolve delivery-surface ownership first** (the scope-equality filter from "Direct provider resolution" above, applied before any branch read). **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and continue to Phase 3. **One matching row** — resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above), then apply steps 2–3.
-2. **If the branch name contains `/{numeric-id}-`** — proceed.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. (Do NOT call `/wf:branch` — that loads its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the reason.
+Gate on the task branch per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Branch gate (bare-core aware)", using `{numeric-id}` for the branch-name match. On the bare-core skip, report it and continue to Phase 3.
 
 ---
 
@@ -175,7 +173,7 @@ For each remaining DEFECT, in report order:
 3. **Decide plannable vs escalate.** Plannable when the root cause is identifiable AND the fix is bounded (a few files, no design call). Otherwise ESCALATE.
 4. **Write a checkbox step** per plannable defect into `08_qa-fix.md` using the template below, each traced to `TC-NNN` + `SC-N` + observed symptom + root-cause hypothesis.
 
-Write `08_qa-fix.md` now (rotate any existing file into `08_qa-fix.history.md` first — same pattern as `/wf:verify-fix`: prepend the old contents above a `---` separator, newest first). The file holds the unblock-pass table, the remediation plan, the escalations, and an empty fix log that Phase 8 fills.
+Write `08_qa-fix.md` now (rotate any existing file into `08_qa-fix.history.md` first, per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Artifact rotation into `.history.md`"). The file holds the unblock-pass table, the remediation plan, the escalations, and an empty fix log that Phase 8 fills.
 
 After writing, invoke `/wf:index <id> qa-fix "<u> unblocked · <d> planned · <e> escalated"`.
 

@@ -84,13 +84,13 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by th
 
 ## Phase 1: Resolve and gate
 
-1. **Resolve `<id>`.** If passed explicitly, use it verbatim as `{task-id}` — opaque, whatever shape the active tracker capability produces, or the local `T<NNN>` scheme. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run — the branch-inferred token. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the branch-inferred token (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass it explicitly: `/wf:qa-gen <id>`." More than one match — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass it explicitly: `/wf:qa-gen <id>`." If no numeric token can be extracted from the branch at all, stop: "No task id provided and none could be inferred from the current branch. Pass it explicitly: `/wf:qa-gen <id>`." Once `{task-id}` is resolved (either path), extract the first 3+-digit run from it — call it `{numeric-id}`; it is used **only** for the branch-gate match in step 4, never for the task folder or any operation.
+1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — direct provider resolution to the `delivery` surface, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-gen` in its stop messages. Once `{task-id}` is resolved, extract the first 3+-digit run from it — call it `{numeric-id}`; it is used **only** for the branch-gate match in step 4, never for the task folder or any operation.
 
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {task-id}` first."
 
 3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {task-id}` first to fetch requirements."
 
-4. **Branch gate.** Resolve delivery-surface ownership first — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of direct provider resolution. **Zero matching rows (bare-core mode)** — the gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and continue to step 5. **One matching row** — resolve the current branch via `current-branch-query`; if it doesn't match `/{numeric-id}-` (the token defined in step 1), invoke the **Task** tool with `subagent_type: wf:branch`, passing the resolved id **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. The subagent will create or switch to the task branch. If subagent invocation is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch)." and continue to step 5.
+4. **Branch gate.** Gate on the task branch per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Branch gate (bare-core aware)", using `{numeric-id}` (from step 1) for the branch-name match; on the bare-core skip, report it and continue to step 5. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch)." and continue to step 5.
 
 5. **Resolve scope.** Default `full`. Accept `smoke`, `happy`, `full` — anything else stops with "Unknown scope: `<value>`. Use one of: smoke, happy, full."
 
@@ -198,45 +198,30 @@ Number them in sequence after the spec scenarios (Baseline health is the last su
 After generating the generic spec-traced suites and the Baseline-health suite, fire the
 **`qa-generation`** phase and aggregate any **`scenario`** contributions the registered
 capabilities attach to it. This phase runs *after* Baseline health, but the suites it
-produces are **placed before** Baseline health — which always stays the last suite (see
-step 5 below). Execute the capability invocation runtime
-(`plugins/wf/skills/_contracts/invocation-runtime.contract.md`, which executes the port
-`plugins/wf/skills/_contracts/capability-registry.contract.md`), referencing it by
-**phase name / contribution-kind name** — never by heading:
+produces are **placed before** Baseline health — which always stays the last suite.
 
-1. **Read `_local/config.md`** and locate its `## Capabilities` registry. Iterate the
-   rows **in registry order** (general → specific).
-2. **Per row, read the manifest** at `<path>/manifest.md` (the path is fixed by the
-   contract; do not glob or guess). Parse its fragments table by the fixed columns
-   (`phase | contribution-kind | dispatch | scope`).
-3. **Collect** only the fragment rows whose `phase` is `qa-generation` and whose
-   `contribution-kind` is `scenario`. All other rows are ignored for this firing.
-4. **Dispatch each collected fragment** on its `dispatch` kind:
-   - `inline: <rel-path>` → read `<path>/<rel-path>` (forward-slash, **relative to the
-     capability's registry path**) and **follow it in-context**, producing scenarios in
-     the generic `scenario` shape (the same `TC-NNN` / `Validates:` contract as Phase 3,
-     numbered in the global sequence).
-   - `subagent: <agent>` → invoke the **Task** tool with `subagent_type: <agent>`,
-     passing the work under review **and the generic `scenario` shape**; only its final
-     block returns. Aggregate the scenarios it returns in that shape. Core never parses
-     a capability-specific output format to extract scenarios — a capability that has not
-     yet emitted the generic `scenario` shape simply yields nothing to aggregate.
-5. **Aggregate provenance-tagged.** `scenario` aggregates **with provenance**: render
-   every contributor's scenarios in their own suite, each tagged with its **source
-   capability** (the registry row's name). Because attribution is explicit, registry
-   order is **cosmetic** for scenarios. Place the aggregated capability suites **after**
-   the spec suites and **before** Baseline health, numbered in the global `TC-NNN`
-   sequence.
+Follow the generalised phase-firing procedure verbatim — `invocation-runtime.ops.md`
+§"The moving parts" (registry iteration → per-capability manifest read → per-phase
+fragment collection → per-fragment dispatch → aggregation), referencing it by
+**phase name / contribution-kind name**, never by heading — with these `qa-generation`
+parameters:
 
-**No-op (the only permitted branch is "zero `qa-generation` `scenario` fragments" vs "one
-or more"):** if the registry is empty or absent, a manifest is missing, no fragment row
-matches the `qa-generation` phase under the `scenario` kind, a dispatched fragment returns
-an empty list, or a `dispatch` is malformed (neither `inline:` nor `subagent:`), that
-contributor — or the whole phase — produces **nothing**. The generic plan then stands
-alone: no capability-scenarios section, no capability/stack/domain term surfaced, no broken
-subagent reference, no STOP. **Never** name a concrete capability, count the registry, or
-carry a per-capability code path. An aggregated scenario rolls up into the plan and the
-coverage matrix on the same footing as a spec-traced scenario, carrying its provenance tag.
+- **Firing phase:** `qa-generation`. **Contribution kind collected:** `scenario`.
+- **Generic shape produced:** each contributed scenario in the same `TC-NNN` /
+  `Validates:` contract as Phase 3, numbered in the **global** sequence.
+- **Aggregation:** `scenario` aggregates **provenance-tagged** — render every
+  contributor's scenarios in their own suite, each tagged with its **source capability**
+  (the registry row's name); registry order is cosmetic. Place the aggregated capability
+  suites **after** the spec suites and **before** Baseline health.
+
+**No-op** is the ops doc's generalised `<none>` path (§"No-op path"): if the registry is
+empty or absent, a manifest is missing, no fragment matches `qa-generation` under the
+`scenario` kind, a dispatched fragment returns an empty list, or a `dispatch` is
+malformed, that contributor — or the whole phase — produces **nothing** and the generic
+plan stands alone (no capability-scenarios section, no capability/stack/domain term
+surfaced, no broken subagent reference, no STOP). An aggregated scenario rolls up into the
+plan and the coverage matrix on the same footing as a spec-traced scenario, carrying its
+provenance tag.
 
 Write to `{task-root}/{task-id}/06_qa.md`. Overwrite if it exists — the task folder is excluded from version control, so there's no history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
 

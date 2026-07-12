@@ -40,9 +40,12 @@ Parse the first token.
 
 ### empty → infer from current branch
 
-1. Resolve the current branch via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below). Extract the first 3+-digit run from the resolved branch name — the branch-inferred token. If no numeric token can be extracted from the branch at all, stop: "No id provided and none could be inferred from the current branch. Pass the id explicitly: `/wf:verify-fix <id>`."
-2. **Resolve that token against `{task-root}`**: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the branch-inferred token (mirroring `spec/SKILL.md`'s Validation-section resolution logic). Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "No audit report found. The branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:verify-fix <id>`." More than one match — stop: "No audit report found. The branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:verify-fix <id>`."
-3. Confirm `{task-root}/{task-id}/04_verify.md` exists. If not, stop: "No audit report found. Run `/wf:verify-spec {task-id}` first."
+1. Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
+   §"Id inference from the current branch" — inferred from the branch via
+   `current-branch-query` (direct provider resolution to the `delivery` surface, see
+   "Direct provider resolution" below) and resolved against `{task-root}`, naming
+   `/wf:verify-fix` in its stop messages.
+2. Confirm `{task-root}/{task-id}/04_verify.md` exists. If not, stop: "No audit report found. Run `/wf:verify-spec {task-id}` first."
 
 ### `<id>` (opaque — whatever shape the active tracker capability produces, or the local `T<NNN>` scheme)
 
@@ -85,9 +88,7 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 
 Before editing any code, verify the current branch matches the audit's target. Extract the first 3+-digit run from `{task-id}` — call it `{numeric-id}`; it is used **only** for the branch-name match below, never for the task folder or any operation.
 
-1. **Resolve delivery-surface ownership first** — the scope-equality filter (`contribution-kind = provider` **and** `scope = delivery`) of direct provider resolution (see "Direct provider resolution" above), applied before any branch read. **Zero matching rows (bare-core mode)** — the branch gate is skipped entirely: no branch is resolved, `wf:branch` is not invoked, no error and no hard stop. Report "Branch gate skipped — no delivery provider registered (bare-core mode)." and proceed (the gate is satisfied). **One matching row** — resolve the current branch via `current-branch-query`, then apply steps 2–3.
-2. **If the branch name contains `/{numeric-id}-`** (the token defined above, e.g. `feature/6756-...`) — proceed.
-3. **Otherwise** — invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id `{task-id}` generically in prose **and the forwarded `delivery` resolution record** resolved above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving. (Do NOT call `/wf:branch` — that would load its SKILL.md into this skill's context. The subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop and surface the subagent's reason.
+Gate on the task branch per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Branch gate (bare-core aware)", using `{numeric-id}` (extracted above) for the branch-name match. On the bare-core skip, report it and proceed (the gate is satisfied).
 
 Rationale: the audit's evidence lines (`file:line`) are only meaningful on the branch that produced them. Fixing on `main` or an unrelated branch edits the wrong state.
 
@@ -108,13 +109,11 @@ If the report is malformed (no `## Requirements` heading, no verdict lines), sto
 
 ### Staleness check
 
-After parsing the header, invoke `last-commit-timestamp-query` via **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" above) and compare it against the report's own `**Audited at:**` field. Interpret both values as calendar moments and compare chronologically — never a string compare.
+After parsing the header, run the staleness check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Report/spec staleness check", comparing `last-commit-timestamp-query` (direct provider resolution to the `delivery` surface, see "Direct provider resolution" above) against the report's own `**Audited at:**` field. If the branch has moved since, print a prominent warning at the top of Phase 4's plan:
 
-- **Last-commit timestamp at or before `Audited at`** — proceed normally.
-- **Last-commit timestamp after `Audited at`** — the branch has moved since the audit ran. Every cited `file:line` may now be wrong. Print a prominent warning at the top of Phase 4's plan:
-  `⚠ Audit ran at <audited-at>; the branch's last commit is now <last-commit-at>. Cited file:line citations may be stale — consider re-running `/wf:verify-spec` first.`
-  Continue anyway. Phase 5 step 2 (confirm `Found` state on disk) catches per-finding drift; the user can abort after seeing the plan if they'd rather re-audit.
-- **Audited at field absent, or either value can't be confidently parsed as a calendar moment** — older report format, or an unparseable timestamp. Skip the check silently — this is a soft/advisory check, not a hard gate.
+`⚠ Audit ran at <audited-at>; the branch's last commit is now <last-commit-at>. Cited file:line citations may be stale — consider re-running `/wf:verify-spec` first.`
+
+Continue anyway. Phase 5 step 2 (confirm `Found` state on disk) catches per-finding drift; the user can abort after seeing the plan if they'd rather re-audit.
 
 The dirty-tree flag in the header is informational; uncommitted changes since the audit are normal mid-fix and don't trigger a warning on their own.
 
@@ -230,13 +229,7 @@ After printing all questions, **stop**. Do not proceed to further edits in the s
 
 ## Phase 7: Write the Fix Log
 
-Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate before overwriting — same pattern as `/wf:verify-spec`:
-
-- Read the current `05_verify-fix.md` if it exists.
-- Prepend its contents to `05_verify-fix.history.md` (newest entry on top), followed by a `---` separator on its own line, followed by any prior history contents.
-- Then write the new `05_verify-fix.md`.
-
-This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations — the history file grows unbounded; prune manually if noisy.
+Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
 
 The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at [`references/verify-fix-template.md`](references/verify-fix-template.md). It is read only on this write path (Phase 7), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
 
