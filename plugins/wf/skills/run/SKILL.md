@@ -105,7 +105,7 @@ Read `index.md` if present; otherwise scan the task folder. Determine the furthe
 | triage | `triage.md` exists; read its `**Verdict:** <lite \| full \| split \| blocked \| clarify>` field (the `TRIAGE —` token is chat-only, not written to the artifact) |
 | spec | `01_spec.md` exists |
 | plan | `02_plan.md` exists |
-| implement | `02_plan.md` checkboxes all ticked **and** a `## Resolution Summary` section is present — these are the durable signal (wf:implement persists no status line to the plan; its `Status: READY FOR REVIEW` completion report is chat-only, and there is no `IMPLEMENT —` token) |
+| implement | `02_plan.md` checkboxes all ticked **and** a `## Resolution Summary` section is present — these are the durable signal (wf:implement persists no status line to the plan; the `IMPLEMENT —` token and its `Status: READY FOR REVIEW` completion report are chat-only and don't survive a `/clear`) |
 | verify-spec | `04_verify.md` exists; read its `**Verdict:** PASS \| FAIL \| PARTIAL` line (detect from the artifact, not the `VERIFY —` chat token wf:verify-spec prints — chat tokens don't survive a `/clear`) |
 | verify-fix | `05_verify-fix.md` exists; read its `## Auto-fixed (<n>)` / `## Awaiting user (<m>)` headers and the `[FIXED]`/`[FAILED]`/`[SKIPPED]` entries (the `VERIFY-FIX —` token is chat-only) |
 | qa-gen | `06_qa.md` exists |
