@@ -176,9 +176,14 @@ Verdicts:
 
 - **PASS** — evidence matches the requirement exactly. Cite it.
 - **FAIL** — evidence contradicts, or the required artifact is missing. State what the
-  spec asked for and what you found.
+  spec asked for and what you found. When the fix is a concrete, bounded edit at the
+  cited location (a literal value, a missing enum/interface member, a marker comment to
+  insert or replace, a forbidden line to comment out) — not a design call — record it as
+  a one-line **Remedy**. Omit `Remedy` when the fix requires judgment, spans multiple
+  files, or has no single obvious edit.
 - **PARTIAL** — requirement has N sub-claims and M < N are satisfied. List which
-  sub-claims fail.
+  sub-claims fail. Same `Remedy` rule as FAIL, applied per failing sub-claim where a
+  bounded edit exists.
 - **N/A** — requirement was explicitly scoped out by a later note or parent constraint.
   Cite the source of the exclusion.
 - **UNVERIFIABLE** — requirement cannot be checked from static code alone (e.g., "works
@@ -287,6 +292,7 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
    - Expected: <what the spec says>
    - Found: <what the code actually has>
    - Location: `path/to/file:L`
+   - Remedy: <one-line bounded edit, only when one exists — omit the line entirely otherwise>
 
 ...
 
@@ -294,8 +300,11 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 
 Only present when one or more capabilities contributed `finding`s at the `verify` phase
 (omit the whole section on the no-op path). Group findings by their source capability
-(provenance tag); registry order is cosmetic.
+(provenance tag); registry order is cosmetic. Render the capability's own `remedy` (when
+its `finding` fragment carries one) as a trailing `— Remedy: <text>` clause; omit the
+clause when the fragment carries none.
 
+- **<source capability>** — [FAIL] <finding> at `path/to/file:L` — <evidence> — Remedy: <bounded edit>
 - **<source capability>** — [FAIL] <finding> at `path/to/file:L` — <evidence>
 - **<source capability>** — [PASS] <rule asserted, no divergence found>
 
