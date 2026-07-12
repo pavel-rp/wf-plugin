@@ -117,28 +117,13 @@ Must exit 0 when the project typechecks (including framework-level checks: templ
 |-----|-------|
 | **QA Baseline Ignore** | `<none>` |
 | **QA Rules** | `<none>` |
-| **API Base Path** | `/api` |
 | **API Controllers Root** | `<auto-detect>` |
-| **API Auth Token Source** | `<auto-discover>` |
 
 **QA Baseline Ignore** — optional allowlist for the **Baseline health** suite `/wf:qa-gen` adds to every plan (no console errors, no failed network requests, view renders). One pattern per line or comma-separated; each is a plain substring or `/regex/`. Console messages and request URLs/statuses matching any pattern are treated as known-benign and won't fail a baseline check — e.g. a noisy third-party widget warning, or an analytics beacon that 404s in dev. Leave as `<none>` to tolerate nothing. Consumed by `/wf:qa-gen`, `/wf:qa-auto`, and `/wf:qa-run`.
 
 **QA Rules** — optional path to the project QA-rules artifact written by `/wf:qa-init` (default `_local/wf-qa.md`). When set, the QA report's severity rubric — defined in `qa-gen`'s report-format reference and applied when `07_qa-report.md` is written — resolves from that artifact instead of the built-in default; the artifact also holds the project's risk-area and environment rules. Leave as `<none>` until `/wf:qa-init` has run — an absent or `<none>` value is treated as not set (built-in default). Referenced everywhere as `{qa-rules}`; `/wf:qa-init` sets it and `/wf:qa-gen` reads it.
 
-The three **API** keys are used only by the backend-exercise path (`Type: API` scenarios) — leave the defaults unless your project differs:
-
-- **API Base Path** — prefix the dev proxy forwards to the API, joined to the app base URL when a scenario route omits it. Default `/api`.
-- **API Controllers Root** — directory (relative to repo root) that contains the project's API controller source, used by the `qa-execution` host provider's `api-probe` operation to find a host controller. `<auto-detect>` globs the project's controller-source pattern (skipping compiled-output directories).
-- **API Auth Token Source** — where the app keeps the bearer the runner reuses. `<auto-discover>` scans `localStorage`/`sessionStorage` for a JWT-shaped value; override with an exact storage key (e.g. `localStorage:access_token`) if discovery picks wrong, or `cookie` for httpOnly-cookie auth.
-
-## Database
-
-| Key | Value |
-|-----|-------|
-| **Database Name** | `<DATABASE_NAME: the project's database name>` |
-| **Migration Path** | `<MIGRATION_PATH: repo-relative folder holding SQL migration scripts, forward slashes>` |
-| **Migration Pattern** | `<MIGRATION_PATTERN: filename glob for migration scripts>` |
-| **History Table** | `<HISTORY_TABLE: schema-qualified migration history table>` |
+**API Controllers Root** is used only by the backend-exercise path (`Type: API` scenarios) — leave the default unless your project differs: directory (relative to repo root) that contains the project's API controller source, used by the `qa-execution` host provider's `api-probe` operation to find a host controller. `<auto-detect>` globs the project's controller-source pattern (skipping compiled-output directories).
 
 ## Seed
 
