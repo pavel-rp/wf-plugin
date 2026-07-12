@@ -48,13 +48,19 @@ Not fit:
 
 ---
 
+## Branch-based id inference
+
+When a mode infers `{task-id}` from the current branch (the empty-argument mode below), reach the branch name through the delivery contract's `current-branch-query`, never a direct `git` call — so the skill still degrades cleanly in git-free bare-core mode. Resolve the surface by the canonical resolve-once procedure in `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution": one `## Capabilities` read from `_local/config.md` (the default-absent `registryPath` value), then one manifest+fragment read for the row scoped to the `delivery` surface (a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory case — no error, no capability term surfaces — yielding no branch token, at which point the mode asks for an explicit target.
+
+---
+
 ## Dispatch on arguments
 
 Parse the first token. Recognized forms:
 
 ### empty (no arguments) → infer target from branch and scaffold
 
-1. Resolve `{task-id}` from `git branch --show-current` (first 3+-digit run). If extraction fails, stop with: "Can't infer target. Pass `<component-path>` explicitly: `/wf-angular:qa-host new <path>`."
+1. Resolve `{task-id}` from the current branch (first 3+-digit run) via the delivery contract's `current-branch-query` — see "Branch-based id inference" below; never call `git` directly for it. If no branch token can be resolved (extraction fails, or no delivery provider is registered in git-free bare-core mode), stop with: "Can't infer target. Pass `<component-path>` explicitly: `/wf-angular:qa-host new <path>`."
 2. Find candidate components from the branch diff (union of `git diff --name-only main...HEAD`, `git diff --name-only HEAD`, untracked). Filter to `*.component.ts` under `{web-root}`, excluding existing `*-test/*-test.component.ts`.
 3. Drop candidates already routed (grep `{routing-module}` for the kebab-name).
 4. Pick or ask: 0 → stop with "no new unrouted Angular components on this branch"; 1 → scaffold; 2+ → list, ask which.
@@ -394,6 +400,7 @@ Stop reading at the first `{` of any method body. Don't read the target's `ngOnI
 **Allowed:**
 
 - Read the target component file (signature-only — see Black-box discipline above).
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Branch-based id inference") for branch-based id inference. Never call `git` directly for it.
 - Write new files under `{test-host-root}/<kebab>-test/`.
 - Edit `{routing-module}` (three exact edits documented in `new`).
 - **Backend mode only:** insert/remove exactly one sentinel-delimited (`WF-QA-EPHEMERAL`) ephemeral action per target inside an *existing* controller — the single carve-out for editing a pre-existing source file. Read controller/constructor/DTO signatures and combine route templates to do so. Full constraints in [`references/backend-host.md` § Safety rules](references/backend-host.md#safety-rules).

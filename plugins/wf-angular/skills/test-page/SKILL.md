@@ -154,6 +154,12 @@ Not fit:
 
 ---
 
+## Branch-based id inference
+
+When the empty-argument mode infers the ADO ID from the current branch, reach the branch name through the delivery contract's `current-branch-query`, never a direct `git` call — so the skill still degrades cleanly in git-free bare-core mode. Resolve the surface by the canonical resolve-once procedure in `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution": one `## Capabilities` read from `_local/config.md` (the default-absent `registryPath` value), then one manifest+fragment read for the row scoped to the `delivery` surface (a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory case — no error, no capability term surfaces — yielding no branch token, at which point the mode asks for an explicit target.
+
+---
+
 ## Dispatch on arguments
 
 Parse the first token. Recognized forms:
@@ -164,7 +170,7 @@ Default mode. When `/wf-angular:test-page` is invoked with no arguments, pick a 
 
 Steps:
 
-1. **Resolve the ADO ID** from the current branch: extract the first 3+-digit run from `git branch --show-current`. If extraction fails (e.g., on `main`), stop: "Can't infer an ADO ID from the current branch. Pass an explicit target: `/wf-angular:test-page new <ado-id> <src-path>`."
+1. **Resolve the ADO ID** from the current branch: reach the branch name via the delivery contract's `current-branch-query` (see "Branch-based id inference" below; never call `git` directly for it) and extract the first 3+-digit run. If no branch token can be resolved (extraction fails, e.g. on `main`, or no delivery provider is registered in git-free bare-core mode), stop: "Can't infer an ADO ID from the current branch. Pass an explicit target: `/wf-angular:test-page new <ado-id> <src-path>`."
 
 2. **Find candidate targets.** In order of preference:
    - Read `_local/ADO-<id>/02_plan.md` if present — extract paths from the `Relevant Files` section (Must change + May change).
