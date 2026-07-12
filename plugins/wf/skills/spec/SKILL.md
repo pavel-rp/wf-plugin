@@ -251,77 +251,7 @@ Write `01_spec.md` in the task folder using the template below.
 
 ## Spec Template
 
-```markdown
-# {task-id} — <title>
-
-**Type:** <feat | fix | chore | refactor | migration | docs | hotfix>
-**Alternative:** <type | —>   <!-- always include; use the alternative type only when /wf:classify returned medium confidence, otherwise write — -->
-**Complexity:** <S | M | L>
-**Created:** <YYYY-MM-DD HH:mm>
-**Model:** <model identifier>
-
----
-
-## Objective
-
-<1-3 sentences. What to build/fix and why. State the problem being solved and for whom.>
-
----
-
-## Success Criteria
-
-- [ ] <Machine-verifiable criterion>
-- [ ] <Machine-verifiable criterion>
-- [ ] <Machine-verifiable criterion>
-
----
-
-## Context
-
-<Current state of the relevant parts of the codebase. Reference specific files and patterns discovered during exploration.>
-
----
-
-## Scope
-
-**IN:**
-- <What is explicitly included>
-
-**OUT:**
-- <What is explicitly excluded — prevent scope creep>
-
----
-
-## Constraints
-
-- <Technical constraints, performance requirements, security requirements. Derived from codebase exploration — not generic best practices.>
-
----
-
-## User Journeys
-
-<For feat: describe the user interaction flow>
-<For fix: describe the reproduction steps, current (broken) behavior, and expected (correct) behavior>
-
-### Journey 1: <name>
-
-1. User does X
-2. System responds with Y
-3. User sees Z
-
----
-
-## Boundaries
-
-**Always:**
-- <Auto-approved actions>
-
-**Ask first:**
-- <Actions needing human approval>
-
-**Never:**
-- <Hard stops>
-```
+The verbatim `01_spec.md` template — the metadata block, `## Objective`, `## Success Criteria`, `## Context`, `## Scope`, `## Constraints`, `## User Journeys`, and `## Boundaries` — lives at [`references/spec-template.md`](references/spec-template.md). It is read only on this write path (Phase 3), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
 
 Sections are optional — omit any that would be empty. Only include an "Open Questions" section if some questions are truly unresolvable (e.g., depends on an external team decision).
 
