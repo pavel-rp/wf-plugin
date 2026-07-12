@@ -165,7 +165,7 @@ Before exploring the codebase or writing the spec, verify the current branch is 
 Determine the task's branch-type bucket (one of `feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) before exploration so it can be persisted into the spec metadata.
 
 1. **If `--type` was provided**, use that value. Set `Confidence: high` and `Alternative: —`. Skip the classifier call.
-2. **Otherwise**, invoke `/wf:classify {id}` against the just-written `00_reqs.md`. Parse the `CLASSIFY — Complete` block for `Type`, `Confidence`, and `Alternative`. If the classifier returns `CLASSIFY — Error`, stop and surface the reason — do not guess a type inline.
+2. **Otherwise**, invoke the **Task** tool with `subagent_type: wf:classify`, passing `{id}` (resolved against the just-written `00_reqs.md`). Parse the `CLASSIFY — Complete` block for `Type`, `Confidence`, and `Alternative`. If the classifier returns `CLASSIFY — Error`, stop and surface the reason — do not guess a type inline.
 3. **Branch on confidence:**
    - `high` — use the type silently. `Alternative` is `—`.
    - `medium` — use the primary type. Record the `Alternative` so it can appear in the spec metadata.
