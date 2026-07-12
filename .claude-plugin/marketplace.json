@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.70.1",
+  "version": "0.70.2",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -11,7 +11,7 @@
     {
       "name": "wf",
       "source": "./plugins/wf",
-      "version": "0.51.1",
+      "version": "0.51.2",
       "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (browser-qa, angular test-host, node-ts) each ship in their own plugin.",
       "author": {
         "name": "Pavel Kalabin"
@@ -51,7 +51,7 @@
     {
       "name": "wf-angular",
       "source": "./plugins/wf-angular",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "description": "wf Angular stack pack: the angular capability owning the wf capability-registry's qa-execution host surface. Ships /wf-angular:qa-host (routed Angular test-host scaffolder + ephemeral backend-controller analog) and /wf-angular:test-page (browser-run black-box DI-level test harness). Every project-specific token in the scaffolded output is profile-slot-driven, so scaffolding a differently-named app emits no borrowed identifiers; surface: host composes with browser-qa's surface: engine with no partition collision. Tracker-agnostic (requires: git only). Ships /wf-angular:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
@@ -71,7 +71,7 @@
     {
       "name": "wf-ado",
       "source": "./plugins/wf-ado",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "description": "wf tracker-provider pack: the ado capability owning the wf capability-registry's tracker surface (Azure DevOps work-item get/create/update/list-children/comment/status bindings and status/milestone/cycle queries, plus the AB#<id> PR-link autolink). Ships /wf-ado:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"

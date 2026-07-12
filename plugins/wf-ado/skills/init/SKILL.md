@@ -161,7 +161,7 @@ Registered: ado — <registered | already registered>
 Azure DevOps:
 - ADO Organization    — <carried forward | set to <value>>
 - ADO Project         — <carried forward | set to <value>>
-- Work Item ID Prefix — <carried forward | set to <value>>
+- Work Item ID Prefix — <carried forward | set to ADO>
 Self-check: <PASS — plugin:wf-ado/capabilities/ado resolves (recorded root or self-heal) | FAIL — pack unrecoverable: <what didn't resolve>>
 
 Next: run any wf skill that needs the tracker (e.g. /wf:spec, /wf:lite, /wf:triage) — core resolves the ado capability for the tracker surface directly (no phase-firing gate). Upgrades self-heal — re-run /wf-ado:init only if resolution reports the pack unrecoverable, or after relocating the pack.

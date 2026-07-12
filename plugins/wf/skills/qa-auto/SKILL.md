@@ -24,7 +24,7 @@ be active in _local/config.md's ## Capabilities table to drive scenarios. See th
 capability's manifest for registration, then re-run.
 ```
 
-This is the provider analog of the inert-phase no-op: when a phase's provider an orchestrator strictly needs is absent, core stops with a clear, capability-agnostic message rather than silently passing.
+This is the provider analog of the inert-phase no-op: when the provider an orchestrator strictly needs for a phase is absent, core stops with a clear, capability-agnostic message rather than silently passing.
 
 ---
 
