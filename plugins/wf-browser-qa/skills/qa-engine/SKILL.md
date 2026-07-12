@@ -49,7 +49,7 @@ So this engine drives the browser in its own thread (already isolated from the o
 
 | Argument           | Required | Description                                                                                       |
 | ------------------ | -------- | ------------------------------------------------------------------------------------------------- |
-| `<task-id>`        | NO       | Task id. Falls back to inferring from `git branch --show-current` (first 3+-digit run).            |
+| `<task-id>`        | NO       | Task id. Falls back to inferring from the current branch (first 3+-digit run), resolved via the delivery contract's `current-branch-query` — see "Direct provider resolution" below. |
 | `--suite <name>`   | NO       | Run only one named suite from `06_qa.md`.                                                         |
 | `--reset-creds`    | NO       | Re-prompt for app URL / username / password / default entity. Overwrites `_local/qa-creds.md`.    |
 | `--batch <N>`      | NO       | Stop after N scenarios for a context reset. Default 25. Pair with `--resume` to continue.          |
@@ -60,11 +60,18 @@ Disambiguation: a 3+-digit numeric or prefixed token is the id; `--`-prefixed to
 
 ---
 
+## Direct provider resolution (how `current-branch-query` is reached)
+
+Branch-based id inference (Phase 1) reaches `current-branch-query` through the delivery contract — never a direct `git` call, so the engine still degrades cleanly in git-free bare-core mode. Resolve the surface by the canonical resolve-once procedure in `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution": one `## Capabilities` read from `_local/config.md` (the default-absent `registryPath` value), then one manifest+fragment read for the row scoped to the `delivery` surface (a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces, and id inference simply yields no branch token (Phase 1 then asks for an explicit `<task-id>`). The engine has no tracker-surface call site — it never fetches.
+
+---
+
 ## Safety Rules
 
 **Allowed:**
 
 - Read any file in the project.
+- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface — see above) for branch-based id inference. Never call `git` directly for it.
 - Read/write `_local/qa-creds.md` (test-only credentials — see Phase 2).
 - Write `07_qa-report.md` and screenshots under `artifacts/qa-run-*` ONLY inside the resolved task folder.
 - Use the IDE's question tool to prompt for creds on first run.
@@ -85,7 +92,7 @@ Disambiguation: a 3+-digit numeric or prefixed token is the id; `--`-prefixed to
 
 ## Phase 1: Resolve task and plan
 
-1. Resolve `<task-id>` (passed or branch-inferred). Stop with the standard message if neither.
+1. Resolve `<task-id>`. If passed explicitly, use it verbatim. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run. With no delivery provider the query falls back silently (plain-directory case) and yields no branch token. If no id can be resolved, stop with the standard message asking for an explicit `<task-id>`.
 2. Locate `06_qa.md` in the task folder. Stop if missing.
 3. Parse it: scope, suites, scenarios (TC-NNN with priority, validates, preconditions, steps, teardown). Filter by `--suite` if passed. When the caller handed an explicit scenario set, that set is the loop set.
 4. **Resume / targeted re-run handling.**
