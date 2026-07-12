@@ -1,10 +1,10 @@
 # Core→domain invocation mechanism (the no-DI substrate)
 
 **Version:** 1.0.0 (frozen — WF-10; superseded by v2, WF-22)
-**Status:** **Superseded by** `invocation-runtime.contract.md` (v2.0.0, WF-22) — kept as the frozen v1 N=1 substrate; not reopened.
+**Status:** **Superseded by** `invocation-runtime.contract.md` (v2.6.0, WF-22) — kept as the frozen v1 N=1 substrate; not reopened.
 **Fills:** the runtime gap deferred by `core-extension.contract.md` ("the mechanism that makes a hook actually return its empty result at runtime … is owned by a separate downstream task")
 **Composes with:** `plugins/wf/skills/_contracts/core-extension.contract.md` (the port — hook names and `<none>` semantics)
-**v2 generalisation:** the registry-iterating, per-phase-injecting, per-kind-aggregating runtime lives in `invocation-runtime.contract.md` (v2.0.0, WF-22), the authoritative v2 runtime; this v1 substrate is kept as the N=1 base it generalises (see `capability-registry.contract.md`, v2.0.0/WF-21, for the v2 port).
+**v2 generalisation:** the registry-iterating, per-phase-injecting, per-kind-aggregating runtime lives in `invocation-runtime.contract.md` (v2.6.0, WF-22), the authoritative v2 runtime; this v1 substrate is kept as the N=1 base it generalises (see `capability-registry.contract.md`, v2.10.0/WF-21, for the v2 port).
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (domain-agnostic; ships inside the plugin)
 
@@ -13,12 +13,12 @@
 > dispatch, and the `<none>` no-op path. The v2 runtime — iterate the
 > `## Capabilities` registry, inject each capability's phase fragments in registry
 > order, and aggregate per the contribution kind's policy — lives in
-> `invocation-runtime.contract.md` (v2.0.0, WF-22), the authoritative source of
+> `invocation-runtime.contract.md` (v2.6.0, WF-22), the authoritative source of
 > truth for the runtime. This document is kept intact as the **N=1 substrate** v2
 > generalises (a single-row registry reduces to exactly this single-manifest
 > dispatch; an empty registry is exactly this `<none>` Null Object); it is not
 > reopened. The port half is generalised separately by `capability-registry.contract.md`
-> (v2.0.0, WF-21).
+> (v2.10.0, WF-21).
 
 ---
 
