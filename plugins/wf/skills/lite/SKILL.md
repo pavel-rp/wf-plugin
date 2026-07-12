@@ -171,49 +171,7 @@ Write `lite.md` in the task folder using the template below, then emit a short s
 
 ### lite.md Template
 
-```markdown
-# {task-id} — <title>
-
-**Type:** <feat | fix | chore | refactor | migration | docs | hotfix>
-**Alternative:** <type | —>   <!-- always include; use the alternative type only when /wf:classify returned medium confidence, otherwise write — -->
-**Flow:** lite
-**Created:** <YYYY-MM-DD HH:mm>
-**Model:** <model identifier>
-
----
-
-## Objective
-
-<1–2 sentences distilled from 00_reqs.md — what to build/fix and why.>
-
----
-
-## Approach
-
-<2–4 sentences: what will change and why, grounded in the files found during Phase 3.>
-
----
-
-## Files
-
-- `path/to/file.ts` — <why>
-- `path/to/other.ts` — <why>
-
----
-
-## Plan
-
-- [ ] STEP-001: <short title — the actual change>
-- [ ] STEP-002: <if a second distinct change is needed>
-- [ ] STEP-NNN: Verify — `{verify-command}` (from `_local/config.md`)
-- [ ] STEP-NNN+1: Hand off — stage files and produce commit-ready diff
-
----
-
-## Done When
-
-- <1–2 machine-verifiable criteria, at least one runnable as a command>
-```
+The verbatim `lite.md` template — the metadata block, `## Objective`, `## Approach`, `## Files`, `## Plan`, and `## Done When` — lives at [`references/lite-template.md`](references/lite-template.md). It is read only on this write path (Phase 4), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
 
 **Plan sizing:** 2–4 checkbox steps total (one or two change steps + verify + handoff). If the natural step count exceeds 4, the task is too big for `/wf:lite` — stop and escalate to the full flow.
 

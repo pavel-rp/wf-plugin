@@ -238,38 +238,7 @@ Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path)
 
 This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations — the history file grows unbounded; prune manually if noisy.
 
-```markdown
-# verify-fix: {task-id}
-
-**Source report:** `{task-root}/{task-id}/04_verify.md`
-**Branch:** <current branch>
-**Implemented by:** <model identifier>
-
-## Auto-fixed (<n>)
-
-1. [FIXED] <requirement id> — <requirement text>
-   - Location: `path/to/file.ts:L`
-   - Before: `<quoted line>`
-   - After:  `<quoted line>`
-
-2. [SKIPPED] <requirement id> — <requirement text>
-   - Reason: code state on disk no longer matches the report's "Found" — reclassified to ASK.
-
-3. [FAILED] <requirement id> — <requirement text>
-   - Error: <tool error summary>
-
-## Awaiting user (<m>)
-
-- Q1 `<id>` — <one-line summary>. <file:line>
-- Q2 `<id>` — <one-line summary>. <file:line>
-- ...
-
-(Questions are printed in full in chat; this list is for traceability.)
-
-## Next
-
-Re-run `/wf:verify-spec <id>` to confirm fixes and regenerate `04_verify.md`.
-```
+The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at [`references/verify-fix-template.md`](references/verify-fix-template.md). It is read only on this write path (Phase 7), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
 
 If the write fails (permissions, path missing), stop and report. Do not fall back to printing the log inline instead of to disk — the durable artifact matters for later re-runs.
 
