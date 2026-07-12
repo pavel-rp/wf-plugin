@@ -98,7 +98,7 @@ Apply in order, first match wins:
 
 1. **`--type` flag** — if provided, use it. Set `Confidence: high`, `Alternative: —`. Skip the classifier call.
 2. **`01_spec.md` metadata** — if `01_spec.md` exists and has a `**Type:** <one-of-seven>` line, reuse that value. Also pick up `**Alternative:** <type>` if present (medium-confidence path from `/wf:spec`). Set `Confidence: high` for plan purposes — the spec already settled it. Skip the classifier call.
-3. **`/wf:classify`** — invoke `/wf:classify {id}` against `01_spec.md` (or `00_reqs.md` if no spec). Parse the `CLASSIFY — Complete` block for `Type`, `Confidence`, and `Alternative`. If the classifier returns `CLASSIFY — Error`, stop and surface the reason — do not guess a type inline. Branch on confidence:
+3. **`wf:classify`** — invoke the **Task** tool with `subagent_type: wf:classify`, passing `{id}` (resolved against `01_spec.md`, or `00_reqs.md` if no spec). Parse the `CLASSIFY — Complete` block for `Type`, `Confidence`, and `Alternative`. If the classifier returns `CLASSIFY — Error`, stop and surface the reason — do not guess a type inline. Branch on confidence:
    - `high` — use the type silently. `Alternative` is `—`.
    - `medium` — use the primary type. Record the `Alternative` so it can appear in the plan metadata.
    - `low` — raise an `AskUserQuestion` offering the primary and alternative types as options ("Pick the task type — classifier was uncertain"). Use the user's pick as the resolved type; the unpicked option becomes the Alternative.

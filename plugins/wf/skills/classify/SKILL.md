@@ -156,9 +156,9 @@ Return ONLY the Final Output block (see below). No prose before or after — the
 
 ## Consumer contract
 
-Skills that call `/wf:classify` (`wf:spec`, `wf:plan`, `wf:lite`, indirectly `wf:branch`) should:
+Skills that call `wf:classify` (`wf:spec`, `wf:plan`, `wf:lite`, indirectly `wf:branch`) should:
 
-1. Run `/wf:classify` with the appropriate input (task id once requirements are fetched, or `--file`).
+1. Invoke the **Task** tool with `subagent_type: wf:classify`, passing the resolved input (task id once requirements are fetched, or a file path).
 2. Parse `Type` and `Confidence` from the structured block.
 3. Branch on confidence:
    - **high** → use silently.

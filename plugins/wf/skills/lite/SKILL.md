@@ -142,7 +142,7 @@ Skip if `00_reqs.md` already exists in the task folder.
 Determine the task's branch-type bucket (one of `feat`, `fix`, `chore`, `refactor`, `migration`, `docs`, `hotfix`) before exploration so it can be persisted into the `lite.md` metadata.
 
 1. **If `--type` was provided**, use that value. Set `Confidence: high`, `Alternative: —`. Skip the classifier call.
-2. **Otherwise**, invoke `/wf:classify {id}` against `00_reqs.md`. Parse the `CLASSIFY — Complete` block for `Type`, `Confidence`, and `Alternative`. If the classifier returns `CLASSIFY — Error`, stop and surface the reason — do not guess a type inline.
+2. **Otherwise**, invoke the **Task** tool with `subagent_type: wf:classify`, passing `{id}` (resolved against `00_reqs.md`). Parse the `CLASSIFY — Complete` block for `Type`, `Confidence`, and `Alternative`. If the classifier returns `CLASSIFY — Error`, stop and surface the reason — do not guess a type inline.
 3. **Branch on confidence:**
    - `high` — use the type silently. `Alternative` is `—`.
    - `medium` — use the primary type. Record the `Alternative` for inclusion in the lite.md metadata.
