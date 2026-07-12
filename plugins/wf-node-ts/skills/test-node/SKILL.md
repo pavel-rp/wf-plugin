@@ -54,10 +54,13 @@ repo root.
 node _local/_testkit/run.mjs <path>
 ```
 
-### `new <ado-id> <src-file> [exported-name]`  → scaffold a new test file
+### `new <task-id> <src-file> [exported-name]`  → scaffold a new test file
 
-- `<ado-id>`: ticket folder, e.g. `6755` or `ADO-6755`. Normalize to
-  `ADO-<digits>`.
+- `<task-id>`: the task folder name, matching the active tracker's id shape
+  (e.g. `WF-205`, `ADO-6755`, or the bare-core `T001`). Use it verbatim as the
+  folder name — do **not** re-prefix or normalize it. This is the same
+  `{task-id}` core `/wf:qa-gen` scans for test coverage under
+  `_local/{task-id}/tests/`, so the two must match exactly.
 - `<src-file>`: path to the TS module under test, relative to repo root or
   absolute. Example: `src/app/shared/utils/date.helpers.ts`.
 - `[exported-name]`: optional. If omitted, list the file's named exports
@@ -66,10 +69,10 @@ node _local/_testkit/run.mjs <path>
 
 Steps:
 1. Ensure the runner exists (see "Bootstrap" below).
-2. Ensure `_local/<ADO-id>/tests/` exists.
+2. Ensure `_local/{task-id}/tests/` exists.
 3. Compute the relative import path from the test file to the source,
    keeping the `.ts` extension (Node's type stripping needs it).
-4. Write `_local/<ADO-id>/tests/<exported-name>.test.ts` with:
+4. Write `_local/{task-id}/tests/<exported-name>.test.ts` with:
    - `import { test } from 'node:test';`
    - `import assert from 'node:assert/strict';`
    - `import { <exported-name> } from '<relative-path-with-.ts>';`
@@ -77,15 +80,15 @@ Steps:
      (null/undefined, happy path, error/edge). Read the source to pick
      meaningful cases — don't emit generic TODOs.
 5. Run the new file immediately to confirm it executes:
-   `node _local/_testkit/run.mjs _local/<ADO-id>/tests/<name>.test.ts`
+   `node _local/_testkit/run.mjs _local/{task-id}/tests/<name>.test.ts`
 6. Report pass/fail and the file path.
 
-**After running the test**, invoke `/wf:index <ado-id> tests "<exported-name>.test.ts · <pass|fail>"` to record it in the per-task index. Substitute the run outcome from step 5. The status cell auto-derives from the count of files under `_local/<ADO-id>/tests/`.
+**After running the test**, invoke `/wf:index {task-id} tests "<exported-name>.test.ts · <pass|fail>"` to record it in the per-task index. Substitute the run outcome from step 5. The status cell auto-derives from the count of files under `_local/{task-id}/tests/`.
 
 ### Anything else  → treat as a freeform request
 
 If the user typed something like "test the fixNumber helper", interpret it:
-locate the function, find the most relevant ADO folder (or fall back to
+locate the function, find the most relevant task folder (or fall back to
 `_local/scratch/tests/`), and follow the `new` flow.
 
 ---
@@ -145,7 +148,7 @@ TEST-NODE — <pass | fail>
 
 Ran:     <path, or "all local tests under _local/">
 Result:  <N passed · M failed>
-File:    _local/<ADO-id>/tests/<name>.test.ts   (new scaffolds only; omit for plain runs)
+File:    _local/{task-id}/tests/<name>.test.ts   (new scaffolds only; omit for plain runs)
 Next:    <branched on the result — see below>
 ```
 
