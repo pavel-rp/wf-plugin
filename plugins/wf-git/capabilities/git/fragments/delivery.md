@@ -144,6 +144,16 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   detached-HEAD signal so each caller decides what to do (create refuses, push/PR error,
   etc.) rather than the read operation deciding for them.
 
+## default-base-query (read)
+
+- **`main` → `master` fallback, shared with branch-create.** A repo's default trunk is
+  `main` or `master`; probing `main` first and falling back covers both without
+  configuration — the identical fallback `branch-create` step 4 and `branch-changes-read`
+  step 1 already apply. Exposing it as a standalone read closes a contract gap (WF-221):
+  a core skill that needs the base *value* — `commit`'s first-commit count, `pr`'s PR base —
+  now obtains it through the delivery contract rather than hardcoding a trunk name, the way
+  `branch-create` already hides base determination for the branch case.
+
 ## last-commit-timestamp-query (read)
 
 - **Failure is an environment error, not the no-provider fallback.** As with

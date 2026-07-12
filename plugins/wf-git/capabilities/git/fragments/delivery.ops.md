@@ -1,6 +1,6 @@
 # git delivery provider — runtime ops
 
-**Version:** 1.4.0 (WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — the branch-changes enumeration read operation bound: `branch-changes-read`)
+**Version:** 1.5.0 (WF-221 — `default-base-query` read operation added so core commit/pr obtain the base branch through the contract instead of hardcoding a trunk name; WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — the branch-changes enumeration read operation bound: `branch-changes-read`)
 **Role:** the runtime-read half of the git delivery provider — every input, guard, error path, and outcome mapping a delivery operation follows. Read at every delivery-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, rationale, edge-case matrix — never read at boot):** `delivery.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = delivery`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -10,7 +10,7 @@
 
 **Consumes, never derives:** every operation takes an already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>`; composing those from a tracker work item is the caller's job, not this file's.
 
-**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · pr-comment-post · checks-read · review-thread-resolve · pr-merge · activity-read.
+**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · default-base-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · pr-comment-post · checks-read · review-thread-resolve · pr-merge · activity-read.
 
 ## branch-create
 
@@ -126,6 +126,16 @@
 2. The literal value `HEAD` is a **detached-HEAD signal**, not an error — return it as such. Otherwise return the branch name.
 
 **Output:** the current branch name, or the literal `HEAD` (detached-HEAD signal).
+
+## default-base-query (read)
+
+**Inputs:** none.
+
+**Procedure:**
+
+1. `git rev-parse --verify main` (exit 0 → `main`; non-zero → `master`) — the same trunk-name fallback `branch-create` step 4 and `branch-changes-read` step 1 apply, so a repo on either default trunk resolves without configuration.
+
+**Output:** the repository's default base branch name (`main` or `master`). A read never errors; a caller needing the base *value* (a first-commit count, a PR base) obtains it here instead of naming a trunk itself.
 
 ## last-commit-timestamp-query (read)
 
