@@ -244,46 +244,7 @@ shape if needed. Never invent capability rows.
 
 ## Template: `_local/constitution.md`
 
-```markdown
-# Project Constitution
-
-**Composed:** <YYYY-MM-DD HH:mm>
-**Model:** <model identifier>
-**Registry:** <comma-separated capability names | none (core-only)>
-
-The non-negotiable principles this project's workflow holds itself to. **Composed, not
-baked** — core process articles + each registered capability's non-negotiables + the
-project's own clauses, each tagged with its source. Intended to be consulted as guidance at
-`spec` and enforced as findings at `verify` once that consumption wiring lands (owned by
-other tasks). Re-run `/wf:constitution` to refresh after a registry or project-clause change.
-
-## Precedence
-
-1. **Project clauses override capability clauses** — a project clause wins over any
-   capability article, regardless of registry order.
-2. **Capability-vs-capability contradiction is a registry-validation error** — resolved by
-   the registry validator, not here; only the project may resolve it (rule 1).
-
-## Core articles (provenance: core)
-
-<the seven domain-free process articles verbatim, then the "Core never requires a
-capability" article verbatim — numbered 1–8>
-
-## Capability articles (provenance: each capability)
-
-<one subsection per registered capability that declares articles, tagged with its name from
-the registry; omit this whole section when no capability contributed (core-only)>
-
-### <capability name>
-
-<that capability's non-negotiable articles, composed from its manifest>
-
-## Project clauses (provenance: project)
-
-<!-- Add this project's own non-negotiable clauses below. They override capability
-     articles. This section is preserved verbatim across re-runs — /wf:constitution never
-     overwrites it without asking. -->
-```
+The verbatim `_local/constitution.md` template — the metadata block, `## Precedence`, `## Core articles`, `## Capability articles`, and `## Project clauses` — lives at [`references/constitution-template.md`](references/constitution-template.md). It is read only on this write path (establish/update), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
 
 Do **not** bake a flattened single-source file anywhere else — this record *is* the
 composition. Do **not** name any concrete stack, domain, or capability in the core articles
