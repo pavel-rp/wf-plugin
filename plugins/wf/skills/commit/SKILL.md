@@ -66,7 +66,7 @@ COMMIT — <committed | nothing-to-commit>
 Task: {task-id} — <title or n/a>
 Subject: <id>: <subject>          (omitted when nothing-to-commit)
 Files: <n> changed (+<a> -<d>)    (omitted when nothing-to-commit)
-Push: <pushed (origin/<branch>) | up-to-date (origin/<branch>) | not-pushed | failed (<reason>)>
+Push: <pushed (<remote>/<remote-branch>) | up-to-date (<remote>/<remote-branch>) | not-pushed | failed (<reason>)>
 Next: /wf:pr <id>
 ```
 
