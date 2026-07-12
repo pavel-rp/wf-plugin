@@ -76,23 +76,25 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 
 ## Phase 2: Write `_local/config.md`
 
-> The config template below carries the `## Capabilities` registry table. Its destination is the **Phase 0 resolved registry location**, not whether `registryPath` is set. When the resolved location **is** `_local/config.md` (the `default`, the `rejected → fell back to default`, **and** a `configured` value that points back at `_local/config.md`), the table rides inside the config template. When the resolved location is a **different** file, write the `## Capabilities` table at that resolved location instead — the rest of the config template still goes to `_local/config.md`. **Resolved location == `_local/config.md` ⇒ the registry stays there, byte-identical to before.**
+> The config template below carries the `## Capabilities` registry table. Its destination is the **Phase 0 resolved registry location** (§Phase 0 step 2), not whether `registryPath` is set. Two named cases, reused below: the **same-file case** — resolved location **is** `_local/config.md` (the `default`, `rejected → fell back to default`, and a `configured` value that points back at `_local/config.md`) — where the table rides inside the config template; and the **relocated case** — resolved location is a **different** file — where the `## Capabilities` table is written there instead, and the rest of the config template still goes to `_local/config.md`. **Same-file case ⇒ the registry stays there, byte-identical to before.**
 
-> **The two writes skip independently.** The config-template write and the registry-table write are guarded by **separate** skip-if-present checks, each keyed on **its own** resolved destination — so re-running after the registry was pointed elsewhere still creates the registry where it now belongs:
-> - **Resolved location == `_local/config.md`** (`default`, `rejected → fell back to default`, or a `configured` value pointing back at it): the table rides inside the config template, so the single `_local/config.md` skip below covers it — byte-identical to before.
-> - **Resolved location is a different file** (a `configured` `registryPath` that resolves elsewhere): the registry table is written to that resolved location guarded by its **own** skip-if-present check on **that file** — independent of whether `_local/config.md` exists. If the resolved location is absent (or `--force` is set), write/refresh the `## Capabilities` table there even when `_local/config.md` already exists; if it is already present and `--force` is not set, skip it and report "registry already present at `<resolved location>` — left untouched."
+> **The two writes skip independently**, each guarded by its **own** skip-if-present check keyed on its own resolved destination — so re-running after the registry was pointed elsewhere still creates the registry where it now belongs:
+> - **Same-file case:** the table rides inside the config template, so the single `_local/config.md` skip below covers it.
+> - **Relocated case:** the registry table is written to the resolved location guarded by its own skip-if-present check on that file — independent of whether `_local/config.md` exists. Absent (or `--force` set) ⇒ write/refresh it there even when `_local/config.md` already exists; present and no `--force` ⇒ skip it and report "registry already present at `<resolved location>` — left untouched."
 
-- If `_local/config.md` exists and `--force` is not set, skip the config-template write (this also covers the registry table **only** when the resolved registry location is `_local/config.md`, where it lives inside this file). Report "config.md already present — left untouched." A registry write whose resolved location is a different file is guarded separately, per the note above.
-- **One registry, never two.** The `## Capabilities` section in the "Default content" template below belongs to **exactly one** destination — the **Phase 0 resolved registry location**, not whether `registryPath` is set. When the resolved location **is** `_local/config.md` (the `default`, `rejected → fell back to default`, **and** a `configured` value pointing back at `_local/config.md` cases), keep `## Capabilities` inside `_local/config.md`. When the resolved location is a **different** file, **omit the `## Capabilities` section from the `_local/config.md` write entirely** and write that section **only** to the resolved registry file — never emit it in both places, so a user can't edit the wrong copy (runtime reads only the resolved location).
-- **Strip the authoring aid.** The `<!-- … -->` HTML comment above the `## Capabilities` table in the template is a build-time directive **for `init` only** — it must **never** reach a written file. Drop it in both branches: write only the `## Capabilities` heading, table, and explanatory prose to the Phase 0 resolved registry location (which is `_local/config.md` itself when the resolved location equals it). Every "write the template" instruction below means the template **minus** this comment.
+- If `_local/config.md` exists and `--force` is not set, skip the config-template write (this also covers the registry table in the **same-file case**). Report "config.md already present — left untouched." The **relocated case** is guarded separately, per the note above.
+- **One registry, never two.** The `## Capabilities` section in the "Default content" template below belongs to **exactly one** destination. **Same-file case** ⇒ keep `## Capabilities` inside `_local/config.md`. **Relocated case** ⇒ **omit the `## Capabilities` section from the `_local/config.md` write entirely** and write that section **only** to the resolved registry file — never emit it in both places, so a user can't edit the wrong copy (runtime reads only the resolved location).
+- **Strip the authoring aid.** The `<!-- … -->` HTML comment above the `## Capabilities` table in the template is a build-time directive **for `init` only** — it must **never** reach a written file. Drop it in both branches: write only the `## Capabilities` heading, table, and explanatory prose to the Phase 0 resolved registry location (`_local/config.md` itself in the same-file case). Every "write the template" instruction below means the template **minus** this comment.
 - Otherwise:
   1. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on a framework project needing template/metadata checks) misses the very errors the skills exist to catch.
-  2. Write the template below, substituting the detected command into the `Verify Command` row. If it falls back to a placeholder, flag it prominently in the chat summary so the user fixes it before running any other skill.
+  2. Write the template below, substituting the detected command into the `Verify Command` row and the current model id (§9 model attribution) into the `**Model:**` line. If Verify Command falls back to a placeholder, flag it prominently in the chat summary so the user fixes it before running any other skill.
 
 ### Default content
 
 ```markdown
 # Skills Configuration
+
+**Model:** <current model id>
 
 Project-specific values used by all `wf:*` skills. Skills MUST read this file at startup and substitute these values — never hardcode them.
 
@@ -117,28 +119,13 @@ Must exit 0 when the project typechecks (including framework-level checks: templ
 |-----|-------|
 | **QA Baseline Ignore** | `<none>` |
 | **QA Rules** | `<none>` |
-| **API Base Path** | `/api` |
 | **API Controllers Root** | `<auto-detect>` |
-| **API Auth Token Source** | `<auto-discover>` |
 
 **QA Baseline Ignore** — optional allowlist for the **Baseline health** suite `/wf:qa-gen` adds to every plan (no console errors, no failed network requests, view renders). One pattern per line or comma-separated; each is a plain substring or `/regex/`. Console messages and request URLs/statuses matching any pattern are treated as known-benign and won't fail a baseline check — e.g. a noisy third-party widget warning, or an analytics beacon that 404s in dev. Leave as `<none>` to tolerate nothing. Consumed by `/wf:qa-gen`, `/wf:qa-auto`, and `/wf:qa-run`.
 
 **QA Rules** — optional path to the project QA-rules artifact written by `/wf:qa-init` (default `_local/wf-qa.md`). When set, the QA report's severity rubric — defined in `qa-gen`'s report-format reference and applied when `07_qa-report.md` is written — resolves from that artifact instead of the built-in default; the artifact also holds the project's risk-area and environment rules. Leave as `<none>` until `/wf:qa-init` has run — an absent or `<none>` value is treated as not set (built-in default). Referenced everywhere as `{qa-rules}`; `/wf:qa-init` sets it and `/wf:qa-gen` reads it.
 
-The three **API** keys are used only by the backend-exercise path (`Type: API` scenarios) — leave the defaults unless your project differs:
-
-- **API Base Path** — prefix the dev proxy forwards to the API, joined to the app base URL when a scenario route omits it. Default `/api`.
-- **API Controllers Root** — directory (relative to repo root) that contains the project's API controller source, used by the `qa-execution` host provider's `api-probe` operation to find a host controller. `<auto-detect>` globs the project's controller-source pattern (skipping compiled-output directories).
-- **API Auth Token Source** — where the app keeps the bearer the runner reuses. `<auto-discover>` scans `localStorage`/`sessionStorage` for a JWT-shaped value; override with an exact storage key (e.g. `localStorage:access_token`) if discovery picks wrong, or `cookie` for httpOnly-cookie auth.
-
-## Database
-
-| Key | Value |
-|-----|-------|
-| **Database Name** | `<DATABASE_NAME: the project's database name>` |
-| **Migration Path** | `<MIGRATION_PATH: repo-relative folder holding SQL migration scripts, forward slashes>` |
-| **Migration Pattern** | `<MIGRATION_PATTERN: filename glob for migration scripts>` |
-| **History Table** | `<HISTORY_TABLE: schema-qualified migration history table>` |
+**API Controllers Root** is used only by the backend-exercise path (`Type: API` scenarios) — leave the default unless your project differs: directory (relative to repo root) that contains the project's API controller source, used by the `qa-execution` host provider's `api-probe` operation to find a host controller. `<auto-detect>` globs the project's controller-source pattern (skipping compiled-output directories).
 
 ## Seed
 
@@ -209,7 +196,7 @@ The goal is a single shell command that exits 0 when the whole project typecheck
 
 Record the chosen rule (and the rejected candidates, if any) in the chat summary so the user can see the reasoning without reading config.md.
 
-> **Registry location is configurable.** The `## Capabilities` table location is resolved in Phase 0 from `wf.config.js`'s optional `registryPath` key, defaulting to `_local/config.md`. To point the registry elsewhere, set `registryPath` (forward-slash, repo-relative) in `wf.config.js` — leaving it unset keeps the registry in `_local/config.md` exactly as before.
+> Registry location (`registryPath`) is resolved once in Phase 0 step 2 — see there for the rule.
 
 ---
 
@@ -274,10 +261,12 @@ Constraints:
 
 ## Phase 5: Write `_local/README.md`
 
-If the file already exists and `--force` is not set, skip. Otherwise write:
+If the file already exists and `--force` is not set, skip. Otherwise write, substituting the current model id (§9) into the `**Model:**` line:
 
 ```markdown
 # _local/
+
+**Model:** <current model id>
 
 Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
 
