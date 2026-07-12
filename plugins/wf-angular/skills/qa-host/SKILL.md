@@ -423,7 +423,7 @@ Stop reading at the first `{` of any method body. Don't read the target's `ngOnI
 ```
 QA-HOST — Complete
 
-Task:        {wi-prefix}-{id}
+Task:        {task-id}
 Target:      <component-path>
 Host:        {test-host-root}/<kebab>-test/
 Route:       /{route-prefix}/<kebab>-test (the profile's route prefix + <kebab>-test)

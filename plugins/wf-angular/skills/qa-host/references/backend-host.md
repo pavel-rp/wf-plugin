@@ -61,7 +61,7 @@ Read only signatures of the chosen controller: its class-level `[Route]`, `[Auth
 Inject a single action, wrapped in sentinels, using **parameter injection (`[FromServices]`)** so the constructor is never touched (smaller, self-contained, trivially revertible). Keep the controller's existing class-level auth — the token the runner carries then authorizes the call exactly as a real endpoint would.
 
 ```csharp
-// >>> WF-QA-EPHEMERAL ADO-<id> — DO NOT COMMIT — revert: /wf-angular:qa-host api-revert <Service>.<method>
+// >>> WF-QA-EPHEMERAL {task-id} — DO NOT COMMIT — revert: /wf-angular:qa-host api-revert <Service>.<method>
 [HttpGet("__qa/<method-kebab>")]
 public async Task<IActionResult> __Qa_<Method>(
     [FromServices] <ServiceType> svc,
@@ -70,7 +70,7 @@ public async Task<IActionResult> __Qa_<Method>(
     var result = await svc.<Method>(<args>);
     return Ok(result);
 }
-// <<< WF-QA-EPHEMERAL ADO-<id>
+// <<< WF-QA-EPHEMERAL {task-id}
 ```
 
 Rules for the action:
@@ -128,7 +128,7 @@ This is the one place `wf-angular:qa-host` edits a **pre-existing** source file 
 ```
 QA-HOST — <EXPOSED | EPHEMERAL | REVERTED>
 
-Task:        {wi-prefix}-{id}
+Task:        {task-id}
 Target:      <Service>.<method>
 Mode:        api-probe | api-revert
 
