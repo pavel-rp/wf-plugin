@@ -4,6 +4,13 @@ The canonical shape of the QA-run report. Both `/wf:qa-run` (manual) and `/wf:qa
 
 This file is the single source of truth for the format. Update here, then both run and auto pick it up.
 
+## Contents
+
+- [Filename and location](#filename-and-location)
+- [Template](#template)
+- [Writing rules](#writing-rules)
+- [Stable IDs for the run-assistant contract](#stable-ids-for-the-run-assistant-contract)
+
 ---
 
 ## Filename and location
