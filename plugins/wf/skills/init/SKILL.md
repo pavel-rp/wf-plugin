@@ -87,12 +87,14 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 - **Strip the authoring aid.** The `<!-- … -->` HTML comment above the `## Capabilities` table in the template is a build-time directive **for `init` only** — it must **never** reach a written file. Drop it in both branches: write only the `## Capabilities` heading, table, and explanatory prose to the Phase 0 resolved registry location (which is `_local/config.md` itself when the resolved location equals it). Every "write the template" instruction below means the template **minus** this comment.
 - Otherwise:
   1. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on a framework project needing template/metadata checks) misses the very errors the skills exist to catch.
-  2. Write the template below, substituting the detected command into the `Verify Command` row. If it falls back to a placeholder, flag it prominently in the chat summary so the user fixes it before running any other skill.
+  2. Write the template below, substituting the detected command into the `Verify Command` row and the current model id (§9 model attribution) into the `**Model:**` line. If Verify Command falls back to a placeholder, flag it prominently in the chat summary so the user fixes it before running any other skill.
 
 ### Default content
 
 ```markdown
 # Skills Configuration
+
+**Model:** <current model id>
 
 Project-specific values used by all `wf:*` skills. Skills MUST read this file at startup and substitute these values — never hardcode them.
 
@@ -259,10 +261,12 @@ Constraints:
 
 ## Phase 5: Write `_local/README.md`
 
-If the file already exists and `--force` is not set, skip. Otherwise write:
+If the file already exists and `--force` is not set, skip. Otherwise write, substituting the current model id (§9) into the `**Model:**` line:
 
 ```markdown
 # _local/
+
+**Model:** <current model id>
 
 Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
 
