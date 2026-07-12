@@ -65,7 +65,7 @@ Disambiguation: a 3+-digit numeric or prefixed token is the id; `--`-prefixed to
 **Allowed:**
 
 - Read any file in the project.
-- Read/write `_local/qa-creds.md` (test-only credentials — see Phase 3).
+- Read/write `_local/qa-creds.md` (test-only credentials — see Phase 2).
 - Write `07_qa-report.md` and screenshots under `artifacts/qa-run-*` ONLY inside the resolved task folder.
 - Use the IDE's question tool to prompt for creds on first run.
 - Use the browser-automation tools (`open_browser_page`, `click_element`, `type_in_page`, `read_page`, `screenshot_page`, `run_playwright_code`, `navigate_page`, `hover_element`, `drag_element`, `handle_dialog`).
@@ -139,7 +139,7 @@ Disambiguation: a 3+-digit numeric or prefixed token is the id; `--`-prefixed to
 
 ## Phase 3: Browser-tool preflight
 
-1. Confirm the browser-automation tools (`open_browser_page`, `click_element`, `type_in_page`, `read_page`, `screenshot_page`, `run_playwright_code`, `navigate_page`, `hover_element`, `handle_dialog`) are available.
+1. Confirm the browser-automation tools (`open_browser_page`, `click_element`, `type_in_page`, `read_page`, `screenshot_page`, `run_playwright_code`, `navigate_page`, `hover_element`, `drag_element`, `handle_dialog`) are available.
 2. If any tool is unavailable, stop with: "Browser tools unavailable in this runtime. Use a manual walkthrough instead."
 3. Call `open_browser_page(<base URL from creds>)`.
 4. Call `read_page` once. If the response is a network error or the document is empty, stop: "App not reachable at `<URL>`. Make sure the dev server is running, then re-run."
