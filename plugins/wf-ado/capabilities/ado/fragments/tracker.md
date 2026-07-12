@@ -44,6 +44,15 @@ called must be verified against the live tool catalog, not guessed:
 - **Grounded** — this codebase already calls exactly this tool for exactly this purpose.
 - **Grounded — field usage to confirm** — the tool itself is grounded, but this
   operation's specific field/parameter shape has never been exercised.
+- **Grounded — confirmed against the published tool catalog** — no skill in this
+  codebase has called the tool yet, but a live ADO MCP connection was still unavailable
+  (a third `ToolSearch` attempt, same result as the two below), so the tool name was
+  instead confirmed against `microsoft/azure-devops-mcp`'s own published
+  `docs/TOOLSET.md` — the upstream source of truth the connected MCP server's catalog is
+  generated from. Naming matches the already-grounded `mcp_ado_wit_get_work_item` /
+  `mcp_ado_wit_update_work_item` prefix convention. Still unexercised end-to-end; the next
+  skill that actually calls it should fold this note into a plain **Grounded** once it
+  has.
 - **Unverified — tool name not yet confirmed** — no skill in this codebase has ever
   exercised this operation in this direction; the ops file's `Tool:` line carries the
   literal `<VERIFY: tool name against live ADO MCP catalog during /wf:ti — not yet
@@ -54,7 +63,9 @@ called must be verified against the live tool catalog, not guessed:
   the marker could not be resolved to a real tool name and is carried forward unresolved.
   Whoever next implements a tracker-consuming core skill against this fragment, with a
   live ADO MCP catalog available, must replace the marker with the confirmed tool name
-  before treating that binding as final.
+  before treating that binding as final. (`create_umbrella`, `create_child`,
+  `list_children`, `post_comment` were resolved this way — see the tier above; the three
+  read-only query operations below remain in this unresolved tier.)
 
 ---
 
@@ -78,16 +89,19 @@ it.
   returned id is recorded as a `**<label>:** <value>` line in the triggering artifact and
   read back before any re-invocation, so an umbrella is never created twice for the same
   artifact/slot.
-- **Grounding:** Unverified — tool name not yet confirmed. No skill in this codebase has
-  ever created a work item; only read/update paths are exercised today.
+- **Grounding:** Grounded — confirmed against the published tool catalog
+  (`mcp_ado_wit_create_work_item`, per `microsoft/azure-devops-mcp`'s `docs/TOOLSET.md`).
+  No skill in this codebase has created a work item yet; only read/update paths are
+  exercised today.
 
 ## create_child
 
 - **Same idempotency guard as `create_umbrella`** — the child id is recorded and read
   back before re-invocation. Used both for a task's own child work items and for further
   nesting beneath those.
-- **Grounding:** Unverified — tool name not yet confirmed. No skill in this codebase has
-  ever created a child work item.
+- **Grounding:** Grounded — confirmed against the published tool catalog
+  (`mcp_ado_wit_add_child_work_items`, per `microsoft/azure-devops-mcp`'s
+  `docs/TOOLSET.md`). No skill in this codebase has created a child work item yet.
 
 ## update
 
@@ -114,15 +128,23 @@ it.
 - **Reverse of the exercised direction.** Today's codebase only ever resolves a child's
   *parent* (`get`'s relations expansion, consumed by `spec`'s Phase 0 step 2
   parent-context resolution) — never a parent's *children*. This direction has never been
-  exercised.
-- **Grounding:** Unverified — tool name not yet confirmed.
+  exercised. No dedicated "list children" tool exists in the ADO MCP catalog, so the
+  binding composes the already-grounded `get` tool (`expand: "relations"`, filtered to
+  `System.LinkTypes.Hierarchy-Forward`) with a batch title lookup rather than a single
+  bespoke call.
+- **Grounding:** Grounded — confirmed against the published tool catalog
+  (`mcp_ado_wit_get_work_item` + `mcp_ado_wit_get_work_items_batch_by_ids`, per
+  `microsoft/azure-devops-mcp`'s `docs/TOOLSET.md`).
 
 ## post_comment
 
 - **Read, never written, today.** The codebase only **reads** comments
   (`plugins/wf/skills/spec/SKILL.md` Phase 0 step 5, via
   `mcp_ado_wit_list_work_item_comments`, grounded for reading) — it has never posted one.
-- **Grounding:** Unverified — tool name not yet confirmed.
+- **Grounding:** Grounded — confirmed against the published tool catalog
+  (`mcp_ado_wit_add_work_item_comment`, per `microsoft/azure-devops-mcp`'s
+  `docs/TOOLSET.md`; sibling write tool to the already-grounded
+  `mcp_ado_wit_list_work_item_comments` read).
 
 ## set_status
 
@@ -179,12 +201,12 @@ provider surface"), bound to exactly one `## ` section in `tracker.ops.md`, none
 | Contract operation | ops.md section  | Grounding status                         |
 |--------------------|-----------------|------------------------------------------|
 | `resolve_config`   | `resolve_config`| grounded                                 |
-| `create_umbrella`  | `create_umbrella`| unverified — tool name not yet confirmed |
-| `create_child`     | `create_child`  | unverified — tool name not yet confirmed |
+| `create_umbrella`  | `create_umbrella`| grounded — confirmed against catalog    |
+| `create_child`     | `create_child`  | grounded — confirmed against catalog     |
 | `update`           | `update`        | grounded                                 |
 | `get`              | `get`           | grounded                                 |
-| `list_children`    | `list_children` | unverified — tool name not yet confirmed |
-| `post_comment`     | `post_comment`  | unverified — tool name not yet confirmed |
+| `list_children`    | `list_children` | grounded — confirmed against catalog     |
+| `post_comment`     | `post_comment`  | grounded — confirmed against catalog     |
 | `set_status`       | `set_status`    | grounded — field usage to confirm        |
 | `attach_link`      | `attach_link`   | grounded                                 |
 | `list_by_status`   | `list_by_status`| unverified — tool name not yet confirmed |
