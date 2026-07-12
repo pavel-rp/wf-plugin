@@ -1,7 +1,7 @@
 ---
 name: branch
 description: Creates and switches to a dedicated branch for a task, deriving the branch name (feature/<id>-…, fix/<id>-…, chore/<id>-…, etc.) from the task's plan or spec and setting up remote tracking through the active delivery provider. Thin slash-command wrapper — the full procedure lives in the wf:branch subagent (config resolution, branch derivation, delivery-provider dispatch, index update all happen there). Use directly via /wf:branch <id> for ad-hoc invocation, OR invoke the Task tool with subagent_type wf:branch from another wf:* skill that needs a branch gate (required when called from another skill — bypasses the slash-command's caller-side cost).
-allowed-tools: [Bash]
+allowed-tools: [Task]
 ---
 
 # /wf:branch — Task branch from a plan or spec

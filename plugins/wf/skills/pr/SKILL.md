@@ -1,7 +1,7 @@
 ---
 name: pr
 description: Opens a pull request for the current task branch — first commits and pushes any pending work (via the wf:commit subagent, push on), then composes a PR body from the task's wf artifacts (reqs, spec, plan resolution, verify, QA), links the work item through the active tracker capability, when one is registered, and creates the PR through the active delivery provider. Use when a task is implemented and ready for review. Pass --no-commit to open a PR against exactly what's already pushed, --draft for a draft PR.
-allowed-tools: [Bash]
+allowed-tools: [Read, Task]
 ---
 
 # /wf:pr — Push, then open a PR from the task's wf artifacts

@@ -1,7 +1,7 @@
 ---
 name: qa-engine
 description: Stack-agnostic browser-automation QA engine. Drives a web app in-thread — preflights browser tools, authenticates once, reaches each scenario's browser-level preconditions (clears/seeds localStorage, sessionStorage, cookies; sets URL/viewport), runs the steps with observation discipline, captures console/network signals, screenshots on FAIL, and emits per-scenario verdict blocks in the shared QA report format. The execution provider behind the browser-qa capability's qa-execution provider fragment. Use when a QA orchestrator dispatches the per-scenario browser drive, or to drive scenarios directly against a running app of any stack.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf-browser-qa:qa-engine — Stack-agnostic browser-automation QA engine
