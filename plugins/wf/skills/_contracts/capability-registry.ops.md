@@ -1,6 +1,6 @@
 # Capability registry — runtime ops
 
-**Version:** 1.5.0 (WF-200; WF-157 — delivery surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam fired by the commit path before recording a commit, reusing the `finding` kind)
+**Version:** 1.6.0 (WF-200; WF-157 — delivery surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam fired by the commit path before recording a commit, reusing the `finding` kind; WF-239 — `article` removed from the contribution taxonomy: a constitution clause is the `article:` manifest KEY, not a fragments-table row — the taxonomy is now six kinds and the manifest schema documents the `article:` key)
 **Role:** the runtime-read half of the v2 core↔capability port — every schema, guard, error path, outcome mapping, and degradation rule a running skill follows. Self-sufficient at one level: no step below requires opening any further file.
 **Pair (flat sibling, read directly when needed):** `invocation-runtime.ops.md` — the phase-firing / provider-resolution procedure.
 **Reference (rationale, history, authoring guidance, validation detail — never read at boot):** `capability-registry.contract.md`.
@@ -63,7 +63,8 @@ Fixed spine — a manifest may attach fragments only to these; the constitution 
 | `finding` | `verify`, `pre-commit` | aggregate, provenance-tagged (order cosmetic) |
 | `scenario` | `qa-generation` | aggregate, provenance-tagged |
 | `provider` | `qa-execution`; `implement` (delivery); `spec` (tracker) | partition — one owner per `surface` token; different surfaces compose |
-| `article` | constitution | aggregate with provenance; precedence per the constitution rule below |
+
+There are **six** contribution kinds; `article` is **not** one of them (a constitution clause is not a fragment — it attaches to the constitution, which is not an SDD phase). A capability declares its non-negotiable clauses with the `article:` manifest **key** (see "Manifest schema v2" and "The constitution composition rule" below), never as a fragments-table row; a fragment naming `article` as its contribution kind is a validator error.
 
 Partition overlap — the same `surface` token or `source→target` pair claimed by two active capabilities — is a **validator error naming both offenders**; the runtime never merges, it applies the single owner. Surface-ownership uniqueness is checked by token alone, across the whole registry, independent of the claiming row's phase. The `delivery`/`tracker` phase attachments are **registration anchors only** — they never gate when a core skill may invoke an operation (see `invocation-runtime.ops.md`, direct provider resolution).
 
@@ -108,7 +109,7 @@ The commit path fires the `pre-commit` phase **immediately before it records a c
 
 ## The constitution composition rule
 
-1. **Composed from `article` fragments with provenance** — core's domain-free process articles plus each active capability's own; never a baked file.
+1. **Composed from each capability's `article:` manifest-key declarations, with provenance** — core's domain-free process articles plus each active capability's own (an `article:` key is not a fragment and the constitution is not a phase); never a baked file.
 2. **Project clauses override capability clauses**, regardless of registry order.
 3. **A capability-vs-capability contradiction is a validation error** — fail-fast, both offenders named; only the project may resolve one.
 4. **Established at setup** (the constitution skill, auto-invoked by `init`), **consulted as `guidance` at `spec`, enforced as `finding`s at `verify`** — not a per-ticket phase.
@@ -120,6 +121,7 @@ Exactly one `manifest.md` at `<path>/manifest.md`:
 - **`kind:`** `adapter` | `feature` | `both`.
 - **Fragments table** `| phase | contribution-kind | dispatch | scope |` — `phase` and `contribution-kind` only from the fixed sets above (a manifest may not invent one); `dispatch` = `inline: <rel-path>` (forward-slash, relative to the capability's path) or `subagent: <agent>`; `scope` required only for partitioned kinds (a `surface` token for `provider`, a `source→target` pair for `artifact`), `—` otherwise.
 - **`skills:`** (feature/both — documentation only; native plugin composition loads them) · **`profile-template:`** (optional; one forward-slash path relative to the capability folder) · **`requires:`** / **`conflicts:`** (optional; enforced at registry validation).
+- **`article:`** — optional, **repeatable** manifest key `article: <key> = <value>` declaring a constitution clause (`<key>` = the clause identity, `<value>` = its stance). A manifest **key** like `requires:`/`conflicts:`, **not** a fragments-table row (`article` is not a contribution kind). The constitution skill composes it (below); registry validation rejects two active capabilities declaring the same `<key>` with different `<value>` (CHECK 9).
 
 ## The profile-seeding convention (capability-agnostic)
 

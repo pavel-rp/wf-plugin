@@ -1,6 +1,6 @@
 # git capability manifest
 
-**Version:** 1.4.0 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics; WF-179 — bind the last-commit-timestamp-query read operation, mirroring workspace-root-resolve/current-branch-query; WF-211 — split the delivery fragment into a bounded runtime-ops half (`fragments/delivery.ops.md`) + a reference half (`fragments/delivery.md`), repoint the dispatch, and refresh the contract pointers to the reshaped ops docs; WF-157 — bind six PR-interaction/merge/activity operations in the delivery fragment: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — bind the branch-changes enumeration read operation: `branch-changes-read`)
+**Version:** 1.4.1 (WF-122 — initial delivery-provider capability, binding SUB-1/WF-120's `delivery` contract to concrete git/GitHub-CLI mechanics; WF-179 — bind the last-commit-timestamp-query read operation, mirroring workspace-root-resolve/current-branch-query; WF-211 — split the delivery fragment into a bounded runtime-ops half (`fragments/delivery.ops.md`) + a reference half (`fragments/delivery.md`), repoint the dispatch, and refresh the contract pointers to the reshaped ops docs; WF-157 — bind six PR-interaction/merge/activity operations in the delivery fragment: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — bind the branch-changes enumeration read operation: `branch-changes-read`; WF-239 — remove the redundant `never-commit-to-main` constitution `article:` declaration (core constitution article 3 is authoritative; the premature destination copy was flagged as relying on the pre-WF-239 undocumented mechanism))
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** git (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -24,21 +24,6 @@ destination capability full-stack users register once core's own inline
 It carries **zero** tracker-specific vocabulary: every operation consumes an
 already-resolved id/branch-name/title/body; deriving those from a tracker work item is
 explicitly out of scope (SUB-5/SUB-14).
-
-## Article
-
-article: never-commit-to-main = required
-
-**Never commit to `main`.** All work lands on a feature branch and merges via review.
-
-Worded identically to core constitution article 3
-(`plugins/wf/skills/constitution/SKILL.md`). This is the **wf-git destination copy** —
-core's own article 3 stays in place until a later task (SUB-4) removes it once wf-git
-is the registered delivery provider. No contradiction risk today: the registry
-validator's contradiction check (CHECK 9, `validate-registry.sh`) only compares two
-*capability*-declared `article:` lines against each other, and core's hardcoded
-articles are not parsed through this mechanism — so this capability's article and
-core's identical prose coexist without tripping the check.
 
 ## Fragments
 

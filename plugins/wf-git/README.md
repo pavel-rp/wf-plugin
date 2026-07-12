@@ -16,7 +16,7 @@ dispatch to.
 
 | Item | What it is |
 |---|---|
-| `capabilities/git/manifest.md` | the `git` capability's manifest — one `provider` fragment row scoped `delivery`, plus the "never commit to `main`" constitution `article` |
+| `capabilities/git/manifest.md` | the `git` capability's manifest — one `provider` fragment row scoped `delivery` |
 | `capabilities/git/fragments/delivery.ops.md` | the **runtime-ops** half — every input, guard, error path, and outcome mapping for all fifteen delivery operations, read at each delivery-surface boot (bounded, ≤250 lines) |
 | `capabilities/git/fragments/delivery.md` | the **reference** half — scope framing, per-operation rationale, and the edge-case regression matrix; never read at boot |
 | `/wf-git:init` | one-command self-registration — records this pack's install root and registers the `git` capability, following the sibling packs' self-registering `/init` onboarding pattern |

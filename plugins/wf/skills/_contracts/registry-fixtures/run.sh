@@ -160,6 +160,15 @@ assert "ado vs linear tracker overlap named" fail-tracker-overlap-ado-linear.md 
 assert "tracker overlap amid delivery named" fail-tracker-delivery-overlap.md - 1 "ado" "tracker-owner" "tracker" "must not overlap"
 assert "bad phase named"              fail-bad-phase.md     - 1 "bad-phase" "unknown phase" "deploy"
 assert "bad kind named"               fail-bad-kind.md      - 1 "bad-kind" "unknown contribution-kind" "assertion"
+# WF-239: `article` is NOT a contribution kind (a constitution clause is the `article:`
+# manifest KEY, not a fragments-table row) — a fragment naming it is rejected.
+assert "article as fragment kind rejected" fail-article-kind.md - 1 "article-kind" "unknown contribution-kind" "article"
+# WF-239: dispatch-column validation — a bare path with no `inline:`/`subagent:` prefix
+# is rejected (previously f_dispatch was extracted but never checked).
+assert "malformed dispatch rejected"  fail-bad-dispatch.md  - 1 "bad-dispatch" "malformed dispatch"
+# WF-239: heading-typo guard — a miscased `## Fragments` heading (which would parse zero
+# rows and pass silently) is rejected, naming the offender.
+assert "heading typo rejected"        fail-heading-typo.md  - 1 "heading-typo" "looks like a typo" "## Fragments"
 # WF-154: the `pre-commit` seam reuses `finding` — a fragment inventing a bespoke `self-review`
 # kind at it is rejected naming the offender (the phase is valid; the invented kind is not).
 assert "pre-commit bespoke kind rejected" fail-precommit-badkind.md - 1 "precommit-badkind" "unknown contribution-kind" "self-review"
