@@ -198,45 +198,30 @@ Number them in sequence after the spec scenarios (Baseline health is the last su
 After generating the generic spec-traced suites and the Baseline-health suite, fire the
 **`qa-generation`** phase and aggregate any **`scenario`** contributions the registered
 capabilities attach to it. This phase runs *after* Baseline health, but the suites it
-produces are **placed before** Baseline health — which always stays the last suite (see
-step 5 below). Execute the capability invocation runtime
-(`plugins/wf/skills/_contracts/invocation-runtime.contract.md`, which executes the port
-`plugins/wf/skills/_contracts/capability-registry.contract.md`), referencing it by
-**phase name / contribution-kind name** — never by heading:
+produces are **placed before** Baseline health — which always stays the last suite.
 
-1. **Read `_local/config.md`** and locate its `## Capabilities` registry. Iterate the
-   rows **in registry order** (general → specific).
-2. **Per row, read the manifest** at `<path>/manifest.md` (the path is fixed by the
-   contract; do not glob or guess). Parse its fragments table by the fixed columns
-   (`phase | contribution-kind | dispatch | scope`).
-3. **Collect** only the fragment rows whose `phase` is `qa-generation` and whose
-   `contribution-kind` is `scenario`. All other rows are ignored for this firing.
-4. **Dispatch each collected fragment** on its `dispatch` kind:
-   - `inline: <rel-path>` → read `<path>/<rel-path>` (forward-slash, **relative to the
-     capability's registry path**) and **follow it in-context**, producing scenarios in
-     the generic `scenario` shape (the same `TC-NNN` / `Validates:` contract as Phase 3,
-     numbered in the global sequence).
-   - `subagent: <agent>` → invoke the **Task** tool with `subagent_type: <agent>`,
-     passing the work under review **and the generic `scenario` shape**; only its final
-     block returns. Aggregate the scenarios it returns in that shape. Core never parses
-     a capability-specific output format to extract scenarios — a capability that has not
-     yet emitted the generic `scenario` shape simply yields nothing to aggregate.
-5. **Aggregate provenance-tagged.** `scenario` aggregates **with provenance**: render
-   every contributor's scenarios in their own suite, each tagged with its **source
-   capability** (the registry row's name). Because attribution is explicit, registry
-   order is **cosmetic** for scenarios. Place the aggregated capability suites **after**
-   the spec suites and **before** Baseline health, numbered in the global `TC-NNN`
-   sequence.
+Follow the generalised phase-firing procedure verbatim — `invocation-runtime.ops.md`
+§"The moving parts" (registry iteration → per-capability manifest read → per-phase
+fragment collection → per-fragment dispatch → aggregation), referencing it by
+**phase name / contribution-kind name**, never by heading — with these `qa-generation`
+parameters:
 
-**No-op (the only permitted branch is "zero `qa-generation` `scenario` fragments" vs "one
-or more"):** if the registry is empty or absent, a manifest is missing, no fragment row
-matches the `qa-generation` phase under the `scenario` kind, a dispatched fragment returns
-an empty list, or a `dispatch` is malformed (neither `inline:` nor `subagent:`), that
-contributor — or the whole phase — produces **nothing**. The generic plan then stands
-alone: no capability-scenarios section, no capability/stack/domain term surfaced, no broken
-subagent reference, no STOP. **Never** name a concrete capability, count the registry, or
-carry a per-capability code path. An aggregated scenario rolls up into the plan and the
-coverage matrix on the same footing as a spec-traced scenario, carrying its provenance tag.
+- **Firing phase:** `qa-generation`. **Contribution kind collected:** `scenario`.
+- **Generic shape produced:** each contributed scenario in the same `TC-NNN` /
+  `Validates:` contract as Phase 3, numbered in the **global** sequence.
+- **Aggregation:** `scenario` aggregates **provenance-tagged** — render every
+  contributor's scenarios in their own suite, each tagged with its **source capability**
+  (the registry row's name); registry order is cosmetic. Place the aggregated capability
+  suites **after** the spec suites and **before** Baseline health.
+
+**No-op** is the ops doc's generalised `<none>` path (§"No-op path"): if the registry is
+empty or absent, a manifest is missing, no fragment matches `qa-generation` under the
+`scenario` kind, a dispatched fragment returns an empty list, or a `dispatch` is
+malformed, that contributor — or the whole phase — produces **nothing** and the generic
+plan stands alone (no capability-scenarios section, no capability/stack/domain term
+surfaced, no broken subagent reference, no STOP). An aggregated scenario rolls up into the
+plan and the coverage matrix on the same footing as a spec-traced scenario, carrying its
+provenance tag.
 
 Write to `{task-root}/{task-id}/06_qa.md`. Overwrite if it exists — the task folder is excluded from version control, so there's no history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
 

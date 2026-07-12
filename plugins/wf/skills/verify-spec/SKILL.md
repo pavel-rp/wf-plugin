@@ -195,44 +195,28 @@ Verdicts:
 ## Fire the `verify` phase (aggregate capability findings)
 
 After the generic per-requirement audit, fire the **`verify`** phase and aggregate any
-**`finding`** contributions the registered capabilities attach to it. Execute the
-capability invocation runtime
-(`plugins/wf/skills/_contracts/invocation-runtime.contract.md`, which executes the port
-`plugins/wf/skills/_contracts/capability-registry.contract.md`), referencing it by
-**phase name / contribution-kind name** — never by heading:
+**`finding`** contributions the registered capabilities attach to it.
 
-1. **Read `_local/config.md`** and locate its `## Capabilities` registry. Iterate the
-   rows **in registry order** (general → specific).
-2. **Per row, read the manifest** at `<path>/manifest.md` (the path is fixed by the
-   contract; do not glob or guess). Parse its fragments table by the fixed columns
-   (`phase | contribution-kind | dispatch | scope`).
-3. **Collect** only the fragment rows whose `phase` is `verify` and whose
-   `contribution-kind` is `finding`. All other rows are ignored for this firing.
-4. **Dispatch each collected fragment** on its `dispatch` kind:
-   - `inline: <rel-path>` → read `<path>/<rel-path>` (forward-slash, **relative to the
-     capability's registry path**) and **follow it in-context**, producing findings in
-     the generic finding shape.
-   - `subagent: <agent>` → invoke the **Task** tool with `subagent_type: <agent>`,
-     passing the work under review **and the generic finding shape** (the "Capability
-     findings" report shape below — the `finding` kind fixed by
-     `plugins/wf/skills/_contracts/capability-registry.contract.md`); only its final
-     block returns. Aggregate the findings it returns in that shape. Core never parses
-     a capability-specific output format to extract findings — a capability that has not
-     yet emitted the generic finding shape simply yields nothing to aggregate.
-5. **Aggregate provenance-tagged.** `finding` aggregates **with provenance**: render
-   every contributor's findings, each tagged with its **source capability** (the
-   registry row's name). Because attribution is explicit, registry order is **cosmetic**
-   for findings.
+Follow the generalised phase-firing procedure verbatim — `invocation-runtime.ops.md`
+§"The moving parts" (registry iteration → per-capability manifest read → per-phase
+fragment collection → per-fragment dispatch → aggregation), referencing it by
+**phase name / contribution-kind name**, never by heading — with these `verify`
+parameters:
 
-**No-op (the only permitted branch is "zero `verify` fragments" vs "one or more"):** if
-the registry is empty or absent, a manifest is missing, no fragment row matches the
-`verify` phase under the `finding` kind, or a `dispatch` is malformed (neither `inline:`
-nor `subagent:`), that contributor — or the whole phase — produces **nothing**. The
-generic verdict then stands alone: no capability findings section, no
-capability/stack/domain term surfaced, no broken subagent reference, no STOP. **Never**
-name a concrete capability, count the registry, or carry a per-capability code path. A
-capability's findings feed the verdict on the same footing as generic requirements
-(a finding that asserts non-conformance is a FAIL, exactly like a failed requirement).
+- **Firing phase:** `verify`. **Contribution kind collected:** `finding`.
+- **Generic shape produced:** each contributed finding in the generic finding shape —
+  the "Capability findings" report shape below.
+- **Aggregation:** `finding` aggregates **provenance-tagged** — render every
+  contributor's findings, each tagged with its **source capability** (the registry row's
+  name); registry order is cosmetic.
+
+**No-op** is the ops doc's generalised `<none>` path (§"No-op path"): if the registry is
+empty or absent, a manifest is missing, no fragment matches `verify` under the `finding`
+kind, or a `dispatch` is malformed, that contributor — or the whole phase — produces
+**nothing** and the generic verdict stands alone (no capability findings section, no
+capability/stack/domain term surfaced, no broken subagent reference, no STOP). A
+capability's findings feed the verdict on the same footing as generic requirements (a
+finding that asserts non-conformance is a FAIL, exactly like a failed requirement).
 
 ---
 

@@ -197,7 +197,7 @@ After the loop completes (or aborts), write the full `07_qa-report.md`:
 - Traceability matrix (rolled up from each scenario's `Validates: SC-N` and verdict).
 - Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table.
 - Notes & Observations — any `Note` annotations recorded.
-- Defects table — one row per FAIL, severity from priority (P0→High, P1→Medium, P2→Low), description from the observed-value text the tester gave.
+- Defects table — one row per FAIL, severity resolved per the rubric in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md) (§Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from the observed-value text the tester gave.
 
 After writing, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · manual · <status> · <P>/<T> passed`.
 

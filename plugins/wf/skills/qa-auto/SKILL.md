@@ -147,7 +147,7 @@ After the run completes (or stops at batch / abort):
 - Traceability matrix rolled up from per-scenario `Validates: SC-N` references and verdicts.
 - Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table (from the engine's verdict blocks).
 - Notes & Observations — any anomalies the engine surfaced (entity substitutions, retries, teardown failures).
-- Defects table — one row per FAIL, severity from priority (P0→High, P1→Medium, P2→Low), description from observed value.
+- Defects table — one row per FAIL, severity resolved per the rubric in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md) (§Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from observed value.
 
 If subagent invocation is available, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`.
 
