@@ -1,7 +1,6 @@
 ---
 name: test-page
 description: Scaffolds black-box TypeScript tests for Angular-runtime targets — behavioral (services, components, pipes, guards, interceptors, directives) and wiring/registration (state models, app initializers, modules, routes, DI configs) — and injects them into the stack's configured sandbox module-test page (a profile slot). The user loads the page in a browser and pastes the console output back for verdict. Tests derive from the spec, not the implementation. Use when a target needs the Angular runtime (DI, zone.js, HttpClient) and can't be exercised by /wf-node-ts:test-node.
-user-invocable: true
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 

@@ -14,7 +14,7 @@ Opens a PR for the current task through the project's active delivery provider. 
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}`. If missing, stop: "Run `/wf:init` first."
+Confirm `_local/config.md` exists (the project is initialized). If missing, stop: "Run `/wf:init` first." This host reads no value from it — the two subagents re-resolve the id and `{task-root}` themselves.
 
 ---
 
