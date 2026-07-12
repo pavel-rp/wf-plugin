@@ -1,7 +1,7 @@
 # Core extension interface (the port)
 
 **Version:** 1.0.0 (frozen — WF-1; superseded by v2, WF-21)
-**Status:** **Superseded by** `capability-registry.contract.md` (v2.0.0, WF-21) — kept as the frozen v1 N=1 base; not reopened.
+**Status:** **Superseded by** `capability-registry.contract.md` (v2.10.0, WF-21) — kept as the frozen v1 N=1 base; not reopened.
 **Model:** claude-opus-4-8
 **Owned by:** the `wf` core plugin (domain-agnostic; ships inside the plugin)
 
@@ -9,7 +9,7 @@
 > `<none>` Null Object, and three named hooks (`rule-audit`, `parity-suite`,
 > `mapping`). The v2 boundary — a capability **registry**, the named **SDD
 > phases** as injection points, and the generic **contribution taxonomy** —
-> lives in `capability-registry.contract.md` (v2.0.0, WF-21), the authoritative
+> lives in `capability-registry.contract.md` (v2.10.0, WF-21), the authoritative
 > source of truth for the boundary. This document is kept intact as the **N=1
 > base** v2 generalises (a single-row registry reduces to exactly this single
 > `{domain}`); it is not reopened. The runtime half is generalised separately by
