@@ -1,7 +1,7 @@
 ---
 name: classify
 description: Classifies a task into one of seven branch-type buckets (feat, fix, chore, refactor, migration, docs, hotfix) with a calibrated confidence (high/medium/low). Reads requirements from a file or raw text, delegates the rubric to its subagent for context-isolated reasoning, and emits a structured verdict for downstream skills (wf:spec, wf:plan, wf:lite, wf:branch). Use when another skill needs to determine task type without hardcoding a feat/fix-only assumption.
-allowed-tools: [Read, Glob, Grep, Bash]
+allowed-tools: [Read, Glob, Grep, Bash, Task]
 ---
 
 # /wf:classify — Branch-type classifier with confidence
