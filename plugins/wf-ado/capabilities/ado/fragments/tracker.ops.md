@@ -1,6 +1,6 @@
 # ado tracker provider — runtime ops
 
-**Version:** 1.2.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`)
+**Version:** 1.3.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-243 — `create_umbrella`, `create_child`, `list_children`, `post_comment` bound to confirmed tool names)
 **Role:** the runtime-read half of the ado tracker provider — every input, guard, tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, grounding legend, per-operation grounding status, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -36,7 +36,7 @@
 **Procedure:**
 
 1. Create the top-level work item for the task in `{ado-project}` (from config), using the supplied title/description.
-2. Tool: `<VERIFY: tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
+2. Tool: `mcp_ado_wit_create_work_item`.
 
 **Idempotency guard:** the returned id is recorded as a `**<label>:** <value>` metadata line in the local artifact that triggered the call. Before invoking `create_umbrella` again for the same artifact/slot, read that line back first; a present value means the umbrella already exists — **never** re-invoke for that artifact.
 
@@ -49,7 +49,7 @@
 **Procedure:**
 
 1. Create a work item nested under the given parent in `{ado-project}` (from config), using the supplied title/description. Used both for a task's own child work items and for further nesting beneath those.
-2. Tool: `<VERIFY: tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>` (same marker as `create_umbrella`).
+2. Tool: `mcp_ado_wit_add_child_work_items`.
 
 **Idempotency guard:** identical to `create_umbrella` — the returned child id is recorded as a metadata line in the triggering local artifact; read it back before ever re-invoking `create_child` for the same artifact/slot.
 
@@ -86,7 +86,7 @@
 **Procedure:**
 
 1. Enumerate the existing child work items nested under the given parent in `{ado-project}` (from config).
-2. Tool: `<VERIFY: tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
+2. Tool: `mcp_ado_wit_get_work_item` (the same grounded `get` tool) on the parent id with `expand: "relations"`; filter the returned relations for `rel: "System.LinkTypes.Hierarchy-Forward"` to collect the child ids, then resolve their titles with `mcp_ado_wit_get_work_items_batch_by_ids`. No dedicated "list children" tool exists in the ADO MCP catalog — this composes the already-grounded `get` tool with one further read rather than guessing a bespoke listing tool.
 
 **Output:** the parent's existing child work items (id + title, at minimum).
 
@@ -97,7 +97,7 @@
 **Procedure:**
 
 1. Post the given comment body onto the work item in `{ado-project}` (from config).
-2. Tool: `<VERIFY: tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
+2. Tool: `mcp_ado_wit_add_work_item_comment`.
 
 **Output:** confirmation the comment was posted (id or timestamp, per the tool's response shape once confirmed).
 
