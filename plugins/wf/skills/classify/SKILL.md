@@ -6,7 +6,7 @@ allowed-tools: [Read, Glob, Grep, Bash, Task]
 
 # /wf:classify — Branch-type classifier with confidence
 
-Classify a task into one of seven branch-type buckets and return a calibrated confidence. Reads `00_reqs.md` (or `01_spec.md` if richer) from a task folder, delegates the rubric to its subagent, and emits a structured verdict that downstream skills consume to set commit type, branch prefix, and spec/plan metadata.
+Classify a task into one of seven branch-type buckets and return a calibrated confidence. Reads `01_spec.md` (or `00_reqs.md` if no spec yet) from a task folder, delegates the rubric to its subagent, and emits a structured verdict that downstream skills consume to set commit type, branch prefix, and spec/plan metadata.
 
 **Read-only. Does not write artifacts. Does not branch, plan, or implement.**
 
