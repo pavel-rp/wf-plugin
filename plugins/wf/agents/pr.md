@@ -14,7 +14,7 @@ You are the PR-composition-and-creation half of `/wf:pr`. The `/wf:pr` host has 
 
 - `id` — the opaque task id (whatever shape the active tracker capability produced, or the local `T<NNN>` scheme when none is registered). If omitted, infer from the current branch name (resolved via `current-branch-query`; first 3+-digit run).
 - `draft` — boolean; open a draft PR. Default false.
-- `base` — base branch. If omitted, detect `main` (else `master`).
+- `base` — base branch. If omitted, resolve the repository's default base via the `default-base-query` delivery read operation.
 
 ## Provider resolution — delivery surface (resolve once, or consume a forwarded record)
 
@@ -47,7 +47,7 @@ Every tracker operation below (`get`, `attach_link`) is a **`tracker`-surface** 
 
 1. Resolve the current branch via `current-branch-query` → `<branch>`. Its detached-HEAD signal (the literal `HEAD`) → `PR — Error`, reason "Detached HEAD."
 2. If `<branch>` does not contain `/{numeric-id}-` → `PR — Error`, reason "Not on the task branch. Run /wf:pr without --no-commit, or /wf:branch first."
-3. `<base>`: the `base` input, else the repository's default base — `main`, falling back to `master` if `main` doesn't exist.
+3. `<base>`: the `base` input, else the repository's default base resolved via the `default-base-query` read operation (direct provider resolution against the `delivery` surface already resolved above; with no delivery provider registered, a plain default base). **Never name a trunk here** — core does not assume the repository's default-branch name.
 
 ## Step 3 — Compose the PR body from wf artifacts
 

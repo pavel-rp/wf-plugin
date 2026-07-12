@@ -44,7 +44,7 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
 
 ## Step 3 — First-commit detection
 
-1. Determine the base branch: `main`, falling back to `master` if `main` doesn't exist in this repository.
+1. Determine the base branch via the `default-base-query` read operation (direct provider resolution against the `delivery` surface already resolved above). With no delivery provider registered this read falls back silently to a plain default base. **Never name a trunk here** — core does not know or assume the repository's default-branch name.
 2. Count the commits already introduced on this branch since the base branch. Zero → this is the **first commit** on the branch (`<is-first>` = true). Otherwise `<is-first>` = false.
 
 ## Step 4 — Short-circuit nothing-to-commit, else author the message, fire the pre-commit self-review seam, and commit
@@ -84,7 +84,7 @@ Run the push when `push` is true. When `push` is false, set `Push: not-pushed` a
 
 1. Invoke `push-upstream(<branch>)` for the current branch.
 2. Map the outcome to the `Push:` value:
-   - `<state>` = `pushed (<remote>/<remote-branch>)` → `pushed (origin/<branch>)` (or `up-to-date (origin/<branch>)` when the operation reports nothing new to push).
+   - `<state>` = `pushed (<remote>/<remote-branch>)` → carry the operation's own `<remote>/<remote-branch>` through **verbatim** as `pushed (<remote>/<remote-branch>)` (or `up-to-date (<remote>/<remote-branch>)` when the operation reports nothing new to push). Never rewrite the remote to a literal — the provider supplies the real remote, which may not be `origin`.
    - `<state>` = `failed (<reason>)` → `failed (<short reason>)`. The commit itself is intact — do NOT undo it.
 
 (No separate no-delivery-provider check is needed here — Step 4's own no-delivery-provider path already returns `COMMIT — Error` before this step is ever reached, so `push-upstream` is only invoked when a delivery provider is confirmed active.)
@@ -112,7 +112,7 @@ COMMIT — committed
 Task: <task-id> — <title or n/a>
 Subject: <id>: <subject>
 Files: <n> changed (+<a> -<d>)
-Push: <pushed (origin/<branch>) | up-to-date (origin/<branch>) | not-pushed | failed (<reason>)>
+Push: <pushed (<remote>/<remote-branch>) | up-to-date (<remote>/<remote-branch>) | not-pushed | failed (<reason>)>
 Next: /wf:pr <id>
 ```
 
@@ -122,7 +122,7 @@ Nothing to commit:
 COMMIT — nothing-to-commit
 
 Task: <task-id>
-Push: <pushed (origin/<branch>) | up-to-date (origin/<branch>) | not-pushed | failed (<reason>)>
+Push: <pushed (<remote>/<remote-branch>) | up-to-date (<remote>/<remote-branch>) | not-pushed | failed (<reason>)>
 Next: /wf:pr <id>
 ```
 

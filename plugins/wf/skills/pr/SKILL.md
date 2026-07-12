@@ -28,7 +28,7 @@ Read `_local/config.md` for `{task-root}`. If missing, stop: "Run `/wf:init` fir
 | ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------- |
 | `<id>`            | NO       | Task id — opaque (the active tracker's shape, or the local `T<NNN>` scheme when none is registered). Falls back to inferring from the current branch. |
 | `--draft`         | NO       | Open the PR as a draft.                                                                                           |
-| `--base <branch>` | NO       | Base branch for the PR. Defaults to the repo's `main` (or `master`).                                             |
+| `--base <branch>` | NO       | Base branch for the PR. Defaults to the repository's default base, resolved through the delivery provider.        |
 | `--no-commit`     | NO       | Skip the commit+push step and open a PR against exactly what's already pushed. (The branch must already exist on the remote.) |
 
 ---
@@ -82,7 +82,7 @@ Invoke the **Task** tool with `subagent_type: wf:pr`, passing:
 
 - `id` — `{task-id}` (omit when unset — the subagent infers it from the current branch)
 - `draft` — `true` if `--draft` was passed, else `false`
-- `base` — the `--base` value, or omit to let the subagent detect `main`/`master`
+- `base` — the `--base` value, or omit to let the subagent resolve the repository's default base via the delivery provider
 - the forwarded `delivery` and `tracker` resolution records from Phase 1.5, so `wf:pr` consumes both surfaces without a resolution walk of its own (`invocation-runtime.ops.md` §"Run-scoped provider forwarding")
 
 Emit the subagent's `PR —` block verbatim as this skill's final output.

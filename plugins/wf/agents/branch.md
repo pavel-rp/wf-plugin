@@ -64,7 +64,7 @@ Derive `<branch-name>` from Step 2 (unchanged, tracker-side logic — out of sco
 2. **Invoke `branch-create(<branch-name>)`.** This single operation absorbs the detached-HEAD guard, the dirty-worktree guard, the exact-name existing-branch check, base determination, remote detection and fetch, branch creation/switch, and upstream tracking — all internal to the delivery provider's own implementation.
 3. **Detached HEAD** and **dirty working tree** both surface as an error result from `branch-create` itself — propagate its reason verbatim into `BRANCH — Error`.
 4. **Base-branch fetch failure** — a remote exists but the provider's fetch of the latest base fails — surfaces as an error result from `branch-create`; propagate its reason. With no remote, `branch-create` silently branches from the local base instead (no error).
-5. **Map the result** onto the unchanged Final Output block (Step 5): `<state>` (`created` | `switched` | `already-active`), `<base-source>` (`origin/<base>` | `<base>` | `already existed`), `<tracking>` (`origin/<branch-name>` | `local-only (push failed)` | `local-only (no remote)` | `local-only (no upstream)`).
+5. **Map the result** onto the unchanged Final Output block (Step 5), carrying `branch-create`'s returned tokens through **verbatim** — they are provider-supplied, so core never re-derives or assumes a remote name: `<state>` (`created` | `switched` | `already-active`), `<base-source>` (`<remote>/<base>` | `<base>` | `already existed`), `<tracking>` (`<remote>/<branch-name>` | `local-only (push failed)` | `local-only (no remote)` | `local-only (no upstream)`).
 
 **Two v1 safety nets have no equivalent operation and are intentionally dropped** — not a fresh gap discovered here, already accepted at planning time:
 
@@ -80,7 +80,7 @@ After a successful path through Step 3 (`created`, `switched`, or `already-activ
 - `summary` — the resolved `<branch-name>` (no quotes)
 - `calling-skill` — the literal string `/wf:branch`
 
-If the wf:index subagent returns `INDEX — Error`, do NOT fail the branch operation — the branch was created/switched successfully and that's the primary contract. Append the index failure as a parenthetical to `<tracking>` (e.g., `origin/<branch-name> (index update failed)`) but still emit the `BRANCH — <state>` success block.
+If the wf:index subagent returns `INDEX — Error`, do NOT fail the branch operation — the branch was created/switched successfully and that's the primary contract. Append the index failure as a parenthetical to `<tracking>` (e.g., `<remote>/<branch-name> (index update failed)`) but still emit the `BRANCH — <state>` success block.
 
 ## Step 5 — Final Output
 
@@ -97,9 +97,9 @@ Base: <base-source>
 Tracking: <tracking>
 ```
 
-`<base-source>` is one of: `origin/<base>` (created with remote fetched), `<base>` (created locally, no remote), or `already existed` (`switched` or `already-active`).
+`<base-source>` is the provider-supplied token, one of: `<remote>/<base>` (created with the remote fetched), `<base>` (created locally, no remote), or `already existed` (`switched` or `already-active`).
 
-`<tracking>` is one of: `origin/<branch-name>` (push succeeded, or upstream already configured), `local-only (push failed)`, `local-only (no remote)`, or `local-only (no upstream)`. May carry an appended ` (index update failed)` parenthetical when Step 4 returned `INDEX — Error`.
+`<tracking>` is the provider-supplied token, one of: `<remote>/<branch-name>` (push succeeded, or upstream already configured), `local-only (push failed)`, `local-only (no remote)`, or `local-only (no upstream)`. May carry an appended ` (index update failed)` parenthetical when Step 4 returned `INDEX — Error`.
 
 Error:
 

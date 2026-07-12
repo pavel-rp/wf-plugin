@@ -66,9 +66,9 @@ Base: <base-source>
 Tracking: <tracking>
 ```
 
-`<base-source>` variants: `origin/<base>` (created with remote fetched), `<base>` (created locally, no remote), `already existed` (switched-to-existing or already-active).
+`<base-source>` variants (provider-supplied tokens, emitted verbatim): `<remote>/<base>` (created with the remote fetched), `<base>` (created locally, no remote), `already existed` (switched-to-existing or already-active).
 
-`<tracking>` variants: `origin/<branch-name>` (push succeeded, or upstream already configured), `local-only (push failed)`, `local-only (no remote)`, `local-only (no upstream)`. May carry an appended ` (index update failed)` when the nested wf:index call returned an error.
+`<tracking>` variants (provider-supplied tokens, emitted verbatim): `<remote>/<branch-name>` (push succeeded, or upstream already configured), `local-only (push failed)`, `local-only (no remote)`, `local-only (no upstream)`. May carry an appended ` (index update failed)` when the nested wf:index call returned an error.
 
 Error:
 
