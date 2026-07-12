@@ -20,7 +20,7 @@
 # --- The single content exclusion ---
 # The abstract contract vocabulary: the delivery/tracker operation names
 # (branch-create, commit, push-upstream, pr-create, current-branch-query,
-# workspace-root-resolve, last-commit-timestamp-query) and the surface/phase
+# workspace-root-resolve, default-base-query, last-commit-timestamp-query) and the surface/phase
 # nouns (delivery, tracker, branch, commit, deliver, workspace root) used as
 # abstract nouns. These are the intended vocabulary — the patterns below match a
 # git/gh *command* (a `\b`-bounded verb after `git `/`gh `), so they never match
