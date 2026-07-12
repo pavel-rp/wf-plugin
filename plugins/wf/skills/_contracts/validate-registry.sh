@@ -53,14 +53,32 @@
 set -u
 
 # ---------------------------------------------------------------------------
-# Paths. The script lives three levels under the repo root
-# (plugins/wf/skills/_contracts/); resolve the repo root from its own location
-# so on-disk path checks resolve against the real repo root in BOTH real and
-# fixture runs (fixtures therefore use full repo-relative paths, not bare names,
-# keeping resolution byte-identical to production).
+# Paths. Resolve the repo root by walking UP from the script's own location to
+# the marketplace marker (`.claude-plugin/marketplace.json`) instead of hardcoding
+# a fixed number of `..` levels — so on-disk path checks keep resolving against
+# the real repo root even if the script is moved within the tree (the previous
+# fixed four-levels-up depth broke silently on any relocation). On-disk path
+# checks then resolve against the real repo root in BOTH real and fixture runs
+# (fixtures use full repo-relative paths, keeping resolution byte-identical to
+# production). When the marker is not found (a hermetic checkout without the
+# marketplace manifest), fall back to the historical four-levels-up location
+# (plugins/wf/skills/_contracts/ → repo root), preserving byte-identical behaviour.
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+REPO_ROOT=""
+_probe="$SCRIPT_DIR"
+while :; do
+  if [ -f "$_probe/.claude-plugin/marketplace.json" ]; then
+    REPO_ROOT="$_probe"
+    break
+  fi
+  _parent="$(dirname "$_probe")"
+  [ "$_parent" = "$_probe" ] && break   # reached the filesystem root — stop
+  _probe="$_parent"
+done
+if [ -z "$REPO_ROOT" ]; then
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+fi
 CONFIG_JS="$REPO_ROOT/wf.config.js"
 
 # ---------------------------------------------------------------------------
@@ -118,6 +136,47 @@ trim() {
   # shellcheck disable=SC2001
   printf '%s' "$1" | sed -e 's/\r$//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
+
+# ---------------------------------------------------------------------------
+# Heading-typo guard (WF-239). Every block below is parsed by its EXACT heading
+# text (`## Capabilities`, `## Plugin Roots`, `## Fragments`); a casing/spacing
+# slip (`## capabilities`, `##Fragments`, `## Plugin  Roots`) matches nothing and
+# the block parses to ZERO rows — which would otherwise PASS validation
+# vacuously. This guard scans a file for any heading whose alphanumerics-only,
+# lowercased form equals a canonical block keyword but whose raw text is NOT the
+# exact heading, and errors — naming the file context and the offending line — so
+# a typo fails LOUDLY instead of passing silent. It never requires a block to be
+# present (an absent `## Capabilities` is the legitimate fully-generic-core case);
+# it only rejects a near-miss.
+# ---------------------------------------------------------------------------
+check_heading_typos() {
+  local file="$1" label="$2" raw norm
+  [ -f "$file" ] || return 0
+  while IFS= read -r raw || [ -n "$raw" ]; do
+    raw="$(printf '%s' "$raw" | sed 's/\r$//')"
+    case "$raw" in \#*) ;; *) continue ;; esac
+    # Exact canonical headings are correct — skip them.
+    case "$raw" in
+      '## Capabilities' | '## Plugin Roots' | '## Fragments') continue ;;
+    esac
+    norm="$(printf '%s' "$raw" \
+      | sed -e 's/^#\{1,6\}[[:space:]]*//' \
+      | tr '[:upper:]' '[:lower:]' \
+      | tr -cd 'a-z0-9')"
+    case "$norm" in
+      capabilities)
+        err "$label heading \`$raw\` looks like a typo of \`## Capabilities\` — the exact heading is required, or the block parses to zero rows (a silent pass)." ;;
+      pluginroots)
+        err "$label heading \`$raw\` looks like a typo of \`## Plugin Roots\` — the exact heading is required, or the block parses to zero rows (a silent pass)." ;;
+      fragments)
+        err "$label heading \`$raw\` looks like a typo of \`## Fragments\` — the exact heading is required, or the block parses to zero rows (a silent pass)." ;;
+    esac
+  done < "$file"
+}
+
+# Guard the registry file's own block headings (`## Capabilities` / `## Plugin
+# Roots`) before parsing them below.
+check_heading_typos "$REGISTRY" "registry"
 
 # ===========================================================================
 # CHECK 1 — registryPath shape.
@@ -490,8 +549,12 @@ done
 # The 8 SDD phases (contract: "The SDD phases") — `pre-commit` (WF-154) is the
 # operation-time commit-path self-review seam; it reuses the `finding` kind.
 VALID_PHASES=" spec plan tasks implement verify qa-generation qa-execution pre-commit "
-# The 7 contribution kinds (contract: "The contribution taxonomy").
-VALID_KINDS=" guidance task-list artifact finding scenario provider article "
+# The 6 contribution kinds (contract: "The contribution taxonomy"). `article` is
+# NOT a contribution kind (WF-239): a constitution clause is declared with the
+# `article: <key> = <value>` manifest KEY (parsed below, cross-checked in CHECK 9),
+# never as a fragments-table row — its home is the constitution, which is not an
+# SDD phase, so a fragment naming `article` as its kind is rejected by CHECK 6.
+VALID_KINDS=" guidance task-list artifact finding scenario provider "
 
 # Ownership-scope accounting for the partitioned kinds (CHECK 5).
 #   provider keyed by its surface token; artifact keyed by its source->target pair.
@@ -510,6 +573,10 @@ while [ "$ci" -lt "${#checkable_idx[@]}" ]; do
   idx="${checkable_idx[$ci]}"
   cap="${cap_names[$idx]}"
   mf="${manifest_files[$ci]}"
+
+  # Guard this manifest's `## Fragments` heading against a casing/spacing typo
+  # that would parse zero rows and pass silently (WF-239).
+  check_heading_typos "$mf" "capability \`$cap\` manifest"
 
   in_frag=0
   while IFS= read -r raw || [ -n "$raw" ]; do
@@ -532,9 +599,12 @@ while [ "$ci" -lt "${#checkable_idx[@]}" ]; do
         done
         ;;
       article:*)
-        # Structural article declaration:  article: <key> = <value>
-        # (the only mechanism parsed; prose-level contradiction detection is
-        # out of scope and noted as a known limitation).
+        # Constitution-clause declaration — the documented `article:` manifest KEY
+        # (contract §"Manifest schema v2"; WF-239): `article: <key> = <value>`. This
+        # is a manifest key like `requires:`/`conflicts:`, NOT a fragments-table row
+        # (`article` is not a contribution kind). It is the only structural mechanism
+        # parsed; prose-level contradiction detection is out of scope (a known
+        # limitation).
         decl="$(trim "${line#article:}")"
         akey="$(trim "${decl%%=*}")"
         aval="$(trim "${decl#*=}")"
@@ -562,6 +632,7 @@ while [ "$ci" -lt "${#checkable_idx[@]}" ]; do
 
     f_phase="$(trim "$f_phase")"
     f_kind="$(trim "$f_kind")"
+    f_dispatch="$(trim "$f_dispatch")"
     f_scope="$(trim "$f_scope")"
 
     # Skip the header row.
@@ -576,6 +647,26 @@ while [ "$ci" -lt "${#checkable_idx[@]}" ]; do
     case "$VALID_KINDS" in
       *" $f_kind "*) ;;
       *) err "capability \`$cap\` fragment names an unknown contribution-kind \`$f_kind\` (row: \`$f_phase | $f_kind | ...\`) — not one of the contract's taxonomy kinds." ;;
+    esac
+
+    # --- CHECK 6b: dispatch column well-formed (WF-239) ------------------
+    # The dispatch cell must be `inline: <rel-path>` or `subagent: <agent>`
+    # (optionally wrapped in backticks in the table). A blank or otherwise
+    # malformed dispatch is a fragment core cannot reach — reject it, naming the
+    # capability and the offending row. (Previously f_dispatch was extracted but
+    # never validated — dead code.)
+    d="$f_dispatch"
+    d="${d#\`}"; d="${d%\`}"          # strip surrounding backticks, if any
+    d="$(trim "$d")"
+    case "$d" in
+      inline:*)
+        [ -z "$(trim "${d#inline:}")" ] && \
+          err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` has an \`inline:\` dispatch with no path (dispatch: \`$f_dispatch\`)." ;;
+      subagent:*)
+        [ -z "$(trim "${d#subagent:}")" ] && \
+          err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` has a \`subagent:\` dispatch with no agent name (dispatch: \`$f_dispatch\`)." ;;
+      *)
+        err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` has a malformed dispatch \`$f_dispatch\` — expected \`inline: <rel-path>\` or \`subagent: <agent>\`." ;;
     esac
 
     # --- CHECK 5: accumulate partitioned-kind ownership ------------------
