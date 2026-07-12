@@ -11,7 +11,7 @@ Bootstrap the current repository for the wf:* skill suite. Creates and/or update
 - `_local/` — task root (per-ticket artifacts)
 - `_local/config.md` — project-specific values consumed by every wf:* skill
 - `_local/README.md` — short note explaining the folder's purpose
-- `_local/_testkit/run.mjs` — Node test runner used by `/wf-node-ts:test-node`
+- `_local/_testkit/run.mjs` — Node test runner used by a registered unit-test-authoring capability
 - `.gitignore` — ensures `_local/` is never committed
 - `.git/info/exclude` — adds a `_page-tests/` path when a registered capability's test-host root exists in the checkout
 
@@ -128,7 +128,7 @@ Must exit 0 when the project typechecks (including framework-level checks: templ
 The three **API** keys are used only by the backend-exercise path (`Type: API` scenarios) — leave the defaults unless your project differs:
 
 - **API Base Path** — prefix the dev proxy forwards to the API, joined to the app base URL when a scenario route omits it. Default `/api`.
-- **API Controllers Root** — directory (relative to repo root) that contains the project's API controller source, used by `/wf-angular:qa-host api-probe` to find a host controller. `<auto-detect>` globs the project's controller-source pattern (skipping compiled-output directories).
+- **API Controllers Root** — directory (relative to repo root) that contains the project's API controller source, used by the `qa-execution` host provider's `api-probe` operation to find a host controller. `<auto-detect>` globs the project's controller-source pattern (skipping compiled-output directories).
 - **API Auth Token Source** — where the app keeps the bearer the runner reuses. `<auto-discover>` scans `localStorage`/`sessionStorage` for a JWT-shaped value; override with an exact storage key (e.g. `localStorage:access_token`) if discovery picks wrong, or `cookie` for httpOnly-cookie auth.
 
 ## Database
@@ -282,7 +282,7 @@ If the file already exists and `--force` is not set, skip. Otherwise write:
 Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
 
 - `T<NNN>/` — task folders (requirements, spec, plan, research, artifacts)
-- `_testkit/` — Node test runner for `/wf-node-ts:test-node`
+- `_testkit/` — Node test runner for a registered unit-test-authoring capability
 - `config.md` — project-specific values consumed by every wf:* skill
 
 Safe to nuke if you want a clean slate. Nothing here is version-controlled.

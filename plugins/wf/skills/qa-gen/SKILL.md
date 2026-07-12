@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 
 Generates a structured manual test plan for a task. Reads `00_reqs.md` (source of truth), classifies each success criterion by how it can be verified, designs scenarios for the criteria that need a human in a browser, and writes `06_qa.md` in the task folder. Every spec-derived scenario traces back to a numbered spec criterion; untraceable spec scenarios don't ship. The one deliberate exception is the **Baseline health suite** — a small standing set of measurable checks (no console errors, no failed network requests, the view renders) that every plan carries regardless of scope or criteria. See Phase 3.5.
 
-This skill produces **prose, not code**. The output is a plan a tester (human or agent) executes against the running app. Most scenarios are **browser** scenarios — clicks, typed values, observed UI changes, network calls visible in devtools. For a **backend** task (a controller endpoint, a service method, a repository method) it instead writes **API** scenarios that exercise the endpoint over HTTP with a real token and assert status + response shape; when the deliverable is a service with no endpoint yet, the scenario carries a `Backend host required:` precondition the runner satisfies by temporarily wiring the service to a controller (then reverting it). The full API-scenario rules live in [`references/api-scenarios.md`](references/api-scenarios.md). For automated unit tests scaffold via `/wf-angular:test-page` (component/DI-level, sandbox host) or `/wf-node-ts:test-node` (pure helpers, Node runner) — those siblings cover what this skill deliberately doesn't.
+This skill produces **prose, not code**. The output is a plan a tester (human or agent) executes against the running app. Most scenarios are **browser** scenarios — clicks, typed values, observed UI changes, network calls visible in devtools. For a **backend** task (a controller endpoint, a service method, a repository method) it instead writes **API** scenarios that exercise the endpoint over HTTP with a real token and assert status + response shape; when the deliverable is a service with no endpoint yet, the scenario carries a `Backend host required:` precondition the runner satisfies by temporarily wiring the service to a controller (then reverting it). The full API-scenario rules live in [`references/api-scenarios.md`](references/api-scenarios.md). For automated unit tests, the project's registered stack test-authoring capabilities (a component/DI-level sandbox-host harness, a pure-helper unit runner, etc.) cover what this skill deliberately doesn't — core names none of them.
 
 A backend-only task is therefore **never** a stub PASS: its behavioral criteria become runnable API scenarios, and its Baseline-health suite targets the primary endpoint instead of being marked N/A.
 
@@ -110,15 +110,15 @@ Run these reads in parallel where the tools allow:
 
 3. **Read `02_plan.md` if it exists** for the list of files implemented and any noted manual-test hints. Don't derive scenarios from plan steps — they describe code, not behavior.
 
-4. **Inspect what changed.** Inspect the set of files changed on this branch relative to the base branch — a read-only content-gathering read with no delivery operation of its own, described here by outcome, never as a literal command. For each file, do a *signature-only* read (component selectors, route paths, public method names, template button labels) so scenarios can name real UI elements. **Stop reading at the first method body.** This is the same black-box rule `/wf-angular:test-page` enforces.
+4. **Inspect what changed.** Inspect the set of files changed on this branch relative to the base branch — a read-only content-gathering read with no delivery operation of its own, described here by outcome, never as a literal command. For each file, do a *signature-only* read (component selectors, route paths, public method names, template button labels) so scenarios can name real UI elements. **Stop reading at the first method body.** This is the same black-box rule the stack's page-test authoring enforces.
 
-   For each new UI component in the diff, also check whether it is reachable by a route in the running app (grep the project's routing configuration for the component's selector / kebab-name). If it is not routed and no test-host for it exists either, the target is **host-missing** — record this so Phase 4 can emit a `Host required: <component-path>` precondition on scenarios that interact with it. `/wf:qa-auto` invokes `/wf-angular:qa-host` to scaffold a routed test-host on demand.
+   For each new UI component in the diff, also check whether it is reachable by a route in the running app (grep the project's routing configuration for the component's selector / kebab-name). If it is not routed and no test-host for it exists either, the target is **host-missing** — record this so Phase 4 can emit a `Host required: <component-path>` precondition on scenarios that interact with it. `/wf:qa-auto` resolves the registered `qa-execution` host provider to scaffold a routed test-host on demand.
 
    **Backend surfaces.** Apply the same signature-only read to backend source files in the diff — controllers, services, repositories, and the DTOs they return — following [`references/api-scenarios.md` § Backend-diff signals](references/api-scenarios.md#backend-diff-signals-phase-2). For each new/changed controller action, record its verb + route + params + return type (an **endpoint** surface). For each new/changed public method on a service/repository with no controller action calling it, record it as a **service-only** surface so Phase 4 can emit a `Backend host required: <Service>.<method>` precondition. A diff that is entirely backend data-layer files with no UI target is a **backend-only** task — its behavioral criteria classify as **API** in Phase 3.
 
 5. **Catalog existing automated coverage.** Look under:
-   - `_local/{task-id}/tests/` — `/wf-node-ts:test-node` output.
-   - The project's page-test location — `/wf-angular:test-page` output (filename hints carry the suite name; the file may be excluded from version control but local).
+   - `_local/{task-id}/tests/` — a registered unit-test harness's output (e.g. a pure-helper Node runner).
+   - The project's page-test location — a registered page-test harness's output (filename hints carry the suite name; the file may be excluded from version control but local).
    - Any pre-existing test files referenced in `02_plan.md`.
 
    For each automated test file, note which assertions it makes — the coverage matrix needs to know what's already verified by code so manual scenarios don't duplicate.
@@ -138,7 +138,7 @@ Cases come from criteria, not code. Implementation reads in Phase 2 are for **na
 | Category | Verified by | Examples | Action |
 |---|---|---|---|
 | **Build/static** | Compilation, typecheck, lint, file existence | "module exports type X", "config includes key Y", "tsconfig includes path Z" | Listed in coverage matrix. No manual scenario. |
-| **Automated test** | Existing unit/integration test asserts the criterion directly | Matches an assertion you found in Phase 2 step 5 (incl. a `wf-angular:test-page backend-smoke` page-test) | Listed in coverage matrix with the test file path. No manual scenario. |
+| **Automated test** | Existing unit/integration test asserts the criterion directly | Matches an assertion you found in Phase 2 step 5 (incl. a page-test harness's backend-smoke test) | Listed in coverage matrix with the test file path. No manual scenario. |
 | **Manual-browser** | Human or agent observes runtime behavior in the running app | "clicking Save shows a green toast", "dropdown filters list to entries matching the search" | One or more browser scenarios depending on scope. |
 | **API** | The behavior of an endpoint or service method, called over HTTP with a real token | "endpoint returns the widgets for the access level", "repository filters out inactive rows", "POST creates the record and returns 201", "service returns an empty list when none match" | One or more API scenarios. Service-only methods get a `Backend host required:` precondition. See [`references/api-scenarios.md`](references/api-scenarios.md). |
 
@@ -317,7 +317,7 @@ Scenarios aggregated from registered capabilities at the `qa-generation` phase, 
 - <Browser / app state — e.g., "Logged in as `admin@example.com`. Entity `Acme Corp` selected. On `/dashboard`.">
 - <Data state — e.g., "At least one active widget exists in the current entity.">
 - <Environment — e.g., "API server running. Network throttling off.">
-- <Host requirement, only when target was flagged host-missing in Phase 2 step 4 — e.g., "Host required: `<path to the un-routed component>`. `/wf:qa-auto` will scaffold or look up the route via `/wf-angular:qa-host`.">
+- <Host requirement, only when target was flagged host-missing in Phase 2 step 4 — e.g., "Host required: `<path to the un-routed component>`. `/wf:qa-auto` will scaffold or look up the route via the registered `qa-execution` host provider.">
 
 **Steps:**
 

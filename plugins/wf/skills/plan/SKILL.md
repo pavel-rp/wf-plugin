@@ -139,7 +139,7 @@ Before writing the plan, explore the project to understand what files are releva
 **Step 2a — Build the checklist** (3–7 steps). Apply these rules:
 
 - **First step:** `STEP-001`: Read all affected files. Confirm the approach is sound and no recent changes conflict.
-- **Last two steps:** Run verification command, then commit with `feat(<task-id>): <lowercase title>` or `fix(<task-id>): <lowercase title>`.
+- **Last two steps:** Run verification command, then a ready-for-review handoff — `/wf:implement` doesn't commit; it ticks this step and records a suggested commit message (`feat(<task-id>): <lowercase title>` or `fix(<task-id>): <lowercase title>`) for whichever commit step runs next (`/wf:commit`, or a manual commit).
 - **Middle steps:** One per distinct file or logical change area. Split by concern.
 
 **Step heading format:** `### - [ ] STEP-NNN: <title>`
@@ -203,7 +203,7 @@ Before writing the plan, explore the project to understand what files are releva
 - [ ] STEP-002: <title>
 - [ ] ...
 - [ ] STEP-NNN: Run build/typecheck — confirm no regressions
-- [ ] STEP-NNN+1: Commit — `<type>(<task-id>): <lowercase title>`
+- [ ] STEP-NNN+1: Ready for review — suggested commit message `<type>(<task-id>): <lowercase title>`
 
 ---
 
@@ -253,11 +253,11 @@ Before writing the plan, explore the project to understand what files are releva
 
 ---
 
-### - [ ] STEP-NNN+1: Commit
+### - [ ] STEP-NNN+1: Ready for review
 
-**Goal:** Produce an atomic, traceable commit for this task.
+**Goal:** Hand off the implemented change for review. `/wf:implement` does not commit, push, or open a PR — it ticks this step and records a suggested commit message for whichever step commits next (`/wf:commit`, or a manual commit).
 
-**Message:** `<type>(<task-id>): <lowercase title>`
+**Suggested commit message:** `<type>(<task-id>): <lowercase title>`
 
 **Depends on:** STEP-NNN
 

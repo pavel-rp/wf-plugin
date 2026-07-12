@@ -55,7 +55,7 @@ When `--steps` is provided, only the specified steps are executed (plus STEP-001
 
 - Already-checked steps within the range are skipped (not re-executed)
 - The verification and final handoff steps are only executed if they fall within the range
-- When `--steps` excludes the final handoff step, do NOT run Phase 5 (manual handoff checks) or Phase 6 (final completion report). Output a partial progress summary instead.
+- When `--steps` excludes the final handoff step, do NOT run Phase 5 (manual handoff checks) or Phase 6 (final completion report). Output a partial progress summary instead, using the `IMPLEMENT — Partial` shape from Phase 6's Final Output section (status line + steps-completed count + Next line pointing back at `/wf:implement {id}` to continue).
 
 **Tool preferences:**
 
@@ -221,32 +221,27 @@ Tick the final step checkbox and add a ready-for-review note:
 After all steps are ticked, output a completion summary.
 
 ```
-{task-id} — <title>
+IMPLEMENT — Complete
 
+{task-id} — <title>
 Steps completed: N/N
 Status: READY FOR REVIEW (not committed)
 Verification: <PASS / NEEDS MANUAL CHECK>
-
 Done When: "<done-when text from plan>"
-
 Changed files:
 - <list of modified files>
-
-Next — pick a fork:
-  Audit against spec:
-    /wf:verify-spec {id}      # audit the implementation against 00_reqs.md before shipping
-  Ship it:
-    /wf:commit {id} --push    # commit current changes (terse auto-message) and push
-    /wf:pr {id}               # open a PR from the wf artifacts
-    (or commit manually)
-  QA it first:
-    /wf:qa-gen {id}           # generate a manual browser QA plan (06_qa.md), traced to spec criteria
-    /wf:qa-auto {id}          # then run it autonomously  (or /wf:qa-run {id} to drive it yourself)
+Next: <branched on status — see below>
 
 Notes:
 - <any deviations from the plan>
 - <any adjacent issues noticed but not fixed>
 ```
+
+The `Next:` line is **always present**, branched on the status:
+
+- **Complete** → pick a fork: `/wf:verify-spec {id}` (audit the implementation against `00_reqs.md` before shipping), `/wf:commit {id} --push` then `/wf:pr {id}` to ship (or commit manually), or `/wf:qa-gen {id}` then `/wf:qa-auto {id}` (or `/wf:qa-run {id}` to drive it yourself) to QA first.
+- **Partial** (`--steps` excluded the final handoff step, per the Command Syntax note above) → `/wf:implement {id}` to continue with the remaining steps.
+- **Blocked** (Phase 2/3/4 stopped on a conflict, unexpected finding, or verification failure) → resolve the blocking issue, then re-run `/wf:implement {id}` to resume from the first unchecked step.
 
 **The last line of the output block must always be the very last thing output to chat.**
 

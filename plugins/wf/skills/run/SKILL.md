@@ -83,7 +83,7 @@ wf:triage ──┬─ blocked | clarify ─────────────
                                                                                                    └── (max 2 cycles) ──┘
 ```
 
-The QA tail self-orchestrates (`wf:qa-followup` already calls `wf-angular:qa-host` + `wf:qa-auto --only`); `wf:run` sequences into it and stops on the terminal QA verdict.
+The QA tail self-orchestrates (`wf:qa-followup` already resolves the registered `qa-execution` host provider + `wf:qa-auto --only`); `wf:run` sequences into it and stops on the terminal QA verdict.
 
 **Auto-front vs. gated phases.** `--auto` only ever runs the **auto-front** — `triage`, `spec`, `plan`, `verify-spec`, `qa-gen` — phases that are non-interactive and write only `_local/` artifacts (never product source). Every other phase is **gated**: `implement`, `lite`, `verify-fix`, and `qa-followup` write product source or need an approval, and `qa-auto`/`qa-run` drive the browser (kept an explicit step). `--auto` halts *before* the first gated phase it reaches and hands the exact command to the user. On a fresh task that boundary is right after `plan` (next is `implement`); once `implement` has landed and the user re-runs `--auto`, the loop resumes through `verify-spec`→`qa-gen` and halts before `qa-auto`.
 
@@ -105,7 +105,7 @@ Read `index.md` if present; otherwise scan the task folder. Determine the furthe
 | triage | `triage.md` exists; read its `**Verdict:** <lite \| full \| split \| blocked \| clarify>` field (the `TRIAGE —` token is chat-only, not written to the artifact) |
 | spec | `01_spec.md` exists |
 | plan | `02_plan.md` exists |
-| implement | `02_plan.md` checkboxes all ticked **and** a `## Resolution Summary` section is present — these are the durable signal (wf:implement persists no status line to the plan; its `Status: READY FOR REVIEW` completion report is chat-only, and there is no `IMPLEMENT —` token) |
+| implement | `02_plan.md` checkboxes all ticked **and** a `## Resolution Summary` section is present — these are the durable signal (wf:implement persists no status line to the plan; the `IMPLEMENT —` token and its `Status: READY FOR REVIEW` completion report are chat-only and don't survive a `/clear`) |
 | verify-spec | `04_verify.md` exists; read its `**Verdict:** PASS \| FAIL \| PARTIAL` line (detect from the artifact, not the `VERIFY —` chat token wf:verify-spec prints — chat tokens don't survive a `/clear`) |
 | verify-fix | `05_verify-fix.md` exists; read its `## Auto-fixed (<n>)` / `## Awaiting user (<m>)` headers and the `[FIXED]`/`[FAILED]`/`[SKIPPED]` entries (the `VERIFY-FIX —` token is chat-only) |
 | qa-gen | `06_qa.md` exists |

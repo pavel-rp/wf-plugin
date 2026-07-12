@@ -1,8 +1,13 @@
-# wf:qa-* — Shared report format (`07_qa-report.md`)
+# qa-engine — Shared report format (`07_qa-report.md`)
+
+> **Mirror — keep in sync.** This is a plugin-local copy of the canonical shared report
+> format so `qa-engine` stays reachable when `wf-browser-qa` and `wf` are installed to
+> **separate roots** (a cross-plugin relative path does not resolve there). The upstream
+> source of truth is `wf`'s `plugins/wf/skills/qa-gen/references/report-format.md`
+> (written and owned by `/wf:qa-gen`). When the canonical format changes, update this
+> mirror to match.
 
 The canonical shape of the QA-run report. Both `/wf:qa-run` (manual) and `/wf:qa-auto` (agentic) write this file. Same template, same headings, same coverage matrix — only the `Tester` field and the per-TC observed values differ between modes.
-
-This file is the single source of truth for the format. Update here, then both run and auto pick it up.
 
 ---
 
@@ -90,7 +95,7 @@ Only the **advisory** buckets can appear on a PASS — a **hard-fail** probe (ov
 
 **Vision review:** <rubric score / verdict — e.g. `PASS — alignment, spacing, no overlap/clipping, consistent sizing, controls read as controls`>
 
-Field names are stable and machine-readable: `**Visual:**`, `**Screenshot:**`, `**Geometry findings:**`, `**Vision review:**`. Real visual evidence is **agentic-only** — only the execution engine (`/wf:qa-auto` → the registered `qa-execution` engine provider) captures the screenshot, runs the geometry probes, and scores the vision rubric, then writes the populated sub-block. A manual `/wf:qa-run` walkthrough has no way to produce the geometry probes or the rubric score, so in **manual mode** a `**Visual:** yes` scenario writes the sub-block with the field names preserved but their values set to `n/a` — `**Visual:** not evaluated — agentic only`, `**Screenshot:** n/a`, `**Geometry findings:** n/a`, `**Vision review:** n/a` — so the fields stay present and grep-stable rather than being dropped. Reviewers grep the field names either way. A visual scenario that **FAILs** keeps the ordinary FAIL shape below (step/assertion table + `**Screenshot:**`) — no change to FAIL. **Scope:** *absolute* visual-defect evidence only (overlap, clipping/truncation, crowding, orphaned/mis-rendered, collapsed/oversized) — never visual-regression / golden-image pixel-diff output.
+Field names are stable and machine-readable: `**Visual:**`, `**Screenshot:**`, `**Geometry findings:**`, `**Vision review:**`. Real visual evidence is **agentic-only** — only the execution engine (`/wf:qa-auto` → `wf-browser-qa:qa-engine`) captures the screenshot, runs the geometry probes, and scores the vision rubric, then writes the populated sub-block. A manual `/wf:qa-run` walkthrough has no way to produce the geometry probes or the rubric score, so in **manual mode** a `**Visual:** yes` scenario writes the sub-block with the field names preserved but their values set to `n/a` — `**Visual:** not evaluated — agentic only`, `**Screenshot:** n/a`, `**Geometry findings:** n/a`, `**Vision review:** n/a` — so the fields stay present and grep-stable rather than being dropped. Reviewers grep the field names either way. A visual scenario that **FAILs** keeps the ordinary FAIL shape below (step/assertion table + `**Screenshot:**`) — no change to FAIL. **Scope:** *absolute* visual-defect evidence only (overlap, clipping/truncation, crowding, orphaned/mis-rendered, collapsed/oversized) — never visual-regression / golden-image pixel-diff output.
 
 #### TC-002: <title> — FAIL@step2
 
