@@ -1,7 +1,7 @@
 ---
 name: test-node
 description: Scaffolds and runs Node-based unit tests for pure TypeScript helpers (no Angular runtime) via the _local/_testkit/run.mjs harness. Use when the user wants to test a pure function, parser, or formatter locally — not for code that needs DI, zone.js, HttpClient, or Angular templates.
-allowed-tools: [Read, Write, Edit, Glob, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf-node-ts:test-node — Node test harness for pure helpers

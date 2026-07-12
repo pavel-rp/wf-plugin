@@ -1,7 +1,7 @@
 ---
 name: verify-fix
 description: Reads the audit report produced by /wf:verify-spec ({task-root}/{task-id}/04_verify.md), auto-fixes mechanical FAIL/PARTIAL findings with a specific expected value, and presents ambiguous or structural findings as open questions for the user to resolve. Use after /wf:verify-spec when the audit came back with findings and you want to clear the mechanical ones before re-running the audit.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:verify-fix — Apply fixes from a verify-spec audit

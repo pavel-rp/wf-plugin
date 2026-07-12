@@ -1,7 +1,7 @@
 ---
 name: lite
 description: Runs a condensed spec-plan-implement pass for small tasks in a single skill invocation. Fetches requirements from the active tracker when one is registered; when none is, works from an already-present local requirements file with no tracker fetch and no error, deferring to /wf:spec when a self-contained description isn't available. It then writes a combined mini-spec-and-plan, stops once for user approval, and implements and hands off. Use for S-complexity items where the full /wf:spec + /wf:plan + /wf:implement chain is overkill.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 ---
 
 # /wf:lite — One-pass spec-plan-implement for small tasks
