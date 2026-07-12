@@ -83,7 +83,7 @@ wf:triage ──┬─ blocked | clarify ─────────────
                                                                                                    └── (max 2 cycles) ──┘
 ```
 
-The QA tail self-orchestrates (`wf:qa-followup` already calls `wf-angular:qa-host` + `wf:qa-auto --only`); `wf:run` sequences into it and stops on the terminal QA verdict.
+The QA tail self-orchestrates (`wf:qa-followup` already resolves the registered `qa-execution` host provider + `wf:qa-auto --only`); `wf:run` sequences into it and stops on the terminal QA verdict.
 
 **Auto-front vs. gated phases.** `--auto` only ever runs the **auto-front** — `triage`, `spec`, `plan`, `verify-spec`, `qa-gen` — phases that are non-interactive and write only `_local/` artifacts (never product source). Every other phase is **gated**: `implement`, `lite`, `verify-fix`, and `qa-followup` write product source or need an approval, and `qa-auto`/`qa-run` drive the browser (kept an explicit step). `--auto` halts *before* the first gated phase it reaches and hands the exact command to the user. On a fresh task that boundary is right after `plan` (next is `implement`); once `implement` has landed and the user re-runs `--auto`, the loop resumes through `verify-spec`→`qa-gen` and halts before `qa-auto`.
 
