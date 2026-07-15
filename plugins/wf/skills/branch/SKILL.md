@@ -1,6 +1,6 @@
 ---
 name: branch
-description: Creates and switches to a dedicated branch for a task, deriving the branch name (feature/<id>-…, fix/<id>-…, chore/<id>-…, etc.) from the task's plan or spec and setting up remote tracking through the active delivery provider. Thin slash-command wrapper — the full procedure lives in the wf:branch subagent (config resolution, branch derivation, delivery-provider dispatch, index update all happen there). Use directly via /wf:branch <id> for ad-hoc invocation, OR invoke the Task tool with subagent_type wf:branch from another wf:* skill that needs a branch gate (required when called from another skill — bypasses the slash-command's caller-side cost).
+description: Creates and switches to a dedicated branch for a task, deriving the branch name (feature/<id>-…, fix/<id>-…, chore/<id>-…, etc.) from the task's plan or spec — or, when neither exists yet, a single tracker lookup or the bare task id — and setting up remote tracking through the active delivery provider. Works from any state; never blocks on a missing task folder. Thin slash-command wrapper — the full procedure lives in the wf:branch subagent (config resolution, branch derivation, delivery-provider dispatch, index update all happen there). Use directly via /wf:branch <id> for ad-hoc invocation, OR invoke the Task tool with subagent_type wf:branch from another wf:* skill that needs a branch gate (required when called from another skill — bypasses the slash-command's caller-side cost).
 allowed-tools: [Task]
 ---
 
@@ -45,7 +45,8 @@ The subagent owns every stop condition; each surfaces through the Final Output b
 - **Dirty working tree** — `BRANCH — Error`; uncommitted changes block the base switch. Commit or stash first.
 - **Detached HEAD** — `BRANCH — Error`; branches cannot be created from a detached HEAD.
 - **Unresolvable task ID** — `BRANCH — Error`; no ID was passed and none could be inferred from the current branch.
-- **Missing config / task folder / plan sources** — `BRANCH — Error`; `_local/config.md`, the task folder, or a plan/spec/reqs file is absent (run `/wf:init` / `/wf:spec` first).
+- **Missing config** — `BRANCH — Error`; `_local/config.md` is absent (run `/wf:init` first).
+- **Missing task folder or plan/spec/reqs artifacts** — not an error; the subagent works from any state. It falls back to a single tracker `get` (when a tracker is registered) or, failing that, the bare task id, to derive the branch name — never blocking on `/wf:spec` having run first.
 - **No resolvable workspace root** — `BRANCH — Error`; with a delivery provider active, `workspace-root-resolve` found no working tree to resolve.
 - **Base-branch fetch failure** — `BRANCH — Error` when the delivery provider's remote exists but fetching the latest base fails; with no remote configured it silently branches from the local base instead.
 - **Index update failure** — non-fatal; the branch still succeeds and `<tracking>` carries an appended ` (index update failed)`.
