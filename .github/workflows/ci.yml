@@ -62,3 +62,39 @@ jobs:
             echo "$failed capability fixture suite(s) failed." >&2
             exit 1
           fi
+
+  resolver-runtime:
+    name: Resolver runtime (bundle + smoke on min Node)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/wf/mcp
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use the DECLARED MINIMUM Node
+        # The resolver runtime declares Node.js >=20 (see plugins/wf/mcp
+        # engines.node and the dist/server.mjs launcher guard). Pin the floor so
+        # the reproducible-build check and the clean-copy smoke handshake are
+        # proven against the minimum supported interpreter, not just whatever
+        # Node the runner happens to ship.
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install pinned dependencies
+        # `npm ci` installs the exact lockfile tree (dev deps only: esbuild).
+        # Production startup needs none of this — the committed bundle is
+        # self-contained — but the build/verify steps do.
+        run: npm ci
+
+      - name: Verify the committed bundle is reproducible and not stale
+        # Rebuilds from src + lockfile and byte-compares against committed dist/.
+        # A stale bundle fails the job.
+        run: npm run verify-bundle
+
+      - name: Clean-copy smoke test (MCP handshake, no repo / no node_modules)
+        # Copies only the shipped payload to a clean temp location and drives the
+        # MCP protocol handshake against the declared minimum Node.
+        run: npm run smoke
