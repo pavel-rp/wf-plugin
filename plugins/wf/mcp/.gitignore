@@ -1,0 +1,6 @@
+# Dev-only dependency tree — never shipped in the plugin payload. The committed
+# dist/ bundle is self-contained, so production startup needs none of this.
+node_modules/
+
+# Throwaway build output used by scripts/verify-bundle.mjs.
+dist-verify/
