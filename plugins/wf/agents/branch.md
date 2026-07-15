@@ -1,6 +1,6 @@
 ---
 name: branch
-description: Creates and switches to the task's dedicated branch — deriving the branch name (feature/fix/chore/refactor/migration/docs/hotfix) from the task's plan or spec — and sets up remote tracking through the active delivery provider. The self-contained implementation behind /wf:branch; invoked via the Task tool as the branch gate by other wf:* skills.
+description: Creates and switches to the task's dedicated branch — deriving the branch name (feature/fix/chore/refactor/migration/docs/hotfix) from the task's plan or spec, falling back to a single tracker lookup or the bare task id when neither exists yet — and sets up remote tracking through the active delivery provider. Works from any state; never blocks on a missing task folder. The self-contained implementation behind /wf:branch; invoked via the Task tool as the branch gate by other wf:* skills.
 argument-hint: '<id> (opaque task id); empty to infer from current branch'
 ---
 
@@ -18,28 +18,35 @@ If neither passed nor inferable from the current branch, return `BRANCH — Erro
 
 ## Provider resolution (resolve once, or consume a forwarded record)
 
-Every operation this file invokes — `workspace-root-resolve`, `current-branch-query`, `branch-create` — is a **`delivery`-surface** operation. This agent obtains the `delivery` surface **once**, then dispatches every operation against it, per `invocation-runtime.ops.md` §"Run-scoped provider forwarding" and §"Direct provider resolution":
+Every operation this file invokes unconditionally — `workspace-root-resolve`, `current-branch-query`, `branch-create` — is a **`delivery`-surface** operation. This agent obtains the `delivery` surface **once**, up front, then dispatches every operation against it, per `invocation-runtime.ops.md` §"Run-scoped provider forwarding" and §"Direct provider resolution":
 
 1. **Consume a forwarded record when present.** If the spawn message carried a forwarded run-scoped resolution record for the `delivery` surface (a parent boot — e.g. the `wf:commit` that nested this one — already resolved it), use its provider identity and resolved fragment path directly — perform **no** registry/manifest/fragment read of your own.
 2. **Otherwise self-resolve once** as the top of your own chain. Read the `## Capabilities` registry from `_local/config.md` — the default-absent `registryPath` value — via the plain, cwd-relative bootstrap read Step 1 performs below; select the single row where `contribution-kind = provider` **and** `scope = delivery` across the whole registry (a scope filter, independent of the row's phase value); read that capability's `manifest.md` once and dispatch its fragment per the row's `dispatch` kind (today, an `inline:` fragment — read the referenced file and follow it in-context; no subagent). A plugin-anchored `Path` resolves through the self-heal home — `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal". **Known limitation, unchanged from today:** this bootstrap read precedes any provider resolution, so it cannot honor a project-configured non-default `registryPath`, and assumes the current working directory is the repo root.
 3. **Zero `delivery` owner** (self-resolve matched no row, or the forwarded record marks the surface unconfigured/unrecoverable). Reads (`workspace-root-resolve`, `current-branch-query`) fall back silently to the plain-directory / already-known-branch value; a write (`branch-create`) cannot proceed — see Step 3's no-delivery-provider path.
 
+**The `tracker` surface is resolved lazily, not here.** Step 2 needs it only on its no-local-artifact path — the common artifacts-present path never touches the tracker, so this agent doesn't pay a second manifest/fragment read on every invocation to serve a rare fallback. When Step 2 reaches that path, it resolves `tracker` there: consume a forwarded tracker record if the spawn message carried one (same rule as above), otherwise self-resolve — the `## Capabilities` table is already in hand from Step 1's read, so this is a single additional manifest+fragment read (`contribution-kind = provider` **and** `scope = tracker`), never a second registry walk. Zero readable `tracker` rows (unconfigured, or registered-but-unrecoverable) falls straight through to the bare-id fallback — a read, so it stays silent local-only, no residual message, no capability term surfaces.
+
 ## Step 1 — Resolve config, workspace root, and task folder
 
 1. Read `_local/config.md` from the current working directory — a plain bootstrap read needing no delivery-provider call (this is the same registry file the Direct-provider-resolution section above consults). If missing, return `BRANCH — Error` with reason "Run /wf:init first."
 2. Extract `{task-root}` from the config. Never hardcode it.
-3. **Resolve `{task-id}`** (the opaque task id — used for the task folder and the `Task:` line). When `<id>` is passed, use it verbatim. When inferring from the current branch, extract the first 3+-digit run from the resolved branch name (via `current-branch-query`) as a token, then resolve it against `{task-root}` — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token. **Exactly one match** — reuse that folder's full name as `{task-id}` verbatim (never reconstruct it from a prefix). **More than one match** — return `BRANCH — Error` with reason "Ambiguous id: the branch-inferred token `<token>` matches more than one task folder; pass the id explicitly." **Zero matches** — hold the bare token as `{task-id}` so Step 1's task-folder-existence check (step 5) returns "Task folder not found". (No numeric token at all was already handled by the Inputs section's no-id error.) Also derive **`{numeric-id}`** — the first 3+-digit run of `{task-id}` — used **only** for the branch name in Step 2, never for the folder or the `Task:` line.
+3. **Resolve `{task-id}`** (the opaque task id — used for the task folder and the `Task:` line). When `<id>` is passed, use it verbatim. When inferring from the current branch, extract the first 3+-digit run from the resolved branch name (via `current-branch-query`) as a token, then resolve it against `{task-root}` — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token. **Exactly one match** — reuse that folder's full name as `{task-id}` verbatim (never reconstruct it from a prefix). **More than one match** — return `BRANCH — Error` with reason "Ambiguous id: the branch-inferred token `<token>` matches more than one task folder; pass the id explicitly." **Zero matches** — hold the bare token as `{task-id}`; this is not fatal (step 5 no longer treats a missing task folder as an error — Step 2 resolves a title without one). (No numeric token at all was already handled by the Inputs section's no-id error.) Also derive **`{numeric-id}`** — the first 3+-digit run of `{task-id}` — used **only** for the branch name in Step 2, never for the folder or the `Task:` line.
 4. Resolve the absolute workspace root via `workspace-root-resolve` (direct provider resolution above). With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error). With a provider registered but no working tree to resolve, return `BRANCH — Error` with reason "Not inside a resolvable workspace."
-5. Compute task folder. If `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root: `<workspace-root>/{task-root}/{task-id}/`. Hold the result as `<task-folder-abs>` (always absolute — passed verbatim to wf:index in Step 4). If the folder doesn't exist, return `BRANCH — Error` with reason "Task folder not found. Run /wf:spec <id> first."
+5. Compute task folder. If `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root: `<workspace-root>/{task-root}/{task-id}/`. Hold the result as `<task-folder-abs>` (always absolute — passed verbatim to wf:index in Step 4). **A missing task folder is not fatal** — this agent works from any state. Hold whether it exists as `<task-folder-exists>`; Step 2 resolves a title with or without it, and Step 4's index update already tolerates a nonexistent target non-fatally (its own established behavior, unchanged here).
 6. `{task-id}` is used in the `Task:` line of the final block.
 
 ## Step 2 — Resolve branch name
+
+**Works from any state — a missing task folder or missing artifacts never blocks this step; the chain below always terminates in a usable title source.**
 
 1. Read task metadata, first available source wins:
    - `02_plan.md` — the `**Type:**` markdown-bold metadata field (accept legacy plain `Type:` too) and the title from the H1 heading
    - `01_spec.md` — the `**Type:**` markdown-bold metadata field (accept legacy plain `Type:` too) and the title from metadata or heading
    - `00_reqs.md` — synthesize a short title (5-8 words max) from the work item description
-   If none of these exist, return `BRANCH — Error` with reason "No 02_plan.md, 01_spec.md, or 00_reqs.md in the task folder. Run /wf:spec <id> first."
+   - **No local artifact** (`<task-folder-exists>` is false, or the folder exists but holds none of the three files above) — resolve title/type without blocking, in the order that costs least:
+     - **Resolve the `tracker` surface** (lazily, per "Provider resolution" above — a forwarded record if one arrived, otherwise one manifest+fragment read; the registry itself is already in hand from Step 1). If a `tracker` owner resolves: invoke `get({task-id})` — a single fetch, never `list_children` or any other multi-item enumeration; this is the tracker's one general-purpose record fetch (not a bespoke title-only query — no such operation exists in the contract today), so it may return more than the title (description, relations) as a side effect of being one call rather than several. Use the returned title as the title source; if the returned fields carry a work-item-type or label, use it exactly as a `**Type:**` field would be used in step 2 below — otherwise there's no type signal and step 2 falls through to its `feature/` default. A **mid-run failure** (tracker configured but the `get` call errors) warns once per the contract's degradation rules, then falls through to the next bullet — never blocks.
+     - **No tracker owner, or the tracker fetch produced nothing usable** — fall back to `{task-id}` itself as the title source. No error.
+   This chain never returns `BRANCH — Error` for a missing folder or missing artifacts — it degrades, step by step, down to the bare id.
 2. Determine the branch prefix using the first matching rule:
    - `hotfix/` — Type is "hotfix" or title contains "hotfix" (urgent production fix)
    - `fix/` — Type contains "fix", "bug", or "bugfix"
@@ -47,10 +54,10 @@ Every operation this file invokes — `workspace-root-resolve`, `current-branch-
    - `refactor/` — Type contains "refactor" or "restructure"
    - `migration/` — Type contains "migration" or "migrate"
    - `docs/` — Type contains "docs" or "documentation"
-   - `feature/` — everything else (default; also `feat`, `feature`, `task`, `story`)
+   - `feature/` — everything else (default; also `feat`, `feature`, `task`, `story`); also the default when the title source carries no `Type:`/type signal at all (the bare-id fallback case)
    - `feat/` is acceptable as an alias for `feature/`, but prefer `feature/` for consistency.
 3. Derive the full branch name: `<prefix>{numeric-id}-<normalized-title>`
-   - **Normalized title:** lowercase, hyphenated, special characters stripped, max 40 characters.
+   - **Normalized title:** lowercase, hyphenated, special characters stripped, max 40 characters. When the title source is the bare `{task-id}` fallback, normalize `{task-id}` itself (e.g. `feature/240-wf-240`) — redundant with `{numeric-id}` but still a valid, unambiguous branch name.
    - Examples: `fix/6565-debug-wellstar-par`, `feature/6370-review-form-caching`, `chore/7001-update-nuget-packages`, `migration/6800-add-audit-table`.
 
 ## Step 3 — Invoke `branch-create`
