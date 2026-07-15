@@ -57,17 +57,51 @@ notes below record the load-bearing choices behind them.
 - **Already-on-target is a no-op, not an error (step 1).** Re-running `branch` for the
   ticket you are already on must succeed idempotently, so the same current-branch probe
   that detects detached HEAD also short-circuits to `already-active`.
-- **Dirty-worktree guard (step 2).** A checkout would carry uncommitted changes across
-  branches; refusing keeps the two branches' states clean.
+- **Dirty tree carries across the checkout, never blocks it (step 2).** A checkout used
+  to refuse a dirty tree outright; now the in-progress edits are stashed before the
+  checkout and reapplied after (step 7), so starting or resuming a task's branch with
+  uncommitted work in progress is the common case, not an error. A conflicting reapply is
+  left as a preserved stash rather than discarded or rolled back — the checkout itself
+  already succeeded and never un-does. The captured entry's identity is pinned to a
+  durable SHA the moment it's created (`stash@{0}` resolved immediately, not re-derived
+  positionally later), so identity checks never reapply the wrong entry if the stash
+  stack shifts — but `pop`/`drop` (unlike `apply`) don't accept that SHA directly, so
+  every `pop`/`drop` call resolves the entry's *current* `stash@{N}` position fresh, right
+  before using it.
+- **A fetch failure restores the capture before erroring (step 5).** The capture (step 2)
+  runs before the base is fetched, so a fetch failure — unrelated to the dirty-tree
+  handling — must not silently strand the caller's uncommitted work in a stash they were
+  never told about. Restoring it first keeps that failure path exactly as side-effect-free
+  as it was before this change.
 - **`main` → `master` base fallback (step 4).** Repos differ on the default trunk name;
   probing `main` first and falling back to `master` covers both without configuration.
-- **Push-failure is non-fatal (step 7).** A permissions/network failure on the tracking
+- **A real attempt with a guaranteed rollback, not a dry-run predictor (step 7).** A
+  textual dry run (`apply --check`) tests a patch application, not the three-way merge a
+  stash `apply`/`pop` actually performs against its recorded base commit — the two can
+  diverge, especially here, where the base has likely moved since the stash was captured.
+  Trusting a dry run's exit code would let a real conflict slip through and leave the
+  working tree half-merged with conflict markers dropped into files — exactly the
+  mid-flight state this operation must never produce. Attempting the real `apply` (never
+  `pop`, so a failed attempt can never drop the stash on its own) and, on conflict,
+  hard-resetting the tree back to the clean just-checked-out state makes the outcome
+  atomic from the caller's perspective: either it lands applied and the stash is dropped,
+  or the tree ends up exactly as clean as right after the checkout and the stash survives
+  untouched. The reset alone isn't sufficient, though: a `-u` stash restores its untracked
+  files before a failed merge is even judged, so a conflicting apply can leave those files
+  behind despite `reset --hard` clearing the tracked-file conflict — an explicit
+  `clean -fd` (never `-x`, which would also sweep up gitignored files this stash never
+  touched) is the step that actually returns the tree to the pre-attempt state.
+- **Push-failure is non-fatal (step 8).** A permissions/network failure on the tracking
   push must not discard a valid local branch — it degrades to `local-only (push failed)`.
 
 ## branch-switch
 
-- **Same detached/dirty guards as branch-create (step 1).** Switching shares the two
-  preconditions that make a checkout safe.
+- **Detached-HEAD guard shared with branch-create (step 1); dirty-worktree guard now its
+  own.** Switching still shares the detached-HEAD precondition with branch-create. The
+  dirty-worktree guard no longer transfers: branch-create's dirty-tree handling changed
+  shape (a carry, not a refusal) as of WF-283, so branch-switch keeps its own unchanged
+  hard-error guard inline rather than pointing at a step that no longer means the same
+  thing.
 - **Local before remote-only (steps 2–3).** A local branch of the exact name wins; only
   when none exists does a remote-only match create a tracking local branch via
   `checkout -t`, so the operation works both for a branch that exists here and one that
@@ -249,10 +283,14 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
 The regression checklist for the split: every row below must behave identically to the
 pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](delivery.ops.md).
 
-- **Dirty tree** — `branch-create` step 2, `branch-switch` step 1.
+- **Dirty tree** — the two operations now diverge (WF-283). `branch-create` (step 2)
+  carries a dirty tree across the checkout via a stash, on both the `switched` and
+  `created` outcomes, and reports a conflicting reapply as a distinct non-error `<carry>`
+  outcome rather than a hard error (step 7). `branch-switch` (step 1) is unchanged — it
+  still hard-errors on a dirty tree.
 - **Existing branch** — `branch-create` step 3 (exact-name match → `switched`),
   `branch-switch` steps 2–3 (local or remote-only match).
-- **No upstream** — `branch-create` step 7 (`local-only (no upstream)` derivation),
+- **No upstream** — `branch-create` step 8 (`local-only (no upstream)` derivation),
   `push-upstream` steps 2 & 4 (detects it, then bootstraps to `origin` when absent).
 - **Existing PR** — `pr-create` step 3 (`exists`, never duplicated), `pr-detect` step 2
   (found vs. not-found, the latter not an error).
