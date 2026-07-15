@@ -300,7 +300,7 @@ Plugins are consumed straight from the marketplace, so **every PR to `main` is a
 
 One bump per PR; on a mixed PR use the **highest** applicable tier. The contract that defines "breaking" is the invocation surface: slash-command names, skill arguments, and final-output block shapes.
 
-**Commit workflow.** **Always commit to a feature branch, never to `main`.** Check the branch first (`git rev-parse --abbrev-ref HEAD`); if it's `main`/`master`, create `feat/…`, `fix/…`, or `chore/…` (matching the `branch` prefix taxonomy) — `git checkout -b` carries any dirty changes onto it. Stage, commit, push; the user opens the PR. No build tooling lives in this directory — it is prose (no `package.json`, no lint configs).
+**Commit workflow.** **Always commit to a feature branch, never to `main`.** Check the branch first (`git rev-parse --abbrev-ref HEAD`); if it's `main`/`master`, create `feat/…`, `fix/…`, or `chore/…` (matching the `branch` prefix taxonomy) — `git checkout -b` carries any dirty changes onto it. Stage, commit, push; the user opens the PR. The repo is prose-only **except** `plugins/wf/mcp/` — the core plugin's bundled Node/TypeScript MCP resolver runtime, which ships its own `package.json`, lockfile, and esbuild build (a committed self-contained `dist/` bundle). Everything else in this directory remains prose (no `package.json`, no lint configs).
 
 **NO AI ADS.** Commit messages, PR descriptions, and any artifact a skill writes must **never** include `Co-Authored-By: Claude` trailers, "Generated with Claude Code" footers, or any AI-attribution, emoji, or promotional tagline. Commit like a human. Remove any such trailer you find in an existing template.
 
