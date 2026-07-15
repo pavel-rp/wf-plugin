@@ -11,7 +11,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "verify-bundle": "node scripts/verify-bundle.mjs",
-    "smoke": "node scripts/smoke-test.mjs"
+    "smoke": "node scripts/smoke-test.mjs",
+    "test": "node scripts/test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0-beta.4"
