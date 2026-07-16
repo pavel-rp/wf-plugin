@@ -1,6 +1,6 @@
 {
   "name": "wf-angular",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "wf Angular stack pack — the angular capability supplying the Angular test-host execution surface: a routed test-host scaffolder (qa-host) that gives an un-routed component a runnable URL (plus an ephemeral backend-controller analog), and a DI-level black-box page-test harness (test-page) that injects spec-derived tests into the stack's sandbox host. Every project-specific token in the scaffolded output is profile-slot-driven, so scaffolding a differently-named app emits no borrowed identifiers. Composed with wf core via the capability registry; its qa-execution provider owns surface: host and composes alongside a browser-qa engine surface with no partition collision. Requires a git delivery provider (tracker-agnostic). Ships /wf-angular:init for one-command self-registration.",
   "author": {
     "name": "Pavel Kalabin",
