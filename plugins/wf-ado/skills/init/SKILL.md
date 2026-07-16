@@ -44,7 +44,7 @@ under the fixed plugin id `wf-ado`.
 - Call the bundled `wf-resolver` MCP tools `inspect_pack`, `resolve_gate`, and
   `register_pack` — always with `pluginId: "wf-ado"`, wf-ado's own exact stable plugin id.
 - Write/edit files under `_local/` — including the `## Azure DevOps` section of
-  `_local/config.md` (Phase 3), which stays inside `_local/`.
+  `_local/config.md` (Phase 4), which stays inside `_local/`.
 
 **Forbidden:**
 
