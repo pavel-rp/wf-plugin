@@ -18,7 +18,7 @@ For DI-level black-box tests (component method behavior verified via `injector.g
 
 ## Stack profile (read first)
 
-This skill carries no project token. Every project-specific value comes from the `angular` capability's **profile**: read it from the downstream override `_local/profiles/angular.profile.json` when present, else from the capability default template `profile.template.json` under the capability's registry path (precedence: **override > capability default**). If neither resolves, stop and direct the user to `/wf:init` (which seeds the override on divergence). The slots, referenced as placeholders below:
+This skill carries no project token. Every project-specific value comes from the `angular` capability's **profile** — obtained by calling the bundled `wf-resolver` MCP tool `resolve_profile("angular")`. It returns the override-merged profile **values** directly (`_local/profiles/angular.profile.json` override merged over the capability's `profile.template.json` default, precedence: **override > capability default**) — this skill performs no direct profile-file read and no capability-registry-path walk of its own. If the response reports `present: false`, stop and direct the user to `/wf:init` (which seeds the override on divergence). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-read the profile files as a fallback. The slots, referenced as placeholders below:
 
 - `{web-root}` — repo-relative root of the Angular web project.
 - `{routing-module}` — the routing module the test-host route is added to.
@@ -50,7 +50,7 @@ Not fit:
 
 ## Branch-based id inference
 
-When a mode infers `{task-id}` from the current branch (the empty-argument mode below), reach the branch name through the delivery contract's `current-branch-query`, never a direct `git` call — so the skill still degrades cleanly in git-free bare-core mode. Resolve the surface by the canonical resolve-once procedure in `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution": one `## Capabilities` read from `_local/config.md` (the default-absent `registryPath` value), then one manifest+fragment read for the row scoped to the `delivery` surface (a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory case — no error, no capability term surfaces — yielding no branch token, at which point the mode asks for an explicit target.
+When a mode infers `{task-id}` from the current branch (the empty-argument mode below), reach the branch name through the delivery contract's `current-branch-query`, never a direct `git` call — so the skill still degrades cleanly in git-free bare-core mode. Resolve the surface by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }`. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); this skill performs no registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in-context to dispatch `current-branch-query`. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory case — no error, no capability term surfaces — yielding no branch token, at which point the mode asks for an explicit target. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
 
 ---
 
@@ -246,7 +246,7 @@ Stop reading at the first `{` of any method body. Don't read the target's `ngOnI
 **Allowed:**
 
 - Read the target component file (signature-only — see Black-box discipline above).
-- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Branch-based id inference") for branch-based id inference. Never call `git` directly for it.
+- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query — see "Branch-based id inference") for branch-based id inference, and via `resolve_profile("angular")` for stack-profile values (see "Stack profile"). Never call `git` directly for branch inference; never hand-parse the registry, a manifest, or the profile files — every fact the resolver supplies comes from a typed tool call.
 - Write new files under `{test-host-root}/<kebab>-test/`.
 - Edit `{routing-module}` (three exact edits documented in `new`).
 - **Backend mode only:** insert/remove exactly one sentinel-delimited (`WF-QA-EPHEMERAL`) ephemeral action per target inside an *existing* controller — the single carve-out for editing a pre-existing source file. Read controller/constructor/DTO signatures and combine route templates to do so. Full constraints in [`references/backend-host.md` § Safety rules](references/backend-host.md#safety-rules).
@@ -261,6 +261,7 @@ Stop reading at the first `{` of any method body. Don't read the target's `ngOnI
 - Run builds, installs, or destructive git.
 - Mock services. The host wires real DI.
 - Skip the typecheck step before reporting success.
+- Hand-parse `_local/profiles/angular.profile.json`, a capability manifest, or the `## Capabilities`/`## Plugin Roots` tables, or probe `${CLAUDE_PLUGIN_ROOT}` — every such fact comes from a `wf-resolver` typed query (`resolve_profile`, `resolve_provider`).
 
 ---
 
