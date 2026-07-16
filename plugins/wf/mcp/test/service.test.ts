@@ -90,6 +90,7 @@ function makePorts(opts?: {
     counts,
     files,
     workspaceRoot: WS,
+    corePluginRoot: "/core/plugins/wf",
     resolveFresh() {
       counts.resolveFresh++;
       return resolveSnapshot({

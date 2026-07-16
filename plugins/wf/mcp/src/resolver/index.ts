@@ -33,6 +33,13 @@ export {
   parsePluginAnchor,
   resolveCapabilityPath,
 } from "./paths.js";
+export { resolveContentRef, CONTENT_REF_CLASSES } from "./content.js";
+export type {
+  ContentRef,
+  ContentRefClass,
+  ContentPlan,
+  ContentResolveContext,
+} from "./content.js";
 export { buildSnapshot } from "./resolve.js";
 export type { ResolverIO, BuildSnapshotInputs } from "./resolve.js";
 export {

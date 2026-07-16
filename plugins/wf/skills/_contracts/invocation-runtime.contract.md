@@ -1,6 +1,6 @@
 # Capability invocation runtime (the registry-iterating, per-phase-injecting substrate)
 
-**Version:** 2.6.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface; WF-199 — recorded-root-first self-heal fallback (referencing the port) and the write-side registered-but-unrecoverable diagnosis split; WF-208 — ops/reference split: the runtime-followed text is extracted to `invocation-runtime.ops.md` (v1.0.0), leaving this contract as the reference half; WF-209 — run-scoped provider forwarding, mirrored from the ops doc)
+**Version:** 2.7.0 (WF-22; WF-99 — plugin-anchored `Path` resolved via the `## Plugin Roots` mapping; WF-120 — direct provider resolution for the delivery surface; WF-121 — tracker named as direct provider resolution's second surface; WF-199 — recorded-root-first self-heal fallback (referencing the port) and the write-side registered-but-unrecoverable diagnosis split; WF-208 — ops/reference split: the runtime-followed text is extracted to `invocation-runtime.ops.md` (v1.0.0), leaving this contract as the reference half; WF-209 — run-scoped provider forwarding, mirrored from the ops doc; WF-302 — the bundled-doc content resolution surface (`resolve_content`), mirrored from the ops doc)
 **Status:** reference half of the invocation runtime — rationale, v1 lineage, worked demonstrations; **never read at boot**. The runtime-read half — the exact firing/resolution procedure with every guard, no-op case, and fail-safe — is `invocation-runtime.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `invocation-mechanism.contract.md` (v1.0.0, WF-10) — the single-manifest, three-named-seam runtime, kept intact as the frozen N=1 substrate this generalises
 **Executes the port:** `capability-registry.contract.md` (v2.6.0, WF-21; WF-99; WF-120; WF-121; WF-179; WF-199; WF-208) — phase names, contribution kinds, aggregation/partition policies, and the manifest fragments-table schema all come from there; this document executes them, never redefines them
@@ -382,6 +382,49 @@ skips, and how the degraded outcomes forward — is the ops doc's; this half rec
 rationale.
 
 ---
+
+## Content resolution surface (bundled-doc bodies)
+
+> **Normative runtime text:** [content resolution surface](invocation-runtime.ops.md#content-resolution-surface-bundled-doc-bodies).
+
+The five moving parts and direct provider resolution above all resolve a bundled
+doc to a **path** and then follow (`inline:` read-and-follow) or dispatch it. That
+read was, through WF-268 (C008), a raw `Read`/`Glob` of the version-pinned plugin
+cache — a per-session permission prompt whose grant a version bump relocates and
+loses. **WF-302 (C011 SUB-1)** closes that gap for the five non-skill bundled-doc
+classes — a capability **fragment** body, a `_contracts/*` **contract** ops doc, a
+`_shared/*` **shared** convention doc, a skill **references-template**, and a pack
+**profile-template** body — by serving the *content* through the always-loaded
+`wf-resolver` MCP's **`resolve_content`** tool, read by the server's own Node `fs`
+in its own process, never a caller-side raw read.
+
+**It reuses C008's resolution, never re-implementing it.** The tool drives the
+delivered engine (`plugins/wf/mcp/src/resolver/*`) exactly as the metadata queries
+do — registry → `## Plugin Roots` (recorded-root-first self-heal) → manifest →
+path normalization, including plugin-anchored `plugin:<name>/<rel>` refs — to reach
+the capability's `resolvedPath` / `profileTemplatePath` or a pack's resolved root;
+`contract` / `shared` and core `references-template` refs anchor on the server's
+own core-plugin root (its install location, which moves with the install, so a
+version bump never re-prompts). No second resolution implementation is introduced.
+
+**It is additive — the metadata snapshot stays body-free.** C008's typed query
+snapshot never reads a fragment/skill/prompt body, and that invariant is not
+relaxed: `resolve_content` reads the body **on demand** and returns it in the
+response only, writing nothing back into the snapshot. It is the one framed path
+that returns a document body, kept separate so C008's guarantee is not regressed.
+
+**Failures use the existing surface semantics.** An unresolvable / unrecoverable
+ref — an unregistered capability, a plugin root that dangles and whose self-heal
+recovers nothing, a capability with no declared template, or a resolver-build
+failure — reports the matching `resolve_gate` degradation class (a content read is
+a `local-read` surface → **continue**, best-effort) with a `/wf:resolve` recovery
+path. It **never** returns a wrong-path body and **never** falls through to a raw
+`Read`. A ref outside the five served classes — a **skill body** (owned by the
+separate Skill-tool charter; invoke the skill via the Skill tool instead) or a
+**CI-only fixture / validator input** — is **refused**, as is a malformed /
+path-traversal ref. The request/response contract is frozen here with its
+validator (`plugins/wf/mcp/test/content.test.ts`) and in-memory fixtures landed in
+the same change (atomic).
 
 ## No-op path (the generalised `<none>` Null Object)
 

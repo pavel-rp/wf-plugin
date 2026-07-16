@@ -26,6 +26,11 @@ import {
   type SurfaceClass,
 } from "./resolver/failure.js";
 import { evaluateFreshness, type StaleReason } from "./resolver/freshness.js";
+import {
+  resolveContentRef,
+  type ContentRef,
+  type ContentRefClass,
+} from "./resolver/content.js";
 import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
@@ -53,6 +58,10 @@ export interface PluginListResult {
 export interface ResolverServicePorts {
   /** Normalized absolute workspace root the snapshot is resolved against. */
   workspaceRoot: string;
+  /** Normalized absolute root of the core `wf` plugin (where the server runs
+   *  from) — the anchor the content surface uses for `contract` / `shared` /
+   *  core `references-template` refs. */
+  corePluginRoot: string;
   /** Build a fresh resolved snapshot (full discovery). */
   resolveFresh(): ResolverSnapshot;
   /** Persist a snapshot to the project-local cache. */
@@ -119,6 +128,40 @@ export interface PluginRootResponse {
   root: string | null;
   provenance: "recorded" | "self-healed" | "unrecoverable";
 }
+
+/** Content surface (WF-302): the served body of a bundled-doc ref, or a typed
+ *  failure. Distinct from the body-free metadata queries above — this is the one
+ *  path that returns a document body, for exactly the five served ref classes.
+ *  `served` carries the resolved `path` + `content`; a failure NEVER carries a
+ *  body and NEVER falls through to a raw read. */
+export type ContentResponse =
+  | {
+      status: "served";
+      refClass: ContentRefClass;
+      path: string;
+      content: string;
+      bytes: number;
+    }
+  | {
+      /** Resolution failed — the ref points at nothing readable (unregistered /
+       *  dangling-and-unrecoverable capability or plugin root, no declared
+       *  template, resolver-build failure). Reports the matching `resolve_gate`
+       *  degradation class (content read is a `local-read` surface → `continue`)
+       *  with a `/wf:resolve` recovery path. */
+      status: "unresolved";
+      refClass: ContentRefClass | null;
+      category: ResolverErrorCategory;
+      reaction: "continue";
+      recovery: string;
+      message: string;
+    }
+  | {
+      /** The ref is outside the five served classes — a skill body, a CI-only
+       *  fixture/validator input, a path traversal, or a malformed ref. */
+      status: "refused";
+      refClass: string;
+      reason: string;
+    };
 
 export interface LifecycleResponse {
   valid: boolean;
@@ -332,6 +375,76 @@ export class ResolverService {
     const s = this.ensure();
     const present = Object.prototype.hasOwnProperty.call(s.profiles, capability);
     return { capability, present, values: present ? s.profiles[capability] : null };
+  }
+
+  // --- content surface (WF-302): resolve + read a bundled-doc body ---------
+  /** Resolve a logical content ref (one of the five served classes) and read
+   *  its body via the server's OWN Node `fs` (the `ports.readFile` port) — never
+   *  a caller-side raw read. Resolution reuses the C008 snapshot facts (no second
+   *  resolution engine); the body is read on demand and returned in the response
+   *  only, so the persisted snapshot stays body-free. An unresolvable/unrecoverable
+   *  ref, or a resolver-build failure, reports the matching `resolve_gate`
+   *  degradation class with a `/wf:resolve` recovery path — never a wrong-path
+   *  body, never a raw-read fall-through. An out-of-class ref (skill body, CI-only
+   *  fixture) is refused. */
+  resolveContent(ref: ContentRef): ContentResponse {
+    let snapshot: ResolverSnapshot;
+    try {
+      snapshot = this.ensure();
+    } catch (err) {
+      // A resolver-build failure is a local-read gate: continue best-effort with
+      // the classified category + recovery, but serve NO body (structural: there
+      // is no snapshot to resolve against).
+      const failure = classifyThrow(err);
+      return {
+        status: "unresolved",
+        refClass: null,
+        category: failure.category,
+        reaction: "continue",
+        recovery: recoveryFor(failure.category),
+        message: `${failure.message} (failed input: ${failure.failedInput})`,
+      };
+    }
+
+    const plan = resolveContentRef(ref, {
+      snapshot,
+      workspaceRoot: this.ports.workspaceRoot,
+      corePluginRoot: this.ports.corePluginRoot,
+    });
+
+    if (plan.kind === "refused") {
+      return { status: "refused", refClass: plan.refClass, reason: plan.reason };
+    }
+    if (plan.kind === "unresolved") {
+      return {
+        status: "unresolved",
+        refClass: plan.refClass,
+        category: plan.category,
+        reaction: "continue",
+        recovery: plan.recovery,
+        message: plan.message,
+      };
+    }
+
+    // plan.kind === "path": read the resolved body via the server's own fs.
+    const content = this.ports.readFile(plan.path);
+    if (content === null) {
+      return {
+        status: "unresolved",
+        refClass: plan.refClass,
+        category: "registry-invalid",
+        reaction: "continue",
+        recovery: recoveryFor("registry-invalid"),
+        message: `the ref resolved to \`${plan.path}\` but no file is present there — re-check the ref, or run \`/wf:resolve refresh\` if the pack was relocated.`,
+      };
+    }
+    return {
+      status: "served",
+      refClass: plan.refClass,
+      path: plan.path,
+      content,
+      bytes: Buffer.byteLength(content, "utf8"),
+    };
   }
 
   // --- R5 -----------------------------------------------------------------

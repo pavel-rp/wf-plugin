@@ -14,6 +14,7 @@
 
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import type { ResolverService } from "./service.js";
+import type { ContentRef } from "./resolver/content.js";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -96,6 +97,38 @@ const pluginIdInput = fromJsonSchema({
     },
   },
   required: ["pluginId"],
+  additionalProperties: false,
+});
+
+const contentInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    class: {
+      type: "string",
+      enum: ["fragment", "contract", "shared", "references-template", "profile-template"],
+      description:
+        "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), or `profile-template` (a pack's `profile.template.json` body). Skill bodies and CI-only fixtures are not served.",
+    },
+    capability: {
+      type: "string",
+      description: "Registered capability name — required for `fragment` and `profile-template`.",
+    },
+    plugin: {
+      type: "string",
+      description:
+        "Plugin name for a pack-owned `references-template`; omit (or use `wf`/`core`) for a core-plugin skill.",
+    },
+    skill: {
+      type: "string",
+      description: "Skill slug — required for `references-template`.",
+    },
+    ref: {
+      type: "string",
+      description:
+        "The relative doc ref: within the capability folder (`fragment`), a bare filename (`contract` / `shared`), or within the skill's `references/` folder (`references-template`). Unused by `profile-template`.",
+    },
+  },
+  required: ["class"],
   additionalProperties: false,
 });
 
@@ -190,6 +223,17 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
       inputSchema: pluginInput,
     },
     async (args: { plugin: string }) => guard(() => service.resolvePluginRoot(args.plugin)),
+  );
+
+  server.registerTool(
+    "resolve_content",
+    {
+      title: "resolve content",
+      description:
+        "Resolve + read a bundled-doc BODY for one of five logical content-ref classes (fragment | contract | shared | references-template | profile-template), read by the server's own Node fs. Returns `{status: served, path, content}` on success; on an unresolvable/unrecoverable ref returns `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path — the metadata queries stay body-free.",
+      inputSchema: contentInput,
+    },
+    async (args: ContentRef) => guard(() => service.resolveContent(args)),
   );
 
   server.registerTool(
