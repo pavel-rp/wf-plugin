@@ -20,10 +20,10 @@ composition · report artifact · degradation summary · final block.
 ## Registry-membership gate (run first)
 
 Obtain the ordered active registry as metadata by calling the bundled `wf-resolver` MCP tool
-`resolve_registry` — it returns `capabilities[]` (each `{ name, kind, manifestPath, fragments[],
-articles[], provenance, validity }`), already resolved from the `## Capabilities` registry and
-each capability's `manifest.md`; you perform no direct registry-file read or manifest walk of your
-own. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not
+`resolve_registry` — it returns `capabilities[]` (each `{ name, kind, resolvedPath, manifestPath,
+provenance, validity, fragments, articles, requires, conflicts, profileTemplatePath }`), already
+resolved from the `## Capabilities` registry and each capability's `manifest.md`; you perform no
+direct registry-file read or manifest walk of your own. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not
 loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). If **no row's
 `name` is `audit`** (by convention the capability registers under that name, resolving to this
 capability's manifest), emit `RETROSPECTIVE — not-registered` and stop: write nothing. This is the
@@ -51,7 +51,7 @@ this report run. Never surface this as an error.
 Reach three **read-side** delivery operations — `pr-comments-read`, `checks-read`,
 `activity-read` — by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")`
 **once** — the typed query that returns the run-scoped resolution record `{ surface, owner,
-fragmentPath, state, candidates?, degradation }`. The resolver has already resolved the
+fragmentPath, state, degradation, diagnostics }`. The resolver has already resolved the
 `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root
 (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution
 with install-manifest self-heal"); you perform no registry / manifest / plugin-root read of your
