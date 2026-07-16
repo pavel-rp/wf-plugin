@@ -45,11 +45,12 @@ Parse the first token. Recognized forms:
 
 ### empty → infer from current branch
 
-1. Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
-   §"Id inference from the current branch" — inferred from the branch via
-   `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query, see
-   "Direct provider resolution" below) and resolved against `{task-root}`, naming
-   `/wf:verify-spec` in its stop messages.
+1. Resolve the task id per the shared pipeline conventions doc — obtained via the
+   `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`),
+   never a raw `Read` of the plugin-cache path — §"Id inference from the current branch";
+   inferred from the branch via `current-branch-query` (the `wf-resolver`
+   `resolve_provider("delivery")` query, see "Direct provider resolution" below) and
+   resolved against `{task-root}`, naming `/wf:verify-spec` in its stop messages.
 2. Confirm the resolved task folder's requirements artifact (`00_reqs.md`) exists. If
    not, stop and ask the user to either pass the id explicitly or point at a
    requirements path.
@@ -238,7 +239,8 @@ Two outputs, always both:
 
 1. **Full report** — written to the task folder's `04_verify.md`, which always holds the
    latest run. Before overwriting, rotate the prior `04_verify.md` into
-   `04_verify.history.md` per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
+   `04_verify.history.md` per the shared pipeline conventions doc (`resolve_content`,
+   `class: shared`, `ref: pipeline-conventions.md`)
    §"Artifact rotation into `.history.md`". This gives a trail of every prior audit run at
    this path, so the user can compare findings across iterations and see what a fix broke
    or regressed. Each archived entry is self-identifying via its own header
@@ -312,7 +314,8 @@ End with the final-output block (see below).
 
 ## Edge Cases
 
-- **Spec is stale**: run the staleness check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
+- **Spec is stale**: run the staleness check per the shared pipeline conventions doc
+  (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`)
   §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the
   `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution"
   above) against the spec header's fetch/author date. If the branch has moved since, warn the

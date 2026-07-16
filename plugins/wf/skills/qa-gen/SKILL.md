@@ -84,13 +84,13 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by ca
 
 ## Phase 1: Resolve and gate
 
-1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-gen` in its stop messages. Once `{task-id}` is resolved, extract the first 3+-digit run from it — call it `{numeric-id}`; it is used **only** for the branch-gate match in step 4, never for the task folder or any operation.
+1. **Resolve `<id>`.** Resolve the task id per the shared pipeline conventions doc — obtained via the `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`), never a raw `Read` of the plugin-cache path — §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-gen` in its stop messages. Once `{task-id}` is resolved, extract the first 3+-digit run from it — call it `{numeric-id}`; it is used **only** for the branch-gate match in step 4, never for the task folder or any operation.
 
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {task-id}` first."
 
 3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {task-id}` first to fetch requirements."
 
-4. **Branch gate.** Gate on the task branch per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Branch gate (bare-core aware)", using `{numeric-id}` (from step 1) for the branch-name match; on the bare-core skip, report it and continue to step 5. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch)." and continue to step 5.
+4. **Branch gate.** Gate on the task branch per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` (from step 1) for the branch-name match; on the bare-core skip, report it and continue to step 5. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch)." and continue to step 5.
 
 5. **Resolve scope.** Default `full`. Accept `smoke`, `happy`, `full` — anything else stops with "Unknown scope: `<value>`. Use one of: smoke, happy, full."
 

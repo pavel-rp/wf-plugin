@@ -72,7 +72,7 @@ Id inference reaches `current-branch-query` by calling the bundled `wf-resolver`
 
 ## Phase 1: Resolve and load
 
-1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-run` in its stop messages.
+1. **Resolve `<id>`.** Resolve the task id per the shared pipeline conventions doc — obtained via the `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`), never a raw `Read` of the plugin-cache path — §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-run` in its stop messages.
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. Stop if `06_qa.md` is missing: "No QA plan found. Run `/wf:qa-gen` first."
 3. **Parse `06_qa.md`.** Extract: scope, suites, scenarios (TC-NNN with title, priority, validates, preconditions, steps table, teardown). Preserve TC-NNN ordering as it appears in the file.
 4. **Filter by `--suite`** if passed.
