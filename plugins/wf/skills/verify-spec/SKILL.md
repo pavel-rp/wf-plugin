@@ -82,8 +82,10 @@ degradation, diagnostics }`. The resolver has already resolved the `## Capabilit
 registry, the owning capability's `manifest.md`, and any plugin-anchored root (post
 install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first
 resolution with install-manifest self-heal"); core performs **no** registry / manifest /
-plugin-root read of its own. Follow the returned `fragmentPath` in this skill's own
-context to dispatch the operation. On `state: unconfigured` or `unrecoverable` (no
+plugin-root read of its own. Obtain the operation body through the resolver's
+`resolve_content` content surface (`class: fragment`, keyed on the record's `owner` and
+fragment `ref`) and follow it in this skill's own context to dispatch the operation —
+never a raw `Read` of the resolved path. On `state: unconfigured` or `unrecoverable` (no
 readable `delivery` provider), both operations fall back silently to their
 plain-directory-safe cases — no error, no capability term surfaces. If the `wf-resolver`
 service is unavailable, stop and report that the resolver runtime is not loaded — do not
@@ -208,9 +210,11 @@ by **phase name / contribution-kind name**, never by heading:
    not hand-parse the registry (WF-272 diagnostics/recovery).
 2. **Collect** the fragment rows whose `phase` is `verify` and `contributionKind` is
    `finding`, in registry order.
-3. **Dispatch each** on its `dispatch` metadata (the resolver returns paths/metadata
-   only — never a fragment body, so the dispatch read stays in this skill's own context):
-   `inline: <rel-path>` → read the fragment at its resolved path and follow it in-context,
+3. **Dispatch each** on its `dispatch` metadata (the metadata queries return only
+   paths/metadata; the fragment body comes from the resolver's `resolve_content` content
+   surface, read prompt-free in this skill's own context):
+   `inline: <rel-path>` → obtain the fragment body via `resolve_content` (`class: fragment`,
+   the capability name, `ref: <rel-path>`) and follow it in-context,
    producing each finding in the generic finding shape (the "Capability findings" report
    shape below); `subagent: <agent>` → invoke the **Task** tool with `subagent_type:
    <agent>`, passing the artifact under audit and the generic finding shape; only its

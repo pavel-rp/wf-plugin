@@ -59,7 +59,7 @@ Examples:
 
 ## Direct provider resolution (how `current-branch-query` is reached)
 
-Id inference and the Phase 1 branch gate both reach `current-branch-query` by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in this skill's own context to reach `current-branch-query` (the resolver returns paths and metadata only, never a fragment body). On `state: unconfigured`/`unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). (qa-gen has no tracker-surface call site — it never fetches.)
+Id inference and the Phase 1 branch gate both reach `current-branch-query` by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain the op body via `resolve_content` (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to reach `current-branch-query` — never a raw `Read` of the path (the metadata queries return only paths/metadata; the body comes from `resolve_content`). On `state: unconfigured`/`unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). (qa-gen has no tracker-surface call site — it never fetches.)
 
 ---
 
@@ -216,11 +216,12 @@ parameters:
   (WF-272 diagnostics/recovery).
 - **Collect** only the fragment rows (across the returned `capabilities[]`, preserving
   registry order) whose `phase` is `qa-generation` and whose `contributionKind` is
-  `scenario`. **Dispatch each on its `dispatch` metadata** (the resolver returns
-  paths/metadata only — never a fragment body, so the dispatch read stays in this skill's
-  own context): `inline: <rel-path>` → read the fragment at its resolved path and follow
-  it in-context; `subagent: <agent>` → invoke the **Task** tool with `subagent_type:
-  <agent>`.
+  `scenario`. **Dispatch each on its `dispatch` metadata** (the metadata queries return
+  paths/metadata only; the fragment body comes from the resolver's `resolve_content`
+  content surface, read prompt-free in this skill's own context): `inline: <rel-path>` →
+  obtain the fragment body via `resolve_content` (`class: fragment`, the capability name,
+  `ref: <rel-path>`) and follow it in-context; `subagent: <agent>` → invoke the **Task**
+  tool with `subagent_type: <agent>`.
 - **Generic shape produced:** each contributed scenario in the same `TC-NNN` /
   `Validates:` contract as Phase 3, numbered in the **global** sequence.
 - **Aggregation:** `scenario` aggregates **provenance-tagged** — render every

@@ -1,6 +1,6 @@
 # Capability invocation runtime — runtime ops
 
-**Version:** 1.2.0 (WF-208; WF-209 — run-scoped provider forwarding; WF-302 — the bundled-doc content resolution surface)
+**Version:** 1.3.0 (WF-208; WF-209 — run-scoped provider forwarding; WF-302 — the bundled-doc content resolution surface; WF-304 — fragment-body dispatch routed through that surface)
 **Role:** the runtime-read half of the invocation runtime — the exact procedure a core skill follows to fire an SDD phase or to resolve a provider surface, with every guard, no-op case, and fail-safe inline. One level deep: no step below requires opening anything beyond this file and its flat sibling below.
 **Pair (flat sibling, read directly when needed):** `capability-registry.ops.md` — the registry/mapping schemas, the recorded-root-first self-heal algorithm, the surface operation sets, and the degradation rules this procedure resolves against.
 **Reference (rationale, history, v1 lineage, worked demonstrations — never read at boot):** `invocation-runtime.contract.md`.
@@ -33,7 +33,7 @@ Select only the fragment rows whose `phase` equals the firing phase; ignore all 
 
 | Fragment `dispatch` | Core action |
 |---------------------|-------------|
-| `inline: <rel-path>` | Read `<path>/<rel-path>` — forward-slash, **relative to the capability's registry path** — and follow it in-context; return the result in the contribution kind's generic shape. No subagent. |
+| `inline: <rel-path>` | Obtain the fragment body through the resolver **content surface** — call `resolve_content` with `class: fragment`, `capability:` this row's capability name, and `ref: <rel-path>` (forward-slash, **relative to the capability's registry path**) — and follow the returned body in-context; return the result in the contribution kind's generic shape. **Never a raw `Read`/`Glob` of the path** (see §"Content resolution surface"). No subagent. |
 | `subagent: <agent>` | Invoke the Task tool with `subagent_type: <agent>`, passing the artifact under review and the kind's generic shape; only the agent's final block returns. |
 | *(no matching row for the phase)* | No-op — the capability contributes the phase's declared empty result. |
 | *(row present, `dispatch` neither `inline:` nor `subagent:`)* | No-op (fail-safe) — never guess a malformed kind. |
@@ -54,7 +54,7 @@ The `delivery` and `tracker` `provider` surfaces are invoked **whenever a core s
 1. **Registry iteration** — unchanged (step 1 above, including both `Path` shapes and the self-heal).
 2. **Per-capability manifest read** — unchanged (step 2).
 3. **Scope-equality filter** (replaces per-phase collection): select the row(s) where `contribution-kind = provider` **and** `scope = delivery` (or `scope = tracker`), across the whole registry, **regardless of the row's `phase` value** — the phase there is a registration anchor for the validator, not a filter condition.
-4. **Per-fragment dispatch** — unchanged (step 4): `inline:` read-and-follow, or `subagent:` via the Task tool.
+4. **Per-fragment dispatch** — unchanged (step 4): `inline:` obtains the body through `resolve_content` (`class: fragment`) and follows it, or `subagent:` via the Task tool. The provider fragment body (the `delivery` / `tracker` operation set) is served by the content surface, **never raw-read** — see §"Content resolution surface".
 5. **Aggregation — skipped.** Validated partitioned ownership guarantees at most one match registry-wide; the resolved fragment (or the unconfigured no-op below) *is* the result.
 
 **Unconfigured case** — the filter matches zero rows: structurally the same "zero matching contributors" shape as the no-op path below (scope-filtered instead of phase-filtered). What that no-op resolves to operationally per surface — the plain-directory read fallbacks, the "no delivery provider registered" write statement, the silent local-only `T<NNN>` tracker fallback — is stated in `capability-registry.ops.md` under the two surface sections.
@@ -67,11 +67,11 @@ Direct provider resolution above is **per boot** — each subagent that needs a 
 
 **Single resolution point** — the highest boot in the run that needs a surface. It runs direct provider resolution above **once per required surface**: one `## Capabilities` read, then one manifest+fragment read per surface (`delivery`, and `tracker` when the run needs it — both in that same pass, never a second registry walk). Every other provider-operation boot in the run **consumes the forwarded result** instead of resolving.
 
-**The forwarded result — the run-scoped resolution record.** Per resolved surface, the minimum a consumer needs to *dispatch* that surface's operations without re-resolving: the surface token, the resolved provider identity, and the resolved fragment path (the operation set to follow) — **or**, when the surface resolved to no readable provider, that surface's unconfigured/unrecoverable outcome, so the consumer emits the identical degraded behaviour. It carries **no fragment body**: the dispatch read (following the fragment) still happens inside the consuming boot's own isolated context, so diff/artifact bodies never reach the parent.
+**The forwarded result — the run-scoped resolution record.** Per resolved surface, the minimum a consumer needs to *dispatch* that surface's operations without re-resolving: the surface token, the resolved provider identity (the `owner` capability), and the resolved fragment **content-ref** (the owner capability + its registry-relative fragment `ref`, the locator `resolve_content` reads into the operation set to follow) — **or**, when the surface resolved to no readable provider, that surface's unconfigured/unrecoverable outcome, so the consumer emits the identical degraded behaviour. It carries **no fragment body**: the dispatch read still happens inside the consuming boot's own isolated context — the consumer obtains the fragment body through the resolver's `resolve_content` content surface (`class: fragment`, keyed on the forwarded `owner` and fragment `ref`), **never a raw `Read` of the path** — so diff/artifact bodies never reach the parent.
 
 **Channel — the spawn message.** No typed input channel reaches a subagent, so the record travels as **condensed prose appended to the spawn Task message** — an **optional, backward-compatible** extension of the spawn contract:
 
-- A boot that **receives** a record for a surface **skips resolution** for it (no registry/manifest/fragment read of its own), dispatches that surface's operations against the record, and **forwards it onward unchanged** to any nested provider-operation boot it spawns.
+- A boot that **receives** a record for a surface **skips resolution** for it (no registry/manifest resolution of its own — it obtains the fragment body through `resolve_content` from the forwarded content-ref), dispatches that surface's operations against the record, and **forwards it onward unchanged** to any nested provider-operation boot it spawns.
 - A boot that receives **no** record (invoked directly — top of its own chain) **self-resolves** per direct provider resolution above, then forwards its result down.
 - Because the extension is optional, an unextended spawn is unchanged: the callee self-resolves exactly as before.
 
@@ -82,6 +82,8 @@ Direct provider resolution above is **per boot** — each subagent that needs a 
 ## Content resolution surface (bundled-doc bodies)
 
 Reading a **bundled non-skill doc** — a capability **fragment** body, a `_contracts/*` **contract** ops doc, a `_shared/*` **shared** convention doc, a skill **references-template**, or a pack **profile-template** body — goes through the always-loaded `wf-resolver` MCP's **`resolve_content`** tool, **never** a raw `Read`/`Glob` of the version-pinned plugin-cache path. The tool resolves the ref by **reusing** the same snapshot facts as the metadata queries (capability `resolvedPath` / `profileTemplatePath`, the `## Plugin Roots` resolved roots with recorded-root-first self-heal) plus the server's own core-plugin root, then reads the body with the server's own Node `fs`. It is the framed, **additive** exception to the body-free metadata snapshot — that invariant is untouched.
+
+Both fragment entry points route here: a **phase fire** (step 4 `inline:`) and a **provider resolution** (direct or run-scoped-forwarded, `delivery` / `tracker`) obtain the fragment body via `resolve_content` (`class: fragment`), never a raw `Read` of the resolved path.
 
 - **Request** — a `class` (exactly one of the five above) plus its locator: `fragment` / `profile-template` name a `capability` (+ a relative `ref` for `fragment`); `contract` / `shared` name a bare-filename `ref`; `references-template` names a `skill` (+ a relative `ref`, and an optional `plugin` — omit for a core skill).
 - **`served`** → `{path, content}`: the resolved doc, read prompt-free through the one already-granted MCP surface (any version, any machine, zero per-path config).
