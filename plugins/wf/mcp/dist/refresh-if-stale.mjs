@@ -1,9 +1,9 @@
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/types.ts
+// src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 1;
 var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/registry.ts
+// src/resolver/registry.ts
 function splitRow(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
@@ -61,7 +61,7 @@ function parseRegistry(markdown) {
   return { capabilities, pluginRoots };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/manifest.ts
+// src/resolver/manifest.ts
 function stripCr(line) {
   return line.replace(/\r$/, "");
 }
@@ -135,7 +135,7 @@ function parseManifest(markdown) {
   return { kind, fragments, articles, requires, conflicts, profileTemplate };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/paths.ts
+// src/resolver/paths.ts
 function normalizeSlashes(p) {
   return p.replace(/\\/g, "/");
 }
@@ -188,7 +188,7 @@ function isAbsoluteRoot(root) {
   return n.startsWith("/") || /^[A-Za-z]:/.test(n);
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/plugin-list.ts
+// src/resolver/plugin-list.ts
 var REQUIRED_FIELDS = [
   { field: "id", type: "string" },
   { field: "version", type: "string" },
@@ -267,7 +267,7 @@ function parsePluginList(raw) {
   return { plugins, contractOk: issues.length === 0, issues };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/config.ts
+// src/resolver/config.ts
 function extractKeyValues(markdown) {
   const map = /* @__PURE__ */ new Map();
   for (const rawLine of markdown.split(/\r?\n/)) {
@@ -304,7 +304,7 @@ function parseCoreConfig(markdown) {
   };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/fingerprint.ts
+// src/resolver/fingerprint.ts
 import { createHash } from "node:crypto";
 function sha256Hex(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
@@ -322,7 +322,7 @@ function fingerprint(kind, path, content) {
   };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/freshness.ts
+// src/resolver/freshness.ts
 var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   "wf-config",
   "registry",
@@ -401,7 +401,7 @@ function evaluateFreshness(snapshot, workspaceRoot2, probe) {
   return { fresh: reasons.length === 0, reasons };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/resolve.ts
+// src/resolver/resolve.ts
 function relativize(workspaceRoot2, absPath) {
   const abs = normalizeSlashes(absPath);
   const root = normalizeSlashes(workspaceRoot2).replace(/\/+$/, "");
@@ -663,12 +663,12 @@ function buildSnapshot(inputs, io) {
   };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/engine.ts
+// src/resolver/engine.ts
 import { readFileSync as readFileSync2 } from "node:fs";
 import { join as join2 } from "node:path";
 import { execFileSync } from "node:child_process";
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/snapshot-store.ts
+// src/resolver/snapshot-store.ts
 import {
   mkdirSync,
   readFileSync,
@@ -728,7 +728,7 @@ function readSnapshot(workspaceRoot2) {
   return parsed;
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/engine.ts
+// src/resolver/engine.ts
 var DEFAULT_REGISTRY_RELPATH = "_local/config.md";
 function readOrNull(absPath) {
   try {
@@ -785,7 +785,7 @@ function resolveAndPersist(opts) {
   return { snapshot, cachePath };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/refresh.ts
+// src/refresh.ts
 function workspaceRoot() {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
 }

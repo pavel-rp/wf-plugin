@@ -4,7 +4,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
+// node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
 var __create = Object.create;
 var __defProp2 = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   enumerable: true
 }) : target, mod));
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/core.js
+// node_modules/zod/v4/core/core.js
 var _a;
 var NEVER = /* @__PURE__ */ Object.freeze({
   status: "aborted"
@@ -120,7 +120,7 @@ function config(newConfig) {
   return globalConfig;
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/util.js
+// node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
   BIGINT_FORMAT_RANGES: () => BIGINT_FORMAT_RANGES,
@@ -816,7 +816,7 @@ var Class = class {
   }
 };
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/errors.js
+// node_modules/zod/v4/core/errors.js
 var initializer = (inst, def) => {
   inst.name = "$ZodError";
   Object.defineProperty(inst, "_zod", {
@@ -885,7 +885,7 @@ function formatError(error2, mapper = (issue2) => issue2.message) {
   return fieldErrors;
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/parse.js
+// node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => (schema, value, _ctx, _params) => {
   const ctx = _ctx ? { ..._ctx, async: false } : { async: false };
   const result = schema._zod.run({ value, issues: [] }, ctx);
@@ -963,7 +963,7 @@ var _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
   return _safeParseAsync(_Err)(schema, value, _ctx);
 };
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/regexes.js
+// node_modules/zod/v4/core/regexes.js
 var cuid = /^[cC][0-9a-z]{6,}$/;
 var cuid2 = /^[0-9a-z]+$/;
 var ulid = /^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$/;
@@ -1022,7 +1022,7 @@ var _null = /^null$/i;
 var lowercase = /^[^A-Z]*$/;
 var uppercase = /^[^a-z]*$/;
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/checks.js
+// node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a3;
   inst._zod ?? (inst._zod = {});
@@ -1412,7 +1412,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/doc.js
+// node_modules/zod/v4/core/doc.js
 var Doc = class {
   constructor(args = []) {
     this.content = [];
@@ -1448,14 +1448,14 @@ var Doc = class {
   }
 };
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/versions.js
+// node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 4,
   patch: 3
 };
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/schemas.js
+// node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a3;
   inst ?? (inst = {});
@@ -3000,7 +3000,7 @@ function handleRefineResult(result, payload, input, inst) {
   }
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/locales/en.js
+// node_modules/zod/v4/locales/en.js
 var error = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
@@ -3113,7 +3113,7 @@ function en_default() {
   };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/registries.js
+// node_modules/zod/v4/core/registries.js
 var _a2;
 var $ZodRegistry = class {
   constructor() {
@@ -3161,7 +3161,7 @@ function registry() {
 (_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry());
 var globalRegistry = globalThis.__zod_globalRegistry;
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/api.js
+// node_modules/zod/v4/core/api.js
 // @__NO_SIDE_EFFECTS__
 function _string(Class2, params) {
   return new Class2({
@@ -3724,7 +3724,7 @@ function _check(fn, params) {
   return ch;
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/to-json-schema.js
+// node_modules/zod/v4/core/to-json-schema.js
 function initializeContext(params) {
   let target = params?.target ?? "draft-2020-12";
   if (target === "draft-4")
@@ -4083,7 +4083,7 @@ var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) =
   return finalize(ctx, schema);
 };
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/core/json-schema-processors.js
+// node_modules/zod/v4/core/json-schema-processors.js
 var formatMap = {
   guid: "uuid",
   url: "uri",
@@ -4627,7 +4627,7 @@ function toJSONSchema(input, params) {
   return finalize(ctx, input);
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/classic/iso.js
+// node_modules/zod/v4/classic/iso.js
 var iso_exports = {};
 __export(iso_exports, {
   ZodISODate: () => ZodISODate,
@@ -4668,7 +4668,7 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/classic/errors.js
+// node_modules/zod/v4/classic/errors.js
 var initializer2 = (inst, issues) => {
   $ZodError.init(inst, issues);
   inst.name = "ZodError";
@@ -4707,7 +4707,7 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, {
   Parent: Error
 });
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/classic/parse.js
+// node_modules/zod/v4/classic/parse.js
 var parse2 = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -4721,7 +4721,7 @@ var safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/classic/schemas.js
+// node_modules/zod/v4/classic/schemas.js
 var _installedGroups = /* @__PURE__ */ new WeakMap();
 function _installLazyMethods(inst, group, methods) {
   const proto = Object.getPrototypeOf(inst);
@@ -5618,7 +5618,7 @@ function preprocess(fn, schema) {
   });
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/classic/compat.js
+// node_modules/zod/v4/classic/compat.js
 var ZodIssueCode = {
   invalid_type: "invalid_type",
   too_big: "too_big",
@@ -5636,7 +5636,7 @@ var ZodFirstPartyTypeKind;
 /* @__PURE__ */ (function(ZodFirstPartyTypeKind2) {
 })(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/classic/coerce.js
+// node_modules/zod/v4/classic/coerce.js
 var coerce_exports = {};
 __export(coerce_exports, {
   bigint: () => bigint2,
@@ -5661,10 +5661,10 @@ function date3(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/zod/v4/classic/external.js
+// node_modules/zod/v4/classic/external.js
 config(en_default());
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/@modelcontextprotocol/core/dist/auth-DFgbUATV.mjs
+// node_modules/@modelcontextprotocol/core/dist/auth-DFgbUATV.mjs
 var LATEST_PROTOCOL_VERSION = "2025-11-25";
 var SUPPORTED_PROTOCOL_VERSIONS = [
   LATEST_PROTOCOL_VERSION,
@@ -6599,7 +6599,7 @@ var OAuthTokenRevocationRequestSchema = object({
   token_type_hint: string2().optional()
 }).strip();
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/src-D5Nfqtoz.mjs
+// node_modules/@modelcontextprotocol/server/dist/src-D5Nfqtoz.mjs
 var BRANDS = /* @__PURE__ */ Symbol.for("mcp.sdk.errorBrands");
 function stampErrorBrands(instance, ctor) {
   const brands = /* @__PURE__ */ new Set();
@@ -11205,7 +11205,7 @@ function fromJsonSchema(schema, validator) {
   } };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/ajvProvider-CplOkyLC.mjs
+// node_modules/@modelcontextprotocol/server/dist/ajvProvider-CplOkyLC.mjs
 var require_code$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
@@ -17798,10 +17798,10 @@ var AjvJsonSchemaValidator = class {
 };
 var Ajv = import_ajv.Ajv;
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
+// node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
 import process3 from "node:process";
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/mcp-Ctiu4nBa.mjs
+// node_modules/@modelcontextprotocol/server/dist/mcp-Ctiu4nBa.mjs
 var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
 function isCompletable(schema) {
   return !!schema && typeof schema === "object" && COMPLETABLE_SYMBOL in schema;
@@ -19296,13 +19296,13 @@ function unwrapOptionalSchema(schema) {
   return schema.def?.innerType ?? schema;
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/index.mjs
+// node_modules/@modelcontextprotocol/server/dist/index.mjs
 var _defaultValidator;
 function fromJsonSchema2(schema, validator) {
   return fromJsonSchema(schema, validator ?? (_defaultValidator ??= new AjvJsonSchemaValidator()));
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/stdio.mjs
+// node_modules/@modelcontextprotocol/server/dist/stdio.mjs
 var StdioServerTransport = class {
   _readBuffer;
   _started = false;
@@ -19786,7 +19786,7 @@ function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/fingerprint.ts
+// src/resolver/fingerprint.ts
 import { createHash } from "node:crypto";
 function sha256Hex(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
@@ -19804,7 +19804,7 @@ function fingerprint(kind, path, content) {
   };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/paths.ts
+// src/resolver/paths.ts
 function normalizeSlashes(p) {
   return p.replace(/\\/g, "/");
 }
@@ -19857,7 +19857,7 @@ function isAbsoluteRoot(root) {
   return n.startsWith("/") || /^[A-Za-z]:/.test(n);
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/plugin-list.ts
+// src/resolver/plugin-list.ts
 var REQUIRED_FIELDS = [
   { field: "id", type: "string" },
   { field: "version", type: "string" },
@@ -19936,12 +19936,12 @@ function parsePluginList(raw) {
   return { plugins, contractOk: issues.length === 0, issues };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/types.ts
+// src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 1;
 var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/freshness.ts
+// src/resolver/freshness.ts
 var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   "wf-config",
   "registry",
@@ -20020,7 +20020,7 @@ function evaluateFreshness(snapshot, workspaceRoot, probe) {
   return { fresh: reasons.length === 0, reasons };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/registry-edit.ts
+// src/resolver/registry-edit.ts
 function splitRow(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
@@ -20110,7 +20110,7 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
   return { content: next.join(eol), changed: true };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/service.ts
+// src/service.ts
 var KNOWN_SURFACES = /* @__PURE__ */ new Set([
   "delivery",
   "tracker",
@@ -20424,11 +20424,11 @@ var ResolverService = class {
   }
 };
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/ports.ts
+// src/ports.ts
 import { mkdirSync as mkdirSync2, readdirSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname2 } from "node:path";
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/registry.ts
+// src/resolver/registry.ts
 function splitRow2(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
@@ -20486,7 +20486,7 @@ function parseRegistry(markdown) {
   return { capabilities, pluginRoots };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/manifest.ts
+// src/resolver/manifest.ts
 function stripCr(line) {
   return line.replace(/\r$/, "");
 }
@@ -20560,7 +20560,7 @@ function parseManifest(markdown) {
   return { kind, fragments, articles, requires, conflicts, profileTemplate };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/config.ts
+// src/resolver/config.ts
 function extractKeyValues(markdown) {
   const map = /* @__PURE__ */ new Map();
   for (const rawLine of markdown.split(/\r?\n/)) {
@@ -20597,7 +20597,7 @@ function parseCoreConfig(markdown) {
   };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/resolve.ts
+// src/resolver/resolve.ts
 function relativize(workspaceRoot, absPath) {
   const abs = normalizeSlashes(absPath);
   const root = normalizeSlashes(workspaceRoot).replace(/\/+$/, "");
@@ -20859,12 +20859,12 @@ function buildSnapshot(inputs, io) {
   };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/engine.ts
+// src/resolver/engine.ts
 import { readFileSync as readFileSync2 } from "node:fs";
 import { join as join2 } from "node:path";
 import { execFileSync } from "node:child_process";
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/snapshot-store.ts
+// src/resolver/snapshot-store.ts
 import {
   mkdirSync,
   readFileSync,
@@ -20924,7 +20924,7 @@ function readSnapshot(workspaceRoot) {
   return parsed;
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/engine.ts
+// src/resolver/engine.ts
 var DEFAULT_REGISTRY_RELPATH = "_local/config.md";
 function readOrNull(absPath) {
   try {
@@ -20976,7 +20976,7 @@ function resolveSnapshot(opts) {
   return buildSnapshot(inputs, io);
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/ports.ts
+// src/ports.ts
 var DEFAULT_REGISTRY_RELPATH2 = "_local/config.md";
 function resolveWorkspaceRoot() {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
@@ -21020,7 +21020,7 @@ function createDefaultPorts(workspaceRoot) {
   };
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/tools.ts
+// src/tools.ts
 function ok(payload) {
   return {
     content: [{ type: "text", text: JSON.stringify(payload) }],
@@ -21195,7 +21195,7 @@ function registerResolverTools(server, service) {
   );
 }
 
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/index.ts
+// src/index.ts
 var SERVER_NAME = "wf-resolver";
 var SERVER_VERSION = "0.2.0";
 function createServer() {

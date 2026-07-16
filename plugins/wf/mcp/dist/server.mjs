@@ -1,4 +1,4 @@
-// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/launch.ts
+// src/launch.ts
 var MIN_NODE_MAJOR = 20;
 var currentVersion = process.versions.node;
 var currentMajor = Number.parseInt(currentVersion.split(".")[0] ?? "", 10);
