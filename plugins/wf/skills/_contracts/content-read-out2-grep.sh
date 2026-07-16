@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# OUT-2 acceptance check — FRAGMENT + SHARED + CONTRACT-OPS + REFERENCES content
-# classes (WF-304 / WF-305 / WF-306 / WF-307, charter C011 / WF-301).
+# OUT-2 acceptance check — the COMPOSITE gate over all FIVE content classes
+# (FRAGMENT + SHARED + CONTRACT-OPS + REFERENCES + PROFILE), charter C011 / WF-301.
 #
 # Charter outcome OUT-2: no agent or skill instructs a raw `Read`/`Glob` of a
 # bundled content-class doc — every such body is obtained through the resolver
 # `resolve_content` content surface, with NO fallback carve-out. C011 sweeps five
-# content classes across reviewed slices (fragment, shared, contract-ops,
-# references, profile). This script accumulates each slice's clause as it lands:
-# SUB-3 (WF-304) landed the **fragment-class clause**; SUB-4 (WF-305) appended the
-# **shared-class clause**; SUB-5 (WF-306) appended the **contract-ops-class clause**;
-# SUB-6 (WF-307) appends the **references-class clause** below. The terminal slice
-# (SUB-7) consolidates all five per-class clauses into one composite gate.
+# content classes across reviewed slices: SUB-3 (WF-304) landed the **fragment**
+# clause; SUB-4 (WF-305) the **shared** clause; SUB-5 (WF-306) the **contract-ops**
+# clause; SUB-6 (WF-307) the **references** clause; and this terminal slice SUB-7
+# (WF-308) appends the **profile** clause AND CONSOLIDATES the gate: every clause
+# now scans the whole marketplace — each plugin's `skills/` and `agents/` under
+# `plugins/**` (core wf PLUS every pack), not just the core spine. Zero hits across
+# all five clauses = pass; there is no raw-read carve-out and no fall-through.
 #
 # (Charter warning F4.2: the example name `out1-grep.sh` mislabels the outcome it
 # gates — that script gates OUT-1 of a DIFFERENT charter, C001/WF-119. This gate
@@ -23,31 +24,44 @@ set -u
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"   # -> plugins/wf
 ops="$root/skills/_contracts/invocation-runtime.ops.md"
+plugins_root="$(cd "$root/.." && pwd)"        # -> plugins
 overall_fail=0
 
+# Every plugin's skills/ and agents/ consumer prose (core wf + every pack). This
+# is the composite scope: OUT-2 admits no raw read anywhere under `plugins/**`, not
+# just the core spine. Per-clause, `_contracts/` is excluded (read TARGETS / the
+# `*.contract.md` reference halves / the validator / the fixtures / this script),
+# and the one central procedure doc `invocation-runtime.ops.md` — which lives in
+# `_contracts/` yet is read at runtime — is scanned explicitly as `$ops`.
+consumer_dirs=$(ls -d "$plugins_root"/*/skills "$plugins_root"/*/agents 2>/dev/null)
+
 # =============================================================================
-# Clause 1 — FRAGMENT class (WF-304 / SUB-3)
+# Clause 1 — FRAGMENT class (WF-304 / SUB-3; scope broadened to plugins/** by SUB-7)
 # =============================================================================
 #
 # --- What it proves ---
 # A fragment body — a phase-fragment dispatched at a phase fire, a `delivery`/
-# `tracker` provider fragment resolved on demand, or a fragment carried on a
-# run-scoped forwarded record — is served by `resolve_content` (class `fragment`),
-# NEVER by a raw `Read`/`Glob` of the version-pinned plugin-cache path. Zero
-# surviving raw-read instructions = pass.
+# `tracker` provider fragment resolved on demand, a fragment carried on a
+# run-scoped forwarded record, or a subagent's self-boot read of its OWN bundled
+# fragment (e.g. the wf-audit lens agents reading their finding-contract + rubric
+# fragments) — is served by `resolve_content` (class `fragment`), NEVER by a raw
+# `Read`/`Glob` of the version-pinned plugin-cache path. Zero surviving raw-read
+# instructions = pass.
 #
 # --- Scope (path) ---
-# Scanned:  plugins/wf/skills/<name>/**.md (SKILL.md + references) and
-#           plugins/wf/agents/*.md — the domain-free SDD spine's consumer prose —
-#           PLUS the one central procedure doc skills/_contracts/invocation-runtime.ops.md
-#           (the runtime-read ops where the fragment-dispatch step is defined).
+# Scanned:  every plugin's skills/<name>/**.md (SKILL.md + references) and
+#           agents/*.md across the whole marketplace (core wf PLUS every pack —
+#           the pack fragment consumers include the wf-audit lens/retrospective
+#           agents' self-boot fragment reads, WF-303 inventory §4.1(c)) — PLUS the
+#           one central procedure doc invocation-runtime.ops.md (where the
+#           fragment-dispatch step is defined).
 # NOT scanned (path-scoped out, not a content carve-out):
-#   - the rest of skills/_contracts/ — the `*.contract.md` reference halves (never
-#     read at boot; the ops/reference split's rationale halves), capability-registry
-#     /pack-onboarding ops (the CONTRACT-OPS class, owned by SUB-5), the registry
-#     validator, the registry-fixtures, and this script.
-#   - capability fragment BODIES (capabilities/*/fragments/*.md) and pack consumer
-#     bodies — read targets / other-slice consumers, not this core-spine clause.
+#   - skills/_contracts/ — the `*.contract.md` reference halves (never read at
+#     boot), capability-registry/pack-onboarding ops (the CONTRACT-OPS class,
+#     clause 3), the registry validator, the registry-fixtures, and this script.
+#   - capability fragment BODIES (capabilities/*/fragments/*.md) — read targets,
+#     served through the resolver, not consumer instructions (they live outside
+#     `skills/` and `agents/`).
 #
 # --- The single content allowance (not a carve-out) ---
 # The compliant form: a line that obtains the fragment body through the resolver
@@ -57,7 +71,7 @@ overall_fail=0
 # `resolve_content`. A raw fragment read with NO `resolve_content` on the line is a
 # residual and fails. There is no path-fallback exemption.
 
-# Raw-read-of-a-fragment-body shapes (the instruction SUB-3 removed):
+# Raw-read-of-a-fragment-body shapes (the instruction the sweep removed):
 #   1. "follow[ing] ... `fragmentPath`" — the provider/phase dispatch read.
 #   2. "read the fragment at ..." — the per-fragment inline dispatch read.
 #   3. Read `<path>/<rel-path>` — the ops step-4 placeholder read.
@@ -68,7 +82,7 @@ frag_pat="$frag_pat"'|\bread the fragment at\b'
 frag_pat="$frag_pat"'|\bRead\b\s+`?<path>/<rel-path>'
 frag_pat="$frag_pat"'|\b(?:Read|Glob)\b[^\n]{0,80}(?:fragments/[A-Za-z0-9._-]+\.md|delivery\.ops\.md|tracker\.ops\.md)'
 
-frag_raw=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$frag_pat" "$root/skills" "$root/agents" "$ops")
+frag_raw=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$frag_pat" $consumer_dirs "$ops")
 rc=$?
 if [ "$rc" -ge 2 ]; then
   echo "OUT-2 (fragment): ERROR — grep failed (rc=$rc). This check requires PCRE grep (grep -P), which may be unavailable on this platform."
@@ -83,11 +97,11 @@ if [ -n "$frag_hits" ]; then
   echo "$frag_hits"
   overall_fail=1
 else
-  echo "OUT-2 (fragment): PASS — every fragment-body read in the wf spine + invocation-runtime ops routes through resolve_content; zero raw reads."
+  echo "OUT-2 (fragment): PASS — every fragment-body read across core + packs + invocation-runtime ops routes through resolve_content; zero raw reads."
 fi
 
 # =============================================================================
-# Clause 2 — SHARED class (WF-305 / SUB-4)
+# Clause 2 — SHARED class (WF-305 / SUB-4; scope broadened to plugins/** by SUB-7)
 # =============================================================================
 #
 # --- What it proves ---
@@ -99,8 +113,11 @@ fi
 # raw-read instructions = pass.
 #
 # --- Scope (path) ---
-# Scanned:  plugins/wf/skills/<name>/**.md (SKILL.md + references) and
-#           plugins/wf/agents/*.md — same scope as the fragment clause above.
+# Scanned:  every plugin's skills/<name>/**.md and agents/*.md across the whole
+#           marketplace — same composite scope as the fragment clause above (the
+#           `_shared/` consumers are all in core today, but the clause scans every
+#           pack so a pack that later references the shared doc cannot slip a raw
+#           read past the gate).
 # NOT scanned: skills/_contracts/ (reference halves, other-slice content), and
 #   the `_shared/pipeline-conventions.md` target doc itself (a read TARGET, not a
 #   consumer instruction — it names no path to itself).
@@ -121,7 +138,7 @@ shared_pat='\]\([^)]*_shared/[A-Za-z0-9._-]+\.md\)'
 shared_pat="$shared_pat"'|`\.?\.?/?_shared/[A-Za-z0-9._-]+\.md`'
 shared_pat="$shared_pat"'|\b(?:Read|Glob)\b[^\n]{0,80}_shared/[A-Za-z0-9._-]+\.md'
 
-shared_raw=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$shared_pat" "$root/skills" "$root/agents")
+shared_raw=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$shared_pat" $consumer_dirs)
 rc=$?
 if [ "$rc" -ge 2 ]; then
   echo "OUT-2 (shared): ERROR — grep failed (rc=$rc). This check requires PCRE grep (grep -P), which may be unavailable on this platform."
@@ -135,7 +152,7 @@ if [ -n "$shared_hits" ]; then
   echo "$shared_hits"
   overall_fail=1
 else
-  echo "OUT-2 (shared): PASS — every shared-doc read in the wf spine routes through resolve_content; zero raw reads."
+  echo "OUT-2 (shared): PASS — every shared-doc read across core + packs routes through resolve_content; zero raw reads."
 fi
 
 # =============================================================================
@@ -187,11 +204,7 @@ contract_pat='\]\([^)\n]*/'"$contract_docs"
 contract_pat="$contract_pat"'|`[^`\n]*/'"$contract_docs"
 contract_pat="$contract_pat"'|\b(?:Read|Glob)\b[^\n]{0,80}'"$contract_docs"
 
-# Scan every plugin's skills/ and agents/ dirs (core + packs); _contracts excluded.
-plugins_root="$(cd "$root/.." && pwd)"   # -> plugins
-contract_dirs=$(ls -d "$plugins_root"/*/skills "$plugins_root"/*/agents 2>/dev/null)
-
-contract_raw=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$contract_pat" $contract_dirs)
+contract_raw=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$contract_pat" $consumer_dirs)
 rc=$?
 if [ "$rc" -ge 2 ]; then
   echo "OUT-2 (contract-ops): ERROR — grep failed (rc=$rc). This check requires PCRE grep (grep -P), which may be unavailable on this platform."
@@ -283,6 +296,67 @@ if [ -n "$refs_hits" ]; then
   overall_fail=1
 else
   echo "OUT-2 (references): PASS — every references-template read across core + packs routes through resolve_content; zero raw reads."
+fi
+
+# =============================================================================
+# Clause 5 — PROFILE class (WF-308 / SUB-7)
+# =============================================================================
+#
+# --- What it proves ---
+# A pack's `profile.template.json` BODY read at init to seed a downstream override
+# `_local/profiles/<cap>.profile.json` on divergence (wf-audit/skills/init Phase 3,
+# wf-angular/skills/init Phase 3 — WF-303 inventory §4.5) is obtained through
+# `resolve_content` (class `profile-template`, keyed on the `capability`), NEVER by
+# a raw `Read`/`Glob` or a version-pinned plugin-cache PATH the init skill would
+# open. Zero surviving raw-path read instructions = pass.
+#
+# (C008's `resolve_profile` serves override-merged profile VALUES; this ref serves
+# the TEMPLATE BODY needed at seed time to detect divergence — a different thing.)
+#
+# --- Scope (path) ---
+# Scanned:  every plugin's `skills/` and `agents/` consumer prose across the whole
+#           marketplace — the profile consumers are the pack init skills.
+# NOT scanned (path-scoped out, not a content carve-out):
+#   - skills/_contracts/ (reference halves, the seeding-convention contract text).
+#   - capabilities/*/profile.template.json BODIES themselves (read TARGETS) and the
+#     `manifest.md` `profile-template:` metadata key — outside `skills/`/`agents/`.
+#
+# --- The single content allowance (not a carve-out) ---
+# The compliant form names `resolve_content` (`class: profile-template`,
+# `capability: <name>`) — so the raw-read match below excludes any line that also
+# names `resolve_content`. A BARE-filename citation (the manifest-key mention
+# `` `profile-template: profile.template.json` `` with NO path separator) is a
+# documentation pointer, not a raw read, and is left untouched: the shapes below
+# require a PATH separator (or an explicit Read/Glob), so a bare filename is never
+# a hit. A raw `profile.template.json` PATH with NO `resolve_content` on the line
+# is a residual and fails. No path-fallback exemption.
+
+# Raw-read-of-a-profile-template shapes (the instruction SUB-7 removed):
+#   1. a markdown link into a path ending in profile.template.json —
+#      `](…/profile.template.json)`.
+#   2. a backtick literal PATH ending in profile.template.json — `` `…/profile.template.json` ``
+#      (a leading path segment before the filename; a bare `` `profile.template.json` ``
+#      has no `/` and is NOT matched).
+#   3. an explicit Read/Glob of a profile.template.json file.
+profile_pat='\]\([^)\n]*/profile\.template\.json[^)\n]*\)'
+profile_pat="$profile_pat"'|`[^`\n]*/profile\.template\.json`'
+profile_pat="$profile_pat"'|\b(?:Read|Glob)\b[^\n]{0,80}profile\.template\.json'
+
+profile_raw=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$profile_pat" $consumer_dirs)
+rc=$?
+if [ "$rc" -ge 2 ]; then
+  echo "OUT-2 (profile): ERROR — grep failed (rc=$rc). This check requires PCRE grep (grep -P), which may be unavailable on this platform."
+  exit 2
+fi
+
+profile_hits=$(printf '%s\n' "$profile_raw" | grep -v 'resolve_content' | grep -v '^$')
+
+if [ -n "$profile_hits" ]; then
+  echo "OUT-2 (profile): FAIL — raw-read instructions for a profile-template body (route them through resolve_content, class: profile-template):"
+  echo "$profile_hits"
+  overall_fail=1
+else
+  echo "OUT-2 (profile): PASS — every profile-template-body read across core + packs routes through resolve_content; zero raw reads."
 fi
 
 exit "$overall_fail"

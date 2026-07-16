@@ -259,23 +259,24 @@ else
   fail=$((fail + 1))
 fi
 
-# --- WF-304 / WF-305 / WF-306: OUT-2 content-read acceptance ------------------
-# (fragment + shared + contract-ops classes)
+# --- WF-304 / WF-305 / WF-306 / WF-307 / WF-308: OUT-2 content-read acceptance --
+# (the COMPOSITE gate — all five content classes)
 # C011 OUT-2: no skill/agent raw-reads a bundled content-class doc — every body
-# comes from the resolver `resolve_content` surface. This single script now carries
-# three clauses: the fragment-class clause (SUB-3, WF-304), the shared-class clause
-# (SUB-4, WF-305), and the contract-ops-class clause (SUB-5, WF-306) it appended;
-# it proves zero raw fragment-body reads, zero raw shared-doc reads, and zero raw
-# contract-ops-doc reads survive across the wf spine + packs + invocation-runtime
-# ops. Wired here so the CI entry point covers all three (SUB-7 consolidates all
-# five per-class clauses).
+# comes from the resolver `resolve_content` surface, with no carve-out. The
+# terminal slice SUB-7 (WF-308) consolidated this script into the composite gate:
+# the fragment (SUB-3, WF-304), shared (SUB-4, WF-305), contract-ops (SUB-5,
+# WF-306), references (SUB-6, WF-307), and profile (SUB-7, WF-308) clauses now each
+# scan the whole marketplace — every plugin's `skills/` + `agents/` under
+# `plugins/**` (core wf PLUS every pack), not just the core spine. It proves zero
+# raw reads survive in any of the five classes. Wired here so the CI entry point
+# covers the full composite gate.
 echo ""
-echo "=== Content-read OUT-2 acceptance — fragment + shared + contract-ops classes (content-read-out2-grep.sh) ==="
+echo "=== Content-read OUT-2 acceptance — composite gate, all five classes over plugins/** (content-read-out2-grep.sh) ==="
 if bash "$DIR/../content-read-out2-grep.sh"; then
-  printf 'PASS: %s\n' "OUT-2 fragment + shared + contract-ops class content-read grep"
+  printf 'PASS: %s\n' "OUT-2 composite content-read grep (fragment + shared + contract-ops + references + profile)"
   pass=$((pass + 1))
 else
-  printf 'FAIL: %s\n' "OUT-2 fragment + shared + contract-ops class content-read grep"
+  printf 'FAIL: %s\n' "OUT-2 composite content-read grep (fragment + shared + contract-ops + references + profile)"
   fail=$((fail + 1))
 fi
 
