@@ -1,27 +1,30 @@
 ---
 name: init
-description: Onboards the wf-browser-qa pack into a wf-initialized repo in one command — registers the pack's browser-qa capability into the wf capability registry as a plugin-anchored row and records the pack's install root so core can resolve it. Use once (after /wf:init) to activate the browser-automation QA engine without hand-editing _local/config.md; upgrades self-heal, so re-run only if resolution reports the pack unrecoverable or after relocating the pack.
+description: Onboards the wf-browser-qa pack into a wf-initialized repo in one command — self-registers the browser-qa capability with core via the typed resolver MCP tools (inspect_pack/register_pack), keyed by the pack's stable plugin id. Use once (after /wf:init) to activate the browser-automation QA engine without probing $CLAUDE_PLUGIN_ROOT or hand-editing _local/config.md or the plugin-roots map; upgrades self-heal, so re-run only if resolution reports the pack unrecoverable or after relocating the pack.
 allowed-tools: [Read, Write, Edit, Bash]
 ---
 
-# /wf-browser-qa:init — Onboard the wf-browser-qa pack (self-register + record install root)
+# /wf-browser-qa:init — Onboard the wf-browser-qa pack (self-register via the resolver)
 
 Collapse wf-browser-qa onboarding into **one command**. Installing the plugin makes
 `/wf-browser-qa:init` and `/wf-browser-qa:qa-engine` discoverable (native composition) but
-registers **no** phase fragment — that still requires hand-editing the downstream
-`## Capabilities` table and re-running `/wf:init`. This skill does that registration for you
-and records the one datum core cannot get on its own: **the pack's install root**.
+registers **no** phase fragment — that still requires an entry in the downstream
+`## Capabilities` table and a resolved `/wf:init` run. This skill does that registration
+for you by calling core's bundled **typed resolver MCP service** — the same `wf-resolver`
+tools every wf skill uses (see `plugins/wf/skills/resolve/SKILL.md`) — with the pack's own
+stable plugin id.
 
-Core resolves a `plugin:<plugin-name>/<rel-path>` `Path` by looking `<plugin-name>` up
-in a `## Plugin Roots` mapping (see
-`plugins/wf/skills/_contracts/capability-registry.contract.md` §"The `## Plugin Roots`
-mapping"). Only a **wf-browser-qa skill** runs with `${CLAUDE_PLUGIN_ROOT}` equal to the
-wf-browser-qa install root, so only this skill can capture and record it. With the root
-recorded and the capability row written, core resolves the pack's `browser-qa` capability
-on a **plugin-only install** — no vendored `plugins/wf-browser-qa/...` in the consuming repo.
+Two typed, read/write-separated calls replace every manual discovery step this skill used
+to perform itself: `inspect_pack("wf-browser-qa")` (read-only — resolves the plugin via
+`claude plugin list --json`, validates it, and returns a fingerprint) then
+`register_pack("wf-browser-qa", <fingerprint>)` (the sole mutation — writes the
+`## Plugin Roots` row and the `## Capabilities` row for the pack's capability, refreshes
+the snapshot, and self-checks). **This skill never probes `${CLAUDE_PLUGIN_ROOT}`, derives
+an install root, or hand-edits the registry file itself** — `register_pack` owns that
+write exclusively.
 
-This mirrors `/wf-git:init` exactly, simplified for a single-capability pack: there is no
-capability-subset argument, because wf-browser-qa ships exactly one capability.
+This mirrors `/wf-audit:init` exactly, simplified for a single-capability pack: there is
+no capability-subset argument, because wf-browser-qa ships exactly one capability.
 
 **This is fragment/registry-side onboarding only.** It cannot register a `/command` — a
 discoverable skill must live in a plugin's `skills/` dir (native discovery).
@@ -42,8 +45,9 @@ Takes no arguments — it always registers the single `browser-qa` capability th
 
 - **Registry location:** resolve exactly as `/wf:init` does — read `wf.config.js` at the
   repo root (`git rev-parse --show-toplevel`) and use its optional `registryPath` key,
-  **defaulting to `_local/config.md`** when absent. All registry writes below target
-  this resolved location.
+  **defaulting to `_local/config.md`** when absent. Used only for the Phase 0 precondition
+  check and to report the location in the Final Output — `register_pack` resolves and
+  writes it independently.
 
 ---
 
@@ -51,19 +55,24 @@ Takes no arguments — it always registers the single `browser-qa` capability th
 
 **Allowed:**
 
-- Read any file; read `${CLAUDE_PLUGIN_ROOT}` and read-only git (`git rev-parse`).
-- Write/edit files under `_local/`.
-- Write the `## Plugin Roots` and `## Capabilities` tables to the **resolved registry
-  location** — the one sanctioned write outside `_local/` (registering the pack is this
-  skill's whole purpose), mirroring `/wf:init`'s and `/wf-git:init`'s registry-write
-  carve-out.
+- Read any file (the capability manifest, at the path `inspect_pack` returns); read-only
+  git (`git rev-parse`).
+- Call the bundled `wf-resolver` MCP tools this skill needs: `inspect_pack`,
+  `register_pack`, `resolve_registry` (pre-registration check), and `resolve_gate`
+  (failure diagnostics) — the same typed service every wf skill uses.
+- Write/edit files under `_local/` (none needed here — no profile to seed — kept for
+  parity with the pack-init family; see Phase 4).
 
 **Forbidden:**
 
-- Modify any source file except the writes named above.
+- Modify any source file.
+- **Hand-edit the `## Plugin Roots` / `## Capabilities` tables directly.**
+  `register_pack` is the sole write path for pack registration; this skill never writes
+  the registry file itself.
+- **Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive an install root by hand** —
+  `inspect_pack`/`register_pack` resolve it via `claude plugin list --json`.
 - Register a `/command` (impossible — native discovery only; this skill wires the
   fragment/registry).
-- Record any plugin's root but **its own** (`${CLAUDE_PLUGIN_ROOT}` = wf-browser-qa).
 - Run builds, tests, installs, or any destructive git operation.
 
 ---
@@ -80,61 +89,60 @@ Takes no arguments — it always registers the single `browser-qa` capability th
 
 ---
 
-## Phase 1: Discover self
+## Phase 1: Inspect the pack
 
-1. **Capture the install root.** Run (Bash) `printf '%s' "$CLAUDE_PLUGIN_ROOT"` to read
-   the pack's install root. If it is empty, stop: "`$CLAUDE_PLUGIN_ROOT` is not set —
-   run this as the `/wf-browser-qa:init` slash command so the pack's install root is
-   available." **Normalize to forward slashes** (replace every `\` with `/`); a leading
-   drive prefix such as `C:` is fine (the `## Plugin Roots` `Root` shape permits
-   absolute/drive-prefixed roots). Call the normalized value `<pack-root>`.
-2. **Confirm the capability manifest exists.** Confirm `<pack-root>/capabilities/browser-qa/manifest.md`
-   is readable. If it is not, stop: "No `capabilities/browser-qa/manifest.md` under the pack —
-   the install appears corrupted or incomplete."
+Call `inspect_pack` with `pluginId: "wf-browser-qa"` — this pack's exact stable plugin id
+(bare, no `@marketplace` suffix; `inspect_pack` matches a bare id against either the
+installed plugin's full id or its bare name, so this is unambiguous regardless of which
+marketplace it was installed from).
 
----
-
-## Phase 2: Record the plugin root
-
-Write/refresh the `wf-browser-qa` row in a `## Plugin Roots` table at the resolved registry
-location.
-
-1. Read the registry file. Locate a `## Plugin Roots` section.
-2. **If absent**, append this section (heading + prose + table) to the file:
-
-   ```markdown
-   ## Plugin Roots
-
-   Per-machine plugin install roots that resolve plugin-anchored `## Capabilities` paths (`plugin:<plugin-name>/<rel-path>`). Written and refreshed by each pack's own init (e.g. `/wf-browser-qa:init`) — machine-specific, gitignored, never committed. See `plugins/wf/skills/_contracts/capability-registry.contract.md` §"The `## Plugin Roots` mapping".
-
-   | Plugin        | Root        |
-   |---------------|-------------|
-   | wf-browser-qa | <pack-root> |
-   ```
-
-3. **If present**, upsert the `wf-browser-qa` row: replace its `Root` with `<pack-root>` if
-   the row exists (the install root can move between machines / upgrades), else append the
-   row to the table. Leave every other plugin's row untouched.
-
-Substitute the real `<pack-root>` value; never write the literal placeholder.
+1. **Tool unreachable / errors.** The resolver MCP service itself may be unhealthy — not
+   a pack problem. Call `resolve_gate` with `surface: "local-read"` (inspection is a
+   read) and present its `categories` / `diagnostics` / `recovery` verbatim as the
+   failure. This is the WF-272 diagnostics/recovery contract every wf consumer uses (see
+   `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Recorded-root-first
+   resolution with install-manifest self-heal" → "Resolver-failure semantics"). Stop;
+   report `partial`.
+2. **Returns `valid: false`.** A genuine pack problem, not a resolver failure — present
+   `issues[]` verbatim (e.g. "plugin `wf-browser-qa` is not installed", "...is disabled",
+   "no readable `capabilities/*/manifest.md` under `<installPath>`") with the matching
+   remedy (install or enable the plugin; reinstall if the manifest is missing/corrupted).
+   Stop; report `partial`.
+3. **Returns `valid: true`.** Confirm `capabilities[]` names `browser-qa` — the pack's one
+   shipped capability. If it is missing, the install is incomplete even though
+   `valid: true` (capabilities.length > 0 only guarantees at least one readable manifest):
+   stop, "the install appears corrupted or incomplete." Otherwise capture `fingerprint`,
+   `installPath`, and the capability's `manifestPath` for the phases below.
 
 ---
 
-## Phase 3: Register the capability
+## Phase 2: Register the pack
 
-Ensure a `## Capabilities` row exists at the resolved registry location:
-
-- Row shape: `| browser-qa | plugin:wf-browser-qa/capabilities/browser-qa |`.
-- **Append-only, skip-if-present by capability name.** If a row named `browser-qa` already
-  exists (any `Path`), leave it untouched and record `already registered`. Never delete
-  or reorder existing rows.
-- Preserve the table's existing order; append the new row at the end (registry order =
-  injection order, general → specific — an appended pack is most-specific, the
-  intended default).
+1. Call `resolve_registry` and note whether `browser-qa` already appears as an **active**
+   registry row — used only to report `already registered` vs `registered` below;
+   `register_pack`'s own write is idempotent regardless of what this step finds.
+2. Call `register_pack` with `pluginId: "wf-browser-qa"` and `expectedFingerprint` = the
+   `fingerprint` from Phase 1. One call performs everything this skill used to hand-write:
+   it discovers `capabilities/browser-qa/manifest.md` under the pack, upserts one
+   `## Plugin Roots` row (`wf-browser-qa` → the pack's install root) and the
+   `## Capabilities` row for `browser-qa`, refreshes the resolver snapshot, and
+   self-checks that the capability now resolves. Registry order is preserved — a new row
+   appends at the end (general → specific), matching the contract's injection-order rule.
+   - **Tool unreachable / errors.** The same resolver-health failure as Phase 1 — call
+     `resolve_gate` with `surface: "delivery-write"` (registration blocks before any
+     mutation on failure, the same reaction a delivery write takes on a broken resolver),
+     present its diagnostics/recovery verbatim. Stop; report `partial`.
+   - **`status: "rejected"`.** Present `reason` verbatim (a stale fingerprint, the plugin
+     no longer installed/enabled, or an invalid manifest found between Phase 1 and now).
+     Recovery: re-run `/wf-browser-qa:init` to re-inspect and retry. Stop; report
+     `partial`.
+   - **`status: "registered"`.** Report `already registered` if `browser-qa` was in step
+     1's pre-existing set, else `registered`. Record `root` (the pack's install path) and
+     `selfCheck`.
 
 ---
 
-## Phase 4: Seed profiles
+## Phase 3: Seed profiles
 
 The `browser-qa` capability's manifest declares **no** `profile-template:` — no-op. Record
 `skipped — no template`. (The engine reads its test credentials from the downstream
@@ -142,22 +150,20 @@ The `browser-qa` capability's manifest declares **no** `profile-template:` — n
 
 ---
 
-## Phase 5: Self-check (the one in-repo runtime assertion)
+## Phase 4: Self-check
 
-Resolve `browser-qa` **the way core will** — including self-heal — to prove the wiring
-end-to-end. Follow `plugins/wf/skills/_contracts/capability-registry.ops.md`
-§"Recorded-root-first resolution with install-manifest self-heal" for the resolution
-steps; do not restate the algorithm here.
+Relay `register_pack`'s own `selfCheck` — no separate resolution walk needed, since
+`register_pack` already re-resolved the registry after writing (Phase 2, step 2) and
+validated the registered capability there.
 
-1. Resolve `plugin:wf-browser-qa/capabilities/browser-qa` per that section: the recorded
-   `## Plugin Roots` root first, then — if that root dangles — the install-manifest fallback.
-2. Record `PASS` when resolution yields a readable `manifest.md` by **either** route — a
-   recovered-via-fallback root counts as PASS, since a recorded root that went stale
-   after an upgrade is expected and self-heals, not a failure. Record `FAIL` only when
-   the pack is **unrecoverable** (neither route yields a readable manifest — the ops-doc
-   step-3 case).
-3. A `FAIL` means the pack is unrecoverable — surface it loudly and direct the user to
-   re-run `/wf-browser-qa:init` (or fix a relocated pack); do not report success.
+1. `selfCheck: "ok"` → `browser-qa` resolves. Record `PASS`.
+2. `selfCheck: "failed"` → call `resolve_registry` again and find the `browser-qa` entry
+   carrying `validity: "unrecoverable"`. Record `FAIL`, naming its `manifestPath`. This
+   means the pack is unrecoverable even after the write — surface it loudly and direct
+   the user to re-run `/wf-browser-qa:init` (or fix a relocated/corrupted pack); do not
+   report success.
+3. `selfCheck: "skipped"` only accompanies a `rejected` status (Phase 2) — already handled
+   there.
 
 ---
 
@@ -165,16 +171,21 @@ steps; do not restate the algorithm here.
 
 - **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
   `/wf:init` (Phase 0). This skill augments a registry; it never bootstraps one.
-- **`$CLAUDE_PLUGIN_ROOT` unset** (skill invoked outside the plugin runtime): stop — the
-  install root is the one datum this skill exists to capture.
-- **`browser-qa` already registered** (a row named `browser-qa` exists): skip it
-  (append-only, skip-if-present); still refresh the plugin root and self-check.
-- **`## Plugin Roots` already has a `wf-browser-qa` row**: upsert (refresh the `Root`),
-  never duplicate.
-- **Registry relocated to a committed file via `registryPath`**: still write there (the
-  sanctioned write), but warn that the machine-specific `## Plugin Roots` table should
-  stay gitignored — keep the registry under `_local/` unless the project manages that
-  itself.
+- **Resolver MCP unavailable** (`inspect_pack`/`register_pack`/`resolve_gate` unreachable):
+  the tools are unreachable (the plugin's `.mcp.json` sets `alwaysLoad: true`, so this is
+  unusual). Stop and report that the resolver runtime is not loaded; suggest restarting
+  Claude Code. Do **not** fall back to a hand-rolled `${CLAUDE_PLUGIN_ROOT}` probe or a
+  manual registry edit — that is exactly the discovery this service replaces.
+- **`browser-qa` already registered** (Phase 2 step 1 found a matching row):
+  `register_pack` still upserts idempotently; report `already registered` and still
+  self-check.
+- **`## Plugin Roots` already has a `wf-browser-qa` row**: `register_pack` upserts it
+  (refreshing `Root` if the pack moved between machines/upgrades), never duplicates —
+  this skill does not manage that table itself.
+- **Registry relocated to a committed file via `registryPath`**: `register_pack` still
+  writes there (it resolves the same `registryPath`), but warn that the machine-specific
+  `## Plugin Roots` table should stay gitignored — keep the registry under `_local/`
+  unless the project manages that itself.
 - **Self-check FAIL**: report it as the final state (`partial`); do not claim success.
 
 ---
@@ -188,7 +199,7 @@ Registry:   <resolved registry location>
 Pack root:  <pack-root>
 Registered: browser-qa — <registered | already registered>
 Profile:    skipped — no template
-Self-check: <PASS — plugin:wf-browser-qa/capabilities/browser-qa resolves (recorded root or self-heal) | FAIL — pack unrecoverable: <what didn't resolve>>
+Self-check: <PASS — browser-qa resolves (per register_pack's selfCheck) | FAIL — pack unrecoverable: <what didn't resolve> | partial — <resolver/pack diagnosis, see recovery>
 
 Next: run /wf:qa-auto for a task with a QA plan — core resolves the browser-qa capability, finds the qa-execution provider owning surface: engine, and dispatches the per-scenario browser drive to /wf-browser-qa:qa-engine. Upgrades self-heal — re-run /wf-browser-qa:init only if resolution reports the pack unrecoverable, or after relocating the pack.
 ```

@@ -1,29 +1,33 @@
 ---
 name: init
-description: Onboards the wf-audit pack into a wf-initialized repo in one command — registers both the audit and sr capabilities into the wf capability registry as plugin-anchored rows and records the pack's install root so core can resolve them, then seeds the audit profile. Use once (after /wf:init) to activate the five verify-phase adversarial lenses plus the pre-commit self-review lens without hand-editing _local/config.md; upgrades self-heal, so re-run only if resolution reports a capability unrecoverable or after relocating the pack.
-allowed-tools: [Read, Write, Edit, Glob, Bash]
+description: Onboards the wf-audit pack into a wf-initialized repo in one command — self-registers both the audit and sr capabilities with core via the typed resolver MCP tools (inspect_pack/register_pack), keyed by the pack's stable plugin id, then seeds the audit profile. Use once (after /wf:init) to activate the five verify-phase adversarial lenses plus the pre-commit self-review lens without probing $CLAUDE_PLUGIN_ROOT or hand-editing _local/config.md or the plugin-roots map; upgrades self-heal, so re-run only if resolution reports a capability unrecoverable or after relocating the pack.
+allowed-tools: [Read, Write, Edit, Bash]
 ---
 
-# /wf-audit:init — Onboard the wf-audit pack (self-register + record install root)
+# /wf-audit:init — Onboard the wf-audit pack (self-register via the resolver)
 
 Collapse wf-audit onboarding into **one command**. Installing the plugin makes
 `/wf-audit:init` discoverable (native composition) but registers **no** phase fragment —
-that still requires hand-editing the downstream `## Capabilities` table and re-running
-`/wf:init`. This skill does that registration for you and records the one datum core
-cannot get on its own: **the pack's install root**.
+that still requires an entry in the downstream `## Capabilities` table and a resolved
+`/wf:init` run. This skill does that registration for you by calling core's bundled
+**typed resolver MCP service** — the same `wf-resolver` tools every wf skill uses (see
+`plugins/wf/skills/resolve/SKILL.md`) — with the pack's own stable plugin id.
 
-Core resolves a `plugin:<plugin-name>/<rel-path>` `Path` by looking `<plugin-name>` up in
-a `## Plugin Roots` mapping (see `plugins/wf/skills/_contracts/capability-registry.contract.md`
-§"The `## Plugin Roots` mapping"). Only a **wf-audit skill** runs with
-`${CLAUDE_PLUGIN_ROOT}` equal to the wf-audit install root, so only this skill can capture
-and record it. With the root recorded and both capability rows written, core resolves the
-pack's `audit` and `sr` capabilities on a **plugin-only install** — no vendored
-`plugins/wf-audit/...` in the consuming repo.
+Two typed, read/write-separated calls replace every manual discovery step this skill used
+to perform itself: `inspect_pack("wf-audit")` (read-only — resolves the plugin via
+`claude plugin list --json`, validates it, and returns a fingerprint) then
+`register_pack("wf-audit", <fingerprint>)` (the sole mutation — writes the `## Plugin
+Roots` row and one `## Capabilities` row per discovered capability, refreshes the
+snapshot, and self-checks). **This skill never probes `${CLAUDE_PLUGIN_ROOT}`, derives an
+install root, or hand-edits the registry file itself** — `register_pack` owns that write
+exclusively.
 
 This pack's onboarding is fixed to the two capabilities it ships: there is no
-capability-subset argument — `audit` and `sr` always register together, because `sr`
-reaches `audit`'s owned correctness rubric by a co-located intra-plugin path and the two
-capabilities are shipped as one unit (WF-257 charter).
+capability-subset argument — `audit` and `sr` always register together in the **same**
+`register_pack` call, because `sr` reaches `audit`'s owned correctness rubric by a
+co-located intra-plugin path and the two capabilities are shipped as one unit (WF-257
+charter). `register_pack` discovers both automatically (it scans every
+`capabilities/*/manifest.md` under the pack), so no per-capability call is needed.
 
 **This is fragment/registry-side onboarding only.** It cannot register a `/command` — a
 discoverable skill must live in a plugin's `skills/` dir (native discovery). `/wf-audit:init`
@@ -45,8 +49,9 @@ pack ships.
 
 - **Registry location:** resolve exactly as `/wf:init` does — read `wf.config.js` at the
   repo root (`git rev-parse --show-toplevel`) and use its optional `registryPath` key,
-  **defaulting to `_local/config.md`** when absent. All registry writes below target
-  this resolved location.
+  **defaulting to `_local/config.md`** when absent. Used only for the Phase 0 precondition
+  check and to report the location in the Final Output — `register_pack` resolves and
+  writes it independently.
 
 ---
 
@@ -54,18 +59,23 @@ pack ships.
 
 **Allowed:**
 
-- Read any file; read `${CLAUDE_PLUGIN_ROOT}` and read-only git (`git rev-parse`).
-- Write/edit files under `_local/`.
-- Write the `## Plugin Roots` and `## Capabilities` tables to the **resolved registry
-  location** — the one sanctioned write outside `_local/` (registering the pack is this
-  skill's whole purpose), mirroring `/wf:init`'s registry-write carve-out.
+- Read any file (capability manifests, at the paths `inspect_pack` returns); read-only git
+  (`git rev-parse`).
+- Call the bundled `wf-resolver` MCP tools this skill needs: `inspect_pack`,
+  `register_pack`, `resolve_registry` (pre-registration check), and `resolve_gate`
+  (failure diagnostics) — the same typed service every wf skill uses.
+- Write/edit files under `_local/` (profile seeding only).
 
 **Forbidden:**
 
-- Modify any source file except the writes named above.
+- Modify any source file except the profile-seed write named above.
+- **Hand-edit the `## Plugin Roots` / `## Capabilities` tables directly.**
+  `register_pack` is the sole write path for pack registration; this skill never writes
+  the registry file itself.
+- **Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive an install root by hand** —
+  `inspect_pack`/`register_pack` resolve it via `claude plugin list --json`.
 - Register a `/command` (impossible — native discovery only; this skill wires the
   fragments/registry).
-- Record any plugin's root but **its own** (`${CLAUDE_PLUGIN_ROOT}` = wf-audit).
 - Run builds, tests, installs, or any destructive git operation.
 
 ---
@@ -82,79 +92,75 @@ pack ships.
 
 ---
 
-## Phase 1: Discover self
+## Phase 1: Inspect the pack
 
-1. **Capture the install root.** Run (Bash) `printf '%s' "$CLAUDE_PLUGIN_ROOT"` to read
-   the pack's install root. If it is empty, stop: "`$CLAUDE_PLUGIN_ROOT` is not set —
-   run this as the `/wf-audit:init` slash command so the pack's install root is
-   available." **Normalize to forward slashes** (replace every `\` with `/`); a leading
-   drive prefix such as `C:` is fine (the `## Plugin Roots` `Root` shape permits
-   absolute/drive-prefixed roots). Call the normalized value `<pack-root>`.
-2. **Confirm both capability manifests exist.** Confirm `<pack-root>/capabilities/audit/manifest.md`
-   and `<pack-root>/capabilities/sr/manifest.md` are both readable. If either is not, stop:
-   "No `capabilities/<name>/manifest.md` under the pack — the install appears corrupted or
-   incomplete," naming which is missing.
+Call `inspect_pack` with `pluginId: "wf-audit"` — this pack's exact stable plugin id
+(bare, no `@marketplace` suffix; `inspect_pack` matches a bare id against either the
+installed plugin's full id or its bare name, so this is unambiguous regardless of which
+marketplace it was installed from).
 
----
-
-## Phase 2: Record the plugin root
-
-Write/refresh the `wf-audit` row in a `## Plugin Roots` table at the resolved registry
-location.
-
-1. Read the registry file. Locate a `## Plugin Roots` section.
-2. **If absent**, append this section (heading + prose + table) to the file:
-
-   ```markdown
-   ## Plugin Roots
-
-   Per-machine plugin install roots that resolve plugin-anchored `## Capabilities` paths (`plugin:<plugin-name>/<rel-path>`). Written and refreshed by each pack's own init (e.g. `/wf-audit:init`) — machine-specific, gitignored, never committed. See `plugins/wf/skills/_contracts/capability-registry.contract.md` §"The `## Plugin Roots` mapping".
-
-   | Plugin   | Root        |
-   |----------|-------------|
-   | wf-audit | <pack-root> |
-   ```
-
-3. **If present**, upsert the `wf-audit` row: replace its `Root` with `<pack-root>` if the
-   row exists (the install root can move between machines / upgrades), else append the
-   row to the table. Leave every other plugin's row untouched.
-
-Substitute the real `<pack-root>` value; never write the literal placeholder.
+1. **Tool unreachable / errors.** The resolver MCP service itself may be unhealthy — not
+   a pack problem. Call `resolve_gate` with `surface: "local-read"` (inspection is a
+   read) and present its `categories` / `diagnostics` / `recovery` verbatim as the
+   failure. This is the WF-272 diagnostics/recovery contract every wf consumer uses (see
+   `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Recorded-root-first
+   resolution with install-manifest self-heal" → "Resolver-failure semantics"). Stop;
+   report `partial`.
+2. **Returns `valid: false`.** A genuine pack problem, not a resolver failure — present
+   `issues[]` verbatim (e.g. "plugin `wf-audit` is not installed", "...is disabled", "no
+   readable `capabilities/*/manifest.md` under `<installPath>`") with the matching remedy
+   (install or enable the plugin; reinstall if the manifest is missing/corrupted). Stop;
+   report `partial`.
+3. **Returns `valid: true`.** Confirm `capabilities[]` names **both** `audit` and `sr` by
+   name — `valid: true` only guarantees at least one capability folder resolved, not both.
+   If either name is missing, the install is incomplete: stop, naming which is missing,
+   "the install appears corrupted or incomplete." Otherwise capture `fingerprint`,
+   `installPath`, and each capability's `manifestPath` for the phases below.
 
 ---
 
-## Phase 3: Register both capabilities
+## Phase 2: Register the pack
 
-For **each** of `audit` and `sr`, ensure a `## Capabilities` row exists at the resolved
-registry location:
-
-- Row shapes: `| audit | plugin:wf-audit/capabilities/audit |` and
-  `| sr | plugin:wf-audit/capabilities/sr |`.
-- **Append-only, skip-if-present by capability name.** If a row with that `Capability`
-  name already exists (any `Path`), leave it untouched and record `already registered`.
-  Never delete or reorder existing rows.
-- Preserve the table's existing order; append new rows at the end, `audit` then `sr`
-  (registry order = injection order, general → specific — appended rows are
-  most-specific, the intended default).
+1. Call `resolve_registry` and note which of `audit`/`sr` already appear as **active**
+   registry rows by name — this pre-existing set is used only to report `already
+   registered` vs `registered` per capability below; `register_pack`'s own write is
+   idempotent regardless of what this step finds.
+2. Call `register_pack` with `pluginId: "wf-audit"` and `expectedFingerprint` = the
+   `fingerprint` from Phase 1. One call performs everything this skill used to hand-write:
+   it discovers every `capabilities/*/manifest.md` under the pack (both `audit` and `sr`),
+   upserts one `## Plugin Roots` row (`wf-audit` → the pack's install root) and one
+   `## Capabilities` row per capability, refreshes the resolver snapshot, and self-checks
+   that every registered capability now resolves. Registry order is preserved — new rows
+   append at the end (general → specific), matching the contract's injection-order rule.
+   - **Tool unreachable / errors.** The same resolver-health failure as Phase 1 — call
+     `resolve_gate` with `surface: "delivery-write"` (registration blocks before any
+     mutation on failure, the same reaction a delivery write takes on a broken resolver),
+     present its diagnostics/recovery verbatim. Stop; report `partial`.
+   - **`status: "rejected"`.** Present `reason` verbatim (a stale fingerprint, the plugin
+     no longer installed/enabled, or an invalid manifest found between Phase 1 and now).
+     Recovery: re-run `/wf-audit:init` to re-inspect and retry. Stop; report `partial`.
+   - **`status: "registered"`.** For each name in the returned `capabilities` (`audit`,
+     `sr`), report `already registered` if it was in step 1's pre-existing set, else
+     `registered`. Record `root` (the pack's install path) and `selfCheck`.
 
 ---
 
-## Phase 4: Seed profiles
+## Phase 3: Seed profiles
 
 Apply the **profile-seeding convention by name** — the same convention `/wf:init` Phase 2.5
 follows, defined in `plugins/wf/skills/_contracts/capability-registry.contract.md` §"The
 profile-seeding convention". Do **not** re-derive its rules here.
 
-- **audit** (if newly registered): resolve its manifest at
-  `<pack-root>/capabilities/audit/manifest.md`. It declares `profile-template:
+- **audit** (if newly registered in Phase 2): resolve its manifest at the `manifestPath`
+  `inspect_pack` returned for it. It declares `profile-template:
   profile.template.json` — seed a downstream **override** at
   `_local/profiles/audit.profile.json` **only on divergence** from the capability's default
   template; **idempotent** — never overwrite an existing override (skip-if-present). Record
   `seeded override` or `default in use`.
-- **sr** (if newly registered): resolve its manifest at
-  `<pack-root>/capabilities/sr/manifest.md`. It declares **no** `profile-template:` — no-op.
-  Record `skipped — no template`.
-- Skip either step whose capability was already registered (Phase 3 recorded `already
+- **sr** (if newly registered): resolve its manifest at the `manifestPath` `inspect_pack`
+  returned for it. It declares **no** `profile-template:` — no-op. Record `skipped — no
+  template`.
+- Skip either step whose capability was already registered (Phase 2 recorded `already
   registered` for it).
 
 This is exactly what `/wf:init` would do on its next run now that the rows resolve — doing
@@ -162,23 +168,20 @@ it here keeps onboarding to one command.
 
 ---
 
-## Phase 5: Self-check (the one in-repo runtime assertion)
+## Phase 4: Self-check
 
-Resolve **both** capabilities **the way core will** — including self-heal — to prove the
-wiring end-to-end. Follow `plugins/wf/skills/_contracts/capability-registry.ops.md`
-§"Recorded-root-first resolution with install-manifest self-heal" for the resolution
-steps; do not restate the algorithm here.
+Relay `register_pack`'s own `selfCheck` — no separate resolution walk needed, since
+`register_pack` already re-resolved the registry after writing (Phase 2, step 2) and
+validated every registered capability there.
 
-1. Resolve `plugin:wf-audit/capabilities/audit` and `plugin:wf-audit/capabilities/sr` per
-   that section: the recorded `## Plugin Roots` root first, then — if that root dangles —
-   the install-manifest fallback.
-2. Record `PASS` when resolution yields a readable `manifest.md` for **both**, by **either**
-   route each — a recovered-via-fallback root counts as PASS, since a recorded root that
-   went stale after an upgrade is expected and self-heals, not a failure. Record `FAIL` when
-   **either** capability is **unrecoverable** (neither route yields a readable manifest for
-   it — the ops-doc step-3 case), naming which.
-3. A `FAIL` means the pack is unrecoverable — surface it loudly and direct the user to
-   re-run `/wf-audit:init` (or fix a relocated pack); do not report success.
+1. `selfCheck: "ok"` → both `audit` and `sr` resolve. Record `PASS`.
+2. `selfCheck: "failed"` → call `resolve_registry` again and find the entry (or entries)
+   named `audit`/`sr` carrying `validity: "unrecoverable"`. Record `FAIL`, naming which
+   capability and its `manifestPath`. This means the pack is unrecoverable even after the
+   write — surface it loudly and direct the user to re-run `/wf-audit:init` (or fix a
+   relocated/corrupted pack); do not report success.
+3. `selfCheck: "skipped"` only accompanies a `rejected` status (Phase 2) — already handled
+   there.
 
 ---
 
@@ -186,17 +189,21 @@ steps; do not restate the algorithm here.
 
 - **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
   `/wf:init` (Phase 0). This skill augments a registry; it never bootstraps one.
-- **`$CLAUDE_PLUGIN_ROOT` unset** (skill invoked outside the plugin runtime): stop — the
-  install root is the one datum this skill exists to capture.
-- **One or both capabilities already registered** (a row with that name exists): skip the
-  registered one(s) (append-only, skip-if-present); still refresh the plugin root, run
-  Phase 4 for any newly-registered capability, and self-check both.
-- **`## Plugin Roots` already has a `wf-audit` row**: upsert (refresh the `Root`), never
-  duplicate.
-- **Registry relocated to a committed file via `registryPath`**: still write there (the
-  sanctioned write), but warn that the machine-specific `## Plugin Roots` table should
-  stay gitignored — keep the registry under `_local/` unless the project manages that
-  itself.
+- **Resolver MCP unavailable** (`inspect_pack`/`register_pack`/`resolve_gate` unreachable):
+  the tools are unreachable (the plugin's `.mcp.json` sets `alwaysLoad: true`, so this is
+  unusual). Stop and report that the resolver runtime is not loaded; suggest restarting
+  Claude Code. Do **not** fall back to a hand-rolled `${CLAUDE_PLUGIN_ROOT}` probe or a
+  manual registry edit — that is exactly the discovery this service replaces.
+- **One or both capabilities already registered** (Phase 2 step 1 found a matching row):
+  `register_pack` still upserts idempotently; report `already registered` for those
+  names, still run Phase 3 for any newly-registered capability, and self-check both.
+- **`## Plugin Roots` already has a `wf-audit` row**: `register_pack` upserts it
+  (refreshing `Root` if the pack moved between machines/upgrades), never duplicates —
+  this skill does not manage that table itself.
+- **Registry relocated to a committed file via `registryPath`**: `register_pack` still
+  writes there (it resolves the same `registryPath`), but warn that the machine-specific
+  `## Plugin Roots` table should stay gitignored — keep the registry under `_local/`
+  unless the project manages that itself.
 - **Self-check FAIL for either capability**: report it as the final state (`partial`); do
   not claim success.
 
@@ -215,7 +222,7 @@ Registered:
 Profiles:
 - audit — <seeded override [seeded by <model id>] | default in use | skipped — already registered>
 - sr — skipped — no template
-Self-check: <PASS — both capabilities resolve (recorded root or self-heal) | FAIL — <capability> unrecoverable: <what didn't resolve>>
+Self-check: <PASS — both capabilities resolve (per register_pack's selfCheck) | FAIL — <capability> unrecoverable: <what didn't resolve> | partial — <resolver/pack diagnosis, see recovery>
 
 Next: run /wf:verify-spec on a task — core dispatches the five audit lenses at verify; the commit path's pre-commit seam dispatches the sr lens on every commit. Upgrades self-heal — re-run /wf-audit:init only if resolution reports a capability unrecoverable, or after relocating the pack.
 ```
