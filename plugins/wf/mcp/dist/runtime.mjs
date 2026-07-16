@@ -19857,6 +19857,169 @@ function isAbsoluteRoot(root) {
   return n.startsWith("/") || /^[A-Za-z]:/.test(n);
 }
 
+// src/resolver/plugin-list.ts
+var REQUIRED_FIELDS = [
+  { field: "id", type: "string" },
+  { field: "version", type: "string" },
+  { field: "scope", type: "string" },
+  { field: "enabled", type: "boolean" },
+  { field: "installPath", type: "string" }
+];
+function parsePluginList(raw) {
+  const issues = [];
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    return {
+      plugins: [],
+      contractOk: false,
+      issues: [
+        {
+          code: "plugin-list/unparseable",
+          message: `\`claude plugin list --json\` output is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+        }
+      ]
+    };
+  }
+  if (!Array.isArray(data)) {
+    return {
+      plugins: [],
+      contractOk: false,
+      issues: [
+        {
+          code: "plugin-list/not-an-array",
+          message: `\`claude plugin list --json\` must return a JSON array of plugin records; got ${data === null ? "null" : typeof data} \u2014 incompatible CLI output schema.`
+        }
+      ]
+    };
+  }
+  const plugins = [];
+  data.forEach((entry, i) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      issues.push({
+        code: "plugin-list/record-not-an-object",
+        message: `plugin record ${i} is not an object \u2014 incompatible CLI output schema.`
+      });
+      return;
+    }
+    const rec = entry;
+    let recOk = true;
+    for (const { field, type } of REQUIRED_FIELDS) {
+      if (!(field in rec)) {
+        issues.push({
+          code: "plugin-list/missing-field",
+          message: `plugin record ${i} is missing required field \`${field}\` \u2014 incompatible CLI output schema.`
+        });
+        recOk = false;
+      } else if (typeof rec[field] !== type) {
+        issues.push({
+          code: "plugin-list/wrong-type",
+          message: `plugin record ${i} field \`${field}\` should be a ${type}, got ${typeof rec[field]} \u2014 incompatible CLI output schema.`
+        });
+        recOk = false;
+      }
+    }
+    if (!recOk) return;
+    const id = rec.id;
+    const atIndex = id.indexOf("@");
+    const name = atIndex > 0 ? id.slice(0, atIndex) : id;
+    plugins.push({
+      id,
+      name,
+      version: rec.version,
+      scope: rec.scope,
+      enabled: rec.enabled,
+      installPath: normalizeSlashes(rec.installPath)
+    });
+  });
+  return { plugins, contractOk: issues.length === 0, issues };
+}
+
+// src/resolver/types.ts
+var SNAPSHOT_SCHEMA_VERSION = 1;
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" };
+var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
+
+// src/resolver/freshness.ts
+var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
+  "wf-config",
+  "registry",
+  "core-config",
+  "manifest",
+  "profile"
+]);
+function isAbsolute(p) {
+  return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
+}
+function absOf(workspaceRoot, recordedPath) {
+  const p = normalizeSlashes(recordedPath);
+  return isAbsolute(p) ? p : joinSlash(workspaceRoot, p);
+}
+function normalizePluginList(raw) {
+  if (raw === null) return null;
+  const parsed = parsePluginList(raw);
+  if (!parsed.contractOk && parsed.plugins.length === 0) {
+    return raw;
+  }
+  const projected = parsed.plugins.map((p) => ({
+    id: p.id,
+    name: p.name,
+    version: p.version,
+    scope: p.scope,
+    enabled: p.enabled,
+    installPath: p.installPath
+  })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  return JSON.stringify(projected);
+}
+function evaluateFreshness(snapshot, workspaceRoot, probe) {
+  const reasons = [];
+  if (snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+    reasons.push({
+      code: "schema/incompatible",
+      message: `snapshot schemaVersion ${String(
+        snapshot.schemaVersion
+      )} is incompatible with this runtime (expects ${SNAPSHOT_SCHEMA_VERSION}).`
+    });
+  }
+  const currentGenVersion = probe.generatorVersion ?? RESOLVER_GENERATOR.version;
+  if (snapshot.generator?.version && snapshot.generator.version !== currentGenVersion) {
+    reasons.push({
+      code: "resolver/version-changed",
+      message: `snapshot built by resolver ${snapshot.generator.version}; runtime is ${currentGenVersion}.`
+    });
+  }
+  for (const src of snapshot.sources) {
+    if (!FILE_SOURCE_KINDS.has(src.kind)) continue;
+    const content = probe.readFile(absOf(workspaceRoot, src.path));
+    const now = fingerprint(src.kind, src.path, content);
+    if (now.present !== src.present || now.sha256 !== src.sha256) {
+      const change = !now.present ? "was removed" : !src.present ? "appeared" : "changed";
+      reasons.push({
+        code: `${src.kind}/changed`,
+        message: `${src.kind} source \`${src.path}\` ${change}.`,
+        source: src.path
+      });
+    }
+  }
+  if (probe.pluginListRaw !== void 0) {
+    const recorded = snapshot.sources.find((s) => s.kind === "plugin-list");
+    const now = fingerprint(
+      "plugin-list",
+      "claude plugin list --json",
+      normalizePluginList(probe.pluginListRaw)
+    );
+    if (!recorded || now.present !== recorded.present || now.sha256 !== recorded.sha256) {
+      reasons.push({
+        code: "plugin-list/changed",
+        message: "installed plugin inventory changed (add / remove / enable / disable) since the snapshot.",
+        source: "claude plugin list --json"
+      });
+    }
+  }
+  return { fresh: reasons.length === 0, reasons };
+}
+
 // src/resolver/registry-edit.ts
 function splitRow(line) {
   const trimmed = line.trim();
@@ -19968,23 +20131,45 @@ var ResolverService = class {
   ports;
   current = null;
   invalidated = false;
-  /** Ensure a usable snapshot exists, rebuilding when invalidated or uncached.
-   *  This is the single discovery point — read queries never re-discover. */
+  /** Reasons the pending/last (in)validation was triggered — surfaced as
+   *  diagnostics so every refresh/invalidation is explainable, never silent. */
+  pendingReasons = [];
+  lastRefreshReasons = [];
+  /** Ensure a usable, FRESH snapshot exists — the query-time correctness
+   *  backstop. Every typed query routes through here; before reusing a cached or
+   *  in-memory snapshot it re-validates the recorded input fingerprints and the
+   *  schema/resolver version, rebuilding on any mismatch. Validation re-reads
+   *  ONLY the exact source paths the snapshot recorded (via `ports.readFile`) —
+   *  it never lists/walks capability folders, so unchanged inputs are a cheap
+   *  hash comparison with no rediscovery. Freshness is fingerprint-driven only;
+   *  there is no elapsed-time / TTL path. */
   ensure() {
-    if (this.current && !this.invalidated) return this.current;
-    if (this.invalidated) {
-      this.current = this.ports.resolveFresh();
-      this.ports.persist(this.current);
-      this.invalidated = false;
-      return this.current;
+    if (this.invalidated) return this.rebuild();
+    const candidate = this.current ?? this.ports.readCache();
+    if (!candidate) {
+      this.pendingReasons = [
+        { code: "cache/absent", message: "no snapshot cached yet; building the first." }
+      ];
+      return this.rebuild();
     }
-    const cached2 = this.ports.readCache();
-    if (cached2) {
-      this.current = cached2;
-      return cached2;
+    const { fresh, reasons } = evaluateFreshness(candidate, this.ports.workspaceRoot, {
+      readFile: (p) => this.ports.readFile(p),
+      generatorVersion: RESOLVER_GENERATOR.version
+    });
+    if (!fresh) {
+      this.pendingReasons = reasons;
+      return this.rebuild();
     }
+    this.current = candidate;
+    return candidate;
+  }
+  /** Full rediscovery + atomic persist. The ONE place a snapshot is built. */
+  rebuild() {
     this.current = this.ports.resolveFresh();
     this.ports.persist(this.current);
+    this.invalidated = false;
+    this.lastRefreshReasons = this.pendingReasons;
+    this.pendingReasons = [];
     return this.current;
   }
   // --- R1 -----------------------------------------------------------------
@@ -20058,6 +20243,15 @@ var ResolverService = class {
   // --- lifecycle ----------------------------------------------------------
   inspect() {
     const snap = this.current ?? this.ports.readCache();
+    const reasons = this.invalidated ? this.pendingReasons : this.lastRefreshReasons;
+    const diagnostics = [...snap?.diagnostics ?? []];
+    for (const r of reasons) {
+      diagnostics.push({
+        severity: "info",
+        code: `freshness/${r.code}`,
+        message: r.source ? `${r.message} (${r.source})` : r.message
+      });
+    }
     return {
       valid: !this.invalidated && snap !== null,
       cached: snap !== null,
@@ -20068,17 +20262,28 @@ var ResolverService = class {
         packs: snap?.packs.length ?? 0,
         providers: snap?.providerOwnership.length ?? 0
       },
-      diagnostics: snap?.diagnostics ?? []
+      diagnostics
     };
   }
-  refresh() {
-    this.current = this.ports.resolveFresh();
-    this.ports.persist(this.current);
-    this.invalidated = false;
+  /** Force a full rebuild + persist now, recording an explicit request reason so
+   *  the resulting view carries a diagnostic explaining why it was refreshed. */
+  refresh(reasons = []) {
+    this.pendingReasons = reasons.length ? reasons : [{ code: "explicit-request", message: "explicit refresh requested." }];
+    this.rebuild();
     return this.inspect();
   }
-  invalidate() {
+  /** Mark the resolved view stale so the next query (or an explicit refresh)
+   *  rebuilds it. Typed consumers may record suspected-stale reasons, which the
+   *  next inspect/rebuild surfaces as diagnostics (concurrency-safe: only the
+   *  in-memory flag flips; the persisted cache is untouched until the rebuild). */
+  invalidate(reasons = []) {
     this.invalidated = true;
+    this.pendingReasons = reasons.length ? reasons : [
+      {
+        code: "suspected-stale",
+        message: "resolved view marked stale by an explicit invalidate request."
+      }
+    ];
     return this.inspect();
   }
   // --- R6: inspect_pack (read-only) --------------------------------------
@@ -20223,10 +20428,6 @@ var ResolverService = class {
 import { mkdirSync as mkdirSync2, readdirSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname2 } from "node:path";
 
-// src/resolver/types.ts
-var SNAPSHOT_SCHEMA_VERSION = 1;
-var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
-
 // src/resolver/registry.ts
 function splitRow2(line) {
   const trimmed = line.trim();
@@ -20359,85 +20560,6 @@ function parseManifest(markdown) {
   return { kind, fragments, articles, requires, conflicts, profileTemplate };
 }
 
-// src/resolver/plugin-list.ts
-var REQUIRED_FIELDS = [
-  { field: "id", type: "string" },
-  { field: "version", type: "string" },
-  { field: "scope", type: "string" },
-  { field: "enabled", type: "boolean" },
-  { field: "installPath", type: "string" }
-];
-function parsePluginList(raw) {
-  const issues = [];
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (err) {
-    return {
-      plugins: [],
-      contractOk: false,
-      issues: [
-        {
-          code: "plugin-list/unparseable",
-          message: `\`claude plugin list --json\` output is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
-        }
-      ]
-    };
-  }
-  if (!Array.isArray(data)) {
-    return {
-      plugins: [],
-      contractOk: false,
-      issues: [
-        {
-          code: "plugin-list/not-an-array",
-          message: `\`claude plugin list --json\` must return a JSON array of plugin records; got ${data === null ? "null" : typeof data} \u2014 incompatible CLI output schema.`
-        }
-      ]
-    };
-  }
-  const plugins = [];
-  data.forEach((entry, i) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      issues.push({
-        code: "plugin-list/record-not-an-object",
-        message: `plugin record ${i} is not an object \u2014 incompatible CLI output schema.`
-      });
-      return;
-    }
-    const rec = entry;
-    let recOk = true;
-    for (const { field, type } of REQUIRED_FIELDS) {
-      if (!(field in rec)) {
-        issues.push({
-          code: "plugin-list/missing-field",
-          message: `plugin record ${i} is missing required field \`${field}\` \u2014 incompatible CLI output schema.`
-        });
-        recOk = false;
-      } else if (typeof rec[field] !== type) {
-        issues.push({
-          code: "plugin-list/wrong-type",
-          message: `plugin record ${i} field \`${field}\` should be a ${type}, got ${typeof rec[field]} \u2014 incompatible CLI output schema.`
-        });
-        recOk = false;
-      }
-    }
-    if (!recOk) return;
-    const id = rec.id;
-    const atIndex = id.indexOf("@");
-    const name = atIndex > 0 ? id.slice(0, atIndex) : id;
-    plugins.push({
-      id,
-      name,
-      version: rec.version,
-      scope: rec.scope,
-      enabled: rec.enabled,
-      installPath: normalizeSlashes(rec.installPath)
-    });
-  });
-  return { plugins, contractOk: issues.length === 0, issues };
-}
-
 // src/resolver/config.ts
 function extractKeyValues(markdown) {
   const map = /* @__PURE__ */ new Map();
@@ -20497,7 +20619,13 @@ function buildSnapshot(inputs, io) {
   if (registryPath !== "_local/config.md") {
     sources.push(fingerprint("core-config", "_local/config.md", inputs.coreConfigContent));
   }
-  sources.push(fingerprint("plugin-list", "claude plugin list --json", inputs.pluginListRaw));
+  sources.push(
+    fingerprint(
+      "plugin-list",
+      "claude plugin list --json",
+      normalizePluginList(inputs.pluginListRaw)
+    )
+  );
   const registry2 = parseRegistry(inputs.registryContent ?? "");
   const coreConfig = parseCoreConfig(inputs.coreConfigContent ?? inputs.registryContent ?? "");
   let pluginList;
@@ -20843,7 +20971,7 @@ function resolveSnapshot(opts) {
     coreConfigContent,
     pluginListRaw,
     generatedAt: now.toISOString(),
-    generator: opts.generator ?? { name: "wf-resolver", version: "0.1.0" }
+    generator: opts.generator ?? { ...RESOLVER_GENERATOR }
   };
   return buildSnapshot(inputs, io);
 }
@@ -20963,6 +21091,20 @@ var registerInput = fromJsonSchema2({
   required: ["pluginId", "expectedFingerprint"],
   additionalProperties: false
 });
+var reasonsInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    reasons: {
+      type: "array",
+      items: { type: "string" },
+      description: "Optional typed suspected-stale reasons (one short message each) recorded as diagnostics on the resulting lifecycle state."
+    }
+  },
+  additionalProperties: false
+});
+function toReasons(reasons, code) {
+  return (reasons ?? []).filter((r) => typeof r === "string" && r.trim().length > 0).map((message) => ({ code, message: message.trim() }));
+}
 function registerResolverTools(server, service) {
   server.registerTool(
     "resolve_config",
@@ -21037,17 +21179,19 @@ function registerResolverTools(server, service) {
     "resolve_refresh",
     {
       title: "resolve refresh",
-      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state."
+      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state. Optional `reasons` are recorded as diagnostics explaining the refresh.",
+      inputSchema: reasonsInput
     },
-    async () => guard(() => service.refresh())
+    async (args) => guard(() => service.refresh(toReasons(args?.reasons, "explicit-request")))
   );
   server.registerTool(
     "resolve_invalidate",
     {
       title: "resolve invalidate",
-      description: "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Returns the lifecycle state."
+      description: "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Typed consumers may pass `reasons` (suspected-stale messages) which surface as diagnostics. Returns the lifecycle state.",
+      inputSchema: reasonsInput
     },
-    async () => guard(() => service.invalidate())
+    async (args) => guard(() => service.invalidate(toReasons(args?.reasons, "suspected-stale")))
   );
 }
 
