@@ -232,6 +232,33 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-291: OUT-4 SKILL.md read-instruction regression guard ------------------
+# Agents/skill bodies must INVOKE a sibling skill via the Skill tool, never
+# filesystem-read its SKILL.md (CLAUDE.md §8). This guard's --selftest proves the
+# instruction-vs-prose classifier flags a deliberate violation and passes the
+# known prose references; the default scan proves the real tree carries zero read
+# instructions. Both are asserted here so the CI entry point covers them (the
+# guard is NOT auto-discovered — it must be wired in explicitly).
+echo ""
+echo "=== SKILL.md read-instruction guard — classifier self-test (out4-skill-read-guard.sh --selftest) ==="
+if bash "$DIR/../out4-skill-read-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "skill-read guard self-test (violation flagged, prose passes)"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "skill-read guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== SKILL.md read-instruction guard — real-tree scan (out4-skill-read-guard.sh) ==="
+if bash "$DIR/../out4-skill-read-guard.sh"; then
+  printf 'PASS: %s\n' "skill-read guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "skill-read guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
