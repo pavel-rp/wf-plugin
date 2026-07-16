@@ -86,7 +86,14 @@ function absOf(workspaceRoot: string, recordedPath: string): string {
 export function normalizePluginList(raw: string | null): string | null {
   if (raw === null) return null;
   const parsed = parsePluginList(raw);
-  if (!parsed.contractOk && parsed.plugins.length === 0) {
+  // Fall back to the raw text on ANY contract break — not only a fully empty
+  // parse. A PARTIAL break (some records valid, some drifted) must not be
+  // normalized to the valid subset: that would silently mask CLI-schema drift as
+  // a smaller-but-healthy inventory. Any broken record means the CLI output no
+  // longer matches the contract, so the raw text is fingerprinted verbatim and a
+  // drift is detected. (An empty inventory `"[]"` is contractOk, so it still
+  // projects to the stable `"[]"` — never treated as drift.)
+  if (!parsed.contractOk) {
     return raw;
   }
   const projected = parsed.plugins

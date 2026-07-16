@@ -59,10 +59,14 @@ export function runPluginList(): string | null {
 
 export interface ResolveOptions {
   workspaceRoot: string;
-  /** Override the plugin-list source (tests inject fixtures). A provided
-   *  override is always REAL CLI output — never a failure; the CLI-unavailable
-   *  (null) path is reached only when the real `runPluginList` errors. */
-  pluginListRaw?: string;
+  /** Override the plugin-list source (tests inject fixtures), aligning with the
+   *  builder's `string | null` contract: a `string` is REAL CLI output (including
+   *  an empty `"[]"`); `null` is an injected CLI-unavailable signal (recorded as
+   *  an ABSENT plugin-list source, deterministic — never a shell-out). Only
+   *  OMITTING the override (`undefined`) falls through to the real
+   *  `runPluginList()`. This lets a test model "CLI unavailable" without ever
+   *  invoking the real `claude` CLI. */
+  pluginListRaw?: string | null;
   io?: ResolverIO;
   now?: () => Date;
   generator?: { name: string; version: string };
@@ -85,7 +89,12 @@ export function resolveSnapshot(opts: ResolveOptions): ResolverSnapshot {
       ? registryContent
       : io.readFile(coreConfigAbs);
 
-  const pluginListRaw = opts.pluginListRaw ?? runPluginList();
+  // Distinguish an omitted override (undefined → run the real CLI) from an
+  // injected CLI-unavailable signal (null → honored verbatim, no shell-out). A
+  // plain `?? runPluginList()` is nullish-coalescing, so it would shell out for
+  // BOTH null and undefined — dropping an injected null and reaching the real CLI.
+  const pluginListRaw =
+    opts.pluginListRaw !== undefined ? opts.pluginListRaw : runPluginList();
   const now = (opts.now ?? (() => new Date()))();
 
   const inputs: BuildSnapshotInputs = {

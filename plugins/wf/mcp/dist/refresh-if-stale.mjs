@@ -1,9 +1,9 @@
-// src/resolver/types.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 1;
 var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
-// src/resolver/registry.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/registry.ts
 function splitRow(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
@@ -61,7 +61,7 @@ function parseRegistry(markdown) {
   return { capabilities, pluginRoots };
 }
 
-// src/resolver/manifest.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/manifest.ts
 function stripCr(line) {
   return line.replace(/\r$/, "");
 }
@@ -135,7 +135,7 @@ function parseManifest(markdown) {
   return { kind, fragments, articles, requires, conflicts, profileTemplate };
 }
 
-// src/resolver/paths.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/paths.ts
 function normalizeSlashes(p) {
   return p.replace(/\\/g, "/");
 }
@@ -188,7 +188,7 @@ function isAbsoluteRoot(root) {
   return n.startsWith("/") || /^[A-Za-z]:/.test(n);
 }
 
-// src/resolver/plugin-list.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/plugin-list.ts
 var REQUIRED_FIELDS = [
   { field: "id", type: "string" },
   { field: "version", type: "string" },
@@ -267,7 +267,7 @@ function parsePluginList(raw) {
   return { plugins, contractOk: issues.length === 0, issues };
 }
 
-// src/resolver/config.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/config.ts
 function extractKeyValues(markdown) {
   const map = /* @__PURE__ */ new Map();
   for (const rawLine of markdown.split(/\r?\n/)) {
@@ -304,7 +304,7 @@ function parseCoreConfig(markdown) {
   };
 }
 
-// src/resolver/fingerprint.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/fingerprint.ts
 import { createHash } from "node:crypto";
 function sha256Hex(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
@@ -322,7 +322,7 @@ function fingerprint(kind, path, content) {
   };
 }
 
-// src/resolver/freshness.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/freshness.ts
 var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   "wf-config",
   "registry",
@@ -340,7 +340,7 @@ function absOf(workspaceRoot2, recordedPath) {
 function normalizePluginList(raw) {
   if (raw === null) return null;
   const parsed = parsePluginList(raw);
-  if (!parsed.contractOk && parsed.plugins.length === 0) {
+  if (!parsed.contractOk) {
     return raw;
   }
   const projected = parsed.plugins.map((p) => ({
@@ -401,7 +401,7 @@ function evaluateFreshness(snapshot, workspaceRoot2, probe) {
   return { fresh: reasons.length === 0, reasons };
 }
 
-// src/resolver/resolve.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/resolve.ts
 function relativize(workspaceRoot2, absPath) {
   const abs = normalizeSlashes(absPath);
   const root = normalizeSlashes(workspaceRoot2).replace(/\/+$/, "");
@@ -663,12 +663,12 @@ function buildSnapshot(inputs, io) {
   };
 }
 
-// src/resolver/engine.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/engine.ts
 import { readFileSync as readFileSync2 } from "node:fs";
 import { join as join2 } from "node:path";
 import { execFileSync } from "node:child_process";
 
-// src/resolver/snapshot-store.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/snapshot-store.ts
 import {
   mkdirSync,
   readFileSync,
@@ -728,7 +728,7 @@ function readSnapshot(workspaceRoot2) {
   return parsed;
 }
 
-// src/resolver/engine.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/resolver/engine.ts
 var DEFAULT_REGISTRY_RELPATH = "_local/config.md";
 function readOrNull(absPath) {
   try {
@@ -765,7 +765,7 @@ function resolveSnapshot(opts) {
   const registryContent = io.readFile(registryAbs);
   const coreConfigAbs = join2(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
   const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
-  const pluginListRaw = opts.pluginListRaw ?? runPluginList();
+  const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
   const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
   const inputs = {
     workspaceRoot: workspaceRoot2,
@@ -785,7 +785,7 @@ function resolveAndPersist(opts) {
   return { snapshot, cachePath };
 }
 
-// src/refresh.ts
+// .claude/worktrees/agent-a79c677d6563a8834/plugins/wf/mcp/src/refresh.ts
 function workspaceRoot() {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
 }

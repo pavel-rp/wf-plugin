@@ -98,7 +98,11 @@ function makePorts(opts?: { pluginList?: string | null; files?: Record<string, s
       return resolveSnapshot({
         workspaceRoot: WS,
         io,
-        pluginListRaw: pluginListRaw ?? undefined,
+        // Pass the injected override through as `string | null` — a `null` here is
+        // an explicit "CLI unavailable" signal honored deterministically by the
+        // resolver, NOT coerced to `undefined` (which would shell out to the real
+        // `claude plugin list --json`).
+        pluginListRaw,
         now: () => new Date("2026-07-16T00:00:00.000Z"),
         generator: { ...RESOLVER_GENERATOR },
       });
@@ -272,6 +276,42 @@ test("normalizePluginList is order-independent and preserves absence", () => {
   assert.equal(normalizePluginList(null), null);
 });
 
+test("normalizePluginList falls back to raw on a PARTIAL contract break (drift not masked)", () => {
+  // Two records, one missing the required `version` field: a partial CLI-schema
+  // drift. The valid subset must NOT become the projection — that would silently
+  // shrink the inventory to a smaller-but-healthy set and hide the drift.
+  const partiallyBroken = JSON.stringify([
+    { id: "a@m", version: "1", scope: "s", enabled: true, installPath: "/a" },
+    { id: "b@m", scope: "s", enabled: true, installPath: "/b" }, // missing `version`
+  ]);
+  // The raw is fingerprinted verbatim, not the valid subset.
+  assert.equal(normalizePluginList(partiallyBroken), partiallyBroken);
+  // And it is distinct from what the (buggy) subset-projection would produce.
+  const validSubsetOnly = JSON.stringify([
+    { id: "a@m", version: "1", scope: "s", enabled: true, installPath: "/a" },
+  ]);
+  assert.notEqual(normalizePluginList(partiallyBroken), normalizePluginList(validSubsetOnly));
+});
+
+test("a partially contract-broken plugin list is treated as drift, not silently normalized", () => {
+  const ports = makePorts();
+  // Recorded snapshot: the healthy single-plugin PLUGIN_LIST.
+  const snap = snapshotFor(ports);
+  // Now the CLI returns two records, one drifted (missing `version`). The valid
+  // subset is exactly the recorded single plugin — so masking the break to that
+  // subset would falsely read as FRESH. Falling back to raw makes it stale.
+  const partiallyBroken = JSON.stringify([
+    { id: "wf-demo@local", version: "1.2.3", scope: "user", enabled: true, installPath: INSTALL },
+    { id: "wf-extra@local", scope: "user", enabled: true, installPath: "/ws/packs/wf-extra" }, // missing `version`
+  ]);
+  const res = evaluateFreshness(snap, WS, {
+    readFile: (p) => ports.readFile(p),
+    pluginListRaw: partiallyBroken,
+  });
+  assert.equal(res.fresh, false, "a partial contract break must not be masked to the valid subset");
+  assert.ok(res.reasons.some((r) => r.code === "plugin-list/changed"));
+});
+
 // --- NO TTL / elapsed-time path -------------------------------------------
 
 test("freshness ignores generatedAt entirely — no elapsed-time validity path", () => {
@@ -387,4 +427,26 @@ test("service: a cold cache from a previous session is validated before reuse", 
   // The first query must NOT blindly trust the cache — it revalidates + rebuilds.
   svc.resolveConfig();
   assert.equal(ports.counts.resolveFresh, 1, "stale cold cache is rebuilt, not trusted");
+});
+
+// --- null plugin-list injection is honored deterministically ---------------
+
+test("a null pluginListRaw injection is honored as CLI-unavailable (no real CLI shell-out)", () => {
+  // A test injecting `null` models "the `claude` CLI was unavailable". The
+  // resolver must record the plugin-list source as ABSENT and emit the
+  // cli-unavailable diagnostic — deterministically, WITHOUT falling through to
+  // the real `claude plugin list --json`. (`??` would coerce null→undefined and
+  // shell out; the resolver distinguishes an omitted override from an injected
+  // null.)
+  const ports = makePorts({ pluginList: null });
+  const snap = snapshotFor(ports);
+
+  const pluginSource = snap.sources.find((s) => s.kind === "plugin-list");
+  assert.ok(pluginSource, "the plugin-list source is always recorded");
+  assert.equal(pluginSource?.present, false, "an injected null is recorded as an ABSENT source");
+
+  assert.ok(
+    snap.diagnostics.some((d) => d.code === "plugin-list/cli-unavailable"),
+    "a null injection surfaces the CLI-unavailable diagnostic, not a real shell-out",
+  );
 });
