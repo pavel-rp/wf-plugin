@@ -117,9 +117,12 @@ block-before-mutation policy as any other registry-mutating write.
    - stale fingerprint (pack changed between Phase 1 and now) — just re-run
      `/wf-ado:init`; it re-inspects and gets a fresh fingerprint automatically.
    - not installed / disabled / no valid manifest — same remedies as Phase 1.
-3. **`status: "registered"`** — the `preview` array shows exactly which `## Plugin
-   Roots` and `## Capabilities` rows were written (or left byte-identical if already
-   present — the tool is itself skip-if-present on an existing capability row).
+3. **`status: "registered"`** — `register_pack` **upserts by key**, not skip-if-present:
+   for each row in `preview`, an existing row with that key gets its value **replaced**
+   (a differing `Root`/`Path` is overwritten); only a row whose existing value is already
+   byte-identical is left untouched (a no-op write). The response carries no signal for
+   which of these happened — `preview` always lists every capability the pack provides,
+   whether its row was inserted fresh, replaced, or left as a no-op.
 4. **`selfCheck: "failed"`** on an otherwise-successful registration means the write
    landed but resolution still doesn't resolve `ado` to `ok`. Treat this as a SUB-4-style
    diagnosis, not a silent partial success: call `resolve_gate` with `{ surface:
@@ -191,9 +194,11 @@ still a placeholder.
 
 - **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
   `/wf:init` (Phase 0).
-- **`ado` already registered**: `register_pack` is itself skip-if-present on the
-  `## Capabilities` row — it still refreshes the `## Plugin Roots` row and re-runs the
-  self-check. Report `already registered` for the capability row; Phase 4 still runs.
+- **Re-running on an already-onboarded repo**: `register_pack` upserts by key, so
+  re-running is safe — an unchanged `## Capabilities`/`## Plugin Roots` row is left
+  byte-identical, a drifted one is corrected. The response gives no signal for whether
+  the row pre-existed, so report `registered` for the capability row (never `already
+  registered` — that state can't be determined from `register_pack`); Phase 4 still runs.
 - **Pack not installed / disabled / manifest-invalid** (Phase 1 `valid: false`): stop
   before any resolver-health or registration call; report the concrete remedy and do not
   proceed to Phases 2–4.
@@ -219,11 +224,11 @@ still a placeholder.
 ## Final Output
 
 ```
-WF-ADO-INIT — <onboarded | already-registered | partial>
+WF-ADO-INIT — <onboarded | partial>
 
 Registry:   <registry-location>
 Pack root:  <installPath from inspect_pack/register_pack>
-Registered: ado — <registered | already registered>
+Registered: ado — registered
 Azure DevOps:
 - ADO Organization    — <carried forward | set to <value>>
 - ADO Project         — <carried forward | set to <value>>
