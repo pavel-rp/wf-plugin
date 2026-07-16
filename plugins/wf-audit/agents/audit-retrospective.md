@@ -20,10 +20,15 @@ To avoid drift, you hold **no procedural logic of your own**. On invocation:
 1. Read `${CLAUDE_PLUGIN_ROOT}/capabilities/audit/fragments/retrospective.md` — the full
    composition procedure: the registry-membership gate, the inputs, the delivery-evidence
    fold-in + degradation, the report shape, and the final block. Follow it exactly.
-2. Read `_local/config.md` for `{task-root}` (its home is the `registryPath`-resolved location;
-   if that file is absent, the repo is uninitialised — stop and say so). Resolve the task folder
-   from the id you were handed, or infer the id from the current branch when none was given
-   (first 3+-digit run, resolved against `{task-root}` — the same inference `verify-spec` uses).
+2. Obtain `{task-root}` by calling the bundled `wf-resolver` MCP tool `resolve_config` — it
+   returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already
+   resolved from `_local/config.md`; you perform no direct config-file parse. If the resolver
+   reports the project is uninitialised (no resolved config / absent `_local/config.md`), stop
+   and say so. If the `wf-resolver` service is unavailable, stop and report that the resolver
+   runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback (WF-272
+   diagnostics/recovery). Resolve the task folder from the id you were handed, or infer the id
+   from the current branch when none was given (first 3+-digit run, resolved against
+   `{task-root}` — the same inference `verify-spec` uses).
 3. Execute the fragment's procedure end to end for that task.
 
 ## Inputs

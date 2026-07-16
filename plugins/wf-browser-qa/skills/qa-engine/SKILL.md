@@ -62,7 +62,7 @@ Disambiguation: a 3+-digit numeric or prefixed token is the id; `--`-prefixed to
 
 ## Direct provider resolution (how `current-branch-query` is reached)
 
-Branch-based id inference (Phase 1) reaches `current-branch-query` through the delivery contract — never a direct `git` call, so the engine still degrades cleanly in git-free bare-core mode. Resolve the surface by the canonical resolve-once procedure in `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution": one `## Capabilities` read from `_local/config.md` (the default-absent `registryPath` value), then one manifest+fragment read for the row scoped to the `delivery` surface (a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces, and id inference simply yields no branch token (Phase 1 then asks for an explicit `<task-id>`). The engine has no tracker-surface call site — it never fetches.
+Branch-based id inference (Phase 1) reaches `current-branch-query` through the delivery contract — never a direct `git` call, so the engine still degrades cleanly in git-free bare-core mode. Resolve the surface by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }`. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); the engine performs no registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in its own context to dispatch `current-branch-query`. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces, and id inference simply yields no branch token (Phase 1 then asks for an explicit `<task-id>`). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). The engine has no tracker-surface call site — it never fetches.
 
 ---
 
@@ -71,7 +71,7 @@ Branch-based id inference (Phase 1) reaches `current-branch-query` through the d
 **Allowed:**
 
 - Read any file in the project.
-- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface — see above) for branch-based id inference. Never call `git` directly for it.
+- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query — see above) for branch-based id inference. Never call `git` directly for it, and never hand-parse the `## Capabilities` registry or a manifest — every such fact comes from the typed tool call.
 - Read/write `_local/qa-creds.md` (test-only credentials — see Phase 2).
 - Write `07_qa-report.md` and screenshots under `artifacts/qa-run-*` ONLY inside the resolved task folder.
 - Use the IDE's question tool to prompt for creds on first run.
@@ -92,7 +92,7 @@ Branch-based id inference (Phase 1) reaches `current-branch-query` through the d
 
 ## Phase 1: Resolve task and plan
 
-1. Resolve `<task-id>`. If passed explicitly, use it verbatim. If omitted, resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" above) and extract the first 3+-digit run. With no delivery provider the query falls back silently (plain-directory case) and yields no branch token. If no id can be resolved, stop with the standard message asking for an explicit `<task-id>`.
+1. Resolve `<task-id>`. If passed explicitly, use it verbatim. If omitted, resolve the current branch via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query — see "Direct provider resolution" above) and extract the first 3+-digit run. With no delivery provider the query falls back silently (plain-directory case) and yields no branch token. If no id can be resolved, stop with the standard message asking for an explicit `<task-id>`.
 2. Locate `06_qa.md` in the task folder. Stop if missing.
 3. Parse it: scope, suites, scenarios (TC-NNN with priority, validates, preconditions, steps, teardown). Filter by `--suite` if passed. When the caller handed an explicit scenario set, that set is the loop set.
 4. **Resume / targeted re-run handling.**
