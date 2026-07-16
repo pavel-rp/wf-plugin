@@ -27,10 +27,11 @@ Confirm the project is initialized by calling the bundled `wf-resolver` MCP serv
 `resolve_config` query — it returns `{ workspaceRoot, registryPath, coreConfig{…}, idShape }`,
 already resolved (this skill performs **no** direct `_local/config.md` parse and **no**
 `## Capabilities` registry read of its own — the delivery provider is resolved via
-`resolve_provider("delivery")` below). If the resolver reports the project is uninitialized
-(no resolved config / absent `_local/config.md`), stop: "Run `/wf:init` first." If the
-`wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded
-(restart Claude Code) — do not hand-parse config as a fallback (WF-272 diagnostics/recovery).
+`resolve_provider("delivery")` below). If `resolve_config` returns no usable project config —
+an empty `coreConfig` with no `taskRoot` (the signal that `_local/config.md` is absent / the
+repo is uninitialized) — stop: "Run `/wf:init` first." If the `wf-resolver` service is
+unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) —
+do not hand-parse config as a fallback (WF-272 diagnostics/recovery).
 
 ---
 
@@ -102,11 +103,13 @@ purpose, so a missing provider is a loud, blocking condition (not a silent empty
 - **`unconfigured`** — no capability owns the `delivery` surface (every registered manifest
   readable): "No delivery provider is registered. Register a capability that owns the
   `delivery` surface (e.g. install and run `/wf-git:init`)."
-- **`unrecoverable`** — a registered capability's `delivery` manifest can't be read (its
-  recorded root dangled and the self-heal recovered nothing); the record's `diagnostics`
-  names the pack. Surface it as a hedged **candidate** — "registered pack [X] has an
-  unrecoverable manifest at that path; if it is your `delivery` provider, fix its stale root
-  / re-run its init." Never assert a candidate owns `delivery`.
+- **`unrecoverable`** — a registered capability owns the `delivery` surface but its manifest
+  can't be read (its recorded root dangled and the self-heal recovered nothing). The record's
+  `owner` reliably names that capability; its `diagnostics` (an optional free-form string,
+  possibly absent) carries any detail. Surface it as a hedged **candidate** — "the registered
+  `delivery` owner `<owner>` is currently unrecoverable; if it is your delivery provider, fix
+  its stale root / re-run its init (e.g. `/wf-git:init`)." Never assert the candidate is
+  definitely at fault.
 
 ---
 
