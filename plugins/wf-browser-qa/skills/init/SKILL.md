@@ -14,14 +14,15 @@ for you by calling core's bundled **typed resolver MCP service** — the same `w
 tools every wf skill uses (see `plugins/wf/skills/resolve/SKILL.md`) — with the pack's own
 stable plugin id.
 
-Two typed, read/write-separated calls replace every manual discovery step this skill used
-to perform itself: `inspect_pack("wf-browser-qa")` (read-only — resolves the plugin via
+Its core pair — `inspect_pack("wf-browser-qa")` (read-only — resolves the plugin via
 `claude plugin list --json`, validates it, and returns a fingerprint) then
 `register_pack("wf-browser-qa", <fingerprint>)` (the sole mutation — writes the
 `## Plugin Roots` row and the `## Capabilities` row for the pack's capability, refreshes
-the snapshot, and self-checks). **This skill never probes `${CLAUDE_PLUGIN_ROOT}`, derives
-an install root, or hand-edits the registry file itself** — `register_pack` owns that
-write exclusively.
+the snapshot, and self-checks) — replaces every manual discovery step this skill used to
+perform itself; `resolve_registry` (a pre-registration check) and `resolve_gate`
+(resolver-health diagnostics on failure) round out the typed calls this skill makes.
+**This skill never probes `${CLAUDE_PLUGIN_ROOT}`, derives an install root, or hand-edits
+the registry file itself** — `register_pack` owns that write exclusively.
 
 This mirrors `/wf-audit:init` exactly, simplified for a single-capability pack: there is
 no capability-subset argument, because wf-browser-qa ships exactly one capability.
@@ -61,7 +62,7 @@ Takes no arguments — it always registers the single `browser-qa` capability th
   `register_pack`, `resolve_registry` (pre-registration check), and `resolve_gate`
   (failure diagnostics) — the same typed service every wf skill uses.
 - Write/edit files under `_local/` (none needed here — no profile to seed — kept for
-  parity with the pack-init family; see Phase 4).
+  parity with the pack-init family; see Phase 3).
 
 **Forbidden:**
 
@@ -172,10 +173,11 @@ validated the registered capability there.
 - **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
   `/wf:init` (Phase 0). This skill augments a registry; it never bootstraps one.
 - **Resolver MCP unavailable** (`inspect_pack`/`register_pack`/`resolve_gate` unreachable):
-  the tools are unreachable (the plugin's `.mcp.json` sets `alwaysLoad: true`, so this is
-  unusual). Stop and report that the resolver runtime is not loaded; suggest restarting
-  Claude Code. Do **not** fall back to a hand-rolled `${CLAUDE_PLUGIN_ROOT}` probe or a
-  manual registry edit — that is exactly the discovery this service replaces.
+  the tools are unreachable (wf core's `.mcp.json` sets `alwaysLoad: true` for the bundled
+  `wf-resolver` server, so this is unusual). Stop and report that the resolver runtime is
+  not loaded; suggest restarting Claude Code. Do **not** fall back to a hand-rolled
+  `${CLAUDE_PLUGIN_ROOT}` probe or a manual registry edit — that is exactly the discovery
+  this service replaces.
 - **`browser-qa` already registered** (Phase 2 step 1 found a matching row):
   `register_pack` still upserts idempotently; report `already registered` and still
   self-check.

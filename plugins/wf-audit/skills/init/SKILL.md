@@ -13,14 +13,15 @@ that still requires an entry in the downstream `## Capabilities` table and a res
 **typed resolver MCP service** — the same `wf-resolver` tools every wf skill uses (see
 `plugins/wf/skills/resolve/SKILL.md`) — with the pack's own stable plugin id.
 
-Two typed, read/write-separated calls replace every manual discovery step this skill used
-to perform itself: `inspect_pack("wf-audit")` (read-only — resolves the plugin via
+Its core pair — `inspect_pack("wf-audit")` (read-only — resolves the plugin via
 `claude plugin list --json`, validates it, and returns a fingerprint) then
 `register_pack("wf-audit", <fingerprint>)` (the sole mutation — writes the `## Plugin
 Roots` row and one `## Capabilities` row per discovered capability, refreshes the
-snapshot, and self-checks). **This skill never probes `${CLAUDE_PLUGIN_ROOT}`, derives an
-install root, or hand-edits the registry file itself** — `register_pack` owns that write
-exclusively.
+snapshot, and self-checks) — replaces every manual discovery step this skill used to
+perform itself; `resolve_registry` (a pre-registration check) and `resolve_gate`
+(resolver-health diagnostics on failure) round out the typed calls this skill makes.
+**This skill never probes `${CLAUDE_PLUGIN_ROOT}`, derives an install root, or hand-edits
+the registry file itself** — `register_pack` owns that write exclusively.
 
 This pack's onboarding is fixed to the two capabilities it ships: there is no
 capability-subset argument — `audit` and `sr` always register together in the **same**
@@ -190,10 +191,11 @@ validated every registered capability there.
 - **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
   `/wf:init` (Phase 0). This skill augments a registry; it never bootstraps one.
 - **Resolver MCP unavailable** (`inspect_pack`/`register_pack`/`resolve_gate` unreachable):
-  the tools are unreachable (the plugin's `.mcp.json` sets `alwaysLoad: true`, so this is
-  unusual). Stop and report that the resolver runtime is not loaded; suggest restarting
-  Claude Code. Do **not** fall back to a hand-rolled `${CLAUDE_PLUGIN_ROOT}` probe or a
-  manual registry edit — that is exactly the discovery this service replaces.
+  the tools are unreachable (wf core's `.mcp.json` sets `alwaysLoad: true` for the bundled
+  `wf-resolver` server, so this is unusual). Stop and report that the resolver runtime is
+  not loaded; suggest restarting Claude Code. Do **not** fall back to a hand-rolled
+  `${CLAUDE_PLUGIN_ROOT}` probe or a manual registry edit — that is exactly the discovery
+  this service replaces.
 - **One or both capabilities already registered** (Phase 2 step 1 found a matching row):
   `register_pack` still upserts idempotently; report `already registered` for those
   names, still run Phase 3 for any newly-registered capability, and self-check both.
