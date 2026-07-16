@@ -74,15 +74,6 @@ p1='(?i)\b(read|glob|grep|search|cat|open|view)\b.*\S/SKILL\.md'
 p2='\$\{CLAUDE_PLUGIN_ROOT\}/skills/\S*SKILL\.md'
 PAT="$p1|$p2"
 
-# scan <dir> [extra-grep-args...] : print `file:line:match` hits; set global RC.
-scan() {
-  local dir="$1"; shift
-  local out
-  out="$(grep -rPno --include='*.md' "$@" "$PAT" "$dir")"
-  RC=$?
-  printf '%s' "$out"
-}
-
 if [ "${1:-}" = "--selftest" ]; then
   # Prove the classifier discriminates: violation.md must be flagged, clean.md
   # must not — scanning the fixtures directly (it lives under _contracts, so the
@@ -112,8 +103,10 @@ if [ "${1:-}" = "--selftest" ]; then
   exit 0
 fi
 
-# Default: scan the real tree.
-hits="$(scan "$ROOT/plugins" --exclude-dir='_contracts')"
+# Default: scan the real tree. grep exits 1 on "no matches" (a clean pass) and
+# >=2 only on an actual error (e.g. PCRE unavailable), so branch on RC>=2.
+hits="$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$PAT" "$ROOT/plugins")"
+RC=$?
 if [ "$RC" -ge 2 ]; then
   echo "OUT-4: ERROR — grep failed (rc=$RC). This check requires PCRE grep (grep -P), which may be unavailable on this platform."
   exit 2
