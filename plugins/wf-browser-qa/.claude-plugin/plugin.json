@@ -1,6 +1,6 @@
 {
   "name": "wf-browser-qa",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "wf browser-QA feature pack — the browser-qa capability owning the wf capability-registry's qa-execution engine surface (a stack-agnostic in-thread browser-automation QA engine that drives any web app, reaches browser-level preconditions, captures console/network, and emits per-scenario verdict blocks). Composed with wf core via the capability registry; core's /wf:qa-auto dispatches the per-scenario browser drive to it. Ships /wf-browser-qa:init for one-command self-registration. Tracker-agnostic (requires: git only).",
   "author": {
     "name": "Pavel Kalabin",
