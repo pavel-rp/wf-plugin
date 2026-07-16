@@ -49,7 +49,7 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 
 - Modify any source file **except** the writes named in the Allowed list above — i.e. anything other than files under `_local/`, the two exclude files (`.gitignore`, `.git/info/exclude`), and a configured `registryPath` registry location, all of which are explicitly permitted
 - Run builds, tests, linters, installs
-- Invoke a delivery write operation (`branch-create`, `commit`, `push-upstream`, `pr-create`) — init only ever reads `workspace-root-resolve`, it never writes through the delivery provider
+- Invoke a delivery write operation (`branch-create`, `commit`, `push-upstream`, `pr-create`) — init obtains the workspace root as a resolved fact from `resolve_config` (Phase 0), never by dispatching the delivery provider directly, and it never writes through the delivery provider
 - Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive a plugin's install root, a capability's manifest path, or a profile's override-merged values by hand — `resolve_config`/`resolve_registry`/`resolve_profile` already resolve them; if a fact is needed, call the tool that returns it
 - Call `register_pack` — that call registers one pack's own capability under a stable plugin id; `init` establishes the substrate those calls attach to, not a capability of its own
 
@@ -146,9 +146,9 @@ After the `## Capabilities` registry table exists (Phase 2) and before the const
    - **Empty `capabilities[]` ⇒ seed nothing** — no destination is created. This is the inert no-op; report "none" in the Final Output. (Matches the contract's no-op-when-absent rule.)
 
 2. **Per capability, read `validity` and `profileTemplatePath`.**
-   - `validity: "unrecoverable"` (no readable manifest — including an unmapped plugin root) ⇒ **no-op** for this capability (skip — no destination, no placeholder) and record `skipped — unmapped plugin root`.
+   - `validity: "unrecoverable"` (no readable manifest — either an unmapped plugin root, or a missing/unreadable `manifest.md` at a repo-relative path) ⇒ **no-op** for this capability (skip — no destination, no placeholder) and record `skipped — unreadable manifest`.
    - `validity: "ok"` but `profileTemplatePath: null` (the manifest declares no `profile-template:`) ⇒ **no-op** and record `skipped — no template`.
-   - Otherwise `profileTemplatePath` is already a workspace-root-relative path to the capability's default template — read it directly (`Read <workspaceRoot>/<profileTemplatePath>`; the resolver returns paths and metadata only, never the template body itself, so this one file read stays with the consuming skill).
+   - Otherwise `profileTemplatePath` points to the capability's default template — read it directly, but **guard the join first**. `profileTemplatePath` is workspace-root-*relative* only when the template lives inside the workspace; for a plugin-anchored capability whose install root is outside the workspace (e.g. a plugin cache), the resolver returns an **absolute** path. So: if `profileTemplatePath` is absolute (a leading `/` or a `C:`-style drive prefix), `Read` it **verbatim**; otherwise `Read <workspaceRoot>/<profileTemplatePath>`. Never blindly join `workspaceRoot` — prefixing an already-absolute path yields an invalid location. (The resolver returns paths and metadata only, never the template body itself, so this one file read stays with the consuming skill.)
 
 3. **Per declaring capability, derive the deterministic destination**, keyed on the registry `name` field (its stable identity — never `resolvedPath` or `manifestPath`):
 
@@ -304,7 +304,7 @@ Actions:
 
 Registry: <resolved registry location> (<default | configured | rejected → fell back to default>)
 Capability profiles:
-- <capability-name> — <seeded override [seeded by <model id>] | default in use | skipped — no template | skipped — unsafe capability name | skipped — unmapped plugin root>
+- <capability-name> — <seeded override [seeded by <model id>] | default in use | skipped — no template | skipped — unsafe capability name | skipped — unreadable manifest>
   (repeat one line per registered capability; "none" when the registry is empty. Append `seeded by <model id>` **only** to a `seeded override` row whose profile format has no schema-permitted attribution slot — see Phase 2.5 step 5; every other outcome carries no separate seeding-model stamp (a seeded markdown/prose profile records its model in its own in-file `**Model:**` line).)
 
 Verify Command: <detected command>
