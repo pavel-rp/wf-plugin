@@ -20,7 +20,7 @@ import {
 } from "./paths.js";
 import { parseRegistry } from "./registry.js";
 import { parseManifest } from "./manifest.js";
-import { parsePluginList } from "./plugin-list.js";
+import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
 import { parseCoreConfig } from "./config.js";
 import { fingerprint } from "./fingerprint.js";
 import {
@@ -52,8 +52,10 @@ export interface BuildSnapshotInputs {
   /** `_local/config.md` content for core config VALUES. In the default setup
    *  this is the same file as the registry. */
   coreConfigContent: string | null;
-  /** Raw stdout of `claude plugin list --json`. */
-  pluginListRaw: string;
+  /** Raw stdout of `claude plugin list --json`, or `null` when the CLI was
+   *  unavailable/errored. A real success (including an empty `"[]"`) is a string;
+   *  `null` is a genuine failure recorded as an ABSENT plugin-list source. */
+  pluginListRaw: string | null;
   /** ISO-8601 stamp applied at persist time. */
   generatedAt: string;
   generator: { name: string; version: string };
@@ -93,14 +95,34 @@ export function buildSnapshot(
   if (registryPath !== "_local/config.md") {
     sources.push(fingerprint("core-config", "_local/config.md", inputs.coreConfigContent));
   }
+  // A `null` plugin-list is a genuine CLI failure/unavailability: record the
+  // source as ABSENT (present:false, sha256:null, bytes:null) — never a fake
+  // present `"[]"`. `fingerprint` maps null content to an absent record.
   sources.push(fingerprint("plugin-list", "claude plugin list --json", inputs.pluginListRaw));
 
   // --- parse inputs --------------------------------------------------------
   const registry = parseRegistry(inputs.registryContent ?? "");
   const coreConfig = parseCoreConfig(inputs.coreConfigContent ?? inputs.registryContent ?? "");
-  const pluginList = parsePluginList(inputs.pluginListRaw);
-  for (const issue of pluginList.issues) {
-    diagnostics.push({ severity: "error", code: issue.code, message: issue.message });
+
+  // A real CLI success (including an empty `"[]"`) parses normally: zero packs,
+  // contractOk, no diagnostic. A `null` (CLI unavailable/errored) is NOT parsed
+  // as `"[]"` — that would be a false "no plugins installed" fact. Instead it
+  // yields an empty installed set plus a warning diagnostic, so a failed CLI is
+  // distinguishable from a genuinely empty one.
+  let pluginList: ParsedPluginList;
+  if (inputs.pluginListRaw === null) {
+    pluginList = { plugins: [], contractOk: true, issues: [] };
+    diagnostics.push({
+      severity: "warning",
+      code: "plugin-list/cli-unavailable",
+      message:
+        "`claude plugin list --json` could not be run (CLI unavailable or errored); installed-pack facts are unknown for this snapshot. The plugin-list source is recorded as absent rather than an empty result — re-run once the `claude` CLI is available on PATH.",
+    });
+  } else {
+    pluginList = parsePluginList(inputs.pluginListRaw);
+    for (const issue of pluginList.issues) {
+      diagnostics.push({ severity: "error", code: issue.code, message: issue.message });
+    }
   }
 
   const recordedRoots: RecordedRoot[] = registry.pluginRoots.map((r) => ({

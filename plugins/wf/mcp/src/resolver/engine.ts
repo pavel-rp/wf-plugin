@@ -30,17 +30,22 @@ function readOrNull(absPath: string): string | null {
 export const fsIO: ResolverIO = { readFile: readOrNull };
 
 /** Extract `registryPath` from wf.config.js text without evaluating the module
- *  (mirrors validate-registry.sh CHECK 1: a single quoted value, first hit). */
+ *  (mirrors validate-registry.sh CHECK 1: a single quoted value, first hit). The
+ *  value is forward-slash normalized so both the read path and the recorded
+ *  `snapshot.registryPath` / registry source-fingerprint honor the documented
+ *  "normalized (forward-slash), workspace-relative" contract (see types.ts). */
 export function extractRegistryPath(wfConfig: string | null): string {
   if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
   const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
   const v = m?.[1]?.trim();
-  return v && v.length > 0 ? v : DEFAULT_REGISTRY_RELPATH;
+  return v && v.length > 0 ? normalizeSlashes(v) : DEFAULT_REGISTRY_RELPATH;
 }
 
-/** Run `claude plugin list --json`. Returns stdout, or `"[]"` when the CLI is
- *  unavailable or errors (the parser then records zero installed packs). */
-export function runPluginList(): string {
+/** Run `claude plugin list --json`. Returns raw stdout on success, or `null`
+ *  when the CLI is unavailable or errors — a genuine failure that the builder
+ *  records as an ABSENT plugin-list source (with a diagnostic), never masked as
+ *  an empty `"[]"` that would falsely read as "no plugins installed". */
+export function runPluginList(): string | null {
   try {
     return execFileSync("claude", ["plugin", "list", "--json"], {
       encoding: "utf8",
@@ -48,13 +53,15 @@ export function runPluginList(): string {
       maxBuffer: 16 * 1024 * 1024,
     });
   } catch {
-    return "[]";
+    return null;
   }
 }
 
 export interface ResolveOptions {
   workspaceRoot: string;
-  /** Override the plugin-list source (tests inject fixtures). */
+  /** Override the plugin-list source (tests inject fixtures). A provided
+   *  override is always REAL CLI output — never a failure; the CLI-unavailable
+   *  (null) path is reached only when the real `runPluginList` errors. */
   pluginListRaw?: string;
   io?: ResolverIO;
   now?: () => Date;

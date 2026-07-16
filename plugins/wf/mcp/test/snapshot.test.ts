@@ -14,7 +14,8 @@ import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { normalizeSlashes } from "../src/resolver/paths.js";
-import { resolveSnapshot } from "../src/resolver/engine.js";
+import { resolveSnapshot, extractRegistryPath } from "../src/resolver/engine.js";
+import { buildSnapshot, type BuildSnapshotInputs } from "../src/resolver/resolve.js";
 import {
   writeSnapshot,
   readSnapshot,
@@ -96,6 +97,22 @@ function buildForTest(): ResolverSnapshot {
     now: () => new Date("2026-07-15T00:00:00.000Z"),
     generator: { name: "wf-resolver", version: "0.1.0" },
   });
+}
+
+/** Build snapshot inputs directly so the pure builder can be driven with a
+ *  `null` plugin-list (the CLI-unavailable path — never reachable through the
+ *  string-only ResolveOptions override). */
+function makeInputs(pluginListRaw: string | null): BuildSnapshotInputs {
+  return {
+    workspaceRoot: "/ws",
+    registryPathValue: "_local/config.md",
+    registryContent: REGISTRY,
+    wfConfigContent: null,
+    coreConfigContent: REGISTRY,
+    pluginListRaw,
+    generatedAt: "2026-07-15T00:00:00.000Z",
+    generator: { name: "wf-resolver", version: "0.1.0" },
+  };
 }
 
 test("a clean project produces a valid snapshot with active + installed/inactive records", () => {
@@ -206,6 +223,80 @@ test("core config values are recorded", () => {
   const snap = buildForTest();
   assert.equal(snap.coreConfig.taskRoot, "_local");
   assert.equal(snap.coreConfig.verifyCommand, "npm run typecheck");
+});
+
+// --- plugin-list CLI-failure vs empty output ------------------------------
+
+test("a CLI failure (null plugin-list) records the source as absent + a diagnostic", () => {
+  const snap = buildSnapshot(makeInputs(null), makeIO());
+
+  // The plugin-list source is a recorded ABSENCE — never a fake present "[]".
+  const src = snap.sources.find((s) => s.kind === "plugin-list");
+  assert.ok(src);
+  assert.equal(src.present, false);
+  assert.equal(src.sha256, null);
+  assert.equal(src.bytes, null);
+
+  // A precise, distinct diagnostic is emitted for the unavailable CLI.
+  assert.ok(
+    snap.diagnostics.some(
+      (d) => d.code === "plugin-list/cli-unavailable" && d.severity === "warning",
+    ),
+  );
+  // The failure is NOT misreported as unparseable/empty CLI output.
+  assert.ok(!snap.diagnostics.some((d) => d.code === "plugin-list/unparseable"));
+});
+
+test("a real empty '[]' plugin-list stays contract-clean: present source, zero packs, no diagnostic", () => {
+  const snap = buildSnapshot(makeInputs("[]"), makeIO());
+
+  // Genuine empty CLI output → a PRESENT source with a real sha (a true fact).
+  const src = snap.sources.find((s) => s.kind === "plugin-list");
+  assert.ok(src);
+  assert.equal(src.present, true);
+  assert.match(src.sha256 ?? "", /^[0-9a-f]{64}$/);
+  assert.ok((src.bytes ?? 0) > 0);
+
+  // No installed packs were reported, and this is NOT treated as a CLI failure.
+  assert.ok(!snap.packs.some((p) => p.enablement !== "unknown"));
+  assert.ok(!snap.diagnostics.some((d) => d.code === "plugin-list/cli-unavailable"));
+  assert.ok(!snap.diagnostics.some((d) => d.code === "plugin-list/unparseable"));
+});
+
+// --- registryPath normalization -------------------------------------------
+
+test("extractRegistryPath forward-slash normalizes a non-normalized config value", () => {
+  const wfConfig = `module.exports = {\n  registryPath: 'config\\dir\\registry.md',\n};`;
+  assert.equal(extractRegistryPath(wfConfig), "config/dir/registry.md");
+  // Absent/default cases are preserved.
+  assert.equal(extractRegistryPath(null), "_local/config.md");
+  assert.equal(extractRegistryPath("module.exports = {};"), "_local/config.md");
+});
+
+test("a non-normalized registryPath is recorded forward-slash in the snapshot + its fingerprint", () => {
+  const wfConfig = `module.exports = {\n  registryPath: 'config\\registry.md',\n};`;
+  const io = {
+    readFile: (p: string) => {
+      const files = new Map<string, string>([
+        [normalizeSlashes("/ws/wf.config.js"), wfConfig],
+        [normalizeSlashes("/ws/config/registry.md"), REGISTRY],
+      ]);
+      return files.get(normalizeSlashes(p)) ?? null;
+    },
+  };
+  const snap = resolveSnapshot({
+    workspaceRoot: "/ws",
+    io,
+    pluginListRaw,
+    now: () => new Date("2026-07-15T00:00:00.000Z"),
+    generator: { name: "wf-resolver", version: "0.1.0" },
+  });
+
+  assert.equal(snap.registryPath, "config/registry.md");
+  assert.ok(!snap.registryPath.includes("\\"));
+  const registrySrc = snap.sources.find((s) => s.kind === "registry");
+  assert.equal(registrySrc?.path, "config/registry.md");
+  assert.equal(registrySrc?.present, true);
 });
 
 // --- persistence ----------------------------------------------------------
