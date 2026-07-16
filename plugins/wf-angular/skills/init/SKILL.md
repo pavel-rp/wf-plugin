@@ -17,8 +17,11 @@ registration for you by calling the core plugin's bundled **wf-resolver** MCP to
 probes `${CLAUDE_PLUGIN_ROOT}` and never hand-edits the `## Plugin Roots` / `##
 Capabilities` tables.
 
-This mirrors `/wf-browser-qa:init` and `/wf-ado:init` for a single-capability pack: there
-is no capability-subset argument, because wf-angular ships exactly one capability.
+This mirrors `/wf-ado:init` for a single-capability pack: there is no capability-subset
+argument, because wf-angular ships exactly one capability, and neither skill attempts to
+distinguish "already registered" from "registered" — both report `registered` on any
+successful upsert. This differs from `/wf-browser-qa:init`, which adds a separate
+`resolve_registry` pre-check specifically to make that distinction.
 
 **This is fragment/registry-side onboarding only.** It cannot register a `/command` — a
 discoverable skill must live in a plugin's `skills/` dir (native discovery).
@@ -114,9 +117,12 @@ block-before-mutation policy as any other registry-mutating write.
    - stale fingerprint (pack changed between Phase 1 and now) — just re-run
      `/wf-angular:init`; it re-inspects and gets a fresh fingerprint automatically.
    - not installed / disabled / no valid manifest — same remedies as Phase 1.
-5. **`status: "registered"`** — the `preview` array shows exactly which `## Plugin
-   Roots` and `## Capabilities` rows were written (or left byte-identical if already
-   present — the tool is itself skip-if-present on an existing capability row).
+5. **`status: "registered"`** — `register_pack` **upserts by key**, not skip-if-present:
+   for each row in `preview`, an existing row with that key gets its value **replaced**
+   (a differing `Root`/`Path` is overwritten); only a row whose existing value is already
+   byte-identical is left untouched (a no-op write). The response carries no signal for
+   which of these happened — `preview` always lists every capability the pack provides,
+   whether its row was inserted fresh, replaced, or left as a no-op.
 6. **`selfCheck: "failed"`** on an otherwise-successful registration means the write
    landed but resolution still doesn't resolve `angular` to `ok`. Treat this as a
    SUB-4-style diagnosis, not a silent partial success: call `resolve_gate` with
@@ -129,15 +135,17 @@ Apply the **profile-seeding convention by name** — the same convention `/wf:in
 2.5 follows, defined in `plugins/wf/skills/_contracts/capability-registry.contract.md`
 §"The profile-seeding convention". Do **not** re-derive its rules here.
 
-- **angular** (only when Phase 2 registered it fresh — `preview` contains a
-  `Capabilities`/`angular` row and it was not already present): resolve its manifest
-  path from `register_pack`'s `root` (`<root>/capabilities/angular/manifest.md`). It
-  declares `profile-template: profile.template.json` — seed a downstream **override** at
+- **angular** (run every time Phase 2 succeeds — `preview` always contains a
+  `Capabilities`/`angular` row whether the underlying registry row was inserted fresh,
+  replaced, or left as a no-op, so its presence is never a signal that this is a first
+  registration): resolve its manifest path from `register_pack`'s `root`
+  (`<root>/capabilities/angular/manifest.md`). It declares
+  `profile-template: profile.template.json` — seed a downstream **override** at
   `_local/profiles/angular.profile.json` **only on divergence** from the capability's
   default template; **idempotent** — never overwrite an existing override
-  (skip-if-present). Record `seeded override` or `default in use`.
-- Skip this step when the capability was already registered before this run (Phase 2
-  reported `already registered`).
+  (skip-if-present, decided by reading `_local/profiles/angular.profile.json` itself, not
+  by inferring anything from `register_pack`'s response). Record `seeded override` or
+  `default in use`.
 
 This is exactly what `/wf:init` would do on its next run now that the row resolves — doing
 it here keeps onboarding to one command.
@@ -148,10 +156,12 @@ it here keeps onboarding to one command.
 
 - **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
   `/wf:init` (Phase 0).
-- **`angular` already registered**: `register_pack` is itself skip-if-present on the
-  `## Capabilities` row — it still refreshes the `## Plugin Roots` row and re-runs the
-  self-check. Report `already registered` for the capability row and skip the profile
-  seed (Phase 3).
+- **Re-running on an already-onboarded repo**: `register_pack` upserts by key, so
+  re-running is safe — an unchanged `## Capabilities`/`## Plugin Roots` row is left
+  byte-identical, a drifted one is corrected. The response gives no signal for whether
+  the row pre-existed, so report `registered` for the capability row (never `already
+  registered` — that state can't be determined from `register_pack`); Phase 3 still runs
+  (its own skip-if-present, keyed on the profile file's existence, handles idempotency).
 - **Pack not installed / disabled / manifest-invalid** (Phase 1 `valid: false`): stop
   before any resolver-health or registration call; report the concrete remedy and do not
   proceed to Phases 2–3.
@@ -168,12 +178,12 @@ it here keeps onboarding to one command.
 ## Final Output
 
 ```
-WF-ANGULAR-INIT — <onboarded | already-registered | partial>
+WF-ANGULAR-INIT — <onboarded | partial>
 
 Registry:   <registry-location>
 Pack root:  <installPath from inspect_pack/register_pack>
-Registered: angular — <registered | already registered>
-Profile:    <seeded override [seeded by <model id>] | default in use | skipped — already registered>
+Registered: angular — registered
+Profile:    <seeded override [seeded by <model id>] | default in use>
 Self-check: <PASS — register_pack selfCheck: ok | FAIL — <resolve_gate/register_pack diagnostics + recovery>>
 
 Next: run /wf:qa-auto for a task with a QA plan — core resolves the angular capability, finds the qa-execution provider owning surface: host, and dispatches test-host scaffolding to /wf-angular:qa-host. Fill the profile slots in _local/profiles/angular.profile.json before first scaffold. Re-run /wf-angular:init only if register_pack reports the pack unrecoverable, or after relocating the pack.
