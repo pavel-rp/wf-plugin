@@ -259,6 +259,22 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-304: OUT-2 content-read acceptance (fragment class) -------------------
+# C011 OUT-2: no skill/agent raw-reads a bundled content-class doc — every body
+# comes from the resolver `resolve_content` surface. This is the fragment-class
+# clause (SUB-3); it proves zero raw fragment-body reads survive in the wf spine +
+# invocation-runtime ops. Wired here so the CI entry point covers it (SUB-4 appends
+# the shared clause; SUB-7 consolidates all five per-class clauses).
+echo ""
+echo "=== Content-read OUT-2 acceptance — fragment class (content-read-out2-grep.sh) ==="
+if bash "$DIR/../content-read-out2-grep.sh"; then
+  printf 'PASS: %s\n' "OUT-2 fragment-class content-read grep"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "OUT-2 fragment-class content-read grep"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
