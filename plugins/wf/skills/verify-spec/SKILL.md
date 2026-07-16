@@ -78,7 +78,7 @@ id inference above, and the Implementation-scope branch name below) and
 `last-commit-timestamp-query` (the spec-staleness edge case) — is reached by calling the
 bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that
 returns the run-scoped resolution record `{ surface, owner, fragmentPath, state,
-candidates?, degradation }`. The resolver has already resolved the `## Capabilities`
+degradation, diagnostics }`. The resolver has already resolved the `## Capabilities`
 registry, the owning capability's `manifest.md`, and any plugin-anchored root (post
 install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first
 resolution with install-manifest self-heal"); core performs **no** registry / manifest /
