@@ -91,7 +91,7 @@
     {
       "name": "wf-review",
       "source": "./plugins/wf-review",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "wf PR-review feature pack: the pr-review feature capability shipping the user-invoked /wf-review:address-pr and /wf-review:review-pr skills. Reads/verifies/addresses review comments and CI failures and posts verified findings entirely through the delivery provider's PR-interaction operations (pr-comments-read/pr-comment-post/checks-read/review-thread-resolve), treating review-tool output as hypothesis. Composes natively on install; no core seam fired or required.",
       "author": {
         "name": "Pavel Kalabin"
