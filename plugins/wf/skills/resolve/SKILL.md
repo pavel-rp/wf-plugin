@@ -22,6 +22,8 @@ Thin frontend over the bundled **wf resolver MCP service** — the typed tools e
 
 **Freshness is automatic.** Every typed resolver query re-validates the snapshot's recorded input fingerprints (registry, capability manifests, plugin roots, profiles, and the resolver schema/version) and rebuilds on any mismatch — so a registry edit, a manifest change, or an `init` completion is picked up on the very next query without a manual `refresh`. Core's SessionStart hook additionally runs a pre-MCP `refresh-if-stale` pass so a change made while Claude was closed (including a plugin add/remove) is reconciled at session start. Freshness is driven only by these recorded inputs and explicit requests — **never by elapsed time**. `refresh`/`invalidate` remain available to force the rebuild point or to record that inputs changed.
 
+**Failure is predictable and safe.** When the resolver cannot produce a trustworthy resolution (a missing / malformed / schema-incompatible / fingerprint-unresolvable / cli-unavailable / registry-invalid state), a consumer about to act asks the `resolve_gate` typed query for its surface (`local-read` | `tracker-write` | `delivery-write`). It binds the failure to the existing degradation policy — **a local read continues** best-effort, **a tracker write warns and continues**, **a delivery write blocks before any mutation** — always with categorized diagnostics and a `/wf:resolve refresh` (or `invalidate`) recovery path, and never a fallback to folder-walking or environment probing. `inspect` here surfaces the same diagnostics; the recovery is exactly `refresh`/`invalidate`.
+
 ---
 
 ## Command Syntax

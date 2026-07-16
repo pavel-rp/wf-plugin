@@ -55,6 +55,20 @@ const surfaceInput = fromJsonSchema({
   additionalProperties: false,
 });
 
+const surfaceClassInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    surface: {
+      type: "string",
+      enum: ["local-read", "tracker-write", "delivery-write"],
+      description:
+        "The surface class about to act: `local-read` (best-effort read), `tracker-write`, or `delivery-write`.",
+    },
+  },
+  required: ["surface"],
+  additionalProperties: false,
+});
+
 const capabilityInput = fromJsonSchema({
   type: "object",
   properties: {
@@ -199,6 +213,18 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     },
     async (args: { pluginId: string; expectedFingerprint: string }) =>
       guard(() => service.registerPack(args.pluginId, args.expectedFingerprint)),
+  );
+
+  server.registerTool(
+    "resolve_gate",
+    {
+      title: "resolve gate",
+      description:
+        "Surface-specific resolver-failure gate (WF-272). Given the current resolver health and the acting surface (`local-read` | `tracker-write` | `delivery-write`), returns the reaction (continue | warn | block), the failure categories, categorized diagnostics with a `/wf:resolve` recovery path, and a marker proving the failure path never re-walks folders or probes the environment. A local read continues best-effort, a tracker write warns and continues, a delivery write blocks before any mutation.",
+      inputSchema: surfaceClassInput,
+    },
+    async (args: { surface: "local-read" | "tracker-write" | "delivery-write" }) =>
+      guard(() => service.assessSurface(args.surface)),
   );
 
   // --- lifecycle (the /wf:resolve skill routes through these) --------------

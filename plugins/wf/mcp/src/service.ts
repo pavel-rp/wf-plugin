@@ -15,6 +15,16 @@
 // that is the sole mutation of the discovery substrate.
 
 import { sha256Hex } from "./resolver/fingerprint.js";
+import {
+  annotate,
+  classifyThrow,
+  isFailureSignal,
+  reactionFor,
+  recoveryFor,
+  type FailureReaction,
+  type ResolverFailure,
+  type SurfaceClass,
+} from "./resolver/failure.js";
 import { evaluateFreshness, type StaleReason } from "./resolver/freshness.js";
 import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
@@ -23,6 +33,7 @@ import {
   RESOLVER_GENERATOR,
   type CapabilityRecord,
   type Diagnostic,
+  type ResolverErrorCategory,
   type ResolverSnapshot,
 } from "./resolver/types.js";
 
@@ -116,6 +127,30 @@ export interface LifecycleResponse {
   schemaVersion: number | null;
   counts: { capabilities: number; packs: number; providers: number };
   diagnostics: Diagnostic[];
+}
+
+/** The surface-gate decision (WF-272): given the current resolver health, how a
+ *  local-only read / tracker write / delivery write must react to a failure. */
+export interface SurfaceGateResponse {
+  surface: SurfaceClass;
+  /** True when the resolver produced a usable snapshot with no failure signals. */
+  healthy: boolean;
+  /** The reaction this surface takes: continue | warn | block. */
+  reaction: FailureReaction;
+  /** Distinct failure categories detected (empty when healthy). */
+  categories: ResolverErrorCategory[];
+  /** The failure-signal diagnostics, each carrying its category + recovery.
+   *  Empty when healthy. Never a fragment / manifest / prompt body. */
+  diagnostics: Diagnostic[];
+  /** Deduplicated recovery paths (each names a `/wf:resolve` action). Empty when healthy. */
+  recovery: string[];
+  /** Invariant marker (C008): while assessing a failure, the surface gate NEVER
+   *  falls back to a fallback folder-walk (`listDirs`) or environment probe
+   *  (`listPlugins`) — it serves the last-known snapshot + classified failure.
+   *  Always false. (This is the no-FALLBACK-probe guarantee proven by
+   *  `failure-semantics.test.ts` via `listDirs === 0` / `listPlugins === 0`; a
+   *  normal freshness `ensure()`/rebuild is a legitimate rebuild, not a probe.) */
+  probed: false;
 }
 
 export interface PackCapabilitySummary {
@@ -216,6 +251,19 @@ export class ResolverService {
     this.lastRefreshReasons = this.pendingReasons;
     this.pendingReasons = [];
     return this.current;
+  }
+
+  /** Failure-aware `ensure` for the surface gate (WF-272). Attempts ONE ensure
+   *  (the single legitimate discovery); on a throw it classifies the failure and
+   *  serves the last-known in-memory snapshot (possibly `null`) best-effort — it
+   *  NEVER retries discovery, walks folders, or probes the environment as a
+   *  fallback. That structural absence of a probe fallback is the C008 invariant. */
+  private safeEnsure(): { snapshot: ResolverSnapshot | null; failure: ResolverFailure | null } {
+    try {
+      return { snapshot: this.ensure(), failure: null };
+    } catch (err) {
+      return { snapshot: this.current, failure: classifyThrow(err) };
+    }
   }
 
   // --- R1 -----------------------------------------------------------------
@@ -352,6 +400,54 @@ export class ResolverService {
           },
         ];
     return this.inspect();
+  }
+
+  // --- surface-gate: resolver-failure semantics by surface (WF-272) -------
+  /** Assess the resolver's health and bind any failure to a surface's reaction.
+   *  A consumer calls this immediately before a local-only read, a tracker
+   *  write, or a delivery write to learn whether to continue / warn / block —
+   *  reproducing the existing core degradation policy for a BROKEN resolver
+   *  state. On a failure it surfaces categorized diagnostics + a `/wf:resolve`
+   *  recovery path and NEVER falls back to folder-walking or environment
+   *  probing (C008): every fact comes from the already-collected snapshot
+   *  diagnostics / the classified build failure. */
+  assessSurface(surface: SurfaceClass): SurfaceGateResponse {
+    const { snapshot, failure } = this.safeEnsure();
+
+    const diagnostics: Diagnostic[] = [];
+    if (snapshot) {
+      for (const d of snapshot.diagnostics) {
+        if (isFailureSignal(d)) diagnostics.push(annotate(d));
+      }
+    }
+    if (failure) {
+      diagnostics.push({
+        severity: "error",
+        code: `resolver/${failure.category}`,
+        message: `${failure.message} (failed input: ${failure.failedInput})`,
+        category: failure.category,
+        recovery: recoveryFor(failure.category),
+      });
+    }
+    // A hard build failure surfaces through `failure` above: `ensure()` either
+    // returns a non-null snapshot or throws (which `safeEnsure()` classifies into
+    // a non-null `failure`), so `!snapshot && !failure` is unreachable — a missing
+    // snapshot always arrives paired with a classified failure.
+    const healthy = diagnostics.length === 0 && snapshot !== null;
+    const categories = [
+      ...new Set(diagnostics.map((d) => d.category).filter((c): c is ResolverErrorCategory => !!c)),
+    ];
+    const recovery = [...new Set(diagnostics.map((d) => d.recovery).filter((r): r is string => !!r))];
+
+    return {
+      surface,
+      healthy,
+      reaction: reactionFor(surface, healthy),
+      categories,
+      diagnostics,
+      recovery,
+      probed: false,
+    };
   }
 
   // --- R6: inspect_pack (read-only) --------------------------------------

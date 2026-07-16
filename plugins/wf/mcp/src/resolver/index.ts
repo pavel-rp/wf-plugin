@@ -15,6 +15,19 @@ export { fingerprint, sha256Hex } from "./fingerprint.js";
 export { evaluateFreshness, normalizePluginList } from "./freshness.js";
 export type { FreshnessProbe, FreshnessResult, StaleReason } from "./freshness.js";
 export {
+  categorizeCode,
+  isFailureSignal,
+  recoveryFor,
+  annotate,
+  classifyThrow,
+  reactionFor,
+} from "./failure.js";
+export type {
+  SurfaceClass,
+  FailureReaction,
+  ResolverFailure,
+} from "./failure.js";
+export {
   normalizeSlashes,
   joinSlash,
   parsePluginAnchor,

@@ -19804,6 +19804,71 @@ function fingerprint(kind, path, content) {
   };
 }
 
+// src/resolver/failure.ts
+function categorizeCode(code) {
+  if (code === "plugin-list/cli-unavailable") return "cli-unavailable";
+  if (code.startsWith("snapshot/missing")) return "snapshot-missing";
+  if (code.startsWith("snapshot/malformed")) return "snapshot-malformed";
+  if (code.startsWith("schema/")) return "schema-incompatible";
+  if (code.startsWith("resolver/version")) return "schema-incompatible";
+  if (code.startsWith("fingerprint/")) return "fingerprint-unresolvable";
+  if (code.startsWith("registry/") || code.startsWith("capability/") || code.startsWith("profile/") || code.startsWith("manifest/") || code.startsWith("plugin-list/")) {
+    return "registry-invalid";
+  }
+  return null;
+}
+function isFailureSignal(d) {
+  if (d.severity === "error") return true;
+  return categorizeCode(d.code) !== null;
+}
+function recoveryFor(category) {
+  switch (category) {
+    case "snapshot-missing":
+      return "No resolution snapshot exists yet. Run `/wf:resolve refresh` to build it.";
+    case "snapshot-malformed":
+      return "The cached snapshot is unreadable. Run `/wf:resolve refresh` to rebuild it, or `/wf:resolve invalidate` to force a rebuild on the next query.";
+    case "schema-incompatible":
+      return "The snapshot schema is incompatible with this runtime. Run `/wf:resolve refresh` to rebuild it under the current schema.";
+    case "fingerprint-unresolvable":
+      return "A recorded source input could not be re-read to validate freshness. Restore the missing input, then run `/wf:resolve refresh` (or `/wf:resolve invalidate`).";
+    case "cli-unavailable":
+      return "`claude plugin list --json` could not run, so installed-pack facts are unknown. Ensure the `claude` CLI is on PATH, then run `/wf:resolve refresh`.";
+    case "registry-invalid":
+      return "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.";
+  }
+}
+function annotate(d) {
+  if (d.category) return d.recovery ? d : { ...d, recovery: recoveryFor(d.category) };
+  const category = categorizeCode(d.code);
+  if (!category) return d;
+  return { ...d, category, recovery: recoveryFor(category) };
+}
+function classifyThrow(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  let category;
+  if (/schema\s*version|schemaversion|incompatible schema|schema is incompatible/i.test(message)) {
+    category = "schema-incompatible";
+  } else if (/fingerprint|re-?read|unresolvable source/i.test(message)) {
+    category = "fingerprint-unresolvable";
+  } else if (/malformed|corrupt|unparse|json|parse error|invalid snapshot/i.test(message)) {
+    category = "snapshot-malformed";
+  } else {
+    category = "snapshot-missing";
+  }
+  return { category, failedInput: "resolution snapshot", message };
+}
+function reactionFor(surface, healthy) {
+  if (healthy) return "continue";
+  switch (surface) {
+    case "local-read":
+      return "continue";
+    case "tracker-write":
+      return "warn";
+    case "delivery-write":
+      return "block";
+  }
+}
+
 // src/resolver/paths.ts
 function normalizeSlashes(p) {
   return p.replace(/\\/g, "/");
@@ -20172,6 +20237,18 @@ var ResolverService = class {
     this.pendingReasons = [];
     return this.current;
   }
+  /** Failure-aware `ensure` for the surface gate (WF-272). Attempts ONE ensure
+   *  (the single legitimate discovery); on a throw it classifies the failure and
+   *  serves the last-known in-memory snapshot (possibly `null`) best-effort — it
+   *  NEVER retries discovery, walks folders, or probes the environment as a
+   *  fallback. That structural absence of a probe fallback is the C008 invariant. */
+  safeEnsure() {
+    try {
+      return { snapshot: this.ensure(), failure: null };
+    } catch (err) {
+      return { snapshot: this.current, failure: classifyThrow(err) };
+    }
+  }
   // --- R1 -----------------------------------------------------------------
   resolveConfig() {
     const s = this.ensure();
@@ -20285,6 +20362,47 @@ var ResolverService = class {
       }
     ];
     return this.inspect();
+  }
+  // --- surface-gate: resolver-failure semantics by surface (WF-272) -------
+  /** Assess the resolver's health and bind any failure to a surface's reaction.
+   *  A consumer calls this immediately before a local-only read, a tracker
+   *  write, or a delivery write to learn whether to continue / warn / block —
+   *  reproducing the existing core degradation policy for a BROKEN resolver
+   *  state. On a failure it surfaces categorized diagnostics + a `/wf:resolve`
+   *  recovery path and NEVER falls back to folder-walking or environment
+   *  probing (C008): every fact comes from the already-collected snapshot
+   *  diagnostics / the classified build failure. */
+  assessSurface(surface) {
+    const { snapshot, failure } = this.safeEnsure();
+    const diagnostics = [];
+    if (snapshot) {
+      for (const d of snapshot.diagnostics) {
+        if (isFailureSignal(d)) diagnostics.push(annotate(d));
+      }
+    }
+    if (failure) {
+      diagnostics.push({
+        severity: "error",
+        code: `resolver/${failure.category}`,
+        message: `${failure.message} (failed input: ${failure.failedInput})`,
+        category: failure.category,
+        recovery: recoveryFor(failure.category)
+      });
+    }
+    const healthy = diagnostics.length === 0 && snapshot !== null;
+    const categories = [
+      ...new Set(diagnostics.map((d) => d.category).filter((c) => !!c))
+    ];
+    const recovery = [...new Set(diagnostics.map((d) => d.recovery).filter((r) => !!r))];
+    return {
+      surface,
+      healthy,
+      reaction: reactionFor(surface, healthy),
+      categories,
+      diagnostics,
+      recovery,
+      probed: false
+    };
   }
   // --- R6: inspect_pack (read-only) --------------------------------------
   inspectPack(pluginId) {
@@ -21049,6 +21167,18 @@ var surfaceInput = fromJsonSchema2({
   required: ["surface"],
   additionalProperties: false
 });
+var surfaceClassInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    surface: {
+      type: "string",
+      enum: ["local-read", "tracker-write", "delivery-write"],
+      description: "The surface class about to act: `local-read` (best-effort read), `tracker-write`, or `delivery-write`."
+    }
+  },
+  required: ["surface"],
+  additionalProperties: false
+});
 var capabilityInput = fromJsonSchema2({
   type: "object",
   properties: {
@@ -21166,6 +21296,15 @@ function registerResolverTools(server, service) {
       inputSchema: registerInput
     },
     async (args) => guard(() => service.registerPack(args.pluginId, args.expectedFingerprint))
+  );
+  server.registerTool(
+    "resolve_gate",
+    {
+      title: "resolve gate",
+      description: "Surface-specific resolver-failure gate (WF-272). Given the current resolver health and the acting surface (`local-read` | `tracker-write` | `delivery-write`), returns the reaction (continue | warn | block), the failure categories, categorized diagnostics with a `/wf:resolve` recovery path, and a marker proving the failure path never re-walks folders or probes the environment. A local read continues best-effort, a tracker write warns and continues, a delivery write blocks before any mutation.",
+      inputSchema: surfaceClassInput
+    },
+    async (args) => guard(() => service.assessSurface(args.surface))
   );
   server.registerTool(
     "resolve_inspect",
