@@ -45,6 +45,7 @@ the C011 consumer sweep is bounded against a reviewed list and cannot silently e
 5. [Coverage ledger](#5-coverage-ledger)
 6. [Explicit exclusions](#6-explicit-exclusions)
 7. [Acceptance cross-check — grep of `plugins/**` for the five shapes](#7-acceptance-cross-check)
+8. [OUT-1 observation — the unattended zero-prompt run (terminal slice)](#8-out-1-observation)
 
 ---
 
@@ -342,3 +343,57 @@ the resolver content surface, the OUT-2 acceptance grep (shape of
 `plugins/wf/skills/_contracts/`'s CI grep script) must find **zero** raw-read instructions
 for these five classes — no fallback carve-out. Any hit not reducible to a §6 exclusion is
 a missed call site and fails CI. This inventory is the list that grep is checked against.
+
+**Terminal-slice status (SUB-7 / WF-308).** All five per-class clauses are now consolidated
+into the single composite gate `plugins/wf/skills/_contracts/content-read-out2-grep.sh`,
+each scanning the whole marketplace (`plugins/**` — every plugin's `skills/` + `agents/`,
+not just the core spine), wired into CI via `registry-fixtures/run.sh`. Zero hits across
+all five classes = pass, with no raw-read carve-out. The last fragment-class residuals the
+core-only SUB-3 sweep had left in the packs — the six wf-audit self-boot agents (the five
+verify lenses + the composite retrospective), which raw-read their own
+`${CLAUDE_PLUGIN_ROOT}/capabilities/audit/fragments/*.md` bodies — were converted to
+`resolve_content` (`class: fragment`, `capability: audit`) in this slice (the five lens
+agents drop their `tools:` allowlist so they inherit the always-loaded `wf-resolver` MCP,
+per CLAUDE.md §8). The two profile-class init consumers (`wf-audit`, `wf-angular`) now
+obtain their `profile.template.json` **body** at seed time through `resolve_content`
+(`class: profile-template`). The other pack fragment consumers named as at-risk
+(wf-review, wf-angular `qa-host`/`test-page`, wf-browser-qa `qa-engine`) were already
+resolver-routed by the earlier slices — their remaining bundled-doc mentions are
+bare-filename documentation pointers, not raw plugin-cache-path reads, and pass the gate
+unchanged.
+
+---
+
+## 8. OUT-1 observation
+
+**The unattended zero-prompt run (terminal slice — SUB-7 / WF-308).** OUT-1 asks that a
+full `run --auto` pass on an **out-of-tree** (marketplace-consumed) install read every
+bundled non-skill doc with **zero permission prompts for plugin-cache paths**. Unlike OUT-2
+(a committed, CI-enforceable grep) OUT-1 is an **observed-behaviour** outcome; it is
+recorded here as a reasoned observation grounded in the now-completed mechanism, honestly
+noting what is and is not machine-checkable in this repo:
+
+1. **Every content read now goes through one already-granted MCP surface.** The OUT-2
+   composite grep proves **zero** raw `Read`/`Glob` instructions for any of the five
+   content classes survive anywhere under `plugins/**`. Core and every pack obtain fragment,
+   shared, contract-ops, references-template, and profile-template bodies exclusively via
+   the bundled `wf-resolver` MCP's `resolve_content`, which reads the body with the
+   **server's own Node `fs`** in its own process — never a caller-side file read of a
+   version-pinned plugin-cache path.
+2. **A `run --auto` pass touches bundled docs only through that surface.** The unattended
+   runner and the phases/providers/subagents it drives (including the wf-audit verify
+   lenses converted in this slice) reach every bundled doc through `resolve_content`, so
+   the pass raises **no plugin-cache-path permission prompt** — the prompt class C011 set
+   out to eliminate. The `wf-resolver` server is `alwaysLoad: true`, so its single tool-use
+   grant is in force for the whole pass.
+3. **The grant survives a version bump (OUT-3, reinforcing OUT-1).** The grant is keyed to
+   the MCP tool, not to a version-pinned cache path, so a plugin version bump that relocates
+   the cache does not re-prompt — no new per-path grant is needed (exercised hermetically by
+   the recorded-root-first self-heal fixtures in `registry-fixtures/run.sh`).
+
+**What is not directly executed here:** this repo is a marketplace source checkout, not a
+live out-of-tree install with a running task, so a literal `run --auto` pass is not driven
+in CI. The CI-enforceable proxy for OUT-1 is the **OUT-2 composite grep** (§7): because it
+guarantees no raw-read *instruction* remains, the only path left for a content read is the
+already-granted resolver surface — which is exactly the condition that makes the unattended
+pass prompt-free. The observation stands on that mechanism.

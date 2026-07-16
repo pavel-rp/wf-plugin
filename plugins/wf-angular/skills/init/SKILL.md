@@ -48,7 +48,7 @@ ships, under the fixed plugin id `wf-angular`.
 - Read any file; read-only `git` (`git rev-parse`).
 - Call the bundled `wf-resolver` MCP tools `inspect_pack`, `resolve_gate`, and
   `register_pack` — always with `pluginId: "wf-angular"`, wf-angular's own exact stable
-  plugin id.
+  plugin id — plus `resolve_content` (the profile-template body at seed time, Phase 3).
 - Write/edit files under `_local/` — including seeding the profile override (Phase 3).
 
 **Forbidden:**
@@ -142,10 +142,14 @@ Apply the **profile-seeding convention by name** — the same convention `/wf:in
   (`<root>/capabilities/angular/manifest.md`). It declares
   `profile-template: profile.template.json` — seed a downstream **override** at
   `_local/profiles/angular.profile.json` **only on divergence** from the capability's
-  default template; **idempotent** — never overwrite an existing override
-  (skip-if-present, decided by reading `_local/profiles/angular.profile.json` itself, not
-  by inferring anything from `register_pack`'s response). Record `seeded override` or
-  `default in use`.
+  default template. Obtain that default **template body** to compare against through the
+  resolver — `resolve_content` (`class: profile-template`, `capability: angular`) — never a
+  raw `Read`/`Glob` of the pack's version-pinned plugin-cache path (this ref serves the
+  template *body* needed at seed time; C008's `resolve_profile` serves override-merged
+  profile *values*, a different thing). **Idempotent** — never overwrite an existing
+  override (skip-if-present, decided by reading `_local/profiles/angular.profile.json`
+  itself, not by inferring anything from `register_pack`'s response). Record `seeded
+  override` or `default in use`.
 
 This is exactly what `/wf:init` would do on its next run now that the row resolves — doing
 it here keeps onboarding to one command.

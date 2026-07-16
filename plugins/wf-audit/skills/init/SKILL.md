@@ -63,8 +63,9 @@ pack ships.
 - Read any file (capability manifests, at the paths `inspect_pack` returns); read-only git
   (`git rev-parse`).
 - Call the bundled `wf-resolver` MCP tools this skill needs: `inspect_pack`,
-  `register_pack`, `resolve_registry` (pre-registration check), and `resolve_gate`
-  (failure diagnostics) — the same typed service every wf skill uses.
+  `register_pack`, `resolve_registry` (pre-registration check), `resolve_gate`
+  (failure diagnostics), and `resolve_content` (the contract ops doc in Phase 1 and the
+  profile-template body in Phase 3) — the same typed service every wf skill uses.
 - Write/edit files under `_local/` (profile seeding only).
 
 **Forbidden:**
@@ -157,8 +158,12 @@ profile-seeding convention". Do **not** re-derive its rules here.
   `inspect_pack` returned for it. It declares `profile-template:
   profile.template.json` — seed a downstream **override** at
   `_local/profiles/audit.profile.json` **only on divergence** from the capability's default
-  template; **idempotent** — never overwrite an existing override (skip-if-present). Record
-  `seeded override` or `default in use`.
+  template. Obtain that default **template body** to compare against through the resolver —
+  `resolve_content` (`class: profile-template`, `capability: audit`) — never a raw
+  `Read`/`Glob` of the pack's version-pinned plugin-cache path (this ref serves the template
+  *body* needed at seed time; C008's `resolve_profile` serves override-merged profile
+  *values*, a different thing). **Idempotent** — never overwrite an existing override
+  (skip-if-present). Record `seeded override` or `default in use`.
 - **sr** (if newly registered): resolve its manifest at the `manifestPath` `inspect_pack`
   returned for it. It declares **no** `profile-template:` — no-op. Record `skipped — no
   template`.

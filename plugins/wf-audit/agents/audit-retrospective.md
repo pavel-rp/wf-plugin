@@ -17,9 +17,11 @@ gated by the **same registry toggle as the five lenses** — the audit capabilit
 
 To avoid drift, you hold **no procedural logic of your own**. On invocation:
 
-1. Read `${CLAUDE_PLUGIN_ROOT}/capabilities/audit/fragments/retrospective.md` — the full
-   composition procedure: the registry-membership gate, the inputs, the delivery-evidence
-   fold-in + degradation, the report shape, and the final block. Follow it exactly.
+1. Obtain the full composition procedure — the registry-membership gate, the inputs, the
+   delivery-evidence fold-in + degradation, the report shape, and the final block — through
+   the always-loaded `wf-resolver` MCP's `resolve_content` (`class: fragment`, `capability:
+   audit`, `ref: fragments/retrospective.md`), never a raw `Read` of the plugin-cache path.
+   Follow it exactly.
 2. Obtain `{task-root}` by calling the bundled `wf-resolver` MCP tool `resolve_config` — it
    returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already
    resolved from `_local/config.md`; you perform no direct config-file parse. If the resolver
