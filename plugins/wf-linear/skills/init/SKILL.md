@@ -117,11 +117,11 @@ ships, under the stable plugin id `wf-linear`.
      `set to <value>` row replaces exactly that cell.
 5. **Register.** Call
    `register_pack({ pluginId: "wf-linear", expectedFingerprint: <fingerprint from step 3> })`.
-   It writes the `## Plugin Roots` row and the `linear` `## Capabilities` row in one
-   atomic write (register `linear` **even if** an `ado` row already exists — this skill
-   never blocks its own registration on that overlap), refreshes the resolver snapshot,
-   and self-checks that `linear` now resolves — returning
-   `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
+   It writes the `## Plugin Roots` row and the `linear` `## Capabilities` row in a single
+   write (a plain file write, not a filesystem-atomic temp+rename swap; register `linear`
+   **even if** an `ado` row already exists — this skill never blocks its own registration
+   on that overlap), refreshes the resolver snapshot, and self-checks that `linear` now
+   resolves — returning `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
    - `status: "rejected"` → **Failure path**.
    - `status: "registered"`, `selfCheck: "ok"` → success.
    - `status: "registered"`, `selfCheck: "failed"` → report `partial`: the registry write

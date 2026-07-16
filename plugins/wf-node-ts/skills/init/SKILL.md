@@ -78,9 +78,10 @@ ships, under the stable plugin id `wf-node-ts`.
      `register_pack`.
 4. **Register.** Call
    `register_pack({ pluginId: "wf-node-ts", expectedFingerprint: <fingerprint from step 3> })`.
-   It writes the `## Plugin Roots` row and the `node-ts` `## Capabilities` row in one
-   atomic write, refreshes the resolver snapshot, and self-checks that `node-ts` now
-   resolves — returning `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
+   It writes the `## Plugin Roots` row and the `node-ts` `## Capabilities` row in a single
+   write (a plain file write, not a filesystem-atomic temp+rename swap), refreshes the
+   resolver snapshot, and self-checks that `node-ts` now resolves — returning
+   `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
    - `status: "rejected"` → **Failure path**.
    - `status: "registered"`, `selfCheck: "ok"` → success.
    - `status: "registered"`, `selfCheck: "failed"` → report `partial`: the registry write

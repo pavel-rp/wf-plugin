@@ -74,8 +74,9 @@ under the stable plugin id `wf-git`.
      `register_pack`.
 4. **Register.** Call
    `register_pack({ pluginId: "wf-git", expectedFingerprint: <fingerprint from step 3> })`.
-   It writes the `## Plugin Roots` row and the `git` `## Capabilities` row in one atomic
-   write, refreshes the resolver snapshot, and self-checks that `git` now resolves —
+   It writes the `## Plugin Roots` row and the `git` `## Capabilities` row in a single
+   write (a plain file write, not a filesystem-atomic temp+rename swap), refreshes the
+   resolver snapshot, and self-checks that `git` now resolves —
    returning `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
    - `status: "rejected"` → **Failure path**.
    - `status: "registered"`, `selfCheck: "ok"` → success.
