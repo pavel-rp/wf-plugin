@@ -1,0 +1,213 @@
+// wf resolver — typed MCP query tools (WF-270).
+//
+// Registers the plugin-local typed resolver service (service.ts) as MCP tools
+// on the bundled server. These tools ARE the resolver service surface every
+// normal skill and isolated subagent calls; there is no shell/CLI/plugin-root
+// probe for a normal consumer. Every response is bounded metadata / normalized
+// paths / enums / small maps — the public query response/error contract
+// EXCLUDES fragment bodies (the service only ever projects the body-free
+// snapshot; it never reads a fragment/skill/prompt body).
+//
+// Input schemas are declared as JSON Schema and adapted via the SDK's
+// `fromJsonSchema`, so no zod dependency is added and the pinned
+// @modelcontextprotocol/server v2-beta schema contract is honored.
+
+import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
+import type { ResolverService } from "./service.js";
+
+type ToolResult = {
+  content: Array<{ type: "text"; text: string }>;
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+};
+
+/** Wrap a JSON-serializable payload as a text-content + structuredContent result. */
+function ok(payload: unknown): ToolResult {
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    structuredContent: payload as Record<string, unknown>,
+  };
+}
+
+/** Run a service call, mapping any unexpected throw to an MCP error result. */
+function guard(fn: () => unknown): ToolResult {
+  try {
+    return ok(fn());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text", text: `resolver error: ${message}` }],
+      isError: true,
+    };
+  }
+}
+
+const surfaceInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    surface: {
+      type: "string",
+      description:
+        "Provider surface to resolve: `delivery`, `tracker`, `qa-execution:engine`, or `qa-execution:host`.",
+    },
+  },
+  required: ["surface"],
+  additionalProperties: false,
+});
+
+const capabilityInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    capability: { type: "string", description: "Registered capability name." },
+  },
+  required: ["capability"],
+  additionalProperties: false,
+});
+
+const pluginInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    plugin: { type: "string", description: "Plugin name (left of `@`)." },
+  },
+  required: ["plugin"],
+  additionalProperties: false,
+});
+
+const pluginIdInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    pluginId: {
+      type: "string",
+      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`).",
+    },
+  },
+  required: ["pluginId"],
+  additionalProperties: false,
+});
+
+const registerInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    pluginId: {
+      type: "string",
+      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`).",
+    },
+    expectedFingerprint: {
+      type: "string",
+      description:
+        "The pack fingerprint returned by a prior inspect_pack; a mismatch rejects the write.",
+    },
+  },
+  required: ["pluginId", "expectedFingerprint"],
+  additionalProperties: false,
+});
+
+/** Register every typed resolver tool on the server, backed by one service. */
+export function registerResolverTools(server: McpServer, service: ResolverService): void {
+  server.registerTool(
+    "resolve_config",
+    {
+      title: "resolve config",
+      description:
+        "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
+    },
+    async () => guard(() => service.resolveConfig()),
+  );
+
+  server.registerTool(
+    "resolve_registry",
+    {
+      title: "resolve registry",
+      description:
+        "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body.",
+    },
+    async () => guard(() => service.resolveRegistry()),
+  );
+
+  server.registerTool(
+    "resolve_provider",
+    {
+      title: "resolve provider",
+      description:
+        "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
+      inputSchema: surfaceInput,
+    },
+    async (args: { surface: string }) => guard(() => service.resolveProvider(args.surface)),
+  );
+
+  server.registerTool(
+    "resolve_profile",
+    {
+      title: "resolve profile",
+      description:
+        "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
+      inputSchema: capabilityInput,
+    },
+    async (args: { capability: string }) =>
+      guard(() => service.resolveProfile(args.capability)),
+  );
+
+  server.registerTool(
+    "resolve_plugin_root",
+    {
+      title: "resolve plugin root",
+      description:
+        "A plugin's resolved install root + provenance, post-self-heal (R5). One path record.",
+      inputSchema: pluginInput,
+    },
+    async (args: { plugin: string }) => guard(() => service.resolvePluginRoot(args.plugin)),
+  );
+
+  server.registerTool(
+    "inspect_pack",
+    {
+      title: "inspect pack",
+      description:
+        "Read-only pack inspection (R6): resolves a plugin id via `claude plugin list --json`, validates enabled state / version / installPath and the pack manifest(s), and returns a fingerprint. Writes nothing.",
+      inputSchema: pluginIdInput,
+    },
+    async (args: { pluginId: string }) => guard(() => service.inspectPack(args.pluginId)),
+  );
+
+  server.registerTool(
+    "register_pack",
+    {
+      title: "register pack",
+      description:
+        "Mutating pack registration (R6). Rejects a missing / disabled / stale-fingerprint / path-invalid / manifest-invalid request WITHOUT writing; on success owns the registry write, refreshes the snapshot, and self-checks. Core does not infer skill provenance.",
+      inputSchema: registerInput,
+    },
+    async (args: { pluginId: string; expectedFingerprint: string }) =>
+      guard(() => service.registerPack(args.pluginId, args.expectedFingerprint)),
+  );
+
+  // --- lifecycle (the /wf:resolve skill routes through these) --------------
+  server.registerTool(
+    "resolve_inspect",
+    {
+      title: "resolve inspect",
+      description:
+        "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, and diagnostics. Does not rebuild.",
+    },
+    async () => guard(() => service.inspect()),
+  );
+
+  server.registerTool(
+    "resolve_refresh",
+    {
+      title: "resolve refresh",
+      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state.",
+    },
+    async () => guard(() => service.refresh()),
+  );
+
+  server.registerTool(
+    "resolve_invalidate",
+    {
+      title: "resolve invalidate",
+      description:
+        "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Returns the lifecycle state.",
+    },
+    async () => guard(() => service.invalidate()),
+  );
+}
