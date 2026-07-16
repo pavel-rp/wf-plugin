@@ -73,9 +73,9 @@ ships, under the stable plugin id `wf-node-ts`.
    only decides whether the Final Output says `onboarded` or `already-registered`.
 3. **Inspect the pack.** Call `inspect_pack({ pluginId: "wf-node-ts" })`. Read-only;
    returns `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
-   - `valid: false` (not installed, disabled, or no readable
-     `capabilities/node-ts/manifest.md`) → go to **Failure path**; do not call
-     `register_pack`.
+   - `valid: false` (not installed, disabled, no readable
+     `capabilities/node-ts/manifest.md`, or `claude plugin list --json` itself
+     unavailable) → go to **Failure path**; do not call `register_pack`.
 4. **Register.** Call
    `register_pack({ pluginId: "wf-node-ts", expectedFingerprint: <fingerprint from step 3> })`.
    It writes the `## Plugin Roots` row and the `node-ts` `## Capabilities` row in a single
@@ -106,6 +106,10 @@ bare error. Finish with `partial`.
 - **Not a git repo / `/wf:init` not run:** stop per the precondition step above.
 - **`wf-node-ts` not installed or disabled** (`inspect_pack.installed`/`enabled` false):
   failure path; direct the user to install/enable the plugin, then re-run.
+- **`claude plugin list --json` unavailable:** `inspect_pack` reports `installed: false`
+  with an issue naming the CLI call as the cause (a broken/unavailable `claude` CLI, not a
+  missing plugin) — failure path; direct the user to check their `claude` CLI, then
+  re-run.
 - **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the
   install looks corrupted — reinstall the plugin.
 - **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run
@@ -122,7 +126,7 @@ bare error. Finish with `partial`.
 WF-NODE-TS-INIT — <onboarded | already-registered | partial>
 
 Registry:   <registryPath from resolve_config>
-Pack root:  <root from register_pack>
+Pack root:  <installPath from inspect_pack — may be null on the failure path>
 Registered: node-ts — <registered | already registered>
 Profile:    skipped — no template
 Self-check: <PASS — node-ts resolves | FAIL — <issues / reason>>
