@@ -1,12 +1,12 @@
 # Capability invocation runtime — runtime ops
 
-**Version:** 1.1.0 (WF-208; WF-209 — run-scoped provider forwarding)
+**Version:** 1.2.0 (WF-208; WF-209 — run-scoped provider forwarding; WF-302 — the bundled-doc content resolution surface)
 **Role:** the runtime-read half of the invocation runtime — the exact procedure a core skill follows to fire an SDD phase or to resolve a provider surface, with every guard, no-op case, and fail-safe inline. One level deep: no step below requires opening anything beyond this file and its flat sibling below.
 **Pair (flat sibling, read directly when needed):** `capability-registry.ops.md` — the registry/mapping schemas, the recorded-root-first self-heal algorithm, the surface operation sets, and the degradation rules this procedure resolves against.
 **Reference (rationale, history, v1 lineage, worked demonstrations — never read at boot):** `invocation-runtime.contract.md`.
-**Model:** claude-fable-5
+**Model:** claude-opus-4-8
 
-**Contents:** the five moving parts · 1 registry iteration · 2 per-capability manifest read · 3 per-phase fragment collection · 4 per-fragment dispatch · 5 aggregation · direct provider resolution · run-scoped provider forwarding · no-op path · generic-only branch rule · fail-safe.
+**Contents:** the five moving parts · 1 registry iteration · 2 per-capability manifest read · 3 per-phase fragment collection · 4 per-fragment dispatch · 5 aggregation · direct provider resolution · run-scoped provider forwarding · content resolution surface · no-op path · generic-only branch rule · fail-safe.
 
 ## The moving parts (the generalised procedure)
 
@@ -78,6 +78,15 @@ Direct provider resolution above is **per boot** — each subagent that needs a 
 **Never to `wf:index`** — it invokes zero provider operations, so no record flows to it and its spawn is untouched.
 
 **Run-scoped only** — the record is one run's runtime value, never persisted or cached beyond the run. The next run re-resolves from the registry (a registry swap is picked up immediately), and core prose still names no concrete provider: the identity is a runtime value flowing through the generic slots.
+
+## Content resolution surface (bundled-doc bodies)
+
+Reading a **bundled non-skill doc** — a capability **fragment** body, a `_contracts/*` **contract** ops doc, a `_shared/*` **shared** convention doc, a skill **references-template**, or a pack **profile-template** body — goes through the always-loaded `wf-resolver` MCP's **`resolve_content`** tool, **never** a raw `Read`/`Glob` of the version-pinned plugin-cache path. The tool resolves the ref by **reusing** the same snapshot facts as the metadata queries (capability `resolvedPath` / `profileTemplatePath`, the `## Plugin Roots` resolved roots with recorded-root-first self-heal) plus the server's own core-plugin root, then reads the body with the server's own Node `fs`. It is the framed, **additive** exception to the body-free metadata snapshot — that invariant is untouched.
+
+- **Request** — a `class` (exactly one of the five above) plus its locator: `fragment` / `profile-template` name a `capability` (+ a relative `ref` for `fragment`); `contract` / `shared` name a bare-filename `ref`; `references-template` names a `skill` (+ a relative `ref`, and an optional `plugin` — omit for a core skill).
+- **`served`** → `{path, content}`: the resolved doc, read prompt-free through the one already-granted MCP surface (any version, any machine, zero per-path config).
+- **`unresolved`** → the ref resolved to nothing readable (an unregistered / dangling-and-unrecoverable capability or plugin root, no declared template, or a resolver-build failure): report the matching `resolve_gate` degradation class (a content read is a `local-read` surface → **continue**) with a `/wf:resolve` recovery path. **Never a wrong-path body, never a raw-read fall-through.**
+- **`refused`** → the ref is outside the five served classes — a **skill body** (invoke the skill via the Skill tool instead) or a **CI-only fixture / validator input** — or a malformed / path-traversal ref.
 
 ## No-op path (the generalised `<none>` Null Object)
 
