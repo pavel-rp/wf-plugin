@@ -18,7 +18,7 @@ Core reaches every provider read only through the abstract **delivery** and **tr
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project values. If the file is absent, stop and instruct the user to run `/wf:init` first. `{task-root}` below comes from that file — never hardcode it. The optional **Standup Statuses** key (in the `## Standup` section) supplies the default work-item statuses to enumerate; an absent section or a placeholder value simply means no default (see Phase 3). A registered tracker capability resolves its own project-scoped config from its own fragment binding; core never reads it directly.
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, standupStatuses, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. `{task-root}` below comes from `coreConfig.taskRoot` — never hardcode it. The optional **Standup Statuses** value (`coreConfig.standupStatuses`, from the `## Standup` section) supplies the default work-item statuses to enumerate; an unset value simply means no default (see Phase 3). A registered tracker capability resolves its own project-scoped config from its own fragment binding; core never reads it directly.
 
 ---
 
@@ -46,8 +46,8 @@ Invoked with no arguments, standup produces a **useful briefing** immediately: i
 
 **Allowed:**
 
-- Read `_local/config.md`, the `{task-root}` task folders, and their artifacts.
-- Read-only resolution via direct provider resolution to the `delivery` and `tracker` surfaces, and the **read-only** operations `activity-read` (delivery) and `list_by_status` / `list_milestones` / `list_cycles` (tracker). standup performs **no write** through any provider.
+- Read the `{task-root}` task folders and their artifacts (project config comes from the `wf-resolver` `resolve_config` query, not a direct config-file read).
+- Read-only resolution via the `wf-resolver` `resolve_config` and `resolve_provider("delivery")` / `resolve_provider("tracker")` queries, and the **read-only** operations `activity-read` (delivery) and `list_by_status` / `list_milestones` / `list_cycles` (tracker). standup performs **no write** through any provider.
 - Write/create the briefing artifact **only** at `_local/standup/<date>.md` (the whole `_local/` tree is gitignored) — never a version-control operation, never a file outside `_local/`.
 
 **Forbidden:**
@@ -63,9 +63,9 @@ Invoked with no arguments, standup produces a **useful briefing** immediately: i
 
 standup is a **direct invocation** — the top of its own chain — and spawns no provider-operation subagent, so it self-resolves each surface it needs **once** and forwards nothing.
 
-1. **Read `{task-root}`** from `_local/config.md`. Read the **Standup Statuses** key from the `## Standup` section if that section exists (an older repo initialized before the section simply has no such key — treat as unset).
+1. **Read `{task-root}`** (`coreConfig.taskRoot`) and the **Standup Statuses** default (`coreConfig.standupStatuses`) from `resolve_config`'s `coreConfig` (an older repo initialized before the `## Standup` section simply surfaces `standupStatuses` unset — treat as no default).
 
-2. **Resolve the providers.** Perform **direct provider resolution** (`invocation-runtime.ops.md` §"Direct provider resolution") once per required surface: one read of the `## Capabilities` registry from `_local/config.md` (the default-absent `registryPath` value), then one `manifest.md` + fragment read for the `delivery` surface and one for the `tracker` surface — both in that same pass, never a second registry walk. A plugin-anchored `Path` resolves through the self-heal home (`capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). Hold each surface's **resolution record** — its provider identity + resolved fragment path, or its unconfigured/unrecoverable outcome — to dispatch the read operations against in the phases below.
+2. **Resolve the providers.** Call the bundled `wf-resolver` MCP tool `resolve_provider` once per required surface — `resolve_provider("delivery")` and `resolve_provider("tracker")` — each returning the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }`. The resolver has already resolved the `## Capabilities` registry, each owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); this skill performs no registry / manifest / plugin-root read of its own. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). Hold each surface's record — its `owner` + `fragmentPath` when `state: ok`, or its `unconfigured`/`unrecoverable` outcome — to dispatch the read operations (by following each `fragmentPath` in-context) in the phases below.
 
 Both surfaces may resolve to no readable provider; standup still produces a briefing from whatever remains (the local task scan always runs). The records are runtime values — no concrete provider is named anywhere in this skill.
 
@@ -73,7 +73,7 @@ Both surfaces may resolve to no readable provider; standup still produces a brie
 
 ## Phase 2: Read recent delivery activity
 
-1. **Zero readable delivery provider** (the scope-equality filter matched no `delivery` row, or the record marks it unconfigured/unrecoverable) — per the delivery contract a **read falls back silently** to an empty result. Record the recent-activity view as **empty** with the neutral note `no delivery provider registered`, and continue. No warning, no error, no stop.
+1. **Zero readable delivery provider** (the record's `state` is `unconfigured` or `unrecoverable`) — per the delivery contract a **read falls back silently** to an empty result. Record the recent-activity view as **empty** with the neutral note `no delivery provider registered`, and continue. No warning, no error, no stop.
 
 2. **Read activity.** Otherwise invoke `activity-read` through the resolved delivery fragment (read it and follow it in-context), passing `<since>` = the `--since` value or the default `1 day`. The operation returns recent **commits** (each with its short reference, timestamp, and subject) and recent **pull requests** (each with its title, state, updated-at, and URL), or an empty result — a delivery read never hard-fails (any underlying failure degrades to an empty stream per the contract). Hold the returned commits and pull requests for ranking.
 
@@ -83,9 +83,9 @@ Both surfaces may resolve to no readable provider; standup still produces a brie
 
 Each tracker read consumes an already-resolved status name or scope and performs no write.
 
-1. **Zero readable tracker provider** (the scope-equality filter matched no `tracker` row, or the record marks it unconfigured/unrecoverable):
-   - **Genuinely unconfigured** (every registered manifest readable, none scoped to `tracker`) — **silent** local-only: attempt no tracker operation and surface **no message and no capability term**. Record the three tracker views (work items, milestones, cycles) as empty and continue to Phase 4.
-   - **Registered-but-unrecoverable** (a registered capability's manifest is unrecoverable — recorded root dangled, self-heal recovered nothing) — a tracker **read** stays **silent** local-only exactly as above (the hedged candidate-naming diagnosis is a write-side behaviour; standup writes nothing to the tracker). Record the tracker views empty and continue.
+1. **Zero readable tracker provider** (the record's `state` is `unconfigured` or `unrecoverable`):
+   - **Genuinely unconfigured** (`state: unconfigured` — no capability owns `tracker`) — **silent** local-only: attempt no tracker operation and surface **no message and no capability term**. Record the three tracker views (work items, milestones, cycles) as empty and continue to Phase 4.
+   - **Registered-but-unrecoverable** (`state: unrecoverable` — a registered capability's manifest is unrecoverable, recorded root dangled and self-heal recovered nothing) — a tracker **read** stays **silent** local-only exactly as above (the hedged candidate-naming diagnosis is a write-side behaviour; standup writes nothing to the tracker). Record the tracker views empty and continue.
 
 2. **Resolve the statuses to enumerate.** Use the `--status` values when passed; else the **Standup Statuses** config default (a comma-separated list in significance order); else **none** — in which case skip the by-status enumeration entirely (do not invent a status name — that would hardcode a project constant). Treat the resolved list as significance-ordered: the first status is the most active/important.
 
