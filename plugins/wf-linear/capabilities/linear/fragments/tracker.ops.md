@@ -1,6 +1,6 @@
 # linear tracker provider — runtime ops
 
-**Version:** 1.2.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`)
+**Version:** 1.3.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-282 — `resolve_config` sources `registryPath` from the bundled `wf-resolver` MCP tool's typed `resolve_config` query instead of assuming the `_local/config.md` literal, with `resolve_gate` diagnostics on resolver failure)
 **Role:** the runtime-read half of the linear tracker provider — every input, guard, MCP tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (grounding legend, per-operation grounding status, scope framing, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -32,10 +32,11 @@ Cache both within the run; **do not re-resolve per call**.
 
 **Procedure:**
 
-1. Read the `## Linear` section of `_local/config.md`.
-2. **Configured** — the **Linear Team** row holds a real value: not the `<...>` bracket placeholder `/wf-linear:init`'s template uses for an unset value, and not a missing section/file.
-3. **Unconfigured** — **Linear Team** is still a placeholder, or the section/file is missing entirely. This is the silent local-only fallback the contract's degradation rules define — **no prompt, no error**. (**Linear Project**'s state never gates configured/unconfigured — it is a secondary scoping value, defaulted to the literal `none` when unset.)
-4. No MCP call either way — this operation is purely a local config read.
+1. Call the bundled `wf-resolver` MCP tool `resolve_config` (R1) to obtain `registryPath` — never assume the `_local/config.md` literal; a project's `wf.config.js` may relocate it. On a resolver failure (snapshot-missing/malformed/schema-incompatible/etc.), call `resolve_gate` with `{ surface: "local-read" }` and follow its `reaction` — a local read continues best-effort per `capability-registry.ops.md` §"Resolver-failure semantics" — falling back to the conventional default `_local/config.md` location rather than blocking or prompting.
+2. Read the `## Linear` section at the resolved `registryPath`.
+3. **Configured** — the **Linear Team** row holds a real value: not the `<...>` bracket placeholder `/wf-linear:init`'s template uses for an unset value, and not a missing section/file.
+4. **Unconfigured** — **Linear Team** is still a placeholder, or the section/file is missing entirely. This is the silent local-only fallback the contract's degradation rules define — **no prompt, no error**. (**Linear Project**'s state never gates configured/unconfigured — it is a secondary scoping value, defaulted to the literal `none` when unset.)
+5. Beyond the one `resolve_config` call for the registry location, no further MCP call — the Linear config-section values themselves aren't yet a resolver-supplied fact (the snapshot's `providerConfig` field is populated by the owning provider surface itself, per WF-270, and isn't wired through any typed tool response today), so reading them stays a direct local read anchored to the resolver-supplied path.
 
 **Output:** `configured` or `unconfigured`.
 
