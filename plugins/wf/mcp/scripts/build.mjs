@@ -47,7 +47,16 @@ export async function buildBundle(outDir) {
     outfile: join(outDir, "server.mjs"),
   });
 
-  return ["runtime.mjs", "server.mjs"];
+  // The SessionStart `refresh-if-stale` command (WF-271): a self-contained
+  // bundle (resolver engine inlined) the core plugin's SessionStart hook runs
+  // pre-MCP with a bare `node`.
+  await build({
+    ...COMMON,
+    entryPoints: [join(pkgDir, "src/refresh.ts")],
+    outfile: join(outDir, "refresh-if-stale.mjs"),
+  });
+
+  return ["runtime.mjs", "server.mjs", "refresh-if-stale.mjs"];
 }
 
 // Direct invocation (`npm run build`) writes the committed dist/.

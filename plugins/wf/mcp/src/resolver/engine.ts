@@ -12,7 +12,7 @@ import { execFileSync } from "node:child_process";
 import { normalizeSlashes } from "./paths.js";
 import { buildSnapshot, type BuildSnapshotInputs, type ResolverIO } from "./resolve.js";
 import { writeSnapshot } from "./snapshot-store.js";
-import type { ResolverSnapshot } from "./types.js";
+import { RESOLVER_GENERATOR, type ResolverSnapshot } from "./types.js";
 
 const DEFAULT_REGISTRY_RELPATH = "_local/config.md";
 
@@ -96,7 +96,7 @@ export function resolveSnapshot(opts: ResolveOptions): ResolverSnapshot {
     coreConfigContent,
     pluginListRaw,
     generatedAt: now.toISOString(),
-    generator: opts.generator ?? { name: "wf-resolver", version: "0.1.0" },
+    generator: opts.generator ?? { ...RESOLVER_GENERATOR },
   };
 
   return buildSnapshot(inputs, io);

@@ -23,6 +23,7 @@ import { parseManifest } from "./manifest.js";
 import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
 import { parseCoreConfig } from "./config.js";
 import { fingerprint } from "./fingerprint.js";
+import { normalizePluginList } from "./freshness.js";
 import {
   SNAPSHOT_SCHEMA_VERSION,
   type CapabilityRecord,
@@ -97,8 +98,18 @@ export function buildSnapshot(
   }
   // A `null` plugin-list is a genuine CLI failure/unavailability: record the
   // source as ABSENT (present:false, sha256:null, bytes:null) — never a fake
-  // present `"[]"`. `fingerprint` maps null content to an absent record.
-  sources.push(fingerprint("plugin-list", "claude plugin list --json", inputs.pluginListRaw));
+  // present `"[]"`. `fingerprint` maps null content to an absent record. The raw
+  // output is NORMALIZED first (order-independent projection of the fields the
+  // resolver depends on) so the recorded fingerprint matches what freshness
+  // recomputes at query time — a cosmetic reorder never churns the snapshot,
+  // and add/remove/enable/disable always does (WF-271).
+  sources.push(
+    fingerprint(
+      "plugin-list",
+      "claude plugin list --json",
+      normalizePluginList(inputs.pluginListRaw),
+    ),
+  );
 
   // --- parse inputs --------------------------------------------------------
   const registry = parseRegistry(inputs.registryContent ?? "");

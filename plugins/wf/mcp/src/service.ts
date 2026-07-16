@@ -15,13 +15,15 @@
 // that is the sole mutation of the discovery substrate.
 
 import { sha256Hex } from "./resolver/fingerprint.js";
+import { evaluateFreshness, type StaleReason } from "./resolver/freshness.js";
 import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
-import type {
-  CapabilityRecord,
-  Diagnostic,
-  ResolverSnapshot,
+import {
+  RESOLVER_GENERATOR,
+  type CapabilityRecord,
+  type Diagnostic,
+  type ResolverSnapshot,
 } from "./resolver/types.js";
 
 /** Result of a plugin-list resolution: `ok:false` = the `claude` CLI was
@@ -167,27 +169,52 @@ function degradationFor(surface: string, state: ProviderResponse["state"]): stri
 export class ResolverService {
   private current: ResolverSnapshot | null = null;
   private invalidated = false;
+  /** Reasons the pending/last (in)validation was triggered — surfaced as
+   *  diagnostics so every refresh/invalidation is explainable, never silent. */
+  private pendingReasons: StaleReason[] = [];
+  private lastRefreshReasons: StaleReason[] = [];
 
   constructor(private readonly ports: ResolverServicePorts) {}
 
-  /** Ensure a usable snapshot exists, rebuilding when invalidated or uncached.
-   *  This is the single discovery point — read queries never re-discover. */
+  /** Ensure a usable, FRESH snapshot exists — the query-time correctness
+   *  backstop. Every typed query routes through here; before reusing a cached or
+   *  in-memory snapshot it re-validates the recorded input fingerprints and the
+   *  schema/resolver version, rebuilding on any mismatch. Validation re-reads
+   *  ONLY the exact source paths the snapshot recorded (via `ports.readFile`) —
+   *  it never lists/walks capability folders, so unchanged inputs are a cheap
+   *  hash comparison with no rediscovery. Freshness is fingerprint-driven only;
+   *  there is no elapsed-time / TTL path. */
   private ensure(): ResolverSnapshot {
-    if (this.current && !this.invalidated) return this.current;
-    if (this.invalidated) {
-      this.current = this.ports.resolveFresh();
-      this.ports.persist(this.current);
-      this.invalidated = false;
-      return this.current;
+    if (this.invalidated) return this.rebuild();
+
+    const candidate = this.current ?? this.ports.readCache();
+    if (!candidate) {
+      this.pendingReasons = [
+        { code: "cache/absent", message: "no snapshot cached yet; building the first." },
+      ];
+      return this.rebuild();
     }
-    // Cold: prefer the persisted cache; build + persist only when absent.
-    const cached = this.ports.readCache();
-    if (cached) {
-      this.current = cached;
-      return cached;
+
+    const { fresh, reasons } = evaluateFreshness(candidate, this.ports.workspaceRoot, {
+      readFile: (p) => this.ports.readFile(p),
+      generatorVersion: RESOLVER_GENERATOR.version,
+    });
+    if (!fresh) {
+      this.pendingReasons = reasons;
+      return this.rebuild();
     }
+
+    this.current = candidate;
+    return candidate;
+  }
+
+  /** Full rediscovery + atomic persist. The ONE place a snapshot is built. */
+  private rebuild(): ResolverSnapshot {
     this.current = this.ports.resolveFresh();
     this.ports.persist(this.current);
+    this.invalidated = false;
+    this.lastRefreshReasons = this.pendingReasons;
+    this.pendingReasons = [];
     return this.current;
   }
 
@@ -274,6 +301,18 @@ export class ResolverService {
     // Report state WITHOUT forcing a rebuild: prefer the in-memory view, else
     // peek the cache. An invalidated session reports valid:false until refresh.
     const snap = this.current ?? this.ports.readCache();
+    // Surface freshness reasons as diagnostics: pending reasons while
+    // invalidated (why the next query rebuilds), else the reasons that drove the
+    // last rebuild (why the current view was refreshed).
+    const reasons = this.invalidated ? this.pendingReasons : this.lastRefreshReasons;
+    const diagnostics: Diagnostic[] = [...(snap?.diagnostics ?? [])];
+    for (const r of reasons) {
+      diagnostics.push({
+        severity: "info",
+        code: `freshness/${r.code}`,
+        message: r.source ? `${r.message} (${r.source})` : r.message,
+      });
+    }
     return {
       valid: !this.invalidated && snap !== null,
       cached: snap !== null,
@@ -284,19 +323,34 @@ export class ResolverService {
         packs: snap?.packs.length ?? 0,
         providers: snap?.providerOwnership.length ?? 0,
       },
-      diagnostics: snap?.diagnostics ?? [],
+      diagnostics,
     };
   }
 
-  refresh(): LifecycleResponse {
-    this.current = this.ports.resolveFresh();
-    this.ports.persist(this.current);
-    this.invalidated = false;
+  /** Force a full rebuild + persist now, recording an explicit request reason so
+   *  the resulting view carries a diagnostic explaining why it was refreshed. */
+  refresh(reasons: StaleReason[] = []): LifecycleResponse {
+    this.pendingReasons = reasons.length
+      ? reasons
+      : [{ code: "explicit-request", message: "explicit refresh requested." }];
+    this.rebuild();
     return this.inspect();
   }
 
-  invalidate(): LifecycleResponse {
+  /** Mark the resolved view stale so the next query (or an explicit refresh)
+   *  rebuilds it. Typed consumers may record suspected-stale reasons, which the
+   *  next inspect/rebuild surfaces as diagnostics (concurrency-safe: only the
+   *  in-memory flag flips; the persisted cache is untouched until the rebuild). */
+  invalidate(reasons: StaleReason[] = []): LifecycleResponse {
     this.invalidated = true;
+    this.pendingReasons = reasons.length
+      ? reasons
+      : [
+          {
+            code: "suspected-stale",
+            message: "resolved view marked stale by an explicit invalidate request.",
+          },
+        ];
     return this.inspect();
   }
 

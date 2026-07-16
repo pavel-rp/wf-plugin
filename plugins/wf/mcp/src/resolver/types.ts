@@ -16,6 +16,13 @@
  *  snapshot whose `schemaVersion` differs from this value. */
 export const SNAPSHOT_SCHEMA_VERSION = 1;
 
+/** Identity of the resolver runtime that stamps a snapshot. `version` is part of
+ *  the freshness contract (WF-271): a snapshot built by a different resolver
+ *  version is refreshed, so a runtime upgrade never serves a snapshot shaped by
+ *  older resolution logic. Bump on any resolution-logic change that should
+ *  invalidate previously persisted snapshots. */
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" } as const;
+
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */
 export const SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";

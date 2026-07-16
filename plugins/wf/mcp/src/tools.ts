@@ -102,6 +102,26 @@ const registerInput = fromJsonSchema({
   additionalProperties: false,
 });
 
+const reasonsInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    reasons: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional typed suspected-stale reasons (one short message each) recorded as diagnostics on the resulting lifecycle state.",
+    },
+  },
+  additionalProperties: false,
+});
+
+/** Map optional caller-supplied reason strings to typed StaleReasons. */
+function toReasons(reasons: string[] | undefined, code: string): Array<{ code: string; message: string }> {
+  return (reasons ?? [])
+    .filter((r) => typeof r === "string" && r.trim().length > 0)
+    .map((message) => ({ code, message: message.trim() }));
+}
+
 /** Register every typed resolver tool on the server, backed by one service. */
 export function registerResolverTools(server: McpServer, service: ResolverService): void {
   server.registerTool(
@@ -196,9 +216,12 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     "resolve_refresh",
     {
       title: "resolve refresh",
-      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state.",
+      description:
+        "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state. Optional `reasons` are recorded as diagnostics explaining the refresh.",
+      inputSchema: reasonsInput,
     },
-    async () => guard(() => service.refresh()),
+    async (args: { reasons?: string[] }) =>
+      guard(() => service.refresh(toReasons(args?.reasons, "explicit-request"))),
   );
 
   server.registerTool(
@@ -206,8 +229,10 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     {
       title: "resolve invalidate",
       description:
-        "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Returns the lifecycle state.",
+        "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Typed consumers may pass `reasons` (suspected-stale messages) which surface as diagnostics. Returns the lifecycle state.",
+      inputSchema: reasonsInput,
     },
-    async () => guard(() => service.invalidate()),
+    async (args: { reasons?: string[] }) =>
+      guard(() => service.invalidate(toReasons(args?.reasons, "suspected-stale"))),
   );
 }
