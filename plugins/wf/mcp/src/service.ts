@@ -144,9 +144,12 @@ export interface SurfaceGateResponse {
   diagnostics: Diagnostic[];
   /** Deduplicated recovery paths (each names a `/wf:resolve` action). Empty when healthy. */
   recovery: string[];
-  /** Invariant marker (C008): the failure path surfaces diagnostics + recovery
-   *  and NEVER falls back to folder-walking or environment probing. Always false
-   *  — no probe of any kind occurs while assessing a failure. */
+  /** Invariant marker (C008): while assessing a failure, the surface gate NEVER
+   *  falls back to a fallback folder-walk (`listDirs`) or environment probe
+   *  (`listPlugins`) — it serves the last-known snapshot + classified failure.
+   *  Always false. (This is the no-FALLBACK-probe guarantee proven by
+   *  `failure-semantics.test.ts` via `listDirs === 0` / `listPlugins === 0`; a
+   *  normal freshness `ensure()`/rebuild is a legitimate rebuild, not a probe.) */
   probed: false;
 }
 
@@ -426,18 +429,10 @@ export class ResolverService {
         recovery: recoveryFor(failure.category),
       });
     }
-    // A hard build failure with NO usable snapshot is itself a failure signal
-    // even if it produced no diagnostics list.
-    if (!snapshot && !failure) {
-      diagnostics.push({
-        severity: "error",
-        code: "resolver/snapshot-missing",
-        message: "no resolution snapshot is available (failed input: resolution snapshot)",
-        category: "snapshot-missing",
-        recovery: recoveryFor("snapshot-missing"),
-      });
-    }
-
+    // A hard build failure surfaces through `failure` above: `ensure()` either
+    // returns a non-null snapshot or throws (which `safeEnsure()` classifies into
+    // a non-null `failure`), so `!snapshot && !failure` is unreachable — a missing
+    // snapshot always arrives paired with a classified failure.
     const healthy = diagnostics.length === 0 && snapshot !== null;
     const categories = [
       ...new Set(diagnostics.map((d) => d.category).filter((c): c is ResolverErrorCategory => !!c)),

@@ -153,7 +153,10 @@ export type ResolverErrorCategory =
   | "fingerprint-unresolvable"
   /** `claude plugin list --json` could not run; installed-pack facts are unknown. */
   | "cli-unavailable"
-  /** The `## Capabilities` registry / a capability manifest / a profile is invalid. */
+  /** The `## Capabilities` registry / a capability manifest / a profile is invalid,
+   *  OR a `plugin-list/*` CLI-output-contract (schema-drift) error — the CLI ran
+   *  but its `--json` output failed the expected schema. Distinct from
+   *  `cli-unavailable`, which is the CLI-absent/failed-to-run case. */
   | "registry-invalid";
 
 /** Enumerated categories, for validation and exhaustiveness. */

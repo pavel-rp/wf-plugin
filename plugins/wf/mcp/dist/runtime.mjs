@@ -20389,15 +20389,6 @@ var ResolverService = class {
         recovery: recoveryFor(failure.category)
       });
     }
-    if (!snapshot && !failure) {
-      diagnostics.push({
-        severity: "error",
-        code: "resolver/snapshot-missing",
-        message: "no resolution snapshot is available (failed input: resolution snapshot)",
-        category: "snapshot-missing",
-        recovery: recoveryFor("snapshot-missing")
-      });
-    }
     const healthy = diagnostics.length === 0 && snapshot !== null;
     const categories = [
       ...new Set(diagnostics.map((d) => d.category).filter((c) => !!c))
