@@ -30,7 +30,7 @@ Invoke the **Task** tool with `subagent_type: wf:branch`, passing:
 
 - `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
 
-This is a **direct invocation** — the top of its own delivery chain — so **no forwarded resolution record is passed**; the `wf:branch` subagent self-resolves the `delivery` surface once (`invocation-runtime.ops.md` §"Run-scoped provider forwarding"). When another `wf:*` skill invokes `wf:branch` via the **Task** tool as part of a larger run (e.g. `wf:commit`'s branch gate), that parent forwards its resolved `delivery` record and the subagent consumes it instead of re-resolving.
+This is a **direct invocation** — the top of its own delivery chain — so **no forwarded resolution record is passed**; the `wf:branch` subagent self-resolves the `delivery` surface once via the `wf-resolver` `resolve_provider("delivery")` query. When another `wf:*` skill invokes `wf:branch` via the **Task** tool as part of a larger run (e.g. `wf:commit`'s branch gate), that parent forwards its resolved `delivery` record and the subagent consumes it instead of re-resolving.
 
 Emit the subagent's Final Output block (`BRANCH — created`, `BRANCH — switched`, `BRANCH — already-active`, or `BRANCH — Error`) verbatim. **No narrative before or after the block** — the subagent already owns the user-facing output.
 
@@ -45,12 +45,12 @@ The subagent owns every stop condition; each surfaces through the Final Output b
 - **Dirty working tree** — `BRANCH — Error`; uncommitted changes block the base switch. Commit or stash first.
 - **Detached HEAD** — `BRANCH — Error`; branches cannot be created from a detached HEAD.
 - **Unresolvable task ID** — `BRANCH — Error`; no ID was passed and none could be inferred from the current branch.
-- **Missing config** — `BRANCH — Error`; `_local/config.md` is absent (run `/wf:init` first).
+- **Missing config** — `BRANCH — Error`; the resolver reports the project is uninitialized (absent `_local/config.md` — run `/wf:init` first).
 - **Missing task folder or plan/spec/reqs artifacts** — not an error; the subagent works from any state. It falls back to a single tracker `get` (when a tracker is registered) or, failing that, the bare task id, to derive the branch name — never blocking on `/wf:spec` having run first.
 - **No resolvable workspace root** — `BRANCH — Error`; with a delivery provider active, `workspace-root-resolve` found no working tree to resolve.
 - **Base-branch fetch failure** — `BRANCH — Error` when the delivery provider's remote exists but fetching the latest base fails; with no remote configured it silently branches from the local base instead.
 - **Index update failure** — non-fatal; the branch still succeeds and `<tracking>` carries an appended ` (index update failed)`.
-- **No readable delivery provider (two-mode diagnosis)** — `BRANCH — Error`; no delivery operation of any kind is attempted. The subagent splits the reason by cause: **(a) genuinely unconfigured** (every registered manifest is readable and none is scoped to `delivery`) — states plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`); **(b) registered-but-unrecoverable** (a registered capability's manifest can't be read — its recorded root dangled and the install-manifest self-heal recovered nothing) — names the unreadable-manifest pack(s) as hedged candidates ("if one is your `delivery` provider, fix its stale root / re-run its init"), never asserting one owns the surface and never telling you to register a provider you already have.
+- **No readable delivery provider (two-mode diagnosis)** — `BRANCH — Error`; no delivery operation of any kind is attempted. The subagent splits the reason on the `resolve_provider("delivery")` record's `state`: **(a) `state: unconfigured`** (no capability owns `delivery`) — states plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`); **(b) `state: unrecoverable`** (a registered capability's manifest can't be read — its recorded root dangled and the install-manifest self-heal recovered nothing) — names the record's `candidates` pack(s) as hedged candidates ("if one is your `delivery` provider, fix its stale root / re-run its init"), never asserting one owns the surface and never telling you to register a provider you already have.
 
 ---
 
