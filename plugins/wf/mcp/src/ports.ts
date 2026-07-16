@@ -7,7 +7,8 @@
 // of its ports and can be tested with in-memory doubles.
 
 import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   extractRegistryPath,
   fsIO,
@@ -29,6 +30,21 @@ export function resolveWorkspaceRoot(): string {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
 }
 
+/** Resolve the core `wf` plugin root — the anchor for `contract` / `shared` /
+ *  core `references-template` content refs. This module is bundled into
+ *  `<coreRoot>/mcp/dist/runtime.mjs`, so `import.meta.url` locates the server's
+ *  own install and two directory levels up is the core plugin root — no registry
+ *  or CLI dependency, correct in-tree and out-of-tree, and it moves with the
+ *  install (so a version bump never re-prompts). `WF_CORE_PLUGIN_ROOT` overrides
+ *  it (tests / non-standard hosts). */
+export function resolveCorePluginRoot(): string {
+  if (process.env.WF_CORE_PLUGIN_ROOT) {
+    return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
+  }
+  const here = fileURLToPath(import.meta.url); // .../plugins/wf/mcp/dist/runtime.mjs
+  return normalizeSlashes(resolve(dirname(here), "..", "..")); // .../plugins/wf
+}
+
 export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts {
   const registryRelPath = (): string => {
     const wfConfig = fsIO.readFile(joinSlash(workspaceRoot, "wf.config.js"));
@@ -37,6 +53,7 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
 
   return {
     workspaceRoot,
+    corePluginRoot: resolveCorePluginRoot(),
 
     resolveFresh: () => resolveSnapshot({ workspaceRoot }),
 

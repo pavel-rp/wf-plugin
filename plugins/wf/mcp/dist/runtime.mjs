@@ -9978,14 +9978,14 @@ function inputRequiredRoundsExceededMessage(method, maxRounds) {
   return `Multi-round-trip request '${method}' still required input after ${maxRounds} rounds (inputRequired.maxRounds)`;
 }
 function sleep(ms, signal) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve2, reject) => {
     if (signal?.aborted) {
       reject(signal.reason instanceof SdkError ? signal.reason : new SdkError(SdkErrorCode.RequestTimeout, String(signal.reason)));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve();
+      resolve2();
     }, ms);
     const onAbort = () => {
       clearTimeout(timer);
@@ -10778,7 +10778,7 @@ var Protocol = class {
     const flowStartedAt = Date.now();
     let onAbort;
     let cleanupMessageId;
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -10846,7 +10846,7 @@ var Protocol = class {
         }
         if (decoded.kind === "invalid") return reject(decoded.error);
         if (decoded.kind === "input_required") {
-          if (options?.allowInputRequired === true) return resolve(manualInputRequiredValue(decoded));
+          if (options?.allowInputRequired === true) return resolve2(manualInputRequiredValue(decoded));
           const flow = {
             codec,
             request,
@@ -10858,11 +10858,11 @@ var Protocol = class {
               params
             }, resultSchema, legOptions)
           };
-          return resolve(this._resolveNonCompleteResult(decoded, flow));
+          return resolve2(this._resolveNonCompleteResult(decoded, flow));
         }
         const result = decoded.result;
         validateStandardSchema(resultSchema, result).then((parseResult) => {
-          if (parseResult.success) resolve(parseResult.data);
+          if (parseResult.success) resolve2(parseResult.data);
           else reject(new SdkError(SdkErrorCode.InvalidResult, `Invalid result for ${request.method}: ${parseResult.error}`));
         }, reject);
       });
@@ -13778,7 +13778,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
     ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, ref);
     const schOrFunc = root.refs[ref];
     if (schOrFunc) return schOrFunc;
-    let _sch = resolve.call(this, root, ref);
+    let _sch = resolve2.call(this, root, ref);
     if (_sch === void 0) {
       const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
       const { schemaId } = this.opts;
@@ -13804,7 +13804,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
   function sameSchemaEnv(s1, s2) {
     return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
   }
-  function resolve(root, ref) {
+  function resolve2(root, ref) {
     let sch;
     while (typeof (sch = this.refs[ref]) == "string") ref = sch;
     return sch || this.schemas[ref] || resolveSchema.call(this, root, ref);
@@ -14254,7 +14254,7 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
     else if (typeof uri === "object") uri = parse3(serialize(uri, options), options);
     return uri;
   }
-  function resolve(baseURI, relativeURI, options) {
+  function resolve2(baseURI, relativeURI, options) {
     const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
     const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
     schemelessOptions.skipEscape = true;
@@ -14428,7 +14428,7 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
   const fastUri = {
     SCHEMES,
     normalize,
-    resolve,
+    resolve: resolve2,
     resolveComponent,
     equal,
     serialize,
@@ -19364,7 +19364,7 @@ var StdioServerTransport = class {
   }
   send(message) {
     if (this._closed) return Promise.reject(/* @__PURE__ */ new Error("StdioServerTransport is closed"));
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       const json = serializeMessage(message);
       let settled = false;
       const onError = (error2) => {
@@ -19379,14 +19379,14 @@ var StdioServerTransport = class {
         settled = true;
         this._stdout.off("error", onError);
         this._stdout.off("drain", onDrain);
-        resolve();
+        resolve2();
       };
       this._stdout.once("error", onError);
       if (this._stdout.write(json)) {
         if (settled) return;
         settled = true;
         this._stdout.off("error", onError);
-        resolve();
+        resolve2();
       } else if (!settled) this._stdout.once("drain", onDrain);
     });
   }
@@ -19440,14 +19440,14 @@ var StdioConnectionChannel = class {
   */
   async whenRequestsAnswered(timeoutMs) {
     if (this._closed || this._pendingRequests.size === 0) return true;
-    return await new Promise((resolve) => {
+    return await new Promise((resolve2) => {
       const waiter = () => {
         clearTimeout(timer);
-        resolve(true);
+        resolve2(true);
       };
       const timer = setTimeout(() => {
         this._drainWaiters = this._drainWaiters.filter((pending) => pending !== waiter);
-        resolve(false);
+        resolve2(false);
       }, timeoutMs);
       this._drainWaiters.push(waiter);
     });
@@ -20085,6 +20085,168 @@ function evaluateFreshness(snapshot, workspaceRoot, probe) {
   return { fresh: reasons.length === 0, reasons };
 }
 
+// src/resolver/content.ts
+var CONTENT_REF_CLASSES = [
+  "fragment",
+  "contract",
+  "shared",
+  "references-template",
+  "profile-template"
+];
+var CORE_PLUGIN_ALIASES = /* @__PURE__ */ new Set(["", "wf", "core"]);
+function isSafeRelPath(p) {
+  if (p.length === 0) return false;
+  const n = normalizeSlashes(p);
+  if (n.includes("\\")) return false;
+  if (n.startsWith("/") || isAbsoluteRoot(n)) return false;
+  return !n.split("/").some((seg) => seg === "." || seg === ".." || seg === "");
+}
+function isBareFilename(p) {
+  return isSafeRelPath(p) && !p.includes("/");
+}
+function isSkillSlug(s) {
+  return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
+}
+function baseName(p) {
+  const n = normalizeSlashes(p);
+  const i = n.lastIndexOf("/");
+  return i >= 0 ? n.slice(i + 1) : n;
+}
+function toAbsolute(workspaceRoot, snapshotPath2) {
+  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
+}
+function refused(refClass, reason) {
+  return { kind: "refused", refClass, reason };
+}
+function unresolved(refClass, message) {
+  return {
+    kind: "unresolved",
+    refClass,
+    category: "registry-invalid",
+    recovery: recoveryFor("registry-invalid"),
+    message
+  };
+}
+function resolveContentRef(ref, ctx) {
+  const rawClass = typeof ref.class === "string" ? ref.class.trim() : "";
+  if (!CONTENT_REF_CLASSES.includes(rawClass)) {
+    return refused(
+      rawClass || "(missing)",
+      `unknown content class \`${rawClass || "(missing)"}\`; served classes are ${CONTENT_REF_CLASSES.join(", ")}. Skill bodies and CI-only fixtures are not served.`
+    );
+  }
+  const refClass = rawClass;
+  const { snapshot, workspaceRoot, corePluginRoot } = ctx;
+  switch (refClass) {
+    case "fragment":
+      return resolveFragment(ref, snapshot, workspaceRoot);
+    case "profile-template":
+      return resolveProfileTemplate(ref, snapshot, workspaceRoot);
+    case "contract":
+      return resolveCoreDoc(refClass, ref, corePluginRoot, "skills/_contracts");
+    case "shared":
+      return resolveCoreDoc(refClass, ref, corePluginRoot, "skills/_shared");
+    case "references-template":
+      return resolveReferencesTemplate(ref, ctx);
+  }
+}
+function resolveFragment(ref, snapshot, workspaceRoot) {
+  const cls = "fragment";
+  const capability = ref.capability?.trim();
+  if (!capability) return refused(cls, "a `fragment` ref requires a `capability` name.");
+  if (typeof ref.ref !== "string" || !isSafeRelPath(ref.ref)) {
+    return refused(cls, "a `fragment` ref requires a safe relative `ref` (no `..`, no absolute path).");
+  }
+  if (baseName(ref.ref) === "SKILL.md") {
+    return refused(cls, "a skill body (`SKILL.md`) is not served by the content surface.");
+  }
+  if (!ref.ref.endsWith(".md")) {
+    return refused(cls, "a `fragment` ref must name a `.md` doc; CI-only fixtures/scripts are not served.");
+  }
+  const cap = snapshot.capabilities.find((c) => c.name === capability);
+  if (!cap) {
+    return unresolved(cls, `capability \`${capability}\` is not in the active registry.`);
+  }
+  if (cap.validity !== "ok" || !cap.resolvedPath) {
+    return unresolved(
+      cls,
+      `capability \`${capability}\` has no readable manifest (its plugin root dangles and self-heal recovered nothing) \u2014 its fragments cannot be served.`
+    );
+  }
+  return {
+    kind: "path",
+    refClass: cls,
+    path: joinSlash(toAbsolute(workspaceRoot, cap.resolvedPath), ref.ref)
+  };
+}
+function resolveProfileTemplate(ref, snapshot, workspaceRoot) {
+  const cls = "profile-template";
+  const capability = ref.capability?.trim();
+  if (!capability) return refused(cls, "a `profile-template` ref requires a `capability` name.");
+  const cap = snapshot.capabilities.find((c) => c.name === capability);
+  if (!cap) {
+    return unresolved(cls, `capability \`${capability}\` is not in the active registry.`);
+  }
+  if (cap.validity !== "ok") {
+    return unresolved(
+      cls,
+      `capability \`${capability}\` has no readable manifest (dangling plugin root, self-heal recovered nothing) \u2014 its profile template cannot be served.`
+    );
+  }
+  if (!cap.profileTemplatePath) {
+    return unresolved(cls, `capability \`${capability}\` declares no \`profile-template:\` in its manifest.`);
+  }
+  return {
+    kind: "path",
+    refClass: cls,
+    path: toAbsolute(workspaceRoot, cap.profileTemplatePath)
+  };
+}
+function resolveCoreDoc(cls, ref, corePluginRoot, subDir) {
+  const name = typeof ref.ref === "string" ? ref.ref.trim() : "";
+  if (!isBareFilename(name)) {
+    return refused(cls, `a \`${cls}\` ref requires a bare filename (no sub-path); CI-only fixtures under sub-folders are not served.`);
+  }
+  if (name === "SKILL.md") {
+    return refused(cls, "a skill body (`SKILL.md`) is not served by the content surface.");
+  }
+  if (!name.endsWith(".md")) {
+    return refused(cls, `a \`${cls}\` ref must name a \`.md\` doc; validator scripts / fixture inputs are not served.`);
+  }
+  return { kind: "path", refClass: cls, path: joinSlash(corePluginRoot, subDir, name) };
+}
+function resolveReferencesTemplate(ref, ctx) {
+  const cls = "references-template";
+  const { snapshot, workspaceRoot, corePluginRoot } = ctx;
+  if (!isSkillSlug(ref.skill)) {
+    return refused(cls, "a `references-template` ref requires a `skill` slug (lowercase, hyphenated).");
+  }
+  if (typeof ref.ref !== "string" || !isSafeRelPath(ref.ref)) {
+    return refused(cls, "a `references-template` ref requires a safe relative `ref` (no `..`, no absolute path).");
+  }
+  if (baseName(ref.ref) === "SKILL.md") {
+    return refused(cls, "a skill body (`SKILL.md`) is not served by the content surface.");
+  }
+  if (!ref.ref.endsWith(".md")) {
+    return refused(cls, "a `references-template` ref must name a `.md` doc.");
+  }
+  const plugin = (ref.plugin ?? "").trim();
+  let root;
+  if (CORE_PLUGIN_ALIASES.has(plugin)) {
+    root = corePluginRoot;
+  } else {
+    const rootRow = snapshot.pluginRoots.find((r) => r.plugin === plugin);
+    if (!rootRow || !rootRow.resolvedRoot) {
+      return unresolved(
+        cls,
+        `plugin \`${plugin}\` has no resolved root (unmapped, or its recorded root dangles and self-heal recovered nothing) \u2014 its skill references cannot be served.`
+      );
+    }
+    root = toAbsolute(workspaceRoot, rootRow.resolvedRoot);
+  }
+  return { kind: "path", refClass: cls, path: joinSlash(root, "skills", ref.skill, "references", ref.ref) };
+}
+
 // src/resolver/registry-edit.ts
 function splitRow(line) {
   const trimmed = line.trim();
@@ -20307,6 +20469,68 @@ var ResolverService = class {
     const s = this.ensure();
     const present = Object.prototype.hasOwnProperty.call(s.profiles, capability);
     return { capability, present, values: present ? s.profiles[capability] : null };
+  }
+  // --- content surface (WF-302): resolve + read a bundled-doc body ---------
+  /** Resolve a logical content ref (one of the five served classes) and read
+   *  its body via the server's OWN Node `fs` (the `ports.readFile` port) — never
+   *  a caller-side raw read. Resolution reuses the C008 snapshot facts (no second
+   *  resolution engine); the body is read on demand and returned in the response
+   *  only, so the persisted snapshot stays body-free. An unresolvable/unrecoverable
+   *  ref, or a resolver-build failure, reports the matching `resolve_gate`
+   *  degradation class with a `/wf:resolve` recovery path — never a wrong-path
+   *  body, never a raw-read fall-through. An out-of-class ref (skill body, CI-only
+   *  fixture) is refused. */
+  resolveContent(ref) {
+    let snapshot;
+    try {
+      snapshot = this.ensure();
+    } catch (err) {
+      const failure = classifyThrow(err);
+      return {
+        status: "unresolved",
+        refClass: null,
+        category: failure.category,
+        reaction: "continue",
+        recovery: recoveryFor(failure.category),
+        message: `${failure.message} (failed input: ${failure.failedInput})`
+      };
+    }
+    const plan = resolveContentRef(ref, {
+      snapshot,
+      workspaceRoot: this.ports.workspaceRoot,
+      corePluginRoot: this.ports.corePluginRoot
+    });
+    if (plan.kind === "refused") {
+      return { status: "refused", refClass: plan.refClass, reason: plan.reason };
+    }
+    if (plan.kind === "unresolved") {
+      return {
+        status: "unresolved",
+        refClass: plan.refClass,
+        category: plan.category,
+        reaction: "continue",
+        recovery: plan.recovery,
+        message: plan.message
+      };
+    }
+    const content = this.ports.readFile(plan.path);
+    if (content === null) {
+      return {
+        status: "unresolved",
+        refClass: plan.refClass,
+        category: "registry-invalid",
+        reaction: "continue",
+        recovery: recoveryFor("registry-invalid"),
+        message: `the ref resolved to \`${plan.path}\` but no file is present there \u2014 re-check the ref, or run \`/wf:resolve refresh\` if the pack was relocated.`
+      };
+    }
+    return {
+      status: "served",
+      refClass: plan.refClass,
+      path: plan.path,
+      content,
+      bytes: Buffer.byteLength(content, "utf8")
+    };
   }
   // --- R5 -----------------------------------------------------------------
   resolvePluginRoot(plugin) {
@@ -20544,7 +20768,8 @@ var ResolverService = class {
 
 // src/ports.ts
 import { mkdirSync as mkdirSync2, readdirSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2 } from "node:path";
+import { dirname as dirname2, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // src/resolver/registry.ts
 function splitRow2(line) {
@@ -21099,6 +21324,13 @@ var DEFAULT_REGISTRY_RELPATH2 = "_local/config.md";
 function resolveWorkspaceRoot() {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
 }
+function resolveCorePluginRoot() {
+  if (process.env.WF_CORE_PLUGIN_ROOT) {
+    return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
+  }
+  const here = fileURLToPath(import.meta.url);
+  return normalizeSlashes(resolve(dirname2(here), "..", ".."));
+}
 function createDefaultPorts(workspaceRoot) {
   const registryRelPath = () => {
     const wfConfig = fsIO.readFile(joinSlash(workspaceRoot, "wf.config.js"));
@@ -21106,6 +21338,7 @@ function createDefaultPorts(workspaceRoot) {
   };
   return {
     workspaceRoot,
+    corePluginRoot: resolveCorePluginRoot(),
     resolveFresh: () => resolveSnapshot({ workspaceRoot }),
     persist: (snapshot) => {
       writeSnapshot(workspaceRoot, snapshot);
@@ -21206,6 +21439,34 @@ var pluginIdInput = fromJsonSchema2({
   required: ["pluginId"],
   additionalProperties: false
 });
+var contentInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    class: {
+      type: "string",
+      enum: ["fragment", "contract", "shared", "references-template", "profile-template"],
+      description: "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), or `profile-template` (a pack's `profile.template.json` body). Skill bodies and CI-only fixtures are not served."
+    },
+    capability: {
+      type: "string",
+      description: "Registered capability name \u2014 required for `fragment` and `profile-template`."
+    },
+    plugin: {
+      type: "string",
+      description: "Plugin name for a pack-owned `references-template`; omit (or use `wf`/`core`) for a core-plugin skill."
+    },
+    skill: {
+      type: "string",
+      description: "Skill slug \u2014 required for `references-template`."
+    },
+    ref: {
+      type: "string",
+      description: "The relative doc ref: within the capability folder (`fragment`), a bare filename (`contract` / `shared`), or within the skill's `references/` folder (`references-template`). Unused by `profile-template`."
+    }
+  },
+  required: ["class"],
+  additionalProperties: false
+});
 var registerInput = fromJsonSchema2({
   type: "object",
   properties: {
@@ -21278,6 +21539,15 @@ function registerResolverTools(server, service) {
       inputSchema: pluginInput
     },
     async (args) => guard(() => service.resolvePluginRoot(args.plugin))
+  );
+  server.registerTool(
+    "resolve_content",
+    {
+      title: "resolve content",
+      description: "Resolve + read a bundled-doc BODY for one of five logical content-ref classes (fragment | contract | shared | references-template | profile-template), read by the server's own Node fs. Returns `{status: served, path, content}` on success; on an unresolvable/unrecoverable ref returns `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path \u2014 the metadata queries stay body-free.",
+      inputSchema: contentInput
+    },
+    async (args) => guard(() => service.resolveContent(args))
   );
   server.registerTool(
     "inspect_pack",
