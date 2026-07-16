@@ -177,8 +177,9 @@ validated every registered capability there.
 
 1. `selfCheck: "ok"` → both `audit` and `sr` resolve. Record `PASS`.
 2. `selfCheck: "failed"` → call `resolve_registry` again and find the entry (or entries)
-   named `audit`/`sr` carrying `validity: "unrecoverable"`. Record `FAIL`, naming which
-   capability and its `manifestPath`. This means the pack is unrecoverable even after the
+   named `audit`/`sr` carrying `validity: "unrecoverable"`. Its `manifestPath` is `null`
+   at that point — record `FAIL`, naming which capability and its `registryPath` (the
+   stable registered token) instead. This means the pack is unrecoverable even after the
    write — surface it loudly and direct the user to re-run `/wf-audit:init` (or fix a
    relocated/corrupted pack); do not report success.
 3. `selfCheck: "skipped"` only accompanies a `rejected` status (Phase 2) — already handled

@@ -159,7 +159,8 @@ validated the registered capability there.
 
 1. `selfCheck: "ok"` → `browser-qa` resolves. Record `PASS`.
 2. `selfCheck: "failed"` → call `resolve_registry` again and find the `browser-qa` entry
-   carrying `validity: "unrecoverable"`. Record `FAIL`, naming its `manifestPath`. This
+   carrying `validity: "unrecoverable"`. Its `manifestPath` is `null` at that point —
+   record `FAIL`, naming its `registryPath` (the stable registered token) instead. This
    means the pack is unrecoverable even after the write — surface it loudly and direct
    the user to re-run `/wf-browser-qa:init` (or fix a relocated/corrupted pack); do not
    report success.
