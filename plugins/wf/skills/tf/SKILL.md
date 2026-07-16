@@ -14,7 +14,7 @@ Core reaches merge/comment/close only through the abstract **delivery** and **tr
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project values. If the file is absent, stop and instruct the user to run `/wf:init` first. `{task-root}` below comes from that file — never hardcode it. A registered tracker capability resolves its own project-scoped config from its own fragment binding; core never reads it directly.
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). `{task-root}` below comes from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. A registered tracker capability resolves its own project-scoped config from its own fragment binding; core never reads it directly.
 
 ---
 
@@ -41,9 +41,9 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 
 **Allowed:**
 
-- Read `_local/config.md`, the task folder, and its artifacts.
-- Read-only resolution via `workspace-root-resolve` and `current-branch-query` (direct provider resolution to the `delivery` surface).
-- Invoke `pr-merge` (delivery) once for the task's pull request, and `post_comment` / `set_status` (tracker) once each, all via **direct provider resolution** (read the resolved fragment and follow it in-context).
+- Read the task folder and its artifacts; obtain config via the `wf-resolver` `resolve_config` query.
+- Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query).
+- Invoke `pr-merge` (delivery) once for the task's pull request, and `post_comment` / `set_status` (tracker) once each, all through the surface's `wf-resolver` `resolve_provider(surface)` record (read the resolved fragment and follow it in-context).
 - Write/create `09_finalize.md` **only** inside the task folder, and **move** the task folder to `{task-root}/_archive/` — both are local operations inside `{task-root}` (the whole `_local/` tree is gitignored), never a version-control operation.
 - Invoke the **Task** tool with `subagent_type: wf:index` to update the per-task index.
 
@@ -58,9 +58,9 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 
 ## Phase 1: Resolve the task id and locate the task folder
 
-1. **Resolve `{task-id}`** (the opaque id): use the `<id>` argument verbatim when passed. When omitted, infer it: resolve the current branch via `current-branch-query` (direct provider resolution to the `delivery` surface — see Phase 2; with no delivery provider registered this resolves nothing and inference falls to the folder scan below), extract the first 3+-digit run as a token, and resolve that token against `{task-root}` by applying the same first-3+-digit-run extraction to each existing task folder's name (this matches both a tracker-prefixed shape and the local `T<NNN>` scheme). **Exactly one match** — reuse that folder's full name as `{task-id}` (never reconstruct it from a prefix). **More than one match** → stop: "Ambiguous id: the branch-inferred token matches more than one task folder; pass the id explicitly." **Zero matches / no extractable token** → stop: "No task id provided and none could be inferred from the current branch. Pass the id explicitly: /wf:tf <id>."
+1. **Resolve `{task-id}`** (the opaque id): use the `<id>` argument verbatim when passed. When omitted, infer it: resolve the current branch via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query — see Phase 2; on `state: unconfigured`/`unrecoverable` this resolves nothing and inference falls to the folder scan below), extract the first 3+-digit run as a token, and resolve that token against `{task-root}` by applying the same first-3+-digit-run extraction to each existing task folder's name (this matches both a tracker-prefixed shape and the local `T<NNN>` scheme). **Exactly one match** — reuse that folder's full name as `{task-id}` (never reconstruct it from a prefix). **More than one match** → stop: "Ambiguous id: the branch-inferred token matches more than one task folder; pass the id explicitly." **Zero matches / no extractable token** → stop: "No task id provided and none could be inferred from the current branch. Pass the id explicitly: /wf:tf <id>."
 
-2. **Resolve the workspace root** via `workspace-root-resolve`. With no delivery provider registered this resolves as a plain directory (the contract's fallback — not an error); with a provider registered but no working tree to resolve, stop: "Not inside a resolvable workspace."
+2. **Resolve the workspace root** from the `wf-resolver` `resolve_config` `workspaceRoot` value (its already-normalized `workspace-root-resolve` result). With no delivery provider registered this is the plain-directory resolution (not an error); with a provider registered but no working tree to resolve, stop: "Not inside a resolvable workspace."
 
 3. **Locate the task folder.**
    - **Active:** `<workspace-root>/{task-root}/{task-id}/` (or `{task-root}` as-is when absolute). If present, this is the folder to finalize — continue to Phase 2.
@@ -73,9 +73,9 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 
 tf is a **direct invocation** — the top of its own chain — so it self-resolves each surface it needs **once** and forwards nothing (its only spawn is `wf:index`, which invokes no provider operation and receives no resolution record — `invocation-runtime.ops.md` §"Run-scoped provider forwarding").
 
-Perform **direct provider resolution** (`invocation-runtime.ops.md` §"Direct provider resolution") once per required surface: one read of the `## Capabilities` registry from `_local/config.md` (the default-absent `registryPath` value), then one `manifest.md` + fragment read for the `delivery` surface and one for the `tracker` surface — both in that same pass, never a second registry walk. A plugin-anchored `Path` resolves through the self-heal home (`capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). Hold each surface's **resolution record** — its provider identity + resolved fragment path, or its unconfigured/unrecoverable outcome — to dispatch operations against in the phases below. Only these small registry/manifest/fragment reads happen here; no operation runs yet.
+Call the bundled `wf-resolver` MCP tool `resolve_provider(surface)` once per required surface — `resolve_provider("delivery")` and `resolve_provider("tracker")`. Each returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }`; the resolver has already read the `## Capabilities` registry, each owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"), so core performs **no** registry / manifest / plugin-root read of its own. Hold each surface's record — its `owner` + resolved `fragmentPath`, or its `state: unconfigured`/`unrecoverable` outcome (with `candidates` for the hedged diagnosis) — to dispatch operations against in the phases below by following the record's `fragmentPath` in this skill's own context (the resolver returns paths/metadata only, never a fragment body). No operation runs yet. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
-Both surfaces may resolve to no readable provider; tf still finalizes locally. The records are runtime values — no concrete provider is named in this skill.
+Both surfaces may resolve to no readable provider (`state: unconfigured`/`unrecoverable`); tf still finalizes locally. The records are runtime values — no concrete provider is named in this skill.
 
 ---
 
@@ -85,7 +85,7 @@ The local `09_finalize.md` artifact is the source of truth and carries the singl
 
 1. **Ensure the finalize artifact exists.** If `{task-root}/{task-id}/09_finalize.md` is absent, write it from the template below (with the model-attribution line). This is the local artifact that triggers the merge.
 
-2. **Zero readable delivery provider** (the scope-equality filter matched no `delivery` row, or the record marks it unconfigured/unrecoverable) — **do not attempt a merge**. Unlike the pure delivery skills (`commit`/`pr`), tf does **not** hard-stop here: it **warns once**, naming the remedy so the statement still names it plainly (genuinely unconfigured: "No delivery provider is registered — merge skipped; register a capability that owns the `delivery` surface to enable it." / registered-but-unrecoverable: name the unreadable-manifest pack(s) from the `## Capabilities` row as hedged candidates — "if one is your `delivery` provider, fix its stale root / re-run its init"), records `**Merged PR:** skipped (no delivery provider)` in `09_finalize.md`, and **falls through** to Phase 4 so the local archive and index still complete. Skip the rest of this phase.
+2. **Zero readable delivery provider** (the `delivery` record's `state` is `unconfigured` or `unrecoverable`) — **do not attempt a merge**. Unlike the pure delivery skills (`commit`/`pr`), tf does **not** hard-stop here: it **warns once**, naming the remedy so the statement still names it plainly (`state: unconfigured`: "No delivery provider is registered — merge skipped; register a capability that owns the `delivery` surface to enable it." / `state: unrecoverable`: name the record's `candidates` pack(s) as hedged candidates — "if one is your `delivery` provider, fix its stale root / re-run its init"), records `**Merged PR:** skipped (no delivery provider)` in `09_finalize.md`, and **falls through** to Phase 4 so the local archive and index still complete. Skip the rest of this phase.
 
 3. **Idempotency read-back.** Read the `**Merged PR:**` line of `09_finalize.md`. If it already holds a URL (not the placeholder), the merge already ran — reuse that URL as the merged reference, skip the `pr-merge` call, and continue to Phase 4.
 
@@ -104,9 +104,9 @@ Compose the resolution comment from local artifacts, then publish it and close t
 
 1. **Compose the resolution comment** (local-only, from the task's own artifacts — no diff read, no model id, no AI attribution, no emoji): a single factual line stating the task's pull request is merged, embedding the merged reference from Phase 3, plus a one-line summary of what shipped drawn from `02_plan.md`'s Resolution Summary or `01_spec.md`'s Objective when present, else the task title from `00_reqs.md`. Use the template below. If Phase 3 recorded no merged reference (skipped/failed), state the finalize plainly without asserting a merge that did not happen.
 
-2. **Zero readable tracker provider** (the scope-equality filter matched no `tracker` row, or the record marks it unconfigured/unrecoverable):
-   - **Genuinely unconfigured** (every registered manifest readable, none scoped to `tracker`) — **silent** local-only: post no comment, change no status, attempt no operation, and surface **no message and no capability term**. Record `**Resolution comment:** skipped (no tracker)` and `**Closed:** skipped (no tracker)` in `09_finalize.md`. Continue to Phase 5.
-   - **Registered-but-unrecoverable** (a registered capability's manifest is unrecoverable — recorded root dangled, self-heal recovered nothing) — the tracker **writes** emit a single **warn-once** in the hedged candidate-naming form (name the unreadable-manifest pack(s) from the `## Capabilities` row as candidates — "if one is your `tracker` provider, fix its stale root / re-run its init" — never asserting ownership), then continue local-only with the same `skipped` records. Continue to Phase 5.
+2. **Zero readable tracker provider** (the `tracker` record's `state` is `unconfigured` or `unrecoverable`):
+   - **`state: unconfigured`** (no capability owns `tracker`) — **silent** local-only: post no comment, change no status, attempt no operation, and surface **no message and no capability term**. Record `**Resolution comment:** skipped (no tracker)` and `**Closed:** skipped (no tracker)` in `09_finalize.md`. Continue to Phase 5.
+   - **`state: unrecoverable`** (a registered capability's manifest is unrecoverable — recorded root dangled, self-heal recovered nothing) — the tracker **writes** emit a single **warn-once** in the hedged candidate-naming form (name the record's `candidates` pack(s) as candidates — "if one is your `tracker` provider, fix its stale root / re-run its init" — never asserting ownership), then continue local-only with the same `skipped` records. Continue to Phase 5.
 
 3. **Post the resolution comment.** Read the `**Resolution comment:**` line of `09_finalize.md`; if it already reads `posted`, skip (already published). Otherwise invoke `post_comment({task-id}, <comment-body>)` through the resolved tracker fragment. On success, record `**Resolution comment:** posted`.
 
@@ -170,7 +170,7 @@ When Phase 3 recorded no merge, drop the "Resolved via …" reference and state 
 
 ## Edge Cases
 
-- **Missing config:** `_local/config.md` absent → stop: "Run /wf:init first."
+- **Missing config:** the resolver reports the project is uninitialized (absent `_local/config.md`) → stop: "Run /wf:init first."
 - **Already finalized:** the task folder is already under `{task-root}/_archive/` → `TF — already-finalized`; no provider step is re-run.
 - **No delivery provider registered:** merge is skipped with a one-time remedy-naming warning (non-blocking, unlike `commit`/`pr`); the local archive and index still complete — the bare-core finalize path.
 - **No tracker registered (genuinely unconfigured):** silent local-only — no comment, no status change, no message, no capability term; archive and index complete.

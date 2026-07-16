@@ -25,7 +25,7 @@ Both write `07_qa-report.md` in the format documented at [`references/report-for
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}`. If absent, stop with: "Run `/wf:init` first." Also read `{qa-baseline-ignore}` if present (the allowlist of known-benign console messages / request patterns the Baseline health suite tolerates) — it's optional; treat an absent key as an empty list. Also read `{qa-rules}` if present (the path to the project QA-rules artifact written by `/wf:qa-init`, which supplies the severity rubric the report resolves — see [`references/report-format.md`](references/report-format.md)) — it's optional; treat an absent or `<none>` key as not set, and the report falls back to its built-in severity default.
+Obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, qaBaselineIgnore, qaRules, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. From `coreConfig`: `{task-root}` (`taskRoot`); `{qa-baseline-ignore}` (`qaBaselineIgnore`, the allowlist of known-benign console messages / request patterns the Baseline health suite tolerates) — optional; treat an absent value as an empty list; `{qa-rules}` (`qaRules`, the path to the project QA-rules artifact written by `/wf:qa-init`, which supplies the severity rubric the report resolves — see [`references/report-format.md`](references/report-format.md)) — optional; treat an absent or `<none>` value as not set, and the report falls back to its built-in severity default.
 
 `00_reqs.md` is the authoritative spec. `01_spec.md` is consulted only if reqs are too thin to derive testable criteria. **Never derive cases from the implementation** — see the black-box rule under Phase 3.
 
@@ -59,7 +59,7 @@ Examples:
 
 ## Direct provider resolution (how `current-branch-query` is reached)
 
-Id inference and the Phase 1 branch gate both reach `current-branch-query` by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. (qa-gen has no tracker-surface call site — it never fetches.)
+Id inference and the Phase 1 branch gate both reach `current-branch-query` by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in this skill's own context to reach `current-branch-query` (the resolver returns paths and metadata only, never a fragment body). On `state: unconfigured`/`unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). (qa-gen has no tracker-surface call site — it never fetches.)
 
 ---
 
@@ -68,7 +68,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by th
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
-- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface) for id inference and branch gating. Diff-based changed-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
+- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query) for id inference and branch gating. Diff-based changed-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
 - Invoke the **Task** tool for `wf:branch` (branch gate) and `/wf:index` (index update).
 - Write `06_qa.md` ONLY inside the resolved task folder (`{task-root}/{task-id}/`).
 
@@ -84,7 +84,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by th
 
 ## Phase 1: Resolve and gate
 
-1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — direct provider resolution to the `delivery` surface, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-gen` in its stop messages. Once `{task-id}` is resolved, extract the first 3+-digit run from it — call it `{numeric-id}`; it is used **only** for the branch-gate match in step 4, never for the task folder or any operation.
+1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-gen` in its stop messages. Once `{task-id}` is resolved, extract the first 3+-digit run from it — call it `{numeric-id}`; it is used **only** for the branch-gate match in step 4, never for the task folder or any operation.
 
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {task-id}` first."
 
@@ -200,28 +200,41 @@ After generating the generic spec-traced suites and the Baseline-health suite, f
 capabilities attach to it. This phase runs *after* Baseline health, but the suites it
 produces are **placed before** Baseline health — which always stays the last suite.
 
-Follow the generalised phase-firing procedure verbatim — `invocation-runtime.ops.md`
-§"The moving parts" (registry iteration → per-capability manifest read → per-phase
-fragment collection → per-fragment dispatch → aggregation), referencing it by
+Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — do
+**not** read `## Capabilities` or any `manifest.md` yourself — referencing the taxonomy by
 **phase name / contribution-kind name**, never by heading — with these `qa-generation`
 parameters:
 
 - **Firing phase:** `qa-generation`. **Contribution kind collected:** `scenario`.
+- **Call `resolve_registry`** on the `wf-resolver` service. It returns the ordered active
+  `capabilities[]` (**in registry order**, general → specific), each already resolved from
+  the registry and its `manifest.md`: `{ name, kind, manifestPath, fragments[] { phase,
+  contributionKind, dispatch, scope }, articles[], provenance, validity }`. The resolver
+  has done the registry iteration, per-capability manifest read, and plugin-anchored root
+  self-heal; core reads only this metadata. If the `wf-resolver` service is unavailable,
+  stop and report that the resolver runtime is not loaded — do not hand-parse the registry
+  (WF-272 diagnostics/recovery).
+- **Collect** only the fragment rows (across the returned `capabilities[]`, preserving
+  registry order) whose `phase` is `qa-generation` and whose `contributionKind` is
+  `scenario`. **Dispatch each on its `dispatch` metadata** (the resolver returns
+  paths/metadata only — never a fragment body, so the dispatch read stays in this skill's
+  own context): `inline: <rel-path>` → read the fragment at its resolved path and follow
+  it in-context; `subagent: <agent>` → invoke the **Task** tool with `subagent_type:
+  <agent>`.
 - **Generic shape produced:** each contributed scenario in the same `TC-NNN` /
   `Validates:` contract as Phase 3, numbered in the **global** sequence.
 - **Aggregation:** `scenario` aggregates **provenance-tagged** — render every
   contributor's scenarios in their own suite, each tagged with its **source capability**
-  (the registry row's name); registry order is cosmetic. Place the aggregated capability
+  (the `name`); registry order is cosmetic. Place the aggregated capability
   suites **after** the spec suites and **before** Baseline health.
 
-**No-op** is the ops doc's generalised `<none>` path (§"No-op path"): if the registry is
-empty or absent, a manifest is missing, no fragment matches `qa-generation` under the
-`scenario` kind, a dispatched fragment returns an empty list, or a `dispatch` is
-malformed, that contributor — or the whole phase — produces **nothing** and the generic
-plan stands alone (no capability-scenarios section, no capability/stack/domain term
-surfaced, no broken subagent reference, no STOP). An aggregated scenario rolls up into the
-plan and the coverage matrix on the same footing as a spec-traced scenario, carrying its
-provenance tag.
+**No-op:** if `resolve_registry` returns an empty `capabilities[]`, no fragment matches
+`qa-generation` under the `scenario` kind, a dispatched fragment returns an empty list, or
+a `dispatch` is malformed, that contributor — or the whole phase — produces **nothing**
+and the generic plan stands alone (no capability-scenarios section, no
+capability/stack/domain term surfaced, no broken subagent reference, no STOP). An
+aggregated scenario rolls up into the plan and the coverage matrix on the same footing as
+a spec-traced scenario, carrying its provenance tag.
 
 Write to `{task-root}/{task-id}/06_qa.md`. Overwrite if it exists — the task folder is excluded from version control, so there's no history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
 

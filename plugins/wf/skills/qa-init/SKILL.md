@@ -16,12 +16,12 @@ This is the **one mechanism** behind the `qa-rules` hook: `/wf:qa-init` writes t
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. Read:
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, qaRules, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. Read:
 
-- `{task-root}` — used only to keep the artifact out of task folders (the artifact is project-level, not per-task).
-- `{qa-rules}` — the current pointer, if set. An absent or `<none>` value means no artifact exists yet (create mode). A set value naming an existing file means update mode.
+- `{task-root}` (`coreConfig.taskRoot`) — used only to keep the artifact out of task folders (the artifact is project-level, not per-task).
+- `{qa-rules}` (`coreConfig.qaRules`) — the current pointer, if set. An absent or `<none>` value means no artifact exists yet (create mode). A set value naming an existing file means update mode.
 
-Never hardcode any of these — they all come from `_local/config.md`.
+Never hardcode any of these — they all resolve from `_local/config.md` via the resolver. The one direct `_local/config.md` **write** this skill performs is setting the `{qa-rules}` key in Phase 5 — see that phase.
 
 ---
 
@@ -127,7 +127,7 @@ Write to the resolved path (inside `_local/`). Use the template below; substitut
 
 ## Phase 5: Set the pointer
 
-Set the `{qa-rules}` key in `_local/config.md` to the artifact's repo-relative path (forward slashes). This is what makes qa-init's output and the `report-format.md` severity hook **one mechanism** — with the key set, the QA report's severity rubric resolves from this artifact; with it unset, the report format's built-in default applies.
+Set the `{qa-rules}` key in `_local/config.md` to the artifact's repo-relative path (forward slashes) — the **one** direct `_local/config.md` write this skill performs (all reads go through the resolver). After the write, the resolver re-validates its input fingerprints on the next query and rebuilds the snapshot automatically — no manual step is required. This is what makes qa-init's output and the `report-format.md` severity hook **one mechanism** — with the key set, the QA report's severity rubric resolves from this artifact; with it unset, the report format's built-in default applies.
 
 - If the key is already set to the same path, leave it as-is.
 - If it was `<none>` / absent, set it now.
@@ -201,7 +201,7 @@ Keep the artifact's own content project-specific — that's the point. Only this
 - **No artifact yet (create mode).** Resolve the default path, build from scratch, set `{qa-rules}`. This is the first-run default.
 - **Artifact exists with manual edits (update mode).** Merge additively; preserve every hand-edited line. If a safe merge isn't possible, stop and ask before restructuring — never clobber.
 - **Unfamiliar or sparse stack.** The scan finds nothing distinctive. Not an error: say so, lean on the questionnaire, and write the artifact from the answers. The body still names no stack — it reflects only what the user confirms.
-- **Config missing.** `_local/config.md` doesn't exist. Stop and direct the user to `/wf:init`.
+- **Config missing.** The resolver reports the project is uninitialized (absent `_local/config.md`). Stop and direct the user to `/wf:init`.
 - **`{qa-rules}` already set to a different existing path than `[path]`.** Stop and ask which artifact is authoritative before writing — don't strand the old one or write a second parallel QA-rules surface.
 - **Empty repo / nothing to scan.** Skip the scan, proceed directly to the questionnaire, write from answers.
 

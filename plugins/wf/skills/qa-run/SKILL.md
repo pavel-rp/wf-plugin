@@ -18,7 +18,7 @@ For an autonomous run (no human in the loop), use `/wf:qa-auto` instead. The two
 
 ## Prerequisites
 
-Read `_local/config.md` for `{task-root}`. If absent, stop with: "Run `/wf:init` first."
+Obtain `{task-root}` from the bundled `wf-resolver` MCP service via `resolve_config` (`coreConfig.taskRoot`; `coreConfig` also carries `qaBaselineIgnore` and `qaRules`, which the report format resolves — plus `workspaceRoot`, `registryPath`, `idShape`), already resolved from `_local/config.md` — core performs no direct config-file parse. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
 
 `06_qa.md` must exist in the task folder. If missing, stop: "No QA plan found. Run `/wf:qa-gen` first."
 
@@ -46,7 +46,7 @@ Argument-parser disambiguation: if a token contains a 3+-digit run, or exactly m
 
 ## Direct provider resolution (how `current-branch-query` is reached)
 
-Id inference reaches `current-branch-query` by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. (qa-run has no tracker-surface call site — it never fetches.)
+Id inference reaches `current-branch-query` by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in this skill's own context to reach `current-branch-query` (the resolver returns paths and metadata only, never a fragment body). On `state: unconfigured`/`unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). (qa-run has no tracker-surface call site — it never fetches.)
 
 ---
 
@@ -56,7 +56,7 @@ Id inference reaches `current-branch-query` by the canonical resolve-once proced
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
 - Use the question tool (`AskUserQuestion`) to interact with the tester.
-- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface) for id inference.
+- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query) for id inference.
 - Resolve the report's `Tester` field to the environment's configured user identity (Phase 2, Phase 4) — a documented contract-completeness gap, not a literal identity lookup: the delivery provider surface has no identity/user operation, so this never routes through a contract call.
 - Write `07_qa-report.md` ONLY inside the resolved task folder.
 - Invoke the **Task** tool for `/wf:index` to record the report after writing.
@@ -72,7 +72,7 @@ Id inference reaches `current-branch-query` by the canonical resolve-once proced
 
 ## Phase 1: Resolve and load
 
-1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — direct provider resolution to the `delivery` surface, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-run` in its stop messages.
+1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-run` in its stop messages.
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. Stop if `06_qa.md` is missing: "No QA plan found. Run `/wf:qa-gen` first."
 3. **Parse `06_qa.md`.** Extract: scope, suites, scenarios (TC-NNN with title, priority, validates, preconditions, steps table, teardown). Preserve TC-NNN ordering as it appears in the file.
 4. **Filter by `--suite`** if passed.
