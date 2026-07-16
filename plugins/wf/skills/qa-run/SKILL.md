@@ -18,7 +18,7 @@ For an autonomous run (no human in the loop), use `/wf:qa-auto` instead. The two
 
 ## Prerequisites
 
-Obtain `{task-root}` from the bundled `wf-resolver` MCP service via `resolve_config` (`coreConfig.taskRoot`; it also returns `workspaceRoot`, `registryPath`, `idShape`), already resolved from `_local/config.md` — core performs no direct config-file parse. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
+Obtain `{task-root}` from the bundled `wf-resolver` MCP service via `resolve_config` (`coreConfig.taskRoot`; `coreConfig` also carries `qaBaselineIgnore` and `qaRules`, which the report format resolves — plus `workspaceRoot`, `registryPath`, `idShape`), already resolved from `_local/config.md` — core performs no direct config-file parse. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
 
 `06_qa.md` must exist in the task folder. If missing, stop: "No QA plan found. Run `/wf:qa-gen` first."
 

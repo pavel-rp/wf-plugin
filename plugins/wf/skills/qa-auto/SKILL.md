@@ -14,7 +14,7 @@ For a human-in-the-loop run, use `/wf:qa-run` — the same plan, the same report
 
 ## How execution is supplied (the provider dispatch)
 
-`qa-auto` is **domain-free orchestration**. The actual scenario execution — driving the app, reaching preconditions, capturing console/network, screenshots — is a `qa-execution` **provider** that a capability registers. Core resolves the owner by calling the bundled `wf-resolver` MCP tool `resolve_provider("qa-execution:engine")` — the typed query returns the run-scoped record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the engine surface; the resolver has already walked the `## Capabilities` registry and every `manifest.md`, so core performs **no** registry / manifest read of its own. It dispatches the per-scenario drive to the record's `owner` subagent via the **Task** tool, hands the engine the scenario set + report context, and merges the per-scenario verdict blocks the engine returns. Core names no capability and assumes none in particular — it resolves whatever owns the `engine` surface.
+`qa-auto` is **domain-free orchestration**. The actual scenario execution — driving the app, reaching preconditions, capturing console/network, screenshots — is a `qa-execution` **provider** that a capability registers. Core resolves it through two typed `wf-resolver` MCP queries, performing **no** registry / manifest read of its own: (1) `resolve_provider("qa-execution:engine")` returns the run-scoped record `{ surface, owner, fragmentPath, state, candidates?, degradation }` — its `state` is the **registration gate** (`ok` = an engine provider owns the surface; `unconfigured`/`unrecoverable` = none readable); (2) `resolve_registry` supplies the engine fragment's **`dispatch` metadata** — the `subagent: <agent>` Task-tool target — since the provider record's `fragmentPath` is `null` for a subagent-dispatched provider (it carries the owner capability, not the agent name). Core dispatches the per-scenario drive to that `subagent:` target via the **Task** tool, hands the engine the scenario set + report context, and merges the per-scenario verdict blocks the engine returns. Core names no capability and assumes none in particular — it resolves whatever owns the `engine` surface.
 
 If **no** `qa-execution` engine provider is registered, core stops:
 
@@ -30,13 +30,13 @@ This is the provider analog of the inert-phase no-op: when the provider an orche
 
 ## Prerequisites
 
-Obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, qaBaselineIgnore, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. From `coreConfig`: `{task-root}` (`taskRoot`); `{qa-baseline-ignore}` (`qaBaselineIgnore`, the allowlist of known-benign console messages / request patterns the Baseline health scenarios tolerate) — treat an absent value as an empty list, pass it through to the engine. The `qa-execution` engine provider is resolved separately via `resolve_provider("qa-execution:engine")` (see "How execution is supplied").
+Obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, qaBaselineIgnore, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. From `coreConfig`: `{task-root}` (`taskRoot`); `{qa-baseline-ignore}` (`qaBaselineIgnore`, the allowlist of known-benign console messages / request patterns the Baseline health scenarios tolerate) — treat an absent value as an empty list, pass it through to the engine. The `qa-execution` engine provider is resolved separately — a `resolve_provider("qa-execution:engine")` registration gate plus the engine fragment's `dispatch` target from `resolve_registry` (see "How execution is supplied").
 
 `06_qa.md` must exist in the task folder.
 
 This skill depends on two runtime capabilities:
 
-1. **A registered `qa-execution` engine provider** — resolved via the `wf-resolver` `resolve_provider("qa-execution:engine")` query (see "How execution is supplied"). If none is registered (record `state: unconfigured`/`unrecoverable`), stop with the message above.
+1. **A registered `qa-execution` engine provider** — its ownership gated by the `wf-resolver` `resolve_provider("qa-execution:engine")` record and its subagent dispatch target sourced from `resolve_registry` (see "How execution is supplied"). If none is registered (record `state: unconfigured`/`unrecoverable`), stop with the message above.
 2. **The Task tool** (a standard Claude Code tool) — used for the `wf:branch` **Task** call (branch gate), the engine **provider dispatch**, and the `wf:index` **Task** call (post-run index update). If subagent invocation is unavailable, the skill cannot dispatch the engine — stop and direct the user to a manual `/wf:qa-run`.
 
 ---
@@ -109,10 +109,12 @@ Gate on the task branch per [`../_shared/pipeline-conventions.md`](../_shared/pi
 
 ## Phase 3: Resolve the execution provider
 
-Call `resolve_provider("qa-execution:engine")` on the `wf-resolver` MCP service. It returns the run-scoped record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the engine surface — the resolver has already walked the `## Capabilities` registry and every `manifest.md`, so core reads only this record. The record's `owner` names the engine's `subagent:` dispatch target.
+Resolve the engine provider through two `wf-resolver` queries — the resolver has already walked the `## Capabilities` registry and every `manifest.md`, so core reads only these records:
 
-- **`state: unconfigured`/`unrecoverable`** (no readable engine provider) → stop with the "No qa-execution engine registered" message (see "How execution is supplied"). Do not attempt to drive scenarios. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
-- **`state: ok`** → continue. Core never reads the engine's internals; it only dispatches to the record's `owner` subagent and consumes its returned verdict blocks.
+1. **Registration gate** — call `resolve_provider("qa-execution:engine")`. It returns `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the engine surface; branch on its `state`.
+   - **`state: unconfigured`/`unrecoverable`** (no readable engine provider) → stop with the "No qa-execution engine registered" message (see "How execution is supplied"). Do not attempt to drive scenarios. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
+   - **`state: ok`** → continue.
+2. **Dispatch target** — call `resolve_registry` and locate the fragment whose `phase` is `qa-execution`, `contributionKind` is `provider`, and `scope` is `engine`; read its `dispatch` metadata (a `subagent: <agent>` token). That `<agent>` is the run's engine dispatch target (the provider record's `owner` is the capability name, and its `fragmentPath` is `null` for a subagent-dispatched provider — the agent name lives only in the fragment `dispatch`). Core never reads the engine's internals; it only dispatches to that subagent and consumes its returned verdict blocks.
 
 ---
 
