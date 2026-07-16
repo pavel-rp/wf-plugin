@@ -125,7 +125,7 @@ const contentInput = fromJsonSchema({
     ref: {
       type: "string",
       description:
-        "The relative doc ref: within the capability folder (`fragment`), a bare filename (`contract` / `shared`), or within the skill's `references/` folder (`references-template`). Unused by `profile-template`.",
+        "The relative doc ref: within the capability folder, subfolder included — e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template`.",
     },
   },
   required: ["class"],

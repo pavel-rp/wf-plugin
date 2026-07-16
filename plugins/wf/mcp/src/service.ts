@@ -427,15 +427,17 @@ export class ResolverService {
     }
 
     // plan.kind === "path": read the resolved body via the server's own fs.
+    // A miss here is a caller-input error (the root resolved; the ref's shape
+    // didn't) — `ref-not-found`, never the integrity-class `registry-invalid`.
     const content = this.ports.readFile(plan.path);
     if (content === null) {
       return {
         status: "unresolved",
         refClass: plan.refClass,
-        category: "registry-invalid",
+        category: "ref-not-found",
         reaction: "continue",
-        recovery: recoveryFor("registry-invalid"),
-        message: `the ref resolved to \`${plan.path}\` but no file is present there — re-check the ref, or run \`/wf:resolve refresh\` if the pack was relocated.`,
+        recovery: recoveryFor("ref-not-found"),
+        message: `the ref resolved to \`${plan.path}\` but no file is present there.`,
       };
     }
     return {
