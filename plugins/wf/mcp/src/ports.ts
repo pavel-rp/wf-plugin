@@ -6,7 +6,7 @@
 // facts. Kept apart from service.ts so the service logic stays a pure function
 // of its ports and can be tested with in-memory doubles.
 
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import {
   extractRegistryPath,
