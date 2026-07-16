@@ -19,14 +19,18 @@ composition · report artifact · degradation summary · final block.
 
 ## Registry-membership gate (run first)
 
-Read the `## Capabilities` registry at the `registryPath`-resolved location (repo-root
-`wf.config.js` `registryPath`; **default `_local/config.md`** when absent). If **no row registers
-the audit capability** (by convention its `Capability` name is `audit`, resolving to this
+Obtain the ordered active registry as metadata by calling the bundled `wf-resolver` MCP tool
+`resolve_registry` — it returns `capabilities[]` (each `{ name, kind, manifestPath, fragments[],
+articles[], provenance, validity }`), already resolved from the `## Capabilities` registry and
+each capability's `manifest.md`; you perform no direct registry-file read or manifest walk of your
+own. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not
+loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). If **no row's
+`name` is `audit`** (by convention the capability registers under that name, resolving to this
 capability's manifest), emit `RETROSPECTIVE — not-registered` and stop: write nothing. This is the
-**same registry membership** a core skill firing `verify` walks to resolve and dispatch the five
-lens rows — the identical on/off datum (the `lenses` profile is only the subset selector applied
-*after* dispatch, never the gate). Registered → the report may emit; unregistered → neither the
-lenses nor this report run. Never surface this as an error.
+**same registry membership** a core skill firing `verify` resolves to dispatch the five lens rows —
+the identical on/off datum (the `lenses` profile is only the subset selector applied *after*
+dispatch, never the gate). Registered → the report may emit; unregistered → neither the lenses nor
+this report run. Never surface this as an error.
 
 ## Inputs to compose (read, in order)
 
@@ -44,13 +48,21 @@ lenses nor this report run. Never surface this as an error.
 
 ## Delivery evidence (fold in only when a delivery provider is registered)
 
-Reach three **read-side** delivery operations by the canonical resolve-once procedure —
-`invocation-runtime.ops.md` §"Direct provider resolution" to the `delivery` surface:
-`pr-comments-read`, `checks-read`, `activity-read`. **With zero readable `delivery` rows, all
+Reach three **read-side** delivery operations — `pr-comments-read`, `checks-read`,
+`activity-read` — by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")`
+**once** — the typed query that returns the run-scoped resolution record `{ surface, owner,
+fragmentPath, state, candidates?, degradation }`. The resolver has already resolved the
+`## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root
+(post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution
+with install-manifest self-heal"); you perform no registry / manifest / plugin-root read of your
+own. On `state: ok`, follow the returned `fragmentPath` in your own context to dispatch each
+operation. **On `state: unconfigured` or `unrecoverable` (zero readable `delivery` rows), all
 three resolve to an empty result** (`capability-registry.ops.md` §"The delivery provider surface"
 → unconfigured reads: an empty result, no error, no warning). That empty result **is** the
 local-only degradation: compose the retrospective from spec-conformance + lens findings alone,
-omit the evidence section entirely, and surface **no** provider/tool term on that path.
+omit the evidence section entirely, and surface **no** provider/tool term on that path. If the
+`wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded —
+do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
 Distill only the **bulk**; read the **compact** signals directly:
 

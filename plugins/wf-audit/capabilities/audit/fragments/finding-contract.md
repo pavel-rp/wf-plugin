@@ -16,11 +16,17 @@ deep, no further nesting. Follow it exactly.
 
 ## Profile lens-gate (run first)
 
-Read the resolved audit profile: `_local/profiles/audit.profile.json` at the repo root, if
-present. If it is present **and** its `lenses` array does **not** contain your own lens id,
-emit the empty findings block (see No-op) and stop — do no audit work. If the file is
-absent, or your lens id is listed, proceed. (No override present = the shipped default: all
-lenses enabled.)
+Obtain the resolved audit profile by calling the bundled `wf-resolver` MCP tool
+`resolve_profile("audit")` — it returns `{ capability, present, values }`, the
+override-merged profile **values** directly (`_local/profiles/audit.profile.json` override
+merged over the capability's shipped default, precedence: **override > capability
+default**); you perform no direct profile-file read of your own. If `present` is `true`
+**and** `values.lenses` does **not** contain your own lens id, emit the empty findings block
+(see No-op) and stop — do no audit work. If `present` is `false`, or your lens id is listed,
+proceed. (No override present = the shipped default: all lenses enabled.) If the
+`wf-resolver` service is unavailable, stop and report that the resolver runtime is not
+loaded (restart Claude Code) — do not hand-read the profile file as a fallback (WF-272
+diagnostics/recovery).
 
 ## The finding shape you return
 
