@@ -30,7 +30,7 @@ This skill does **not** re-verify. After it runs, re-invoke `/wf:verify-spec` to
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}` below come from that file.
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). All references to `{task-root}` below come from `coreConfig.taskRoot`. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
 
 ---
 
@@ -42,7 +42,7 @@ Parse the first token.
 
 1. Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
    §"Id inference from the current branch" — inferred from the branch via
-   `current-branch-query` (direct provider resolution to the `delivery` surface, see
+   `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query, see
    "Direct provider resolution" below) and resolved against `{task-root}`, naming
    `/wf:verify-fix` in its stop messages.
 2. Confirm `{task-root}/{task-id}/04_verify.md` exists. If not, stop: "No audit report found. Run `/wf:verify-spec {task-id}` first."
@@ -59,7 +59,7 @@ Treat as an explicit override. Useful when the report lives outside `{task-root}
 
 ## Direct provider resolution (how `current-branch-query` and `last-commit-timestamp-query` are reached)
 
-Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch id inference above and the Phase 1 branch gate) and `last-commit-timestamp-query` (Phase 2's staleness check) — is reached by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces.
+Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch id inference above and the Phase 1 branch gate) and `last-commit-timestamp-query` (Phase 2's staleness check) — is reached by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }`. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in this skill's own context to dispatch the operation. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider), both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
 
 ---
 
@@ -70,7 +70,7 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 - Read any file in the repo.
 - **Edit source files, but only** at `file:line` locations cited in the loaded `04_verify.md`.
 - Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path).
-- Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (direct provider resolution to the `delivery` surface) for branch gating, id inference, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
+- Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider("delivery")` query) for branch gating, id inference, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits.
 
 ### Forbidden
@@ -109,7 +109,7 @@ If the report is malformed (no `## Requirements` heading, no verdict lines), sto
 
 ### Staleness check
 
-After parsing the header, run the staleness check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Report/spec staleness check", comparing `last-commit-timestamp-query` (direct provider resolution to the `delivery` surface, see "Direct provider resolution" above) against the report's own `**Audited at:**` field. If the branch has moved since, print a prominent warning at the top of Phase 4's plan:
+After parsing the header, run the staleness check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above) against the report's own `**Audited at:**` field. If the branch has moved since, print a prominent warning at the top of Phase 4's plan:
 
 `⚠ Audit ran at <audited-at>; the branch's last commit is now <last-commit-at>. Cited file:line citations may be stale — consider re-running `/wf:verify-spec` first.`
 
