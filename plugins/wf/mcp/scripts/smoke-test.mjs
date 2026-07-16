@@ -198,10 +198,34 @@ try {
   if (!tools.some((t) => t.name === "wf_resolver_status")) {
     fail(`tools/list did not include wf_resolver_status: ${JSON.stringify(tools)}`);
   }
+  // The typed resolver query tools (WF-270) must be advertised from the bundle.
+  for (const required of ["resolve_config", "inspect_pack", "register_pack", "resolve_inspect"]) {
+    if (!tools.some((t) => t.name === required)) {
+      fail(`tools/list did not include ${required}: ${JSON.stringify(tools.map((t) => t.name))}`);
+    }
+  }
   process.stdout.write(`tools/list OK: ${tools.map((t) => t.name).join(", ")}\n`);
 
+  // Call a typed tool end-to-end through the bundle. resolve_inspect is the safe
+  // choice: it reports lifecycle state from the (absent) cache under the scratch
+  // cwd without a rebuild or a `claude` CLI call — hermetic and deterministic.
+  send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "resolve_inspect", arguments: {} } });
+  const callResult = await Promise.race([awaitResponse(3), childExited]);
+  if (callResult.error) {
+    fail(`resolve_inspect returned an error: ${JSON.stringify(callResult.error)}`);
+  }
+  const structured = callResult.result?.structuredContent;
+  const textPayload = callResult.result?.content?.find((c) => c.type === "text")?.text;
+  const parsed = structured ?? (textPayload ? JSON.parse(textPayload) : undefined);
+  if (!parsed || typeof parsed.valid !== "boolean" || !("counts" in parsed)) {
+    fail(`resolve_inspect did not return a lifecycle payload: ${JSON.stringify(callResult.result)}`);
+  }
   process.stdout.write(
-    "SMOKE PASS: clean-copy MCP runtime started and completed the protocol handshake with no repo, no node_modules, and no dependency install.\n",
+    `tools/call resolve_inspect OK: valid=${parsed.valid}, cached=${parsed.cached}\n`,
+  );
+
+  process.stdout.write(
+    "SMOKE PASS: clean-copy MCP runtime started, completed the protocol handshake, and served a typed resolver query — with no repo, no node_modules, and no dependency install.\n",
   );
 } finally {
   if (child) {
