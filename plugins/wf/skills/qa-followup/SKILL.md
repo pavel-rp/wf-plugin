@@ -26,7 +26,7 @@ For the white-box analog driven by a `/wf:verify-spec` audit (which cites `file:
 
 `07_qa-report.md` must exist in the task folder. If missing, stop: "No QA report found. Run `/wf:qa-run` or `/wf:qa-auto` first."
 
-The report shape is documented in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md) — this skill parses that exact shape.
+The report shape is documented in `qa-gen`'s `references/report-format.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: qa-gen`, `ref: report-format.md`), never a raw `Read` of the plugin-cache path — this skill parses that exact shape.
 
 ---
 
@@ -83,7 +83,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 
 1. **Resolve `<id>`.** Resolve the task id per the shared pipeline conventions doc — obtained via the `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`), never a raw `Read` of the plugin-cache path — §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-followup` in its stop messages.
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. Stop if `07_qa-report.md` is missing (message above).
-3. **Parse `07_qa-report.md`** per [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md): the header (`Run date`, `Mode`, `Status`, `App`), the traceability matrix (`SC-N → scenarios → result`), each per-suite scenario block, and the Defects table. If the report has no `## Summary` and no per-suite results, stop: "Report is malformed — re-run `/wf:qa-auto`."
+3. **Parse `07_qa-report.md`** per `qa-gen`'s `references/report-format.md` (obtained via `resolve_content`, `class: references-template`, `skill: qa-gen`, `ref: report-format.md` — see Prerequisites above): the header (`Run date`, `Mode`, `Status`, `App`), the traceability matrix (`SC-N → scenarios → result`), each per-suite scenario block, and the Defects table. If the report has no `## Summary` and no per-suite results, stop: "Report is malformed — re-run `/wf:qa-auto`."
 4. **Filter by `--suite`** if passed.
 5. **Short-circuit on PASS.** If the report `Status` is `PASS` and there are zero FAIL and zero BLOCKED scenarios, emit `QA-FOLLOWUP — NOOP` and stop — nothing to follow up.
 
@@ -218,8 +218,10 @@ If a plan step schedules the `{verify-command}` typecheck, run it and record the
 
 The verbatim `08_qa-fix.md` template — the metadata block, `## Unblock pass` table,
 `## Remediation plan` (`### - [ ] FIX-NNN:` step shape), `## Escalations`, `## Fix log`,
-and `## Next` — lives at [`references/qa-fix-template.md`](references/qa-fix-template.md).
-It is read only on this write path (Phase 6), so it stays out of the boot body. Read it,
+and `## Next` — lives at `references/qa-fix-template.md`, obtained via the resolver's
+`resolve_content` (`class: references-template`, `skill: qa-followup`, `ref:
+qa-fix-template.md`), never a raw `Read` of the plugin-cache path.
+It is read only on this write path (Phase 6), so it stays out of the boot body. Follow it,
 then emit it with placeholders substituted; rotate any existing file into
 `08_qa-fix.history.md` first.
 

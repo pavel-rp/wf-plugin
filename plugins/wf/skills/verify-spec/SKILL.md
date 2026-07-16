@@ -262,9 +262,10 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 
 The verbatim `04_verify.md` output shape — the report header, `## Requirements`,
 `## Capability findings`, `## Deviations`, and `## Recommended next actions` structure —
-lives at [`references/verify-template.md`](references/verify-template.md). It is read only
-on this write path, so it stays out of the boot body. Read it, then emit it with
-placeholders substituted. Keep quoted snippets short — one or two lines max; the reader
+lives at `references/verify-template.md`, obtained via the resolver's `resolve_content`
+(`class: references-template`, `skill: verify-spec`, `ref: verify-template.md`), never a
+raw `Read` of the plugin-cache path. It is read only on this write path, so it stays out of
+the boot body. Follow it, then emit it with placeholders substituted. Keep quoted snippets short — one or two lines max; the reader
 clicks `file:line` for the rest.
 
 ### Chat summary shape

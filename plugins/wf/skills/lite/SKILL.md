@@ -171,7 +171,7 @@ Write `lite.md` in the task folder using the template below, then emit a short s
 
 ### lite.md Template
 
-The verbatim `lite.md` template — the metadata block, `## Objective`, `## Approach`, `## Files`, `## Plan`, and `## Done When` — lives at [`references/lite-template.md`](references/lite-template.md). It is read only on this write path (Phase 4), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
+The verbatim `lite.md` template — the metadata block, `## Objective`, `## Approach`, `## Files`, `## Plan`, and `## Done When` — lives at `references/lite-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: lite`, `ref: lite-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 4), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 **Plan sizing:** 2–4 checkbox steps total (one or two change steps + verify + handoff). If the natural step count exceeds 4, the task is too big for `/wf:lite` — stop and escalate to the full flow.
 

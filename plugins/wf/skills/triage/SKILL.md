@@ -211,7 +211,7 @@ Write `triage.md` in the task folder using the template. Overwrite prior version
 
 ### triage.md Template
 
-The verbatim `triage.md` template — the metadata block (incl. the `**Size:**` field downstream skills read), `## Scores` table, `## Verdict reasoning`, `## Recommended next step`, and `## Notes` — lives at [`references/triage-template.md`](references/triage-template.md). It is read only on this write path (Phase 5), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
+The verbatim `triage.md` template — the metadata block (incl. the `**Size:**` field downstream skills read), `## Scores` table, `## Verdict reasoning`, `## Recommended next step`, and `## Notes` — lives at `references/triage-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: triage`, `ref: triage-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 5), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 ### Final Output
 
