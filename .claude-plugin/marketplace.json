@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.78.8",
+  "version": "0.78.9",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -11,7 +11,7 @@
     {
       "name": "wf",
       "source": "./plugins/wf",
-      "version": "0.57.5",
+      "version": "0.57.6",
       "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (browser-qa, angular test-host, node-ts) each ship in their own plugin.",
       "author": {
         "name": "Pavel Kalabin"
@@ -21,7 +21,7 @@
     {
       "name": "wf-browser-qa",
       "source": "./plugins/wf-browser-qa",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "description": "wf browser-QA feature pack: the browser-qa capability owning the wf capability-registry's qa-execution engine surface. Ships /wf-browser-qa:qa-engine, a stack-agnostic in-thread browser-automation QA engine that drives any web app, reaches browser-level preconditions, captures console/network, screenshots on FAIL, and emits per-scenario verdict blocks; core's /wf:qa-auto dispatches the per-scenario browser drive to it. Tracker-agnostic (requires: git only). Ships /wf-browser-qa:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
@@ -51,7 +51,7 @@
     {
       "name": "wf-angular",
       "source": "./plugins/wf-angular",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "description": "wf Angular stack pack: the angular capability owning the wf capability-registry's qa-execution host surface. Ships /wf-angular:qa-host (routed Angular test-host scaffolder + ephemeral backend-controller analog) and /wf-angular:test-page (browser-run black-box DI-level test harness). Every project-specific token in the scaffolded output is profile-slot-driven, so scaffolding a differently-named app emits no borrowed identifiers; surface: host composes with browser-qa's surface: engine with no partition collision. Tracker-agnostic (requires: git only). Ships /wf-angular:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"

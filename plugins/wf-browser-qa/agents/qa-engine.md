@@ -22,8 +22,8 @@ The caller hands you, in its Task prompt:
 
 ## On invocation
 
-1. Read the wf-browser-qa:qa-engine skill (`${CLAUDE_PLUGIN_ROOT}/skills/qa-engine/SKILL.md`).
-2. Execute its **full procedure** for the scenario set you were handed: browser-tool preflight, authenticate once, then per scenario reach its browser-level preconditions → drive its steps with observation discipline → capture console/network → screenshot on FAIL → emit the verdict block.
+1. **Invoke** the `/wf-browser-qa:qa-engine` skill via the **Skill tool**, passing the scenario set and task/report context you were handed as its arguments — the harness loads the skill's `SKILL.md` by invocation (not a filesystem read) and runs its body in your existing context, with no permission prompt and no dependency on a version-pinned `${CLAUDE_PLUGIN_ROOT}` path. **If the Skill-tool invocation fails (the skill cannot be loaded or invoked), hard-stop and return the `QA-ENGINE — error` block below naming the failed invocation — never fall back to Reading the skill body.**
+2. The invoked skill runs its **full procedure** for the scenario set you were handed: browser-tool preflight, authenticate once, then per scenario reach its browser-level preconditions → drive its steps with observation discipline → capture console/network → screenshot on FAIL → emit the verdict block.
 3. Follow the skill faithfully — do not shortcut the observation discipline (summarize each `read_page` to one line; never refer back to a prior page dump) and do not "rationalize" a failing step by reading application source; a failing scenario is a FAIL (black-box discipline).
 4. Reach preconditions, don't just observe them: clear/seed **browser storage** to the asserted state, then revert in teardown, per the skill's `references/preconditions.md`. Mark BLOCKED only when a precondition genuinely cannot be reached.
 

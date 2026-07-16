@@ -22,8 +22,8 @@ The caller hands you, in its Task prompt:
 
 ## On invocation
 
-1. Read the wf-angular:qa-host skill (`${CLAUDE_PLUGIN_ROOT}/skills/qa-host/SKILL.md`).
-2. Execute its **full procedure** for the target and mode you were handed: resolve the target signature-only, scaffold or augment the host (or resolve/wire the backend endpoint), apply the routing-module edits, run the stack's `{verify-command}` typecheck, and emit the verdict block.
+1. **Invoke** the `/wf-angular:qa-host` skill via the **Skill tool**, passing the target, host mode, and task/report context you were handed as its arguments — the harness loads the skill's `SKILL.md` by invocation (not a filesystem read) and runs its body in your existing context, with no permission prompt and no dependency on a version-pinned `${CLAUDE_PLUGIN_ROOT}` path. **If the Skill-tool invocation fails (the skill cannot be loaded or invoked), hard-stop and return the `QA-HOST — error` block below naming the failed invocation — never fall back to Reading the skill body.**
+2. The invoked skill runs its **full procedure** for the target and mode you were handed: resolve the target signature-only, scaffold or augment the host (or resolve/wire the backend endpoint), apply the routing-module edits, run the stack's `{verify-command}` typecheck, and emit the verdict block.
 3. Follow the skill faithfully — honor its black-box discipline (read only `@Input`/`@Output`/constructor/selector signatures; stop at the first `{` of any method body), and never report success while the typecheck fails.
 4. In backend mode, the `__qa` wiring is **ephemeral** — a sentinel-marked action that must be reverted before commit; never leave a `WF-QA-EPHEMERAL` block behind.
 
