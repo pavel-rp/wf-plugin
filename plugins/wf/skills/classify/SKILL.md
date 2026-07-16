@@ -40,15 +40,15 @@ Exactly one of the three input modes is used. Resolution: `--text` > `--file` > 
 
 Only attempted when neither `--file` nor `--text` is passed.
 
-- Read `_local/config.md` to resolve `{task-root}`. If missing, stop: "Run `/wf:init` first."
+- Obtain `{task-root}` from the `wf-resolver` `resolve_config` query (`coreConfig.taskRoot`; core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
 - If `<id>` is provided, treat it as opaque — whatever shape the active tracker capability produces, or the local `T<NNN>` scheme — and use it verbatim as `{task-id}`.
-- If `<id>` is omitted, infer a numeric token via `current-branch-query` (direct provider resolution to the `delivery` surface — see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name, call it `{numeric-id}`. Resolve that token against `{task-root}`: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token, mirroring `spec/SKILL.md`'s Validation-section resolution logic. Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "The branch-inferred token `<token>` doesn't match an existing task folder. Pass a task id, `--file <path>`, or `--text "..."`." More than one match — stop: "The branch-inferred token `<token>` matches more than one task folder. Pass a task id explicitly, or use `--file <path>` / `--text "..."`."
+- If `<id>` is omitted, infer a numeric token via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query — see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name, call it `{numeric-id}`. Resolve that token against `{task-root}`: apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token, mirroring `spec/SKILL.md`'s Validation-section resolution logic. Exactly one match — reuse that folder's full name as `{task-id}` verbatim. Zero matches — stop: "The branch-inferred token `<token>` doesn't match an existing task folder. Pass a task id, `--file <path>`, or `--text "..."`." More than one match — stop: "The branch-inferred token `<token>` matches more than one task folder. Pass a task id explicitly, or use `--file <path>` / `--text "..."`."
 - **Input source preference:** `01_spec.md` (richer, post-spec) > `00_reqs.md` (raw requirements). First available wins.
 - If neither file exists, stop: "No `01_spec.md` or `00_reqs.md` found in `{task-root}/{task-id}/`. Run `/wf:spec {id}` first."
 
 ### Direct provider resolution (how `current-branch-query` is reached)
 
-Branch inference above reaches `current-branch-query` by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. (classify has no tracker-surface call site — it never fetches.)
+Branch inference above reaches `current-branch-query` by resolving the `delivery` surface with the `wf-resolver` `resolve_provider("delivery")` query — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }`. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); this skill performs no registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in-context to dispatch `current-branch-query`. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery). (classify has no tracker-surface call site — it never fetches.)
 
 ---
 
@@ -57,7 +57,7 @@ Branch inference above reaches `current-branch-query` by the canonical resolve-o
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
-- Read-only resolution via `current-branch-query` (direct provider resolution to the `delivery` surface) for id inference.
+- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query) for id inference.
 - Invoke the **Task** tool to delegate to the `wf:classify` subagent. **The subagent is the only place the rubric runs** — this skill never classifies inline.
 
 **Forbidden:**
