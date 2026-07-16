@@ -150,7 +150,7 @@ Before writing the plan, explore the project to understand what files are releva
 - No step touches more than 5 files
 - No exact code — describe the change in plain language
 
-**Step 2b — Write `02_plan.md`** using the Plan Template at [`references/plan-template.md`](references/plan-template.md). **Overwrite if it exists** (version-control history preserves prior versions).
+**Step 2b — Write `02_plan.md`** using the Plan Template at `references/plan-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: plan`, `ref: plan-template.md`), never a raw `Read` of the plugin-cache path — see "Plan Template" below. **Overwrite if it exists** (version-control history preserves prior versions).
 
 **Step 2c — Update the index.** After the file is written, invoke `/wf:index {id} plan "<n> steps; verify=<verify-command>"` to record it in the per-task index. Substitute the actual step count and the verify command from `_local/config.md` (e.g. `5 steps; verify=npm run typecheck`). Escape any `|` in the verify command as `\|` so the index table doesn't break.
 
@@ -158,7 +158,7 @@ Before writing the plan, explore the project to understand what files are releva
 
 ## Plan Template
 
-The verbatim `02_plan.md` template — the metadata block, `## Progress` checklist, and `## Execution Plan` step shape (`### - [ ] STEP-NNN:`) that `/wf:implement` ticks — lives at [`references/plan-template.md`](references/plan-template.md). It is read only on this write path, so it stays out of the boot body. Read it, then emit it with placeholders substituted.
+The verbatim `02_plan.md` template — the metadata block, `## Progress` checklist, and `## Execution Plan` step shape (`### - [ ] STEP-NNN:`) that `/wf:implement` ticks — lives at `references/plan-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: plan`, `ref: plan-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path, so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 ---
 
