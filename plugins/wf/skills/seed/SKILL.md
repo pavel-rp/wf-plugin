@@ -14,12 +14,12 @@ Parse an architecture or design doc's action-items checklist into an append-only
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. `{task-root}` and the two `## Seed` keys below come from that file — never hardcode them. An older config that predates the `## Seed` section is handled gracefully (see Phase 1) — a missing key is a fallback, not an error.
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, seedArchitectureDoc, seedBacklogPath, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. `{task-root}` and the two `## Seed` values below come from `coreConfig` (`coreConfig.taskRoot`, `coreConfig.seedArchitectureDoc`, `coreConfig.seedBacklogPath`) — never hardcode them. An older config that predates the `## Seed` section is handled gracefully (see Phase 1): the resolver surfaces a missing key as an unset `coreConfig` value — an unset value is a fallback, not an error.
 
-**Config keys** (`## Seed` section of `_local/config.md`):
+**Config values** (surfaced by `resolve_config` from the `## Seed` section of `_local/config.md`):
 
-- **Architecture Doc** — the default doc parsed when `/wf:seed` is called with no `<doc>` argument.
-- **Backlog Path** — the backlog file to write/append. Absent → fall back to `{task-root}/BACKLOG.md`.
+- **`coreConfig.seedArchitectureDoc`** (the **Architecture Doc** key) — the default doc parsed when `/wf:seed` is called with no `<doc>` argument.
+- **`coreConfig.seedBacklogPath`** (the **Backlog Path** key) — the backlog file to write/append. Unset → fall back to `{task-root}/BACKLOG.md`.
 
 ---
 
@@ -52,7 +52,7 @@ Reach for `/wf:seed` when an architecture or design doc carries an action-items 
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
-- Read `_local/config.md` for `{task-root}` and the `## Seed` keys.
+- Obtain `{task-root}` and the `## Seed` values from the `wf-resolver` `resolve_config` query (`coreConfig`).
 - Write/create and append the backlog artifact **inside `_local/`** only.
 
 **Forbidden:**
@@ -65,9 +65,9 @@ Reach for `/wf:seed` when an architecture or design doc carries an action-items 
 
 ## Phase 1: Resolve inputs
 
-1. **Read config.** From `_local/config.md`, read `{task-root}` and the `## Seed` keys. If the `## Seed` section or a key is absent, degrade gracefully — do not error:
-   - **Architecture Doc** absent **and** no `<doc>` argument → stop per `## Edge Cases` ("no doc resolved").
-   - **Backlog Path** absent → use `{task-root}/BACKLOG.md`.
+1. **Resolve config.** From `resolve_config`'s `coreConfig`, read `{task-root}` (`coreConfig.taskRoot`) and the `## Seed` values (`coreConfig.seedArchitectureDoc`, `coreConfig.seedBacklogPath`). If a `## Seed` value is unset (an older config predating the section), degrade gracefully — do not error:
+   - **`coreConfig.seedArchitectureDoc`** unset **and** no `<doc>` argument → stop per `## Edge Cases` ("no doc resolved").
+   - **`coreConfig.seedBacklogPath`** unset → use `{task-root}/BACKLOG.md`.
 2. **Resolve the doc.** `<doc>` argument if given, else the **Architecture Doc** key. Read it. If it can't be read (missing/unreadable), stop per `## Edge Cases`.
 3. **Resolve the backlog path** per the key/fallback above, then **defensively confirm it stays inside `_local/`** — it must be a repo-relative, forward-slash path under `{task-root}` with **no** `..` segment and **no** absolute/drive prefix (no leading `/`, no `C:`-style prefix). If it violates that shape, do **not** write to it: fall back to `{task-root}/BACKLOG.md` and flag the rejected value loudly in the report (mirrors `/wf:init`'s defensive `registryPath` check). This keeps the Safety Rule "writes only inside `_local/`" total even against a misconfigured **Backlog Path**. Hold the resolved path; do not create it yet.
 
