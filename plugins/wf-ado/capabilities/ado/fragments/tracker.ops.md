@@ -1,6 +1,6 @@
 # ado tracker provider — runtime ops
 
-**Version:** 1.3.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-243 — `create_umbrella`, `create_child`, `list_children`, `post_comment` bound to confirmed tool names)
+**Version:** 1.4.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-243 — `create_umbrella`, `create_child`, `list_children`, `post_comment` bound to confirmed tool names; WF-280 — `resolve_config` sources `registryPath` from the bundled `wf-resolver` MCP tool's typed `resolve_config` query instead of assuming the `_local/config.md` literal, with `resolve_gate` diagnostics on resolver failure)
 **Role:** the runtime-read half of the ado tracker provider — every input, guard, tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, grounding legend, per-operation grounding status, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -12,7 +12,7 @@
 
 **Tool-name grounding marker:** a `Tool:` line carrying the literal `<VERIFY: tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>` marker names an operation whose ADO MCP tool this codebase has never called — the marker must be replaced with the confirmed tool name (verified against a live ADO MCP catalog) before that binding is treated as final, never guessed. Grounded tool names are given verbatim.
 
-**Reducible probe list (spec pin):** none. Each write is a single MCP call, `get` is a single `expand: "all"` fetch, and `resolve_config` is a pure local read — there is no probe pair to consolidate. Every operation's call count is unchanged by this split.
+**Reducible probe list (spec pin):** none. Each write is a single MCP call, `get` is a single `expand: "all"` fetch, and `resolve_config` is one `wf-resolver` `resolve_config` (R1) call plus a local section read — there is no probe pair to consolidate. Every operation's call count is unchanged by this split.
 
 **Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles.
 
@@ -22,10 +22,11 @@
 
 **Procedure:**
 
-1. Read the `## Azure DevOps` section of `_local/config.md`.
-2. **Configured** — all three rows (`ADO Project`, `ADO Organization`, `Work Item ID Prefix`) hold a real value: not the `<...>` bracket placeholder shape `/wf:init`'s template uses for an unset value, and not a missing section/file.
-3. **Unconfigured** — any row is still a placeholder, or the section/file is missing entirely. This is the silent local-only fallback the contract's degradation rules define — **no prompt, no error**.
-4. No MCP call either way — this operation is purely a local config read.
+1. Call the bundled `wf-resolver` MCP tool `resolve_config` (R1) to obtain `registryPath` — never assume the `_local/config.md` literal; a project's `wf.config.js` may relocate it. On a resolver failure (snapshot-missing/malformed/schema-incompatible/etc.), call `resolve_gate` with `{ surface: "local-read" }` and follow its `reaction` — a local read continues best-effort per `capability-registry.ops.md` §"Resolver-failure semantics" — falling back to the conventional default `_local/config.md` location rather than blocking or prompting.
+2. Read the `## Azure DevOps` section at the resolved `registryPath`.
+3. **Configured** — all three rows (`ADO Project`, `ADO Organization`, `Work Item ID Prefix`) hold a real value: not the `<...>` bracket placeholder shape `/wf:init`'s template uses for an unset value, and not a missing section/file.
+4. **Unconfigured** — any row is still a placeholder, or the section/file is missing entirely. This is the silent local-only fallback the contract's degradation rules define — **no prompt, no error**.
+5. Beyond the one `resolve_config` call for the registry location, no further MCP call — the Azure DevOps config-section values themselves aren't yet a resolver-supplied fact (the snapshot's `providerConfig` field is populated by the owning provider surface itself, per WF-270, and isn't wired through any typed tool response today), so reading them stays a direct local read anchored to the resolver-supplied path.
 
 **Output:** `configured` or `unconfigured`.
 
