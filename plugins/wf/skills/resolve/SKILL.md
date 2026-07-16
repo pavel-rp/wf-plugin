@@ -20,6 +20,8 @@ Thin frontend over the bundled **wf resolver MCP service** — the typed tools e
 
 **Do NOT use `/wf:resolve` to** register a pack (that is `/wf-<pack>:init` → `register_pack`), edit the registry by hand, or read a capability's fragment/prompt body (the service never returns bodies — paths and metadata only).
 
+**Freshness is automatic.** Every typed resolver query re-validates the snapshot's recorded input fingerprints (registry, capability manifests, plugin roots, profiles, and the resolver schema/version) and rebuilds on any mismatch — so a registry edit, a manifest change, or an `init` completion is picked up on the very next query without a manual `refresh`. Core's SessionStart hook additionally runs a pre-MCP `refresh-if-stale` pass so a change made while Claude was closed (including a plugin add/remove) is reconciled at session start. Freshness is driven only by these recorded inputs and explicit requests — **never by elapsed time**. `refresh`/`invalidate` remain available to force the rebuild point or to record that inputs changed.
+
 ---
 
 ## Command Syntax
@@ -71,7 +73,7 @@ If `valid` is false and `cached` is false, report that nothing has been resolved
 
 ## Action: invalidate
 
-1. Call `resolve_invalidate`. It marks the view stale (does not rebuild), returning the lifecycle state (`valid: false`).
+1. Call `resolve_invalidate`. It marks the view stale (does not rebuild), returning the lifecycle state (`valid: false`). A typed consumer may pass `reasons` (short suspected-stale messages) which surface as `freshness/*` diagnostics on the returned state.
 2. Print the state and note that the next resolver query (or `/wf:resolve refresh`) will rebuild.
 
 ---
