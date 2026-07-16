@@ -81,7 +81,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 
 ## Phase 1: Resolve and load
 
-1. **Resolve `<id>`.** Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-followup` in its stop messages.
+1. **Resolve `<id>`.** Resolve the task id per the shared pipeline conventions doc — obtained via the `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`), never a raw `Read` of the plugin-cache path — §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-followup` in its stop messages.
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. Stop if `07_qa-report.md` is missing (message above).
 3. **Parse `07_qa-report.md`** per [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md): the header (`Run date`, `Mode`, `Status`, `App`), the traceability matrix (`SC-N → scenarios → result`), each per-suite scenario block, and the Defects table. If the report has no `## Summary` and no per-suite results, stop: "Report is malformed — re-run `/wf:qa-auto`."
 4. **Filter by `--suite`** if passed.
@@ -89,7 +89,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 
 ### Staleness note
 
-`07_qa-report.md` carries no commit anchor, so this skill does a soft check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Report/spec staleness check": compare `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above) against the report's own `Run date`. If the branch has moved since, print a one-line warning that some defects may already be addressed and continue — Phase 6 confirms each defect against current source before planning a fix, so a stale symptom is caught at diagnosis time.
+`07_qa-report.md` carries no commit anchor, so this skill does a soft check per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Report/spec staleness check": compare `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above) against the report's own `Run date`. If the branch has moved since, print a one-line warning that some defects may already be addressed and continue — Phase 6 confirms each defect against current source before planning a fix, so a stale symptom is caught at diagnosis time.
 
 ---
 
@@ -97,7 +97,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 
 Fixes belong on the branch the report was produced against. Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** for the branch-name match below; it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
 
-Gate on the task branch per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Branch gate (bare-core aware)", using `{numeric-id}` for the branch-name match. On the bare-core skip, report it and continue to Phase 3.
+Gate on the task branch per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` for the branch-name match. On the bare-core skip, report it and continue to Phase 3.
 
 ---
 
@@ -175,7 +175,7 @@ For each remaining DEFECT, in report order:
 3. **Decide plannable vs escalate.** Plannable when the root cause is identifiable AND the fix is bounded (a few files, no design call). Otherwise ESCALATE.
 4. **Write a checkbox step** per plannable defect into `08_qa-fix.md` using the template below, each traced to `TC-NNN` + `SC-N` + observed symptom + root-cause hypothesis.
 
-Write `08_qa-fix.md` now (rotate any existing file into `08_qa-fix.history.md` first, per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Artifact rotation into `.history.md`"). The file holds the unblock-pass table, the remediation plan, the escalations, and an empty fix log that Phase 8 fills.
+Write `08_qa-fix.md` now (rotate any existing file into `08_qa-fix.history.md` first, per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`"). The file holds the unblock-pass table, the remediation plan, the escalations, and an empty fix log that Phase 8 fills.
 
 After writing, invoke `/wf:index <id> qa-fix "<u> unblocked · <d> planned · <e> escalated"`.
 

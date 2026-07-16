@@ -40,11 +40,12 @@ Parse the first token.
 
 ### empty → infer from current branch
 
-1. Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
-   §"Id inference from the current branch" — inferred from the branch via
-   `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query, see
-   "Direct provider resolution" below) and resolved against `{task-root}`, naming
-   `/wf:verify-fix` in its stop messages.
+1. Resolve the task id per the shared pipeline conventions doc — obtained via the
+   `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`),
+   never a raw `Read` of the plugin-cache path — §"Id inference from the current branch";
+   inferred from the branch via `current-branch-query` (the `wf-resolver`
+   `resolve_provider("delivery")` query, see "Direct provider resolution" below) and
+   resolved against `{task-root}`, naming `/wf:verify-fix` in its stop messages.
 2. Confirm `{task-root}/{task-id}/04_verify.md` exists. If not, stop: "No audit report found. Run `/wf:verify-spec {task-id}` first."
 
 ### `<id>` (opaque — whatever shape the active tracker capability produces, or the local `T<NNN>` scheme)
@@ -88,7 +89,7 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 
 Before editing any code, verify the current branch matches the audit's target. Extract the first 3+-digit run from `{task-id}` — call it `{numeric-id}`; it is used **only** for the branch-name match below, never for the task folder or any operation.
 
-Gate on the task branch per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Branch gate (bare-core aware)", using `{numeric-id}` (extracted above) for the branch-name match. On the bare-core skip, report it and proceed (the gate is satisfied).
+Gate on the task branch per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` (extracted above) for the branch-name match. On the bare-core skip, report it and proceed (the gate is satisfied).
 
 Rationale: the audit's evidence lines (`file:line`) are only meaningful on the branch that produced them. Fixing on `main` or an unrelated branch edits the wrong state.
 
@@ -109,7 +110,7 @@ If the report is malformed (no `## Requirements` heading, no verdict lines), sto
 
 ### Staleness check
 
-After parsing the header, run the staleness check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above) against the report's own `**Audited at:**` field. If the branch has moved since, print a prominent warning at the top of Phase 4's plan:
+After parsing the header, run the staleness check per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above) against the report's own `**Audited at:**` field. If the branch has moved since, print a prominent warning at the top of Phase 4's plan:
 
 `⚠ Audit ran at <audited-at>; the branch's last commit is now <last-commit-at>. Cited file:line citations may be stale — consider re-running `/wf:verify-spec` first.`
 
@@ -229,7 +230,7 @@ After printing all questions, **stop**. Do not proceed to further edits in the s
 
 ## Phase 7: Write the Fix Log
 
-Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
+Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
 
 The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at [`references/verify-fix-template.md`](references/verify-fix-template.md). It is read only on this write path (Phase 7), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
 
