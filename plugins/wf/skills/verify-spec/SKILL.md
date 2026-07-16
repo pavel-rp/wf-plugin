@@ -27,10 +27,15 @@ generic verdict stands alone.
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If
-the file doesn't exist, stop and instruct the user to run `/wf:init` first. All
-references to `{task-root}` below come from that file — never hardcode it. Task folders
-live at `{task-root}/{task-id}/`.
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP
+service via `resolve_config` — it returns `{ workspaceRoot, registryPath,
+coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core
+performs no direct config-file parse). All references to `{task-root}` below come from
+`coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is
+uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the
+user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and
+report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse
+config as a fallback. Task folders live at `{task-root}/{task-id}/`.
 
 ---
 
@@ -42,7 +47,7 @@ Parse the first token. Recognized forms:
 
 1. Resolve the task id per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
    §"Id inference from the current branch" — inferred from the branch via
-   `current-branch-query` (direct provider resolution to the `delivery` surface, see
+   `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query, see
    "Direct provider resolution" below) and resolved against `{task-root}`, naming
    `/wf:verify-spec` in its stop messages.
 2. Confirm the resolved task folder's requirements artifact (`00_reqs.md`) exists. If
@@ -70,18 +75,23 @@ author it (`/wf:spec`) or pass a path explicitly.
 
 Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch
 id inference above, and the Implementation-scope branch name below) and
-`last-commit-timestamp-query` (the spec-staleness edge case) — is reached by the
-canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider
-resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent
-`registryPath` value, plus one manifest+fragment read for the `delivery` surface; a
-plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md`
-§"Recorded-root-first resolution with install-manifest self-heal"). With zero readable
-`delivery` rows, both operations fall back silently to their plain-directory-safe cases
-— no error, no capability term surfaces. This audit's core evidence-gathering (the diff,
-commit coordinates, and dirty-tree state — see "Implementation scope" below) has no
-delivery operation of its own today; it is gathered directly against the local working
-tree regardless of registry state — a documented contract-completeness gap, not a
-workaround.
+`last-commit-timestamp-query` (the spec-staleness edge case) — is reached by calling the
+bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that
+returns the run-scoped resolution record `{ surface, owner, fragmentPath, state,
+candidates?, degradation }`. The resolver has already resolved the `## Capabilities`
+registry, the owning capability's `manifest.md`, and any plugin-anchored root (post
+install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first
+resolution with install-manifest self-heal"); core performs **no** registry / manifest /
+plugin-root read of its own. Follow the returned `fragmentPath` in this skill's own
+context to dispatch the operation. On `state: unconfigured` or `unrecoverable` (no
+readable `delivery` provider), both operations fall back silently to their
+plain-directory-safe cases — no error, no capability term surfaces. If the `wf-resolver`
+service is unavailable, stop and report that the resolver runtime is not loaded — do not
+hand-parse the registry (WF-272 diagnostics/recovery). This audit's core
+evidence-gathering (the diff, commit coordinates, and dirty-tree state — see
+"Implementation scope" below) has no delivery operation of its own today; it is gathered
+directly against the local working tree regardless of resolution state — a documented
+contract-completeness gap, not a workaround.
 
 ---
 
@@ -104,8 +114,8 @@ Always read, in order:
    workaround — see `plugins/wf/skills/_contracts/capability-registry.contract.md`
    §"The delivery provider surface" for the operation set); gather the following by
    outcome, described generically and never as a literal command:
-   - the current branch name — via `current-branch-query` (direct provider resolution
-     to the `delivery` surface, see "Direct provider resolution" above)
+   - the current branch name — via `current-branch-query` (the `wf-resolver`
+     `resolve_provider("delivery")` query, see "Direct provider resolution" above)
    - the current HEAD commit coordinate (full SHA)
    - the base commit coordinate where the branch diverged from `main`
    - whether the working tree is clean or dirty, and which files are dirty if so
@@ -185,26 +195,36 @@ Verdicts:
 After the generic per-requirement audit, fire the **`verify`** phase and aggregate any
 **`finding`** contributions the registered capabilities attach to it.
 
-Follow the generalised phase-firing procedure verbatim — `invocation-runtime.ops.md`
-§"The moving parts" (registry iteration → per-capability manifest read → per-phase
-fragment collection → per-fragment dispatch → aggregation), referencing it by
-**phase name / contribution-kind name**, never by heading — with these `verify`
-parameters:
+Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — do
+**not** read `## Capabilities` or any `manifest.md` yourself — referencing the taxonomy
+by **phase name / contribution-kind name**, never by heading:
 
-- **Firing phase:** `verify`. **Contribution kind collected:** `finding`.
-- **Generic shape produced:** each contributed finding in the generic finding shape —
-  the "Capability findings" report shape below.
-- **Aggregation:** `finding` aggregates **provenance-tagged** — render every
-  contributor's findings, each tagged with its **source capability** (the registry row's
-  name); registry order is cosmetic.
+1. **Call `resolve_registry`.** It returns the ordered active `capabilities[]` (in
+   registry order), each already resolved from the registry and its `manifest.md`:
+   `{ name, kind, manifestPath, fragments[] { phase, contributionKind, dispatch, scope },
+   articles[], provenance, validity }`. The resolver has done the registry iteration,
+   per-capability manifest read, and plugin-anchored root self-heal. If the `wf-resolver`
+   service is unavailable, stop and report that the resolver runtime is not loaded — do
+   not hand-parse the registry (WF-272 diagnostics/recovery).
+2. **Collect** the fragment rows whose `phase` is `verify` and `contributionKind` is
+   `finding`, in registry order.
+3. **Dispatch each** on its `dispatch` metadata (the resolver returns paths/metadata
+   only — never a fragment body, so the dispatch read stays in this skill's own context):
+   `inline: <rel-path>` → read the fragment at its resolved path and follow it in-context,
+   producing each finding in the generic finding shape (the "Capability findings" report
+   shape below); `subagent: <agent>` → invoke the **Task** tool with `subagent_type:
+   <agent>`, passing the artifact under audit and the generic finding shape; only its
+   final block returns.
+4. **Aggregate provenance-tagged** — render every contributor's findings, each tagged
+   with its **source capability** (the `name` field); registry order is cosmetic.
 
-**No-op** is the ops doc's generalised `<none>` path (§"No-op path"): if the registry is
-empty or absent, a manifest is missing, no fragment matches `verify` under the `finding`
-kind, or a `dispatch` is malformed, that contributor — or the whole phase — produces
-**nothing** and the generic verdict stands alone (no capability findings section, no
-capability/stack/domain term surfaced, no broken subagent reference, no STOP). A
-capability's findings feed the verdict on the same footing as generic requirements (a
-finding that asserts non-conformance is a FAIL, exactly like a failed requirement).
+**No-op:** if `resolve_registry` returns an empty `capabilities[]`, no fragment matches
+`verify` under the `finding` kind, or a `dispatch` is malformed, that contributor — or
+the whole phase — produces **nothing** and the generic verdict stands alone (no
+capability findings section, no capability/stack/domain term surfaced, no broken subagent
+reference, no STOP). A capability's findings feed the verdict on the same footing as
+generic requirements (a finding that asserts non-conformance is a FAIL, exactly like a
+failed requirement).
 
 ---
 
@@ -289,9 +309,9 @@ End with the final-output block (see below).
 ## Edge Cases
 
 - **Spec is stale**: run the staleness check per [`../_shared/pipeline-conventions.md`](../_shared/pipeline-conventions.md)
-  §"Report/spec staleness check", comparing `last-commit-timestamp-query` (direct
-  provider resolution to the `delivery` surface, see "Direct provider resolution" above)
-  against the spec header's fetch/author date. If the branch has moved since, warn the
+  §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the
+  `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution"
+  above) against the spec header's fetch/author date. If the branch has moved since, warn the
   user — the spec may have been updated since — and continue anyway, but flag it.
 - **Requirements reference files that no longer exist**: the file may have moved or been
   renamed. `Glob` for the basename before giving up. If truly missing, mark the

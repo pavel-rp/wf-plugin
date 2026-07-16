@@ -1,30 +1,27 @@
 ---
 name: init
-description: Onboards the wf-ado pack into a wf-initialized repo in one command — registers the pack's ado capability into the wf capability registry as a plugin-anchored row, records the pack's install root so core can resolve it, and interviews for (or carries forward) the Azure DevOps organization/project already recorded by /wf:init. Use once (after /wf:init) to activate ADO tracker binding without hand-editing _local/config.md; upgrades self-heal, so re-run only if resolution reports the pack unrecoverable or after relocating the pack.
+description: Onboards the wf-ado pack into a wf-initialized repo in one command — self-registers the pack's ado capability into the wf capability registry by calling the bundled resolver's inspect_pack/register_pack tools with the pack's stable plugin id, then interviews for (or carries forward) the Azure DevOps organization/project already recorded by /wf:init. Use once (after /wf:init) to activate ADO tracker binding without hand-editing _local/config.md or probing the plugin install path; re-run only if register_pack reports the pack unrecoverable or after relocating the pack.
 allowed-tools: [Read, Write, Edit, Bash]
 ---
 
-# /wf-ado:init — Onboard the wf-ado pack (self-register + record install root + ADO interview)
+# /wf-ado:init — Onboard the wf-ado pack (self-register via inspect_pack/register_pack + ADO interview)
 
 Collapse wf-ado onboarding into **one command**. Installing the plugin makes
 `/wf-ado:init` discoverable (native composition) but registers **no** phase fragment —
-that still requires hand-editing the downstream `## Capabilities` table and re-running
-`/wf:init`. This skill does that registration for you, records the one datum core
-cannot get on its own (**the pack's install root**), and runs the one phase a delivery
-pack never needs: an interview for the Azure DevOps organization/project, carrying
-forward any values a prior `/wf:init` run already recorded.
-
-The generic onboarding spine — register the capability, record the install root,
-self-check — is shared by every provider pack and lives in
-`plugins/wf/skills/_contracts/pack-onboarding.ops.md`. wf-ado supplies the parameters
-below, **plus one bespoke phase**: Phase 4 interviews for ADO organization + project,
-carrying forward any values a prior `/wf:init` run already wrote to `_local/config.md`'s
-`## Azure DevOps` section rather than orphaning them behind a new profile file.
+that still requires a row in the downstream `## Capabilities` table and a plugin-root
+entry. This skill does that registration for you by calling the core plugin's bundled
+**wf-resolver** MCP tools — `inspect_pack` then `register_pack` — passing wf-ado's own
+stable plugin id (`wf-ado`). Those tools resolve the pack's install path via `claude
+plugin list --json`, validate its manifest, and own the registry write themselves; this
+skill never probes `${CLAUDE_PLUGIN_ROOT}` and never hand-edits the `## Plugin Roots` /
+`## Capabilities` tables. It also runs the one phase a delivery pack never needs: an
+interview for the Azure DevOps organization/project, carrying forward any values a prior
+`/wf:init` run already recorded.
 
 **This is fragment/registry-side onboarding only.** It cannot register a `/command` — a
 discoverable skill must live in a plugin's `skills/` dir (native discovery).
 `/wf-ado:init` is already discoverable from installing the plugin; this skill wires the
-**fragment + registry** (plus the ADO interview).
+**fragment + registry** (plus the ADO interview) via the resolver tools.
 
 ---
 
@@ -34,7 +31,8 @@ discoverable skill must live in a plugin's `skills/` dir (native discovery).
 /wf-ado:init
 ```
 
-Takes no arguments — it always registers the single `ado` capability this pack ships.
+Takes no arguments — it always registers the single `ado` capability this pack ships,
+under the fixed plugin id `wf-ado`.
 
 ---
 
@@ -42,34 +40,93 @@ Takes no arguments — it always registers the single `ado` capability this pack
 
 **Allowed:**
 
-- Read any file; read `${CLAUDE_PLUGIN_ROOT}` and read-only git (`git rev-parse`).
+- Read any file; read-only `git` (`git rev-parse`).
+- Call the bundled `wf-resolver` MCP tools `inspect_pack`, `resolve_gate`, and
+  `register_pack` — always with `pluginId: "wf-ado"`, wf-ado's own exact stable plugin id.
 - Write/edit files under `_local/` — including the `## Azure DevOps` section of
   `_local/config.md` (Phase 4), which stays inside `_local/`.
-- Write the `## Plugin Roots` and `## Capabilities` tables to the **resolved registry
-  location** — the one sanctioned write outside `_local/`, since registering the pack is
-  this skill's whole purpose.
 
 **Forbidden:**
 
 - Modify any source file except the writes named above.
+- Probe `${CLAUDE_PLUGIN_ROOT}`, derive an install root by any other means, or
+  hand-edit the `## Plugin Roots` / `## Capabilities` tables directly — that write
+  belongs solely to `register_pack`.
 - Register a `/command` (impossible — native discovery only; this skill wires the
   fragment/registry).
-- Record any plugin's root but **its own** (`${CLAUDE_PLUGIN_ROOT}` = wf-ado).
+- Call `inspect_pack` / `register_pack` for any `pluginId` other than `wf-ado`.
 - Invent a default value for ADO Organization or ADO Project — always ask.
 - Run builds, tests, installs, or any destructive git operation.
 
 ---
 
-## Onboarding procedure
+## Phase 0: Preconditions
 
-Follow `plugins/wf/skills/_contracts/pack-onboarding.ops.md` end to end (Phases 0–5),
-supplying these parameters:
+1. **Confirm a git repo:** `git rev-parse --git-dir`. If not, stop: "`/wf-ado:init` must
+   run inside a git repository — run `/wf:init` first."
+2. **Resolve the registry location** exactly as `/wf:init` does — read `wf.config.js` at
+   the repo root (`git rev-parse --show-toplevel`) and use its optional `registryPath`
+   key, **defaulting to `_local/config.md`** when absent. Call this `<registry-location>`.
+3. **Require `/wf:init` first.** If `_local/` is absent, or `<registry-location>` does not
+   exist, stop: "Run `/wf:init` first — `/wf-ado:init` registers into the registry that
+   `/wf:init` creates." (This skill augments a registry; it never bootstraps one.)
 
-- `<pack>` = `wf-ado`
-- `<capability>` = `ado`
-- **Phase 4 detail** = the ADO interview below.
+## Phase 1: Inspect the pack (read-only)
 
-### Phase 4 detail: interview + carry-forward (bespoke)
+1. Call `inspect_pack` with `{ pluginId: "wf-ado" }`. It returns `{ pluginId,
+   pluginName, installed, enabled, version, installPath, capabilities[], fingerprint,
+   valid, issues[] }` — resolved via `claude plugin list --json`, no environment probing
+   of any kind on wf-ado's part.
+2. **If `valid` is `false`**, stop before attempting registration. Report every string in
+   `issues` verbatim, plus the concrete remedy per cause:
+   - `installed: false` — the wf-ado plugin isn't installed; install it from the
+     marketplace, then re-run `/wf-ado:init`.
+   - `enabled: false` — the plugin is installed but disabled; enable it, then re-run.
+   - `capabilities` empty / no readable manifest — the install looks corrupted or
+     incomplete; reinstall the plugin, then re-run.
+3. Keep the returned `fingerprint` for Phase 3 — it proves to `register_pack` that
+   nothing about the pack changed between inspection and registration.
+
+## Phase 2: Resolver health gate (SUB-4 / WF-272 diagnostics)
+
+Registering a pack **writes** the shared registry, so it uses the same
+block-before-mutation policy as any other registry-mutating write.
+
+1. Call `resolve_gate` with `{ surface: "delivery-write" }`.
+2. **If `healthy` is `false`**, STOP — do not call `register_pack`. Report, verbatim:
+   - `reaction` (will read `block`),
+   - each `categories` entry (one or more of `snapshot-missing`, `snapshot-malformed`,
+     `schema-incompatible`, `fingerprint-unresolvable`, `cli-unavailable`,
+     `registry-invalid`),
+   - every diagnostic's message, and
+   - every `recovery` line (each names a `/wf:resolve refresh` or `/wf:resolve
+     invalidate` action).
+
+   This is the resolver itself being unhealthy — a different failure class from an
+   uninstalled/disabled pack (Phase 1). Do not attempt any manual fallback discovery;
+   direct the user to the named `/wf:resolve` recovery, then re-run `/wf-ado:init`.
+3. If `healthy` is `true`, proceed to Phase 3.
+
+## Phase 3: Register the pack
+
+1. Call `register_pack` with `{ pluginId: "wf-ado", expectedFingerprint: <fingerprint
+   from Phase 1> }`. It re-validates internally, then — on success — owns the entire
+   `## Plugin Roots` + `## Capabilities` write and refreshes the resolver snapshot. This
+   skill performs none of that writing itself.
+2. **`status: "rejected"`** — stop, report `reason` verbatim, plus the remedy:
+   - stale fingerprint (pack changed between Phase 1 and now) — just re-run
+     `/wf-ado:init`; it re-inspects and gets a fresh fingerprint automatically.
+   - not installed / disabled / no valid manifest — same remedies as Phase 1.
+3. **`status: "registered"`** — the `preview` array shows exactly which `## Plugin
+   Roots` and `## Capabilities` rows were written (or left byte-identical if already
+   present — the tool is itself skip-if-present on an existing capability row).
+4. **`selfCheck: "failed"`** on an otherwise-successful registration means the write
+   landed but resolution still doesn't resolve `ado` to `ok`. Treat this as a SUB-4-style
+   diagnosis, not a silent partial success: call `resolve_gate` with `{ surface:
+   "delivery-write" }` again, report its diagnostics + recovery, and direct the user to
+   `/wf:resolve refresh` before re-running `/wf-ado:init`.
+
+## Phase 4: ADO interview + carry-forward (bespoke)
 
 The one phase a delivery pack never needed. Reconcile `_local/config.md`'s `## Azure
 DevOps` section with real values, carrying forward anything a prior `/wf:init` run (or a
@@ -132,12 +189,21 @@ still a placeholder.
 
 ## Edge Cases
 
-The generic onboarding stop/idempotency conditions — `/wf:init` not run,
-`$CLAUDE_PLUGIN_ROOT` unset, `ado` already registered, a `wf-ado` plugin-root row already
-present, registry relocated via `registryPath`, and self-check FAIL — are handled by
-`plugins/wf/skills/_contracts/pack-onboarding.ops.md` §"Edge cases". wf-ado's own
-interview-specific cases:
-
+- **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
+  `/wf:init` (Phase 0).
+- **`ado` already registered**: `register_pack` is itself skip-if-present on the
+  `## Capabilities` row — it still refreshes the `## Plugin Roots` row and re-runs the
+  self-check. Report `already registered` for the capability row; Phase 4 still runs.
+- **Pack not installed / disabled / manifest-invalid** (Phase 1 `valid: false`): stop
+  before any resolver-health or registration call; report the concrete remedy and do not
+  proceed to Phases 2–4.
+- **Resolver unhealthy** (Phase 2 `resolve_gate` returns `healthy: false`): stop before
+  calling `register_pack`; report the categorized diagnostics + `/wf:resolve` recovery
+  verbatim — never fall back to hand-walking the registry.
+- **Stale fingerprint** (Phase 3 rejects because the pack changed since Phase 1): re-run
+  `/wf-ado:init` — no manual recovery needed.
+- **`register_pack` self-check FAIL**: report it as the final state (`partial`); do not
+  claim success. Direct to `/wf:resolve refresh`.
 - **All three ADO values already set (re-run on an already-onboarded repo):** Phase 4
   produces **zero prompts** and leaves every row byte-identical — report all three as
   `carried forward`.
@@ -155,16 +221,16 @@ interview-specific cases:
 ```
 WF-ADO-INIT — <onboarded | already-registered | partial>
 
-Registry:   <resolved registry location>
-Pack root:  <pack-root>
+Registry:   <registry-location>
+Pack root:  <installPath from inspect_pack/register_pack>
 Registered: ado — <registered | already registered>
 Azure DevOps:
 - ADO Organization    — <carried forward | set to <value>>
 - ADO Project         — <carried forward | set to <value>>
 - Work Item ID Prefix — <carried forward | set to ADO>
-Self-check: <PASS — plugin:wf-ado/capabilities/ado resolves (recorded root or self-heal) | FAIL — pack unrecoverable: <what didn't resolve>>
+Self-check: <PASS — register_pack selfCheck: ok | FAIL — <resolve_gate/register_pack diagnostics + recovery>>
 
-Next: run any wf skill that needs the tracker (e.g. /wf:spec, /wf:lite, /wf:triage) — core resolves the ado capability for the tracker surface directly (no phase-firing gate). Upgrades self-heal — re-run /wf-ado:init only if resolution reports the pack unrecoverable, or after relocating the pack.
+Next: run any wf skill that needs the tracker (e.g. /wf:spec, /wf:lite, /wf:triage) — core resolves the ado capability for the tracker surface directly (no phase-firing gate). Re-run /wf-ado:init only if register_pack reports the pack unrecoverable, or after relocating the pack.
 ```
 
 **The final-output block must always be the very last thing output to chat.**

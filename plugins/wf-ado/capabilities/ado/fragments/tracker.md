@@ -79,8 +79,16 @@ it.
 
 - **Configured/unconfigured gate is behaviour-bearing, so it lives in the ops file.** It
   decides whether the tracker is live or the run degrades to the silent local-only
-  fallback — not rationale, an outcome. A pure local config read, no MCP call.
-- **Grounding:** Grounded — local-only, no tool involved.
+  fallback — not rationale, an outcome. **WF-280:** the registry-location half now comes
+  from the bundled `wf-resolver` MCP tool's typed `resolve_config` query (`registryPath`),
+  instead of assuming the `_local/config.md` literal — a project's `wf.config.js` may
+  relocate it. Only the Azure DevOps section's own values remain a direct local read: the
+  resolver's snapshot has a `providerConfig` field reserved for exactly this (consumer
+  inventory §7 field #9), but it is deliberately left unpopulated by core — a
+  provider-specific config-section name is domain knowledge core doesn't carry — and no
+  typed tool exposes it yet, so this fragment reads its own section directly, anchored to
+  the resolver-supplied path rather than a hardcoded one.
+- **Grounding:** Grounded — one resolver query plus a local read, no ADO tool involved.
 
 ## create_umbrella
 
