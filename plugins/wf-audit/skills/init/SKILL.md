@@ -104,9 +104,10 @@ marketplace it was installed from).
    a pack problem. Call `resolve_gate` with `surface: "local-read"` (inspection is a
    read) and present its `categories` / `diagnostics` / `recovery` verbatim as the
    failure. This is the WF-272 diagnostics/recovery contract every wf consumer uses (see
-   `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Recorded-root-first
-   resolution with install-manifest self-heal" → "Resolver-failure semantics"). Stop;
-   report `partial`.
+   the capability-registry contract ops doc — obtained via the resolver content surface
+   (`resolve_content`, `class: contract`, `ref: capability-registry.ops.md`), never a raw
+   read of the plugin-cache path — §"Recorded-root-first resolution with install-manifest
+   self-heal" → "Resolver-failure semantics"). Stop; report `partial`.
 2. **Returns `valid: false`.** A genuine pack problem, not a resolver failure — present
    `issues[]` verbatim (e.g. "plugin `wf-audit` is not installed", "...is disabled", "no
    readable `capabilities/*/manifest.md` under `<installPath>`") with the matching remedy

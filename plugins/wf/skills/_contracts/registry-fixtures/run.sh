@@ -259,21 +259,23 @@ else
   fail=$((fail + 1))
 fi
 
-# --- WF-304 / WF-305: OUT-2 content-read acceptance (fragment + shared classes) -
+# --- WF-304 / WF-305 / WF-306: OUT-2 content-read acceptance ------------------
+# (fragment + shared + contract-ops classes)
 # C011 OUT-2: no skill/agent raw-reads a bundled content-class doc — every body
 # comes from the resolver `resolve_content` surface. This single script now carries
-# two clauses: the fragment-class clause (SUB-3, WF-304) and the shared-class
-# clause (SUB-4, WF-305) it appended; it proves zero raw fragment-body reads and
-# zero raw shared-doc reads survive in the wf spine + invocation-runtime ops.
-# Wired here so the CI entry point covers both (SUB-7 consolidates all five
-# per-class clauses).
+# three clauses: the fragment-class clause (SUB-3, WF-304), the shared-class clause
+# (SUB-4, WF-305), and the contract-ops-class clause (SUB-5, WF-306) it appended;
+# it proves zero raw fragment-body reads, zero raw shared-doc reads, and zero raw
+# contract-ops-doc reads survive across the wf spine + packs + invocation-runtime
+# ops. Wired here so the CI entry point covers all three (SUB-7 consolidates all
+# five per-class clauses).
 echo ""
-echo "=== Content-read OUT-2 acceptance — fragment + shared classes (content-read-out2-grep.sh) ==="
+echo "=== Content-read OUT-2 acceptance — fragment + shared + contract-ops classes (content-read-out2-grep.sh) ==="
 if bash "$DIR/../content-read-out2-grep.sh"; then
-  printf 'PASS: %s\n' "OUT-2 fragment + shared class content-read grep"
+  printf 'PASS: %s\n' "OUT-2 fragment + shared + contract-ops class content-read grep"
   pass=$((pass + 1))
 else
-  printf 'FAIL: %s\n' "OUT-2 fragment + shared class content-read grep"
+  printf 'FAIL: %s\n' "OUT-2 fragment + shared + contract-ops class content-read grep"
   fail=$((fail + 1))
 fi
 

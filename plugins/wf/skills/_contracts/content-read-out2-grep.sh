@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
-# OUT-2 acceptance check — FRAGMENT + SHARED content classes (WF-304 / WF-305,
-# charter C011 / WF-301).
+# OUT-2 acceptance check — FRAGMENT + SHARED + CONTRACT-OPS content classes
+# (WF-304 / WF-305 / WF-306, charter C011 / WF-301).
 #
 # Charter outcome OUT-2: no agent or skill instructs a raw `Read`/`Glob` of a
 # bundled content-class doc — every such body is obtained through the resolver
 # `resolve_content` content surface, with NO fallback carve-out. C011 sweeps five
 # content classes across reviewed slices (fragment, shared, contract-ops,
 # references, profile). This script accumulates each slice's clause as it lands:
-# SUB-3 (WF-304) landed the **fragment-class clause**; SUB-4 (WF-305) appends the
-# **shared-class clause** below. The terminal slice (SUB-7) consolidates all five
-# per-class clauses into one composite gate.
+# SUB-3 (WF-304) landed the **fragment-class clause**; SUB-4 (WF-305) appended the
+# **shared-class clause**; SUB-5 (WF-306) appends the **contract-ops-class clause**
+# below. The terminal slice (SUB-7) consolidates all five per-class clauses into
+# one composite gate.
 #
 # (Charter warning F4.2: the example name `out1-grep.sh` mislabels the outcome it
 # gates — that script gates OUT-1 of a DIFFERENT charter, C001/WF-119. This gate
@@ -135,6 +136,76 @@ if [ -n "$shared_hits" ]; then
   overall_fail=1
 else
   echo "OUT-2 (shared): PASS — every shared-doc read in the wf spine routes through resolve_content; zero raw reads."
+fi
+
+# =============================================================================
+# Clause 3 — CONTRACT-OPS class (WF-306 / SUB-5)
+# =============================================================================
+#
+# --- What it proves ---
+# A `_contracts/*.ops.md` contract ops doc read at runtime — the three contract
+# docs `capability-registry.ops.md`, `invocation-runtime.ops.md`, and
+# `pack-onboarding.ops.md` — is obtained through `resolve_content` (class
+# `contract`), NEVER by a raw `Read`/`Glob` or a version-pinned plugin-cache PATH
+# a consumer would open. Zero surviving raw-path read instructions = pass.
+#
+# --- Scope (path) ---
+# Scanned:  every plugin's `skills/` and `agents/` consumer prose across the whole
+#           marketplace — core (plugins/wf) PLUS every pack (the contract-ops
+#           consumers include the pack init skills, e.g. wf-audit/skills/init and
+#           wf-browser-qa/skills/init, per the WF-303 inventory §4.3).
+# NOT scanned (path-scoped out, not a content carve-out):
+#   - skills/_contracts/ itself — the contract ops docs (read TARGETS, and their
+#     own paired-doc cross-references are the ops-doc bodies, out of this slice),
+#     the `*.contract.md` reference halves, the validator, the registry-fixtures,
+#     and this script.
+#   - capabilities/*/ bodies — provider fragment `.ops.md`/`.md` halves and
+#     `manifest.md` metadata cite invocation-runtime.ops.md by path, but they are
+#     the FRAGMENT class / metadata / reference halves, not skills/agents consumer
+#     instructions; they live outside `skills/` and `agents/` and so are excluded.
+#   - README.md and other docs (outside `skills/` and `agents/`).
+#
+# --- The single content allowance (not a carve-out) ---
+# The compliant form names `resolve_content` (`class: contract`, `ref:
+# <file>.ops.md`) — so the raw-read match below excludes any line that also names
+# `resolve_content`. A BARE-filename citation (`` `capability-registry.ops.md` ``
+# with NO path separator) is a documentation pointer whose runtime behaviour C008's
+# typed MCP already serves (`resolve_provider`/`resolve_gate`/`resolve_registry`),
+# not a raw read, and is left untouched: the shapes below require a PATH separator
+# (or an explicit Read/Glob), so a bare filename is never a hit. A raw contract-doc
+# PATH with NO `resolve_content` on the line is a residual and fails. No
+# path-fallback exemption.
+
+# Raw-read-of-a-contract-ops-doc shapes (the instruction SUB-5 removed):
+#   1. a markdown link into a path ending in a contract ops doc — `](…/<doc>.ops.md)`.
+#   2. a backtick literal PATH ending in a contract ops doc — `` `…/<doc>.ops.md` ``
+#      (a leading path segment / `_contracts/…` before the filename; a bare
+#      `` `<doc>.ops.md` `` has no `/` and is NOT matched).
+#   3. an explicit Read/Glob of a contract ops doc.
+contract_docs='(?:capability-registry|invocation-runtime|pack-onboarding)\.ops\.md'
+contract_pat='\]\([^)\n]*/'"$contract_docs"
+contract_pat="$contract_pat"'|`[^`\n]*/'"$contract_docs"
+contract_pat="$contract_pat"'|\b(?:Read|Glob)\b[^\n]{0,80}'"$contract_docs"
+
+# Scan every plugin's skills/ and agents/ dirs (core + packs); _contracts excluded.
+plugins_root="$(cd "$root/.." && pwd)"   # -> plugins
+contract_dirs=$(ls -d "$plugins_root"/*/skills "$plugins_root"/*/agents 2>/dev/null)
+
+contract_raw=$(grep -rPno --include='*.md' --exclude-dir='_contracts' "$contract_pat" $contract_dirs)
+rc=$?
+if [ "$rc" -ge 2 ]; then
+  echo "OUT-2 (contract-ops): ERROR — grep failed (rc=$rc). This check requires PCRE grep (grep -P), which may be unavailable on this platform."
+  exit 2
+fi
+
+contract_hits=$(printf '%s\n' "$contract_raw" | grep -v 'resolve_content' | grep -v '^$')
+
+if [ -n "$contract_hits" ]; then
+  echo "OUT-2 (contract-ops): FAIL — raw-read instructions for a contract ops doc (route them through resolve_content, class: contract):"
+  echo "$contract_hits"
+  overall_fail=1
+else
+  echo "OUT-2 (contract-ops): PASS — every contract-ops-doc read across core + packs routes through resolve_content; zero raw reads."
 fi
 
 exit "$overall_fail"
