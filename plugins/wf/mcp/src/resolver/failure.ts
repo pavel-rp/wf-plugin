@@ -83,6 +83,8 @@ export function recoveryFor(category: ResolverErrorCategory): string {
       return "`claude plugin list --json` could not run, so installed-pack facts are unknown. Ensure the `claude` CLI is on PATH, then run `/wf:resolve refresh`.";
     case "registry-invalid":
       return "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.";
+    case "ref-not-found":
+      return "The root resolved fine but no file exists at the joined path — the ref shape is likely wrong. A ref is relative to its root including any subfolder (a capability fragment ref is e.g. `fragments/tracker.ops.md`, never the bare filename; the provider record's `fragmentPath` shows the exact shape). Fix the ref and retry; run `/wf:resolve refresh` only if the pack was genuinely relocated.";
   }
 }
 

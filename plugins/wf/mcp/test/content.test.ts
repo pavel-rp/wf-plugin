@@ -9,6 +9,9 @@
 //     reports the matching `resolve_gate` degradation class (registry-invalid,
 //     local-read → continue) with a `/wf:resolve` recovery path — never a
 //     wrong-path body, never a raw-read fall-through;
+//   - a ref that joins to a nonexistent file under a VALID resolved root is the
+//     caller-input `ref-not-found` (never `registry-invalid`), with a recovery
+//     naming the subfolder-inclusive ref shape;
 //   - a skill body / CI-only fixture / traversal / malformed ref is REFUSED;
 //   - the metadata-query snapshot stays BODY-FREE (C008 invariant intact) — the
 //     served bodies never leak into any metadata response.
@@ -198,13 +201,34 @@ test("a dangling+unrecoverable capability fragment reports the resolve_gate clas
   assert.ok(!("path" in r));
 });
 
-test("an absent-but-resolved doc is unresolved (never a raw-read fall-through)", () => {
+test("an absent-but-resolved doc is unresolved as ref-not-found (never a raw-read fall-through)", () => {
   const svc = new ResolverService(makePorts());
   const r = svc.resolveContent({ class: "contract", ref: "does-not-exist.md" });
   assert.equal(r.status, "unresolved");
   if (r.status !== "unresolved") return;
-  assert.equal(r.category, "registry-invalid");
-  assert.match(r.recovery, /\/wf:resolve/);
+  assert.equal(r.category, "ref-not-found");
+  assert.equal(r.reaction, "continue");
+  // The recovery targets the caller's ref shape, not a snapshot refresh.
+  assert.match(r.recovery, /subfolder/);
+  assert.match(r.recovery, /fragmentPath/);
+  assert.match(r.message, /skills\/_contracts\/does-not-exist\.md/);
+});
+
+test("a fragment ref missing its subfolder segment is ref-not-found, not registry-invalid", () => {
+  // The field-report scenario (WF-312): a registered capability with a valid
+  // resolved root, ref given as the bare filename while the doc lives under
+  // `fragments/` — a caller-input error, not a registry/pack-root problem.
+  const svc = new ResolverService(makePorts());
+  const r = svc.resolveContent({ class: "fragment", capability: "demo", ref: "delivery.ops.md" });
+  assert.equal(r.status, "unresolved");
+  if (r.status !== "unresolved") return;
+  assert.equal(r.category, "ref-not-found");
+  assert.equal(r.reaction, "continue");
+  assert.match(r.message, /capabilities\/demo\/delivery\.ops\.md/);
+  assert.match(r.recovery, /fragments\//);
+  // Never a wrong-path body and never a raw-read fall-through.
+  assert.ok(!("content" in r));
+  assert.ok(!("path" in r));
 });
 
 // --- refusals: out of the five served classes ------------------------------

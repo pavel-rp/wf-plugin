@@ -157,7 +157,13 @@ export type ResolverErrorCategory =
    *  OR a `plugin-list/*` CLI-output-contract (schema-drift) error — the CLI ran
    *  but its `--json` output failed the expected schema. Distinct from
    *  `cli-unavailable`, which is the CLI-absent/failed-to-run case. */
-  | "registry-invalid";
+  | "registry-invalid"
+  /** A content ref resolved against a valid root but no file exists at the
+   *  joined path — a caller-side ref-shape error (e.g. a fragment ref missing
+   *  its `fragments/` segment), not a broken-resolver state. Emitted only by
+   *  the content surface's read-miss; never carried by a snapshot diagnostic,
+   *  so it can never degrade `resolve_gate` health. */
+  | "ref-not-found";
 
 /** Enumerated categories, for validation and exhaustiveness. */
 export const RESOLVER_ERROR_CATEGORIES: readonly ResolverErrorCategory[] = [
@@ -167,6 +173,7 @@ export const RESOLVER_ERROR_CATEGORIES: readonly ResolverErrorCategory[] = [
   "fingerprint-unresolvable",
   "cli-unavailable",
   "registry-invalid",
+  "ref-not-found",
 ] as const;
 
 /** A resolution diagnostic (non-fatal note or a residual-diagnosis input). The

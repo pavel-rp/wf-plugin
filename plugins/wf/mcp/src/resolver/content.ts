@@ -52,7 +52,8 @@ export interface ContentRef {
   plugin?: string;
   /** Skill slug for `references-template`. */
   skill?: string;
-  /** Relative doc ref — `fragment` (within the capability folder),
+  /** Relative doc ref — `fragment` (within the capability folder, subfolder
+   *  included: e.g. `fragments/delivery.ops.md`, never the bare filename),
    *  `contract` / `shared` (a bare filename), `references-template` (within the
    *  skill's `references/` folder). Unused by `profile-template`. */
   ref?: string;
