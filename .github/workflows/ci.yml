@@ -98,3 +98,11 @@ jobs:
         # Copies only the shipped payload to a clean temp location and drives the
         # MCP protocol handshake against the declared minimum Node.
         run: npm run smoke
+
+      - name: Resolver contract tests (schema, persistence, resolution)
+        # Bundles each test/*.test.ts with esbuild (already pinned) and runs it
+        # under node:test on the declared minimum Node. Covers the resolver
+        # schema, atomic snapshot persistence, plugin-anchored resolution, the
+        # four pack states, and the `claude plugin list --json` CLI-output
+        # contract fixtures.
+        run: npm test
