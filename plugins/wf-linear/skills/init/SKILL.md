@@ -78,9 +78,10 @@ ships, under the stable plugin id `wf-linear`.
    skips a later step — it only affects reported wording.
 3. **Inspect the pack.** Call `inspect_pack({ pluginId: "wf-linear" })`. Read-only;
    returns `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
-   - `valid: false` (not installed, disabled, or no readable
-     `capabilities/linear/manifest.md`) → go to **Failure path**; do not run the
-     interview or call `register_pack`.
+   - `valid: false` (not installed, disabled, no readable
+     `capabilities/linear/manifest.md`, or `claude plugin list --json` itself
+     unavailable) → go to **Failure path**; do not run the interview or call
+     `register_pack`.
 4. **Linear interview (bespoke — the one phase a delivery pack never needed).**
    Reconcile `_local/config.md`'s `## Linear` section with real values, carrying forward
    anything a prior run (or a hand-edit) already set, asking only for what is still a
@@ -144,6 +145,10 @@ registry side is at risk.)
 - **Not a git repo / `/wf:init` not run:** stop per the precondition step above.
 - **`wf-linear` not installed or disabled** (`inspect_pack.installed`/`enabled` false):
   failure path; direct the user to install/enable the plugin, then re-run.
+- **`claude plugin list --json` unavailable:** `inspect_pack` reports `installed: false`
+  with an issue naming the CLI call as the cause (a broken/unavailable `claude` CLI, not a
+  missing plugin) — failure path; direct the user to check their `claude` CLI, then
+  re-run.
 - **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the
   install looks corrupted — reinstall the plugin.
 - **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run
@@ -167,7 +172,7 @@ registry side is at risk.)
 WF-LINEAR-INIT — <onboarded | already-registered | partial>
 
 Registry:   <registryPath from resolve_config>
-Pack root:  <root from register_pack>
+Pack root:  <installPath from inspect_pack — may be null on the failure path>
 Registered: linear — <registered | already registered>
 Linear:
 - Linear Team    — <carried forward | set to <value>>

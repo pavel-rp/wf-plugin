@@ -100,8 +100,8 @@ token, zero or multiple folder matches) leaves `<id>` unresolved — a non-fatal
 Every delivery operation this file invokes — `branch-changes-read` (the change set) and
 `current-branch-query` (optional id inference) — is reached by calling the bundled
 `wf-resolver` MCP tool `resolve_provider("delivery")`, the typed query that returns the
-run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?,
-degradation }` for the `delivery` surface. The resolver has already resolved the
+run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation,
+diagnostics }` for the `delivery` surface. The resolver has already resolved the
 `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored
 root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first
 resolution with install-manifest self-heal"); core performs **no** registry / manifest /
@@ -112,9 +112,9 @@ do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
 **`tt` branches on the record's `state` itself — it does not read the change set and inspect
 the return to guess whether a provider exists.** The `state` (`ok` vs
-`unconfigured`/`unrecoverable`) is the toggle; the read op's return distinguishes only *how
+`unconfigured`) is the toggle; the read op's return distinguishes only *how
 much* changed. The two never conflate: "no delivery provider registered" (`state:
-unconfigured`/`unrecoverable`) and "provider present but nothing changed" (`state: ok`, empty
+unconfigured`) and "provider present but nothing changed" (`state: ok`, empty
 change set) are distinct outcomes handled in Phase 1.
 
 ---
@@ -138,7 +138,7 @@ Determine the set of changed files to author tests for, in this order:
        is distinct from the provider-absent path below — a registered provider that finds
        no changes is a valid "clean branch" result, not a missing-provider condition.
 
-   - **`state: unconfigured`/`unrecoverable` (no delivery provider registered):** do **not** read the change
+   - **`state: unconfigured` (no delivery provider registered):** do **not** read the change
      set through the surface — that would silently enumerate the working directory and mask
      the absence. Degrade instead, in order:
      1. an explicit `--files` list — already handled in step 1;
@@ -294,7 +294,7 @@ this when `<id>` did not resolve.
 ## Edge Cases
 
 - **No delivery provider registered (bare-core mode):** detected via the delivery record's
-  `state` (`unconfigured`/`unrecoverable`) from `resolve_provider("delivery")`, never via a change-set return. `tt` degrades to an explicit
+  `state` (`unconfigured`) from `resolve_provider("delivery")`, never via a change-set return. `tt` degrades to an explicit
   `--files` list or an artifact-derived change set, or stops with a register-a-provider /
   pass-files message — never a raw working-directory fallback dressed as a change set.
 - **Delivery provider registered but the branch is clean:** `branch-changes-read` returns an
