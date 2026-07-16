@@ -70,7 +70,7 @@ target's shape — some targets warrant both.
 
 ### Behavioral
 
-The target declares methods with observable input/output. Tests exercise them (worked example: [`references/page-test-template.md` § Behavioral archetype example](references/page-test-template.md#behavioral-archetype-example) — read on the write path).
+The target declares methods with observable input/output. Tests exercise them (worked example: `page-test-template.md` § Behavioral archetype example, obtained via the resolver's `resolve_content` — `class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: page-test-template.md` — never a raw `Read` of the plugin-cache path; read on the write path).
 
 Fit (file suffixes): `.service.ts`, `.component.ts`, `.pipe.ts`,
 `.guard.ts`, `.interceptor.ts`, `.directive.ts`.
@@ -82,7 +82,7 @@ Spec-wording cues: "when I call X, returns Y", "formats", "filters",
 
 The target doesn't declare testable methods — it registers state,
 providers, or routes into the runtime. Tests verify the registration
-landed, without reaching into any one implementation (worked example: [`references/page-test-template.md` § Wiring archetype example](references/page-test-template.md#wiring-archetype-example) — read on the write path).
+landed, without reaching into any one implementation (worked example: `page-test-template.md` § Wiring archetype example, same `resolve_content` reference as above — read on the write path).
 
 Fit (file suffixes): `.models.ts` (state-shape declarations),
 `.initializer.ts` (app-init chains), `.module.ts`, `.routes.ts`,
@@ -265,7 +265,7 @@ only — the index is not updated again.
 
 ### `backend-smoke <task-id> [suite-name]`  → Angular service method + page-test for a .NET endpoint
 
-Smoke-test a newly added .NET controller endpoint by adding a thin Angular service method and wiring it into the harness. Full procedure, argument handling, and runtime requirements in [references/backend-smoke.md](references/backend-smoke.md).
+Smoke-test a newly added .NET controller endpoint by adding a thin Angular service method and wiring it into the harness. Full procedure, argument handling, and runtime requirements at `backend-smoke.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: backend-smoke.md`), never a raw `Read` of the plugin-cache path.
 
 ### anything else → freeform
 
@@ -283,7 +283,7 @@ Filename must end in `.page-test.ts`. The `_page-tests/` folder is
 git-excluded (see "Bootstrap") so nothing from this skill enters
 commits.
 
-The `.page-test.ts` file template (the `run(injector)` / `runSuite(...)` skeleton) and the full writing conventions — name tests after the spec, one behavior per test, obtain DI inside each test, no private-state peeking, async returns `Promise<void>`, clean up mutated state — live at [`references/page-test-template.md`](references/page-test-template.md). They are read only on the write path (the `new` flow), so they stay out of the boot body. Read that file, then write the suite following it.
+The `.page-test.ts` file template (the `run(injector)` / `runSuite(...)` skeleton) and the full writing conventions — name tests after the spec, one behavior per test, obtain DI inside each test, no private-state peeking, async returns `Promise<void>`, clean up mutated state — live at `page-test-template.md` (same `resolve_content` reference as above). They are read only on the write path (the `new` flow), so they stay out of the boot body. Follow that file, then write the suite following it.
 
 ---
 
@@ -291,7 +291,7 @@ The `.page-test.ts` file template (the `run(injector)` / `runSuite(...)` skeleto
 
 Shared runner + assertion helpers. Minimal, framework-free. Created on first run; reused thereafter. Test files import `runSuite` plus the assertion helpers they need from `./harness`.
 
-Full API surface, output format, and the complete assertion-helper list: [references/harness.md](references/harness.md). Read it when writing tests (for the full helper list) or when verifying pasted run output (for the block delimiters).
+Full API surface, output format, and the complete assertion-helper list at `harness.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: harness.md`), never a raw `Read` of the plugin-cache path. Read it when writing tests (for the full helper list) or when verifying pasted run output (for the block delimiters).
 
 ---
 
@@ -301,7 +301,7 @@ Target: `{test-host-root}/{sandbox-host-folder}/{sandbox-host-folder}.component.
 
 Two marker-wrapped edits (`PAGE-TEST-HARNESS-INJECTOR-*` for the `Injector` field, `PAGE-TEST-HARNESS-*` for the `runSuite` call inside `ngOnInit`) so the `clean` subcommand can reverse them surgically. Required during the `new` flow and reversed during `clean`.
 
-Exact edit locations, code to insert, and clean-up rules: [references/component-injection.md](references/component-injection.md).
+Exact edit locations, code to insert, and clean-up rules at `component-injection.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: component-injection.md`), never a raw `Read` of the plugin-cache path.
 
 ---
 
@@ -309,7 +309,7 @@ Exact edit locations, code to insert, and clean-up rules: [references/component-
 
 Three one-time setup steps: write the harness file, add the `_page-tests/` path to `.git/info/exclude` (local-only, not `.gitignore`), and sanity-check the exclude took effect via `git check-ignore`. Skip if `_page-tests/harness.ts` already exists — re-running is harmless but wasteful.
 
-Full steps and exact commands: [references/bootstrap.md](references/bootstrap.md).
+Full steps and exact commands at `bootstrap.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: bootstrap.md`), never a raw `Read` of the plugin-cache path.
 
 ---
 

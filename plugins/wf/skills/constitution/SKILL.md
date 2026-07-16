@@ -259,7 +259,7 @@ shape if needed. Never invent capability rows.
 
 ## Template: `_local/constitution.md`
 
-The verbatim `_local/constitution.md` template — the metadata block, `## Precedence`, `## Core articles`, `## Capability articles`, and `## Project clauses` — lives at `references/constitution-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: constitution`, `ref: constitution-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (establish/update), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
+The verbatim `_local/constitution.md` template — the metadata block, `## Precedence`, `## Core articles`, `## Capability articles`, and `## Project clauses` — lives at `constitution-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: constitution`, `ref: constitution-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (establish/update), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 Do **not** bake a flattened single-source file anywhere else — this record *is* the
 composition. Do **not** name any concrete stack, domain, or capability in the core articles

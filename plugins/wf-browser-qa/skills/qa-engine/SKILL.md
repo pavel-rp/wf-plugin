@@ -10,7 +10,7 @@ The browser-driving **execution surface** for QA. It loads the browser-automatio
 
 This skill is the dispatch target of the **browser-qa** capability's `qa-execution | provider | surface: engine` fragment. A core orchestrator (today `wf:qa-auto`) owns the run lifecycle — task/plan resolution, resume/batch, report rollup — and dispatches the per-scenario drive here via the **Task** tool (`subagent_type: wf-browser-qa:qa-engine`). The engine drives the browser in an isolated context so the orchestrator's context stays small. It can also be invoked directly (`/wf-browser-qa:qa-engine`) to drive scenarios against a running app.
 
-The engine **reaches preconditions, not just observes them**. If a scenario asserts "cleared localStorage" or "fresh session", the engine clears the browser storage to that state and runs the test. Selective writes (a seeded key, a single removed key) are reverted before moving on; a full storage clear becomes the new baseline rather than being reverted. Recipes per precondition shape live at `references/preconditions.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-browser-qa`, `skill: qa-engine`, `ref: preconditions.md`), never a raw `Read` of the plugin-cache path. Default disposition: reach the state and run; mark BLOCKED only when a precondition genuinely cannot be reached (e.g., network throttling, which the browser-automation tools don't expose). The engine reaches **browser-level** state only — storage, URL, viewport. Anything that needs a database or backend-host write is out of this engine's scope (a separate stack capability owns those).
+The engine **reaches preconditions, not just observes them**. If a scenario asserts "cleared localStorage" or "fresh session", the engine clears the browser storage to that state and runs the test. Selective writes (a seeded key, a single removed key) are reverted before moving on; a full storage clear becomes the new baseline rather than being reverted. Recipes per precondition shape live at `preconditions.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-browser-qa`, `skill: qa-engine`, `ref: preconditions.md`), never a raw `Read` of the plugin-cache path. Default disposition: reach the state and run; mark BLOCKED only when a precondition genuinely cannot be reached (e.g., network throttling, which the browser-automation tools don't expose). The engine reaches **browser-level** state only — storage, URL, viewport. Anything that needs a database or backend-host write is out of this engine's scope (a separate stack capability owns those).
 
 ---
 
@@ -35,7 +35,7 @@ So this engine drives the browser in its own thread (already isolated from the o
 - **Task / report context** — the task id (or the branch to infer it from) and the task-folder path, so the engine locates `06_qa.md` and the `07_qa-report.md` it appends to.
 - **Credentials** — read from `_local/qa-creds.md`; on first run the engine prompts and saves them.
 
-**Output** — per-scenario **verdict blocks** in the shared report format (`references/output-format.md`, obtained via the resolver's `resolve_content` — `class: references-template`, `plugin: wf-browser-qa`, `skill: qa-engine`, `ref: output-format.md` — never a raw `Read` of the plugin-cache path), appended into `07_qa-report.md` incrementally, plus the `QA-ENGINE — <status>` final block. The engine does **not** own the run-level report header / Summary / traceability rollup — that is the orchestrator's job; the engine supplies the per-scenario results the orchestrator merges. (On direct invocation with empty input, the engine writes a complete report itself.)
+**Output** — per-scenario **verdict blocks** in the shared report format (`output-format.md`, obtained via the resolver's `resolve_content` — `class: references-template`, `plugin: wf-browser-qa`, `skill: qa-engine`, `ref: output-format.md` — never a raw `Read` of the plugin-cache path), appended into `07_qa-report.md` incrementally, plus the `QA-ENGINE — <status>` final block. The engine does **not** own the run-level report header / Summary / traceability rollup — that is the orchestrator's job; the engine supplies the per-scenario results the orchestrator merges. (On direct invocation with empty input, the engine writes a complete report itself.)
 
 ---
 
@@ -193,7 +193,7 @@ For each scenario, drive the steps following the procedure below. After each sce
 
 For TC-NNN:
 
-1. **Apply preconditions** following the lifecycle in `references/preconditions.md` (same `resolve_content` reference as above):
+1. **Apply preconditions** following the lifecycle in `preconditions.md` (same `resolve_content` reference as above):
    - Classify each precondition (auth / URL / storage / environment).
    - For storage preconditions, follow the recipe to reach the asserted state. Capture-before-modify so the change can be reverted.
    - A precondition that needs database/backend state this engine can't reach → mark scenario `BLOCKED · setup: requires non-browser state (out of engine scope)` and skip steps.
@@ -236,17 +236,17 @@ Runs **only** for a scenario whose `06_qa.md` block carries a `**Visual:** yes` 
 
 **Scope boundary:** this detects **absolute** visual defects only — overlap, clipping/truncation, crowding/"stuck-together" controls, orphaned or mis-rendered controls, collapsed/oversized containers. It is **not** visual-regression / golden-image pixel-diffing (no baseline image, no per-pixel comparison) — that is explicitly out of scope. Use only generic browser APIs (`getBoundingClientRect`, computed styles, `screenshot_page`, `run_playwright_code`); name no framework, component library, or app route.
 
-The two-layer procedure — **Layer A** deterministic geometry probes (the probe table + hard-fail/advisory verdict authority), **Layer B** the pass-path screenshot + fixed vision rubric, and the exact verdict-wiring (a hard-fail probe or rubric failure FAILs the scenario; otherwise the `**Visual:**` PASS sub-block) — lives at `references/visual-verification.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-browser-qa`, `skill: qa-engine`, `ref: visual-verification.md`), never a raw `Read` of the plugin-cache path. It is read **on-demand**, only when the engine reaches a `**Visual:** yes` scenario, so it stays out of the boot body for every non-visual run. Follow it now, then fold its verdict into the scenario verdict before recording.
+The two-layer procedure — **Layer A** deterministic geometry probes (the probe table + hard-fail/advisory verdict authority), **Layer B** the pass-path screenshot + fixed vision rubric, and the exact verdict-wiring (a hard-fail probe or rubric failure FAILs the scenario; otherwise the `**Visual:**` PASS sub-block) — lives at `visual-verification.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-browser-qa`, `skill: qa-engine`, `ref: visual-verification.md`), never a raw `Read` of the plugin-cache path. It is read **on-demand**, only when the engine reaches a `**Visual:** yes` scenario, so it stays out of the boot body for every non-visual run. Follow it now, then fold its verdict into the scenario verdict before recording.
 
 ### 5b. Verdict block per scenario
 
-Record one block per scenario in `07_qa-report.md` under the appropriate suite section, in the per-suite-results format from `references/output-format.md` (same `resolve_content` reference as above):
+Record one block per scenario in `07_qa-report.md` under the appropriate suite section, in the per-suite-results format from `output-format.md` (same `resolve_content` reference as above):
 
 - PASS → one-line `All steps passed.` (with optional one-line note). **For a `**Visual:** yes` scenario, also attach the `**Visual:**` PASS-path sub-block** (screenshot path + geometry-findings table/`none` + vision-review verdict) beneath the one-line PASS — the documented exception to one-line-PASS defined in the report format.
 - FAIL → full step table, observed values, screenshot path, failure notes. A visual FAIL names the offending Layer A hard-fail probe or Layer B rubric criterion.
 - BLOCKED → block point + reason.
 
-Always include a `Fixtures:` line summarizing what was set up and reverted (`none`, `precondition already met`, `cleared browser storage; re-authenticated`). Format details in `references/preconditions.md` § Recording fixtures in the report (same `resolve_content` reference as above).
+Always include a `Fixtures:` line summarizing what was set up and reverted (`none`, `precondition already met`, `cleared browser storage; re-authenticated`). Format details in `preconditions.md` § Recording fixtures in the report (same `resolve_content` reference as above).
 
 ### 5c. Batch ceiling
 
@@ -273,7 +273,7 @@ After the loop completes (or stops at batch / abort):
 
 **Evaluate the full-run baseline check (after the loop, before writing).** Read the entire session console/network buffer ([5a-measure](#5a-measure-measurable-assertions-console--network) step 2), filter the baseline-ignore allowlist, and record the verdict for the `Console & network clean across the full run` baseline TC: clean → `PASS`; otherwise `FAIL`, listing each finding prefixed with the TC that was active when it fired, and adding the distinct errors to the Defects table. Its `FAIL` flips the run `Status` to `FAIL` via the normal rule. **Only meaningful over a complete pass:** on an `--only` run, or a batch/abort that left scenarios `Not run`, mark this TC `Not run` and add a Notes line ("full-run console sweep skipped — partial session") rather than passing it on incomplete coverage. If only the in-page fallback capture was available (resets on navigation), mark it `BLOCKED · setup: session-wide capture unavailable`.
 
-**Report header / rollup ownership.** When dispatched by an orchestrator, return the per-scenario verdict blocks plus the full-run baseline verdict for the orchestrator to merge into the run-level header (`Mode`, `Tester`, `Driver model`, `App`, `Status`), Summary table, and traceability matrix. When invoked **directly** with empty input, write the complete report yourself per `references/output-format.md` (same `resolve_content` reference as above):
+**Report header / rollup ownership.** When dispatched by an orchestrator, return the per-scenario verdict blocks plus the full-run baseline verdict for the orchestrator to merge into the run-level header (`Mode`, `Tester`, `Driver model`, `App`, `Status`), Summary table, and traceability matrix. When invoked **directly** with empty input, write the complete report yourself per `output-format.md` (same `resolve_content` reference as above):
 
 - `Mode: agentic`, `Tester: wf-browser-qa:qa-engine`, `Driver model:` current model id, `App:` base URL from creds, `Status:` deterministic from the PASS/FAIL/INCOMPLETE rule.
 - Summary table; traceability matrix rolled up from per-scenario `Validates: SC-N` references and verdicts; per-suite results (PASS = one line, FAIL/BLOCKED = full step table); Notes & Observations; Defects table (one row per FAIL, severity from priority P0→High / P1→Medium / P2→Low).

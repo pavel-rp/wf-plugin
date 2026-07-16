@@ -14,7 +14,7 @@ The host is **git-tracked source**, not a local sandbox. Once scaffolded, it sta
 
 For DI-level black-box tests (component method behavior verified via `injector.get(...)`) use `/wf-angular:test-page`. This skill is for full QA flows — clicks, observed UI, real state transitions — that need a routable URL.
 
-**Backend mode.** A backend QA scenario (`Type: API`) needs an HTTP endpoint to exercise, not a routed page. `api-probe <Service>.<method>` resolves the real route if an endpoint already exists, or — when the deliverable is a service with no endpoint — temporarily wires it to the most appropriate controller as an **ephemeral** `__qa` action and returns that route; `api-revert` removes the wiring. Unlike the Angular host, the backend host is a run fixture that must never reach a commit. The full procedure (controller selection, the ephemeral action shape, the rebuild-before-live constraint, revert, safety) lives in [`references/backend-host.md`](references/backend-host.md).
+**Backend mode.** A backend QA scenario (`Type: API`) needs an HTTP endpoint to exercise, not a routed page. `api-probe <Service>.<method>` resolves the real route if an endpoint already exists, or — when the deliverable is a service with no endpoint — temporarily wires it to the most appropriate controller as an **ephemeral** `__qa` action and returns that route; `api-revert` removes the wiring. Unlike the Angular host, the backend host is a run fixture that must never reach a commit. The full procedure (controller selection, the ephemeral action shape, the rebuild-before-live constraint, revert, safety) lives at `backend-host.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: qa-host`, `ref: backend-host.md`), never a raw `Read` of the plugin-cache path.
 
 ## Stack profile (read first)
 
@@ -88,7 +88,7 @@ Steps:
 
 3. **Idempotence.** If the folder exists with both files, run the `route` flow instead and exit (returns the existing URL). Don't overwrite a hand-edited host.
 
-4. **Generate host TS, HTML, and SASS.** The three scaffold archetypes — the component TS (inputs seeded from DI, outputs counted), the status-panel HTML (`data-qa` handles + mandatory 3-scenario panel), and the baseline SASS — live at [`references/scaffold-templates.md`](references/scaffold-templates.md). They are read only on this `new` write path, so they stay out of the boot body. Read that file, then emit each archetype with the resolved names (`<kebab>`, `<Pascal>`, `<Service>`, per-`@Input`/`@Output` slots) substituted: `<kebab>-test.component.ts`, `.component.html`, and `.component.sass` under the host folder. The reference carries the sensible-default rule, the `data-qa` handle convention, and the baseline visual pattern.
+4. **Generate host TS, HTML, and SASS.** The three scaffold archetypes — the component TS (inputs seeded from DI, outputs counted), the status-panel HTML (`data-qa` handles + mandatory 3-scenario panel), and the baseline SASS — live at `scaffold-templates.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: qa-host`, `ref: scaffold-templates.md`), never a raw `Read` of the plugin-cache path. They are read only on this `new` write path, so they stay out of the boot body. Follow that file, then emit each archetype with the resolved names (`<kebab>`, `<Pascal>`, `<Service>`, per-`@Input`/`@Output` slots) substituted: `<kebab>-test.component.ts`, `.component.html`, and `.component.sass` under the host folder. The reference carries the sensible-default rule, the `data-qa` handle convention, and the baseline visual pattern.
 
 5. **Three edits to `{routing-module}`:**
 
@@ -185,11 +185,11 @@ Refuse to clean a host referenced by an active QA artifact: scan `_local/` for a
 
 The backend analog of `route` + `new`. `<target>` is `<Service>.<method>`, a `<Service>`/`<Repository>` class name, or an existing route. Resolves the real route if an endpoint already exposes the method (no writes); otherwise temporarily wires the method to the most appropriate controller as an ephemeral `__qa` action and returns that route.
 
-**Follow [`references/backend-host.md` § api-probe](references/backend-host.md#api-probe--locate-or-wire-an-endpoint) exactly** — it covers controller selection, the sentinel-wrapped action shape, idempotence, and the rebuild-before-live constraint. Emit the `QA-HOST — EXPOSED | EPHEMERAL` block from that file.
+**Follow `backend-host.md` § api-probe exactly** (same `resolve_content` reference as above) — it covers controller selection, the sentinel-wrapped action shape, idempotence, and the rebuild-before-live constraint. Emit the `QA-HOST — EXPOSED | EPHEMERAL` block from that file.
 
 ### `api-revert <target>` / `api-revert --all` → remove the ephemeral wiring
 
-Removes the sentinel-delimited `__qa` action(s) and restores the controller. `<target>` reverts one; `--all` sweeps every `WF-QA-EPHEMERAL` block in the repo (the pre-commit safety sweep). Follow [`references/backend-host.md` § api-revert](references/backend-host.md#api-revert--remove-the-wiring). Emit the `QA-HOST — REVERTED` block.
+Removes the sentinel-delimited `__qa` action(s) and restores the controller. `<target>` reverts one; `--all` sweeps every `WF-QA-EPHEMERAL` block in the repo (the pre-commit safety sweep). Follow `backend-host.md` § api-revert (same `resolve_content` reference as above). Emit the `QA-HOST — REVERTED` block.
 
 ### Anything else → freeform
 
@@ -236,7 +236,7 @@ Stop reading at the first `{` of any method body. Don't read the target's `ngOnI
 - **`api-probe` target already has an endpoint.** Return `EXPOSED — existing` with the resolved route; no writes. The scenario exercises the real endpoint.
 - **`api-probe` can't wire the method cleanly** (forwarding needs more than parameter binding — e.g. a complex DTO the spec doesn't define). Stop and report; that scenario escalates rather than getting a hand-built fixture that tests the fixture instead of the method.
 - **`api-probe` finds no suitable controller.** Pick the controller closest in namespace to the service and note the choice; never create a new controller file for the ephemeral wiring.
-- **Fresh-wired `__qa` route returns 404.** Expected until the API rebuilds/hot-reloads — not a defect. See [`references/backend-host.md` § rebuild](references/backend-host.md#the-api-must-rebuild-before-the-endpoint-is-live).
+- **Fresh-wired `__qa` route returns 404.** Expected until the API rebuilds/hot-reloads — not a defect. See `backend-host.md` § rebuild (same `resolve_content` reference as above).
 - **`api-revert` finds a leftover sentinel after removal.** Surface it loudly — an un-reverted `WF-QA-EPHEMERAL` block is a release hazard. Run `api-revert --all` to sweep.
 
 ---
@@ -249,7 +249,7 @@ Stop reading at the first `{` of any method body. Don't read the target's `ngOnI
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query — see "Branch-based id inference") for branch-based id inference, and via `resolve_profile("angular")` for stack-profile values (see "Stack profile"). Never call `git` directly for branch inference; never hand-parse the registry, a manifest, or the profile files — every fact the resolver supplies comes from a typed tool call.
 - Write new files under `{test-host-root}/<kebab>-test/`.
 - Edit `{routing-module}` (three exact edits documented in `new`).
-- **Backend mode only:** insert/remove exactly one sentinel-delimited (`WF-QA-EPHEMERAL`) ephemeral action per target inside an *existing* controller — the single carve-out for editing a pre-existing source file. Read controller/constructor/DTO signatures and combine route templates to do so. Full constraints in [`references/backend-host.md` § Safety rules](references/backend-host.md#safety-rules).
+- **Backend mode only:** insert/remove exactly one sentinel-delimited (`WF-QA-EPHEMERAL`) ephemeral action per target inside an *existing* controller — the single carve-out for editing a pre-existing source file. Read controller/constructor/DTO signatures and combine route templates to do so. Full constraints in `backend-host.md` § Safety rules (same `resolve_content` reference as above).
 - Run `{verify-command}` to typecheck.
 - Invoke the **Task** tool with `subagent_type: wf:index` after typecheck passes (Angular host only — `api-probe`/`api-revert` write no index row).
 
@@ -286,6 +286,6 @@ Next:        Login to the app + select entity/context if guarded, then navigate 
 
 For `augment`, emit the same block with the verb adjusted: `Edits:` lists the host `.ts`/`.html` as modified plus a one-line summary of the controls/observers/readouts added (or `already present`), and `Route:` is unchanged (no routing-module edits).
 
-For `api-probe` / `api-revert` (backend mode), emit the `QA-HOST — EXPOSED | EPHEMERAL | REVERTED` block defined in [`references/backend-host.md` § Final output](references/backend-host.md#final-output) instead of the Angular block above.
+For `api-probe` / `api-revert` (backend mode), emit the `QA-HOST — EXPOSED | EPHEMERAL | REVERTED` block defined in `backend-host.md` § Final output (same `resolve_content` reference as above) instead of the Angular block above.
 
 **The final-output block must always be the very last thing output to chat.**
