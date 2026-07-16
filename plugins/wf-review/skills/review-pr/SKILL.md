@@ -23,9 +23,15 @@ not a finding until the code confirms it. No speculation reaches the author.
 
 ## Prerequisites
 
-Read `_local/config.md` from the working directory (it also holds the `## Capabilities`
-registry this skill resolves the delivery provider from). If it is missing, stop:
-"Run `/wf:init` first."
+Confirm the project is initialized by calling the bundled `wf-resolver` MCP service's
+`resolve_config` query — it returns `{ workspaceRoot, registryPath, coreConfig{…}, idShape }`,
+already resolved (this skill performs **no** direct `_local/config.md` parse and **no**
+`## Capabilities` registry read of its own — the delivery provider is resolved via
+`resolve_provider("delivery")` below). If `resolve_config` returns no usable project config —
+an empty `coreConfig` with no `taskRoot` (the signal that `_local/config.md` is absent / the
+repo is uninitialized) — stop: "Run `/wf:init` first." If the `wf-resolver` service is
+unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) —
+do not hand-parse config as a fallback (WF-272 diagnostics/recovery).
 
 ---
 
@@ -48,7 +54,9 @@ Zero-argument invocation reviews the PR for the current branch.
 
 **Allowed:**
 
-- Read `_local/config.md`, the task folder, and any source file.
+- Call the bundled `wf-resolver` MCP tools `resolve_config` (confirm initialization) and
+  `resolve_provider("delivery")` (resolve the delivery surface); read the task folder and any
+  source file.
 - Read-side delivery operations: `current-branch-query`, `pr-comments-read`, `checks-read`.
 - `Read` / `Grep` / `Glob` to read the changeset and to verify every candidate finding
   against the real code — the load-bearing step.
@@ -75,29 +83,33 @@ Zero-argument invocation reviews the PR for the current branch.
 
 Every host operation this skill invokes — `current-branch-query`, `pr-comments-read`,
 `checks-read`, `pr-comment-post` — is a **`delivery`-surface** operation. Resolve the surface
-**once**, then dispatch every operation against it, per
-`plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution":
+**once** by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the
+typed query that returns the run-scoped resolution record
+`{ surface, owner, fragmentPath, state, degradation, diagnostics }`. The resolver has already
+resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any
+plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md`
+§"Recorded-root-first resolution with install-manifest self-heal"); this skill performs
+**no** registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath`
+in this skill's own context to dispatch every delivery operation (the resolver returns paths
+and metadata only, never a fragment body). If the `wf-resolver` service is unavailable, stop
+and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse
+the registry as a fallback (WF-272 diagnostics/recovery).
 
-1. Read the `## Capabilities` registry from `_local/config.md` (the default-absent
-   `registryPath` value). Select the single row where `contribution-kind = provider` **and**
-   `scope = delivery`, across the whole registry (a scope filter, independent of the row's
-   `phase`). Read that capability's `manifest.md` once and dispatch its fragment per the
-   row's `dispatch` kind — today an `inline:` fragment: read the referenced
-   `fragments/delivery.ops.md` and follow it in-context; no subagent. A plugin-anchored
-   `Path` resolves through the self-heal home (`capability-registry.ops.md`
-   §"Recorded-root-first resolution with install-manifest self-heal").
-2. **Zero readable `delivery` provider — state it plainly and stop.** Posting a review is
-   this skill's whole purpose, so a missing provider is a loud, blocking condition (not a
-   silent empty result). Return `REVIEW-PR — No provider` and split the reason per the
-   residual diagnosis (`capability-registry.ops.md`, same section):
-   - **(a) Genuinely unconfigured** — every registered manifest is readable and none is
-     scoped to `delivery`: "No delivery provider is registered. Register a capability that
-     owns the `delivery` surface (e.g. install and run `/wf-git:init`)."
-   - **(b) Registered-but-unrecoverable** — a registered capability's manifest can't be read
-     (its recorded root dangled and the self-heal recovered nothing): name those pack(s) from
-     the `## Capabilities` row as hedged **candidates** — "registered pack(s) [X, …] have an
-     unrecoverable manifest at that path; if one is your `delivery` provider, fix its stale
-     root / re-run its init." Never assert a candidate owns `delivery`.
+Reproduce degradation from the record's `state`. Posting a review is this skill's whole
+purpose, so a missing provider is a loud, blocking condition (not a silent empty result). On
+`state: ok`, dispatch every operation against the resolved `fragmentPath`. Otherwise return
+`REVIEW-PR — No provider` and split the reason by state:
+
+- **`unconfigured`** — no capability owns the `delivery` surface (every registered manifest
+  readable): "No delivery provider is registered. Register a capability that owns the
+  `delivery` surface (e.g. install and run `/wf-git:init`)."
+- **`unrecoverable`** — a registered capability owns the `delivery` surface but its manifest
+  can't be read (its recorded root dangled and the self-heal recovered nothing). The record's
+  `owner` reliably names that capability; its `diagnostics` (an optional free-form string,
+  possibly absent) carries any detail. Surface it as a hedged **candidate** — "the registered
+  `delivery` owner `<owner>` is currently unrecoverable; if it is your delivery provider, fix
+  its stale root / re-run its init (e.g. `/wf-git:init`)." Never assert the candidate is
+  definitely at fault.
 
 ---
 

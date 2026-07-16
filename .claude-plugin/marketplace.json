@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.78.2",
+  "version": "0.78.3",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -81,7 +81,7 @@
     {
       "name": "wf-linear",
       "source": "./plugins/wf-linear",
-      "version": "0.2.3",
+      "version": "0.2.4",
       "description": "wf tracker-provider pack: the linear capability owning the wf capability-registry's tracker surface (Linear issue get/create/update/list-children/comment/status/attachment bindings and status/milestone/cycle queries via mcp__claude_ai_Linear__* tools). A second, independent binding of the tracker contract alongside wf-ado. Ships /wf-linear:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
@@ -91,7 +91,7 @@
     {
       "name": "wf-review",
       "source": "./plugins/wf-review",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "description": "wf PR-review feature pack: the pr-review feature capability shipping the user-invoked /wf-review:address-pr and /wf-review:review-pr skills. Reads/verifies/addresses review comments and CI failures and posts verified findings entirely through the delivery provider's PR-interaction operations (pr-comments-read/pr-comment-post/checks-read/review-thread-resolve), treating review-tool output as hypothesis. Composes natively on install; no core seam fired or required.",
       "author": {
         "name": "Pavel Kalabin"
