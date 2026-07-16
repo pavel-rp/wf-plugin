@@ -232,7 +232,7 @@ After printing all questions, **stop**. Do not proceed to further edits in the s
 
 Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
 
-The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at [`references/verify-fix-template.md`](references/verify-fix-template.md). It is read only on this write path (Phase 7), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
+The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at `verify-fix-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: verify-fix`, `ref: verify-fix-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 7), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 If the write fails (permissions, path missing), stop and report. Do not fall back to printing the log inline instead of to disk — the durable artifact matters for later re-runs.
 

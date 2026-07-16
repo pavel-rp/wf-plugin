@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 
 Orchestration shim for an autonomous run of `06_qa.md`. It owns the run **lifecycle** — resolving the task and plan, the branch gate, resume / `--batch` / `--only`, incremental report assembly, and the full-run console/network baseline rollup — and **dispatches the per-scenario drive** to the `qa-execution` engine registered in the capability registry. It does not drive a browser, touch a database, or scaffold a host itself; that execution surface is supplied by a capability. Verdicts are recorded into `07_qa-report.md` incrementally so a context-overflow or a crash doesn't lose progress.
 
-For a human-in-the-loop run, use `/wf:qa-run` — the same plan, the same report format ([`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md)), only the `Mode` and `Tester` fields differ.
+For a human-in-the-loop run, use `/wf:qa-run` — the same plan, the same report format (`qa-gen`'s `report-format.md`, obtained via the resolver's `resolve_content` — `class: references-template`, `skill: qa-gen`, `ref: report-format.md` — never a raw `Read` of the plugin-cache path), only the `Mode` and `Tester` fields differ.
 
 ---
 
@@ -139,7 +139,7 @@ After the run completes (or stops at batch / abort):
 
 **Roll up the full-run baseline check.** The engine captures console/network signals session-wide and returns a full-run verdict for the `Console & network clean across the full run` baseline TC, with each finding attributed to the TC that was active when it fired. Record it: clean → `PASS`; otherwise `FAIL`, listing each finding and adding the distinct errors to the Defects table. Its `FAIL` flips the run `Status` to `FAIL` via the normal rule. **Only meaningful over a complete pass:** on an `--only` run, or a batch/abort that left scenarios `Not run`, mark this TC `Not run` and add a Notes line ("full-run console sweep skipped — partial session"). If the engine reports session-wide capture was unavailable, mark it `BLOCKED · setup: session-wide capture unavailable`.
 
-- Header per [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md):
+- Header per `qa-gen`'s `report-format.md` (same `resolve_content` reference as above):
   - `Mode: agentic`
   - `Tester: wf:qa-auto`
   - `Driver model:` — current model identifier (the model the engine ran under, as reported back).
@@ -149,7 +149,7 @@ After the run completes (or stops at batch / abort):
 - Traceability matrix rolled up from per-scenario `Validates: SC-N` references and verdicts.
 - Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table (from the engine's verdict blocks).
 - Notes & Observations — any anomalies the engine surfaced (entity substitutions, retries, teardown failures).
-- Defects table — one row per FAIL, severity resolved per the rubric in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md) (§Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from observed value.
+- Defects table — one row per FAIL, severity resolved per the rubric in `qa-gen`'s `report-format.md` (same `resolve_content` reference as above; §Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from observed value.
 
 If subagent invocation is available, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`.
 

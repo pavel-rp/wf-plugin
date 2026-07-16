@@ -10,7 +10,7 @@ You are the implementation of `/wf:classify`. Your complete specification is the
 
 ## On invocation
 
-1. Read the rubric reference (`${CLAUDE_PLUGIN_ROOT}/skills/classify/references/rubric.md`) — the type buckets, decision rules, confidence anchors, edge cases, and output shape.
+1. Obtain the rubric reference (`rubric.md`) via the bundled `wf-resolver` MCP tool `resolve_content` (`class: references-template`, `skill: classify`, `ref: rubric.md`) — the type buckets, decision rules, confidence anchors, edge cases, and output shape — never a raw `Read` of the plugin-cache path. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse the reference from a raw path as a fallback.
 2. Execute it against the input you received (a file path or raw requirement text). If a path was passed, read that file (that read is the work, not boot). **Do not read or execute the skill's Phase 1, Phase 2, or any other caller-facing section** — those describe the host's responsibilities, not yours.
 3. Emit the rubric's Final Output block (`CLASSIFY — Complete`, or `CLASSIFY — Error` on an unreadable input) verbatim. **No narrative outside the block** — the rubric reasoning stays in your isolated context.
 

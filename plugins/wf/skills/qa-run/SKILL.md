@@ -22,7 +22,7 @@ Obtain `{task-root}` from the bundled `wf-resolver` MCP service via `resolve_con
 
 `06_qa.md` must exist in the task folder. If missing, stop: "No QA plan found. Run `/wf:qa-gen` first."
 
-The report shape is documented once in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md). This skill writes that exact shape — keep both in lockstep when editing.
+The report shape is documented once in `qa-gen`'s `report-format.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: qa-gen`, `ref: report-format.md`), never a raw `Read` of the plugin-cache path. This skill writes that exact shape — keep both in lockstep when editing.
 
 ---
 
@@ -184,7 +184,7 @@ Announce: `TC-NNN: <verdict>`. Move to the next scenario.
 
 ### 3d. Incremental save
 
-After every 3 completed scenarios (or on `abort`), write the current state to `07_qa-report.md` in the format from [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md). Scenarios not yet executed appear with verdict `Not run`. This is the safety net for crashed sessions.
+After every 3 completed scenarios (or on `abort`), write the current state to `07_qa-report.md` in the format from `qa-gen`'s `report-format.md` (obtained via `resolve_content`, `class: references-template`, `skill: qa-gen`, `ref: report-format.md` — see Prerequisites above). Scenarios not yet executed appear with verdict `Not run`. This is the safety net for crashed sessions.
 
 ---
 
@@ -192,12 +192,12 @@ After every 3 completed scenarios (or on `abort`), write the current state to `0
 
 After the loop completes (or aborts), write the full `07_qa-report.md`:
 
-- Header: run date, `Mode: manual`, `Tester:` the environment's configured user identity (or `"tester"` if unavailable — see [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md); a documented contract-completeness gap, since the delivery provider surface has no identity/user operation), `Driver model:` is the current model identifier, `Plan: 06_qa.md (scope: <scope>)`, `App:` empty for manual mode, status from the deterministic rule.
+- Header: run date, `Mode: manual`, `Tester:` the environment's configured user identity (or `"tester"` if unavailable — see `qa-gen`'s `report-format.md` (obtained via `resolve_content`, `class: references-template`, `skill: qa-gen`, `ref: report-format.md`); a documented contract-completeness gap, since the delivery provider surface has no identity/user operation), `Driver model:` is the current model identifier, `Plan: 06_qa.md (scope: <scope>)`, `App:` empty for manual mode, status from the deterministic rule.
 - Summary table.
 - Traceability matrix (rolled up from each scenario's `Validates: SC-N` and verdict).
 - Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table.
 - Notes & Observations — any `Note` annotations recorded.
-- Defects table — one row per FAIL, severity resolved per the rubric in [`../qa-gen/references/report-format.md`](../qa-gen/references/report-format.md) (§Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from the observed-value text the tester gave.
+- Defects table — one row per FAIL, severity resolved per the rubric in `qa-gen`'s `report-format.md` (same `resolve_content` reference as above; §Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from the observed-value text the tester gave.
 
 After writing, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · manual · <status> · <P>/<T> passed`.
 

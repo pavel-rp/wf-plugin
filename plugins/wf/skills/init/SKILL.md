@@ -93,7 +93,7 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 
 ### Default content
 
-The verbatim `_local/config.md` default content — the `## Task Folders`, `## Build / Verify`, `## QA`, `## Seed`, `## Standup`, and `## Capabilities` sections — lives at [`references/config-template.md`](references/config-template.md). It is read only on this write path (Phase 2), so it stays out of the boot body. Read it, then write it substituting the detected Verify Command and the current model id. **Strip the `<!-- init directive … -->` HTML comment before writing** (per "Strip the authoring aid" above), and apply the "One registry, never two" rule to where the `## Capabilities` section lands.
+The verbatim `_local/config.md` default content — the `## Task Folders`, `## Build / Verify`, `## QA`, `## Seed`, `## Standup`, and `## Capabilities` sections — lives at `config-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: init`, `ref: config-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 2), so it stays out of the boot body. Follow it, then write it substituting the detected Verify Command and the current model id. **Strip the `<!-- init directive … -->` HTML comment before writing** (per "Strip the authoring aid" above), and apply the "One registry, never two" rule to where the `## Capabilities` section lands.
 
 After writing, tell the user to review `_local/config.md` — especially the detected `Verify Command` — and edit values for the current project if they differ from the defaults. The keys must not change — only the values.
 

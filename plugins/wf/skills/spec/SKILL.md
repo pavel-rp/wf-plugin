@@ -255,7 +255,7 @@ Write `01_spec.md` in the task folder using the template below.
 
 ## Spec Template
 
-The verbatim `01_spec.md` template — the metadata block, `## Objective`, `## Success Criteria`, `## Context`, `## Scope`, `## Constraints`, `## User Journeys`, and `## Boundaries` — lives at [`references/spec-template.md`](references/spec-template.md). It is read only on this write path (Phase 3), so it stays out of the boot body. Read it, then emit it with placeholders substituted.
+The verbatim `01_spec.md` template — the metadata block, `## Objective`, `## Success Criteria`, `## Context`, `## Scope`, `## Constraints`, `## User Journeys`, and `## Boundaries` — lives at `spec-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: spec`, `ref: spec-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 3), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 Sections are optional — omit any that would be empty. Only include an "Open Questions" section if some questions are truly unresolvable (e.g., depends on an external team decision).
 

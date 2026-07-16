@@ -98,7 +98,7 @@ The verdict's `Type` field is exactly one of: `feat`, `fix`, `chore`, `refactor`
 
 ## Procedure (subagent execution — caller, skip this section)
 
-The subagent's rubric — the type buckets, decision rules, confidence anchors, edge cases, and output shape — lives at [`references/rubric.md`](references/rubric.md). It is the single source of truth for the classification logic, read **only by the `wf:classify` subagent** on invocation (`agents/classify.md` boots from that reference alone). The host LLM running `/wf:classify` directly does NOT read it — it stops at Phase 2 and delegates. Moving the rubric out of this caller-facing body is what keeps a subagent spawn small (it no longer eagerly loads this whole file).
+The subagent's rubric — the type buckets, decision rules, confidence anchors, edge cases, and output shape — lives at `rubric.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: classify`, `ref: rubric.md`), never a raw `Read` of the plugin-cache path. It is the single source of truth for the classification logic, read **only by the `wf:classify` subagent** on invocation (`agents/classify.md` boots from that reference alone). The host LLM running `/wf:classify` directly does NOT read it — it stops at Phase 2 and delegates. Moving the rubric out of this caller-facing body is what keeps a subagent spawn small (it no longer eagerly loads this whole file).
 
 ---
 

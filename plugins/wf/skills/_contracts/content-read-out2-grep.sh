@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# OUT-2 acceptance check — FRAGMENT + SHARED + CONTRACT-OPS content classes
-# (WF-304 / WF-305 / WF-306, charter C011 / WF-301).
+# OUT-2 acceptance check — FRAGMENT + SHARED + CONTRACT-OPS + REFERENCES content
+# classes (WF-304 / WF-305 / WF-306 / WF-307, charter C011 / WF-301).
 #
 # Charter outcome OUT-2: no agent or skill instructs a raw `Read`/`Glob` of a
 # bundled content-class doc — every such body is obtained through the resolver
@@ -8,16 +8,16 @@
 # content classes across reviewed slices (fragment, shared, contract-ops,
 # references, profile). This script accumulates each slice's clause as it lands:
 # SUB-3 (WF-304) landed the **fragment-class clause**; SUB-4 (WF-305) appended the
-# **shared-class clause**; SUB-5 (WF-306) appends the **contract-ops-class clause**
-# below. The terminal slice (SUB-7) consolidates all five per-class clauses into
-# one composite gate.
+# **shared-class clause**; SUB-5 (WF-306) appended the **contract-ops-class clause**;
+# SUB-6 (WF-307) appends the **references-class clause** below. The terminal slice
+# (SUB-7) consolidates all five per-class clauses into one composite gate.
 #
 # (Charter warning F4.2: the example name `out1-grep.sh` mislabels the outcome it
 # gates — that script gates OUT-1 of a DIFFERENT charter, C001/WF-119. This gate
 # is OUT-2 of C011, hence the corrected name settled here.)
 #
 # Requires GNU/PCRE grep (`grep -P`; present on the Linux CI runner and Git Bash).
-# Exit 0 = both clauses clean; exit 1 = residue found in either clause; exit 2 =
+# Exit 0 = all clauses clean; exit 1 = residue found in any clause; exit 2 =
 # grep error (e.g. PCRE grep unavailable) — never a silent pass.
 set -u
 
@@ -206,6 +206,83 @@ if [ -n "$contract_hits" ]; then
   overall_fail=1
 else
   echo "OUT-2 (contract-ops): PASS — every contract-ops-doc read across core + packs routes through resolve_content; zero raw reads."
+fi
+
+# =============================================================================
+# Clause 4 — REFERENCES class (WF-307 / SUB-6)
+# =============================================================================
+#
+# --- What it proves ---
+# A skill `references/*` template read on that skill's own write/execution path
+# (spec/plan/verify/triage/lite/constitution/init/classify templates; the
+# qa-gen/qa-run/qa-auto/qa-followup shared report-format.md; the wf-browser-qa
+# qa-engine preconditions/output-format/visual-verification templates; the
+# wf-angular qa-host/test-page scaffold/backend-host/page-test/harness/
+# component-injection/bootstrap templates) is obtained via `resolve_content`
+# (class `references-template`), NEVER by a raw `Read`/`Glob`, a markdown link,
+# or a backtick literal path into the version-pinned plugin-cache `references/`
+# folder. Zero surviving raw-read instructions = pass.
+#
+# --- Scope (path) ---
+# Scanned: every plugin's `SKILL.md` files and `agents/*.md` files (core + every
+# pack) — the consumer prose that instructs a template read.
+# NOT scanned (path-scoped out, not a content carve-out):
+#   - `references/*.md` bodies themselves (the read TARGETS) — a target may
+#     legitimately name its own path in a rationale/provenance note (e.g. a
+#     cross-plugin mirror's "source of truth is `<path>`" comment); that is
+#     documentation about the file, not a consumer instruction, so `SKILL.md` /
+#     `agents/*.md` is the exhaustive consumer surface for this clause.
+#   - `capabilities/*/references/onboarding.md` mentions in `manifest.md` — the
+#     ops/reference split's non-runtime reference halves (C011 §6 exclusion,
+#     already excluded from the WF-303 inventory's references class).
+#   - README.md catalogue entries (documentation, not a runtime consumer).
+#
+# --- The single content allowance (not a carve-out) ---
+# The compliant form names `resolve_content` (`class: references-template`,
+# `skill: <name>`, optional `plugin: <pack>`, `ref: <file>.md`) — so the
+# raw-read match below excludes any line that also names `resolve_content`. A
+# BARE-filename citation (`` `rubric.md` `` with no path separator) is a
+# documentation pointer whose runtime behaviour is already served, not a raw
+# read, and is left untouched: every shape below requires a `references/`
+# path segment, so a bare filename never matches. A raw `references/*` PATH
+# with NO `resolve_content` on the line is a residual and fails. No
+# path-fallback exemption.
+
+# Raw-read-of-a-references-template shapes (the instruction SUB-6 removed):
+#   1. a markdown link into a path containing `references/<file>.md` —
+#      `[...](references/<file>.md)` or `[...](../<skill>/references/<file>.md)`,
+#      including an anchored form `references/<file>.md#<anchor>`.
+#   2. a backtick literal PATH containing `references/<file>.md` — including a
+#      version-pinned `${CLAUDE_PLUGIN_ROOT}/skills/<skill>/references/<file>.md`
+#      or a relative `../<skill>/references/<file>.md`.
+#   3. an explicit Read/Glob of a `references/*.md` doc.
+refs_pat='\]\([^)\n]*references/[A-Za-z0-9._-]+\.md[^)\n]*\)'
+refs_pat="$refs_pat"'|`[^`\n]*references/[A-Za-z0-9._-]+\.md[^`\n]*`'
+refs_pat="$refs_pat"'|\b(?:Read|Glob)\b[^\n]{0,80}references/[A-Za-z0-9._-]+\.md'
+
+# Scan every plugin's SKILL.md and agents/*.md (core + packs); references/*.md
+# target bodies themselves are excluded (see "Scope" above). Two separate
+# `grep -r` calls (not `find | xargs`, whose exit code conflates "no matches"
+# with a real grep failure) — concatenate their output.
+refs_raw_skill=$(grep -rPno --include='SKILL.md' "$refs_pat" "$plugins_root")
+rc1=$?
+refs_raw_agents=$(grep -rPno --include='*.md' "$refs_pat" "$plugins_root"/*/agents 2>/dev/null)
+rc2=$?
+# rc 0 = matches found, rc 1 = no matches (fine), rc >=2 = a real grep error.
+if [ "$rc1" -ge 2 ] || [ "$rc2" -ge 2 ]; then
+  echo "OUT-2 (references): ERROR — grep failed (rc1=$rc1 rc2=$rc2). This check requires PCRE grep (grep -P), which may be unavailable on this platform."
+  exit 2
+fi
+refs_raw=$(printf '%s\n%s\n' "$refs_raw_skill" "$refs_raw_agents")
+
+refs_hits=$(printf '%s\n' "$refs_raw" | grep -v 'resolve_content' | grep -v '^$')
+
+if [ -n "$refs_hits" ]; then
+  echo "OUT-2 (references): FAIL — raw-read instructions for a references-template doc (route them through resolve_content, class: references-template):"
+  echo "$refs_hits"
+  overall_fail=1
+else
+  echo "OUT-2 (references): PASS — every references-template read across core + packs routes through resolve_content; zero raw reads."
 fi
 
 exit "$overall_fail"
