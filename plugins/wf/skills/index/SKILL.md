@@ -58,7 +58,7 @@ The only delivery operation this file invokes — `current-branch-query` (the br
 
 **Allowed:**
 
-- Read `_local/config.md` and the resolved task folder.
+- Read the resolved task folder. (`{task-root}` itself comes from the `wf-resolver` `resolve_config` query — see Prerequisites — never from a direct `_local/config.md` parse.)
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query).
 - Invoke the `wf:index` subagent via the **Task** tool. **The subagent is the only writer of `index.md`** — this skill never edits the file directly.
 

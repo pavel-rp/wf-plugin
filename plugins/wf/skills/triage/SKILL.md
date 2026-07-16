@@ -46,7 +46,7 @@ Reach for `/wf:triage` at the very start of a ticket, before deciding between `/
 ### Validation
 
 - **Resolve the tracker-surface state first** (the `wf-resolver` `resolve_provider("tracker")` query — "Direct provider resolution" below — applied at validation time, before any fetch): whether the returned record's `state` is `ok` (an active capability owns the `tracker` surface) or `unconfigured`/`unrecoverable`.
-- **Tracker active** (`state: ok`)**:** `<id>` must be supplied or inferable — a real tracker record needs a real id.
+- **Tracker active (`state: ok`):** `<id>` must be supplied or inferable — a real tracker record needs a real id.
   - **`<id>` provided** — use it verbatim (opaque to core).
   - **`<id>` omitted** — infer a numeric token via `current-branch-query`, reached by the `wf-resolver` `resolve_provider("delivery")` query (see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name, then **resolve that token against `{task-root}`** — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (matching both a tracker-prefixed shape and the local `T<NNN>` scheme's own form uniformly). Then, by match count:
     - **Exactly one match** — reuse that folder's full name as `<id>` verbatim (this recovers the opaque shape a prior invocation already established; core never reconstructs it itself) and set `{task-id}` = `<id>`.
