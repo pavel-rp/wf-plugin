@@ -14,7 +14,7 @@ Classify a task and recommend the downstream workflow. When `00_reqs.md` is abse
 
 ## Prerequisites
 
-**Before any other phase**, read `_local/config.md` to load project-specific values. If the file doesn't exist, stop and instruct the user to run `/wf:init` first. All references to `{task-root}` below come from that file — never hardcode it. A registered tracker capability resolves its own project-scoped config (e.g. a tracker project name) from its own fragment binding; core never reads it directly.
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). All references to `{task-root}` below come from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. A registered tracker capability resolves its own project-scoped config (e.g. a tracker project name) from its own fragment binding; core never reads it directly.
 
 ---
 
@@ -45,10 +45,10 @@ Reach for `/wf:triage` at the very start of a ticket, before deciding between `/
 
 ### Validation
 
-- **Resolve the tracker-surface state first** (direct provider resolution's scope-equality filter — "Direct provider resolution" below — applied at validation time, before any fetch): whether an active capability owns the `tracker` surface.
-- **Tracker active:** `<id>` must be supplied or inferable — a real tracker record needs a real id.
+- **Resolve the tracker-surface state first** (the `wf-resolver` `resolve_provider("tracker")` query — "Direct provider resolution" below — applied at validation time, before any fetch): whether the returned record's `state` is `ok` (an active capability owns the `tracker` surface) or `unconfigured`/`unrecoverable`.
+- **Tracker active** (`state: ok`)**:** `<id>` must be supplied or inferable — a real tracker record needs a real id.
   - **`<id>` provided** — use it verbatim (opaque to core).
-  - **`<id>` omitted** — infer a numeric token via `current-branch-query`, reached through **direct provider resolution** to the `delivery` surface (see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name, then **resolve that token against `{task-root}`** — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (matching both a tracker-prefixed shape and the local `T<NNN>` scheme's own form uniformly). Then, by match count:
+  - **`<id>` omitted** — infer a numeric token via `current-branch-query`, reached by the `wf-resolver` `resolve_provider("delivery")` query (see "Direct provider resolution" below): extract the first 3+-digit run from the resolved branch name, then **resolve that token against `{task-root}`** — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token (matching both a tracker-prefixed shape and the local `T<NNN>` scheme's own form uniformly). Then, by match count:
     - **Exactly one match** — reuse that folder's full name as `<id>` verbatim (this recovers the opaque shape a prior invocation already established; core never reconstructs it itself) and set `{task-id}` = `<id>`.
     - **Zero matches** — stop: "No task id provided and the branch-inferred token `<token>` doesn't match an existing task folder. Pass the id explicitly: `/wf:triage <id>`."
     - **More than one match** — stop: "No task id provided and the branch-inferred token `<token>` matches more than one task folder. Pass the id explicitly: `/wf:triage <id>`."
@@ -59,13 +59,13 @@ Reach for `/wf:triage` at the very start of a ticket, before deciding between `/
 
 ### Direct provider resolution (how `get` is reached)
 
-Every tracker operation below (`get`) is reached by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `tracker` surface). A plugin-anchored `Path` resolves through the self-heal home — `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal" (recorded-root-first, then the install-manifest self-heal) — so a dangling-but-recoverable recorded root self-heals in-memory and the `get` just works instead of silently dropping the fetch.
+Every tracker operation below (`get`) is reached by calling the bundled `wf-resolver` MCP tool `resolve_provider("tracker")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the `tracker` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in-context to dispatch `get` (the resolver returns paths and metadata only, never a fragment body). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
-**Zero readable rows** — no capability's `tracker` manifest could be read (genuinely unconfigured, or registered-but-unrecoverable after the self-heal). Either way this `get` is a **read**, so it stays silent local-only — no tracker operation is attempted, no residual message, no capability term surfaces; every step below proceeds from local artifacts alone.
+Reproduce degradation from the record's `state`: on **`ok`**, dispatch `get` against the resolved fragment; on **`unconfigured`** (no capability owns `tracker`) or **`unrecoverable`** (a registered capability's `tracker` manifest could not be read — recorded root dangled and the self-heal recovered nothing, surfaced in the record's `candidates`), this `get` is a **read**, so it stays silent local-only — no tracker operation is attempted, no residual message, no capability term surfaces; every step below proceeds from local artifacts alone.
 
 ### Direct provider resolution (how `current-branch-query` is reached)
 
-`current-branch-query` is reached by the canonical resolve-once procedure — `invocation-runtime.ops.md` §"Direct provider resolution" (one `## Capabilities` read from `_local/config.md`, the default-absent `registryPath` value, plus one manifest+fragment read for the `delivery` surface; a plugin-anchored `Path` resolves through the self-heal home, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"). With zero readable `delivery` rows, `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces.
+`current-branch-query` is reached by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the same typed query, for the `delivery` surface; the resolver has already resolved the registry, manifest, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"), and this skill performs no such read of its own. Follow the returned `fragmentPath` in-context. On `state: unconfigured`/`unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
 
 ---
 
@@ -76,8 +76,8 @@ Every tracker operation below (`get`) is reached by the canonical resolve-once p
 - Use sourcebot MCP tools (`mcp__sourcebot__search_code`, `mcp__sourcebot__read_file`, `mcp__sourcebot__list_tree`) for code search — preferred over `Grep`/`Glob`.
 - Read any file in the project.
 - Use MSSQL extension tools read-only for schema lookups (only if the task description mentions data, tables, or queries).
-- Invoke `get` via direct provider resolution to the tracker surface (read-only).
-- Read-only resolution via `current-branch-query` (direct provider resolution to the delivery surface).
+- Invoke `get` via the `wf-resolver` `resolve_provider("tracker")` query (read-only).
+- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query).
 - Write `00_reqs.md` (if fetched) and `triage.md` inside the task folder only.
 
 **Forbidden:**
@@ -94,8 +94,8 @@ Every tracker operation below (`get`) is reached by the canonical resolve-once p
 
 Skip to Phase 2 if `00_reqs.md` already exists.
 
-1. **Fetch the work item.** Invoke `get(<id>)` via direct provider resolution to the tracker surface (above).
-   - **Unconfigured tracker** (the scope-equality filter matches zero rows), or a **registered-but-unrecoverable** tracker whose manifest couldn't be read after the self-heal — silent local-only fallback, no prompt, no error, no residual message (a `get` is a read): continue to step 2 with no fetched data.
+1. **Fetch the work item.** Invoke `get(<id>)` via the `wf-resolver` `resolve_provider("tracker")` query (above).
+   - **Unconfigured tracker** (`state: unconfigured`), or a **registered-but-unrecoverable** tracker (`state: unrecoverable`) whose manifest couldn't be read after the self-heal — silent local-only fallback, no prompt, no error, no residual message (a `get` is a read): continue to step 2 with no fetched data.
    - **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before.
    - **Mid-run failure** (a tracker was registered but the `get` call errors) — warn once, naming the operation and the error, then continue local-only from whatever context is available. The run is never blocked by a tracker failure.
 2. **Do NOT fetch parent or comments.** Triage is deliberately shallow — the whole point is to detect when the child description is insufficient and recommend `clarify`.
