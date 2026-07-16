@@ -138,11 +138,47 @@ export interface PackRecord {
   diagnostics: string | null;
 }
 
-/** A resolution diagnostic (non-fatal note or a residual-diagnosis input). */
+/** The fixed taxonomy of resolver-failure categories (WF-272). A broken
+ *  resolver state is one of these typed, diagnosable categories — never an
+ *  opaque throw. Each maps a diagnostic/throw to a surface-specific reaction and
+ *  a recovery path (see `resolver/failure.ts`). */
+export type ResolverErrorCategory =
+  /** No resolution snapshot could be produced (no cache and the build failed). */
+  | "snapshot-missing"
+  /** A persisted snapshot is present but unreadable (unparseable / structurally invalid). */
+  | "snapshot-malformed"
+  /** A snapshot's `schemaVersion` is incompatible with this runtime. */
+  | "schema-incompatible"
+  /** A recorded source input could not be re-read to validate freshness. */
+  | "fingerprint-unresolvable"
+  /** `claude plugin list --json` could not run; installed-pack facts are unknown. */
+  | "cli-unavailable"
+  /** The `## Capabilities` registry / a capability manifest / a profile is invalid. */
+  | "registry-invalid";
+
+/** Enumerated categories, for validation and exhaustiveness. */
+export const RESOLVER_ERROR_CATEGORIES: readonly ResolverErrorCategory[] = [
+  "snapshot-missing",
+  "snapshot-malformed",
+  "schema-incompatible",
+  "fingerprint-unresolvable",
+  "cli-unavailable",
+  "registry-invalid",
+] as const;
+
+/** A resolution diagnostic (non-fatal note or a residual-diagnosis input). The
+ *  optional `category` classifies a failure-signal diagnostic into the fixed
+ *  resolver-failure taxonomy (WF-272); `recovery` carries the caller-facing
+ *  recovery hint (including a `/wf:resolve refresh|invalidate` path). Both are
+ *  optional so every existing diagnostic remains contract-compatible. */
 export interface Diagnostic {
   severity: "info" | "warning" | "error";
   code: string;
   message: string;
+  /** Resolver-failure category when this diagnostic is a failure signal. */
+  category?: ResolverErrorCategory;
+  /** Caller-facing recovery path; present when `category` is set. */
+  recovery?: string;
 }
 
 /** Provider-surface ownership index (derived from active capabilities'
