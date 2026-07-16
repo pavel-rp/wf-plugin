@@ -102,16 +102,25 @@ notes below record each binding's grounding status and the load-bearing choices 
 - **Configured/unconfigured gate is behaviour-bearing, so it lives in the ops file.** It
   decides whether the tracker is live or the run degrades to the silent local-only
   fallback. **Linear Project** never gates it — a secondary scoping value, defaulted to
-  the literal `none`. **WF-282:** the registry-location half now comes from the bundled
-  `wf-resolver` MCP tool's typed `resolve_config` query (`registryPath`), instead of
-  assuming the `_local/config.md` literal — a project's `wf.config.js` may relocate it.
-  Only the Linear section's own values remain a direct local read: the resolver's snapshot
-  has a `providerConfig` field reserved for exactly this (consumer inventory §7 field #9),
-  but it is deliberately left unpopulated by core — a provider-specific config-section name
-  is domain knowledge core doesn't carry — and no typed tool exposes it yet, so this
-  fragment reads its own section directly, anchored to the resolver-supplied path rather
-  than a hardcoded one.
-- **Grounding:** Grounded — one resolver query plus a local read, no Linear tool involved.
+  the literal `none`. **WF-300:** the `## Linear` provider-config section is read from
+  `_local/config.md` **unconditionally**, never from a relocated `registryPath`. The
+  resolver's `registryPath` (from `wf.config.js`) governs where the capability **registry**
+  — the `## Capabilities` table — lives; it does **not** move core or provider config,
+  which always stay in `_local/config.md`. The resolver models this split directly: it
+  reads core/provider config from `_local/config.md` unconditionally
+  (`engine.ts` `DEFAULT_REGISTRY_RELPATH`) and honors a relocated `registryPath` only for
+  the registry table, and it fingerprints `registry` and `core-config` as two distinct
+  source inputs. The Linear fragment never reads the registry table, so it has no use for
+  `registryPath` — an earlier revision (WF-282) wrongly anchored the section read to the
+  resolver-supplied `registryPath`, which reads the wrong file whenever a project relocates
+  the registry, treating a validly configured tracker as unconfigured. The Linear section's
+  own values still remain a direct local read: the resolver's snapshot has a
+  `providerConfig` field reserved for exactly this (consumer inventory §7 field #9), but it
+  is deliberately left unpopulated by core — a provider-specific config-section name is
+  domain knowledge core doesn't carry — and no typed tool exposes it yet, so this fragment
+  reads its own section directly from `_local/config.md`.
+- **Grounding:** Grounded — a direct local read of `_local/config.md`, no resolver query
+  and no Linear tool involved.
 
 ## create_umbrella
 
