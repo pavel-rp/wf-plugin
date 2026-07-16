@@ -105,8 +105,10 @@ diagnostics }` for the `delivery` surface. The resolver has already resolved the
 `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored
 root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first
 resolution with install-manifest self-heal"); core performs **no** registry / manifest /
-plugin-root read of its own. Follow the returned `fragmentPath` in this skill's own context to
-invoke the ops (the resolver returns paths and metadata only, never a fragment body). If the
+plugin-root read of its own. Obtain each op's body via `resolve_content` (`class: fragment`, keyed
+on the record's `owner` and fragment `ref`) and follow it in this skill's own context to
+invoke the ops — never a raw `Read` of the path (the metadata queries return only paths/metadata;
+the body comes from `resolve_content`). If the
 `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded —
 do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
@@ -209,11 +211,11 @@ taxonomy by **phase name / contribution-kind name**, never by heading:
 2. **Collect** only the fragment rows (across the returned `capabilities[]`, preserving
    registry order) whose `phase` is `implement` and whose `contributionKind` is `guidance`.
    Ignore all other rows for this firing.
-3. **Dispatch each collected fragment** on its `dispatch` metadata (the resolver returns
-   paths/metadata only — never a fragment body, so the dispatch read stays in this skill's own
-   context):
-   - `inline: <rel-path>` → read the fragment at its resolved path (relative to the
-     capability's resolved registry path) and **follow it in-context**, applying its authoring
+3. **Dispatch each collected fragment** on its `dispatch` metadata (the metadata queries return
+   paths/metadata only; the fragment body comes from the resolver's `resolve_content` content
+   surface, read prompt-free in this skill's own context):
+   - `inline: <rel-path>` → obtain the fragment body via `resolve_content` (`class: fragment`,
+     the capability name, `ref: <rel-path>`) and **follow it in-context**, applying its authoring
      idioms.
    - `subagent: <agent>` → invoke the **Task** tool with `subagent_type: <agent>`, passing
      the change set and coverage plan; apply the guidance its final block returns.
