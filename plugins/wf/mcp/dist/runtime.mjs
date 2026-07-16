@@ -3746,7 +3746,7 @@ function initializeContext(params) {
     external: params?.external ?? void 0
   };
 }
-function process(schema, ctx, _params = { path: [], schemaPath: [] }) {
+function process2(schema, ctx, _params = { path: [], schemaPath: [] }) {
   var _a3;
   const def = schema._zod.def;
   const seen = ctx.seen.get(schema);
@@ -3783,7 +3783,7 @@ function process(schema, ctx, _params = { path: [], schemaPath: [] }) {
     if (parent) {
       if (!result.ref)
         result.ref = parent;
-      process(parent, ctx, params);
+      process2(parent, ctx, params);
       ctx.seen.get(parent).isParent = true;
     }
   }
@@ -4071,14 +4071,14 @@ function isTransforming(_schema, _ctx) {
 }
 var createToJSONSchemaMethod = (schema, processors = {}) => (params) => {
   const ctx = initializeContext({ ...params, processors });
-  process(schema, ctx);
+  process2(schema, ctx);
   extractDefs(ctx, schema);
   return finalize(ctx, schema);
 };
 var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) => {
   const { libraryOptions, target } = params ?? {};
   const ctx = initializeContext({ ...libraryOptions ?? {}, target, io, processors });
-  process(schema, ctx);
+  process2(schema, ctx);
   extractDefs(ctx, schema);
   return finalize(ctx, schema);
 };
@@ -4324,7 +4324,7 @@ var arrayProcessor = (schema, ctx, _json, params) => {
   if (typeof maximum === "number")
     json.maxItems = maximum;
   json.type = "array";
-  json.items = process(def.element, ctx, {
+  json.items = process2(def.element, ctx, {
     ...params,
     path: [...params.path, "items"]
   });
@@ -4336,7 +4336,7 @@ var objectProcessor = (schema, ctx, _json, params) => {
   json.properties = {};
   const shape = def.shape;
   for (const key in shape) {
-    json.properties[key] = process(shape[key], ctx, {
+    json.properties[key] = process2(shape[key], ctx, {
       ...params,
       path: [...params.path, "properties", key]
     });
@@ -4359,7 +4359,7 @@ var objectProcessor = (schema, ctx, _json, params) => {
     if (ctx.io === "output")
       json.additionalProperties = false;
   } else if (def.catchall) {
-    json.additionalProperties = process(def.catchall, ctx, {
+    json.additionalProperties = process2(def.catchall, ctx, {
       ...params,
       path: [...params.path, "additionalProperties"]
     });
@@ -4368,7 +4368,7 @@ var objectProcessor = (schema, ctx, _json, params) => {
 var unionProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
   const isExclusive = def.inclusive === false;
-  const options = def.options.map((x, i) => process(x, ctx, {
+  const options = def.options.map((x, i) => process2(x, ctx, {
     ...params,
     path: [...params.path, isExclusive ? "oneOf" : "anyOf", i]
   }));
@@ -4380,11 +4380,11 @@ var unionProcessor = (schema, ctx, json, params) => {
 };
 var intersectionProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  const a = process(def.left, ctx, {
+  const a = process2(def.left, ctx, {
     ...params,
     path: [...params.path, "allOf", 0]
   });
-  const b = process(def.right, ctx, {
+  const b = process2(def.right, ctx, {
     ...params,
     path: [...params.path, "allOf", 1]
   });
@@ -4401,11 +4401,11 @@ var tupleProcessor = (schema, ctx, _json, params) => {
   json.type = "array";
   const prefixPath = ctx.target === "draft-2020-12" ? "prefixItems" : "items";
   const restPath = ctx.target === "draft-2020-12" ? "items" : ctx.target === "openapi-3.0" ? "items" : "additionalItems";
-  const prefixItems = def.items.map((x, i) => process(x, ctx, {
+  const prefixItems = def.items.map((x, i) => process2(x, ctx, {
     ...params,
     path: [...params.path, prefixPath, i]
   }));
-  const rest = def.rest ? process(def.rest, ctx, {
+  const rest = def.rest ? process2(def.rest, ctx, {
     ...params,
     path: [...params.path, restPath, ...ctx.target === "openapi-3.0" ? [def.items.length] : []]
   }) : null;
@@ -4445,7 +4445,7 @@ var recordProcessor = (schema, ctx, _json, params) => {
   const keyBag = keyType._zod.bag;
   const patterns = keyBag?.patterns;
   if (def.mode === "loose" && patterns && patterns.size > 0) {
-    const valueSchema = process(def.valueType, ctx, {
+    const valueSchema = process2(def.valueType, ctx, {
       ...params,
       path: [...params.path, "patternProperties", "*"]
     });
@@ -4455,12 +4455,12 @@ var recordProcessor = (schema, ctx, _json, params) => {
     }
   } else {
     if (ctx.target === "draft-07" || ctx.target === "draft-2020-12") {
-      json.propertyNames = process(def.keyType, ctx, {
+      json.propertyNames = process2(def.keyType, ctx, {
         ...params,
         path: [...params.path, "propertyNames"]
       });
     }
-    json.additionalProperties = process(def.valueType, ctx, {
+    json.additionalProperties = process2(def.valueType, ctx, {
       ...params,
       path: [...params.path, "additionalProperties"]
     });
@@ -4475,7 +4475,7 @@ var recordProcessor = (schema, ctx, _json, params) => {
 };
 var nullableProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  const inner = process(def.innerType, ctx, params);
+  const inner = process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   if (ctx.target === "openapi-3.0") {
     seen.ref = def.innerType;
@@ -4486,20 +4486,20 @@ var nullableProcessor = (schema, ctx, json, params) => {
 };
 var nonoptionalProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 };
 var defaultProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   json.default = JSON.parse(JSON.stringify(def.defaultValue));
 };
 var prefaultProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   if (ctx.io === "input")
@@ -4507,7 +4507,7 @@ var prefaultProcessor = (schema, ctx, json, params) => {
 };
 var catchProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   let catchValue;
@@ -4522,32 +4522,32 @@ var pipeProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
   const inIsTransform = def.in._zod.traits.has("$ZodTransform");
   const innerType = ctx.io === "input" ? inIsTransform ? def.out : def.in : def.out;
-  process(innerType, ctx, params);
+  process2(innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = innerType;
 };
 var readonlyProcessor = (schema, ctx, json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
   json.readOnly = true;
 };
 var promiseProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 };
 var optionalProcessor = (schema, ctx, _json, params) => {
   const def = schema._zod.def;
-  process(def.innerType, ctx, params);
+  process2(def.innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = def.innerType;
 };
 var lazyProcessor = (schema, ctx, _json, params) => {
   const innerType = schema._zod.innerType;
-  process(innerType, ctx, params);
+  process2(innerType, ctx, params);
   const seen = ctx.seen.get(schema);
   seen.ref = innerType;
 };
@@ -4599,7 +4599,7 @@ function toJSONSchema(input, params) {
     const defs = {};
     for (const entry of registry2._idmap.entries()) {
       const [_, schema] = entry;
-      process(schema, ctx2);
+      process2(schema, ctx2);
     }
     const schemas = {};
     const external = {
@@ -4622,7 +4622,7 @@ function toJSONSchema(input, params) {
     return { schemas };
   }
   const ctx = initializeContext({ ...params, processors: allProcessors });
-  process(input, ctx);
+  process2(input, ctx);
   extractDefs(ctx, input);
   return finalize(ctx, input);
 }
@@ -11188,6 +11188,21 @@ function normalizeRawShapeSchema(schema) {
   if (typeof schema === "object" && schema !== null && !isStandardSchema(schema) && Object.values(schema).some((v) => looksLikeZodV3(v))) throw new TypeError("Raw-shape inputSchema/outputSchema/argsSchema fields must be Zod v4 schemas. Got a Zod v3 field schema. Import from `zod/v4` (or upgrade your zod import), or wrap with `z.object({...})` yourself.");
   if (!isStandardSchema(schema)) throw new TypeError("inputSchema/outputSchema/argsSchema must be a Standard Schema (e.g. z.object({...})) or a raw Zod shape ({ field: z.string() }).");
   return schema;
+}
+function fromJsonSchema(schema, validator) {
+  const check = validator.getValidator(schema);
+  return { "~standard": {
+    version: 1,
+    vendor: "mcp",
+    jsonSchema: {
+      input: () => schema,
+      output: () => schema
+    },
+    validate: (data) => {
+      const result = check(data);
+      return result.valid ? { value: result.data } : { issues: [{ message: result.errorMessage }] };
+    }
+  } };
 }
 
 // node_modules/@modelcontextprotocol/server/dist/ajvProvider-CplOkyLC.mjs
@@ -17784,7 +17799,7 @@ var AjvJsonSchemaValidator = class {
 var Ajv = import_ajv.Ajv;
 
 // node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
-import process2 from "node:process";
+import process3 from "node:process";
 
 // node_modules/@modelcontextprotocol/server/dist/mcp-Ctiu4nBa.mjs
 var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
@@ -19281,12 +19296,18 @@ function unwrapOptionalSchema(schema) {
   return schema.def?.innerType ?? schema;
 }
 
+// node_modules/@modelcontextprotocol/server/dist/index.mjs
+var _defaultValidator;
+function fromJsonSchema2(schema, validator) {
+  return fromJsonSchema(schema, validator ?? (_defaultValidator ??= new AjvJsonSchemaValidator()));
+}
+
 // node_modules/@modelcontextprotocol/server/dist/stdio.mjs
 var StdioServerTransport = class {
   _readBuffer;
   _started = false;
   _closed = false;
-  constructor(_stdin = process2.stdin, _stdout = process2.stdout, options) {
+  constructor(_stdin = process3.stdin, _stdout = process3.stdout, options) {
     this._stdin = _stdin;
     this._stdout = _stdout;
     this._readBuffer = new ReadBuffer({ maxBufferSize: options?.maxBufferSize });
@@ -19765,9 +19786,1274 @@ function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
 
+// src/resolver/fingerprint.ts
+import { createHash } from "node:crypto";
+function sha256Hex(content) {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+function fingerprint(kind, path, content) {
+  if (content === null) {
+    return { kind, path, sha256: null, bytes: null, present: false };
+  }
+  return {
+    kind,
+    path,
+    sha256: sha256Hex(content),
+    bytes: Buffer.byteLength(content, "utf8"),
+    present: true
+  };
+}
+
+// src/resolver/paths.ts
+function normalizeSlashes(p) {
+  return p.replace(/\\/g, "/");
+}
+function joinSlash(...segments) {
+  return segments.map((s, i) => {
+    let seg = normalizeSlashes(s);
+    if (i > 0) seg = seg.replace(/^\/+/, "");
+    if (i < segments.length - 1) seg = seg.replace(/\/+$/, "");
+    return seg;
+  }).filter((s) => s.length > 0).join("/");
+}
+var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
+function parsePluginAnchor(registryPath) {
+  const m = PLUGIN_ANCHOR.exec(registryPath.trim());
+  if (!m) return null;
+  return { pluginName: m[1], relPath: m[2] };
+}
+function resolveCapabilityPath(registryPath, opts) {
+  const anchor = parsePluginAnchor(registryPath);
+  if (!anchor) {
+    const folder = joinSlash(opts.workspaceRoot, registryPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+    }
+    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
+  }
+  const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
+  if (recorded) {
+    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
+    const folder = joinSlash(root, anchor.relPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+    }
+  }
+  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
+  if (installed) {
+    const root = normalizeSlashes(installed.installPath);
+    const folder = joinSlash(root, anchor.relPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
+    }
+  }
+  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
+}
+function isAbsoluteRoot(root) {
+  const n = normalizeSlashes(root);
+  return n.startsWith("/") || /^[A-Za-z]:/.test(n);
+}
+
+// src/resolver/registry-edit.ts
+function splitRow(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|")) return null;
+  return trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+}
+function isSeparatorRow(cells) {
+  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
+}
+function escapeRegex2(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function renderRow(cells) {
+  return `| ${cells.join(" | ")} |`;
+}
+function upsertSectionRow(markdown, heading, columns, key, value) {
+  const eol = markdown.includes("\r\n") ? "\r\n" : "\n";
+  const lines = markdown.split(/\r?\n/);
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
+  let sectionStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (headingRe.test(lines[i])) {
+      sectionStart = i;
+      break;
+    }
+  }
+  if (sectionStart === -1) {
+    const block = [
+      "",
+      `## ${heading}`,
+      "",
+      renderRow(columns),
+      renderRow(["------", "------"]),
+      renderRow([key, value])
+    ];
+    const base = markdown.replace(/\s*$/, "");
+    return { content: `${base}${eol}${block.join(eol)}${eol}`, changed: true };
+  }
+  let sectionEnd = lines.length;
+  for (let i = sectionStart + 1; i < lines.length; i++) {
+    if (/^#{1,6}\s+/.test(lines[i])) {
+      sectionEnd = i;
+      break;
+    }
+  }
+  let headerIdx = -1;
+  let lastDataIdx = -1;
+  let matchIdx = -1;
+  let sawHeader = false;
+  for (let i = sectionStart + 1; i < sectionEnd; i++) {
+    const cells = splitRow(lines[i]);
+    if (!cells) continue;
+    if (!sawHeader) {
+      sawHeader = true;
+      headerIdx = i;
+      continue;
+    }
+    if (isSeparatorRow(cells)) continue;
+    lastDataIdx = i;
+    if (cells[0] === key) matchIdx = i;
+  }
+  if (headerIdx === -1) {
+    const insertAt = sectionStart + 1;
+    const tableBlock = [
+      "",
+      renderRow(columns),
+      renderRow(["------", "------"]),
+      renderRow([key, value])
+    ];
+    const next2 = [...lines.slice(0, insertAt), ...tableBlock, ...lines.slice(insertAt)];
+    return { content: next2.join(eol), changed: true };
+  }
+  if (matchIdx !== -1) {
+    const existing = splitRow(lines[matchIdx]);
+    if ((existing[1] ?? "") === value) {
+      return { content: markdown, changed: false };
+    }
+    const next2 = [...lines];
+    next2[matchIdx] = renderRow([key, value]);
+    return { content: next2.join(eol), changed: true };
+  }
+  const appendAfter = lastDataIdx !== -1 ? lastDataIdx : headerIdx + 1;
+  const next = [
+    ...lines.slice(0, appendAfter + 1),
+    renderRow([key, value]),
+    ...lines.slice(appendAfter + 1)
+  ];
+  return { content: next.join(eol), changed: true };
+}
+
+// src/service.ts
+var KNOWN_SURFACES = /* @__PURE__ */ new Set([
+  "delivery",
+  "tracker",
+  "qa-execution:engine",
+  "qa-execution:host"
+]);
+function degradationFor(surface, state) {
+  if (state === "ok") return "ok";
+  if (surface === "delivery") return "delivery-block";
+  if (surface === "tracker") return "tracker-warn";
+  if (surface.startsWith("qa-execution")) return "engine-block";
+  return "bare-core";
+}
+var ResolverService = class {
+  constructor(ports) {
+    this.ports = ports;
+  }
+  ports;
+  current = null;
+  invalidated = false;
+  /** Ensure a usable snapshot exists, rebuilding when invalidated or uncached.
+   *  This is the single discovery point — read queries never re-discover. */
+  ensure() {
+    if (this.current && !this.invalidated) return this.current;
+    if (this.invalidated) {
+      this.current = this.ports.resolveFresh();
+      this.ports.persist(this.current);
+      this.invalidated = false;
+      return this.current;
+    }
+    const cached2 = this.ports.readCache();
+    if (cached2) {
+      this.current = cached2;
+      return cached2;
+    }
+    this.current = this.ports.resolveFresh();
+    this.ports.persist(this.current);
+    return this.current;
+  }
+  // --- R1 -----------------------------------------------------------------
+  resolveConfig() {
+    const s = this.ensure();
+    return {
+      workspaceRoot: s.workspaceRoot,
+      registryPath: s.registryPath,
+      coreConfig: s.coreConfig,
+      idShape: s.idShape
+    };
+  }
+  // --- R2 -----------------------------------------------------------------
+  resolveRegistry() {
+    const s = this.ensure();
+    return {
+      capabilities: s.capabilities.map((c) => ({
+        name: c.name,
+        kind: c.kind,
+        resolvedPath: c.resolvedPath,
+        manifestPath: c.manifestPath,
+        provenance: c.provenance,
+        validity: c.validity,
+        fragments: c.fragments,
+        articles: c.articles,
+        requires: c.requires,
+        conflicts: c.conflicts,
+        profileTemplatePath: c.profileTemplatePath
+      }))
+    };
+  }
+  // --- R3 -----------------------------------------------------------------
+  resolveProvider(surface) {
+    const s = this.ensure();
+    const owned = s.providerOwnership.find((o) => o.surface === surface);
+    if (!owned) {
+      return {
+        surface,
+        owner: null,
+        fragmentPath: null,
+        state: "unconfigured",
+        degradation: degradationFor(surface, "unconfigured"),
+        diagnostics: KNOWN_SURFACES.has(surface) ? `no capability owns the \`${surface}\` surface; degrade per its class.` : `unknown surface \`${surface}\`.`
+      };
+    }
+    const pack = owned.state !== "ok" ? s.packs.find((p) => p.registeredCapabilities.includes(owned.owner)) : void 0;
+    return {
+      surface,
+      owner: owned.owner,
+      fragmentPath: owned.fragmentPath,
+      state: owned.state,
+      degradation: degradationFor(surface, owned.state),
+      diagnostics: pack?.diagnostics ?? null
+    };
+  }
+  // --- R4 -----------------------------------------------------------------
+  resolveProfile(capability) {
+    const s = this.ensure();
+    const present = Object.prototype.hasOwnProperty.call(s.profiles, capability);
+    return { capability, present, values: present ? s.profiles[capability] : null };
+  }
+  // --- R5 -----------------------------------------------------------------
+  resolvePluginRoot(plugin) {
+    const s = this.ensure();
+    const row = s.pluginRoots.find((r) => r.plugin === plugin);
+    if (!row) {
+      return { plugin, root: null, provenance: "unrecoverable" };
+    }
+    return { plugin, root: row.resolvedRoot, provenance: row.provenance };
+  }
+  // --- lifecycle ----------------------------------------------------------
+  inspect() {
+    const snap = this.current ?? this.ports.readCache();
+    return {
+      valid: !this.invalidated && snap !== null,
+      cached: snap !== null,
+      generatedAt: snap?.generatedAt ?? null,
+      schemaVersion: snap?.schemaVersion ?? null,
+      counts: {
+        capabilities: snap?.capabilities.length ?? 0,
+        packs: snap?.packs.length ?? 0,
+        providers: snap?.providerOwnership.length ?? 0
+      },
+      diagnostics: snap?.diagnostics ?? []
+    };
+  }
+  refresh() {
+    this.current = this.ports.resolveFresh();
+    this.ports.persist(this.current);
+    this.invalidated = false;
+    return this.inspect();
+  }
+  invalidate() {
+    this.invalidated = true;
+    return this.inspect();
+  }
+  // --- R6: inspect_pack (read-only) --------------------------------------
+  inspectPack(pluginId) {
+    const pluginName = this.bareName(pluginId);
+    const listing = this.ports.listPlugins();
+    const base = {
+      pluginId,
+      pluginName,
+      installed: false,
+      enabled: false,
+      version: null,
+      installPath: null,
+      capabilities: [],
+      fingerprint: null,
+      valid: false,
+      issues: []
+    };
+    if (!listing.ok) {
+      base.issues.push(
+        "`claude plugin list --json` is unavailable; pack state cannot be resolved."
+      );
+      return base;
+    }
+    const pack = listing.plugins.find(
+      (p) => p.id === pluginId || p.name === pluginName
+    );
+    if (!pack) {
+      base.issues.push(`plugin \`${pluginId}\` is not installed.`);
+      return base;
+    }
+    base.installed = true;
+    base.enabled = pack.enabled;
+    base.version = pack.version;
+    base.installPath = pack.installPath;
+    if (!pack.enabled) base.issues.push(`plugin \`${pluginId}\` is disabled.`);
+    const found = this.scanPackCapabilities(pack.installPath, pack.name);
+    base.capabilities = found.capabilities;
+    if (found.capabilities.length === 0) {
+      base.issues.push(
+        `no readable \`capabilities/*/manifest.md\` under \`${pack.installPath}\`.`
+      );
+    }
+    base.fingerprint = this.packFingerprint(pack, found.manifestContents);
+    base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
+    return base;
+  }
+  // --- R6: register_pack (mutating write-path) ---------------------------
+  registerPack(pluginId, expectedFingerprint) {
+    const inspected = this.inspectPack(pluginId);
+    const reject = (reason) => ({
+      status: "rejected",
+      reason,
+      capabilities: [],
+      root: inspected.installPath,
+      selfCheck: "skipped",
+      preview: []
+    });
+    if (!inspected.installed) return reject(`plugin \`${pluginId}\` is not installed.`);
+    if (!inspected.enabled) return reject(`plugin \`${pluginId}\` is disabled.`);
+    if (!inspected.installPath || inspected.capabilities.length === 0) {
+      return reject(
+        `plugin \`${pluginId}\` has no valid pack manifest (path-invalid or manifest-invalid).`
+      );
+    }
+    if (inspected.fingerprint !== expectedFingerprint) {
+      return reject(
+        `stale fingerprint: expected \`${expectedFingerprint}\`, current \`${inspected.fingerprint}\` \u2014 re-inspect before registering.`
+      );
+    }
+    const preview = [
+      { section: "Plugin Roots", key: inspected.pluginName, value: inspected.installPath },
+      ...inspected.capabilities.map((c) => ({
+        section: "Capabilities",
+        key: c.name,
+        value: c.path
+      }))
+    ];
+    const registryAbs = joinSlash(this.ports.workspaceRoot, this.ports.registryRelPath());
+    let content = this.ports.readFile(registryAbs) ?? "";
+    for (const row of preview) {
+      const columns = row.section === "Plugin Roots" ? ["Plugin", "Root"] : ["Capability", "Path"];
+      content = upsertSectionRow(content, row.section, columns, row.key, row.value).content;
+    }
+    this.ports.writeFile(registryAbs, content);
+    this.refresh();
+    const view = this.resolveRegistry();
+    const registered = inspected.capabilities.map((c) => c.name);
+    const allOk = registered.every(
+      (name) => view.capabilities.some((c) => c.name === name && c.validity === "ok")
+    );
+    return {
+      status: "registered",
+      reason: null,
+      capabilities: registered,
+      root: inspected.installPath,
+      selfCheck: allOk ? "ok" : "failed",
+      preview
+    };
+  }
+  // --- helpers ------------------------------------------------------------
+  bareName(pluginId) {
+    const at = pluginId.indexOf("@");
+    return at > 0 ? pluginId.slice(0, at) : pluginId;
+  }
+  scanPackCapabilities(installPath, pluginName) {
+    const capabilities = [];
+    const manifestContents = [];
+    const capsDir = joinSlash(installPath, "capabilities");
+    const names = [...this.ports.listDirs(capsDir)].sort();
+    for (const name of names) {
+      const rel = `capabilities/${name}`;
+      const manifestAbs = joinSlash(installPath, rel, "manifest.md");
+      const body = this.ports.readFile(manifestAbs);
+      if (body === null) continue;
+      manifestContents.push(body);
+      capabilities.push({
+        name,
+        path: `plugin:${pluginName}/${rel}`,
+        manifestPath: normalizeSlashes(manifestAbs),
+        kind: this.manifestKind(body)
+      });
+    }
+    return { capabilities, manifestContents };
+  }
+  manifestKind(body) {
+    const m = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/m.exec(body);
+    return m ? m[1] : null;
+  }
+  packFingerprint(pack, manifestContents) {
+    return sha256Hex(
+      JSON.stringify({
+        installPath: pack.installPath,
+        version: pack.version,
+        manifests: manifestContents.map((c) => sha256Hex(c))
+      })
+    );
+  }
+};
+
+// src/ports.ts
+import { mkdirSync as mkdirSync2, readdirSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname2 } from "node:path";
+
+// src/resolver/types.ts
+var SNAPSHOT_SCHEMA_VERSION = 1;
+var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
+
+// src/resolver/registry.ts
+function splitRow2(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|")) return null;
+  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  return cells;
+}
+function isSeparatorRow2(cells) {
+  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
+}
+function tableRowsUnderHeading(markdown, heading) {
+  const lines = markdown.split(/\r?\n/);
+  const rows = [];
+  let inSection = false;
+  let sawHeader = false;
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex3(heading)}\\s*$`, "i");
+  for (const line of lines) {
+    if (/^#{1,6}\s+/.test(line)) {
+      if (headingRe.test(line)) {
+        inSection = true;
+        sawHeader = false;
+        continue;
+      }
+      if (inSection) break;
+      continue;
+    }
+    if (!inSection) continue;
+    const cells = splitRow2(line);
+    if (!cells) {
+      if (sawHeader && rows.length > 0 && line.trim() === "") break;
+      continue;
+    }
+    if (!sawHeader) {
+      sawHeader = true;
+      continue;
+    }
+    if (isSeparatorRow2(cells)) continue;
+    rows.push(cells);
+  }
+  return rows;
+}
+function escapeRegex3(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function parseRegistry(markdown) {
+  const capabilities = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
+    const [name, path] = cells;
+    if (name && path) capabilities.push({ name, path });
+  }
+  const pluginRoots = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
+    const [plugin, root] = cells;
+    if (plugin && root) pluginRoots.push({ plugin, root });
+  }
+  return { capabilities, pluginRoots };
+}
+
+// src/resolver/manifest.ts
+function stripCr(line) {
+  return line.replace(/\r$/, "");
+}
+function trimCell(cell) {
+  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function splitCommaList(rest) {
+  return rest.split(",").map((v) => v.trim()).filter((v) => v.length > 0);
+}
+function parseManifest(markdown) {
+  const lines = markdown.split(/\r?\n/).map(stripCr);
+  let kind = null;
+  const fragments = [];
+  const articles = [];
+  const requires = [];
+  const conflicts = [];
+  let profileTemplate = null;
+  let inFragments = false;
+  let sawFragHeader = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (kind === null) {
+      const km = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/.exec(trimmed);
+      if (km) kind = km[1];
+    }
+    if (/^requires:/i.test(trimmed)) {
+      requires.push(...splitCommaList(trimmed.replace(/^requires:/i, "")));
+    } else if (/^conflicts:/i.test(trimmed)) {
+      conflicts.push(...splitCommaList(trimmed.replace(/^conflicts:/i, "")));
+    } else if (/^article:/i.test(trimmed)) {
+      const decl = trimmed.replace(/^article:/i, "").trim();
+      const eq = decl.indexOf("=");
+      if (eq > 0) {
+        const key = decl.slice(0, eq).trim();
+        const value = decl.slice(eq + 1).trim();
+        if (key) articles.push({ key, value });
+      }
+    } else if (/^profile-template:/i.test(trimmed)) {
+      const v = trimmed.replace(/^profile-template:/i, "").trim();
+      if (v) profileTemplate = v;
+    }
+    if (/^#{1,6}\s+/.test(line)) {
+      if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
+        inFragments = true;
+        sawFragHeader = false;
+        continue;
+      }
+      if (inFragments) inFragments = false;
+    }
+    if (!inFragments) continue;
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
+    if (!sawFragHeader) {
+      sawFragHeader = true;
+      continue;
+    }
+    const [phaseRaw, kindRaw, dispatchRaw, scopeRaw] = cells;
+    const phase = trimCell(phaseRaw ?? "");
+    const contributionKind = trimCell(kindRaw ?? "");
+    if (!phase || phase === "phase") continue;
+    let scope = trimCell(scopeRaw ?? "");
+    if (scope === "" || scope === "\u2014" || scope === "-") scope = null;
+    fragments.push({
+      phase,
+      contributionKind,
+      dispatch: (dispatchRaw ?? "").trim().replace(/^`/, "").replace(/`$/, "").trim(),
+      scope
+    });
+  }
+  return { kind, fragments, articles, requires, conflicts, profileTemplate };
+}
+
+// src/resolver/plugin-list.ts
+var REQUIRED_FIELDS = [
+  { field: "id", type: "string" },
+  { field: "version", type: "string" },
+  { field: "scope", type: "string" },
+  { field: "enabled", type: "boolean" },
+  { field: "installPath", type: "string" }
+];
+function parsePluginList(raw) {
+  const issues = [];
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    return {
+      plugins: [],
+      contractOk: false,
+      issues: [
+        {
+          code: "plugin-list/unparseable",
+          message: `\`claude plugin list --json\` output is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+        }
+      ]
+    };
+  }
+  if (!Array.isArray(data)) {
+    return {
+      plugins: [],
+      contractOk: false,
+      issues: [
+        {
+          code: "plugin-list/not-an-array",
+          message: `\`claude plugin list --json\` must return a JSON array of plugin records; got ${data === null ? "null" : typeof data} \u2014 incompatible CLI output schema.`
+        }
+      ]
+    };
+  }
+  const plugins = [];
+  data.forEach((entry, i) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      issues.push({
+        code: "plugin-list/record-not-an-object",
+        message: `plugin record ${i} is not an object \u2014 incompatible CLI output schema.`
+      });
+      return;
+    }
+    const rec = entry;
+    let recOk = true;
+    for (const { field, type } of REQUIRED_FIELDS) {
+      if (!(field in rec)) {
+        issues.push({
+          code: "plugin-list/missing-field",
+          message: `plugin record ${i} is missing required field \`${field}\` \u2014 incompatible CLI output schema.`
+        });
+        recOk = false;
+      } else if (typeof rec[field] !== type) {
+        issues.push({
+          code: "plugin-list/wrong-type",
+          message: `plugin record ${i} field \`${field}\` should be a ${type}, got ${typeof rec[field]} \u2014 incompatible CLI output schema.`
+        });
+        recOk = false;
+      }
+    }
+    if (!recOk) return;
+    const id = rec.id;
+    const atIndex = id.indexOf("@");
+    const name = atIndex > 0 ? id.slice(0, atIndex) : id;
+    plugins.push({
+      id,
+      name,
+      version: rec.version,
+      scope: rec.scope,
+      enabled: rec.enabled,
+      installPath: normalizeSlashes(rec.installPath)
+    });
+  });
+  return { plugins, contractOk: issues.length === 0, issues };
+}
+
+// src/resolver/config.ts
+function extractKeyValues(markdown) {
+  const map = /* @__PURE__ */ new Map();
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.replace(/\r$/, "").trim();
+    if (!line.startsWith("|")) continue;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (cells.length < 2) continue;
+    const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
+    if (!keyMatch) continue;
+    const key = keyMatch[1].trim().toLowerCase();
+    map.set(key, cells[1]);
+  }
+  return map;
+}
+function normalizeValue(raw) {
+  if (raw === void 0) return null;
+  let v = raw.trim();
+  const bt = /^`(.*)`$/.exec(v);
+  if (bt) v = bt[1].trim();
+  if (v === "" || v === "\u2014") return null;
+  if (/^<.*>$/.test(v)) return null;
+  return v;
+}
+function parseCoreConfig(markdown) {
+  const kv = extractKeyValues(markdown);
+  return {
+    taskRoot: normalizeValue(kv.get("task root")),
+    verifyCommand: normalizeValue(kv.get("verify command")),
+    qaRules: normalizeValue(kv.get("qa rules")),
+    qaBaselineIgnore: normalizeValue(kv.get("qa baseline ignore")),
+    seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
+    seedBacklogPath: normalizeValue(kv.get("backlog path")),
+    standupStatuses: normalizeValue(kv.get("standup statuses"))
+  };
+}
+
+// src/resolver/resolve.ts
+function relativize(workspaceRoot, absPath) {
+  const abs = normalizeSlashes(absPath);
+  const root = normalizeSlashes(workspaceRoot).replace(/\/+$/, "");
+  if (abs === root) return ".";
+  if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
+  return abs;
+}
+function inlineDispatchRel(dispatch) {
+  const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
+  return m ? m[1].trim() : null;
+}
+function buildSnapshot(inputs, io) {
+  const { workspaceRoot } = inputs;
+  const diagnostics = [];
+  const sources = [];
+  const registryPath = normalizeSlashes(inputs.registryPathValue);
+  sources.push(fingerprint("wf-config", "wf.config.js", inputs.wfConfigContent));
+  sources.push(fingerprint("registry", registryPath, inputs.registryContent));
+  if (registryPath !== "_local/config.md") {
+    sources.push(fingerprint("core-config", "_local/config.md", inputs.coreConfigContent));
+  }
+  sources.push(fingerprint("plugin-list", "claude plugin list --json", inputs.pluginListRaw));
+  const registry2 = parseRegistry(inputs.registryContent ?? "");
+  const coreConfig = parseCoreConfig(inputs.coreConfigContent ?? inputs.registryContent ?? "");
+  let pluginList;
+  if (inputs.pluginListRaw === null) {
+    pluginList = { plugins: [], contractOk: true, issues: [] };
+    diagnostics.push({
+      severity: "warning",
+      code: "plugin-list/cli-unavailable",
+      message: "`claude plugin list --json` could not be run (CLI unavailable or errored); installed-pack facts are unknown for this snapshot. The plugin-list source is recorded as absent rather than an empty result \u2014 re-run once the `claude` CLI is available on PATH."
+    });
+  } else {
+    pluginList = parsePluginList(inputs.pluginListRaw);
+    for (const issue2 of pluginList.issues) {
+      diagnostics.push({ severity: "error", code: issue2.code, message: issue2.message });
+    }
+  }
+  const recordedRoots = registry2.pluginRoots.map((r) => ({
+    plugin: r.plugin,
+    root: r.root
+  }));
+  const installedRoots = pluginList.plugins.map((p) => ({
+    pluginName: p.name,
+    installPath: p.installPath
+  }));
+  const manifestExists = (p) => io.readFile(p) !== null;
+  const registeredByPlugin = /* @__PURE__ */ new Map();
+  const pluginRootProvenance = /* @__PURE__ */ new Map();
+  const capabilities = registry2.capabilities.map((row) => {
+    const anchor = /^plugin:([^/]+)\//.exec(row.path);
+    const pluginName = anchor ? anchor[1] : null;
+    const resolved = resolveCapabilityPath(row.path, {
+      workspaceRoot,
+      recordedRoots,
+      installedRoots,
+      manifestExists
+    });
+    let kind = null;
+    let fragments = [];
+    let articles = [];
+    let requires = [];
+    let conflicts = [];
+    let profileTemplatePath = null;
+    if (resolved.manifestPath) {
+      const content = io.readFile(resolved.manifestPath);
+      if (content !== null) {
+        sources.push(
+          fingerprint("manifest", relativize(workspaceRoot, resolved.manifestPath), content)
+        );
+        const m = parseManifest(content);
+        kind = m.kind;
+        fragments = m.fragments;
+        articles = m.articles;
+        requires = m.requires;
+        conflicts = m.conflicts;
+        if (m.profileTemplate && resolved.resolvedPath) {
+          profileTemplatePath = relativize(
+            workspaceRoot,
+            joinSlash(resolved.resolvedPath, m.profileTemplate)
+          );
+        }
+      }
+    }
+    const validity = resolved.manifestPath !== null ? "ok" : "unrecoverable";
+    if (validity === "unrecoverable") {
+      diagnostics.push({
+        severity: "error",
+        code: "capability/unrecoverable",
+        message: `capability \`${row.name}\` (path \`${row.path}\`) has no readable manifest \u2014 unrecoverable; re-run the owning pack's init to refresh its plugin root.`
+      });
+    }
+    if (pluginName) {
+      const entry = registeredByPlugin.get(pluginName) ?? {
+        capabilities: [],
+        anyUnrecoverable: false
+      };
+      entry.capabilities.push(row.name);
+      if (validity === "unrecoverable") entry.anyUnrecoverable = true;
+      registeredByPlugin.set(pluginName, entry);
+      const prev = pluginRootProvenance.get(pluginName);
+      if (resolved.provenance !== "unrecoverable" && prev !== "self-healed") {
+        pluginRootProvenance.set(pluginName, resolved.provenance);
+      } else if (!prev) {
+        pluginRootProvenance.set(pluginName, resolved.provenance);
+      }
+    }
+    return {
+      name: row.name,
+      registryPath: row.path,
+      resolvedPath: resolved.resolvedPath ? relativize(workspaceRoot, resolved.resolvedPath) : null,
+      manifestPath: resolved.manifestPath ? relativize(workspaceRoot, resolved.manifestPath) : null,
+      provenance: resolved.provenance,
+      kind,
+      fragments,
+      articles,
+      requires,
+      conflicts,
+      profileTemplatePath,
+      validity
+    };
+  });
+  const pluginRoots = registry2.pluginRoots.map((r) => {
+    const provenance = pluginRootProvenance.get(r.plugin) ?? "recorded";
+    const recordedRoot = normalizeSlashes(r.root);
+    let resolvedRoot = recordedRoot;
+    if (provenance === "self-healed") {
+      const installed = installedRoots.find((ir) => ir.pluginName === r.plugin);
+      resolvedRoot = installed ? relativize(workspaceRoot, installed.installPath) : null;
+    } else if (provenance === "unrecoverable") {
+      resolvedRoot = null;
+    } else {
+      resolvedRoot = relativize(workspaceRoot, recordedRoot);
+    }
+    return {
+      plugin: r.plugin,
+      recordedRoot: relativize(workspaceRoot, recordedRoot),
+      resolvedRoot,
+      provenance
+    };
+  });
+  const packs = [];
+  const seenPlugins = /* @__PURE__ */ new Set();
+  for (const p of pluginList.plugins) {
+    seenPlugins.add(p.name);
+    const reg = registeredByPlugin.get(p.name);
+    let state;
+    if (!p.enabled) {
+      state = "installed/disabled";
+    } else if (reg && reg.capabilities.length > 0) {
+      state = reg.anyUnrecoverable ? "registered/unrecoverable" : "active";
+    } else {
+      state = "installed/inactive";
+    }
+    packs.push({
+      pluginId: p.id,
+      pluginName: p.name,
+      version: p.version,
+      scope: p.scope,
+      enablement: p.enabled ? "enabled" : "disabled",
+      installPath: relativize(workspaceRoot, p.installPath),
+      state,
+      registeredCapabilities: reg?.capabilities ?? [],
+      diagnostics: state === "registered/unrecoverable" ? "registered capability manifest is unreadable under this installed pack \u2014 refresh its plugin root (re-run the pack init)." : null
+    });
+  }
+  for (const [pluginName, reg] of registeredByPlugin) {
+    if (seenPlugins.has(pluginName)) continue;
+    packs.push({
+      pluginId: pluginName,
+      pluginName,
+      version: null,
+      scope: null,
+      enablement: "unknown",
+      installPath: null,
+      state: "registered/unrecoverable",
+      registeredCapabilities: reg.capabilities,
+      diagnostics: `registered pack \`${pluginName}\` is not installed (absent from \`claude plugin list --json\`) \u2014 install it or remove its registry rows.`
+    });
+  }
+  const providerOwnership = [];
+  for (const cap of capabilities) {
+    for (const frag of cap.fragments) {
+      if (frag.contributionKind !== "provider" || !frag.scope) continue;
+      let fragmentPath = null;
+      const rel = inlineDispatchRel(frag.dispatch);
+      if (rel && cap.resolvedPath) {
+        fragmentPath = joinSlash(cap.resolvedPath, rel);
+      }
+      providerOwnership.push({
+        surface: frag.scope,
+        owner: cap.name,
+        fragmentPath,
+        state: cap.validity === "ok" ? "ok" : "unrecoverable"
+      });
+    }
+  }
+  const trackerOwner = providerOwnership.find(
+    (o) => o.surface === "tracker" && o.state === "ok"
+  );
+  const idShape = trackerOwner ? { source: `tracker:${trackerOwner.owner}`, scheme: null } : { source: "bare-core", scheme: "T<NNN>" };
+  const profiles = {};
+  for (const cap of capabilities) {
+    const profilePath = joinSlash(
+      workspaceRoot,
+      "_local/profiles",
+      `${cap.name}.profile.json`
+    );
+    const content = io.readFile(profilePath);
+    if (content === null) continue;
+    sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
+    try {
+      profiles[cap.name] = JSON.parse(content);
+    } catch (err) {
+      diagnostics.push({
+        severity: "warning",
+        code: "profile/unparseable",
+        message: `profile for \`${cap.name}\` is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+      });
+    }
+  }
+  const providerConfig = {};
+  if (providerOwnership.some((o) => o.surface === "tracker")) {
+    diagnostics.push({
+      severity: "info",
+      code: "provider-config/deferred",
+      message: "tracker provider config values are resolved by the provider surface at query time (WF-270); the snapshot records ownership only, never a tracker product's config section."
+    });
+  }
+  const constitutionInputs = [];
+  for (const cap of capabilities) {
+    for (const a of cap.articles) {
+      constitutionInputs.push({ capability: cap.name, key: a.key, value: a.value });
+    }
+  }
+  return {
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    generatedAt: inputs.generatedAt,
+    generator: inputs.generator,
+    workspaceRoot: normalizeSlashes(workspaceRoot),
+    registryPath,
+    coreConfig,
+    capabilities,
+    pluginRoots,
+    packs,
+    providerOwnership,
+    idShape,
+    profiles,
+    providerConfig,
+    constitutionInputs,
+    sources,
+    diagnostics
+  };
+}
+
+// src/resolver/engine.ts
+import { readFileSync as readFileSync2 } from "node:fs";
+import { join as join2 } from "node:path";
+import { execFileSync } from "node:child_process";
+
+// src/resolver/snapshot-store.ts
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
+function snapshotPath(workspaceRoot) {
+  return join(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
+}
+function writeSnapshot(workspaceRoot, snapshot) {
+  const target = snapshotPath(workspaceRoot);
+  const dir = dirname(target);
+  mkdirSync(dir, { recursive: true });
+  const tmp = join(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
+  const json = `${JSON.stringify(snapshot, null, 2)}
+`;
+  try {
+    writeFileSync(tmp, json, { encoding: "utf8" });
+    renameSync(tmp, target);
+  } catch (err) {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+    }
+    throw err;
+  }
+  return target;
+}
+var SnapshotSchemaError = class extends Error {
+  constructor(found, expected) {
+    super(
+      `resolver snapshot schemaVersion ${String(found)} is incompatible with this runtime (expects ${expected}); rebuild the snapshot.`
+    );
+    this.found = found;
+    this.expected = expected;
+    this.name = "SnapshotSchemaError";
+  }
+  found;
+  expected;
+};
+function readSnapshot(workspaceRoot) {
+  const target = snapshotPath(workspaceRoot);
+  let raw;
+  try {
+    raw = readFileSync(target, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+  const parsed = JSON.parse(raw);
+  if (parsed.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+    throw new SnapshotSchemaError(parsed.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
+  }
+  return parsed;
+}
+
+// src/resolver/engine.ts
+var DEFAULT_REGISTRY_RELPATH = "_local/config.md";
+function readOrNull(absPath) {
+  try {
+    return readFileSync2(absPath, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+}
+var fsIO = { readFile: readOrNull };
+function extractRegistryPath(wfConfig) {
+  if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
+  const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
+  const v = m?.[1]?.trim();
+  return v && v.length > 0 ? normalizeSlashes(v) : DEFAULT_REGISTRY_RELPATH;
+}
+function runPluginList() {
+  try {
+    return execFileSync("claude", ["plugin", "list", "--json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 16 * 1024 * 1024
+    });
+  } catch {
+    return null;
+  }
+}
+function resolveSnapshot(opts) {
+  const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
+  const io = opts.io ?? fsIO;
+  const wfConfigContent = io.readFile(join2(opts.workspaceRoot, "wf.config.js"));
+  const registryPathValue = extractRegistryPath(wfConfigContent);
+  const registryAbs = join2(opts.workspaceRoot, registryPathValue);
+  const registryContent = io.readFile(registryAbs);
+  const coreConfigAbs = join2(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
+  const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
+  const pluginListRaw = opts.pluginListRaw ?? runPluginList();
+  const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
+  const inputs = {
+    workspaceRoot,
+    registryPathValue,
+    registryContent,
+    wfConfigContent,
+    coreConfigContent,
+    pluginListRaw,
+    generatedAt: now.toISOString(),
+    generator: opts.generator ?? { name: "wf-resolver", version: "0.1.0" }
+  };
+  return buildSnapshot(inputs, io);
+}
+
+// src/ports.ts
+var DEFAULT_REGISTRY_RELPATH2 = "_local/config.md";
+function resolveWorkspaceRoot() {
+  return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
+}
+function createDefaultPorts(workspaceRoot) {
+  const registryRelPath = () => {
+    const wfConfig = fsIO.readFile(joinSlash(workspaceRoot, "wf.config.js"));
+    return extractRegistryPath(wfConfig);
+  };
+  return {
+    workspaceRoot,
+    resolveFresh: () => resolveSnapshot({ workspaceRoot }),
+    persist: (snapshot) => {
+      writeSnapshot(workspaceRoot, snapshot);
+    },
+    readCache: () => {
+      try {
+        return readSnapshot(workspaceRoot);
+      } catch {
+        return null;
+      }
+    },
+    readFile: (absPath) => fsIO.readFile(absPath),
+    writeFile: (absPath, content) => {
+      mkdirSync2(dirname2(absPath), { recursive: true });
+      writeFileSync2(absPath, content, { encoding: "utf8" });
+    },
+    listDirs: (absDir) => {
+      try {
+        return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
+    listPlugins: () => {
+      const raw = runPluginList();
+      if (raw === null) return { plugins: [], ok: false };
+      return { plugins: parsePluginList(raw).plugins, ok: true };
+    },
+    registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH2
+  };
+}
+
+// src/tools.ts
+function ok(payload) {
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    structuredContent: payload
+  };
+}
+function guard(fn) {
+  try {
+    return ok(fn());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text", text: `resolver error: ${message}` }],
+      isError: true
+    };
+  }
+}
+var surfaceInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    surface: {
+      type: "string",
+      description: "Provider surface to resolve: `delivery`, `tracker`, `qa-execution:engine`, or `qa-execution:host`."
+    }
+  },
+  required: ["surface"],
+  additionalProperties: false
+});
+var capabilityInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    capability: { type: "string", description: "Registered capability name." }
+  },
+  required: ["capability"],
+  additionalProperties: false
+});
+var pluginInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    plugin: { type: "string", description: "Plugin name (left of `@`)." }
+  },
+  required: ["plugin"],
+  additionalProperties: false
+});
+var pluginIdInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    pluginId: {
+      type: "string",
+      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
+    }
+  },
+  required: ["pluginId"],
+  additionalProperties: false
+});
+var registerInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    pluginId: {
+      type: "string",
+      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
+    },
+    expectedFingerprint: {
+      type: "string",
+      description: "The pack fingerprint returned by a prior inspect_pack; a mismatch rejects the write."
+    }
+  },
+  required: ["pluginId", "expectedFingerprint"],
+  additionalProperties: false
+});
+function registerResolverTools(server, service) {
+  server.registerTool(
+    "resolve_config",
+    {
+      title: "resolve config",
+      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies."
+    },
+    async () => guard(() => service.resolveConfig())
+  );
+  server.registerTool(
+    "resolve_registry",
+    {
+      title: "resolve registry",
+      description: "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body."
+    },
+    async () => guard(() => service.resolveRegistry())
+  );
+  server.registerTool(
+    "resolve_provider",
+    {
+      title: "resolve provider",
+      description: "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
+      inputSchema: surfaceInput
+    },
+    async (args) => guard(() => service.resolveProvider(args.surface))
+  );
+  server.registerTool(
+    "resolve_profile",
+    {
+      title: "resolve profile",
+      description: "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
+      inputSchema: capabilityInput
+    },
+    async (args) => guard(() => service.resolveProfile(args.capability))
+  );
+  server.registerTool(
+    "resolve_plugin_root",
+    {
+      title: "resolve plugin root",
+      description: "A plugin's resolved install root + provenance, post-self-heal (R5). One path record.",
+      inputSchema: pluginInput
+    },
+    async (args) => guard(() => service.resolvePluginRoot(args.plugin))
+  );
+  server.registerTool(
+    "inspect_pack",
+    {
+      title: "inspect pack",
+      description: "Read-only pack inspection (R6): resolves a plugin id via `claude plugin list --json`, validates enabled state / version / installPath and the pack manifest(s), and returns a fingerprint. Writes nothing.",
+      inputSchema: pluginIdInput
+    },
+    async (args) => guard(() => service.inspectPack(args.pluginId))
+  );
+  server.registerTool(
+    "register_pack",
+    {
+      title: "register pack",
+      description: "Mutating pack registration (R6). Rejects a missing / disabled / stale-fingerprint / path-invalid / manifest-invalid request WITHOUT writing; on success owns the registry write, refreshes the snapshot, and self-checks. Core does not infer skill provenance.",
+      inputSchema: registerInput
+    },
+    async (args) => guard(() => service.registerPack(args.pluginId, args.expectedFingerprint))
+  );
+  server.registerTool(
+    "resolve_inspect",
+    {
+      title: "resolve inspect",
+      description: "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, and diagnostics. Does not rebuild."
+    },
+    async () => guard(() => service.inspect())
+  );
+  server.registerTool(
+    "resolve_refresh",
+    {
+      title: "resolve refresh",
+      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state."
+    },
+    async () => guard(() => service.refresh())
+  );
+  server.registerTool(
+    "resolve_invalidate",
+    {
+      title: "resolve invalidate",
+      description: "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Returns the lifecycle state."
+    },
+    async () => guard(() => service.invalidate())
+  );
+}
+
 // src/index.ts
 var SERVER_NAME = "wf-resolver";
-var SERVER_VERSION = "0.1.0";
+var SERVER_VERSION = "0.2.0";
 function createServer() {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
@@ -19777,7 +21063,7 @@ function createServer() {
     "wf_resolver_status",
     {
       title: "wf resolver status",
-      description: "Reports that the bundled wf resolver MCP runtime is alive. Placeholder surface for the resolver runtime foundation; inventory and typed query operations arrive in later tasks."
+      description: "Reports that the bundled wf resolver MCP runtime is alive. Liveness probe for the resolver runtime; the typed resolver queries are the resolve_* / *_pack tools."
     },
     async () => ({
       content: [
@@ -19788,6 +21074,8 @@ function createServer() {
       ]
     })
   );
+  const service = new ResolverService(createDefaultPorts(resolveWorkspaceRoot()));
+  registerResolverTools(server, service);
   return server;
 }
 serveStdio(createServer);
