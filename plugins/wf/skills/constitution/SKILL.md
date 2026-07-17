@@ -140,11 +140,16 @@ constitution regardless of the registry:
 7. **Project configuration lives in `_local/config.md`.** Project-specific values are read
    from config, never hardcoded into a skill.
 
-Plus this additional core article (provenance `core`), recorded **verbatim**:
+Plus these additional core articles (provenance `core`), recorded **verbatim**:
 
 8. **Core never requires a capability.** Every core extension point ships a lean default and
    runs inert when no capability is registered; core never names or hard-depends on a
    specific capability.
+9. **Temp and scratch files live under `_local/`.** Working, temporary, and scratch files
+   route to a dedicated scratch area under `_local/` (`_local/scratch/`) — never the repo
+   root, a system temp directory, or anywhere alongside tracked files. This *complements* the
+   write-scope article above: that one bounds where writes may land; this one routes every
+   throwaway to a single gitignored home inside that boundary.
 
 ### 2. Capability articles — composed from the registry (provenance-tagged)
 
@@ -299,7 +304,7 @@ End the chat reply with this fenced block, as the very last thing emitted:
 ```
 CONSTITUTION — <established | updated | unchanged>
 
-Articles: <8 core> + <capability articles present | none (core-only)> + <project section: seeded | preserved>
+Articles: <9 core> + <capability articles present | none (core-only)> + <project section: seeded | preserved>
 Registry: <comma-separated capability names | none (core-only)>
 File:     _local/constitution.md
 Next:     review _local/constitution.md and add any project clauses; then /wf:spec <id> to start a task (the constitution is intended for consultation at spec and enforcement at verify once that wiring lands).

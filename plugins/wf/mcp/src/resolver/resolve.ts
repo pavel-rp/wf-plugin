@@ -145,6 +145,19 @@ export function buildSnapshot(
       normalizePluginList(inputs.pluginListRaw),
     ),
   );
+  // WF-334: fingerprint the composed constitution record so a project-clause edit
+  // (or a re-composed capability-article set) invalidates the snapshot on the next
+  // query — the SessionStart hook then serves the constitution through this
+  // recorded source, never an un-fingerprinted raw read. An absent record (a
+  // non-wf repo, or a wf repo with no `/wf:constitution` run yet) is recorded as
+  // an absent source, so it appearing later is itself detected as a change.
+  sources.push(
+    fingerprint(
+      "constitution",
+      "_local/constitution.md",
+      io.readFile(joinSlash(workspaceRoot, "_local/constitution.md")),
+    ),
+  );
 
   // --- parse inputs --------------------------------------------------------
   const registry = parseRegistry(inputs.registryContent ?? "");

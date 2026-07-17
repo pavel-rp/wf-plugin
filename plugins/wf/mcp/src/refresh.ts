@@ -12,13 +12,18 @@
 // never block a session — a stale snapshot is corrected by the query-time
 // backstop on the next typed query regardless.
 
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  CONSTITUTION_RELPATH,
   RESOLVER_GENERATOR,
+  composeSessionStartStdout,
   evaluateFreshness,
   fsIO,
+  joinSlash,
   normalizeSlashes,
+  parseSessionSource,
   readSnapshot,
   resolveAndPersist,
   runPluginList,
@@ -43,13 +48,44 @@ function corePluginRoot(): string {
   return normalizeSlashes(resolve(dirname(here), "..", "..")); // .../plugins/wf
 }
 
+// Status logs go to STDERR (WF-334): stdout is the hook's JSON channel — it must
+// carry ONLY the single SessionStart hook-output object (the constitution
+// payload), never a plain-text log line, or the payload is unparseable.
 function log(line: string): void {
-  process.stdout.write(`wf-resolver refresh-if-stale: ${line}\n`);
+  process.stderr.write(`wf-resolver refresh-if-stale: ${line}\n`);
 }
 
-function main(): void {
-  const root = workspaceRoot();
+/** Read the hook's stdin JSON (the SessionStart input carrying `source`), or
+ *  `null` when unavailable — a TTY, no piped input, or a read error. Never
+ *  blocks or throws; an absent source defaults to emitting the payload. */
+function readStdin(): string | null {
+  try {
+    if (process.stdin.isTTY) return null;
+    return readFileSync(0, "utf8");
+  } catch {
+    return null;
+  }
+}
 
+/**
+ * After the freshness pass, emit the project's composed constitution as the
+ * SessionStart `hookSpecificOutput.additionalContext` (WF-334) — served from the
+ * fingerprinted `_local/constitution.md` record (no un-fingerprinted raw read),
+ * deduped across the four re-fire sources. stdout carries ONLY this single
+ * hook-JSON object; nothing is written when there is no constitution record (a
+ * non-wf repo, or a wf repo with no `/wf:constitution` run) or the re-fire is a
+ * suppressed `resume`.
+ */
+function emitConstitution(root: string): void {
+  const source = parseSessionSource(readStdin());
+  const record = fsIO.readFile(joinSlash(root, CONSTITUTION_RELPATH));
+  const stdout = composeSessionStartStdout(source, record);
+  if (stdout !== null) {
+    process.stdout.write(`${stdout}\n`);
+  }
+}
+
+function refreshIfStale(root: string): void {
   // Read the cache defensively: a missing file is `null`; an incompatible schema
   // or a malformed/torn file throws — both are treated as "must rebuild" rather
   // than surfaced, so a bad cache self-heals instead of blocking startup.
@@ -94,7 +130,13 @@ function main(): void {
 }
 
 try {
-  main();
+  const root = workspaceRoot();
+  refreshIfStale(root);
+  // Emit the constitution AFTER the freshness pass, in its own try so a
+  // composition/read hiccup never undoes the refresh or blocks the session — the
+  // outer catch below preserves the always-exit-0 invariant (no payload that run,
+  // and the query-time backstop still refreshes on the next typed query).
+  emitConstitution(root);
 } catch (err) {
   // Never block a session on a resolver failure; the query-time backstop will
   // still validate + refresh on the next typed query.

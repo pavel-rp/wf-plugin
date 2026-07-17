@@ -15,15 +15,19 @@
 /** Incompatible-change gate for a persisted snapshot. A reader rejects a
  *  snapshot whose `schemaVersion` differs from this value. Bumped to 2 in WF-329
  *  when the snapshot gained the per-slot provenance + settings-override index and
- *  the slot-contribution / slot-override / settings-override source fingerprints. */
-export const SNAPSHOT_SCHEMA_VERSION = 2;
+ *  the slot-contribution / slot-override / settings-override source fingerprints.
+ *  Bumped to 3 in WF-334 when `_local/constitution.md` became a fingerprinted
+ *  `constitution` source (so a project-clause edit invalidates the snapshot and
+ *  the SessionStart hook serves the composed constitution under fingerprint
+ *  discipline) — old snapshots lack that source and must rebuild to gain it. */
+export const SNAPSHOT_SCHEMA_VERSION = 3;
 
 /** Identity of the resolver runtime that stamps a snapshot. `version` is part of
  *  the freshness contract (WF-271): a snapshot built by a different resolver
  *  version is refreshed, so a runtime upgrade never serves a snapshot shaped by
  *  older resolution logic. Bump on any resolution-logic change that should
  *  invalidate previously persisted snapshots. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" } as const;
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.0" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */
@@ -47,7 +51,12 @@ export interface SourceFingerprint {
     /** A personal `_local/slots/<skill>.<point>.md` slot override (WF-329). */
     | "slot-override"
     /** A per-skill `_local/profiles/<skill>.settings.json` override (WF-329). */
-    | "settings-override";
+    | "settings-override"
+    /** The composed constitution record `_local/constitution.md` (WF-334) —
+     *  hashed, never stored, so a project-clause edit (or a re-composed capability
+     *  article set) invalidates the snapshot and the SessionStart hook serves the
+     *  constitution under fingerprint discipline, never an un-fingerprinted read. */
+    | "constitution";
   /** Normalized (forward-slash) path, workspace-relative where applicable, or a
    *  synthetic id (e.g. "claude plugin list --json") for non-file inputs. */
   path: string;

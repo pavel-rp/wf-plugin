@@ -87,3 +87,13 @@ export {
   readSnapshot,
   SnapshotSchemaError,
 } from "./snapshot-store.js";
+export {
+  SESSION_START_EVENT,
+  CONSTITUTION_RELPATH,
+  shouldEmitForSource,
+  parseSessionSource,
+  composeConstitutionContext,
+  sessionStartPayload,
+  composeSessionStartStdout,
+} from "./constitution.js";
+export type { SessionStartSource } from "./constitution.js";
