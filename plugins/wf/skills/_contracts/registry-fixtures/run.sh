@@ -127,6 +127,12 @@ assert "pre-commit finding seam passes" pass-precommit-review.md - 0 "Validation
 # WF-160: the REAL shipped sr capability (plugins/wf-audit/capabilities/sr) validates clean — its
 # one `pre-commit | finding | inline:` row and its `article: precommit-self-review` clause pass.
 assert "real sr capability passes" pass-sr.md - 0 "Validation passed" "sr"
+# WF-323: a well-formed seventh-kind (`slot`) contribution — scope `ship.review replace`,
+# phase cell `—`, coexisting with a `verify | finding` row in the same manifest — validates clean.
+assert "slot seventh-kind passes"     pass-slot.md - 0 "Validation passed" "slot-owner"
+# WF-323: two `append`-policy slot contributions to the SAME skill.point compose (aggregate) —
+# append never conflicts, unlike replace; both owners validate clean.
+assert "slot append composes passes"  pass-slot-append.md - 0 "Validation passed" "slot-append" "slot-append-2"
 
 # --- Failing cases (one per check) -------------------------------------------
 assert "duplicate name named"         fail-dup-name.md      - 1 "duplicate capability name" "solo"
@@ -184,6 +190,16 @@ assert "unsatisfied requires named"   fail-requires.md      - 1 "needs-dep" "abs
 assert "two-dependency requires unsatisfied named" fail-requires-git-ado.md - 1 "needs-git-ado" "requires \`ado\`" "Install and register/initialize"
 assert "co-active conflicts named"    fail-conflicts.md     - 1 "conflicter" "solo" "declares a conflict"
 assert "article contradiction named"  fail-article.md       - 1 "article-yes" "article-no" "commit-signing"
+# WF-323: two capabilities each `replace`-claiming the same slot skill.point conflict —
+# single-owner overlap, both offenders named plus the contested skill.point.
+assert "slot replace overlap named"   fail-slot-overlap.md - 1 "slot-owner" "slot-owner-2" "slot skill.point (replace)" "ship.review" "must not overlap"
+# WF-323: a slot row whose skill.point has no `<skill>.<point>` dot is a malformed scope.
+assert "slot malformed scope named"   fail-slot-badscope.md - 1 "slot-badscope" "malformed scope"
+# WF-323: a slot row that names a skill.point but declares no merge policy is rejected.
+assert "slot undeclared policy named" fail-slot-nopolicy.md - 1 "slot-nopolicy" "declares no merge policy"
+# WF-323: a slot row must carry `—` in the phase column (a slot targets a skill point, not an
+# SDD phase) — a row naming a real phase (`spec`) is rejected, naming the offender.
+assert "slot misfiled phase named"    fail-slot-badphase.md - 1 "slot-badphase" "not an SDD phase"
 # WF-99: plugin-anchored resolution failures — unmapped plugin, and mapped-but-dangling.
 # Since WF-200 these inject the fixture manifest (hermetic): its `testpkg` decoy
 # record points at a dead installPath, so the self-heal fallback recovers nothing

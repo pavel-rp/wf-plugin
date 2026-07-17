@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.10.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations))
+**Version:** 2.10.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -337,7 +337,10 @@ the authored artifacts.
 | `pre-commit` | wf extension — delivery-path seam (operation-time; **not** a gated artifact) | a self-review of the staged change set that gates or annotates the commit about to be recorded | `finding` |
 
 The phase names are **fixed by this contract**. A capability's manifest may attach
-a fragment only to a phase named here; it may not invent a phase. The constitution
+a fragment only to a phase named here; it may not invent a phase. The one exception
+is a **`slot`** contribution (see "The contribution taxonomy"), which targets a
+per-skill composition *point* rather than an SDD phase — its Fragments row carries
+`—` in the phase column and names the point in its `skill.point` scope. The constitution
 (below) is **not** a phase in this spine — it is a cross-cutting constraint
 established at setup and enforced at `verify`.
 
@@ -368,8 +371,9 @@ without naming the capability. Each kind below states its phase(s) and its
 | `finding` | `verify`, `pre-commit` | a conformance issue asserted against the work under review (at `verify`) or against the staged change set about to be committed (at `pre-commit`) | **aggregate** — every contributor's findings, **provenance-tagged** |
 | `scenario` | `qa-generation` | an executable check derived from an acceptance criterion | **aggregate** — every contributor's scenarios, provenance-tagged |
 | `provider` | `qa-execution`, `implement`, `spec` | a capability that supplies *execution* (an engine or environment) or an *operation* (a delivery or tracker action), not a result | **partition by ownership** — one owner per surface (scope below); subagent dispatch (`qa-execution`) or direct resolve (`implement`, delivery surface; `spec`, tracker surface — see below) |
+| `slot` | *n/a — targets a `skill.point`, not an SDD phase* | content contributed to a named per-skill composition **point** inside another skill's body (identified by its `skill.point` scope) | **per-slot merge policy** — `replace` (single owner, partition-like) or `append` (list-like, aggregate); declared in the scope (below) |
 
-The taxonomy has **six** kinds. A **constitution `article` is not among them** — it
+The taxonomy has **seven** kinds. A **constitution `article` is not among them** — it
 is deliberately excluded, because an article is not a phase fragment: it attaches to
 the **constitution**, which "is *not* a phase in this spine" (see "The SDD phases"),
 so it can never legally sit in a manifest's fragments table (whose `phase` column
@@ -385,7 +389,9 @@ Authoring `guidance` and `task-list` are **authoring-side** kinds the hubs and t
 contributing capability, so registry order is cosmetic for them (attribution is
 explicit); the constitution's `article:` declarations carry provenance the same way.
 `artifact` and `provider` are **partitioned** — overlap is an error,
-not a merge.
+not a merge. `slot` is **conditionally partitioned** — a `replace` slot behaves
+like a partitioned kind (single owner per `skill.point`), an `append` slot like an
+aggregate one (contributions to one `skill.point` compose).
 
 ### Aggregation policy — `aggregate` vs `partition`
 
@@ -411,6 +417,17 @@ not a merge.
     controlled vocabulary (e.g. `csharp→ts`). Ownership is whole-unit — a pair is
     owned entirely by one capability, never split. Overlap = an identical pair
     claimed by two capabilities = validation error.
+  - **`slot`** carries a **`<skill>.<point> <merge-policy>`** compound scope: the
+    **`skill.point`** (e.g. `ship.review`) identifies the composition point, and
+    the **merge policy** (`replace` | `append`) declares how multiple contributions
+    to that point combine. The policy is what makes `slot`'s partitioning
+    *conditional*: a `replace` claim is single-owner (partition-like), so **two
+    active capabilities each `replace`-claiming the same `skill.point` is a
+    validation error**, both named; an `append` claim is list-like (aggregate-like),
+    so two `append` claims on one `skill.point` **compose** and never conflict.
+    Each segment of the `skill.point` is lowercase letters / digits / hyphens
+    joined by a single dot; a blank scope, a malformed `skill.point`, or an
+    absent / unknown merge policy is a validation error.
 
 Start with the minimal scope vocabulary above; upgrade to a richer scope schema
 only when a real second owner of the same surface or pair appears.
@@ -753,8 +770,10 @@ contract and the runtime own the rest):
     capability's path) **or** `subagent: <agent>` (a generically-named subagent
     core invokes via the Task tool for heavy work).
   - `scope` — **required only for partitioned kinds**: a `surface` enum token for
-    `provider`; a `source→target` token pair for `artifact`. Empty (`—`) for
-    aggregate kinds.
+    `provider`; a `source→target` token pair for `artifact`; a
+    `<skill>.<point> <merge-policy>` compound for `slot`. Empty (`—`) for
+    aggregate kinds. A `slot` row is the one kind whose **`phase` cell is `—`** — a
+    slot targets a skill point (its scope), not an SDD phase.
 
 - **`skills:`** — for `feature` / `both` kinds, where the capability's skills live
   (documentation only; native plugin composition handles loading).
@@ -893,8 +912,9 @@ new vocabulary.
   filesystem-safe tokens, `registryPath` is a forward-slash repo-relative path with no
   `..`/absolute prefix, paths exist and carry a manifest — a plugin-anchored `Path`
   resolved via the `## Plugin Roots` mapping, with a valid `Root` shape and no unmapped
-  plugin, no overlapping ownership scopes, no contradictory articles, valid phase/kind
-  references) are owned by **WF-2's registry pass / WF-28**. The
+  plugin, no overlapping ownership scopes — including two `replace` `slot` claims on
+  one `skill.point` — well-formed `slot` scopes/merge-policies, no contradictory
+  articles, valid phase/kind references) are owned by **WF-2's registry pass / WF-28**. The
   per-capability profile check (a profile vs its contract) is unchanged.
 - It is **not** a capability. It names zero stack/domain/project concerns. Every
   concrete vocabulary, value, or example belongs in a capability's own contract,
