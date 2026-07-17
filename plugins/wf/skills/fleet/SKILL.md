@@ -215,7 +215,7 @@ The shipper model is set per dispatch via the Agent tool's `model` field. The **
 - **Same-file collision slips through (not serialized):** the losing agent hits a content conflict at merge. Let it rebase-and-resolve; if it can't autonomously, take over the rebase or serialize the remainder.
 - **All shippers idle but nothing ready:** every unmerged item is blocked by an unmerged item that itself is blocked → deadlock or an unfinished blocker; report the frontier and stop re-arming if truly deadlocked.
 - **`/wf:ship` absent in a shipper:** it falls back to `/wf:tc`/`/wf:tf`; if neither exists, it reports and stops — `/wf:fleet` orchestrates shippers, it does not reimplement them.
-- **Undeleted remote branches / un-swept worktrees:** merged branches and clean worktrees often survive (destructive git is barred) — closeout lists them from the scoreboard for one manual sweep by the user, never a raw query.
+- **Undeleted remote branches / un-swept worktrees:** merged branches and clean worktrees often survive (destructive version control is barred) — closeout lists them from the scoreboard for one manual sweep by the user, never a raw query.
 - **Mid-run interruption:** re-invoking `/wf:fleet` with no arguments resumes from `_local/fleet/scoreboard.md`.
 
 ---

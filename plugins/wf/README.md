@@ -50,6 +50,14 @@ A state-aware dispatcher over the chain below. It reads the task folder's artifa
 
 The full-auto single-task runner. It **requires** a registered delivery provider (there is nothing to merge without one) and drives one task all the way to a merged pull request without a human pause: it clears every gate `/wf:run` halts at (following `/wf:run`'s own handoff, so it drives whatever phases the pipeline defines), opens the PR through `/wf:pr`, **waits for the delivery checks to settle — never merging a red one** — and finalizes the merge through `/wf:tf`. A pure orchestrator: it writes nothing itself; the phases and `/wf:tf` own every write. Stops honestly with a `SHIP — Blocked` block (naming the missing provider, a failed build phase, red or unsettled checks, or a blocked finalize) rather than forcing a partial merge. The review-address loop is **out of scope** — `ship` carries a single marked stub at the point where a future skill-level *slots* mechanism will attach a review step, and drives no reviewer.
 
+## Ship a whole wave in dependency order (optional)
+
+```
+/wf:fleet <ids-or-umbrella>   # fan a set of related tasks out to isolated /wf:ship shippers, in blocker-respecting order
+```
+
+One level above `/wf:ship`. It takes **many** related tasks — an explicit id list or a tracker umbrella — builds their dependency graph from real blocking edges (via the tracker's `list_blockers` operation) plus `--after` same-file-contention edges, validates it acyclic, and then runs a tick loop that keeps a pool of isolated `/wf:ship` shipper subagents running: it dispatches each item only once every item it depends on has merged, supervises the fleet for stalls (recycling a genuine zero-artifact stall, resuming an interrupted agent, taking over a mechanical tail, never disturbing one making progress), and — in tracker mode — resolves the umbrella parent(s) with a per-child summary at the end. State lives in a durable `_local/fleet/scoreboard.md`, so a bare `/wf:fleet` re-invocation resumes an interrupted run. Like `/wf:ship` it **requires** a registered delivery provider and stops honestly with a `FLEET — Blocked` block when none is; it runs **tracker-free** on an explicit id list plus `--after` edges (no umbrella expansion, no tracker edges). A pure orchestrator: it writes no source itself and reaches delivery/tracker state only through the abstract provider contracts and the runtime Agent tool. `--model` pins one shipper tier; by default it picks per item by complexity.
+
 ## Standard workflow for a new ticket
 
 ```

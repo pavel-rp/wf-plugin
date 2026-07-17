@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion]
 
 One level above `/wf:spec`: where `spec` turns one task into a dev-ready spec, `charter` turns one *feature* into an umbrella charter plus sub-tasks, each of which is a valid `/wf:plan` / `/wf:spec` / `/wf:tc` input. It interviews the idea to convergence, drafts an umbrella charter, decomposes it into independently shippable sub-tasks, reviews the pair with fresh eyes, and — once converged — **publishes** the charter as a tracker umbrella with one child issue per sub-task (when a `tracker` provider is registered) or **seeds** each sub-task as a local task folder (when none is). Either way the downstream pipeline picks each sub-task up cold. A converged charter may also be started from an **existing tracker issue**: pass its id and `charter` adopts that issue as the umbrella, seeding the idea from its text.
 
-The terminus is a **hand-off, not an execution**: `charter` never runs another `wf:*` skill except `/wf:index`, and it reaches the tracker only through the abstract provider contract (never a named tracker). Hand each published sub-task to the downstream chain runner (`/wf:run`) or each locally-seeded sub-task to `/wf:plan`, one at a time; a forthcoming `/fleet` will fan the whole set out to parallel shippers in dependency order.
+The terminus is a **hand-off, not an execution**: `charter` never runs another `wf:*` skill except `/wf:index`, and it reaches the tracker only through the abstract provider contract (never a named tracker). Hand each published sub-task to the downstream chain runner (`/wf:run`) or each locally-seeded sub-task to `/wf:plan`, one at a time; or hand the whole set to `/wf:fleet`, which fans it out to parallel shippers in dependency order.
 
 ---
 
