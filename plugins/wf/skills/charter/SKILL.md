@@ -76,7 +76,7 @@ interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted war
 - Modifying source files; running builds, tests, or installs; any destructive or writing version-control operation.
 - Invoking any `wf:*` skill other than `/wf:index` — the terminus is a hand-off, not an execution.
 - Rescuing a failed subagent by doing its work inline in the host context. If a role subagent errors or its artifact is missing afterwards, halt with `CHARTER — Blocked` and surface the error. "The subagent didn't write it, I did" is not a loophole.
-- Any tracker write outside publish/adoption: never mid-loop, never a `set_status`/`attach_link`/delete, never replacing an adopted umbrella's existing description (the publish `update` **appends** below a separator). The only tracker writes are `create_umbrella`/`create_child`/`update`/`post_comment` in Phase 6 and the `get` fetch in Phase 0.
+- Any tracker write outside publish: never mid-loop, never a `set_status`/`attach_link`/delete, never replacing an adopted umbrella's existing description (the publish `update` **appends** below a separator). The only tracker writes are `create_umbrella`/`create_child`/`update`/`post_comment` in Phase 6; the Phase 0 adoption `get` is a read.
 - Editing a role's artifact from the host, with one stated exception: at convergence/publish the host may update the `**Status:**` and `**Tracker:**` metadata lines in `01_charter.md` (the umbrella-id ledger) and the `## Published ids` section of `02_subtasks.md`. (`00_intake.md` and `03_review-log.md` are host-owned outright.)
 
 ---
