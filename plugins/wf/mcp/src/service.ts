@@ -233,6 +233,20 @@ export interface LifecycleResponse {
   generatedAt: string | null;
   schemaVersion: number | null;
   counts: { capabilities: number; packs: number; providers: number };
+  /** Per-slot composition provenance (WF-329): for each composed `skill.point`,
+   *  the winning source and the tier it won from, plus whether a personal
+   *  override is present. Empty when the project has no slot contributions or
+   *  overrides. Body-free — attribution only, never a composed body. */
+  slots: Array<{
+    skillPoint: string;
+    winningSource: string | null;
+    tier: string;
+    overridePresent: boolean;
+    policy: string | null;
+  }>;
+  /** Skill slugs with a present `_local/profiles/<skill>.settings.json` override
+   *  (WF-329) — the settings-override presence index. */
+  settingsOverrides: string[];
   diagnostics: Diagnostic[];
 }
 
@@ -752,6 +766,14 @@ export class ResolverService {
         packs: snap?.packs.length ?? 0,
         providers: snap?.providerOwnership.length ?? 0,
       },
+      slots: (snap?.slots ?? []).map((s) => ({
+        skillPoint: s.skillPoint,
+        winningSource: s.winningSource,
+        tier: s.tier,
+        overridePresent: s.overridePresent,
+        policy: s.policy,
+      })),
+      settingsOverrides: snap?.settingsOverrides ?? [],
       diagnostics,
     };
   }

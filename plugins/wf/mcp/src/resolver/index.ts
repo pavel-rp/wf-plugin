@@ -57,6 +57,20 @@ export type {
   ContentPlan,
   ContentResolveContext,
 } from "./content.js";
+export {
+  parseSlotScope,
+  parseSlotDeclaration,
+  locateSlotInterface,
+  slotPointFromOverrideFilename,
+  composeSlotBody,
+  planSlot,
+  OVERRIDE_DIR,
+} from "./slot.js";
+export type {
+  MergePolicy,
+  SlotPlan,
+  LocatedSlotInterface,
+} from "./slot.js";
 export { buildSnapshot } from "./resolve.js";
 export type { ResolverIO, BuildSnapshotInputs } from "./resolve.js";
 export {

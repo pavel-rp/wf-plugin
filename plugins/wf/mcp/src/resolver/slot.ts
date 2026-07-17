@@ -120,6 +120,94 @@ function isSegment(s: string | undefined): s is string {
   return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
 }
 
+/** A well-formed `<skill>.<point>` slot id (two safe segments joined by a dot). */
+const SLOT_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
+
+/** Parse a skill's `interface.md` `## Slots` table into the set of slot ids
+ *  (`<skill>.<point>`) it DECLARES — the WF-326 interface surface a resolver
+ *  reads to know which composition points a skill exposes. Grep-parsable,
+ *  mirroring the `## Settings` parser shape:
+ *
+ *    ## Slots
+ *
+ *    | slot (skill.point) | merge policy | purpose |
+ *    |--------------------|--------------|---------|
+ *    | ship.review        | replace      | ...     |
+ *
+ *  The header row (`slot (skill.point)`) and the separator row never match the
+ *  strict `SLOT_ID` shape, so only real declarations are collected. A `## Slots`
+ *  section carrying only `_(none)_` (or no table) declares nothing → an empty
+ *  set. Returns `null` ONLY when the document has no `## Slots` section at all
+ *  (a skill that exposes no composition points). */
+export function parseSlotDeclaration(interfaceMd: string): Set<string> | null {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = new Set<string>();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^slots$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 1) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const id = cells[0].replace(/^`/, "").replace(/`$/, "").trim();
+    if (SLOT_ID.test(id)) decl.add(id);
+  }
+  return sawSection ? decl : null;
+}
+
+/** A located slot-declaring interface — the root it was found under + its
+ *  declared slot ids. */
+export interface LocatedSlotInterface {
+  root: string;
+  path: string;
+  declared: Set<string>;
+}
+
+/**
+ * Locate a skill's slot-declaring `interface.md` by probing each candidate
+ * plugin root for `<root>/skills/<skill>/interface.md` (core root first, then
+ * pack roots), returning the first readable one that carries a `## Slots`
+ * section. Reads only through the injected `readFile` probe — no direct fs, no
+ * env probe. Returns `null` when no candidate root holds a slot-declaring
+ * interface for the skill (so the caller treats every slot for it as orphaned).
+ */
+export function locateSlotInterface(
+  skill: string,
+  roots: readonly string[],
+  readFile: (absPath: string) => string | null,
+  joinSlashFn: (...parts: string[]) => string,
+): LocatedSlotInterface | null {
+  for (const root of roots) {
+    const path = joinSlashFn(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSlotDeclaration(content);
+    if (declared === null) continue; // interface exists but declares no slots
+    return { root, path, declared };
+  }
+  return null;
+}
+
+/** Parse a personal slot-override filename (`<skill>.<point>.md`) into its id and
+ *  segments, or `null` when the name is not a well-formed `<skill>.<point>.md`. */
+export function slotPointFromOverrideFilename(
+  filename: string,
+): { skillPoint: string; skill: string; point: string } | null {
+  if (!filename.endsWith(".md")) return null;
+  const stem = filename.slice(0, -3);
+  const segs = stem.split(".");
+  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
+  return { skillPoint: stem, skill: segs[0], point: segs[1] };
+}
+
 /** A ref path is safe when it holds no traversal, absolute anchor, or backslash. */
 function isSafeRelPath(p: string): boolean {
   if (p.length === 0) return false;

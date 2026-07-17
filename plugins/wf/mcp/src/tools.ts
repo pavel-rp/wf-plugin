@@ -309,7 +309,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     {
       title: "resolve inspect",
       description:
-        "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, and diagnostics. Does not rebuild.",
+        "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, per-slot composition provenance (each composed `skill.point` → winning source → tier, plus override presence), the per-skill settings-override presence index, and diagnostics. Does not rebuild.",
     },
     async () => guard(() => service.inspect()),
   );

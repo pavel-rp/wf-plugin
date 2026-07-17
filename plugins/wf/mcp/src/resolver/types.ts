@@ -13,15 +13,17 @@
 // the shapes below.
 
 /** Incompatible-change gate for a persisted snapshot. A reader rejects a
- *  snapshot whose `schemaVersion` differs from this value. */
-export const SNAPSHOT_SCHEMA_VERSION = 1;
+ *  snapshot whose `schemaVersion` differs from this value. Bumped to 2 in WF-329
+ *  when the snapshot gained the per-slot provenance + settings-override index and
+ *  the slot-contribution / slot-override / settings-override source fingerprints. */
+export const SNAPSHOT_SCHEMA_VERSION = 2;
 
 /** Identity of the resolver runtime that stamps a snapshot. `version` is part of
  *  the freshness contract (WF-271): a snapshot built by a different resolver
  *  version is refreshed, so a runtime upgrade never serves a snapshot shaped by
  *  older resolution logic. Bump on any resolution-logic change that should
  *  invalidate previously persisted snapshots. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" } as const;
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */
@@ -38,7 +40,14 @@ export interface SourceFingerprint {
     | "core-config"
     | "manifest"
     | "profile"
-    | "plugin-list";
+    | "plugin-list"
+    /** A pack slot-contribution body (`<cap>/<inline-dispatch>`) — hashed, never
+     *  stored, so editing a contribution invalidates the snapshot (WF-329). */
+    | "slot-contribution"
+    /** A personal `_local/slots/<skill>.<point>.md` slot override (WF-329). */
+    | "slot-override"
+    /** A per-skill `_local/profiles/<skill>.settings.json` override (WF-329). */
+    | "settings-override";
   /** Normalized (forward-slash) path, workspace-relative where applicable, or a
    *  synthetic id (e.g. "claude plugin list --json") for non-file inputs. */
   path: string;
@@ -233,6 +242,29 @@ export interface ConstitutionInput {
   value: string;
 }
 
+/** Per-slot composition provenance (WF-329): for one `<skill>.<point>` slot, the
+ *  tier that wins and its source, so `resolve_inspect` can show what a slot
+ *  resolved to WITHOUT reading any body. Derived purely from the active pack
+ *  slot fragments (registry order) plus the presence of a personal
+ *  `_local/slots/<skill>.<point>.md` override. Never a fragment body. */
+export interface SlotProvenanceRecord {
+  /** The `<skill>.<point>` composition-point id. */
+  skillPoint: string;
+  /** The declared merge policy (`replace` / `append`), or `null` when only a
+   *  personal override is present (policy is observationally irrelevant then). */
+  policy: string | null;
+  /** True when a personal `_local/slots/<skill>.<point>.md` override is present. */
+  overridePresent: boolean;
+  /** The capabilities contributing a pack slot fragment, in registry order. */
+  contributors: string[];
+  /** The tier the winning body comes from. */
+  tier: "local-override" | "pack-contribution" | "unfilled";
+  /** The winning source: `local-override`, the winning capability name, or
+   *  `null` when unfilled. For `append`, the highest-precedence pack contributor
+   *  (last in registry order) when no override is present. */
+  winningSource: string | null;
+}
+
 /** The full versioned resolution snapshot. */
 export interface ResolverSnapshot {
   schemaVersion: number;
@@ -264,6 +296,13 @@ export interface ResolverSnapshot {
   providerConfig: Record<string, Record<string, string>>;
   /** Composed constitution clauses (consumer inventory §7 field #13). */
   constitutionInputs: ConstitutionInput[];
+  /** Per-slot composition provenance (WF-329), sorted by `skillPoint`. One row
+   *  per composed `<skill>.<point>` (a pack contribution and/or a personal
+   *  override). Empty when the project has no slot contributions or overrides. */
+  slots: SlotProvenanceRecord[];
+  /** Skill slugs with a present `_local/profiles/<skill>.settings.json` override
+   *  (WF-329), sorted. Empty when the project has no per-skill settings overrides. */
+  settingsOverrides: string[];
   /** The precise source inputs (with fingerprints) that produced this snapshot. */
   sources: SourceFingerprint[];
   diagnostics: Diagnostic[];
