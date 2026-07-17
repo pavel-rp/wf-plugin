@@ -40,6 +40,12 @@ export const CONTENT_REF_CLASSES: readonly ContentRefClass[] = [
   "profile-template",
 ] as const;
 
+/** Every content class the surface serves, including the composite `slot` class
+ *  (WF-327) the service dispatches separately (it composes many bodies, not a
+ *  single path, so it is not one of the single-path {@link CONTENT_REF_CLASSES}
+ *  `resolveContentRef` handles). Used for the tool schema enum + refusal text. */
+export const ALL_CONTENT_CLASSES: readonly string[] = [...CONTENT_REF_CLASSES, "slot"] as const;
+
 /** A logical content ref. Only the fields a class uses are read; extras are
  *  ignored. Field-shape validation is part of resolution (a missing required
  *  field is a `refused` outcome, never a throw). */
@@ -50,8 +56,11 @@ export interface ContentRef {
   /** Plugin name for a pack-owned `references-template`; omitted/`wf`/`core` =
    *  the core plugin. */
   plugin?: string;
-  /** Skill slug for `references-template`. */
+  /** Skill slug for `references-template`; the `<skill>` segment for `slot`. */
   skill?: string;
+  /** The `<point>` segment for a `slot` ref — the composition point inside the
+   *  named skill (the pair forms the `<skill>.<point>` id). */
+  point?: string;
   /** Relative doc ref — `fragment` (within the capability folder, subfolder
    *  included: e.g. `fragments/delivery.ops.md`, never the bare filename),
    *  `contract` / `shared` (a bare filename), `references-template` (within the
@@ -147,7 +156,7 @@ export function resolveContentRef(ref: ContentRef, ctx: ContentResolveContext): 
   if (!CONTENT_REF_CLASSES.includes(rawClass as ContentRefClass)) {
     return refused(
       rawClass || "(missing)",
-      `unknown content class \`${rawClass || "(missing)"}\`; served classes are ${CONTENT_REF_CLASSES.join(", ")}. Skill bodies and CI-only fixtures are not served.`,
+      `unknown content class \`${rawClass || "(missing)"}\`; served classes are ${ALL_CONTENT_CLASSES.join(", ")}. Skill bodies and CI-only fixtures are not served.`,
     );
   }
   const refClass = rawClass as ContentRefClass;

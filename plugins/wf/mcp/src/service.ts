@@ -31,6 +31,13 @@ import {
   type ContentRef,
   type ContentRefClass,
 } from "./resolver/content.js";
+import {
+  composeSlotBody,
+  planSlot,
+  OVERRIDE_DIR,
+  type MergePolicy,
+  type PresentPart,
+} from "./resolver/slot.js";
 import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
@@ -143,20 +150,46 @@ export type ContentResponse =
       bytes: number;
     }
   | {
+      /** A composed `slot` body (WF-327): exactly ONE fragment linearized from
+       *  the ordered tier chain (personal `_local/` override > pack contribution),
+       *  under the slot's declared merge policy. `content` is the single served
+       *  body; `parts` records the contributing tiers/sources (attribution only).
+       *  The model never sees competing fragments — composition happened here. */
+      status: "composed";
+      refClass: "slot";
+      skillPoint: string;
+      policy: MergePolicy;
+      content: string;
+      bytes: number;
+      parts: Array<{ tier: string; source: string; path: string }>;
+    }
+  | {
+      /** A `slot` with zero contributions and no personal override — a typed
+       *  "unfilled" outcome (NOT a body, NOT a wrong-path fall-through). Directs
+       *  the caller to execute the skill's inline-default region unchanged (the
+       *  WF-326 no-improvisation rule). A `local-read` surface → `continue`. */
+      status: "unfilled";
+      refClass: "slot";
+      skillPoint: string;
+      reaction: "continue";
+      recovery: string;
+      message: string;
+    }
+  | {
       /** Resolution failed — the ref points at nothing readable (unregistered /
        *  dangling-and-unrecoverable capability or plugin root, no declared
        *  template, resolver-build failure). Reports the matching `resolve_gate`
        *  degradation class (content read is a `local-read` surface → `continue`)
        *  with a `/wf:resolve` recovery path. */
       status: "unresolved";
-      refClass: ContentRefClass | null;
+      refClass: ContentRefClass | "slot" | null;
       category: ResolverErrorCategory;
       reaction: "continue";
       recovery: string;
       message: string;
     }
   | {
-      /** The ref is outside the five served classes — a skill body, a CI-only
+      /** The ref is outside the served classes — a skill body, a CI-only
        *  fixture/validator input, a path traversal, or a malformed ref. */
       status: "refused";
       refClass: string;
@@ -435,6 +468,12 @@ export class ResolverService {
       };
     }
 
+    // The `slot` class composes MANY bodies into one under a merge policy — a
+    // distinct path from the five single-path served classes below.
+    if (typeof ref.class === "string" && ref.class.trim() === "slot") {
+      return this.resolveSlot(ref, snapshot);
+    }
+
     const plan = resolveContentRef(ref, {
       snapshot,
       workspaceRoot: this.ports.workspaceRoot,
@@ -475,6 +514,78 @@ export class ResolverService {
       path: plan.path,
       content,
       bytes: Buffer.byteLength(content, "utf8"),
+    };
+  }
+
+  // --- slot composition (WF-327): linearize + serve ONE composed body ------
+  /** Resolve a `slot` ref to its single composed body. `planSlot` (pure) reads
+   *  the body-free snapshot and yields the ordered candidate list under the
+   *  precedence tier chain; this method reads each candidate via the server's own
+   *  `fs` port and composes per the slot's merge policy. A present personal
+   *  override always outranks a pack contribution; a `replace` slot serves the
+   *  single highest-precedence body, an `append` slot the concatenation (registry
+   *  order, override last). Zero contributions AND no override → a typed
+   *  `unfilled` outcome directing the caller to the inline default; a contributing
+   *  capability that dangles → `unresolved` (registry-invalid); a declared pack
+   *  body missing on disk → `unresolved` (ref-not-found). Never a wrong-path body,
+   *  never a raw-read fall-through. */
+  private resolveSlot(ref: ContentRef, snapshot: ResolverSnapshot): ContentResponse {
+    const plan = planSlot(ref, snapshot, this.ports.workspaceRoot);
+
+    if (plan.kind === "refused") {
+      return { status: "refused", refClass: "slot", reason: plan.reason };
+    }
+    if (plan.kind === "unresolved") {
+      return {
+        status: "unresolved",
+        refClass: "slot",
+        category: plan.category,
+        reaction: "continue",
+        recovery: recoveryFor(plan.category),
+        message: plan.message,
+      };
+    }
+
+    // Read each candidate body via the server's own fs. A present override is
+    // included; an absent optional override is skipped; a declared pack fragment
+    // body that is missing on disk is a caller/pack error (`ref-not-found`).
+    const present: PresentPart[] = [];
+    for (const c of plan.contributions) {
+      const content = this.ports.readFile(c.path);
+      if (content === null) {
+        if (c.optional) continue;
+        return {
+          status: "unresolved",
+          refClass: "slot",
+          category: "ref-not-found",
+          reaction: "continue",
+          recovery: recoveryFor("ref-not-found"),
+          message: `slot \`${plan.skillPoint}\` contribution from \`${c.source}\` resolved to \`${c.path}\` but no file is present there.`,
+        };
+      }
+      present.push({ tier: c.tier, rank: c.rank, source: c.source, path: c.path, content });
+    }
+
+    if (present.length === 0) {
+      return {
+        status: "unfilled",
+        refClass: "slot",
+        skillPoint: plan.skillPoint,
+        reaction: "continue",
+        recovery: `Slot \`${plan.skillPoint}\` is unfilled — no capability contributes to it and no personal \`${OVERRIDE_DIR}/${plan.skillPoint}.md\` override exists. Execute the skill's inline-default region exactly as written (the no-improvisation rule); to fill it, register a contributing capability or add the override file.`,
+        message: `no contribution or override for slot \`${plan.skillPoint}\`.`,
+      };
+    }
+
+    const content = composeSlotBody(plan.policy, present);
+    return {
+      status: "composed",
+      refClass: "slot",
+      skillPoint: plan.skillPoint,
+      policy: plan.policy,
+      content,
+      bytes: Buffer.byteLength(content, "utf8"),
+      parts: present.map((p) => ({ tier: p.tier, source: p.source, path: p.path })),
     };
   }
 

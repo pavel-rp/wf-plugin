@@ -244,16 +244,13 @@ export function planSlot(
 
   const matches = findSlotFragments(snapshot, skillPoint);
 
-  // A contributing capability whose plugin root dangles (self-heal recovered
-  // nothing) cannot be served — the integrity-class failure, not a caller error.
+  // A contributor is only visible here when its manifest parsed (so its fragments
+  // exist) — which means its capability record is `ok` with a resolved path. A
+  // contributor whose pack root dangles has NO parsed fragments, so it is invisible
+  // to this scan and the slot degrades to `unfilled` (best-effort local read), with
+  // the broken pack surfaced separately by the snapshot's own registry diagnostic.
+  // Two reachable misconfigurations, however, must NOT silently drop a contribution:
   for (const m of matches) {
-    if (m.validity !== "ok" || !m.resolvedPath) {
-      return {
-        kind: "unresolved",
-        category: "registry-invalid",
-        message: `capability \`${m.capability}\` contributes to slot \`${skillPoint}\` but has no readable manifest (its plugin root dangles and self-heal recovered nothing) — the slot cannot be composed.`,
-      };
-    }
     if (!m.dispatchRel) {
       return {
         kind: "unresolved",

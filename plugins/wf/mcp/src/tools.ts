@@ -109,9 +109,9 @@ const contentInput = fromJsonSchema({
   properties: {
     class: {
       type: "string",
-      enum: ["fragment", "contract", "shared", "references-template", "profile-template"],
+      enum: ["fragment", "contract", "shared", "references-template", "profile-template", "slot"],
       description:
-        "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), or `profile-template` (a pack's `profile.template.json` body). Skill bodies and CI-only fixtures are not served.",
+        "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), `profile-template` (a pack's `profile.template.json` body), or `slot` (the single composed body for a per-skill composition point — see `skill`+`point`). Skill bodies and CI-only fixtures are not served.",
     },
     capability: {
       type: "string",
@@ -124,12 +124,17 @@ const contentInput = fromJsonSchema({
     },
     skill: {
       type: "string",
-      description: "Skill slug — required for `references-template`.",
+      description: "Skill slug — required for `references-template`; the `<skill>` segment for `slot`.",
+    },
+    point: {
+      type: "string",
+      description:
+        "The `<point>` segment for a `slot` ref — the composition point inside the named skill (the pair forms the `<skill>.<point>` id, e.g. skill `ship` + point `review`).",
     },
     ref: {
       type: "string",
       description:
-        "The relative doc ref: within the capability folder, subfolder included — e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template`.",
+        "The relative doc ref: within the capability folder, subfolder included — e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template` / `slot`.",
     },
   },
   required: ["class"],
@@ -234,7 +239,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     {
       title: "resolve content",
       description:
-        "Resolve + read a bundled-doc BODY for one of five logical content-ref classes (fragment | contract | shared | references-template | profile-template), read by the server's own Node fs. Returns `{status: served, path, content}` on success; on an unresolvable/unrecoverable ref returns `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path — the metadata queries stay body-free.",
+        "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path — the metadata queries stay body-free.",
       inputSchema: contentInput,
     },
     async (args: ContentRef) => guard(() => service.resolveContent(args)),
