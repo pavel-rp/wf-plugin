@@ -275,6 +275,35 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-326: skill interface slot-marker lint --------------------------------
+# A skill's externally-bindable slots are declared in skills/<name>/interface.md
+# and placed in its SKILL.md body with a grep-validatable marker pair. This lint
+# keeps the two honest: well-formed markers matching a declaration pass; a
+# malformed marker, an undeclared marker id, or a declared slot with no marker
+# fail naming file+line. Its --selftest proves the linter discriminates over the
+# pass/fail fixtures; the default scan proves the whole real skill tree (which
+# declares no slots yet) passes unchanged — inert on slot-free skills. Wired here
+# so the CI entry point covers it (the lint is NOT auto-discovered).
+echo ""
+echo "=== Skill slot-marker lint — fixture self-test (skill-slot-marker-lint.sh --selftest) ==="
+if bash "$DIR/../skill-slot-marker-lint.sh" --selftest; then
+  printf 'PASS: %s\n' "slot-marker lint self-test (pass/fail fixtures behave as specified)"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "slot-marker lint self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Skill slot-marker lint — real-tree scan (skill-slot-marker-lint.sh) ==="
+if bash "$DIR/../skill-slot-marker-lint.sh"; then
+  printf 'PASS: %s\n' "slot-marker lint real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "slot-marker lint real-tree scan"
+  fail=$((fail + 1))
+fi
+
 # --- WF-304 / WF-305 / WF-306 / WF-307 / WF-308: OUT-2 content-read acceptance --
 # (the COMPOSITE gate — all five content classes)
 # C011 OUT-2: no skill/agent raw-reads a bundled content-class doc — every body

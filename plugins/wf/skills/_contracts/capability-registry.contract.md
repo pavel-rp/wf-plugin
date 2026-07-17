@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.10.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops)
+**Version:** 2.11.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -851,6 +851,90 @@ A capability attaches only the fragments it provides; an unattached phase no-ops
 for that capability. Two composition mechanisms stay separate: **features compose
 natively** (install N plugins → their skills are all discoverable, no custom
 machinery), while **phase fragments compose via the registry** at runtime.
+
+---
+
+## The skill interface declaration and slot markers
+
+> **Normative runtime text:** [the skill interface declaration and slot markers](capability-registry.ops.md#the-skill-interface-declaration-and-slot-markers).
+
+Manifest schema v2 (above) is the **capability** side of composition — what a
+capability *contributes*. This section is the **skill** side — what a skill
+*exposes* to be bound. A `slot` contribution (WF-323) names a target `skill.point`;
+this is where that point is declared and placed. WF-326 formalizes it.
+
+**The interface / implementation split.** A skill's file (`skills/<name>/SKILL.md`)
+mixes two things a reader cannot currently tell apart: a **stable, externally
+bindable surface** and **freely rewordable implementation prose**. WF-326 draws
+the line explicitly. The **interface** — the contracted surface downstream binders
+and the resolver may depend on — is exactly five things:
+
+1. the **invocation shape** (the slash command and its arguments);
+2. the **terminal-block** contract (the `NAME — <state>` final-output block others grep);
+3. the declared **slots**, each with its **merge policy** (`replace` | `append`, the WF-323 vocabulary);
+4. the declared **settings keys** (the project-tunable inputs — resolution machinery is WF-328, out of scope here);
+5. the **safety rules** (the Allowed / Forbidden envelope).
+
+Everything else in the body is implementation: it may be reworded, reordered, or
+rewritten freely without a contract bump, as long as the five above and the slot
+markers below stay intact.
+
+**The machine-readable home (the bounded spec-phase decision, charter Assumption
+#4).** The declaration lives in a sidecar, **`skills/<name>/interface.md`** —
+**not** inside `SKILL.md`. The binding constraint is that the resolver must learn a
+skill's declared slots and settings keys **without reading the SKILL.md body**
+(`resolve_content` refuses skill-body reads by class). A sidecar file, distinct
+from the body, satisfies this: it is read as its own document, so the body stays a
+non-machine-read implementation artifact. `interface.md` uses fixed, grep-parsable
+sections — at minimum a `## Slots` table (column 1 the `skill.point` id, column 2
+the merge policy) and a `## Settings` section; the other three interface elements
+(`## Invocation`, `## Terminal block`, `## Safety rules`) are declared there too so
+the whole surface has one home. A skill that exposes nothing bindable ships no
+`interface.md` at all — the default, and the state of every skill today.
+
+**The slot marker syntax (grep-validatable).** A declared slot is *placed* in the
+body by an HTML-comment **marker pair**, each marker **alone on its line**
+(surrounding whitespace tolerated), both naming the same id:
+
+```markdown
+<!-- wf:slot <skill>.<point> -->
+…the inline-default region…
+<!-- wf:slot-end <skill>.<point> -->
+```
+
+- The **id** is a `skill.point` token: two segments joined by a single dot, each
+  segment lowercase letters / digits / hyphens; the first segment (`<skill>`)
+  **must equal the skill folder name**, so a marker can never misname its own skill.
+- The **inline-default region** is the content between the two markers. It is what
+  the skill runs when the slot is **unfilled** — a real, executable default (or
+  empty, meaning "do nothing here").
+- **No-improvisation rule.** An unfilled slot executes **exactly** its
+  inline-default region — never an ad-libbed substitute invented at the marker. A
+  capability that `replace`-fills the point substitutes the region wholesale; an
+  `append`-fill runs its content **after** the default. This is what makes an
+  unfilled composition surface deterministic: absent a binding, the body reads and
+  runs precisely as written, with no model discretion at the seam. (Resolver-side
+  consumption of a *filled* slot — how a binding is fetched and injected — is
+  WF-327, out of scope here; WF-326 fixes only the shape and the unfilled
+  behaviour.)
+
+**Mechanical enforcement.** `skill-slot-marker-lint.sh` (a sibling of
+`out1-grep.sh` / `out4-skill-read-guard.sh`, wired into `registry-fixtures/run.sh`)
+keeps body and declaration honest, each failure naming file + line:
+
+- a **well-formed** marker matching a `## Slots` declaration passes;
+- a **malformed** marker (bad id grammar, wrong folder segment, not alone on its
+  line) or a malformed `## Slots` declaration (bad id / absent-or-unknown policy) fails;
+- a marker whose id is **not declared** in the skill's `interface.md` fails;
+- a **declared** slot with **no** marker pair (or an unbalanced / duplicate pair) fails;
+- a skill with no `## Slots` and no markers is **inert** — the whole existing
+  skill tree (which declares no slots yet) passes unchanged.
+
+The lint and this contract change **together** (CLAUDE.md §10): the marker grammar
+and declaration shape here are exactly what the lint enforces, and its
+`slot-marker-fixtures/` are the reviewable proof it discriminates. **No composed
+`SKILL.md` is ever materialized** — a slot is a marker in the one authored body,
+not a code-generated file.
 
 ---
 
