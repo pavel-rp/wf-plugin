@@ -56,12 +56,23 @@ through — the skills themselves compose natively regardless.
 
 ## Downstream registration
 
-**Not required.** Because this capability attaches no fragment and owns no surface, it needs **no**
-`## Capabilities` row to be resolved — its skills compose natively the moment the pack is installed.
-(A `provider`/`adapter` capability must be registered to be resolved through the registry; a pure
-`feature` capability that attaches no fragment need not be.) To route the skills through a live host,
-register a **delivery** provider downstream (e.g. install the wf-git pack and run `/wf-git:init`);
-that registration is independent of this pack.
+**Required — run `/wf-review:init` once after `/wf:init`.** Although `address-pr` and `review-pr`
+reach users purely by native plugin composition (install the pack → the commands are discoverable,
+no registry row needed for *them* to run), the `pr-review` capability itself must still be
+registered so a future contribution can resolve. The `ship.review` gate (a forthcoming sub-task)
+presupposes a registration path — without one, that fragment could never fire once added. This
+corrects an earlier claim in this doc and in `manifest.md` that registration was unnecessary; that
+was true only while the capability carried no fragment and no forthcoming one was scoped.
+
+`/wf-review:init` follows the established pack-init pattern (`wf-git`/`wf-audit`): it calls core's
+typed `inspect_pack`/`register_pack` resolver tools with the stable plugin id `wf-review`, which
+resolves the install path, validates the manifest, and writes the `## Plugin Roots` + `##
+Capabilities` rows in one idempotent, self-checking call — no hand-edited `_local/config.md`, no
+`${CLAUDE_PLUGIN_ROOT}` probing. See `plugins/wf-review/skills/init/SKILL.md`.
+
+To route `address-pr`/`review-pr` through a live host, also register a **delivery** provider
+downstream (e.g. install the wf-git pack and run `/wf-git:init`); that registration is independent
+of `pr-review`'s own.
 
 ## Profile seed template
 
@@ -74,3 +85,6 @@ convention, a capability that declares no `profile-template:` seeds nothing (the
   composed natively and routed through the delivery provider's PR-interaction operations.
 - **WF-230** — lean the manifest: onboarding/authoring narrative relocated here; `manifest.md` now
   carries only the metadata header and the intentionally-empty fragments table.
+- **WF-325** — ship `/wf-review:init` on the established pack-init pattern and correct the earlier
+  no-registration claim: `pr-review` now requires registration ahead of its first contribution
+  fragment (the forthcoming `ship.review` gate).
