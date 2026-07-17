@@ -6,7 +6,7 @@ capability owning the wf capability-registry's **`tracker`** `provider` surface
 provider surface"). It binds every abstract tracker operation —
 `resolve_config`, `create_umbrella`, `create_child`, `update`, `get`,
 `list_children`, `post_comment`, `set_status`, `attach_link`, `list_by_status`,
-`list_milestones`, `list_cycles` — to concrete Linear mechanics via the
+`list_milestones`, `list_cycles`, `list_blockers` — to concrete Linear mechanics via the
 `mcp__claude_ai_Linear__*` MCP tools, so a `wf` core skill that needs to read,
 write, or enumerate issues has a provider to dispatch to.
 
@@ -33,7 +33,7 @@ local-only rather than blocking.
 | Item | What it is |
 |---|---|
 | `capabilities/linear/manifest.md` | the `linear` capability's manifest — one `provider` fragment row scoped `tracker` |
-| `capabilities/linear/fragments/tracker.md` | the inline reference doc binding all twelve tracker operations to Linear MCP mechanics, with a completeness coverage table |
+| `capabilities/linear/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Linear MCP mechanics, with a completeness coverage table |
 | `/wf-linear:init` | one-command self-registration — records this pack's install root, registers the `linear` capability, and interviews for (or carries forward) the Linear team/project, mirroring `/wf-ado:init` (WF-123), `/wf-git:init` (WF-122) |
 
 ## Registering wf-linear downstream

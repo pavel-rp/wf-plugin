@@ -197,6 +197,26 @@ it.
   `list_milestones` reads. Never exercised here.
 - **Grounding:** Unverified — tool name not yet confirmed.
 
+## list_blockers
+
+- **ADO models blocking as the Predecessor/Successor dependency link.** The contract's
+  abstract "task ids that block a given task" maps onto Azure DevOps' **Predecessor** links —
+  a predecessor must complete before the current item, i.e. it blocks it. On a work item the
+  predecessor edge is the relation `System.LinkTypes.Dependency-Reverse` ("Predecessor");
+  its `Dependency-Forward` counterpart ("Successor") is the reverse direction and is **not**
+  read here.
+- **Composes the already-grounded `get`, exactly like `list_children`.** `get`'s
+  `expand: "all"` fetch already returns the item's relations, so no separate or bespoke call
+  is needed — filter those relations for the predecessor link type and collect the linked
+  ids. This mirrors `list_children`'s compose-`get`-and-filter shape rather than guessing a
+  dedicated dependency-query tool.
+- **An empty set is the no-blockers answer, never an error** — an item with no predecessor
+  link returns `[]`, per the contract's read-degradation rule.
+- **Grounding:** Grounded — confirmed against the published tool catalog
+  (`mcp_ado_wit_get_work_item`, per `microsoft/azure-devops-mcp`'s `docs/TOOLSET.md`; the
+  same tool `get`/`list_children` already use). The predecessor-relation **filter** shape has
+  not been exercised end-to-end here.
+
 ---
 
 ## Coverage table
@@ -220,5 +240,6 @@ provider surface"), bound to exactly one `## ` section in `tracker.ops.md`, none
 | `list_by_status`   | `list_by_status`| unverified — tool name not yet confirmed |
 | `list_milestones`  | `list_milestones`| unverified — tool name not yet confirmed |
 | `list_cycles`      | `list_cycles`   | unverified — tool name not yet confirmed |
+| `list_blockers`    | `list_blockers` | grounded — confirmed against catalog     |
 
-All twelve operations are bound; none is unbound.
+All thirteen operations are bound; none is unbound.

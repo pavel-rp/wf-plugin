@@ -1,6 +1,6 @@
 # ado tracker provider — runtime ops
 
-**Version:** 1.4.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-243 — `create_umbrella`, `create_child`, `list_children`, `post_comment` bound to confirmed tool names; WF-280 — `resolve_config` sources `registryPath` from the bundled `wf-resolver` MCP tool's typed `resolve_config` query instead of assuming the `_local/config.md` literal, with `resolve_gate` diagnostics on resolver failure)
+**Version:** 1.5.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-243 — `create_umbrella`, `create_child`, `list_children`, `post_comment` bound to confirmed tool names; WF-280 — `resolve_config` sources `registryPath` from the bundled `wf-resolver` MCP tool's typed `resolve_config` query instead of assuming the `_local/config.md` literal, with `resolve_gate` diagnostics on resolver failure; WF-315 — `list_blockers` bound to the predecessor dependency relations returned by `get`'s `expand: "all"` fetch)
 **Role:** the runtime-read half of the ado tracker provider — every input, guard, tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, grounding legend, per-operation grounding status, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -14,7 +14,7 @@
 
 **Reducible probe list (spec pin):** none. Each write is a single MCP call, `get` is a single `expand: "all"` fetch, and `resolve_config` is one `wf-resolver` `resolve_config` (R1) call plus a local section read — there is no probe pair to consolidate. Every operation's call count is unchanged by this split.
 
-**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles.
+**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles · list_blockers.
 
 ## resolve_config
 
@@ -156,3 +156,15 @@
 2. Tool: `<VERIFY: team-iterations tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
 
 **Output:** the team's cycles (name + start/finish where present), or an empty list — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+
+## list_blockers
+
+**Inputs:** work item id — the blocked task whose blocking predecessors to read.
+
+**Procedure:**
+
+1. Fetch the work item from `{ado-project}` (from config) with `expand: "all"` — the same grounded `get` fetch, which already returns the item's relations; no separate call is needed.
+2. Filter the returned relations for the **predecessor** dependency link type `rel: "System.LinkTypes.Dependency-Reverse"` (Azure DevOps' "Predecessor" — a work item that must complete before this one, i.e. that blocks it). From each matching relation's `url`, take the trailing work item id.
+3. Tool: `mcp_ado_wit_get_work_item`.
+
+**Output:** the set of blocking work item ids, or an **empty set** when the item has no predecessor links — a read never writes, and no-blockers is not an error. On tool error, the caller applies the contract's mid-run-failure degradation rule.
