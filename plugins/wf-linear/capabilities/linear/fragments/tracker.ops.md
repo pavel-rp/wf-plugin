@@ -1,6 +1,6 @@
 # linear tracker provider — runtime ops
 
-**Version:** 1.3.1 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-282 — `resolve_config` distinguishes the relocatable capability registry from the fixed `_local/config.md` provider config; WF-300 — `resolve_config` reads the `## Linear` section from `_local/config.md` unconditionally, never from a relocated `registryPath`: provider config is not the capability registry)
+**Version:** 1.4.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-282 — `resolve_config` distinguishes the relocatable capability registry from the fixed `_local/config.md` provider config; WF-300 — `resolve_config` reads the `## Linear` section from `_local/config.md` unconditionally, never from a relocated `registryPath`: provider config is not the capability registry; WF-315 — `list_blockers` bound to Linear's `blockedBy` relation)
 **Role:** the runtime-read half of the linear tracker provider — every input, guard, MCP tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (grounding legend, per-operation grounding status, scope framing, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -24,7 +24,7 @@ Cache both within the run; **do not re-resolve per call**.
 
 **Reducible probe list (spec pin):** none beyond what is already consolidated here. Team/project id resolution above is already **resolve-once-per-run-and-cache** — the single probe consolidation this fragment carries. `set_status`'s status-id lookup is deliberately **per-call and uncached** (workflow states differ by team; a cached id is not portable) and must not be reduced. Every other operation is a single MCP call. All per-operation call counts are unchanged by this split.
 
-**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles.
+**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles · list_blockers.
 
 ## resolve_config
 
@@ -158,3 +158,14 @@ Cache both within the run; **do not re-resolve per call**.
 1. Call `mcp__claude_ai_Linear__list_cycles` filtered to the resolved `teamId` (from "Team/project id resolution" above).
 
 **Output:** the team's cycles (id + name + start/end where present), or an empty list — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+
+## list_blockers
+
+**Inputs:** task (issue) id — the blocked task whose blocking predecessors to read.
+
+**Procedure:**
+
+1. Call `mcp__claude_ai_Linear__get_issue` with `id: <issue-id>` and `includeRelations: true` — Linear returns the issue's relations, including the `blockedBy` set (the issues that block this one).
+2. Read the `blockedBy` relation set from the response; each entry's identifier (`<LETTERS>-<NUMBER>`) is a blocking predecessor.
+
+**Output:** the set of blocking issue identifiers, or an **empty set** when the issue has no `blockedBy` relations — a read never writes, and no-blockers is not an error. On tool error, the caller applies the contract's mid-run-failure degradation rule.

@@ -198,6 +198,22 @@ notes below record each binding's grounding status and the load-bearing choices 
   stand-in for the same abstract operation.
 - **Grounding:** Tool confirmed (`list_cycles`); filter shape unexercised here.
 
+## list_blockers
+
+- **Linear surfaces blocking relations first-class as `blockedBy`.** The contract's abstract
+  "task ids that block a given task" maps directly onto Linear's `blockedBy` relation set —
+  no derivation, no heuristic. `get_issue` with `includeRelations: true` returns the issue's
+  `relations` object (`blocks` / `blockedBy` / `relatedTo` / `duplicateOf`); this operation
+  reads only `blockedBy`. No separate list tool is needed — one enriched `get_issue` fetch
+  carries the whole relation set.
+- **An empty set is the no-blockers answer, never an error** — a task with no `blockedBy`
+  edge returns `[]`, per the contract's read-degradation rule.
+- **Grounding:** Tool confirmed — `mcp__claude_ai_Linear__get_issue` is live in this session's
+  MCP catalog and its `includeRelations` parameter and `relations.blockedBy` response field
+  were exercised directly against a real issue during this task's own authoring (the WF-315
+  fetch returned a populated `relations.blockedBy`), so the relation-field usage is
+  independently observed, not draft-sourced.
+
 ---
 
 ## Coverage table
@@ -221,8 +237,9 @@ provider surface"), bound to exactly one `## ` section in `tracker.ops.md`, none
 | `list_by_status`   | `list_by_status`| tool confirmed; filter shape unexercised  |
 | `list_milestones`  | `list_milestones`| tool confirmed; filter shape unexercised  |
 | `list_cycles`      | `list_cycles`   | tool confirmed; filter shape unexercised  |
+| `list_blockers`    | `list_blockers` | tool confirmed (`get_issue`); `blockedBy` observed |
 
-All twelve operations are bound; none is unbound.
+All thirteen operations are bound; none is unbound.
 
 **Not e2e-observed (accepted, per WF-136's scope):** `create_umbrella`, `create_child`,
 and `update` have no create-consuming core touchpoint in this codebase today — no core

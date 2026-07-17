@@ -6,7 +6,7 @@ capability owning the wf capability-registry's **`tracker`** `provider` surface
 provider surface"). It binds every abstract tracker operation —
 `resolve_config`, `create_umbrella`, `create_child`, `update`, `get`,
 `list_children`, `post_comment`, `set_status`, `attach_link`, `list_by_status`,
-`list_milestones`, `list_cycles` — to concrete Azure DevOps mechanics, so a `wf`
+`list_milestones`, `list_cycles`, `list_blockers` — to concrete Azure DevOps mechanics, so a `wf`
 core skill that needs to read, write, or enumerate work items has a provider to
 dispatch to.
 
@@ -15,7 +15,7 @@ dispatch to.
 | Item | What it is |
 |---|---|
 | `capabilities/ado/manifest.md` | the `ado` capability's manifest — one `provider` fragment row scoped `tracker` |
-| `capabilities/ado/fragments/tracker.md` | the inline reference doc binding all twelve tracker operations to Azure DevOps mechanics, with a completeness coverage table |
+| `capabilities/ado/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Azure DevOps mechanics, with a completeness coverage table |
 | `/wf-ado:init` | one-command self-registration — records this pack's install root, registers the `ado` capability, and interviews for (or carries forward) ADO organization/project, mirroring `/wf-git:init` (WF-122) |
 
 ## Registering wf-ado downstream
