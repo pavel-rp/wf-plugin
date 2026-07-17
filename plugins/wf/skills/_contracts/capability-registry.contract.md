@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.11.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`)
+**Version:** 2.11.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -451,11 +451,11 @@ exemption.** A capability owning the `delivery` surface implements:
 
 - **Write side:** `branch-create`, `branch-switch`, `commit`, `push-upstream`,
   `pr-create`, `pr-detect`, `pr-comment-post`, `review-thread-resolve`,
-  `pr-merge`.
+  `review-thread-reply`, `pr-merge`.
 - **Read side**, consumed by core (e.g. for id inference and standup):
   `workspace-root-resolve`, `current-branch-query`,
   `last-commit-timestamp-query`, `branch-changes-read`, `pr-comments-read`,
-  `checks-read`, `activity-read`.
+  `review-threads-read`, `checks-read`, `activity-read`.
 
 The six operations added for the coupled PR-review, merge, and standup features
 (the Wave-4 opener) extend — never reshape — the same partitioned surface, each
@@ -474,9 +474,48 @@ Like every read operation, it **consumes** an already-resolved branch context an
 takes no write; deriving that context (or a base ref) is the caller's job, not
 the operation's.
 
+`review-threads-read` and `review-thread-reply` (added later still, again
+extending — never reshaping — the same partitioned surface) are the two
+**review-thread** operations a review gate needs, and they **complement, never
+duplicate**, the three review operations already on this surface:
+
+- `review-threads-read` (read) answers *"what review threads exist at exactly
+  `HEAD_SHA`?"* — it returns the pull request's review threads **scoped to the
+  current head commit**, each carrying its **thread node id**, its **file/line
+  anchor**, its **resolved/unresolved** state, and its **body**. This is
+  strictly more than `pr-comments-read`, which reads the whole review
+  conversation as a flat comment list with no per-thread resolved state and **no
+  head-commit scoping**: a thread anchored to a stale (superseded) commit is
+  **dropped**, never presented as current. The thread node id it returns is the
+  same identity `review-thread-resolve` already consumes.
+- `review-thread-reply` (write) posts a reply on **one specific thread**, keyed
+  by that same **thread node id**. This complements `pr-comment-post`'s optional
+  `<reply-to>` (which threads a reply keyed by a REST review-**comment** id, in
+  the general PR-comment flow): a consumer that read threads via
+  `review-threads-read` holds thread node ids and replies on that same identity
+  with no id-space translation, while `pr-comment-post` remains the path for a
+  PR-level comment or a REST-comment-id reply.
+
+**Degradation shape — a typed degraded-empty for `review-threads-read`.** The
+other read-side empties on this surface (`pr-comments-read`, `checks-read`,
+`activity-read`) follow the **silent-empty** precedent: an empty result is
+indistinguishable from "nothing there", which is harmless because none of them
+backs a merge-blocking claim. `review-threads-read` is deliberately **different**:
+its result is **typed** with a `<read-performed>` flag that is true **only** when
+the pull request's threads were actually read at `HEAD_SHA` (even a genuinely
+empty thread set at `HEAD_SHA` returns `<read-performed>` = true). A bare-core /
+no-provider (or no-branch / no-PR-context) empty returns `<read-performed>` =
+false. This typing exists so that a bare-core degraded empty **can never be
+presented as a performed `HEAD_SHA` read-back**: a consumer honouring the
+review-gate rule (no *"no review landed"* claim without an API read-back at
+`HEAD_SHA`) treats **only** `<read-performed>` = true as a valid read-back, so
+the silent absence of a delivery provider can never masquerade as a confirmed
+"no unresolved threads" result.
+
 No operation name, and no prose describing it, may contain a git/gh command
 string or a plumbing invocation. "Branch", "commit", "deliver", "workspace
-root", "changes" / "changed files", "review comment", "check", "merge", and
+root", "changes" / "changed files", "review comment", "review thread",
+"resolved", "reply", "check", "merge", and
 "activity" are abstract vocabulary, not hits — a capability's own manifest and
 fragment prose is where any concrete tool binds to these names.
 
@@ -533,8 +572,15 @@ never masks a caller's own provider-absence decision.
   `pr-comments-read`, `checks-read`, and `activity-read` to an **empty result**
   (no review-comment, check, or recent-activity context exists outside a delivery
   provider).
+- `review-threads-read` also resolves to an empty result, but a **typed** one:
+  its `<read-performed>` flag is **false** (never true) in bare-core, so the
+  empty is explicitly *not* a performed `HEAD_SHA` read-back — the one read on
+  this surface that does **not** follow the plain silent-empty precedent, exactly
+  because it feeds a merge-blocking "no unresolved threads" claim that a silent
+  empty must never be allowed to satisfy.
 - A **write** operation (`branch-create`, `commit`, `push-upstream`, `pr-create`,
-  `pr-comment-post`, `review-thread-resolve`, `pr-merge`, …) invoked by a
+  `pr-comment-post`, `review-thread-resolve`, `review-thread-reply`, `pr-merge`,
+  …) invoked by a
   user-initiated skill with **no** `delivery`-surface owner active
   states **plainly** that no delivery provider is registered and **names the
   remedy** (register a capability that owns the `delivery` surface in the

@@ -10,9 +10,11 @@
 #     with `<name>.contract.md`, 150-line ops budget.
 #   - the wf-git delivery provider fragment (WF-211):
 #     ../../../wf-git/capabilities/git/fragments/delivery.ops.md paired with
-#     delivery.md, 250-line ops budget — deliberately more generous than the
-#     contracts' 150 to leave headroom for the Wave-4 delivery operations
-#     WF-157 and WF-176 add to this same growing file.
+#     delivery.md, 280-line ops budget — deliberately more generous than the
+#     contracts' 150 to leave headroom for the delivery operations added to this
+#     same growing file: WF-157 and WF-176 (Wave-4), then the two review-thread
+#     operations WF-324 binds (`review-threads-read`, `review-thread-reply`),
+#     which raised the ceiling from 250 to 280.
 #   - the two tracker provider fragments (WF-213):
 #     ../../../wf-ado/capabilities/ado/fragments/tracker.ops.md and
 #     ../../../wf-linear/capabilities/linear/fragments/tracker.ops.md, each
@@ -159,7 +161,7 @@ check_links() {
 # ---------------------------------------------------------------------------
 check_ops_docs "$DIR" 150 ".contract.md"
 if [ -n "$WFGIT_DIR" ]; then
-  check_ops_docs "$WFGIT_DIR" 250 ".md"
+  check_ops_docs "$WFGIT_DIR" 280 ".md"
 else
   err "wf-git delivery fragments folder not found (expected at ../../../wf-git/capabilities/git/fragments)."
 fi

@@ -5,12 +5,13 @@ capability owning the wf capability-registry's **`delivery`** `provider` surface
 (`plugins/wf/skills/_contracts/capability-registry.ops.md` §"The delivery
 provider surface"). It binds every abstract delivery operation — `branch-create`,
 `branch-switch`, `commit`, `push-upstream`, `pr-create`, `pr-detect`,
-`pr-comment-post`, `review-thread-resolve`, `pr-merge`, `workspace-root-resolve`,
-`current-branch-query`, `last-commit-timestamp-query`, `pr-comments-read`,
-`checks-read`, `activity-read` — to concrete git/gh procedures, so a `wf` core skill
-that needs to branch, commit, push, open a PR, read or post review comments, read
-checks, resolve a thread, merge a PR, or read recent activity has a provider to
-dispatch to.
+`pr-comment-post`, `review-thread-resolve`, `review-thread-reply`, `pr-merge`,
+`workspace-root-resolve`, `current-branch-query`, `last-commit-timestamp-query`,
+`pr-comments-read`, `review-threads-read`, `checks-read`, `activity-read` — to
+concrete git/gh procedures, so a `wf` core skill that needs to branch, commit,
+push, open a PR, read or post review comments, read HEAD_SHA-scoped review
+threads, reply on a thread, read checks, resolve a thread, merge a PR, or read
+recent activity has a provider to dispatch to.
 
 ## What ships
 

@@ -303,3 +303,134 @@ test("resolve_provider on an unowned surface degrades per class (no throw)", () 
   const tracker = svc.resolveProvider("tracker");
   assert.equal(tracker.degradation, "tracker-warn");
 });
+
+// --- WF-319: composite <-> bare qa-execution surface resolution -----------
+
+const ENGINE_MANIFEST = `# engine-cap capability
+
+**Kind:** adapter
+
+## Fragments
+
+| phase | contribution-kind | dispatch | scope |
+|-------|-------------------|----------|-------|
+| qa-execution | provider | \`subagent: wf-browser-qa:qa-engine\` | engine |
+`;
+
+const HOST_MANIFEST = `# host-cap capability
+
+**Kind:** adapter
+
+## Fragments
+
+| phase | contribution-kind | dispatch | scope |
+|-------|-------------------|----------|-------|
+| qa-execution | provider | \`subagent: wf-angular:qa-host\` | host |
+`;
+
+const ENGINE_HOST_CONFIG = `# Config
+
+## Task Folders
+
+| Key | Value |
+|-----|-------|
+| **Task Root** | \`_local\` |
+
+## Capabilities
+
+| Capability | Path |
+|------------|------|
+| engine-cap | capabilities/engine-cap |
+| host-cap   | capabilities/host-cap |
+`;
+
+/** A ports double with `engine-cap` / `host-cap` pre-registered (repo-relative
+ *  paths — no plugin/install indirection needed) so resolveProvider can be
+ *  exercised against a real owner without going through register_pack. */
+function makeEngineHostPorts() {
+  return makePorts({
+    files: {
+      [`${WS}/_local/config.md`]: ENGINE_HOST_CONFIG,
+      [`${WS}/capabilities/engine-cap/manifest.md`]: ENGINE_MANIFEST,
+      [`${WS}/capabilities/host-cap/manifest.md`]: HOST_MANIFEST,
+    },
+  });
+}
+
+test("resolve_provider: composite qa-execution:engine resolves identically to bare engine", () => {
+  const ports = makeEngineHostPorts();
+  const svc = new ResolverService(ports);
+  svc.refresh();
+  const composite = svc.resolveProvider("qa-execution:engine");
+  const bare = svc.resolveProvider("engine");
+  assert.equal(composite.owner, "engine-cap");
+  assert.equal(composite.state, "ok");
+  assert.equal(composite.degradation, "ok");
+  assert.equal(bare.owner, "engine-cap");
+  assert.equal(bare.state, "ok");
+  assert.equal(bare.degradation, "ok");
+  assert.equal(composite.owner, bare.owner);
+  assert.equal(composite.state, bare.state);
+  assert.equal(composite.degradation, bare.degradation);
+  assert.equal(composite.fragmentPath, bare.fragmentPath);
+});
+
+test("resolve_provider: composite qa-execution:host resolves identically to bare host", () => {
+  const ports = makeEngineHostPorts();
+  const svc = new ResolverService(ports);
+  svc.refresh();
+  const composite = svc.resolveProvider("qa-execution:host");
+  const bare = svc.resolveProvider("host");
+  assert.equal(composite.owner, "host-cap");
+  assert.equal(composite.state, "ok");
+  assert.equal(composite.degradation, "ok");
+  assert.equal(bare.owner, "host-cap");
+  assert.equal(bare.state, "ok");
+  assert.equal(bare.degradation, "ok");
+  assert.equal(composite.owner, bare.owner);
+  assert.equal(composite.state, bare.state);
+  assert.equal(composite.degradation, bare.degradation);
+  assert.equal(composite.fragmentPath, bare.fragmentPath);
+});
+
+test("resolve_provider: bare delivery/tracker/engine/host still resolve as before (regression guard)", () => {
+  // Bare delivery/tracker on an unowned registry (existing behaviour, untouched).
+  const bareOnly = makePorts();
+  const svcBare = new ResolverService(bareOnly);
+  svcBare.refresh();
+  assert.equal(svcBare.resolveProvider("delivery").state, "unconfigured");
+  assert.equal(svcBare.resolveProvider("delivery").degradation, "delivery-block");
+  assert.equal(svcBare.resolveProvider("tracker").state, "unconfigured");
+  assert.equal(svcBare.resolveProvider("tracker").degradation, "tracker-warn");
+
+  // Bare engine/host on a registry where they ARE owned — the documented
+  // workaround this fix must not regress.
+  const ports = makeEngineHostPorts();
+  const svc = new ResolverService(ports);
+  svc.refresh();
+  assert.equal(svc.resolveProvider("engine").owner, "engine-cap");
+  assert.equal(svc.resolveProvider("engine").state, "ok");
+  assert.equal(svc.resolveProvider("host").owner, "host-cap");
+  assert.equal(svc.resolveProvider("host").state, "ok");
+});
+
+test("resolve_provider: genuine no-owner qa-execution:engine returns unconfigured with engine-block degradation", () => {
+  const ports = makePorts(); // default fixture — no engine/host capability registered
+  const svc = new ResolverService(ports);
+  svc.refresh();
+  const composite = svc.resolveProvider("qa-execution:engine");
+  assert.equal(composite.state, "unconfigured");
+  assert.equal(composite.owner, null);
+  assert.equal(composite.degradation, "engine-block");
+  const bare = svc.resolveProvider("engine");
+  assert.equal(bare.state, "unconfigured");
+  assert.equal(bare.degradation, "engine-block");
+});
+
+test("resolve_provider: unrecognized surface token throws a distinct signal, not state:unconfigured", () => {
+  const ports = makePorts();
+  const svc = new ResolverService(ports);
+  svc.refresh();
+  assert.throws(() => svc.resolveProvider("qa-exec:engine"), /unknown surface/);
+  assert.throws(() => svc.resolveProvider("bogus"), /unknown surface/);
+});

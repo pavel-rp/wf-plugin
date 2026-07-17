@@ -228,19 +228,40 @@ export interface RegisterPackResponse {
   preview: Array<{ section: string; key: string; value: string }>;
 }
 
+/** Single source of truth for "is this a recognized surface token" — covers
+ *  both the bare scope forms the provider-ownership index is keyed on
+ *  (`engine`, `host`, `delivery`, `tracker`) and the composite `<phase>:<scope>`
+ *  forms the tool schema and `/wf:qa-auto` advertise (`qa-execution:engine`,
+ *  `qa-execution:host`). A token outside this set is a caller error, never a
+ *  genuine "no provider registered" state. */
 const KNOWN_SURFACES = new Set([
+  "engine",
+  "host",
   "delivery",
   "tracker",
   "qa-execution:engine",
   "qa-execution:host",
 ]);
 
-/** Degradation class a consumer reproduces when a surface is not `ok`. */
+/** Strip a leading `qa-execution:` prefix so the documented composite surface
+ *  token resolves against the same bare-scope-keyed ownership index the bare
+ *  token already matches. Bare tokens pass through unchanged. Only called for
+ *  a token already confirmed to be in `KNOWN_SURFACES`. */
+function bareScope(surface: string): string {
+  return surface.startsWith("qa-execution:") ? surface.slice("qa-execution:".length) : surface;
+}
+
+/** Degradation class a consumer reproduces when a surface is not `ok`. Keyed
+ *  off the bare scope so the composite and bare forms of the same surface
+ *  yield the identical degradation class (an unnormalized composite `qa-
+ *  execution:engine`/`qa-execution:host` falling through to `bare-core` would
+ *  violate the required `engine-block`). */
 function degradationFor(surface: string, state: ProviderResponse["state"]): string {
   if (state === "ok") return "ok";
-  if (surface === "delivery") return "delivery-block";
-  if (surface === "tracker") return "tracker-warn";
-  if (surface.startsWith("qa-execution")) return "engine-block";
+  const scope = bareScope(surface);
+  if (scope === "delivery") return "delivery-block";
+  if (scope === "tracker") return "tracker-warn";
+  if (scope === "engine" || scope === "host") return "engine-block";
   return "bare-core";
 }
 
@@ -342,8 +363,18 @@ export class ResolverService {
 
   // --- R3 -----------------------------------------------------------------
   resolveProvider(surface: string): ProviderResponse {
+    // An unrecognized surface token is a caller/invalid-argument error, never
+    // a genuine "no provider registered" outcome — throw so `guard()` (tools.ts)
+    // maps it to the MCP `isError` channel, distinct from `state: "unconfigured"`.
+    // This must run BEFORE the ownership lookup so a typo can never masquerade
+    // as a registered-but-empty surface.
+    if (!KNOWN_SURFACES.has(surface)) {
+      throw new Error(
+        `unknown surface \`${surface}\`; expected one of: ${[...KNOWN_SURFACES].join(", ")}.`,
+      );
+    }
     const s = this.ensure();
-    const owned = s.providerOwnership.find((o) => o.surface === surface);
+    const owned = s.providerOwnership.find((o) => o.surface === bareScope(surface));
     if (!owned) {
       return {
         surface,
@@ -351,9 +382,7 @@ export class ResolverService {
         fragmentPath: null,
         state: "unconfigured",
         degradation: degradationFor(surface, "unconfigured"),
-        diagnostics: KNOWN_SURFACES.has(surface)
-          ? `no capability owns the \`${surface}\` surface; degrade per its class.`
-          : `unknown surface \`${surface}\`.`,
+        diagnostics: `no capability owns the \`${surface}\` surface; degrade per its class.`,
       };
     }
     const pack =
