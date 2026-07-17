@@ -1,0 +1,197 @@
+---
+name: charter
+description: Turns a vague end-to-end feature idea into a converged feature charter plus a set of independently shippable sub-tasks — interviewed, drafted, decomposed, and reviewed to convergence, then seeded locally for the downstream pipeline. Use when a feature is too large for a single task and needs an umbrella spec decomposed before /wf:plan, /wf:spec, or /wf:tc can run each piece.
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion]
+---
+
+# /wf:charter — vague feature idea → converged charter + shippable sub-tasks
+
+One level above `/wf:spec`: where `spec` turns one task into a dev-ready spec, `charter` turns one *feature* into an umbrella charter plus sub-tasks, each of which is a valid `/wf:plan` / `/wf:spec` / `/wf:tc` input. It interviews the idea to convergence, drafts an umbrella charter, decomposes it into independently shippable sub-tasks, reviews the pair with fresh eyes, and — once converged — seeds each sub-task as a local task folder the downstream pipeline picks up cold.
+
+The terminus is a **hand-off, not an execution**: `charter` never runs another `wf:*` skill except `/wf:index`. Hand each seeded sub-task to `/wf:plan` one at a time; a forthcoming `/fleet` will fan the whole set out to parallel shippers in dependency order.
+
+---
+
+## Loop contract
+
+The whole skill is this loop; keep it in mind throughout:
+
+```
+interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted warnings → publish → done
+                ▲            ▲              ├─ blocking findings → route back (max 3 revision rounds)
+                └────────────┴──────────────┤─ user-routed questions → ask, fold in, revise
+                                            └─ no progress / rounds exhausted → stop honestly
+```
+
+- Three roles run as isolated subagents dispatched via the **Task** tool — `subagent_type: wf:charter-writer`, `wf:charter-decomposer`, `wf:charter-reviewer`. The host (this skill) owns the interview, routing, user escalation, and publish — subagents cannot ask the user.
+- All state lives in the charter folder's files, re-read from disk each iteration — the loop survives `/clear` and resumes from artifacts.
+- Terminal statuses: `Converged`, `Converged with warnings`, `Needs input`, `Blocked`. Every pass ends with the `CHARTER — <status>` block (bottom of this file) as the very last output.
+
+---
+
+## Prerequisites
+
+**Before any other phase**, read `_local/config.md` at the workspace root (the current working directory) and take `{task-root}` from its `## Task Folders` section — never hardcode it. If `_local/config.md` is absent, stop and direct the user to run `/wf:init` first. (Core reads `_local/config.md` for `{task-root}` — not any `wf.config.js` `docsRoot`.) The charter folder and every seeded sub-task folder live under `{task-root}`.
+
+---
+
+## Command Syntax
+
+```
+/wf:charter <feature idea | charter-id>
+/wf:charter
+```
+
+### Arguments
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `<input>` | NO | Auto-detected: a charter id (`C<NNN>`) → resume that charter. Anything else → the vague feature description. Empty → resume mode (see Zero-argument default). |
+
+**Validation:**
+
+- The raw invocation input is: `$ARGUMENTS` (empty → Zero-argument default).
+- Resolve `{task-root}` per Prerequisites; create the folder if it doesn't exist.
+
+**Zero-argument default:** scan the direct children of `{task-root}` for folders containing `00_intake.md` (that file marks a charter folder) whose `01_charter.md` is absent or has a `**Status:**` other than `Published`. Exactly one in progress → resume it at the state the artifacts imply (see State model). None → print usage and ask for a feature idea. Several → list them and ask which.
+
+---
+
+## Safety Rules
+
+**Allowed:**
+
+- Read any file in the project (`Read`, `Glob`, `Grep`).
+- Write and edit files only inside `{task-root}` (and its charter / sub-task folders).
+- Dispatch the three role subagents via the **Task** tool; ask the user via `AskUserQuestion` (host only).
+- Invoke `/wf:index` (the sole `wf:*` skill this one may call) to maintain per-folder indexes.
+
+**Forbidden:**
+
+- Writing anywhere outside `{task-root}` (never write outside `_local/`).
+- Modifying source files; running builds, tests, or installs; any destructive or writing version-control operation.
+- Invoking any `wf:*` skill other than `/wf:index` — the terminus is a hand-off, not an execution.
+- Rescuing a failed subagent by doing its work inline in the host context. If a role subagent errors or its artifact is missing afterwards, halt with `CHARTER — Blocked` and surface the error. "The subagent didn't write it, I did" is not a loophole.
+- Editing a role's artifact from the host, with one stated exception: at convergence/publish the host may update the `**Status:**` metadata line in `01_charter.md` and the `## Published ids` section of `02_subtasks.md`. (`00_intake.md` and `03_review-log.md` are host-owned outright.)
+
+---
+
+## State model (resume from artifacts, not memory)
+
+Derive the next step from the folder contents — never from conversation memory:
+
+| Observed state | Next step |
+| --- | --- |
+| Folder + `00_intake.md` only | Phase 2 (writer) |
+| `01_charter.md` present, no `02_subtasks.md` | Phase 3 (decomposer) |
+| Both present, charter `**Status:** Draft` or `In review` | Phase 4 (review round) |
+| Charter `**Status:** Converged`, publish incomplete | Phase 6 (publish/retry) |
+| Charter `**Status:** Published` | Done — re-emit the final block |
+
+The review/revision counters live in `03_review-log.md`'s header line (`Reviews: <N> · Revisions used: <M> of 3`), not in memory.
+
+---
+
+## Phases
+
+### Phase 0 — Resolve input, mint id, create folder
+
+1. Detect the input form (Arguments table): a charter id resumes; anything else is the feature idea.
+2. Charter id: mint `C<NNN>` — scan `{task-root}` (including `_archive/`) for folders whose name matches `C` + digits + `__` or `<ABBR>-C` + digits + `__` (digits only — a task folder like `T042__…` must not match), take the highest number + 1, zero-padded to 3 digits, starting at `C001`.
+3. Slug: lowercase the first ~50 chars of the title, spaces and special chars to hyphens. Folder: `{task-root}/<charter-id>__<slug>/` — a direct child of `{task-root}` (downstream folder lookups are shallow; never nest task folders inside it).
+4. Write `00_intake.md`: the original idea **verbatim**, the input source (the description), date, `**Captured by:** <model-id>` (the id from your system prompt; `unknown` if unavailable), and an empty `## Clarifications` section.
+
+### Phase 1 — Interview (host, interactive)
+
+De-vague the idea before anything is drafted:
+
+1. List the material ambiguities — decisions that would change scope, outcomes, users, constraints, or rollout. Ignore implementation detail (that belongs to downstream phases) and anything the idea already answers.
+2. Rank by impact × uncertainty. Ask up to **5** questions, sequentially (a later question may dissolve after an earlier answer), each via `AskUserQuestion` with 2–4 mutually exclusive options, the recommended option first with a one-line rationale.
+3. Record every answer immediately in `00_intake.md` `## Clarifications` as a dated `Q:` / `A:` pair. Stop early once nothing material remains; list any un-asked material items under `## Deferred` in the intake.
+4. If the idea is so vague that even the questions are guesses, still ask the best 5 — never refuse; the writer will log assumptions for whatever remains.
+5. **No interactive user (headless run):** skip the interview entirely; every material ambiguity becomes an `[unconfirmed]` assumption the writer logs. Never hang waiting for input.
+
+### Phase 2 — Dispatch the writer
+
+Invoke the **Task** tool, `subagent_type: wf:charter-writer`, passing (fill the placeholders; paths absolute, forward slashes):
+
+> Charter folder: `<abs-folder>`. Mode: `<initial | revision>`. For revision mode, apply these findings and user answers: `<the routed findings + any new clarification answers, verbatim>`. Return only the final block your role contract defines.
+
+`CHARTER-WRITER — Complete` → confirm `01_charter.md` exists, note the `Scope changed:` flag, continue. Anything else → halt with `CHARTER — Blocked` and the subagent's error.
+
+### Phase 3 — Dispatch the decomposer
+
+Same shape — invoke the **Task** tool, `subagent_type: wf:charter-decomposer`:
+
+> Charter folder: `<abs-folder>`. Mode: `<initial | revision>`. For revision mode, apply these findings: `<the routed findings, verbatim>`. Return only the final block your role contract defines.
+
+`DECOMPOSER — Complete` → confirm `02_subtasks.md` exists. If its `Flags:` line names a product choice, raise it via `AskUserQuestion` now (Phase 5 rule 1 shape), fold the answer into the intake, and re-dispatch the decomposer with it before any review; carry an overscoped flag forward to the final block's `Flags:` line. Then continue. Anything else → halt as above.
+
+### Phase 4 — Dispatch the reviewer
+
+Invoke the **Task** tool, `subagent_type: wf:charter-reviewer`:
+
+> Charter folder: `<abs-folder>`. Round: `<N>`. Return only the final block your role contract defines.
+
+Before the first review of a run, set the charter's `**Status:** In review` (a permitted host edit). Append the returned block verbatim to `03_review-log.md` under a `## Round <N> — <date>` heading with an `**Audited by:**` line taken from the block's `Model:` field (create the file on the first review with the header `Reviews: <N> · Revisions used: <M> of 3`). `Reviews:` increments on every review; `Revisions used:` counts only revision dispatches (Phase 5).
+
+### Phase 5 — Route and converge (host logic, deterministic)
+
+Apply these rules to the reviewer's findings, in order:
+
+1. **Questions first.** Any `route: user` finding or `Questions for user` entry → ask now via `AskUserQuestion` (one at a time, options included) and append answers to `00_intake.md` `## Clarifications`. Asking is free, but integration is not optional: if an answer changes the charter or the split, dispatch the writer (revision) with the answers — and the decomposer after it if `Scope changed: yes` or the answer reshapes the split — then re-review; that integration pass counts as a revision. Evaluate rules 2–4 only when no unintegrated answers remain. **Headless run:** any `route: user` finding ends the run at `CHARTER — Needs input` instead of a prompt.
+2. **Clean.** Zero findings → mark `**Status:** Converged` in the charter and go to Phase 6.
+3. **Warnings only** (no CRITICAL or HIGH after user answers are folded in) → present the MEDIUM/LOW findings to the user via `AskUserQuestion`: *accept as-is* → record their fingerprints under `## Accepted warnings` in the review log, mark `Converged` (final status `Converged with warnings`), go to Phase 6; *spend a round fixing them* → treat as blocking below. LOW findings never force a round on their own. (Headless: accept warnings as-is by default and record them, so the run still converges.)
+4. **Blocking findings** (CRITICAL/HIGH routed to `charter-writer` or `decomposer`):
+   - **No-progress guard:** fingerprint each blocking finding as `route|check|artifact-section`. If the blocking set is identical to the previous round's, stop with `CHARTER — Needs input` and show both rounds — more loops won't fix a disagreement.
+   - **Round cap:** if `Revisions used` is already 3, stop with `CHARTER — Blocked` (max rounds), listing the residual findings. Never claim convergence because retries ran out.
+   - Otherwise spend a revision (increment `Revisions used`): if any blocking finding routes to `charter-writer`, dispatch the writer (Phase 2, revision) with those findings; if the writer reports `Scope changed: yes`, always re-dispatch the decomposer (Phase 3, revision) afterwards — a changed charter invalidates the decomposition. If findings route only to `decomposer`, dispatch it alone. Then re-review the **full artifact set** (Phase 4) — consistency is a cross-artifact property; never re-review only the patched part.
+
+### Phase 6 — Publish (at convergence only)
+
+**Provider detection.** Attempt to resolve a `tracker` provider per the direct-provider-resolution procedure documented in the contract ops doc `invocation-runtime.ops.md` (the `tracker` surface). **This release ships only the local-only arm** — regardless of whether a tracker provider resolves, take the **LOCAL-ONLY** path below. (A future sub-task adds the provider-present publish arm; until then a resolved provider still takes the local arm, and no capability term surfaces.)
+
+**LOCAL-ONLY:**
+
+1. For each sub-task in dependency order: mint a `T<NNN>` id (honor a `NEXT_TASK_ID: <id>` present in conversation context first; otherwise scan `{task-root}` for `T*__*/`, `*-T*__*/`, and bare `T<NNN>/` including `_archive/`, highest + 1 — the algorithm `/wf:spec` and `/wf:plan` use, so ids never collide with theirs). Create `{task-root}/<T-id>__<sub-slug>/`, and seed `01_spec.md` in it from the SUB brief (this is the file the downstream planner reads): brief fields map to the pipeline spec shape (Objective ← problem slice + desired outcome; Success Criteria ← acceptance scenarios; Scope ← in/out; Constraints; User Journeys ← actor + scenarios), with metadata lines `**Type:** feat|fix`, `**Complexity:** <S|M|L>`, `**Tracker:** —` (unpublished), and `**Seeded by:** /wf:charter <charter-id> (<model-id>)`.
+2. Record the `SUB-n → <T-id>__<sub-slug>` mapping in `02_subtasks.md` `## Published ids` (the opaque id is the full folder basename). Set the charter's `**Status:** Published`.
+3. Hand-off is `Next: /wf:plan <first-sub-task-id>` — the planner resumes a pre-seeded local spec (`01_spec.md`), reusing the folder basename as the opaque id verbatim.
+
+### Phase 7 — Finalize
+
+1. **Charter INDEX.** Append the charter's row to `{task-root}/INDEX.md` (create the file with the header `| Status | ID | Type | Title | Complexity | Resolution | Folder |` if missing; skip if a row for this id exists): `| [x] | <charter-id> | <feat|fix> | <title> | <M if ≤3 sub-tasks, else L> | Charter — published (<n> sub-tasks) | <folder>/ |`. The row is **checked**: a charter's own work ends at publish, and an unchecked row with no plan folder would jam a downstream unchecked-row scan. Type: `fix` if the title/idea carries fix/bug/broken/error keywords, else `feat`. **Also append one unchecked row per seeded sub-task** (local-only mode, per accepted charter warning F4.1): `| [ ] | <T-id> | <type> | <sub title> | <complexity> | — | <sub-folder>/ |`.
+2. **Per-folder index.** Call `/wf:index <charter-folder-abs> charter "<title>"` for the charter, and `/wf:index <sub-folder-abs> spec "<sub title>"` for each seeded sub-task (their seeded `01_spec.md`), so each folder's `index.md` stays current.
+3. Emit the final block.
+
+## Edge Cases
+
+- **`_local/config.md` missing or has no `{task-root}`:** stop; direct the user to `/wf:init`.
+- **Idea still vague after 5 questions:** proceed; the writer logs assumptions, the reviewer's assumption-hygiene check routes material ones back to the user. Never refuse the input.
+- **Role subagent errors, returns an unexpected shape, or its artifact is absent afterwards:** halt with `CHARTER — Blocked` and the evidence. Do not redo its work inline.
+- **Reviewer round produces the same blocking set twice:** `CHARTER — Needs input` (no-progress guard) — the disagreement needs a human.
+- **Rounds exhausted with blocking findings:** `CHARTER — Blocked`, residual findings listed, artifacts preserved. Not a success.
+- **Charter folder already exists for this id:** resume per the State model; never start over silently.
+- **More than ~10 sub-tasks in the final decomposition:** the decomposer flags it; surface the flag in the final block — the feature may really be several charters.
+- **User declines to answer an escalated question:** record it under `## Deferred` in `00_intake.md` (host-owned); if it was blocking, end `CHARTER — Needs input`.
+- **No interactive user (headless run):** skip interview questions and mid-loop prompts entirely; every material ambiguity becomes an `[unconfirmed]` assumption in the intake, and any `route: user` finding ends the run at `CHARTER — Needs input` instead of a prompt — never hang.
+
+## Final Output
+
+End every pass with this block as the very last output — nothing after it:
+
+```
+CHARTER — <Converged | Converged with warnings | Needs input | Blocked>
+
+Charter: <charter-id> — <title>
+Folder: <abs path to charter folder>
+Rounds: <N> review round(s)
+Sub-tasks: <n> — <ids in dependency order, or SUB-n ids if unpublished>
+Tracker: local-only
+Warnings: <accepted warning count, or —>
+Flags: <decomposer flags, e.g. "likely overscoped: N sub-tasks", or —>
+
+Next: <exactly one of>
+  /wf:plan <first-sub-task-id>       (converged — hand the first sub-task to the planner)
+  /wf:charter <charter-id>           (needs input answered, or resume)
+  none — blocked: <one-line reason>
+```
