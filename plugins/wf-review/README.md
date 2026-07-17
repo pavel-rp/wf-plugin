@@ -11,10 +11,25 @@ command strings of its own.
 
 | Item | What it is |
 |---|---|
-| `capabilities/pr-review/manifest.md` | the `pr-review` capability manifest — `kind: feature`, no phase fragment yet, documents the two skills and the delivery operations they consume |
+| `capabilities/pr-review/manifest.md` | the `pr-review` capability manifest — `kind: feature`, documents the two skills, the delivery operations they consume, and the one `slot` fill it contributes |
+| `capabilities/pr-review/fragments/ship-review.md` | the **`ship.review` pre-merge review gate** — the slot fill `/wf:ship` composes between green checks and merge (WF-331, implementing WF-313's five hardening requirements); fires only when this capability is registered |
 | `/wf-review:address-pr` | reads a PR's review comments + CI-check failures, **verifies each claim against the actual code**, and addresses only the valid ones on the PR branch, then commits and pushes so a re-review sees the change |
 | `/wf-review:review-pr` | reviews a PR for correctness/security/design and posts **verified** findings (a PR-level summary plus file-level, `file:line`-anchored findings) — every finding confirmed against real code before it is posted |
 | `/wf-review:init` | one-command self-registration — records this pack's install root and registers the `pr-review` capability, following the sibling packs' self-registering `/init` onboarding pattern |
+
+## The `ship.review` gate (slot contribution)
+
+Beyond its two user-invoked skills, `pr-review` contributes one **`slot` fill** to `/wf:ship`'s
+declared `ship.review` composition point (`replace` policy). When the capability is registered,
+`/wf:ship` runs the gate between green checks and the merge on every run; with it unregistered,
+`/wf:ship` shows no review term at all (CLAUDE.md §2). The gate is **conservative by
+construction** — it performs an API read-back at HEAD_SHA (`review-threads-read`), treats a poll
+timeout or an unperformed read-back as **unknown** (blocks, never "clean"), surfaces a
+zero-files-reviewed review as a distinct **failure** (never "no findings"), and posts a reply on
+**every** finding thread before merge, recording each resolution as `fixed in code` or `thread
+answered` distinguishably. It mutates no source and never merges — a confirmed unaddressed finding
+blocks and routes to `/wf-review:address-pr`. Requirement mapping:
+`capabilities/pr-review/references/ship-review.md`.
 
 ## The discipline both skills share
 
@@ -40,9 +55,9 @@ lives in the delivery provider's fragment, never in a skill body.
 Install the pack from the marketplace — that alone is enough for `address-pr` and `review-pr`
 to run; they compose natively, with no phase-firing gate. **Registration is still required**,
 though: run `/wf-review:init` once after `/wf:init` to register the `pr-review` capability into
-the `## Capabilities` registry. Registration is what makes `pr-review` resolvable ahead of its
-first contribution fragment (the forthcoming `ship.review` gate) — without it, that fragment
-could never fire once added. `/wf-review:init` follows the established pack-init pattern
+the `## Capabilities` registry. Registration is what makes the `ship.review` gate resolve and
+fire in `/wf:ship` — without it, the fragment stays inert and `/wf:ship` runs with no review
+step. `/wf-review:init` follows the established pack-init pattern
 (`wf-git`/`wf-audit`): it calls core's `inspect_pack`/`register_pack` resolver tools with the
 stable plugin id `wf-review` — no hand-edited `_local/config.md`, no `${CLAUDE_PLUGIN_ROOT}`
 probing. Idempotent — safe to re-run any time.
