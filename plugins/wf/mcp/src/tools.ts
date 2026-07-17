@@ -104,6 +104,18 @@ const pluginIdInput = fromJsonSchema({
   additionalProperties: false,
 });
 
+const skillInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    skill: {
+      type: "string",
+      description: "Slotted skill slug whose declared settings keys to resolve (lowercase, hyphenated).",
+    },
+  },
+  required: ["skill"],
+  additionalProperties: false,
+});
+
 const contentInput = fromJsonSchema({
   type: "object",
   properties: {
@@ -221,6 +233,17 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     },
     async (args: { capability: string }) =>
       guard(() => service.resolveProfile(args.capability)),
+  );
+
+  server.registerTool(
+    "resolve_settings",
+    {
+      title: "resolve settings",
+      description:
+        "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default — the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
+      inputSchema: skillInput,
+    },
+    async (args: { skill: string }) => guard(() => service.resolveSettings(args.skill)),
   );
 
   server.registerTool(
