@@ -20095,6 +20095,7 @@ var CONTENT_REF_CLASSES = [
   "references-template",
   "profile-template"
 ];
+var ALL_CONTENT_CLASSES = [...CONTENT_REF_CLASSES, "slot"];
 var CORE_PLUGIN_ALIASES = /* @__PURE__ */ new Set(["", "wf", "core"]);
 function isSafeRelPath(p) {
   if (p.length === 0) return false;
@@ -20134,7 +20135,7 @@ function resolveContentRef(ref, ctx) {
   if (!CONTENT_REF_CLASSES.includes(rawClass)) {
     return refused(
       rawClass || "(missing)",
-      `unknown content class \`${rawClass || "(missing)"}\`; served classes are ${CONTENT_REF_CLASSES.join(", ")}. Skill bodies and CI-only fixtures are not served.`
+      `unknown content class \`${rawClass || "(missing)"}\`; served classes are ${ALL_CONTENT_CLASSES.join(", ")}. Skill bodies and CI-only fixtures are not served.`
     );
   }
   const refClass = rawClass;
@@ -20247,6 +20248,145 @@ function resolveReferencesTemplate(ref, ctx) {
     root = toAbsolute(workspaceRoot, rootRow.resolvedRoot);
   }
   return { kind: "path", refClass: cls, path: joinSlash(root, "skills", ref.skill, "references", ref.ref) };
+}
+
+// src/resolver/slot.ts
+var OVERRIDE_DIR = "_local/slots";
+var OVERRIDE_TIER_RANK = 30;
+var PACK_TIER_RANK = 10;
+var APPEND_SEPARATOR = "\n\n";
+function isSegment(s) {
+  return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
+}
+function isSafeRelPath2(p) {
+  if (p.length === 0) return false;
+  const n = normalizeSlashes(p);
+  if (n.includes("\\")) return false;
+  if (n.startsWith("/") || isAbsoluteRoot(n)) return false;
+  return !n.split("/").some((seg) => seg === "." || seg === ".." || seg === "");
+}
+function toAbsolute2(workspaceRoot, snapshotPath2) {
+  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
+}
+function parseSlotScope(scope) {
+  if (!scope) return null;
+  const parts = scope.trim().split(/\s+/);
+  if (parts.length !== 2) return null;
+  const [id, policyRaw] = parts;
+  const segs = id.split(".");
+  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
+  if (policyRaw !== "replace" && policyRaw !== "append") return null;
+  return { skillPoint: id, policy: policyRaw };
+}
+function parseInlineDispatch(dispatch) {
+  const m = /^inline:\s*(.+)$/i.exec(dispatch.trim());
+  if (!m) return null;
+  const rel = m[1].trim().replace(/^`/, "").replace(/`$/, "").trim();
+  return rel.length > 0 ? rel : null;
+}
+function findSlotFragments(snapshot, skillPoint) {
+  const out = [];
+  for (const cap of snapshot.capabilities) {
+    for (const f of cap.fragments) {
+      if (f.contributionKind !== "slot") continue;
+      const parsed = parseSlotScope(f.scope);
+      if (!parsed || parsed.skillPoint !== skillPoint) continue;
+      out.push({
+        capability: cap.name,
+        validity: cap.validity,
+        resolvedPath: cap.resolvedPath,
+        dispatchRel: parseInlineDispatch(f.dispatch),
+        policy: parsed.policy
+      });
+    }
+  }
+  return out;
+}
+var PACK_CONTRIBUTION_TIER = {
+  name: "pack-contribution",
+  rank: PACK_TIER_RANK,
+  gather(ctx) {
+    return findSlotFragments(ctx.snapshot, ctx.skillPoint).filter((m) => m.validity === "ok" && m.resolvedPath && m.dispatchRel).map((m) => ({
+      tier: "pack-contribution",
+      rank: PACK_TIER_RANK,
+      source: m.capability,
+      path: joinSlash(toAbsolute2(ctx.workspaceRoot, m.resolvedPath), m.dispatchRel),
+      optional: false
+    }));
+  }
+};
+var LOCAL_OVERRIDE_TIER = {
+  name: "local-override",
+  rank: OVERRIDE_TIER_RANK,
+  gather(ctx) {
+    return [
+      {
+        tier: "local-override",
+        rank: OVERRIDE_TIER_RANK,
+        source: "local-override",
+        path: joinSlash(ctx.workspaceRoot, OVERRIDE_DIR, `${ctx.skillPoint}.md`),
+        optional: true
+      }
+    ];
+  }
+};
+var DEFAULT_TIERS = [PACK_CONTRIBUTION_TIER, LOCAL_OVERRIDE_TIER];
+function planSlot(ref, snapshot, workspaceRoot, tiers = DEFAULT_TIERS) {
+  const skill = ref.skill?.trim();
+  const point = ref.point?.trim();
+  if (!isSegment(skill)) {
+    return { kind: "refused", reason: "a `slot` ref requires a `skill` segment (lowercase, hyphenated)." };
+  }
+  if (!isSegment(point)) {
+    return { kind: "refused", reason: "a `slot` ref requires a `point` segment (lowercase, hyphenated)." };
+  }
+  const skillPoint = `${skill}.${point}`;
+  const matches = findSlotFragments(snapshot, skillPoint);
+  for (const m of matches) {
+    if (!m.dispatchRel) {
+      return {
+        kind: "unresolved",
+        category: "registry-invalid",
+        message: `capability \`${m.capability}\` contributes to slot \`${skillPoint}\` with a non-inline dispatch \u2014 a slot body must use \`inline: <rel-path>\` to be composed.`
+      };
+    }
+    if (!isSafeRelPath2(m.dispatchRel)) {
+      return {
+        kind: "refused",
+        reason: `capability \`${m.capability}\` slot \`${skillPoint}\` dispatch is not a safe relative path.`
+      };
+    }
+  }
+  let policy = "replace";
+  if (matches.length > 0) {
+    const policies = new Set(matches.map((m) => m.policy));
+    if (policies.size > 1) {
+      return {
+        kind: "unresolved",
+        category: "registry-invalid",
+        message: `slot \`${skillPoint}\` has contributions declaring conflicting merge policies \u2014 a slot's policy must be consistent across contributors.`
+      };
+    }
+    policy = matches[0].policy;
+    if (policy === "replace" && matches.length > 1) {
+      return {
+        kind: "unresolved",
+        category: "registry-invalid",
+        message: `slot \`${skillPoint}\` is claimed \`replace\` by ${matches.length} capabilities (${matches.map((m) => m.capability).join(", ")}) \u2014 a replace slot has a single owner.`
+      };
+    }
+  }
+  const ctx = { skill, point, skillPoint, snapshot, workspaceRoot };
+  const ordered = [...tiers].sort((a, b) => a.rank - b.rank);
+  const contributions = ordered.flatMap((t) => t.gather(ctx));
+  return { kind: "compose", skillPoint, policy, contributions };
+}
+function composeSlotBody(policy, present) {
+  if (present.length === 0) return "";
+  if (policy === "replace") {
+    return present.reduce((a, b) => b.rank >= a.rank ? b : a).content;
+  }
+  return present.map((p) => p.content).join(APPEND_SEPARATOR);
 }
 
 // src/resolver/registry-edit.ts
@@ -20508,6 +20648,9 @@ var ResolverService = class {
         message: `${failure.message} (failed input: ${failure.failedInput})`
       };
     }
+    if (typeof ref.class === "string" && ref.class.trim() === "slot") {
+      return this.resolveSlot(ref, snapshot);
+    }
     const plan = resolveContentRef(ref, {
       snapshot,
       workspaceRoot: this.ports.workspaceRoot,
@@ -20543,6 +20686,70 @@ var ResolverService = class {
       path: plan.path,
       content,
       bytes: Buffer.byteLength(content, "utf8")
+    };
+  }
+  // --- slot composition (WF-327): linearize + serve ONE composed body ------
+  /** Resolve a `slot` ref to its single composed body. `planSlot` (pure) reads
+   *  the body-free snapshot and yields the ordered candidate list under the
+   *  precedence tier chain; this method reads each candidate via the server's own
+   *  `fs` port and composes per the slot's merge policy. A present personal
+   *  override always outranks a pack contribution; a `replace` slot serves the
+   *  single highest-precedence body, an `append` slot the concatenation (registry
+   *  order, override last). Zero contributions AND no override → a typed
+   *  `unfilled` outcome directing the caller to the inline default; a contributing
+   *  capability that dangles → `unresolved` (registry-invalid); a declared pack
+   *  body missing on disk → `unresolved` (ref-not-found). Never a wrong-path body,
+   *  never a raw-read fall-through. */
+  resolveSlot(ref, snapshot) {
+    const plan = planSlot(ref, snapshot, this.ports.workspaceRoot);
+    if (plan.kind === "refused") {
+      return { status: "refused", refClass: "slot", reason: plan.reason };
+    }
+    if (plan.kind === "unresolved") {
+      return {
+        status: "unresolved",
+        refClass: "slot",
+        category: plan.category,
+        reaction: "continue",
+        recovery: recoveryFor(plan.category),
+        message: plan.message
+      };
+    }
+    const present = [];
+    for (const c of plan.contributions) {
+      const content2 = this.ports.readFile(c.path);
+      if (content2 === null) {
+        if (c.optional) continue;
+        return {
+          status: "unresolved",
+          refClass: "slot",
+          category: "ref-not-found",
+          reaction: "continue",
+          recovery: recoveryFor("ref-not-found"),
+          message: `slot \`${plan.skillPoint}\` contribution from \`${c.source}\` resolved to \`${c.path}\` but no file is present there.`
+        };
+      }
+      present.push({ tier: c.tier, rank: c.rank, source: c.source, path: c.path, content: content2 });
+    }
+    if (present.length === 0) {
+      return {
+        status: "unfilled",
+        refClass: "slot",
+        skillPoint: plan.skillPoint,
+        reaction: "continue",
+        recovery: `Slot \`${plan.skillPoint}\` is unfilled \u2014 no capability contributes to it and no personal \`${OVERRIDE_DIR}/${plan.skillPoint}.md\` override exists. Execute the skill's inline-default region exactly as written (the no-improvisation rule); to fill it, register a contributing capability or add the override file.`,
+        message: `no contribution or override for slot \`${plan.skillPoint}\`.`
+      };
+    }
+    const content = composeSlotBody(plan.policy, present);
+    return {
+      status: "composed",
+      refClass: "slot",
+      skillPoint: plan.skillPoint,
+      policy: plan.policy,
+      content,
+      bytes: Buffer.byteLength(content, "utf8"),
+      parts: present.map((p) => ({ tier: p.tier, source: p.source, path: p.path }))
     };
   }
   // --- R5 -----------------------------------------------------------------
@@ -21457,8 +21664,8 @@ var contentInput = fromJsonSchema2({
   properties: {
     class: {
       type: "string",
-      enum: ["fragment", "contract", "shared", "references-template", "profile-template"],
-      description: "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), or `profile-template` (a pack's `profile.template.json` body). Skill bodies and CI-only fixtures are not served."
+      enum: ["fragment", "contract", "shared", "references-template", "profile-template", "slot"],
+      description: "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), `profile-template` (a pack's `profile.template.json` body), or `slot` (the single composed body for a per-skill composition point \u2014 see `skill`+`point`). Skill bodies and CI-only fixtures are not served."
     },
     capability: {
       type: "string",
@@ -21470,11 +21677,15 @@ var contentInput = fromJsonSchema2({
     },
     skill: {
       type: "string",
-      description: "Skill slug \u2014 required for `references-template`."
+      description: "Skill slug \u2014 required for `references-template`; the `<skill>` segment for `slot`."
+    },
+    point: {
+      type: "string",
+      description: "The `<point>` segment for a `slot` ref \u2014 the composition point inside the named skill (the pair forms the `<skill>.<point>` id, e.g. skill `ship` + point `review`)."
     },
     ref: {
       type: "string",
-      description: "The relative doc ref: within the capability folder, subfolder included \u2014 e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template`."
+      description: "The relative doc ref: within the capability folder, subfolder included \u2014 e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template` / `slot`."
     }
   },
   required: ["class"],
@@ -21557,7 +21768,7 @@ function registerResolverTools(server, service) {
     "resolve_content",
     {
       title: "resolve content",
-      description: "Resolve + read a bundled-doc BODY for one of five logical content-ref classes (fragment | contract | shared | references-template | profile-template), read by the server's own Node fs. Returns `{status: served, path, content}` on success; on an unresolvable/unrecoverable ref returns `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path \u2014 the metadata queries stay body-free.",
+      description: "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path \u2014 the metadata queries stay body-free.",
       inputSchema: contentInput
     },
     async (args) => guard(() => service.resolveContent(args))

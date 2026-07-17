@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.11.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`)
+**Version:** 2.12.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`; WF-327 — filled-slot composition: `resolve_content` gains a `slot` content class that linearizes every contribution to a `<skill>.<point>` under an **ordered tier chain** (personal `_local/slots/<skill>.<point>.md` override > pack contribution > inline default), serving **exactly one** composed body — `replace` = the single highest-precedence body (inline default superseded), `append` = registry-ordered concatenation with the override last (inline default kept as the first, body-supplied part); a typed `unfilled` outcome directs the caller to the inline default; the chain admits a future C020 tier between local override and pack contribution with no contract change; composition is code in the bundled resolver runtime, so the model never arbitrates between fragments)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -935,6 +935,57 @@ and declaration shape here are exactly what the lint enforces, and its
 `slot-marker-fixtures/` are the reviewable proof it discriminates. **No composed
 `SKILL.md` is ever materialized** — a slot is a marker in the one authored body,
 not a code-generated file.
+
+**Filled-slot composition (WF-327).** WF-326 fixes the *unfilled* behaviour; WF-327
+defines how a *filled* slot is resolved and served. Execution reaching a marker
+obtains the winning body with **one** `resolve_content` call — the `slot` content
+class, keyed by the `<skill>.<point>` id (`skill` + `point` args) — following the
+same metadata → body-fetch → follow dispatch pattern as every other served class.
+The composition is **code in the bundled resolver runtime, not prose the model
+arbitrates**: for any input set the per-slot winner is a pure function of the
+registry + the override files, and the caller is handed **exactly one** body,
+never a set of competing fragments (locked decision 2 — the model never chooses
+between fragments).
+
+- **The precedence is an ordered tier chain, not hardcoded pairwise rules.** The
+  committed tiers, highest precedence first, are: the **personal `_local/` override**
+  > the **pack contribution(s)** > the **inline default** (which lives in the body
+  and is never read by the resolver — `resolve_content` refuses skill-body reads).
+  The chain is authored as a list of ranked tiers so a **future tier (C020's
+  committed tier) inserts strictly between the local override and the pack
+  contribution with no contract change and no change to any existing contribution
+  or override file** — the tier-insertion test proves every pre-existing slot
+  resolves to the same winner after a synthetic intermediate tier is registered.
+- **The personal override** is a gitignored, per-machine file, **one per point at
+  `_local/slots/<skill>.<point>.md`** (`_local/` stays gitignored wholesale, per
+  charter Assumption #1 — nothing override-related is ever committed downstream).
+  Its presence fills the slot at the highest precedence; its absence is simply "no
+  override".
+- **Linearization by merge policy.** A **`replace`** slot serves the **single
+  highest-precedence present** contribution — the override when present, else the
+  lone pack contribution. An **`append`** slot serves **one** composed body:
+  every present contribution concatenated in ascending tier rank — pack
+  contributions in **registry order** first, the local override **last** — joined
+  by exactly one blank line. Either way, exactly one body is served.
+- **The inline default's fate in a filled composition (the bounded spec-phase
+  decision).** For **`replace`**, the inline default is **superseded wholesale** —
+  the served body replaces the marker region. For **`append`**, the inline default
+  is the **first part**: it stays in the authored body and runs **before** the
+  served composition, matching the WF-326 marker rule that "an `append` fill runs
+  after the default". The resolver therefore never needs — and never has — the
+  inline-default text: it serves only the pack/override contributions, and the body
+  supplies the default. This keeps all three invariants: determinism (a pure
+  function of registry + overrides), exactly one served body, and an **unfilled**
+  slot still executing *exactly* the inline default.
+- **Typed outcomes preserve the content surface's degradation discipline.** A
+  filled slot returns `{status: composed, content, policy, parts}`; a slot with no
+  contribution **and** no override returns the typed `{status: unfilled}` (no body,
+  no wrong-path fall-through) directing the caller to run the inline-default region
+  unchanged; a dangling contributor or a declared pack body missing on disk returns
+  `{status: unresolved}` (registry-invalid / ref-not-found) with a `/wf:resolve`
+  recovery; a malformed ref or a non-inline (subagent) slot dispatch returns
+  `{status: unresolved}` / `{status: refused}`. Never a wrong-path body, never a
+  raw-read fall-through.
 
 ---
 
