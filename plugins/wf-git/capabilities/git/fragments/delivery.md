@@ -224,6 +224,32 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   inline review-thread comments are distinct GitHub surfaces; reading both and
   merging them hands the caller the whole review conversation, not half of it.
 
+## review-threads-read (read)
+
+- **Complements `pr-comments-read`, never duplicates it.** `pr-comments-read`
+  returns the whole review conversation as a flat comment list — no per-thread
+  `isResolved` state, no head-commit scoping. `review-threads-read` returns the
+  **structured review threads** (node id, file/line anchor, resolved/unresolved,
+  body) **scoped to `HEAD_SHA`** — the shape a review gate needs to decide whether
+  unresolved findings still stand against the current head.
+- **GraphQL, because REST exposes neither the state nor the id.** A review
+  thread's `isResolved` flag and its node id (the id `review-thread-resolve` and
+  `review-thread-reply` consume) are GraphQL-only; the REST comments endpoint
+  carries neither, so the read must be a GraphQL `reviewThreads` query.
+- **HEAD_SHA scoping drops stale threads (never presents them as current).** Each
+  thread's anchoring comment carries a `commit.oid`; keeping only threads whose
+  oid equals the PR's `headRefOid` guarantees a finding from a superseded commit
+  is never reported as if it were live at the current head. `isOutdated`
+  corroborates but the oid equality is authoritative.
+- **Typed degraded-empty (`<read-performed>`) satisfies the review-gate rule.**
+  The output is typed with `<read-performed>`, true **only** when the PR's threads
+  were actually read at `HEAD_SHA` (even a genuinely empty set at `HEAD_SHA`
+  counts as a performed read). A no-branch / no-PR-context / bare-core empty
+  returns `<read-performed>` = false, so it can **never** be presented as a
+  performed `HEAD_SHA` read-back — the one read on this surface that departs from
+  the plain silent-empty precedent, precisely because it backs a merge-blocking
+  "no unresolved threads" claim.
+
 ## pr-comment-post
 
 - **PR-existence guard before posting (via `pr-detect`).** Posting to a branch
@@ -251,6 +277,24 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   exposed only through the `resolveReviewThread` GraphQL mutation, so the
   operation consumes a GraphQL thread **node id** (not a REST comment id) — the
   caller supplies the already-resolved id.
+
+## review-thread-reply
+
+- **Complements `pr-comment-post`'s `<reply-to>`, never duplicates it.**
+  `pr-comment-post` threads a reply keyed by a REST review-**comment** id, in the
+  general PR-comment flow. `review-thread-reply` posts on **one specific thread**
+  keyed by the **thread node id** — the same identity `review-threads-read`
+  returns and `review-thread-resolve` consumes. A consumer that read threads via
+  `review-threads-read` replies on that same id with **no id-space translation**;
+  `pr-comment-post` stays the path for a PR-level comment or a REST-comment-id
+  reply.
+- **GraphQL `addPullRequestReviewThreadReply`, keyed by the thread node id.** The
+  mutation takes the `pullRequestReviewThreadId` directly, so a reply lands inside
+  the intended review thread rather than as a detached comment — matching the id
+  space of the read and resolve operations.
+- **Body via a `.git/`-internal scratch file.** Same rationale as `commit` /
+  `pr-create` / `pr-comment-post` — a rich, multi-line reply body survives intact
+  and never dirties the worktree.
 
 ## pr-merge
 
@@ -313,6 +357,13 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   something usable" guarantee).
 - **Already-merged PR** — `pr-merge` step 2 (`already-merged` no-op, never a
   double-merge — the detect-first idempotency).
+- **HEAD_SHA-scoped read vs typed degraded-empty** — `review-threads-read` step 4
+  (a thread anchored to a superseded commit is dropped, never presented as
+  current) and steps 1–2 vs 3–4 (`<read-performed>` = false on no-branch /
+  no-PR-context, true on a real read at `<head-sha>` even when the thread set is
+  empty — the typed empty can never masquerade as a performed HEAD_SHA read-back).
+  `gh`-not-authenticated at step 2 names the `gh auth login` remedy, joining the
+  authenticated-read exceptions above.
 
 Two further behaviours are preserved by the guard coverage above rather than as matrix
 rows: **nothing-to-commit** (`commit` step 3, a valid no-op) and the **no-provider

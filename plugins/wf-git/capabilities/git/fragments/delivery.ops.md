@@ -1,6 +1,6 @@
 # git delivery provider — runtime ops
 
-**Version:** 1.6.0 (WF-283 — `branch-create`'s dirty-worktree guard replaced with a stash-based carry across both the `switched` and `created` outcomes, adding a `<carry>` output field; WF-221 — `default-base-query` read operation added so core commit/pr obtain the base branch through the contract instead of hardcoding a trunk name; WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — the branch-changes enumeration read operation bound: `branch-changes-read`)
+**Version:** 1.7.0 (WF-283 — `branch-create`'s dirty-worktree guard replaced with a stash-based carry across both the `switched` and `created` outcomes, adding a `<carry>` output field; WF-221 — `default-base-query` read operation added so core commit/pr obtain the base branch through the contract instead of hardcoding a trunk name; WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — the branch-changes enumeration read operation bound: `branch-changes-read`; WF-324 — two review-thread operations bound: `review-threads-read` (HEAD_SHA-scoped review-thread read via GraphQL, typed with `<read-performed>`) and `review-thread-reply` (per-thread GraphQL reply keyed by the thread node id))
 **Role:** the runtime-read half of the git delivery provider — every input, guard, error path, and outcome mapping a delivery operation follows. Read at every delivery-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, rationale, edge-case matrix — never read at boot):** `delivery.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = delivery`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -10,7 +10,7 @@
 
 **Consumes, never derives:** every operation takes an already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>`; composing those from a tracker work item is the caller's job, not this file's.
 
-**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · default-base-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · pr-comment-post · checks-read · review-thread-resolve · pr-merge · activity-read.
+**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · default-base-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · review-threads-read · pr-comment-post · checks-read · review-thread-resolve · review-thread-reply · pr-merge · activity-read.
 
 ## branch-create
 
@@ -176,6 +176,19 @@
 
 **Output:** the review comments (author, body, and thread/anchor where present), or an empty list.
 
+## review-threads-read (read)
+
+**Inputs:** `<branch>` (optional; defaults to the current branch).
+
+**Procedure:**
+
+1. **Resolve `<branch>` if omitted.** Run `current-branch-query`; its `HEAD` signal → no branch context → `<read-performed>` = false, `<threads>` = empty (no PR to read from — a typed degraded empty, never a HEAD_SHA read-back).
+2. **Resolve the PR number and its head SHA in one pass.** `gh pr view <branch> --json number,headRefOid`. `gh` authentication error → error: "`gh` is not authenticated. Run `gh auth login`." No open PR → `<read-performed>` = true, `<threads>` = empty (a real read against the PR that has no threads). Hold `<head-sha>` = the `headRefOid` value.
+3. **Read the review threads via GraphQL** — REST exposes neither a thread's `isResolved` state nor its node id, so this must be GraphQL: `gh api graphql -F owner=… -F repo=… -F number=<number>` with a query over the PR's `reviewThreads` connection selecting, per thread, `id`, `isResolved`, `isOutdated`, and its `comments(first:1)` node's `path`, `line`, `originalLine`, `body`, `commit{oid}`, and `originalCommit{oid}`. Non-zero → error with `gh`'s reason.
+4. **Scope to `<head-sha>`.** Keep only threads whose anchoring comment `commit.oid` (falling back to `originalCommit.oid` when `commit` is null) equals `<head-sha>` — a thread anchored to a superseded commit is **stale**; drop it, never present it as current. `isOutdated = true` corroborates staleness but the oid equality is the authority. Each surviving thread yields its node `id`, anchor (`path` + `line`, `originalLine` when `line` is null), `isResolved`, and `body`. `<read-performed>` = true.
+
+**Output:** `<read-performed>` (bool — true **only** when the PR's threads were actually read at `<head-sha>`, including a genuinely empty set at `<head-sha>`; false is the bare-core / no-branch / no-PR-context degraded empty, never a performed HEAD_SHA read-back), `<threads>` (each: thread node id, anchor path + line, resolved/unresolved, body), possibly empty.
+
 ## pr-comment-post
 
 **Inputs:** `<body>` (already-composed, required). `<branch>` (optional; defaults to the current branch). `<reply-to>` (optional; a review-thread/comment id to reply within an existing thread).
@@ -214,6 +227,20 @@
    - Non-zero → error with `gh`'s reason (an unknown thread id, or one already resolved).
 
 **Output:** `<state>` = `resolved`.
+
+## review-thread-reply
+
+**Inputs:** `<thread-id>` (already-resolved review-thread **node id** — the same GraphQL id `review-threads-read` returns and `review-thread-resolve` consumes, required). `<body>` (already-composed, required).
+
+**Procedure:**
+
+1. **Body file.** Write `<body>` to `.git/WF_THREADREPLY` (inside `.git/`, never tracked).
+2. **Post the reply on the thread.** `gh api graphql -f query='mutation($t:ID!,$b:String!){addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$t,body:$b}){comment{url}}}' -F t=<thread-id> -F b=@.git/WF_THREADREPLY`.
+   - `gh` authentication error → error: "`gh` is not authenticated. Run `gh auth login`."
+   - Non-zero → error with `gh`'s reason (an unknown thread id, or a thread on a closed PR). Remove the scratch file regardless of outcome (best effort).
+3. **Capture** the posted reply's URL from the mutation result (`addPullRequestReviewThreadReply.comment.url`).
+
+**Output:** `<state>` = `posted`, `<url>`.
 
 ## pr-merge
 
