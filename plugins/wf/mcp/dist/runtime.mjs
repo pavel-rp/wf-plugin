@@ -20341,16 +20341,22 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
 
 // src/service.ts
 var KNOWN_SURFACES = /* @__PURE__ */ new Set([
+  "engine",
+  "host",
   "delivery",
   "tracker",
   "qa-execution:engine",
   "qa-execution:host"
 ]);
+function bareScope(surface) {
+  return surface.startsWith("qa-execution:") ? surface.slice("qa-execution:".length) : surface;
+}
 function degradationFor(surface, state) {
   if (state === "ok") return "ok";
-  if (surface === "delivery") return "delivery-block";
-  if (surface === "tracker") return "tracker-warn";
-  if (surface.startsWith("qa-execution")) return "engine-block";
+  const scope = bareScope(surface);
+  if (scope === "delivery") return "delivery-block";
+  if (scope === "tracker") return "tracker-warn";
+  if (scope === "engine" || scope === "host") return "engine-block";
   return "bare-core";
 }
 var ResolverService = class {
@@ -20444,8 +20450,13 @@ var ResolverService = class {
   }
   // --- R3 -----------------------------------------------------------------
   resolveProvider(surface) {
+    if (!KNOWN_SURFACES.has(surface)) {
+      throw new Error(
+        `unknown surface \`${surface}\`; expected one of: ${[...KNOWN_SURFACES].join(", ")}.`
+      );
+    }
     const s = this.ensure();
-    const owned = s.providerOwnership.find((o) => o.surface === surface);
+    const owned = s.providerOwnership.find((o) => o.surface === bareScope(surface));
     if (!owned) {
       return {
         surface,
@@ -20453,7 +20464,7 @@ var ResolverService = class {
         fragmentPath: null,
         state: "unconfigured",
         degradation: degradationFor(surface, "unconfigured"),
-        diagnostics: KNOWN_SURFACES.has(surface) ? `no capability owns the \`${surface}\` surface; degrade per its class.` : `unknown surface \`${surface}\`.`
+        diagnostics: `no capability owns the \`${surface}\` surface; degrade per its class.`
       };
     }
     const pack = owned.state !== "ok" ? s.packs.find((p) => p.registeredCapabilities.includes(owned.owner)) : void 0;
@@ -21396,7 +21407,7 @@ var surfaceInput = fromJsonSchema2({
   properties: {
     surface: {
       type: "string",
-      description: "Provider surface to resolve: `delivery`, `tracker`, `qa-execution:engine`, or `qa-execution:host`."
+      description: 'Provider surface to resolve: `delivery`, `tracker`, `engine`, `host`, or the composite `qa-execution:engine` / `qa-execution:host` (equivalent to the bare `engine` / `host` forms \u2014 both resolve to the same ownership record). An unrecognized token is an invalid argument and returns an MCP error result, distinct from a genuine `state: "unconfigured"` response.'
     }
   },
   required: ["surface"],
