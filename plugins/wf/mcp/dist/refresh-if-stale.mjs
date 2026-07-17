@@ -1,3 +1,7 @@
+// src/refresh.ts
+import { dirname as dirname2, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 1;
 var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" };
@@ -930,6 +934,13 @@ function resolveAndPersist(opts) {
 function workspaceRoot() {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
 }
+function corePluginRoot() {
+  if (process.env.WF_CORE_PLUGIN_ROOT) {
+    return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
+  }
+  const here = fileURLToPath(import.meta.url);
+  return normalizeSlashes(resolve(dirname2(here), "..", ".."));
+}
 function log(line) {
   process.stdout.write(`wf-resolver refresh-if-stale: ${line}
 `);
@@ -950,7 +961,7 @@ function main() {
     };
   }
   if (cached === null) {
-    resolveAndPersist({ workspaceRoot: root });
+    resolveAndPersist({ workspaceRoot: root, corePluginRoot: corePluginRoot() });
     log(`built snapshot (${cacheReason?.message ?? "no cache"}).`);
     return;
   }
@@ -963,7 +974,7 @@ function main() {
     log("snapshot is fresh; no rebuild.");
     return;
   }
-  resolveAndPersist({ workspaceRoot: root });
+  resolveAndPersist({ workspaceRoot: root, corePluginRoot: corePluginRoot() });
   log(`refreshed snapshot; reasons: ${reasons.map((r) => r.code).join(", ")}.`);
 }
 try {
