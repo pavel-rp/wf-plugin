@@ -10,7 +10,7 @@ Takes a single task all the way to a **merged pull request** without a human pau
 
 `ship` is a **pure orchestrator**: it writes no artifact and mutates no source of its own. Every source edit and every artifact belongs to the phase skills it drives; the merge, archive, and work-item close belong to `/wf:tf`. `ship` only resolves, decides, and dispatches — reaching merge/check state solely through the abstract **delivery** provider operations, never knowing or naming which concrete tool implements them.
 
-The **review-address loop is out of scope** for this skill — `ship` drives build → checks → merge and carries a single marked stub at the point where a future review step will attach (Phase 4.5). It never drives a reviewer.
+The **review-address loop is out of scope** for this skill's own behaviour — `ship` drives build → checks → merge and exposes a declared `ship.review` slot at the point where a review step attaches (Phase 4.5). When that slot is unfilled — the default with no review capability registered — the inline default drives no reviewer; `ship` never improvises one.
 
 ---
 
@@ -46,6 +46,7 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 - Read the task folder and its artifacts; obtain config via the `wf-resolver` `resolve_config` query.
 - Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query).
 - Resolve the `delivery` surface once via the `wf-resolver` `resolve_provider("delivery")` query, and invoke its **read** operations — `pr-detect` and `checks-read` — by obtaining each op's body via `resolve_content` (`class: fragment`) and following it in this skill's own context.
+- Resolve the `ship.review` slot (Phase 4.5) via `resolve_content` (`class: slot`, `skill: ship`, `point: review`), and — only on a `composed` outcome — follow the served body as prose in this skill's own context.
 - Invoke the sibling `wf:*` commands this skill drives through the **Skill** tool: `/wf:branch`, `/wf:run` (and each gated `/wf:*` command `/wf:run` names in its handoff), `/wf:pr`, and `/wf:tf`.
 
 **Forbidden:**
@@ -53,7 +54,7 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 - Write or edit **any** file — artifact, source, or config. `ship` is a dispatcher; every write belongs to the phase skills it drives or to `/wf:tf`.
 - Finalize a merge while any delivery check is failing or has not settled — **never merge a red PR**. Merge is performed only by `/wf:tf`, and only after Phase 4 confirms the checks are green.
 - Run any destructive version-control operation, or invoke `pr-merge` directly — the single merge write is `/wf:tf`'s, through the delivery provider (detect-first, never a double-merge).
-- Drive any reviewer or review-address loop, or call any review skill — out of scope for this skill (Phase 4.5 carries only a marked stub).
+- Drive any reviewer or review-address loop, or call any review skill, on `ship`'s own initiative — the review step attaches only through the declared `ship.review` slot (Phase 4.5); when the slot is unfilled, no reviewer is driven and the marker's inline default is executed exactly, with no improvisation.
 - Name any concrete tracker, delivery, or stack tool or command string anywhere in this skill's behaviour — only the abstract operation names and the `/wf:*` commands above.
 - Write the current model id, any AI-attribution trailer, a "generated with" footer, an emoji, or any promotional tagline into any comment, commit, or output.
 
@@ -104,11 +105,17 @@ Never merge a red or unsettled pull request. Invoke the delivery `checks-read` o
 
 The cap keeps the wait bounded so an unattended run can never hang indefinitely; a genuinely slow pipeline is reported honestly and re-run, never merged early.
 
-## Phase 4.5: Future review attachment point
+## Phase 4.5: Review attachment point (the `ship.review` slot)
 
-<!-- review-slot: future -->
+This is the declared `ship.review` composition point — between green checks and the merge — where a review-address step attaches (declared in `skills/ship/interface.md`, merge policy `replace`). Resolve it lazily with **one** call: `resolve_content` with `class: slot`, `skill: ship`, `point: review`. Act on the typed outcome — never improvise a review step at this marker:
 
-A future skill-level **slots** mechanism will attach the review-address loop at exactly this point — between green checks and the merge — as a slot contribution. That mechanism, and the review-address loop it will carry, are **not designed in this skill** (recorded as a follow-up). `ship` drives build → checks → merge only; it neither addresses review findings nor drives any reviewer.
+- **`{status: unfilled}`** (no slot contribution registered and no personal `_local/slots/ship.review.md` override — the state whenever no review capability is registered) → execute **exactly** the inline-default region below, then proceed to Phase 5. No reviewer is driven and no review finding is addressed — the checks-green state from Phase 4 carries into the merge unchanged.
+- **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content` as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale), then proceed to Phase 5.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not improvise: run the inline-default region below (proceed to Phase 5) and state the resolver's reason. Follow the content surface's degradation discipline — never a wrong-path body, never a raw-read fall-through.
+
+<!-- wf:slot ship.review -->
+No review step runs here. `ship` drives build → checks → merge only: at this point it addresses no review findings and drives no reviewer. Proceed to Phase 5 with the Phase-4 checks-green state unchanged.
+<!-- wf:slot-end ship.review -->
 
 ---
 
