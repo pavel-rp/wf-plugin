@@ -1,9 +1,10 @@
 // src/refresh.ts
+import { readFileSync as readFileSync3 } from "node:fs";
 import { dirname as dirname2, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/resolver/types.ts
-var SNAPSHOT_SCHEMA_VERSION = 2;
+var SNAPSHOT_SCHEMA_VERSION = 3;
 var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
@@ -338,7 +339,12 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   // the snapshot on the next query (recorded by their exact path, never a walk).
   "slot-contribution",
   "slot-override",
-  "settings-override"
+  "settings-override",
+  // WF-334: the composed constitution record joins the re-read set — editing a
+  // project clause (or re-composing capability articles into it) invalidates the
+  // snapshot on the next query, keeping the SessionStart constitution payload
+  // fresh through fingerprint discipline, never an un-fingerprinted raw read.
+  "constitution"
 ]);
 function isAbsolute(p) {
   return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
@@ -587,6 +593,13 @@ function buildSnapshot(inputs, io) {
       "plugin-list",
       "claude plugin list --json",
       normalizePluginList(inputs.pluginListRaw)
+    )
+  );
+  sources.push(
+    fingerprint(
+      "constitution",
+      "_local/constitution.md",
+      io.readFile(joinSlash(workspaceRoot2, "_local/constitution.md"))
     )
   );
   const registry = parseRegistry(inputs.registryContent ?? "");
@@ -1099,6 +1112,41 @@ function resolveAndPersist(opts) {
   return { snapshot, cachePath };
 }
 
+// src/resolver/constitution.ts
+var SESSION_START_EVENT = "SessionStart";
+var CONSTITUTION_RELPATH = "_local/constitution.md";
+function shouldEmitForSource(source) {
+  return source !== "resume";
+}
+function parseSessionSource(stdin) {
+  if (!stdin) return null;
+  try {
+    const obj = JSON.parse(stdin);
+    return typeof obj.source === "string" ? obj.source : null;
+  } catch {
+    return null;
+  }
+}
+function composeConstitutionContext(record) {
+  if (record === null) return null;
+  const trimmed = record.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+function sessionStartPayload(context) {
+  return {
+    hookSpecificOutput: {
+      hookEventName: SESSION_START_EVENT,
+      additionalContext: context
+    }
+  };
+}
+function composeSessionStartStdout(source, record) {
+  if (!shouldEmitForSource(source)) return null;
+  const context = composeConstitutionContext(record);
+  if (context === null) return null;
+  return JSON.stringify(sessionStartPayload(context));
+}
+
 // src/refresh.ts
 function workspaceRoot() {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
@@ -1111,11 +1159,27 @@ function corePluginRoot() {
   return normalizeSlashes(resolve(dirname2(here), "..", ".."));
 }
 function log(line) {
-  process.stdout.write(`wf-resolver refresh-if-stale: ${line}
+  process.stderr.write(`wf-resolver refresh-if-stale: ${line}
 `);
 }
-function main() {
-  const root = workspaceRoot();
+function readStdin() {
+  try {
+    if (process.stdin.isTTY) return null;
+    return readFileSync3(0, "utf8");
+  } catch {
+    return null;
+  }
+}
+function emitConstitution(root) {
+  const source = parseSessionSource(readStdin());
+  const record = fsIO.readFile(joinSlash(root, CONSTITUTION_RELPATH));
+  const stdout = composeSessionStartStdout(source, record);
+  if (stdout !== null) {
+    process.stdout.write(`${stdout}
+`);
+  }
+}
+function refreshIfStale(root) {
   let cached = null;
   let cacheReason = null;
   try {
@@ -1147,7 +1211,9 @@ function main() {
   log(`refreshed snapshot; reasons: ${reasons.map((r) => r.code).join(", ")}.`);
 }
 try {
-  main();
+  const root = workspaceRoot();
+  refreshIfStale(root);
+  emitConstitution(root);
 } catch (err) {
   process.stderr.write(
     `wf-resolver refresh-if-stale: skipped (${err instanceof Error ? err.message : String(err)}).

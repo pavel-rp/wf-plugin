@@ -27,7 +27,7 @@ export const SNAPSHOT_SCHEMA_VERSION = 3;
  *  version is refreshed, so a runtime upgrade never serves a snapshot shaped by
  *  older resolution logic. Bump on any resolution-logic change that should
  *  invalidate previously persisted snapshots. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.0" } as const;
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */
