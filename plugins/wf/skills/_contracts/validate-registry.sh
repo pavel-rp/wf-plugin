@@ -549,17 +549,31 @@ done
 # The 8 SDD phases (contract: "The SDD phases") — `pre-commit` (WF-154) is the
 # operation-time commit-path self-review seam; it reuses the `finding` kind.
 VALID_PHASES=" spec plan tasks implement verify qa-generation qa-execution pre-commit "
-# The 6 contribution kinds (contract: "The contribution taxonomy"). `article` is
+# The 7 contribution kinds (contract: "The contribution taxonomy"). `article` is
 # NOT a contribution kind (WF-239): a constitution clause is declared with the
 # `article: <key> = <value>` manifest KEY (parsed below, cross-checked in CHECK 9),
 # never as a fragments-table row — its home is the constitution, which is not an
 # SDD phase, so a fragment naming `article` as its kind is rejected by CHECK 6.
-VALID_KINDS=" guidance task-list artifact finding scenario provider "
+# `slot` (WF-323) is the seventh kind: a per-skill composition-surface contribution
+# scoped by a `skill.point` token (carried in the scope column — a slot targets a
+# skill point, not an SDD phase, so its phase cell is `—`) and a declared merge
+# policy (`replace` | `append`); its well-formedness is checked in CHECK 6c and its
+# replace-overlap in CHECK 5.
+VALID_KINDS=" guidance task-list artifact finding scenario provider slot "
+# The 2 slot merge policies (WF-323): `replace` (single-owner, partition-like — two
+# `replace` claims on one skill.point conflict) and `append` (list-like, aggregate —
+# multiple contributors to one skill.point compose, never conflict).
+VALID_SLOT_POLICIES=" replace append "
 
 # Ownership-scope accounting for the partitioned kinds (CHECK 5).
 #   provider keyed by its surface token; artifact keyed by its source->target pair.
 prov_surface=()   # "<capname>|<surface>"
 art_pair=()       # "<capname>|<pair>"
+# Slot `replace`-policy ownership accounting (WF-323, CHECK 5): a slot skill.point
+# claimed with `replace` is single-owner, so two DIFFERENT capabilities each
+# `replace`-claiming the same skill.point conflict; `append` claims are never
+# accumulated here (they compose).
+slot_replace=()   # "<capname>|<skill.point>"
 
 # requires/conflicts accounting (CHECK 7/8).
 req_pairs=()      # "<capname>|<required-name>"
@@ -640,10 +654,19 @@ while [ "$ci" -lt "${#checkable_idx[@]}" ]; do
     [ -z "$f_phase" ] && continue
 
     # --- CHECK 6: valid phase + contribution-kind tokens -----------------
-    case "$VALID_PHASES" in
-      *" $f_phase "*) ;;
-      *) err "capability \`$cap\` fragment names an unknown phase \`$f_phase\` (row: \`$f_phase | $f_kind | ...\`) — not one of the contract's SDD phases." ;;
-    esac
+    # A `slot` (WF-323) targets a skill point (its scope), NOT an SDD phase, so its
+    # phase cell must be `—`; every other kind must name one of the SDD phases.
+    if [ "$f_kind" = "slot" ]; then
+      case "$f_phase" in
+        "—" | "-") ;;
+        *) err "capability \`$cap\` slot fragment names phase \`$f_phase\` (row: \`$f_phase | $f_kind | ...\`) — a slot targets a skill point (its scope), not an SDD phase; put \`—\` in the phase column." ;;
+      esac
+    else
+      case "$VALID_PHASES" in
+        *" $f_phase "*) ;;
+        *) err "capability \`$cap\` fragment names an unknown phase \`$f_phase\` (row: \`$f_phase | $f_kind | ...\`) — not one of the contract's SDD phases." ;;
+      esac
+    fi
     case "$VALID_KINDS" in
       *" $f_kind "*) ;;
       *) err "capability \`$cap\` fragment names an unknown contribution-kind \`$f_kind\` (row: \`$f_phase | $f_kind | ...\`) — not one of the contract's taxonomy kinds." ;;
@@ -676,6 +699,31 @@ while [ "$ci" -lt "${#checkable_idx[@]}" ]; do
       prov_surface+=("$cap|$norm_scope")
     elif [ "$f_kind" = "artifact" ] && [ -n "$norm_scope" ]; then
       art_pair+=("$cap|$norm_scope")
+    elif [ "$f_kind" = "slot" ]; then
+      # --- CHECK 6c: slot scope grammar + declared merge policy (WF-323) --
+      # A slot's scope cell is a compound `<skill>.<point> <merge-policy>` token:
+      # the `skill.point` names the composition point (the ownership identity), the
+      # merge policy declares how multiple contributions to it combine. BOTH are
+      # required — a `—`/blank scope, a malformed skill.point, or an absent/unknown
+      # merge policy is rejected, naming the offending capability and row.
+      if [ -z "$norm_scope" ]; then
+        err "capability \`$cap\` slot fragment at \`$f_phase | $f_kind\` has no scope — a slot row must carry a \`<skill>.<point> <merge-policy>\` scope (e.g. \`ship.review replace\`)."
+      else
+        slot_point="${norm_scope%% *}"            # first whitespace-delimited token
+        slot_policy="$(trim "${norm_scope#* }")"  # the remainder after the first space
+        if ! printf '%s' "$slot_point" | grep -qE '^[a-z0-9-]+\.[a-z0-9-]+$'; then
+          err "capability \`$cap\` slot fragment has a malformed scope \`$f_scope\` — the skill.point must be \`<skill>.<point>\`, each segment lowercase letters/digits/hyphens joined by a single dot (e.g. \`ship.review\`)."
+        elif [ "$slot_policy" = "$slot_point" ]; then
+          err "capability \`$cap\` slot fragment scope \`$f_scope\` declares no merge policy — a slot row must state \`replace\` or \`append\` after the skill.point (e.g. \`$slot_point replace\`)."
+        else
+          case "$VALID_SLOT_POLICIES" in
+            *" $slot_policy "*) ;;
+            *) err "capability \`$cap\` slot fragment scope \`$f_scope\` names an unknown merge policy \`$slot_policy\` — expected \`replace\` or \`append\`." ;;
+          esac
+          # A `replace` claim is single-owner — accumulate it for the CHECK 5 overlap.
+          [ "$slot_policy" = "replace" ] && slot_replace+=("$cap|$slot_point")
+        fi
+      fi
     fi
   done < "$mf"
 
@@ -707,6 +755,9 @@ check_scope_overlap() {
 }
 [ "${#prov_surface[@]}" -gt 0 ] && check_scope_overlap "provider surface" "${prov_surface[@]}"
 [ "${#art_pair[@]}" -gt 0 ] && check_scope_overlap "artifact source→target" "${art_pair[@]}"
+# WF-323: two DIFFERENT capabilities each `replace`-claiming the same slot
+# skill.point conflict (append claims compose and are never accumulated above).
+[ "${#slot_replace[@]}" -gt 0 ] && check_scope_overlap "slot skill.point (replace)" "${slot_replace[@]}"
 
 # Helper: is a name an active capability in the registry?
 is_active() {
