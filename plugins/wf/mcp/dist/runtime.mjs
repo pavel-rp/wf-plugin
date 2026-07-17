@@ -20004,7 +20004,7 @@ function parsePluginList(raw) {
 }
 
 // src/resolver/types.ts
-var SNAPSHOT_SCHEMA_VERSION = 2;
+var SNAPSHOT_SCHEMA_VERSION = 3;
 var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
@@ -20020,7 +20020,12 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   // the snapshot on the next query (recorded by their exact path, never a walk).
   "slot-contribution",
   "slot-override",
-  "settings-override"
+  "settings-override",
+  // WF-334: the composed constitution record joins the re-read set — editing a
+  // project clause (or re-composing capability articles into it) invalidates the
+  // snapshot on the next query, keeping the SessionStart constitution payload
+  // fresh through fingerprint discipline, never an un-fingerprinted raw read.
+  "constitution"
 ]);
 function isAbsolute(p) {
   return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
@@ -21409,6 +21414,13 @@ function buildSnapshot(inputs, io) {
       "plugin-list",
       "claude plugin list --json",
       normalizePluginList(inputs.pluginListRaw)
+    )
+  );
+  sources.push(
+    fingerprint(
+      "constitution",
+      "_local/constitution.md",
+      io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"))
     )
   );
   const registry2 = parseRegistry(inputs.registryContent ?? "");

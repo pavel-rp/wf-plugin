@@ -67,6 +67,11 @@ const FILE_SOURCE_KINDS: ReadonlySet<SourceFingerprint["kind"]> = new Set([
   "slot-contribution",
   "slot-override",
   "settings-override",
+  // WF-334: the composed constitution record joins the re-read set — editing a
+  // project clause (or re-composing capability articles into it) invalidates the
+  // snapshot on the next query, keeping the SessionStart constitution payload
+  // fresh through fingerprint discipline, never an un-fingerprinted raw read.
+  "constitution",
 ]);
 
 /** True when a recorded source path is absolute (POSIX `/…` or Windows `C:/…`),
