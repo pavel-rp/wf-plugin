@@ -43,13 +43,17 @@ function guard(fn: () => unknown): ToolResult {
   }
 }
 
+// Deliberately no `enum` here (unlike `surfaceClassInput` below): the
+// KNOWN_SURFACES check lives in `resolveProvider` itself so an unrecognized
+// token surfaces the service's specific "expected one of: …" message via
+// `guard()`'s `isError` channel, not a generic MCP schema-validation error.
 const surfaceInput = fromJsonSchema({
   type: "object",
   properties: {
     surface: {
       type: "string",
       description:
-        "Provider surface to resolve: `delivery`, `tracker`, `qa-execution:engine`, or `qa-execution:host`.",
+        "Provider surface to resolve: `delivery`, `tracker`, `engine`, `host`, or the composite `qa-execution:engine` / `qa-execution:host` (equivalent to the bare `engine` / `host` forms — both resolve to the same ownership record). An unrecognized token is an invalid argument and returns an MCP error result, distinct from a genuine `state: \"unconfigured\"` response.",
     },
   },
   required: ["surface"],
