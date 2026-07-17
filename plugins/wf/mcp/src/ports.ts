@@ -55,7 +55,8 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     workspaceRoot,
     corePluginRoot: resolveCorePluginRoot(),
 
-    resolveFresh: () => resolveSnapshot({ workspaceRoot }),
+    resolveFresh: () =>
+      resolveSnapshot({ workspaceRoot, corePluginRoot: resolveCorePluginRoot() }),
 
     persist: (snapshot) => {
       writeSnapshot(workspaceRoot, snapshot);

@@ -34,6 +34,23 @@ export {
   resolveCapabilityPath,
 } from "./paths.js";
 export { resolveContentRef, CONTENT_REF_CLASSES } from "./content.js";
+export {
+  SETTINGS_STORAGE_DIR,
+  SETTINGS_OVERRIDE_SUFFIX,
+  isSkillSlug,
+  settingsOverrideRelPath,
+  skillFromSettingsFilename,
+  parseSettingsDeclaration,
+  parseSettingsOverride,
+  mergeSettings,
+  locateInterface,
+} from "./settings.js";
+export type {
+  SettingsDeclaration,
+  ParsedOverride,
+  SettingsMerge,
+  LocatedInterface,
+} from "./settings.js";
 export type {
   ContentRef,
   ContentRefClass,

@@ -1,3 +1,7 @@
+// src/refresh.ts
+import { dirname as dirname2, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 1;
 var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" };
@@ -411,6 +415,84 @@ var CONTENT_REF_CLASSES = [
 ];
 var ALL_CONTENT_CLASSES = [...CONTENT_REF_CLASSES, "slot"];
 
+// src/resolver/settings.ts
+var SETTINGS_STORAGE_DIR = "_local/profiles";
+var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
+var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
+var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
+function isSkillSlug(s) {
+  return typeof s === "string" && SEGMENT.test(s);
+}
+function skillFromSettingsFilename(filename) {
+  if (!filename.endsWith(SETTINGS_OVERRIDE_SUFFIX)) return null;
+  const stem = filename.slice(0, -SETTINGS_OVERRIDE_SUFFIX.length);
+  return isSkillSlug(stem) ? stem : null;
+}
+function unquote(cell) {
+  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function parseSettingsDeclaration(interfaceMd) {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = /* @__PURE__ */ new Map();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^settings$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 2) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const key = unquote(cells[0]);
+    if (key === "key" || !SETTINGS_KEY.test(key)) continue;
+    decl.set(key, unquote(cells[1]));
+  }
+  return sawSection ? decl : null;
+}
+function parseSettingsOverride(jsonText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "a settings override must be a JSON object of key \u2192 value" };
+  }
+  return { ok: true, value: parsed };
+}
+function mergeSettings(declared, override) {
+  const values = {};
+  for (const [key, def] of declared) {
+    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
+  }
+  const undeclared = [];
+  if (override) {
+    for (const key of Object.keys(override)) {
+      if (!declared.has(key)) undeclared.push(key);
+    }
+  }
+  undeclared.sort();
+  return { values, undeclared };
+}
+function locateInterface(skill, roots, readFile, joinSlash2) {
+  for (const root of roots) {
+    const path = joinSlash2(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSettingsDeclaration(content);
+    if (declared === null) continue;
+    return { root, path, declared };
+  }
+  return null;
+}
+
 // src/resolver/resolve.ts
 function relativize(workspaceRoot2, absPath) {
   const abs = normalizeSlashes(absPath);
@@ -418,6 +500,9 @@ function relativize(workspaceRoot2, absPath) {
   if (abs === root) return ".";
   if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
   return abs;
+}
+function toAbsolute(workspaceRoot2, snapshotPath2) {
+  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot2, snapshotPath2);
 }
 function inlineDispatchRel(dispatch) {
   const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
@@ -639,6 +724,48 @@ function buildSnapshot(inputs, io) {
       });
     }
   }
+  const interfaceRoots = [];
+  if (inputs.corePluginRoot) interfaceRoots.push(normalizeSlashes(inputs.corePluginRoot));
+  for (const r of pluginRoots) {
+    if (r.resolvedRoot) interfaceRoots.push(toAbsolute(workspaceRoot2, r.resolvedRoot));
+  }
+  const settingsDir = joinSlash(workspaceRoot2, SETTINGS_STORAGE_DIR);
+  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
+  for (const filename of settingsFiles) {
+    const skill = skillFromSettingsFilename(filename);
+    if (!skill) continue;
+    const overridePath = joinSlash(settingsDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    const parsed = parseSettingsOverride(overrideRaw);
+    if (!parsed.ok) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/unparseable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`
+      });
+      continue;
+    }
+    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    if (!located) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/interface-unresolvable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove the override.`
+      });
+      continue;
+    }
+    const { undeclared } = mergeSettings(located.declared, parsed.value);
+    if (undeclared.length > 0) {
+      diagnostics.push({
+        severity: "error",
+        code: "settings/undeclared-key",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}. Remove the undeclared ${undeclared.length === 1 ? "key" : "keys"} or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
+        category: "registry-invalid",
+        recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
+      });
+    }
+  }
   const providerConfig = {};
   if (providerOwnership.some((o) => o.surface === "tracker")) {
     diagnostics.push({
@@ -674,7 +801,7 @@ function buildSnapshot(inputs, io) {
 }
 
 // src/resolver/engine.ts
-import { readFileSync as readFileSync2 } from "node:fs";
+import { readFileSync as readFileSync2, readdirSync } from "node:fs";
 import { join as join2 } from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -748,7 +875,14 @@ function readOrNull(absPath) {
     throw err;
   }
 }
-var fsIO = { readFile: readOrNull };
+function listFilesOrEmpty(absDir) {
+  try {
+    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+var fsIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
 function extractRegistryPath(wfConfig) {
   if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
   const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
@@ -785,7 +919,8 @@ function resolveSnapshot(opts) {
     coreConfigContent,
     pluginListRaw,
     generatedAt: now.toISOString(),
-    generator: opts.generator ?? { ...RESOLVER_GENERATOR }
+    generator: opts.generator ?? { ...RESOLVER_GENERATOR },
+    corePluginRoot: opts.corePluginRoot ?? null
   };
   return buildSnapshot(inputs, io);
 }
@@ -798,6 +933,13 @@ function resolveAndPersist(opts) {
 // src/refresh.ts
 function workspaceRoot() {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
+}
+function corePluginRoot() {
+  if (process.env.WF_CORE_PLUGIN_ROOT) {
+    return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
+  }
+  const here = fileURLToPath(import.meta.url);
+  return normalizeSlashes(resolve(dirname2(here), "..", ".."));
 }
 function log(line) {
   process.stdout.write(`wf-resolver refresh-if-stale: ${line}
@@ -819,7 +961,7 @@ function main() {
     };
   }
   if (cached === null) {
-    resolveAndPersist({ workspaceRoot: root });
+    resolveAndPersist({ workspaceRoot: root, corePluginRoot: corePluginRoot() });
     log(`built snapshot (${cacheReason?.message ?? "no cache"}).`);
     return;
   }
@@ -832,7 +974,7 @@ function main() {
     log("snapshot is fresh; no rebuild.");
     return;
   }
-  resolveAndPersist({ workspaceRoot: root });
+  resolveAndPersist({ workspaceRoot: root, corePluginRoot: corePluginRoot() });
   log(`refreshed snapshot; reasons: ${reasons.map((r) => r.code).join(", ")}.`);
 }
 try {
