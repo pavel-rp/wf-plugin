@@ -317,6 +317,8 @@ no prompt or fragment bodies.**
 11. **`fingerprints`** — per input (registry file, each manifest, `wf.config.js`, plugin-list) for fingerprint/event-driven freshness (WF-271; no TTL).
 12. **`validity` / `diagnostics`** — per capability/surface resolution status + the registered-but-unrecoverable candidate diagnosis text inputs.
 13. **`constitutionInputs`** — composed `article` clauses per capability + project clauses (constitution #8). Derivable from #4 + project overrides; called out because constitution is the one full-sweep `article` consumer.
+14. **`slots`** *(WF-329)* — per-slot composition provenance: for each composed `<skill>.<point>`, `winningSource`, `tier` (`local-override`|`pack-contribution`|`unfilled`), `overridePresent`, `policy`, and the ordered `contributors[]`. Derived from the active pack `slot` fragments (registry order) + the presence of a `_local/slots/<skill>.<point>.md` override. Surfaced by `resolve_inspect`; body-free. Slot-contribution bodies + overrides also join the input `fingerprints` (#11) as `slot-contribution` / `slot-override` sources, and refresh fails loudly on an orphaned override/contribution (a `skill.point` no active `## Slots` interface declares).
+15. **`settingsOverrides`** *(WF-329)* — the skill slugs with a present `_local/profiles/<skill>.settings.json` override (the settings-override presence index; each such file also joins #11 as a `settings-override` source). Surfaced by `resolve_inspect`.
 
 ---
 

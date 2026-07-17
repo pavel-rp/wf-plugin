@@ -20004,8 +20004,8 @@ function parsePluginList(raw) {
 }
 
 // src/resolver/types.ts
-var SNAPSHOT_SCHEMA_VERSION = 1;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.2.0" };
+var SNAPSHOT_SCHEMA_VERSION = 2;
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
 // src/resolver/freshness.ts
@@ -20014,7 +20014,13 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   "registry",
   "core-config",
   "manifest",
-  "profile"
+  "profile",
+  // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
+  // settings overrides join the re-read set — editing any of them invalidates
+  // the snapshot on the next query (recorded by their exact path, never a walk).
+  "slot-contribution",
+  "slot-override",
+  "settings-override"
 ]);
 function isAbsolute(p) {
   return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
@@ -20257,6 +20263,48 @@ var PACK_TIER_RANK = 10;
 var APPEND_SEPARATOR = "\n\n";
 function isSegment(s) {
   return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
+}
+var SLOT_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
+function parseSlotDeclaration(interfaceMd) {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = /* @__PURE__ */ new Set();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^slots$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 1) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const id = cells[0].replace(/^`/, "").replace(/`$/, "").trim();
+    if (SLOT_ID.test(id)) decl.add(id);
+  }
+  return sawSection ? decl : null;
+}
+function locateSlotInterface(skill, roots, readFile, joinSlashFn) {
+  for (const root of roots) {
+    const path = joinSlashFn(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSlotDeclaration(content);
+    if (declared === null) continue;
+    return { root, path, declared };
+  }
+  return null;
+}
+function slotPointFromOverrideFilename(filename) {
+  if (!filename.endsWith(".md")) return null;
+  const stem = filename.slice(0, -3);
+  const segs = stem.split(".");
+  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
+  return { skillPoint: stem, skill: segs[0], point: segs[1] };
 }
 function isSafeRelPath2(p) {
   if (p.length === 0) return false;
@@ -20946,6 +20994,14 @@ var ResolverService = class {
         packs: snap?.packs.length ?? 0,
         providers: snap?.providerOwnership.length ?? 0
       },
+      slots: (snap?.slots ?? []).map((s) => ({
+        skillPoint: s.skillPoint,
+        winningSource: s.winningSource,
+        tier: s.tier,
+        overridePresent: s.overridePresent,
+        policy: s.policy
+      })),
+      settingsOverrides: snap?.settingsOverrides ?? [],
       diagnostics
     };
   }
@@ -21561,12 +21617,17 @@ function buildSnapshot(inputs, io) {
   }
   const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
   const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
-  for (const filename of settingsFiles) {
+  const settingsOverrides = [];
+  for (const filename of [...settingsFiles].sort()) {
     const skill = skillFromSettingsFilename(filename);
     if (!skill) continue;
     const overridePath = joinSlash(settingsDir, filename);
     const overrideRaw = io.readFile(overridePath);
     if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("settings-override", `${SETTINGS_STORAGE_DIR}/${filename}`, overrideRaw)
+    );
+    settingsOverrides.push(skill);
     const parsed = parseSettingsOverride(overrideRaw);
     if (!parsed.ok) {
       diagnostics.push({
@@ -21596,6 +21657,104 @@ function buildSnapshot(inputs, io) {
       });
     }
   }
+  const SLOT_RECOVERY = "The capability registry or a skill interface is invalid. Declare the missing slot in the skill's `## Slots` interface table, or remove the orphaned contribution/override, then run `/wf:resolve refresh`.";
+  const declaredSlotsCache = /* @__PURE__ */ new Map();
+  const declaredSlotsFor = (skill) => {
+    if (declaredSlotsCache.has(skill)) return declaredSlotsCache.get(skill) ?? null;
+    const located = locateSlotInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    const set = located ? located.declared : null;
+    declaredSlotsCache.set(skill, set);
+    return set;
+  };
+  const isDeclared = (skillPoint, skill) => declaredSlotsFor(skill)?.has(skillPoint) ?? false;
+  const packSlots = [];
+  for (const cap of capabilities) {
+    if (cap.validity !== "ok" || !cap.resolvedPath) continue;
+    for (const frag of cap.fragments) {
+      if (frag.contributionKind !== "slot") continue;
+      const parsed = parseSlotScope(frag.scope);
+      if (!parsed) continue;
+      const rel = inlineDispatchRel(frag.dispatch);
+      if (!rel) continue;
+      const bodyAbs = joinSlash(toAbsolute3(workspaceRoot, cap.resolvedPath), rel);
+      packSlots.push({
+        capability: cap.name,
+        skillPoint: parsed.skillPoint,
+        skill: parsed.skillPoint.split(".")[0],
+        policy: parsed.policy,
+        bodyPath: bodyAbs,
+        bodyRel: relativize(workspaceRoot, bodyAbs)
+      });
+    }
+  }
+  const fingerprintedBodies = /* @__PURE__ */ new Set();
+  for (const ps of packSlots) {
+    if (!fingerprintedBodies.has(ps.bodyPath)) {
+      fingerprintedBodies.add(ps.bodyPath);
+      sources.push(fingerprint("slot-contribution", ps.bodyRel, io.readFile(ps.bodyPath)));
+    }
+    if (!isDeclared(ps.skillPoint, ps.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-contribution",
+        message: `capability \`${ps.capability}\` contributes to slot \`${ps.skillPoint}\`, which no active skill interface declares \u2014 the contribution would silently never fire. Declare the slot in the skill's \`## Slots\` interface table or remove the capability's \`slot\` fragment row.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
+  const slotOverrideDir = joinSlash(workspaceRoot, OVERRIDE_DIR);
+  const slotOverrideFiles = io.listFiles ? io.listFiles(slotOverrideDir) : [];
+  const overridePresent = /* @__PURE__ */ new Set();
+  for (const filename of [...slotOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue;
+    const overridePath = joinSlash(slotOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-override", `${OVERRIDE_DIR}/${filename}`, overrideRaw)
+    );
+    overridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-override",
+        message: `slot override \`${OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
+  const slotIds = /* @__PURE__ */ new Set([
+    ...packSlots.map((p) => p.skillPoint),
+    ...overridePresent
+  ]);
+  const slots = [...slotIds].sort().map((skillPoint) => {
+    const contributors = packSlots.filter((p) => p.skillPoint === skillPoint).map((p) => p.capability);
+    const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
+    const hasOverride = overridePresent.has(skillPoint);
+    let tier;
+    let winningSource;
+    if (hasOverride) {
+      tier = "local-override";
+      winningSource = "local-override";
+    } else if (contributors.length > 0) {
+      tier = "pack-contribution";
+      winningSource = contributors[contributors.length - 1];
+    } else {
+      tier = "unfilled";
+      winningSource = null;
+    }
+    return {
+      skillPoint,
+      policy: policyOwner ? policyOwner.policy : null,
+      overridePresent: hasOverride,
+      contributors,
+      tier,
+      winningSource
+    };
+  });
   const providerConfig = {};
   if (providerOwnership.some((o) => o.surface === "tracker")) {
     diagnostics.push({
@@ -21625,6 +21784,8 @@ function buildSnapshot(inputs, io) {
     profiles,
     providerConfig,
     constitutionInputs,
+    slots,
+    settingsOverrides,
     sources,
     diagnostics
   };
@@ -22040,7 +22201,7 @@ function registerResolverTools(server, service) {
     "resolve_inspect",
     {
       title: "resolve inspect",
-      description: "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, and diagnostics. Does not rebuild."
+      description: "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, per-slot composition provenance (each composed `skill.point` \u2192 winning source \u2192 tier, plus override presence), the per-skill settings-override presence index, and diagnostics. Does not rebuild."
     },
     async () => guard(() => service.inspect())
   );

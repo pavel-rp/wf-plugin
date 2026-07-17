@@ -26,6 +26,13 @@ import {
   parseSettingsOverride,
   skillFromSettingsFilename,
 } from "./settings.js";
+import {
+  OVERRIDE_DIR,
+  locateSlotInterface,
+  parseSlotScope,
+  slotPointFromOverrideFilename,
+  type MergePolicy,
+} from "./slot.js";
 import { parseRegistry } from "./registry.js";
 import { parseManifest } from "./manifest.js";
 import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
@@ -41,6 +48,7 @@ import {
   type PluginRootRecord,
   type ProviderOwnershipRecord,
   type ResolverSnapshot,
+  type SlotProvenanceRecord,
   type SourceFingerprint,
 } from "./types.js";
 
@@ -398,7 +406,8 @@ export function buildSnapshot(
   // error diagnostic naming the key AND the skill) — never silently accepted. The
   // check homes HERE (snapshot refresh), not `validate-registry.sh`, because it
   // depends on the WF-326 interface declarations the registry validator runs
-  // without. Settings files are NOT fingerprinted into `sources` — that is WF-329.
+  // without. Each override is fingerprinted into `sources` (WF-329) so an edit
+  // invalidates the snapshot; the presence set feeds `resolve_inspect`.
   //
   // Interface location reuses the resolved roots already computed above: the core
   // plugin root (for a core skill) first, then every resolved pack root (for a
@@ -411,12 +420,19 @@ export function buildSnapshot(
   }
   const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
   const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
-  for (const filename of settingsFiles) {
+  const settingsOverrides: string[] = [];
+  for (const filename of [...settingsFiles].sort()) {
     const skill = skillFromSettingsFilename(filename);
     if (!skill) continue; // not a `<skill>.settings.json` (e.g. a capability profile)
     const overridePath = joinSlash(settingsDir, filename);
     const overrideRaw = io.readFile(overridePath);
     if (overrideRaw === null) continue;
+    // Fingerprint the settings override into the snapshot's input set (WF-329) so
+    // editing it invalidates the snapshot. The JSON is HASHED, not stored.
+    sources.push(
+      fingerprint("settings-override", `${SETTINGS_STORAGE_DIR}/${filename}`, overrideRaw),
+    );
+    settingsOverrides.push(skill);
     const parsed = parseSettingsOverride(overrideRaw);
     if (!parsed.ok) {
       diagnostics.push({
@@ -457,6 +473,146 @@ export function buildSnapshot(
     }
   }
 
+  // --- per-skill slot contributions + overrides (validate at refresh — WF-329)
+  // Fingerprint every pack slot-contribution body and every personal slot
+  // override so editing either invalidates the snapshot; compute per-slot
+  // provenance for `resolve_inspect`; and fail LOUDLY on either orphan class —
+  // an override OR a pack contribution targeting a `skill.point` no active skill
+  // interface declares (which would silently lose to the default / never fire).
+  // Bodies are HASHED only, never stored (C008 body-free invariant intact). The
+  // orphan checks home HERE (refresh), not `validate-registry.sh`, because they
+  // depend on the WF-326 interface declarations the registry validator runs
+  // without. Interface location reuses `interfaceRoots` computed above.
+  const SLOT_RECOVERY =
+    "The capability registry or a skill interface is invalid. Declare the missing slot in the skill's `## Slots` interface table, or remove the orphaned contribution/override, then run `/wf:resolve refresh`.";
+
+  // The declared-slot set per skill, memoized (first slot-declaring interface
+  // wins, core root first). `null` = no slot-declaring interface located.
+  const declaredSlotsCache = new Map<string, Set<string> | null>();
+  const declaredSlotsFor = (skill: string): Set<string> | null => {
+    if (declaredSlotsCache.has(skill)) return declaredSlotsCache.get(skill) ?? null;
+    const located = locateSlotInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    const set = located ? located.declared : null;
+    declaredSlotsCache.set(skill, set);
+    return set;
+  };
+  const isDeclared = (skillPoint: string, skill: string): boolean =>
+    declaredSlotsFor(skill)?.has(skillPoint) ?? false;
+
+  // 1) Active pack slot contributions: every `ok` capability's `slot` fragment
+  //    with an inline dispatch, in registry order.
+  interface PackSlot {
+    capability: string;
+    skillPoint: string;
+    skill: string;
+    policy: MergePolicy;
+    bodyPath: string;
+    bodyRel: string;
+  }
+  const packSlots: PackSlot[] = [];
+  for (const cap of capabilities) {
+    if (cap.validity !== "ok" || !cap.resolvedPath) continue;
+    for (const frag of cap.fragments) {
+      if (frag.contributionKind !== "slot") continue;
+      const parsed = parseSlotScope(frag.scope);
+      if (!parsed) continue;
+      const rel = inlineDispatchRel(frag.dispatch);
+      if (!rel) continue; // non-inline slot dispatch — not a composable body
+      const bodyAbs = joinSlash(toAbsolute(workspaceRoot, cap.resolvedPath), rel);
+      packSlots.push({
+        capability: cap.name,
+        skillPoint: parsed.skillPoint,
+        skill: parsed.skillPoint.split(".")[0],
+        policy: parsed.policy,
+        bodyPath: bodyAbs,
+        bodyRel: relativize(workspaceRoot, bodyAbs),
+      });
+    }
+  }
+
+  // 2) Fingerprint each contribution body (deduped by path); fail loudly on an
+  //    orphaned contribution.
+  const fingerprintedBodies = new Set<string>();
+  for (const ps of packSlots) {
+    if (!fingerprintedBodies.has(ps.bodyPath)) {
+      fingerprintedBodies.add(ps.bodyPath);
+      sources.push(fingerprint("slot-contribution", ps.bodyRel, io.readFile(ps.bodyPath)));
+    }
+    if (!isDeclared(ps.skillPoint, ps.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-contribution",
+        message: `capability \`${ps.capability}\` contributes to slot \`${ps.skillPoint}\`, which no active skill interface declares — the contribution would silently never fire. Declare the slot in the skill's \`## Slots\` interface table or remove the capability's \`slot\` fragment row.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY,
+      });
+    }
+  }
+
+  // 3) Personal slot overrides (`_local/slots/<skill>.<point>.md`): fingerprint
+  //    each, record presence, and fail loudly on an orphaned override.
+  const slotOverrideDir = joinSlash(workspaceRoot, OVERRIDE_DIR);
+  const slotOverrideFiles = io.listFiles ? io.listFiles(slotOverrideDir) : [];
+  const overridePresent = new Set<string>();
+  for (const filename of [...slotOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue; // not a well-formed `<skill>.<point>.md`
+    const overridePath = joinSlash(slotOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-override", `${OVERRIDE_DIR}/${filename}`, overrideRaw),
+    );
+    overridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-override",
+        message: `slot override \`${OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares — the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY,
+      });
+    }
+  }
+
+  // 4) Per-slot provenance: one row per composed `skill.point` (a pack
+  //    contribution and/or a present override), sorted for determinism.
+  const slotIds = new Set<string>([
+    ...packSlots.map((p) => p.skillPoint),
+    ...overridePresent,
+  ]);
+  const slots: SlotProvenanceRecord[] = [...slotIds]
+    .sort()
+    .map((skillPoint) => {
+      const contributors = packSlots
+        .filter((p) => p.skillPoint === skillPoint)
+        .map((p) => p.capability);
+      const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
+      const hasOverride = overridePresent.has(skillPoint);
+      let tier: SlotProvenanceRecord["tier"];
+      let winningSource: string | null;
+      if (hasOverride) {
+        tier = "local-override";
+        winningSource = "local-override";
+      } else if (contributors.length > 0) {
+        tier = "pack-contribution";
+        // The highest-precedence pack contributor (last in registry order — the
+        // one that wins last for `append`, the single owner for `replace`).
+        winningSource = contributors[contributors.length - 1];
+      } else {
+        tier = "unfilled";
+        winningSource = null;
+      }
+      return {
+        skillPoint,
+        policy: policyOwner ? policyOwner.policy : null,
+        overridePresent: hasOverride,
+        contributors,
+        tier,
+        winningSource,
+      };
+    });
+
   // --- provider config (deferred to provider resolution — WF-270) ----------
   const providerConfig: Record<string, Record<string, string>> = {};
   if (providerOwnership.some((o) => o.surface === "tracker")) {
@@ -491,6 +647,8 @@ export function buildSnapshot(
     profiles,
     providerConfig,
     constitutionInputs,
+    slots,
+    settingsOverrides,
     sources,
     diagnostics,
   };

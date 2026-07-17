@@ -98,7 +98,7 @@ function makePorts(opts?: {
         io,
         pluginListRaw: pluginListRaw ?? undefined,
         now: () => new Date("2026-07-16T00:00:00.000Z"),
-        generator: { name: "wf-resolver", version: "0.2.0" },
+        generator: { name: "wf-resolver", version: "0.3.0" },
       });
     },
     persist(snap) {

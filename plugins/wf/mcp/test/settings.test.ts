@@ -149,7 +149,7 @@ function refreshWith(files: FileMap): ResolverSnapshot {
     io: makeIO({ [`${WS}/_local/config.md`]: REGISTRY, ...files }),
     pluginListRaw: "[]",
     now: () => new Date("2026-07-17T00:00:00.000Z"),
-    generator: { name: "wf-resolver", version: "0.2.0" },
+    generator: { name: "wf-resolver", version: "0.3.0" },
   });
 }
 
@@ -217,7 +217,7 @@ function makeService(files: FileMap): ResolverService {
         io,
         pluginListRaw: "[]",
         now: () => new Date("2026-07-17T00:00:00.000Z"),
-        generator: { name: "wf-resolver", version: "0.2.0" },
+        generator: { name: "wf-resolver", version: "0.3.0" },
       }),
     persist: () => {},
     readCache: () => null,

@@ -110,7 +110,7 @@ function makePorts(files: Map<string, string>): ResolverServicePorts {
         workspaceRoot: WS,
         io,
         now: () => new Date("2026-07-17T00:00:00.000Z"),
-        generator: { name: "wf-resolver", version: "0.2.0" },
+        generator: { name: "wf-resolver", version: "0.3.0" },
       }),
     persist: (snap) => {
       cache = snap;
@@ -130,7 +130,7 @@ function buildSnapshot(files: Map<string, string>): ResolverSnapshot {
     workspaceRoot: WS,
     io,
     now: () => new Date("2026-07-17T00:00:00.000Z"),
-    generator: { name: "wf-resolver", version: "0.2.0" },
+    generator: { name: "wf-resolver", version: "0.3.0" },
   });
 }
 
