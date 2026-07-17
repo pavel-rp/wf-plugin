@@ -401,6 +401,16 @@ function evaluateFreshness(snapshot, workspaceRoot2, probe) {
   return { fresh: reasons.length === 0, reasons };
 }
 
+// src/resolver/content.ts
+var CONTENT_REF_CLASSES = [
+  "fragment",
+  "contract",
+  "shared",
+  "references-template",
+  "profile-template"
+];
+var ALL_CONTENT_CLASSES = [...CONTENT_REF_CLASSES, "slot"];
+
 // src/resolver/resolve.ts
 function relativize(workspaceRoot2, absPath) {
   const abs = normalizeSlashes(absPath);
