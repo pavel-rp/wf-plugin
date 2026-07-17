@@ -28,6 +28,8 @@ allowed-tools: [Read, Write, Edit, Glob, Bash, Task, Skill]
 
 **A tracker is optional.** Resolve the `tracker` surface via `resolve_provider("tracker")`. When one is registered, umbrella expansion and blocking-edge reads are available. When none is (the surface is unconfigured), `/wf:fleet` runs **tracker-free**: it accepts only an explicit id list plus `--after` edges, does no umbrella expansion and reads no tracker edges, and surfaces no tracker-derived term. This branch is decided **only** by whether the tracker surface is owned — never by naming a provider.
 
+**Obtain the composed constitution — carry it to every shipper.** The plugin's SessionStart hook injects the project's composed constitution into a normal session's context, but that hook does **not** fire in an Agent-tool worktree shipper session (determined empirically, WF-335): a dispatched worktree shipper is a nested subagent context, not a top-level Claude Code session, so no SessionStart event fires for it and its fresh worktree carries none of the `_local/` snapshot the hook would build. The unattended shippers are the very sessions that most need the non-negotiable rules, so `/wf:fleet` carries the constitution to them explicitly. Read the composed constitution **once** from `_local/constitution.md` — the same fingerprinted source the hook emits, so there is no second composition path — and hold it as the run-scoped **constitution payload**. If that file is absent or empty (no `/wf:constitution` has run), hold no payload and carry nothing downstream — mirroring the hook, which injects nothing when there is no constitution record.
+
 ---
 
 ## Command Syntax
@@ -60,7 +62,7 @@ Invoked with no arguments, `/wf:fleet` **resumes**: it re-reads the scoreboard a
 - Obtain config via `resolve_config`; resolve the `delivery` and `tracker` surfaces via `resolve_provider`.
 - Invoke the tracker provider's **read** operations — `list_children` (umbrella expansion) and `list_blockers` (each item's blocking predecessors) — and its **write** operations `post_comment` / `set_status` at closeout, each by obtaining the op body via `resolve_content` (`class: fragment`) and following it in this skill's own context. Tracker mode only.
 - Invoke the delivery provider's **read** operations — `activity-read`, `pr-detect`, `checks-read` — the same way, to observe what has merged and each pull request's state.
-- Read and write the scoreboard and any breadcrumb **under `_local/`** only.
+- Read and write the scoreboard and any breadcrumb **under `_local/`** only, and read the composed constitution from `_local/constitution.md` to carry it into each shipper's dispatch prompt.
 - Dispatch shipper subagents via the Agent tool, and invoke `/wf:ship`, `/wf:tc`, `/wf:tf` through the Skill tool (the shippers do this in their own worktrees).
 
 **Forbidden:**
@@ -136,7 +138,7 @@ The shippers close their own items (via `/wf:tf`), but **parent/umbrella tasks a
 
 ## The shipper dispatch template (every lesson is in here)
 
-Spawn each shipper with the **Agent tool**: `subagent_type: general-purpose`, `isolation: worktree`, `run_in_background: true`, and `model:` per Model selection. Fill the prompt from this template — the CAPITALISED rules are the hard-won ones; keep them verbatim:
+Spawn each shipper with the **Agent tool**: `subagent_type: general-purpose`, `isolation: worktree`, `run_in_background: true`, and `model:` per Model selection. Fill the prompt from this template — the CAPITALISED rules are the hard-won ones; keep them verbatim. Fill `<COMPOSED CONSTITUTION>` with the run-scoped constitution payload obtained at Prerequisites (and drop that block entirely when there is no constitution record):
 
 > Ship tracker item **`<ID>`** ("`<title>`") end-to-end to a **merged pull request**. You are in an isolated worktree of the repository.
 >
@@ -152,6 +154,10 @@ Spawn each shipper with the **Agent tool**: `subagent_type: general-purpose`, `i
 > **EXECUTE:** invoke `/wf:ship <ID>` through the Skill tool and drive it to a merged pull request. If `/wf:ship` is unavailable or its checks loop cannot run, fall back to the project pipeline: `/wf:tc <ID> --no-isolated`, then `/wf:tf <ID>`. `--no-isolated` matters when the project's isolated-phases setting is on — otherwise the phase subagents run isolated and **strip this prompt's binding context**.
 >
 > **MERGE ETIQUETTE:** before your version bump AND again at merge time, sync onto the latest delivery base (siblings merge concurrently). On a version-manifest conflict (a plugin manifest / shared version file), take the base's **current** value and re-apply your bump on top (never keep your stale number). Never commit to the trunk. Zero AI attribution in any commit, pull request, or comment.
+>
+> **NON-NEGOTIABLE PROJECT CONSTITUTION — honor every article below as a hard constraint on all work you do.** The SessionStart hook that injects these into a normal session does **not** fire in a dispatched worktree shipper, so they are carried here explicitly:
+>
+> `<COMPOSED CONSTITUTION>` — paste the run-scoped constitution payload obtained at Prerequisites verbatim. **Omit this whole block** when the project has no constitution record — carry nothing, exactly as the hook injects nothing then.
 >
 > `<ITEM-SPECIFIC BINDING CONTEXT>` — the spec-of-record (fetch the item's tracker brief), plus any coordination notes: which files already changed under recent merges that you must preserve-and-compose-on-top-of rather than revert; pinned budgets; naming to mirror from a just-merged sibling.
 >
