@@ -1,6 +1,6 @@
 # linear capability manifest
 
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** linear (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -11,8 +11,8 @@
 
 linear supplies the **tracker provider** — the concrete Linear binding for every abstract
 tracker operation the capability-registry contract defines (resolve config, create/update/
-fetch an issue, list a parent's children, comment, move status, attach a link, and enumerate
-work items by status, milestones, or cycles). It is a **second, independent** binding of the
+fetch an issue, list a parent's children, comment, move status, attach a link, enumerate
+work items by status, milestones, or cycles, and read a task's blocking predecessors). It is a **second, independent** binding of the
 same surface `ado` binds. It carries **zero** delivery-specific vocabulary.
 
 ## Fragments
