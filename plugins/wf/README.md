@@ -42,6 +42,14 @@ Cheap read-only advisor. Fetches `00_reqs.md` if absent, does a bounded repo sca
 
 A state-aware dispatcher over the chain below. It reads the task folder's artifacts, works out which phase is done and which is next, and enforces the gate (stops before any source-writing, approval-gated, or browser phase) — routing to `/wf:lite` when triage says the task is small, and looping verify⇄fix and qa⇄followup (capped at 2 cycles each). **By default it runs the safe front of the chain itself** — `triage→spec→plan`, then `verify-spec→qa-gen` once `implement` has landed — driving each phase through the `wf:phase-runner` subagent (isolated context) and re-deriving state between them, halting before the first phase that writes product source or needs a human (`implement`, `verify-fix`, `qa-followup`, `qa-auto`). Pass `--step` to instead name one command at a time and stop. Resumable either way: after a phase finishes, `/clear` and run `/wf:run <id>` again — it re-derives where you are from the artifacts, so nothing is lost.
 
+## Ship a task end-to-end, unattended (optional)
+
+```
+/wf:ship <id>      # one task → merged PR, no pause: drive the build chain, open the PR, wait for green checks, merge
+```
+
+The full-auto single-task runner. It **requires** a registered delivery provider (there is nothing to merge without one) and drives one task all the way to a merged pull request without a human pause: it clears every gate `/wf:run` halts at (following `/wf:run`'s own handoff, so it drives whatever phases the pipeline defines), opens the PR through `/wf:pr`, **waits for the delivery checks to settle — never merging a red one** — and finalizes the merge through `/wf:tf`. A pure orchestrator: it writes nothing itself; the phases and `/wf:tf` own every write. Stops honestly with a `SHIP — Blocked` block (naming the missing provider, a failed build phase, red or unsettled checks, or a blocked finalize) rather than forcing a partial merge. The review-address loop is **out of scope** — `ship` carries a single marked stub at the point where a future skill-level *slots* mechanism will attach a review step, and drives no reviewer.
+
 ## Standard workflow for a new ticket
 
 ```
