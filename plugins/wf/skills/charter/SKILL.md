@@ -93,7 +93,7 @@ Derive the next step from the folder contents — never from conversation memory
 | Charter `**Status:** Converged`, publish incomplete | Phase 6 (publish/retry) |
 | Charter `**Status:** Published` | Done — re-emit the final block |
 
-The review/revision counters live in `03_review-log.md`'s header line (`Reviews: <N> · Revisions used: <M> of 3`), not in memory.
+The review/revision counters live in `03_review-log.md`'s header line (`Reviews: <N> · Revisions used: <M> of 3`), not in memory. In tracker mode the **publish ledger** — the charter's `**Tracker:**` line and `02_subtasks.md` `## Published ids` — is likewise the source of truth for what has already been published, so a `Converged, publish incomplete` resume replays Phase 6 idempotently.
 
 ---
 
@@ -101,10 +101,13 @@ The review/revision counters live in `03_review-log.md`'s header line (`Reviews:
 
 ### Phase 0 — Resolve input, mint id, create folder
 
-1. Detect the input form (Arguments table): a charter id resumes; anything else is the feature idea.
+1. Detect the input form (Arguments table, in order): a charter id resumes; else, when a `tracker` provider is active, a bare id token adopts an existing issue as the umbrella (step 1a); anything else is the feature idea.
+1a. **Adopt a tracker issue as the umbrella.** Fetch it with `get(<input>)` via direct provider resolution (Phase 6 §"Direct provider resolution" — the same tracker surface). This is the *explicit-id* path:
+   - **Fetch fails** (the tracker was active but `get` errored or returned no such issue) → **stop** with `CHARTER — Blocked` and report the failed fetch and id; never degrade to treating the id as a feature description.
+   - **Fetch succeeds** → the fetched issue is the umbrella. Its title is the charter title; its title + description (normalised to clean markdown) is the **verbatim idea** seeding the intake. Record `**Adopted umbrella:** <input>` in `00_intake.md` (host-owned) — this marker makes publish (Phase 6) `update` the existing issue instead of minting a new one. Continue to step 2 to mint the *local* charter id and folder (the umbrella keeps its own tracker id; the `C<NNN>` names only the local artifact set).
 2. Charter id: mint `C<NNN>` — scan `{task-root}` (including `_archive/`) for folders whose name matches `C` + digits + `__` or `<ABBR>-C` + digits + `__` (digits only — a task folder like `T042__…` must not match), take the highest number + 1, zero-padded to 3 digits, starting at `C001`.
 3. Slug: lowercase the first ~50 chars of the title, spaces and special chars to hyphens. Folder: `{task-root}/<charter-id>__<slug>/` — a direct child of `{task-root}` (downstream folder lookups are shallow; never nest task folders inside it).
-4. Write `00_intake.md`: the original idea **verbatim**, the input source (the description), date, `**Captured by:** <model-id>` (the id from your system prompt; `unknown` if unavailable), and an empty `## Clarifications` section.
+4. Write `00_intake.md`: the original idea **verbatim** (for an adopted umbrella, the fetched title + description), the input source (the description, or `adopted tracker issue <id>`), date, `**Captured by:** <model-id>` (the id from your system prompt; `unknown` if unavailable), any `**Adopted umbrella:**` marker from step 1a, and an empty `## Clarifications` section.
 
 ### Phase 1 — Interview (host, interactive)
 
@@ -154,9 +157,38 @@ Apply these rules to the reviewer's findings, in order:
 
 ### Phase 6 — Publish (at convergence only)
 
-**Provider detection.** Attempt to resolve a `tracker` provider per the direct-provider-resolution procedure documented in the contract ops doc `invocation-runtime.ops.md` (the `tracker` surface). **This release ships only the local-only arm** — regardless of whether a tracker provider resolves, take the **LOCAL-ONLY** path below. (A future sub-task adds the provider-present publish arm; until then a resolved provider still takes the local arm, and no capability term surfaces.)
+Publish runs **once, only after the loop has converged** (Phase 5 rule 2/3 has set `**Status:** Converged`). Never publish mid-loop — the whole review loop iterates on the local files alone.
 
-**LOCAL-ONLY:**
+#### Direct provider resolution (how the tracker ops are reached)
+
+Every operation below (`get`, `create_umbrella`, `create_child`, `update`, `list_children`, `post_comment`) is reached by resolving the `tracker` surface through the bundled `wf-resolver` MCP `resolve_provider("tracker")` query — the typed query returning the run-scoped record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. Obtain each op's body through the resolver's `resolve_content` content surface (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to dispatch the operation — never a raw `Read` of the path, and never a named tracker. This is the identical procedure `invocation-runtime.ops.md` §"Direct provider resolution" defines; core names only the abstract operations. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback.
+
+Branch on the record's `state`:
+
+- **`ok`** (a capability owns `tracker`) → the **TRACKER** arm.
+- **`unconfigured`** (no capability owns `tracker`) or **`unrecoverable`** (a registered capability's `tracker` manifest could not be read) → the **LOCAL-ONLY** arm (silent local fallback; for `unrecoverable`, warn once in the hedged candidate-naming form the record's `diagnostics` supplies, per `capability-registry.ops.md`, then continue local-only).
+
+The resolved arm is fixed for the whole publish; a re-run (State model: `Converged`, publish incomplete) re-resolves and resumes the **same** arm idempotently via the ledger.
+
+#### TRACKER (provider present)
+
+The **ledger** — two local fields that make publish idempotent and resumable — is the charter's `**Tracker:** <umbrella-id | —>` line and `02_subtasks.md` `## Published ids` (one `SUB-n → <created-id>` row per published sub-task). Write every id back **the moment the tracker returns it**, before the next call, so a publish that dies part-way keeps every recorded id.
+
+1. **Umbrella.** Read the charter's `**Tracker:**` line and the intake's `**Adopted umbrella:**` marker:
+   - **Adopted** (`**Adopted umbrella:** <id>` present) and `**Tracker:** —` → the umbrella already exists (the adopted issue): `update(<id>, description: <the issue's existing description> + a separator line + the full charter body)` — **append below the separator, never replace** the existing text. On success set the charter's `**Tracker:** <id>`.
+   - **Minted** (no adoption marker) and `**Tracker:** —` → `create_umbrella(<charter title>, <charter body>)`; set the charter's `**Tracker:**` to the returned id immediately.
+   - `**Tracker:**` already holds a real id → the umbrella is already published/appended (a re-run): skip the umbrella write (the `create_umbrella`/`update` idempotency guard the tracker fragment defines) and reuse that id.
+2. **Existing children (re-run only).** If any `## Published ids` rows exist or the umbrella pre-existed, call `list_children(<umbrella-id>)` **once** and cache it — the match-by-title source so a retry updates rather than duplicates.
+3. **Children, in dependency order.** For each sub-task, in the decomposer's dependency order:
+   1. **Already published?** If `## Published ids` holds a real id for this `SUB-n`, skip creation and reuse it.
+   2. **Compose the description** from the SUB brief exactly as the LOCAL-ONLY arm composes `01_spec.md` (Objective ← problem slice + desired outcome; Success Criteria ← acceptance scenarios; Scope ← in/out; Constraints; User Journeys ← actor + scenarios), plus `Type: feat|fix` and `Complexity: <S|M|L>` **as prose lines** — never a priority field, no S/M/L→priority map. Rewrite the SUB's `Depends on:` line from its `SUB-n` refs to the **real created ids** read from `## Published ids` (always present — predecessors publish first in dependency order).
+   3. **Match-or-create.** If step 2's `list_children` holds a child whose title equals this sub-task's title → `update(<that-child-id>, description: <composed description>)` and adopt its id; otherwise `create_child(<umbrella-id>, <sub title>, <composed description>)` — **parent, title, description only**.
+   4. **Record immediately.** Write the returned/matched id into `## Published ids` as `SUB-n → <id>` before moving to the next sub-task.
+4. **Comment.** Once every child is published, and only if `## Published ids` carries no `Comment: posted` marker, `post_comment(<umbrella-id>, <body>)` — the body stating: rounds used, the full sub-task list with their created ids in dependency order, and the accepted-warning fingerprints (or "none"). Record `Comment: posted` under `## Published ids` so a re-run never double-posts.
+5. **Finish.** All children published and the comment posted → set the charter's `**Status:** Published`. Hand-off is `Next: /wf:run <first-sub-id>` — the first sub-task's created id in dependency order; the chain runner picks up each published issue and creates its own task folder.
+   - **Partial publish** (any tracker call errored mid-way): every id already in the ledger stays; **warn** naming the failed operation; leave `**Status:** Converged` (not `Published`); end `CHARTER — Blocked` with `Next: /wf:charter <charter-id>` and, on the `Sub-tasks:` line, the published ids plus the still-`SUB-n` unpublished ones. A retry re-resolves, re-reads `list_children`, and resumes from the ledger without duplicating.
+
+#### LOCAL-ONLY
 
 1. For each sub-task in dependency order: mint a `T<NNN>` id (honor a `NEXT_TASK_ID: <id>` present in conversation context first; otherwise scan `{task-root}` for `T*__*/`, `*-T*__*/`, and bare `T<NNN>/` including `_archive/`, highest + 1 — the algorithm `/wf:spec` and `/wf:plan` use, so ids never collide with theirs). Create `{task-root}/<T-id>__<sub-slug>/`, and seed `01_spec.md` in it from the SUB brief (this is the file the downstream planner reads): brief fields map to the pipeline spec shape (Objective ← problem slice + desired outcome; Success Criteria ← acceptance scenarios; Scope ← in/out; Constraints; User Journeys ← actor + scenarios), with metadata lines `**Type:** feat|fix`, `**Complexity:** <S|M|L>`, `**Tracker:** —` (unpublished), and `**Seeded by:** /wf:charter <charter-id> (<model-id>)`.
 2. Record the `SUB-n → <T-id>__<sub-slug>` mapping in `02_subtasks.md` `## Published ids` (the opaque id is the full folder basename). Set the charter's `**Status:** Published`.
@@ -164,8 +196,10 @@ Apply these rules to the reviewer's findings, in order:
 
 ### Phase 7 — Finalize
 
-1. **Charter INDEX.** Append the charter's row to `{task-root}/INDEX.md` (create the file with the header `| Status | ID | Type | Title | Complexity | Resolution | Folder |` if missing; skip if a row for this id exists): `| [x] | <charter-id> | <feat|fix> | <title> | <M if ≤3 sub-tasks, else L> | Charter — published (<n> sub-tasks) | <folder>/ |`. The row is **checked**: a charter's own work ends at publish, and an unchecked row with no plan folder would jam a downstream unchecked-row scan. Type: `fix` if the title/idea carries fix/bug/broken/error keywords, else `feat`. **Also append one unchecked row per seeded sub-task** (local-only mode, per accepted charter warning F4.1): `| [ ] | <T-id> | <type> | <sub title> | <complexity> | — | <sub-folder>/ |`.
-2. **Per-folder index.** Call `/wf:index <charter-folder-abs> charter "<title>"` for the charter, and `/wf:index <sub-folder-abs> spec "<sub title>"` for each seeded sub-task (their seeded `01_spec.md`), so each folder's `index.md` stays current.
+1. **Charter INDEX.** Append the charter's row to `{task-root}/INDEX.md` (create the file with the header `| Status | ID | Type | Title | Complexity | Resolution | Folder |` if missing; skip if a row for this id exists): `| [x] | <charter-id> | <feat|fix> | <title> | <M if ≤3 sub-tasks, else L> | Charter — published (<n> sub-tasks)<, umbrella <umbrella-id> in tracker mode> | <folder>/ |`. The row is **checked**: a charter's own work ends at publish, and an unchecked row with no plan folder would jam a downstream unchecked-row scan. Type: `fix` if the title/idea carries fix/bug/broken/error keywords, else `feat`.
+   - **LOCAL-ONLY mode** — **also append one unchecked row per seeded sub-task** (per accepted charter warning F4.1): `| [ ] | <T-id> | <type> | <sub title> | <complexity> | — | <sub-folder>/ |`.
+   - **TRACKER mode** — write **only** the charter row and **skip** the per-sub-task rows: there are no local sub-task folders yet (the downstream chain runner creates each with the correct folder when it runs the published issue). Appending rows with no folder would jam the unchecked-row scan.
+2. **Per-folder index.** Call `/wf:index <charter-folder-abs> charter "<title>"` for the charter. In **LOCAL-ONLY** mode also call `/wf:index <sub-folder-abs> spec "<sub title>"` for each seeded sub-task (their seeded `01_spec.md`); in **TRACKER** mode there are no seeded sub-task folders, so the charter is the only index call.
 3. Emit the final block.
 
 ## Edge Cases
@@ -176,6 +210,10 @@ Apply these rules to the reviewer's findings, in order:
 - **Reviewer round produces the same blocking set twice:** `CHARTER — Needs input` (no-progress guard) — the disagreement needs a human.
 - **Rounds exhausted with blocking findings:** `CHARTER — Blocked`, residual findings listed, artifacts preserved. Not a success.
 - **Charter folder already exists for this id:** resume per the State model; never start over silently.
+- **Adoption fetch of an explicit tracker id fails:** stop with `CHARTER — Blocked` naming the failed `get` and the id — never degrade an explicit id to a feature description.
+- **Publish dies part-way (a tracker call errors mid-run):** every id already written to the ledger (`**Tracker:**` line + `## Published ids`) stays; leave `**Status:** Converged`; end `CHARTER — Blocked` (`Next: /wf:charter <charter-id>`). A retry re-resolves the tracker, re-reads `list_children`, and resumes from the ledger without duplicating.
+- **Publish re-run after full success:** the State model routes a `Published` charter to "re-emit the final block"; if invoked again it is a no-op — the umbrella id in `**Tracker:**`, the `## Published ids` rows, and the `Comment: posted` marker guard every write.
+- **Tracker registered but `unrecoverable` at publish** (a registered pack's manifest could not be read): take the LOCAL-ONLY arm, warning once in the hedged candidate-naming form the resolver's `diagnostics` supplies — never assert which pack owns `tracker`.
 - **More than ~10 sub-tasks in the final decomposition:** the decomposer flags it; surface the flag in the final block — the feature may really be several charters.
 - **User declines to answer an escalated question:** record it under `## Deferred` in `00_intake.md` (host-owned); if it was blocking, end `CHARTER — Needs input`.
 - **No interactive user (headless run):** skip interview questions and mid-loop prompts entirely; every material ambiguity becomes an `[unconfirmed]` assumption in the intake, and any `route: user` finding ends the run at `CHARTER — Needs input` instead of a prompt — never hang.
@@ -190,13 +228,14 @@ CHARTER — <Converged | Converged with warnings | Needs input | Blocked>
 Charter: <charter-id> — <title>
 Folder: <abs path to charter folder>
 Rounds: <N> review round(s)
-Sub-tasks: <n> — <ids in dependency order, or SUB-n ids if unpublished>
-Tracker: local-only
+Sub-tasks: <n> — <ids in dependency order (created child ids in tracker mode, T-ids in local mode); a still-unpublished one shows its SUB-n>
+Tracker: <umbrella-id (minted|adopted) in tracker mode | local-only>
 Warnings: <accepted warning count, or —>
 Flags: <decomposer flags, e.g. "likely overscoped: N sub-tasks", or —>
 
 Next: <exactly one of>
-  /wf:plan <first-sub-task-id>       (converged — hand the first sub-task to the planner)
-  /wf:charter <charter-id>           (needs input answered, or resume)
+  /wf:run <first-sub-id>             (tracker mode, converged — hand the first published sub-task to the chain runner)
+  /wf:plan <first-sub-task-id>       (local-only mode, converged — hand the first sub-task to the planner)
+  /wf:charter <charter-id>           (needs input answered, resume, or retry a partial publish)
   none — blocked: <one-line reason>
 ```
