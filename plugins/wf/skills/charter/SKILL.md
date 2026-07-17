@@ -1,14 +1,14 @@
 ---
 name: charter
-description: Turns a vague end-to-end feature idea into a converged feature charter plus a set of independently shippable sub-tasks — interviewed, drafted, decomposed, and reviewed to convergence, then seeded locally for the downstream pipeline. Use when a feature is too large for a single task and needs an umbrella spec decomposed before /wf:plan, /wf:spec, or /wf:tc can run each piece.
+description: Turns a vague end-to-end feature idea into a converged feature charter plus a set of independently shippable sub-tasks — interviewed, drafted, decomposed, and reviewed to convergence, then published to the active tracker as an umbrella plus one child issue per sub-task, or seeded as local task folders when no tracker is registered. Use when a feature is too large for a single task and needs an umbrella spec decomposed before /wf:plan, /wf:spec, or /wf:tc can run each piece.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, AskUserQuestion]
 ---
 
 # /wf:charter — vague feature idea → converged charter + shippable sub-tasks
 
-One level above `/wf:spec`: where `spec` turns one task into a dev-ready spec, `charter` turns one *feature* into an umbrella charter plus sub-tasks, each of which is a valid `/wf:plan` / `/wf:spec` / `/wf:tc` input. It interviews the idea to convergence, drafts an umbrella charter, decomposes it into independently shippable sub-tasks, reviews the pair with fresh eyes, and — once converged — seeds each sub-task as a local task folder the downstream pipeline picks up cold.
+One level above `/wf:spec`: where `spec` turns one task into a dev-ready spec, `charter` turns one *feature* into an umbrella charter plus sub-tasks, each of which is a valid `/wf:plan` / `/wf:spec` / `/wf:tc` input. It interviews the idea to convergence, drafts an umbrella charter, decomposes it into independently shippable sub-tasks, reviews the pair with fresh eyes, and — once converged — **publishes** the charter as a tracker umbrella with one child issue per sub-task (when a `tracker` provider is registered) or **seeds** each sub-task as a local task folder (when none is). Either way the downstream pipeline picks each sub-task up cold. A converged charter may also be started from an **existing tracker issue**: pass its id and `charter` adopts that issue as the umbrella, seeding the idea from its text.
 
-The terminus is a **hand-off, not an execution**: `charter` never runs another `wf:*` skill except `/wf:index`. Hand each seeded sub-task to `/wf:plan` one at a time; a forthcoming `/fleet` will fan the whole set out to parallel shippers in dependency order.
+The terminus is a **hand-off, not an execution**: `charter` never runs another `wf:*` skill except `/wf:index`, and it reaches the tracker only through the abstract provider contract (never a named tracker). Hand each published sub-task to the downstream chain runner (`/wf:run`) or each locally-seeded sub-task to `/wf:plan`, one at a time; a forthcoming `/fleet` will fan the whole set out to parallel shippers in dependency order.
 
 ---
 
@@ -25,6 +25,7 @@ interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted war
 
 - Three roles run as isolated subagents dispatched via the **Task** tool — `subagent_type: wf:charter-writer`, `wf:charter-decomposer`, `wf:charter-reviewer`. The host (this skill) owns the interview, routing, user escalation, and publish — subagents cannot ask the user.
 - All state lives in the charter folder's files, re-read from disk each iteration — the loop survives `/clear` and resumes from artifacts.
+- **Publish happens only at convergence — never mid-loop.** The interview→writer→decomposer→reviewer loop iterates purely on the local charter files; nothing reaches the tracker until Phase 6, and only once. Every id the tracker mints is written back to the local artifacts immediately, so a publish that dies part-way resumes idempotently.
 - Terminal statuses: `Converged`, `Converged with warnings`, `Needs input`, `Blocked`. Every pass ends with the `CHARTER — <status>` block (bottom of this file) as the very last output.
 
 ---
@@ -38,7 +39,7 @@ interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted war
 ## Command Syntax
 
 ```
-/wf:charter <feature idea | charter-id>
+/wf:charter <feature idea | charter-id | tracker-issue-id>
 /wf:charter
 ```
 
@@ -46,12 +47,14 @@ interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted war
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `<input>` | NO | Auto-detected: a charter id (`C<NNN>`) → resume that charter. Anything else → the vague feature description. Empty → resume mode (see Zero-argument default). |
+| `<input>` | NO | Auto-detected (checked in this order): a charter id (`C<NNN>`) → resume that charter; else, when a `tracker` provider is active, a **bare id token** (no internal whitespace, carrying a digit run, not a `C<NNN>`) → adopt that tracker issue as the umbrella (Phase 0); anything else → the vague feature description. Empty → resume mode (see Zero-argument default). |
 
 **Validation:**
 
 - The raw invocation input is: `$ARGUMENTS` (empty → Zero-argument default).
 - Resolve `{task-root}` per Prerequisites; create the folder if it doesn't exist.
+- **Tracker-surface state** is resolved once per run (direct provider resolution — Phase 6 §"Direct provider resolution"); it decides both whether a bare id token is treated as an adoption target here and which publish arm Phase 6 takes.
+- **Adoption gate (explicit id never degrades):** when the input is treated as a tracker id, its fetch is the *explicit-id* path — a failed `get` **stops** and reports (see Phase 0); it never falls back to treating the id as a feature description.
 
 **Zero-argument default:** scan the direct children of `{task-root}` for folders containing `00_intake.md` (that file marks a charter folder) whose `01_charter.md` is absent or has a `**Status:**` other than `Published`. Exactly one in progress → resume it at the state the artifacts imply (see State model). None → print usage and ask for a feature idea. Several → list them and ask which.
 
@@ -65,6 +68,7 @@ interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted war
 - Write and edit files only inside `{task-root}` (and its charter / sub-task folders).
 - Dispatch the three role subagents via the **Task** tool; ask the user via `AskUserQuestion` (host only).
 - Invoke `/wf:index` (the sole `wf:*` skill this one may call) to maintain per-folder indexes.
+- Reach the **`tracker` provider** through direct provider resolution for the abstract contract operations `get`, `create_umbrella`, `create_child`, `update`, `list_children`, `post_comment` — and **only** for adoption (Phase 0) and publish (Phase 6, at convergence). These are the sole external calls besides `/wf:index`; no tracker is ever named.
 
 **Forbidden:**
 
@@ -72,7 +76,8 @@ interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted war
 - Modifying source files; running builds, tests, or installs; any destructive or writing version-control operation.
 - Invoking any `wf:*` skill other than `/wf:index` — the terminus is a hand-off, not an execution.
 - Rescuing a failed subagent by doing its work inline in the host context. If a role subagent errors or its artifact is missing afterwards, halt with `CHARTER — Blocked` and surface the error. "The subagent didn't write it, I did" is not a loophole.
-- Editing a role's artifact from the host, with one stated exception: at convergence/publish the host may update the `**Status:**` metadata line in `01_charter.md` and the `## Published ids` section of `02_subtasks.md`. (`00_intake.md` and `03_review-log.md` are host-owned outright.)
+- Any tracker write outside publish/adoption: never mid-loop, never a `set_status`/`attach_link`/delete, never replacing an adopted umbrella's existing description (the publish `update` **appends** below a separator). The only tracker writes are `create_umbrella`/`create_child`/`update`/`post_comment` in Phase 6 and the `get` fetch in Phase 0.
+- Editing a role's artifact from the host, with one stated exception: at convergence/publish the host may update the `**Status:**` and `**Tracker:**` metadata lines in `01_charter.md` (the umbrella-id ledger) and the `## Published ids` section of `02_subtasks.md`. (`00_intake.md` and `03_review-log.md` are host-owned outright.)
 
 ---
 
