@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.12.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`; WF-327 — filled-slot composition: `resolve_content` gains a `slot` content class that linearizes every contribution to a `<skill>.<point>` under an **ordered tier chain** (personal `_local/slots/<skill>.<point>.md` override > pack contribution > inline default), serving **exactly one** composed body — `replace` = the single highest-precedence body (inline default superseded), `append` = registry-ordered concatenation with the override last (inline default kept as the first, body-supplied part); a typed `unfilled` outcome directs the caller to the inline default; the chain admits a future C020 tier between local override and pack contribution with no contract change; composition is code in the bundled resolver runtime, so the model never arbitrates between fragments)
+**Version:** 2.13.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`; WF-327 — filled-slot composition: `resolve_content` gains a `slot` content class that linearizes every contribution to a `<skill>.<point>` under an **ordered tier chain** (personal `_local/slots/<skill>.<point>.md` override > pack contribution > inline default), serving **exactly one** composed body — `replace` = the single highest-precedence body (inline default superseded), `append` = registry-ordered concatenation with the override last (inline default kept as the first, body-supplied part); a typed `unfilled` outcome directs the caller to the inline default; the chain admits a future C020 tier between local override and pack contribution with no contract change; composition is code in the bundled resolver runtime, so the model never arbitrates between fragments; WF-328 — **per-skill settings resolution**: a slotted skill's declared `## Settings` keys resolve through the SAME seeded-override pattern as capability profiles (hybrid precedence override > declared default, seeded only on divergence), re-keyed per skill on the existing `_local/profiles/` store as `_local/profiles/<skill>.settings.json`; a `resolve_settings` query serves the override-merged VALUES (a skill with no override resolves to its declared defaults, a divergent override value wins per key), and refresh-time validation rejects an override carrying a key the skill's `interface.md` does not declare LOUDLY — a `registry-invalid` error naming the key and the skill — homed at snapshot refresh, not `validate-registry.sh`, because it depends on the WF-326 interface declarations the registry validator runs without; settings files are not yet fingerprinted into the snapshot (WF-329))
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -872,7 +872,7 @@ and the resolver may depend on — is exactly five things:
 1. the **invocation shape** (the slash command and its arguments);
 2. the **terminal-block** contract (the `NAME — <state>` final-output block others grep);
 3. the declared **slots**, each with its **merge policy** (`replace` | `append`, the WF-323 vocabulary);
-4. the declared **settings keys** (the project-tunable inputs — resolution machinery is WF-328, out of scope here);
+4. the declared **settings keys** (the project-tunable inputs — declared in a grep-parsable `## Settings` table; WF-328 resolves them through the seeded-override machinery, see [The per-skill settings resolution](#the-per-skill-settings-resolution-capability-agnostic));
 5. the **safety rules** (the Allowed / Forbidden envelope).
 
 Everything else in the body is implementation: it may be reworded, reordered, or
@@ -1056,6 +1056,55 @@ The convention names **no** concrete capability, stack, or project value; it is 
 generic shape every capability's seed template plugs into. The destination-path
 convention is fixed here; any later change to it is a separate decision (it is a
 downstream-visible contract, like a phase name).
+
+---
+
+## The per-skill settings resolution (capability-agnostic)
+
+Where the profile-seeding convention above tunes a **capability's** contract slots,
+this section tunes a **skill's** own scalar behaviour. WF-326 lets a skill declare
+**settings keys** in its `interface.md` `## Settings` section; WF-328 resolves them
+through the **same seeded-override pattern**, re-keyed per skill — **no new storage
+mechanism** (locked decision 10).
+
+- **Declaration — a grep-parsable `## Settings` table.** A settings-declaring skill's
+  `interface.md` carries a `## Settings` table whose first column is the settings key
+  (one or more dot-joined lowercase/digit/hyphen segments, e.g. `review.depth`) and
+  whose second column is the **declared default**. A `## Settings` section carrying
+  only `_(none)_` declares no keys — the default, and the state of every skill today.
+- **Storage — re-keyed per skill on the existing `_local/profiles/` store.** The
+  personal override lives at **`_local/profiles/<skill>.settings.json`** — the same
+  gitignored folder capability profiles use, with a `<skill>.settings.json` stem that
+  never collides with a capability's `<capability>.profile.json`. `<skill>` is the
+  skill folder name; the value is a flat JSON object of key → value.
+- **Hybrid precedence — override > declared default, per key.** For each declared
+  key, the override's value (when the key is present in the override object) wins;
+  otherwise the declared default applies. A skill with **no** override resolves to
+  its declared defaults, and — mirroring the profile convention — an override is
+  seeded only when the project **diverges** (a fully-default project keeps no
+  settings override). An **undeclared** key is never silently merged in.
+- **Resolution — the `resolve_settings` query.** A consumer obtains the
+  override-merged VALUES with one `resolve_settings` call keyed by the skill slug.
+  The resolver locates the skill's `interface.md` (the core plugin root first, then
+  every resolved pack root), reads the optional override via its own fs, and merges.
+  Values only — never a skill body or interface prose (the body-free invariant holds:
+  `interface.md` is a machine-read sidecar, not the SKILL.md body).
+- **Loud rejection of an undeclared key — homed at snapshot refresh.** An override
+  carrying a key the skill's `interface.md` does not declare is a **`registry-invalid`**
+  failure: the refresh emits an error diagnostic **naming the offending key AND the
+  skill**, never silently ignoring or accepting it. The check homes at **snapshot
+  refresh** (the resolver runtime), **not** `validate-registry.sh`, because it depends
+  on the WF-326 interface declarations the registry validator runs without — the same
+  rationale that homes orphan detection at refresh. An override for a skill with no
+  locatable declaring interface (an uninstalled pack, a renamed skill) is a
+  **warning** (the resolver cannot validate it), never a hard failure of an unrelated
+  override.
+- **Not fingerprinted yet.** Settings files are read for validation/resolution but are
+  **not** fingerprinted into the snapshot's `sources` — snapshot fingerprinting of
+  settings files is a separate later sub-task (WF-329).
+
+The convention names **no** concrete skill, stack, or project value; it is the generic
+shape every settings-declaring skill plugs into.
 
 ---
 

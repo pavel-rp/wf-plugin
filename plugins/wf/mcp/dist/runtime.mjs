@@ -19812,7 +19812,7 @@ function categorizeCode(code) {
   if (code.startsWith("schema/")) return "schema-incompatible";
   if (code.startsWith("resolver/version")) return "schema-incompatible";
   if (code.startsWith("fingerprint/")) return "fingerprint-unresolvable";
-  if (code.startsWith("registry/") || code.startsWith("capability/") || code.startsWith("profile/") || code.startsWith("manifest/") || code.startsWith("plugin-list/")) {
+  if (code.startsWith("registry/") || code.startsWith("capability/") || code.startsWith("profile/") || code.startsWith("settings/") || code.startsWith("manifest/") || code.startsWith("plugin-list/")) {
     return "registry-invalid";
   }
   return null;
@@ -20389,6 +20389,87 @@ function composeSlotBody(policy, present) {
   return present.map((p) => p.content).join(APPEND_SEPARATOR);
 }
 
+// src/resolver/settings.ts
+var SETTINGS_STORAGE_DIR = "_local/profiles";
+var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
+var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
+var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
+function isSkillSlug2(s) {
+  return typeof s === "string" && SEGMENT.test(s);
+}
+function settingsOverrideRelPath(skill) {
+  return `${SETTINGS_STORAGE_DIR}/${skill}${SETTINGS_OVERRIDE_SUFFIX}`;
+}
+function skillFromSettingsFilename(filename) {
+  if (!filename.endsWith(SETTINGS_OVERRIDE_SUFFIX)) return null;
+  const stem = filename.slice(0, -SETTINGS_OVERRIDE_SUFFIX.length);
+  return isSkillSlug2(stem) ? stem : null;
+}
+function unquote(cell) {
+  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function parseSettingsDeclaration(interfaceMd) {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = /* @__PURE__ */ new Map();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^settings$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 2) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const key = unquote(cells[0]);
+    if (key === "key" || !SETTINGS_KEY.test(key)) continue;
+    decl.set(key, unquote(cells[1]));
+  }
+  return sawSection ? decl : null;
+}
+function parseSettingsOverride(jsonText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "a settings override must be a JSON object of key \u2192 value" };
+  }
+  return { ok: true, value: parsed };
+}
+function mergeSettings(declared, override) {
+  const values = {};
+  for (const [key, def] of declared) {
+    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
+  }
+  const undeclared = [];
+  if (override) {
+    for (const key of Object.keys(override)) {
+      if (!declared.has(key)) undeclared.push(key);
+    }
+  }
+  undeclared.sort();
+  return { values, undeclared };
+}
+function locateInterface(skill, roots, readFile, joinSlash2) {
+  for (const root of roots) {
+    const path = joinSlash2(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSettingsDeclaration(content);
+    if (declared === null) continue;
+    return { root, path, declared };
+  }
+  return null;
+}
+
 // src/resolver/registry-edit.ts
 function splitRow(line) {
   const trimmed = line.trim();
@@ -20622,6 +20703,88 @@ var ResolverService = class {
     const s = this.ensure();
     const present = Object.prototype.hasOwnProperty.call(s.profiles, capability);
     return { capability, present, values: present ? s.profiles[capability] : null };
+  }
+  // --- per-skill settings (WF-328): resolve declared keys under override ---
+  /** Resolve a slotted skill's declared settings keys to their effective values
+   *  under the hybrid precedence override > declared default, re-keyed per skill
+   *  on the same `_local/profiles/` machinery as capability profiles. Locates the
+   *  skill's `interface.md` (core plugin root first, then resolved pack roots),
+   *  reads the optional `_local/profiles/<skill>.settings.json` override via the
+   *  server's own fs, and merges. A skill with no override resolves to its
+   *  declared defaults (no override is seeded); an override with a divergent value
+   *  wins per key; an override carrying a key the interface does NOT declare is
+   *  rejected loudly (`registry-invalid`, naming the key and the skill) rather than
+   *  silently accepted. Values only — never a skill body or interface prose. */
+  resolveSettings(skill) {
+    const s = this.ensure();
+    const slug = typeof skill === "string" ? skill.trim() : "";
+    const base = {
+      skill: slug,
+      declared: false,
+      overridePresent: false,
+      values: null,
+      undeclaredKeys: [],
+      category: null,
+      message: null
+    };
+    if (!isSkillSlug2(slug)) {
+      return {
+        ...base,
+        category: "registry-invalid",
+        message: "a settings ref requires a `skill` slug (lowercase letters, digits, hyphens)."
+      };
+    }
+    const overridePath = joinSlash(this.ports.workspaceRoot, settingsOverrideRelPath(slug));
+    const overrideRaw = this.ports.readFile(overridePath);
+    const overridePresent = overrideRaw !== null;
+    const roots = [normalizeSlashes(this.ports.corePluginRoot)];
+    for (const r of s.pluginRoots) {
+      if (r.resolvedRoot) {
+        roots.push(
+          isAbsoluteRoot(r.resolvedRoot) ? normalizeSlashes(r.resolvedRoot) : joinSlash(this.ports.workspaceRoot, r.resolvedRoot)
+        );
+      }
+    }
+    const located = locateInterface(slug, roots, (p) => this.ports.readFile(p), joinSlash);
+    if (!located) {
+      return {
+        ...base,
+        overridePresent,
+        message: overridePresent ? `skill \`${slug}\` has a settings override but no locatable settings-declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove \`${SETTINGS_STORAGE_DIR}/${slug}.settings.json\`.` : `skill \`${slug}\` declares no settings (no settings-declaring \`interface.md\` located).`,
+        category: overridePresent ? "registry-invalid" : null
+      };
+    }
+    let override = null;
+    if (overrideRaw !== null) {
+      const parsed = parseSettingsOverride(overrideRaw);
+      if (!parsed.ok) {
+        return {
+          ...base,
+          declared: true,
+          overridePresent,
+          category: "registry-invalid",
+          message: `settings override for skill \`${slug}\` (\`${SETTINGS_STORAGE_DIR}/${slug}.settings.json\`) is not a valid JSON object: ${parsed.error}`
+        };
+      }
+      override = parsed.value;
+    }
+    const { values, undeclared } = mergeSettings(located.declared, override);
+    if (undeclared.length > 0) {
+      return {
+        ...base,
+        declared: true,
+        overridePresent,
+        undeclaredKeys: undeclared,
+        category: "registry-invalid",
+        message: `settings override for skill \`${slug}\` carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}.`
+      };
+    }
+    return {
+      ...base,
+      declared: true,
+      overridePresent,
+      values
+    };
   }
   // --- content surface (WF-302): resolve + read a bundled-doc body ---------
   /** Resolve a logical content ref (one of the five served classes) and read
@@ -20987,7 +21150,7 @@ var ResolverService = class {
 };
 
 // src/ports.ts
-import { mkdirSync as mkdirSync2, readdirSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { mkdirSync as mkdirSync2, readdirSync as readdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname2, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21167,6 +21330,9 @@ function relativize(workspaceRoot, absPath) {
   if (abs === root) return ".";
   if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
   return abs;
+}
+function toAbsolute3(workspaceRoot, snapshotPath2) {
+  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
 }
 function inlineDispatchRel(dispatch) {
   const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
@@ -21388,6 +21554,48 @@ function buildSnapshot(inputs, io) {
       });
     }
   }
+  const interfaceRoots = [];
+  if (inputs.corePluginRoot) interfaceRoots.push(normalizeSlashes(inputs.corePluginRoot));
+  for (const r of pluginRoots) {
+    if (r.resolvedRoot) interfaceRoots.push(toAbsolute3(workspaceRoot, r.resolvedRoot));
+  }
+  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
+  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
+  for (const filename of settingsFiles) {
+    const skill = skillFromSettingsFilename(filename);
+    if (!skill) continue;
+    const overridePath = joinSlash(settingsDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    const parsed = parseSettingsOverride(overrideRaw);
+    if (!parsed.ok) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/unparseable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`
+      });
+      continue;
+    }
+    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    if (!located) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/interface-unresolvable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove the override.`
+      });
+      continue;
+    }
+    const { undeclared } = mergeSettings(located.declared, parsed.value);
+    if (undeclared.length > 0) {
+      diagnostics.push({
+        severity: "error",
+        code: "settings/undeclared-key",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}. Remove the undeclared ${undeclared.length === 1 ? "key" : "keys"} or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
+        category: "registry-invalid",
+        recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
+      });
+    }
+  }
   const providerConfig = {};
   if (providerOwnership.some((o) => o.surface === "tracker")) {
     diagnostics.push({
@@ -21423,7 +21631,7 @@ function buildSnapshot(inputs, io) {
 }
 
 // src/resolver/engine.ts
-import { readFileSync as readFileSync2 } from "node:fs";
+import { readFileSync as readFileSync2, readdirSync } from "node:fs";
 import { join as join2 } from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -21497,7 +21705,14 @@ function readOrNull(absPath) {
     throw err;
   }
 }
-var fsIO = { readFile: readOrNull };
+function listFilesOrEmpty(absDir) {
+  try {
+    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+var fsIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
 function extractRegistryPath(wfConfig) {
   if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
   const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
@@ -21534,7 +21749,8 @@ function resolveSnapshot(opts) {
     coreConfigContent,
     pluginListRaw,
     generatedAt: now.toISOString(),
-    generator: opts.generator ?? { ...RESOLVER_GENERATOR }
+    generator: opts.generator ?? { ...RESOLVER_GENERATOR },
+    corePluginRoot: opts.corePluginRoot ?? null
   };
   return buildSnapshot(inputs, io);
 }
@@ -21559,7 +21775,7 @@ function createDefaultPorts(workspaceRoot) {
   return {
     workspaceRoot,
     corePluginRoot: resolveCorePluginRoot(),
-    resolveFresh: () => resolveSnapshot({ workspaceRoot }),
+    resolveFresh: () => resolveSnapshot({ workspaceRoot, corePluginRoot: resolveCorePluginRoot() }),
     persist: (snapshot) => {
       writeSnapshot(workspaceRoot, snapshot);
     },
@@ -21577,7 +21793,7 @@ function createDefaultPorts(workspaceRoot) {
     },
     listDirs: (absDir) => {
       try {
-        return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
       } catch {
         return [];
       }
@@ -21657,6 +21873,17 @@ var pluginIdInput = fromJsonSchema2({
     }
   },
   required: ["pluginId"],
+  additionalProperties: false
+});
+var skillInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    skill: {
+      type: "string",
+      description: "Slotted skill slug whose declared settings keys to resolve (lowercase, hyphenated)."
+    }
+  },
+  required: ["skill"],
   additionalProperties: false
 });
 var contentInput = fromJsonSchema2({
@@ -21754,6 +21981,15 @@ function registerResolverTools(server, service) {
       inputSchema: capabilityInput
     },
     async (args) => guard(() => service.resolveProfile(args.capability))
+  );
+  server.registerTool(
+    "resolve_settings",
+    {
+      title: "resolve settings",
+      description: "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default \u2014 the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
+      inputSchema: skillInput
+    },
+    async (args) => guard(() => service.resolveSettings(args.skill))
   );
   server.registerTool(
     "resolve_plugin_root",

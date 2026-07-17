@@ -6,7 +6,7 @@
 // plugin metadata (the ONLY source of installed-pack facts — never a private
 // Claude install manifest). Then calls buildSnapshot and persists it atomically.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { normalizeSlashes } from "./paths.js";
@@ -26,8 +26,20 @@ function readOrNull(absPath: string): string | null {
   }
 }
 
+/** List immediate file (non-directory) names of a directory, or `[]` when it is
+ *  absent — the settings-validation pass enumerates `_local/profiles/` with it. */
+function listFilesOrEmpty(absDir: string): string[] {
+  try {
+    return readdirSync(absDir, { withFileTypes: true })
+      .filter((e) => e.isFile())
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+
 /** Real read-only IO port backed by the filesystem. */
-export const fsIO: ResolverIO = { readFile: readOrNull };
+export const fsIO: ResolverIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
 
 /** Extract `registryPath` from wf.config.js text without evaluating the module
  *  (mirrors validate-registry.sh CHECK 1: a single quoted value, first hit). The
@@ -59,6 +71,10 @@ export function runPluginList(): string | null {
 
 export interface ResolveOptions {
   workspaceRoot: string;
+  /** Normalized absolute core `wf` plugin root — the anchor for locating a core
+   *  skill's `interface.md` in the settings-validation pass (WF-328). Omitted in
+   *  tests that drive only pack-skill interfaces. */
+  corePluginRoot?: string | null;
   /** Override the plugin-list source (tests inject fixtures), aligning with the
    *  builder's `string | null` contract: a `string` is REAL CLI output (including
    *  an empty `"[]"`); `null` is an injected CLI-unavailable signal (recorded as
@@ -106,6 +122,7 @@ export function resolveSnapshot(opts: ResolveOptions): ResolverSnapshot {
     pluginListRaw,
     generatedAt: now.toISOString(),
     generator: opts.generator ?? { ...RESOLVER_GENERATOR },
+    corePluginRoot: opts.corePluginRoot ?? null,
   };
 
   return buildSnapshot(inputs, io);

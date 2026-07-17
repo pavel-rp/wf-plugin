@@ -12,6 +12,8 @@
 // never block a session — a stale snapshot is corrected by the query-time
 // backstop on the next typed query regardless.
 
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   RESOLVER_GENERATOR,
   evaluateFreshness,
@@ -25,6 +27,20 @@ import {
 
 function workspaceRoot(): string {
   return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
+}
+
+/** Resolve the core `wf` plugin root — the anchor for locating a core skill's
+ *  `interface.md` in the settings-validation pass. This bundle is
+ *  `<coreRoot>/mcp/dist/refresh-if-stale.mjs`, so two directory levels up is the
+ *  core plugin root; `WF_CORE_PLUGIN_ROOT` overrides it (tests / non-standard
+ *  hosts). Mirrors ports.ts `resolveCorePluginRoot` without pulling in the
+ *  service bundle. */
+function corePluginRoot(): string {
+  if (process.env.WF_CORE_PLUGIN_ROOT) {
+    return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
+  }
+  const here = fileURLToPath(import.meta.url); // .../plugins/wf/mcp/dist/refresh-if-stale.mjs
+  return normalizeSlashes(resolve(dirname(here), "..", "..")); // .../plugins/wf
 }
 
 function log(line: string): void {
@@ -54,7 +70,7 @@ function main(): void {
   }
 
   if (cached === null) {
-    resolveAndPersist({ workspaceRoot: root });
+    resolveAndPersist({ workspaceRoot: root, corePluginRoot: corePluginRoot() });
     log(`built snapshot (${cacheReason?.message ?? "no cache"}).`);
     return;
   }
@@ -73,7 +89,7 @@ function main(): void {
     return;
   }
 
-  resolveAndPersist({ workspaceRoot: root });
+  resolveAndPersist({ workspaceRoot: root, corePluginRoot: corePluginRoot() });
   log(`refreshed snapshot; reasons: ${reasons.map((r) => r.code).join(", ")}.`);
 }
 

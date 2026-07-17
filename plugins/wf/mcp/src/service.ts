@@ -38,7 +38,15 @@ import {
   type MergePolicy,
   type PresentPart,
 } from "./resolver/slot.js";
-import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
+import {
+  SETTINGS_STORAGE_DIR,
+  isSkillSlug,
+  locateInterface,
+  mergeSettings,
+  parseSettingsOverride,
+  settingsOverrideRelPath,
+} from "./resolver/settings.js";
+import { isAbsoluteRoot, joinSlash, normalizeSlashes } from "./resolver/paths.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
 import {
@@ -128,6 +136,29 @@ export interface ProfileResponse {
   capability: string;
   present: boolean;
   values: unknown;
+}
+
+/** Per-skill settings resolution (WF-328): the override-merged VALUES for a
+ *  slotted skill's declared settings keys, under the same hybrid precedence
+ *  (override > declared default) as capability profiles, re-keyed per skill.
+ *  Values only — never a skill body or interface prose. */
+export interface SettingsResponse {
+  skill: string;
+  /** True when a settings-declaring `interface.md` was located for the skill. */
+  declared: boolean;
+  /** True when a `_local/profiles/<skill>.settings.json` override is present. */
+  overridePresent: boolean;
+  /** The resolved per-key values (override value where present, else the declared
+   *  default). `null` when the skill declares no settings, or when resolution
+   *  failed (undeclared key / unparseable override / bad skill slug). */
+  values: Record<string, unknown> | null;
+  /** Override keys the interface does not declare — non-empty ⇒ a loud rejection.
+   *  Empty on a clean resolution. */
+  undeclaredKeys: string[];
+  /** The typed failure category when resolution failed, else `null`. */
+  category: ResolverErrorCategory | null;
+  /** A human-facing message on failure / no-declaration; `null` on clean success. */
+  message: string | null;
 }
 
 export interface PluginRootResponse {
@@ -437,6 +468,101 @@ export class ResolverService {
     const s = this.ensure();
     const present = Object.prototype.hasOwnProperty.call(s.profiles, capability);
     return { capability, present, values: present ? s.profiles[capability] : null };
+  }
+
+  // --- per-skill settings (WF-328): resolve declared keys under override ---
+  /** Resolve a slotted skill's declared settings keys to their effective values
+   *  under the hybrid precedence override > declared default, re-keyed per skill
+   *  on the same `_local/profiles/` machinery as capability profiles. Locates the
+   *  skill's `interface.md` (core plugin root first, then resolved pack roots),
+   *  reads the optional `_local/profiles/<skill>.settings.json` override via the
+   *  server's own fs, and merges. A skill with no override resolves to its
+   *  declared defaults (no override is seeded); an override with a divergent value
+   *  wins per key; an override carrying a key the interface does NOT declare is
+   *  rejected loudly (`registry-invalid`, naming the key and the skill) rather than
+   *  silently accepted. Values only — never a skill body or interface prose. */
+  resolveSettings(skill: string): SettingsResponse {
+    const s = this.ensure();
+    const slug = typeof skill === "string" ? skill.trim() : "";
+    const base: SettingsResponse = {
+      skill: slug,
+      declared: false,
+      overridePresent: false,
+      values: null,
+      undeclaredKeys: [],
+      category: null,
+      message: null,
+    };
+    if (!isSkillSlug(slug)) {
+      return {
+        ...base,
+        category: "registry-invalid",
+        message: "a settings ref requires a `skill` slug (lowercase letters, digits, hyphens).",
+      };
+    }
+
+    const overridePath = joinSlash(this.ports.workspaceRoot, settingsOverrideRelPath(slug));
+    const overrideRaw = this.ports.readFile(overridePath);
+    const overridePresent = overrideRaw !== null;
+
+    const roots: string[] = [normalizeSlashes(this.ports.corePluginRoot)];
+    for (const r of s.pluginRoots) {
+      if (r.resolvedRoot) {
+        roots.push(
+          isAbsoluteRoot(r.resolvedRoot)
+            ? normalizeSlashes(r.resolvedRoot)
+            : joinSlash(this.ports.workspaceRoot, r.resolvedRoot),
+        );
+      }
+    }
+
+    const located = locateInterface(slug, roots, (p) => this.ports.readFile(p), joinSlash);
+    if (!located) {
+      return {
+        ...base,
+        overridePresent,
+        message: overridePresent
+          ? `skill \`${slug}\` has a settings override but no locatable settings-declaring \`interface.md\` — its keys cannot be validated. Install the owning pack or remove \`${SETTINGS_STORAGE_DIR}/${slug}.settings.json\`.`
+          : `skill \`${slug}\` declares no settings (no settings-declaring \`interface.md\` located).`,
+        category: overridePresent ? "registry-invalid" : null,
+      };
+    }
+
+    let override: Record<string, unknown> | null = null;
+    if (overrideRaw !== null) {
+      const parsed = parseSettingsOverride(overrideRaw);
+      if (!parsed.ok) {
+        return {
+          ...base,
+          declared: true,
+          overridePresent,
+          category: "registry-invalid",
+          message: `settings override for skill \`${slug}\` (\`${SETTINGS_STORAGE_DIR}/${slug}.settings.json\`) is not a valid JSON object: ${parsed.error}`,
+        };
+      }
+      override = parsed.value;
+    }
+
+    const { values, undeclared } = mergeSettings(located.declared, override);
+    if (undeclared.length > 0) {
+      return {
+        ...base,
+        declared: true,
+        overridePresent,
+        undeclaredKeys: undeclared,
+        category: "registry-invalid",
+        message: `settings override for skill \`${slug}\` carries ${
+          undeclared.length === 1 ? "a key" : "keys"
+        } its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}.`,
+      };
+    }
+
+    return {
+      ...base,
+      declared: true,
+      overridePresent,
+      values,
+    };
   }
 
   // --- content surface (WF-302): resolve + read a bundled-doc body ---------

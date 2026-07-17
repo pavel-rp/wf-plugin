@@ -47,11 +47,12 @@ export function categorizeCode(code: string): ResolverErrorCategory | null {
   if (code.startsWith("schema/")) return "schema-incompatible";
   if (code.startsWith("resolver/version")) return "schema-incompatible";
   if (code.startsWith("fingerprint/")) return "fingerprint-unresolvable";
-  // Registry / manifest / profile / plugin-list contract problems.
+  // Registry / manifest / profile / settings / plugin-list contract problems.
   if (
     code.startsWith("registry/") ||
     code.startsWith("capability/") ||
     code.startsWith("profile/") ||
+    code.startsWith("settings/") ||
     code.startsWith("manifest/") ||
     code.startsWith("plugin-list/")
   ) {

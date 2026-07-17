@@ -12,12 +12,20 @@
 // body — it resolves a fragment's DISPATCH path and stops there.
 
 import {
+  isAbsoluteRoot,
   joinSlash,
   normalizeSlashes,
   resolveCapabilityPath,
   type InstalledRoot,
   type RecordedRoot,
 } from "./paths.js";
+import {
+  SETTINGS_STORAGE_DIR,
+  locateInterface,
+  mergeSettings,
+  parseSettingsOverride,
+  skillFromSettingsFilename,
+} from "./settings.js";
 import { parseRegistry } from "./registry.js";
 import { parseManifest } from "./manifest.js";
 import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
@@ -36,9 +44,15 @@ import {
   type SourceFingerprint,
 } from "./types.js";
 
-/** Read-only IO port: returns UTF-8 content, or `null` when the path is absent. */
+/** Read-only IO port: returns UTF-8 content, or `null` when the path is absent.
+ *  `listFiles` is OPTIONAL — only the settings-validation pass uses it (to
+ *  enumerate `_local/profiles/*.settings.json` overrides); a port that omits it
+ *  simply resolves zero settings overrides, so every existing caller is
+ *  unaffected. It returns immediate file (non-directory) names, or `[]` when the
+ *  directory is absent. */
 export interface ResolverIO {
   readFile(absPath: string): string | null;
+  listFiles?(absDir: string): string[];
 }
 
 export interface BuildSnapshotInputs {
@@ -60,6 +74,11 @@ export interface BuildSnapshotInputs {
   /** ISO-8601 stamp applied at persist time. */
   generatedAt: string;
   generator: { name: string; version: string };
+  /** Normalized absolute root of the core `wf` plugin — the anchor for locating a
+   *  core skill's `interface.md` in the settings-validation pass. `null`/omitted
+   *  when the caller cannot supply it (only pack-skill interfaces are then
+   *  probed). */
+  corePluginRoot?: string | null;
 }
 
 /** Make a path stable + normalized: workspace-relative when under the workspace
@@ -70,6 +89,14 @@ function relativize(workspaceRoot: string, absPath: string): string {
   if (abs === root) return ".";
   if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
   return abs;
+}
+
+/** Resolve a relativized snapshot path (workspace-relative OR absolute) to an
+ *  absolute forward-slash path — the inverse of `relativize`. */
+function toAbsolute(workspaceRoot: string, snapshotPath: string): string {
+  return isAbsoluteRoot(snapshotPath)
+    ? normalizeSlashes(snapshotPath)
+    : joinSlash(workspaceRoot, snapshotPath);
 }
 
 /** Parse an `inline: <rel>` dispatch to its rel path; `null` for subagent/other. */
@@ -360,6 +387,72 @@ export function buildSnapshot(
         message: `profile for \`${cap.name}\` is not valid JSON: ${
           err instanceof Error ? err.message : String(err)
         }`,
+      });
+    }
+  }
+
+  // --- per-skill settings overrides (validate at refresh — WF-328) ---------
+  // Enumerate every `_local/profiles/<skill>.settings.json` override and validate
+  // it against its skill's declared `## Settings` interface. An override carrying
+  // a key the interface does not declare is rejected LOUDLY (a `registry-invalid`
+  // error diagnostic naming the key AND the skill) — never silently accepted. The
+  // check homes HERE (snapshot refresh), not `validate-registry.sh`, because it
+  // depends on the WF-326 interface declarations the registry validator runs
+  // without. Settings files are NOT fingerprinted into `sources` — that is WF-329.
+  //
+  // Interface location reuses the resolved roots already computed above: the core
+  // plugin root (for a core skill) first, then every resolved pack root (for a
+  // pack skill). The winning interface is the first root that holds a
+  // settings-declaring `skills/<skill>/interface.md`.
+  const interfaceRoots: string[] = [];
+  if (inputs.corePluginRoot) interfaceRoots.push(normalizeSlashes(inputs.corePluginRoot));
+  for (const r of pluginRoots) {
+    if (r.resolvedRoot) interfaceRoots.push(toAbsolute(workspaceRoot, r.resolvedRoot));
+  }
+  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
+  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
+  for (const filename of settingsFiles) {
+    const skill = skillFromSettingsFilename(filename);
+    if (!skill) continue; // not a `<skill>.settings.json` (e.g. a capability profile)
+    const overridePath = joinSlash(settingsDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    const parsed = parseSettingsOverride(overrideRaw);
+    if (!parsed.ok) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/unparseable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`,
+      });
+      continue;
+    }
+    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    if (!located) {
+      // The override targets a skill with no locatable settings-declaring
+      // interface (an uninstalled pack, a renamed/removed skill). Warn — the
+      // resolver cannot validate it — but do not hard-fail an unrelated override.
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/interface-unresolvable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` — its keys cannot be validated. Install the owning pack or remove the override.`,
+      });
+      continue;
+    }
+    const { undeclared } = mergeSettings(located.declared, parsed.value);
+    if (undeclared.length > 0) {
+      diagnostics.push({
+        severity: "error",
+        code: "settings/undeclared-key",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${
+          undeclared.length === 1 ? "a key" : "keys"
+        } its \`interface.md\` does not declare: ${undeclared
+          .map((k) => `\`${k}\``)
+          .join(", ")}. Remove the undeclared ${
+          undeclared.length === 1 ? "key" : "keys"
+        } or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
+        category: "registry-invalid",
+        recovery:
+          "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.",
       });
     }
   }
