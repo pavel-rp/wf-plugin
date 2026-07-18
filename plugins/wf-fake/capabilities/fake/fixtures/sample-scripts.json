@@ -1,0 +1,45 @@
+{
+  "_comment": "Reference sample scripts covering every wf-fake contract op on both surfaces. Synthetic host fake.local and FAKE- ids only — no external delivery/tracker host, no network token. Demonstrates single-value responses, ordered response sequences (checks-read poll, review-threads-read evolving state), and a pre-scripted review-thread scenario for the review-gate corpus.",
+  "delivery": {
+    "branch-create": { "state": "created", "base-source": "origin/main", "tracking": "origin/feature/FAKE-1-demo", "carry": "none" },
+    "branch-switch": { "state": "switched", "tracking": "origin/feature/FAKE-1-demo" },
+    "commit": { "state": "committed", "diffstat": "2 changed (+40 -3)" },
+    "push-upstream": { "state": "pushed (origin/feature/FAKE-1-demo)" },
+    "pr-create": { "state": "created", "url": "https://fake.local/pr/1" },
+    "pr-detect": { "found": true, "url": "https://fake.local/pr/1", "state": "OPEN" },
+    "pr-comment-post": { "state": "posted", "url": "https://fake.local/pr/1#comment-1" },
+    "review-thread-resolve": { "state": "resolved" },
+    "review-thread-reply": { "state": "posted", "url": "https://fake.local/pr/1#thread-T1-reply" },
+    "pr-merge": { "state": "merged", "url": "https://fake.local/pr/1" },
+    "workspace-root-resolve": "/fixture/workspace",
+    "current-branch-query": "feature/FAKE-1-demo",
+    "default-base-query": "main",
+    "last-commit-timestamp-query": "2026-07-18T12:00:00Z",
+    "branch-changes-read": [ { "path": "src/demo.ts", "status": "A" }, { "path": "README.md", "status": "M" } ],
+    "pr-comments-read": [ { "author": "reviewer-1", "body": "Consider a guard here.", "anchor": "src/demo.ts:12" } ],
+    "review-threads-read": [
+      { "read-performed": true, "threads": [ { "id": "T1", "path": "src/demo.ts", "line": 12, "resolved": false, "body": "Consider a guard here." } ] },
+      { "read-performed": true, "threads": [ { "id": "T1", "path": "src/demo.ts", "line": 12, "resolved": true, "body": "Consider a guard here." } ] }
+    ],
+    "checks-read": [
+      [ { "name": "ci", "state": "PENDING", "link": "https://fake.local/checks/ci" } ],
+      [ { "name": "ci", "state": "SUCCESS", "link": "https://fake.local/checks/ci" } ]
+    ],
+    "activity-read": { "commits": [ { "sha": "abc123", "when": "2026-07-18T12:00:00Z", "subject": "FAKE-1: demo" } ], "pull-requests": [ { "number": 1, "title": "FAKE-1: demo", "state": "OPEN", "url": "https://fake.local/pr/1" } ] }
+  },
+  "tracker": {
+    "resolve_config": "configured",
+    "create_umbrella": "FAKE-1",
+    "create_child": "FAKE-2",
+    "update": { "state": "updated" },
+    "get": { "id": "FAKE-1", "title": "Demo umbrella", "description": "A scripted demo work item.", "status": "In Progress", "parent": null, "labels": [] },
+    "list_children": [ { "id": "FAKE-2", "title": "Demo child" } ],
+    "post_comment": { "state": "posted" },
+    "set_status": { "state": "status-changed" },
+    "attach_link": { "state": "attached" },
+    "list_by_status": [ { "id": "FAKE-2", "title": "Demo child", "status": "In Progress" } ],
+    "list_milestones": [ { "id": "M1", "name": "Milestone 1", "target": "2026-08-01" } ],
+    "list_cycles": [ { "id": "C1", "name": "Cycle 1", "start": "2026-07-14", "end": "2026-07-28" } ],
+    "list_blockers": []
+  }
+}
