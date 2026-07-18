@@ -71,6 +71,17 @@ jobs:
         # A non-zero exit fails this step (and the job).
         run: bash plugins/wf-sandbox-testing/assert/run.sh
 
+      - name: Sandbox-testing corpus self-check
+        # The WF-347 behavioral-regression corpus over the WF-345 runner's outputs, judged by
+        # the WF-346 assertion layer. Like the assertion suite above it runs entirely against
+        # committed CANNED run outputs (no container, no model, no token), proving: the
+        # per-item provenance audit (zero unprovenanced items), the mechanical declared-slot
+        # enumeration, the per-slot empty-slot flagship (unfilled ≡ pinned pre-slot baseline;
+        # a seeded slot-fill diverges), the fingerprinted baseline-arm record, and the WF-313
+        # review-gate five-requirements scenario (green against wf-fake scripted threads; a
+        # seeded "merged while claiming no review landed" turns red). Non-zero exit fails the job.
+        run: bash plugins/wf-sandbox-testing/corpus/run.sh
+
       - name: Each capability's fixture suite
         # Discover every capability fixtures suite by convention — never name a
         # specific capability, so any future capability that ships a fixtures

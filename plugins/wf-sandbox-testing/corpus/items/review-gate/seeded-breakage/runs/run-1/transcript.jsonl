@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"rg-seed-1","tools":["Read","Bash","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SEEDED BREAKAGE (the WF-313 defect): checks are green, so merging. No read-back of review threads at HEAD_SHA was performed and no finding threads were replied to — the shipper claims no review landed and merges anyway. The review-gate assertion must turn this red."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Merged\n\nTask: FAKE-1\nPull request: https://fake.local/pr/1 (merged)\nNext: none — terminus"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":3900,"output_tokens":300},"total_cost_usd":0.0281}
