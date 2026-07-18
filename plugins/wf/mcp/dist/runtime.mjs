@@ -20523,16 +20523,1052 @@ function locateInterface(skill, roots, readFile, joinSlash2) {
   return null;
 }
 
-// src/resolver/registry-edit.ts
+// src/resolver/registry.ts
 function splitRow(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
-  return trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  return cells;
 }
 function isSeparatorRow(cells) {
   return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
 }
+function tableRowsUnderHeading(markdown, heading) {
+  const lines = markdown.split(/\r?\n/);
+  const rows = [];
+  let inSection = false;
+  let sawHeader = false;
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
+  for (const line of lines) {
+    if (/^#{1,6}\s+/.test(line)) {
+      if (headingRe.test(line)) {
+        inSection = true;
+        sawHeader = false;
+        continue;
+      }
+      if (inSection) break;
+      continue;
+    }
+    if (!inSection) continue;
+    const cells = splitRow(line);
+    if (!cells) {
+      if (sawHeader && rows.length > 0 && line.trim() === "") break;
+      continue;
+    }
+    if (!sawHeader) {
+      sawHeader = true;
+      continue;
+    }
+    if (isSeparatorRow(cells)) continue;
+    rows.push(cells);
+  }
+  return rows;
+}
 function escapeRegex2(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function parseRegistry(markdown) {
+  const capabilities = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
+    const [name, path] = cells;
+    if (name && path) capabilities.push({ name, path });
+  }
+  const pluginRoots = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
+    const [plugin, root] = cells;
+    if (plugin && root) pluginRoots.push({ plugin, root });
+  }
+  return { capabilities, pluginRoots };
+}
+
+// src/resolver/validate-rules.ts
+function toPosix(p) {
+  return p.replace(/\\/g, "/");
+}
+function finding(rule, file, line, message) {
+  return { rule, severity: "error", file: toPosix(file), line, message };
+}
+function verdict(tool, target, findings, ruleSources, summary, forceError = false) {
+  const status = forceError ? "error" : findings.length === 0 ? "pass" : "fail";
+  return {
+    tool,
+    status,
+    target: toPosix(target),
+    findings,
+    ruleSources: ruleSources.map(toPosix),
+    summary
+  };
+}
+function sectionBody(markdown, headingPrefix) {
+  const lines = markdown.split(/\r?\n/);
+  const out = [];
+  let inSection = false;
+  for (const raw of lines) {
+    const line = raw.replace(/\r$/, "");
+    if (/^#{1,6}\s+/.test(line)) {
+      if (inSection) break;
+      const text = line.replace(/^#{1,6}\s+/, "").trim();
+      if (text.toLowerCase().startsWith(headingPrefix.toLowerCase())) {
+        inSection = true;
+      }
+      continue;
+    }
+    if (inSection) out.push(line);
+  }
+  return inSection ? out : null;
+}
+function backticked(s) {
+  const out = [];
+  const re = /`([^`]+)`/g;
+  let m;
+  while ((m = re.exec(s)) !== null) out.push(m[1].trim());
+  return out;
+}
+function tableRows(lines) {
+  const rows = [];
+  let sawHeader = false;
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t.startsWith("|")) {
+      if (sawHeader && rows.length > 0) break;
+      continue;
+    }
+    const cells = t.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (!sawHeader) {
+      sawHeader = true;
+      continue;
+    }
+    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
+    rows.push(cells);
+  }
+  return rows;
+}
+var RuleSourceError = class extends Error {
+  constructor(message, source) {
+    super(message);
+    this.source = source;
+    this.name = "RuleSourceError";
+  }
+  source;
+};
+function deriveRules(opsMarkdown, opsPath) {
+  const need = (prefix) => {
+    const body = sectionBody(opsMarkdown, prefix);
+    if (body === null) {
+      throw new RuleSourceError(
+        `rule source ${toPosix(opsPath)} has no \`## ${prefix}\u2026\` section \u2014 the vocabulary cannot be derived, so no verdict is issued.`,
+        opsPath
+      );
+    }
+    return body;
+  };
+  const phaseBody = need("The SDD phases");
+  const phaseLine = phaseBody.find((l) => l.split("`").length > 4) ?? "";
+  const phases = [];
+  for (const seg of phaseLine.split("\xB7")) {
+    const tok = backticked(seg)[0];
+    if (tok && /^[a-z][a-z0-9-]*$/.test(tok) && !phases.includes(tok)) phases.push(tok);
+  }
+  if (phases.length === 0) {
+    throw new RuleSourceError(
+      `rule source ${toPosix(opsPath)} \xA7"The SDD phases" yielded no phase tokens \u2014 refusing to validate against an empty vocabulary.`,
+      opsPath
+    );
+  }
+  const taxRows = tableRows(need("The contribution taxonomy"));
+  const kinds = [];
+  const partitionedKinds = [];
+  const pointTargetedKinds = [];
+  const slotPolicies = [];
+  for (const row of taxRows) {
+    const kind = backticked(row[0] ?? "")[0];
+    if (!kind) continue;
+    kinds.push(kind);
+    const phaseCell = (row[1] ?? "").trim();
+    const policyCell = row[2] ?? "";
+    if (/partition/i.test(policyCell)) partitionedKinds.push(kind);
+    if (/^[—-]/.test(phaseCell)) {
+      pointTargetedKinds.push(kind);
+      for (const tok of backticked(policyCell)) {
+        if (/^[a-z]+$/.test(tok) && !slotPolicies.includes(tok)) slotPolicies.push(tok);
+      }
+    }
+  }
+  if (kinds.length === 0) {
+    throw new RuleSourceError(
+      `rule source ${toPosix(opsPath)} \xA7"The contribution taxonomy" yielded no contribution kinds \u2014 refusing to validate against an empty vocabulary.`,
+      opsPath
+    );
+  }
+  const schemaBody = need("Manifest schema v2");
+  let manifestKinds = [];
+  const dispatchPrefixes = [];
+  for (const line of schemaBody) {
+    if (manifestKinds.length === 0 && /\*\*`kind:`\*\*/.test(line)) {
+      manifestKinds = backticked(line).filter((t) => t !== "kind:").filter((t) => /^[a-z][a-z-]*$/.test(t));
+    }
+    if (/`dispatch`/.test(line)) {
+      for (const tok of backticked(line)) {
+        const m = /^([a-z][a-z-]*):\s*</.exec(tok);
+        if (m && !dispatchPrefixes.includes(m[1])) dispatchPrefixes.push(m[1]);
+      }
+    }
+  }
+  if (dispatchPrefixes.length === 0) {
+    throw new RuleSourceError(
+      `rule source ${toPosix(opsPath)} \xA7"Manifest schema v2" yielded no \`dispatch\` prefixes \u2014 refusing to validate against an empty vocabulary.`,
+      opsPath
+    );
+  }
+  return {
+    phases,
+    kinds,
+    partitionedKinds,
+    pointTargetedKinds,
+    slotPolicies,
+    manifestKinds,
+    dispatchPrefixes,
+    sources: [toPosix(opsPath)]
+  };
+}
+
+// src/resolver/validate-capability.ts
+function stripCr(s) {
+  return s.replace(/\r$/, "");
+}
+function trimCell(s) {
+  return s.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function join(...parts) {
+  return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(/\/{2,}/g, "/");
+}
+var CANONICAL_HEADINGS = ["## Capabilities", "## Plugin Roots", "## Fragments"];
+function checkHeadingTypos(file, content, label) {
+  const out = [];
+  const canonicalNorms = /* @__PURE__ */ new Map();
+  for (const h of CANONICAL_HEADINGS) {
+    canonicalNorms.set(h.replace(/^#+\s*/, "").toLowerCase().replace(/[^a-z0-9]/g, ""), h);
+  }
+  const lines = content.split(/\r?\n/);
+  lines.forEach((raw, i) => {
+    const line = stripCr(raw);
+    if (!line.startsWith("#")) return;
+    if (CANONICAL_HEADINGS.includes(line)) return;
+    const norm = line.replace(/^#{1,6}\s*/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const canonical = canonicalNorms.get(norm);
+    if (canonical) {
+      out.push(
+        finding(
+          "CHECK-HEADING",
+          file,
+          i + 1,
+          `${label} heading \`${line}\` looks like a typo of \`${canonical}\` \u2014 the exact heading is required, or the block parses to zero rows (a silent pass).`
+        )
+      );
+    }
+  });
+  return out;
+}
+function readManifest(content) {
+  const lines = content.split(/\r?\n/).map(stripCr);
+  const fragments = [];
+  const requires = [];
+  const conflicts = [];
+  const articles = [];
+  const malformedRows = [];
+  let kind = null;
+  let inFragments = false;
+  let sawHeader = false;
+  lines.forEach((line, i) => {
+    const trimmed = line.trim();
+    if (kind === null) {
+      const km = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/.exec(trimmed);
+      if (km) kind = km[1];
+    }
+    if (/^requires:/i.test(trimmed)) {
+      for (const v of trimmed.replace(/^requires:/i, "").split(",")) {
+        const t = v.trim();
+        if (t) requires.push(t);
+      }
+    } else if (/^conflicts:/i.test(trimmed)) {
+      for (const v of trimmed.replace(/^conflicts:/i, "").split(",")) {
+        const t = v.trim();
+        if (t) conflicts.push(t);
+      }
+    } else if (/^article:/i.test(trimmed)) {
+      const decl = trimmed.replace(/^article:/i, "").trim();
+      const eq = decl.indexOf("=");
+      if (eq > 0) {
+        articles.push({
+          key: decl.slice(0, eq).trim(),
+          value: decl.slice(eq + 1).trim(),
+          line: i + 1
+        });
+      }
+    }
+    if (/^#{1,6}\s+/.test(line)) {
+      if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
+        inFragments = true;
+        sawHeader = false;
+        return;
+      }
+      if (inFragments) inFragments = false;
+      return;
+    }
+    if (!inFragments) return;
+    if (!trimmed.startsWith("|")) return;
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) return;
+    if (!sawHeader) {
+      sawHeader = true;
+      return;
+    }
+    const phase = trimCell(cells[0] ?? "");
+    if (!phase || phase.toLowerCase() === "phase") return;
+    if (cells.length < 4) {
+      malformedRows.push({ line: i + 1, raw: trimmed });
+      return;
+    }
+    fragments.push({
+      phase,
+      kind: trimCell(cells[1] ?? ""),
+      dispatch: trimCell(cells[2] ?? ""),
+      scope: trimCell(cells[3] ?? ""),
+      line: i + 1
+    });
+  });
+  return { fragments, requires, conflicts, articles, kind, malformedRows };
+}
+function normScope(scope) {
+  return scope === "\u2014" || scope === "-" ? "" : scope;
+}
+function checkManifest(capability, manifestPath, content, rules) {
+  const findings = [];
+  const claims = [];
+  findings.push(
+    ...checkHeadingTypos(manifestPath, content, `capability \`${capability}\` manifest`)
+  );
+  const parsed = readManifest(content);
+  for (const bad of parsed.malformedRows) {
+    findings.push(
+      finding(
+        "input-unparseable",
+        manifestPath,
+        bad.line,
+        `capability \`${capability}\` has an unparseable \`## Fragments\` row \`${bad.raw}\` \u2014 the contracted table is \`| phase | contribution-kind | dispatch | scope |\`.`
+      )
+    );
+  }
+  for (const row of parsed.fragments) {
+    const isPointTargeted = rules.pointTargetedKinds.includes(row.kind);
+    if (isPointTargeted) {
+      if (row.phase !== "\u2014" && row.phase !== "-") {
+        findings.push(
+          finding(
+            "CHECK-6",
+            manifestPath,
+            row.line,
+            `capability \`${capability}\` ${row.kind} fragment names phase \`${row.phase}\` (row: \`${row.phase} | ${row.kind} | ...\`) \u2014 a ${row.kind} targets a skill point (its scope), not an SDD phase; put \`\u2014\` in the phase column.`
+          )
+        );
+      }
+    } else if (!rules.phases.includes(row.phase)) {
+      findings.push(
+        finding(
+          "CHECK-6",
+          manifestPath,
+          row.line,
+          `capability \`${capability}\` fragment names an unknown phase \`${row.phase}\` (row: \`${row.phase} | ${row.kind} | ...\`) \u2014 not one of the contract's SDD phases.`
+        )
+      );
+    }
+    if (!rules.kinds.includes(row.kind)) {
+      findings.push(
+        finding(
+          "CHECK-6",
+          manifestPath,
+          row.line,
+          `capability \`${capability}\` fragment names an unknown contribution-kind \`${row.kind}\` (row: \`${row.phase} | ${row.kind} | ...\`) \u2014 not one of the contract's taxonomy kinds.`
+        )
+      );
+    }
+    const d = row.dispatch;
+    const prefix = rules.dispatchPrefixes.find((p) => d.startsWith(`${p}:`));
+    const expected = rules.dispatchPrefixes.map((p) => `\`${p}: <\u2026>\``).join(" or ");
+    if (!prefix) {
+      findings.push(
+        finding(
+          "CHECK-6b",
+          manifestPath,
+          row.line,
+          `capability \`${capability}\` fragment at \`${row.phase} | ${row.kind}\` has a malformed dispatch \`${row.dispatch}\` \u2014 expected ${expected}.`
+        )
+      );
+    } else if (d.slice(prefix.length + 1).trim() === "") {
+      findings.push(
+        finding(
+          "CHECK-6b",
+          manifestPath,
+          row.line,
+          `capability \`${capability}\` fragment at \`${row.phase} | ${row.kind}\` has an \`${prefix}:\` dispatch with no target (dispatch: \`${row.dispatch}\`).`
+        )
+      );
+    }
+    const scope = normScope(row.scope);
+    if (isPointTargeted) {
+      if (!scope) {
+        findings.push(
+          finding(
+            "CHECK-6c",
+            manifestPath,
+            row.line,
+            `capability \`${capability}\` ${row.kind} fragment at \`${row.phase} | ${row.kind}\` has no scope \u2014 a ${row.kind} row must carry a \`<skill>.<point> <merge-policy>\` scope.`
+          )
+        );
+      } else {
+        const point = scope.split(/\s+/)[0];
+        const policy = scope.slice(point.length).trim();
+        if (!/^[a-z0-9-]+\.[a-z0-9-]+$/.test(point)) {
+          findings.push(
+            finding(
+              "CHECK-6c",
+              manifestPath,
+              row.line,
+              `capability \`${capability}\` ${row.kind} fragment has a malformed scope \`${row.scope}\` \u2014 the skill.point must be \`<skill>.<point>\`, each segment lowercase letters/digits/hyphens joined by a single dot.`
+            )
+          );
+        } else if (policy === "") {
+          findings.push(
+            finding(
+              "CHECK-6c",
+              manifestPath,
+              row.line,
+              `capability \`${capability}\` ${row.kind} fragment scope \`${row.scope}\` declares no merge policy \u2014 a ${row.kind} row must state ${rules.slotPolicies.map((p) => `\`${p}\``).join(" or ")} after the skill.point.`
+            )
+          );
+        } else if (!rules.slotPolicies.includes(policy)) {
+          findings.push(
+            finding(
+              "CHECK-6c",
+              manifestPath,
+              row.line,
+              `capability \`${capability}\` ${row.kind} fragment scope \`${row.scope}\` names an unknown merge policy \`${policy}\` \u2014 expected ${rules.slotPolicies.map((p) => `\`${p}\``).join(" or ")}.`
+            )
+          );
+        } else {
+          const singleOwner = rules.slotPolicies[0];
+          if (policy === singleOwner) {
+            claims.push({
+              capability,
+              kind: `${row.kind} skill.point (${policy})`,
+              scope: point,
+              file: manifestPath,
+              line: row.line
+            });
+          }
+        }
+      }
+    } else if (rules.partitionedKinds.includes(row.kind) && scope) {
+      claims.push({
+        capability,
+        kind: `${row.kind} scope`,
+        scope,
+        file: manifestPath,
+        line: row.line
+      });
+    }
+  }
+  return {
+    findings,
+    claims,
+    requires: parsed.requires,
+    conflicts: parsed.conflicts,
+    articles: parsed.articles
+  };
+}
+function validateManifest(fs, target, opsDocPath) {
+  const manifestPath = /manifest\.md$/i.test(target) ? toPosix(target) : join(target, "manifest.md");
+  let rules;
+  try {
+    rules = loadRules(fs, opsDocPath);
+  } catch (err) {
+    return ruleSourceErrorVerdict("validate_manifest", manifestPath, err, opsDocPath);
+  }
+  const content = fs.readFile(manifestPath);
+  if (content === null) {
+    return verdict(
+      "validate_manifest",
+      manifestPath,
+      [
+        finding(
+          "input-unparseable",
+          manifestPath,
+          null,
+          `no readable \`manifest.md\` at \`${manifestPath}\` \u2014 nothing to validate.`
+        )
+      ],
+      rules.sources,
+      "0 manifests checked \u2014 the target is not readable.",
+      true
+    );
+  }
+  const capability = deriveCapabilityName(manifestPath);
+  const { findings } = checkManifest(capability, manifestPath, content, rules);
+  const unparseable = findings.some((f) => f.rule === "input-unparseable");
+  return verdict(
+    "validate_manifest",
+    manifestPath,
+    findings,
+    rules.sources,
+    `1 manifest checked, ${findings.length === 0 ? "0 findings" : `${findings.length} finding(s)`}.`,
+    unparseable
+  );
+}
+function deriveCapabilityName(manifestPath) {
+  const parts = toPosix(manifestPath).split("/");
+  return parts.length >= 2 ? parts[parts.length - 2] : manifestPath;
+}
+function validateRegistry(fs, opts) {
+  const registryFile = toPosix(opts.registryFile);
+  const repoRoot = toPosix(opts.repoRoot);
+  let rules;
+  try {
+    rules = loadRules(fs, opts.opsDocPath);
+  } catch (err) {
+    return ruleSourceErrorVerdict("validate_registry", registryFile, err, opts.opsDocPath);
+  }
+  const content = fs.readFile(registryFile);
+  if (content === null) {
+    return verdict(
+      "validate_registry",
+      registryFile,
+      [
+        finding(
+          "input-unparseable",
+          registryFile,
+          null,
+          `registry file not found or unreadable: \`${registryFile}\`.`
+        )
+      ],
+      rules.sources,
+      "registry not readable \u2014 no verdict on its contents.",
+      true
+    );
+  }
+  const findings = [];
+  const sources = [...rules.sources];
+  findings.push(...checkHeadingTypos(registryFile, content, "registry"));
+  const rpv = opts.registryPathValue ?? "";
+  if (rpv) {
+    let bad = "";
+    if (rpv.includes("\\")) bad = "contains a backslash (must use forward slashes)";
+    else if (/^\//.test(rpv)) bad = "absolute path (leading '/')";
+    else if (/^[A-Za-z]:/.test(rpv)) bad = "drive-prefixed path";
+    else if (`/${rpv}/`.includes("/../")) bad = "contains a '..' segment";
+    if (bad) {
+      findings.push(
+        finding(
+          "CHECK-1",
+          registryFile,
+          null,
+          `registryPath \`${rpv}\` is not a forward-slash repo-relative file path: ${bad}.`
+        )
+      );
+    }
+  }
+  const parsed = parseRegistry(content);
+  const rowLine = (needle) => {
+    const lines = content.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (t.startsWith("|") && t.includes(needle)) return i + 1;
+    }
+    return null;
+  };
+  parsed.pluginRoots.forEach((pr, i) => {
+    const line = rowLine(pr.plugin);
+    let bad = "";
+    if (pr.root.includes("\\")) bad = "contains a backslash (must use forward slashes)";
+    else if (`/${pr.root}/`.includes("/../")) bad = "contains a '..' segment";
+    if (!pr.root || pr.root === "\u2014") {
+      findings.push(
+        finding(
+          "CHECK-4a",
+          registryFile,
+          line,
+          `plugin root for \`${pr.plugin}\` is empty \u2014 every \`## Plugin Roots\` row needs a Root.`
+        )
+      );
+    } else if (bad) {
+      findings.push(
+        finding(
+          "CHECK-4a",
+          registryFile,
+          line,
+          `plugin root for \`${pr.plugin}\` \`${pr.root}\` is not a valid root: ${bad}.`
+        )
+      );
+    }
+    for (let j = i + 1; j < parsed.pluginRoots.length; j++) {
+      if (parsed.pluginRoots[j].plugin === pr.plugin) {
+        findings.push(
+          finding(
+            "CHECK-4b",
+            registryFile,
+            line,
+            `duplicate plugin root name \`${pr.plugin}\` (rows ${i + 1} and ${j + 1}) \u2014 \`## Plugin Roots\` names must be unique so resolution is deterministic.`
+          )
+        );
+      }
+    }
+  });
+  parsed.capabilities.forEach((cap, i) => {
+    const line = rowLine(cap.name);
+    for (let j = i + 1; j < parsed.capabilities.length; j++) {
+      if (parsed.capabilities[j].name === cap.name) {
+        findings.push(
+          finding(
+            "CHECK-2",
+            registryFile,
+            line,
+            `duplicate capability name \`${cap.name}\` (rows ${i + 1} and ${j + 1}) \u2014 names must be unique across the registry.`
+          )
+        );
+      }
+    }
+    if (/[^a-z0-9-]/.test(cap.name)) {
+      findings.push(
+        finding(
+          "CHECK-3",
+          registryFile,
+          line,
+          `capability name \`${cap.name}\` is not filesystem-safe \u2014 only lowercase letters, digits, and hyphens are allowed (no uppercase, whitespace, or path separators).`
+        )
+      );
+    } else if (cap.name.includes("..")) {
+      findings.push(
+        finding(
+          "CHECK-3",
+          registryFile,
+          line,
+          `capability name \`${cap.name}\` is not filesystem-safe \u2014 it contains a \`..\` segment.`
+        )
+      );
+    }
+  });
+  const resolvePluginRoot = (name) => {
+    const row = parsed.pluginRoots.find((p) => p.plugin === name);
+    if (!row) return null;
+    return /^(\/|[A-Za-z]:)/.test(row.root) ? row.root : join(repoRoot, row.root);
+  };
+  const healFromInstallManifest = (name) => {
+    if (!opts.installManifest) return null;
+    const raw = fs.readFile(opts.installManifest);
+    if (raw === null) return null;
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    const plugins = data?.plugins;
+    if (!plugins || typeof plugins !== "object") return null;
+    for (const [key, value] of Object.entries(plugins)) {
+      if (key.split("@")[0] !== name) continue;
+      const records = Array.isArray(value) ? value : [];
+      for (const rec of records) {
+        const p = rec?.installPath;
+        if (!p) continue;
+        let norm = toPosix(p);
+        if (!/^(\/|[A-Za-z]:)/.test(norm)) norm = join(repoRoot, norm);
+        if (fs.isDirectory(norm)) return norm;
+      }
+    }
+    return null;
+  };
+  const resolvedManifests = [];
+  for (const cap of parsed.capabilities) {
+    const line = rowLine(cap.name);
+    const p = cap.path;
+    if (!p || p === "\u2014") {
+      findings.push(
+        finding("CHECK-4", registryFile, line, `capability \`${cap.name}\` has no Path in the registry.`)
+      );
+      continue;
+    }
+    if (p.startsWith("plugin:")) {
+      const tok = p.slice("plugin:".length);
+      const slash = tok.indexOf("/");
+      const plName = slash === -1 ? tok : tok.slice(0, slash);
+      const plRel = slash === -1 ? "" : tok.slice(slash + 1);
+      if (!plName || !plRel) {
+        findings.push(
+          finding(
+            "CHECK-4",
+            registryFile,
+            line,
+            `capability \`${cap.name}\` has a malformed plugin-anchored path \`${p}\` \u2014 expected \`plugin:<name>/<rel-path>\`.`
+          )
+        );
+        continue;
+      }
+      let resolved = null;
+      let primaryFail = "";
+      const root = resolvePluginRoot(plName);
+      if (root) {
+        const folder2 = join(root, plRel);
+        if (fs.isFile(join(folder2, "manifest.md"))) resolved = folder2;
+        else if (!fs.isDirectory(folder2)) {
+          primaryFail = `plugin-anchored path \`${p}\` does not resolve to a directory via its recorded root (looked in \`${folder2}\` via plugin root \`${plName}\`)`;
+        } else {
+          primaryFail = `plugin-anchored path \`${p}\` is missing a \`manifest.md\` (expected \`${folder2}/manifest.md\`)`;
+        }
+      } else {
+        primaryFail = `names plugin \`${plName}\` in its path \`${p}\`, but there is no \`## Plugin Roots\` entry for \`${plName}\``;
+      }
+      if (!resolved) {
+        const healed = healFromInstallManifest(plName);
+        if (healed && fs.isFile(join(healed, plRel, "manifest.md"))) {
+          resolved = join(healed, plRel);
+        } else {
+          findings.push(
+            finding(
+              "CHECK-4",
+              registryFile,
+              line,
+              `capability \`${cap.name}\` ${primaryFail}, and the install manifest recovers no live root for \`${plName}\` \u2014 unrecoverable; re-run the pack's init to refresh its \`## Plugin Roots\` row.`
+            )
+          );
+        }
+      }
+      if (resolved) resolvedManifests.push({ capability: cap.name, path: join(resolved, "manifest.md") });
+      continue;
+    }
+    const folder = join(repoRoot, p);
+    if (!fs.isDirectory(folder)) {
+      findings.push(
+        finding(
+          "CHECK-4",
+          registryFile,
+          line,
+          `capability \`${cap.name}\` path does not exist: \`${p}\` (no directory at \`${folder}\`).`
+        )
+      );
+    } else if (!fs.isFile(join(folder, "manifest.md"))) {
+      findings.push(
+        finding(
+          "CHECK-4",
+          registryFile,
+          line,
+          `capability \`${cap.name}\` path \`${p}\` is missing a \`manifest.md\` (expected \`${folder}/manifest.md\`).`
+        )
+      );
+    } else {
+      resolvedManifests.push({ capability: cap.name, path: join(folder, "manifest.md") });
+    }
+  }
+  const claims = [];
+  const requires = [];
+  const conflicts = [];
+  const articles = [];
+  for (const rm of resolvedManifests) {
+    const mContent = fs.readFile(rm.path);
+    if (mContent === null) continue;
+    sources.push(rm.path);
+    const res = checkManifest(rm.capability, rm.path, mContent, rules);
+    findings.push(...res.findings);
+    claims.push(...res.claims);
+    for (const n of res.requires) requires.push({ capability: rm.capability, needed: n, file: rm.path });
+    for (const f of res.conflicts) conflicts.push({ capability: rm.capability, foe: f, file: rm.path });
+    for (const a of res.articles)
+      articles.push({ capability: rm.capability, key: a.key, value: a.value, file: rm.path, line: a.line });
+  }
+  for (let i = 0; i < claims.length; i++) {
+    for (let j = i + 1; j < claims.length; j++) {
+      const a = claims[i];
+      const b = claims[j];
+      if (a.scope === b.scope && a.kind === b.kind && a.capability !== b.capability) {
+        findings.push(
+          finding(
+            "CHECK-5",
+            a.file,
+            a.line,
+            `capabilities \`${a.capability}\` and \`${b.capability}\` both claim the same ${a.kind} \`${a.scope}\` \u2014 partitioned ownership must not overlap.`
+          )
+        );
+      }
+    }
+  }
+  const isActive = (name) => parsed.capabilities.some((c) => c.name === name);
+  for (const r of requires) {
+    if (!isActive(r.needed)) {
+      findings.push(
+        finding(
+          "CHECK-7",
+          r.file,
+          null,
+          `capability \`${r.capability}\` requires \`${r.needed}\`, which is not an active capability in the registry. Install and register/initialize the capability that provides \`${r.needed}\`, then re-run validation.`
+        )
+      );
+    }
+  }
+  for (const c of conflicts) {
+    if (isActive(c.foe)) {
+      findings.push(
+        finding(
+          "CHECK-8",
+          c.file,
+          null,
+          `capabilities \`${c.capability}\` and \`${c.foe}\` are both active but \`${c.capability}\` declares a conflict with \`${c.foe}\`.`
+        )
+      );
+    }
+  }
+  for (let i = 0; i < articles.length; i++) {
+    for (let j = i + 1; j < articles.length; j++) {
+      const a = articles[i];
+      const b = articles[j];
+      if (a.capability !== b.capability && a.key === b.key && a.value !== b.value) {
+        findings.push(
+          finding(
+            "CHECK-9",
+            a.file,
+            a.line,
+            `capabilities \`${a.capability}\` and \`${b.capability}\` declare contradictory article clause \`${a.key}\` (\`${a.value}\` vs \`${b.value}\`) \u2014 a capability-vs-capability contradiction is a validation error.`
+          )
+        );
+      }
+    }
+  }
+  const unparseable = findings.some((f) => f.rule === "input-unparseable");
+  return verdict(
+    "validate_registry",
+    registryFile,
+    findings,
+    sources,
+    `${parsed.capabilities.length} capability row(s), ${resolvedManifests.length} manifest(s) checked, ${findings.length} finding(s).`,
+    unparseable
+  );
+}
+function loadRules(fs, opsDocPath) {
+  const content = fs.readFile(opsDocPath);
+  if (content === null) {
+    throw new RuleSourceError(
+      `rule source \`${toPosix(opsDocPath)}\` is not readable \u2014 the contract vocabulary cannot be derived, so no verdict is issued.`,
+      opsDocPath
+    );
+  }
+  return deriveRules(content, opsDocPath);
+}
+function ruleSourceErrorVerdict(tool, target, err, opsDocPath) {
+  const message = err instanceof Error ? err.message : String(err);
+  return verdict(
+    tool,
+    target,
+    [finding("rule-source-unresolvable", opsDocPath, null, message)],
+    [],
+    "no verdict \u2014 the live rule source could not be read.",
+    true
+  );
+}
+
+// src/resolver/validate-skill-interface.ts
+var ID_RE = /[a-z0-9-]+\.[a-z0-9-]+/;
+var OPEN_RE = new RegExp(`^<!-- wf:slot (${ID_RE.source}) -->$`);
+var CLOSE_RE = new RegExp(`^<!-- wf:slot-end (${ID_RE.source}) -->$`);
+var ID_EXACT_RE = new RegExp(`^${ID_RE.source}$`);
+function checkSkillDir(fs, dir, slotPolicies) {
+  const out = [];
+  const skillDir = toPosix(dir).replace(/\/$/, "");
+  const skill = skillDir.split("/").pop() ?? skillDir;
+  const bodyPath = `${skillDir}/SKILL.md`;
+  const ifacePath = `${skillDir}/interface.md`;
+  const body = fs.readFile(bodyPath);
+  if (body === null) return out;
+  const policyList = slotPolicies.map((p) => `'${p}'`).join(" or ");
+  const declared = [];
+  const declLines = /* @__PURE__ */ new Map();
+  const iface = fs.readFile(ifacePath);
+  if (iface !== null) {
+    let inSlots = false;
+    iface.split(/\r?\n/).forEach((raw, i) => {
+      const line = raw.replace(/\r$/, "");
+      if (line.startsWith("## Slots")) {
+        inSlots = true;
+        return;
+      }
+      if (line.startsWith("## ")) inSlots = false;
+      if (!inSlots) return;
+      if (!line.startsWith("|")) return;
+      const cells = line.replace(/^\|/, "").split("|");
+      const c1 = (cells[0] ?? "").trim();
+      const c2 = (cells[1] ?? "").trim();
+      if (!c1 || c1.includes(" ") || c1.includes("(")) return;
+      if (!/[a-z0-9]/.test(c1)) return;
+      if (!ID_EXACT_RE.test(c1)) {
+        out.push(
+          finding(
+            "D1",
+            ifacePath,
+            i + 1,
+            `malformed slot declaration '${c1}' \u2014 a slot id must be <skill>.<point> (each segment lowercase letters/digits/hyphens, exactly one dot).`
+          )
+        );
+        return;
+      }
+      const seg1 = c1.split(".")[0];
+      if (seg1 !== skill) {
+        out.push(
+          finding(
+            "D1",
+            ifacePath,
+            i + 1,
+            `slot id '${c1}' names skill '${seg1}' but is declared under skill '${skill}' \u2014 the id's first segment must match the skill folder name.`
+          )
+        );
+        return;
+      }
+      if (c2 === "") {
+        out.push(
+          finding("D1", ifacePath, i + 1, `slot '${c1}' declares no merge policy (expected ${policyList}).`)
+        );
+        return;
+      }
+      if (!slotPolicies.includes(c2)) {
+        out.push(
+          finding(
+            "D1",
+            ifacePath,
+            i + 1,
+            `slot '${c1}' has unknown merge policy '${c2}' (expected ${policyList}).`
+          )
+        );
+        return;
+      }
+      declared.push(c1);
+      declLines.set(c1, i + 1);
+    });
+  }
+  const opens = [];
+  const closes = [];
+  body.split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.replace(/\r$/, "");
+    if (!/<!--\s*wf:slot/.test(line)) return;
+    const trimmed = line.trim();
+    const openMatch = OPEN_RE.exec(trimmed);
+    if (openMatch) {
+      const id = openMatch[1];
+      if (opens.includes(id)) {
+        out.push(finding("D4", bodyPath, i + 1, `duplicate opening marker for slot '${id}'.`));
+      }
+      opens.push(id);
+      if (!declared.includes(id)) {
+        out.push(
+          finding(
+            "D3",
+            bodyPath,
+            i + 1,
+            `slot marker '${id}' is not declared in ${skill}/interface.md (## Slots).`
+          )
+        );
+      }
+      return;
+    }
+    const closeMatch = CLOSE_RE.exec(trimmed);
+    if (closeMatch) {
+      closes.push(closeMatch[1]);
+      return;
+    }
+    out.push(
+      finding(
+        "D2",
+        bodyPath,
+        i + 1,
+        `malformed slot marker: '${trimmed}' \u2014 expected exactly '<!-- wf:slot <skill.point> -->' or '<!-- wf:slot-end <skill.point> -->' alone on its line.`
+      )
+    );
+  });
+  for (const id of opens) {
+    if (!closes.includes(id)) {
+      out.push(
+        finding(
+          "D4",
+          bodyPath,
+          null,
+          `opening marker for slot '${id}' has no matching '<!-- wf:slot-end ${id} -->' close.`
+        )
+      );
+    }
+  }
+  for (const id of closes) {
+    if (!opens.includes(id)) {
+      out.push(finding("D4", bodyPath, null, `closing marker for slot '${id}' has no matching opening marker.`));
+    }
+  }
+  for (const id of declared) {
+    if (!opens.includes(id)) {
+      out.push(
+        finding(
+          "D5",
+          ifacePath,
+          declLines.get(id) ?? null,
+          `declared slot '${id}' has no '<!-- wf:slot ${id} -->' marker in ${skill}/SKILL.md.`
+        )
+      );
+    }
+  }
+  return out;
+}
+function validateSkillInterface(fs, opts) {
+  let policies;
+  let sources;
+  try {
+    const rules = loadRules(fs, opts.opsDocPath);
+    policies = rules.slotPolicies;
+    sources = rules.sources;
+  } catch (err) {
+    return ruleSourceErrorVerdict("validate_skill_interface", opts.target, err, opts.opsDocPath);
+  }
+  if (opts.skillDirs.length === 0) {
+    return verdict(
+      "validate_skill_interface",
+      opts.target,
+      [
+        finding(
+          "input-unparseable",
+          opts.target,
+          null,
+          `no skill folder found at \`${toPosix(opts.target)}\` \u2014 a skill folder is one holding a \`SKILL.md\`.`
+        )
+      ],
+      sources,
+      "0 skills checked \u2014 the target names no skill folder.",
+      true
+    );
+  }
+  const findings = [];
+  for (const dir of opts.skillDirs) {
+    findings.push(...checkSkillDir(fs, dir, policies));
+  }
+  return verdict(
+    "validate_skill_interface",
+    opts.target,
+    findings,
+    sources,
+    `${opts.skillDirs.length} skill(s) checked, ${findings.length} finding(s).`
+  );
+}
+
+// src/resolver/registry-edit.ts
+function splitRow2(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|")) return null;
+  return trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+}
+function isSeparatorRow2(cells) {
+  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
+}
+function escapeRegex3(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function renderRow(cells) {
@@ -20541,7 +21577,7 @@ function renderRow(cells) {
 function upsertSectionRow(markdown, heading, columns, key, value) {
   const eol = markdown.includes("\r\n") ? "\r\n" : "\n";
   const lines = markdown.split(/\r?\n/);
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex3(heading)}\\s*$`, "i");
   let sectionStart = -1;
   for (let i = 0; i < lines.length; i++) {
     if (headingRe.test(lines[i])) {
@@ -20573,14 +21609,14 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
   let matchIdx = -1;
   let sawHeader = false;
   for (let i = sectionStart + 1; i < sectionEnd; i++) {
-    const cells = splitRow(lines[i]);
+    const cells = splitRow2(lines[i]);
     if (!cells) continue;
     if (!sawHeader) {
       sawHeader = true;
       headerIdx = i;
       continue;
     }
-    if (isSeparatorRow(cells)) continue;
+    if (isSeparatorRow2(cells)) continue;
     lastDataIdx = i;
     if (cells[0] === key) matchIdx = i;
   }
@@ -20596,7 +21632,7 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
     return { content: next2.join(eol), changed: true };
   }
   if (matchIdx !== -1) {
-    const existing = splitRow(lines[matchIdx]);
+    const existing = splitRow2(lines[matchIdx]);
     if ((existing[1] ?? "") === value) {
       return { content: markdown, changed: false };
     }
@@ -21208,6 +22244,90 @@ var ResolverService = class {
       })
     );
   }
+  // --- authoring validators (WF-352) ---------------------------------------
+  //
+  // Read-only rule evaluation over authored artifacts, returning the frozen
+  // `ValidationVerdict`. They mutate no snapshot and never invalidate or
+  // refresh. Every vocabulary is derived live from the ops doc at call time
+  // (validate-rules.ts), so no rule is transcribed where it could fork from the
+  // contract. The CI shell guards stay authoritative; these agree with them.
+  /** A `ValidatorFs` over the injected ports — no new port members needed:
+   *  file-ness is "readFile returned content", directory-ness is "the parent
+   *  lists it as a subdirectory". */
+  validatorFs() {
+    const ports = this.ports;
+    return {
+      readFile: (p) => ports.readFile(p),
+      isFile: (p) => ports.readFile(p) !== null,
+      isDirectory: (p) => {
+        const norm = p.replace(/\\/g, "/").replace(/\/$/, "");
+        const idx = norm.lastIndexOf("/");
+        if (idx <= 0) return false;
+        return ports.listDirs(norm.slice(0, idx)).includes(norm.slice(idx + 1));
+      }
+    };
+  }
+  /** Absolute path of the live rule source, anchored at the core plugin root. */
+  opsDocPath() {
+    return `${this.ports.corePluginRoot.replace(/\\/g, "/").replace(/\/$/, "")}/skills/_contracts/capability-registry.ops.md`;
+  }
+  /** Validate one capability manifest (or, with no argument, every active
+   *  registry capability's manifest) against manifest schema v2. */
+  validateManifest(path) {
+    const fs = this.validatorFs();
+    const ops = this.opsDocPath();
+    if (path && path.trim()) {
+      return validateManifest(fs, this.absolutize(path.trim()), ops);
+    }
+    const full = this.validateRegistry();
+    return {
+      ...full,
+      tool: "validate_manifest",
+      summary: `${full.summary} (every active capability's manifest; pass a \`path\` to check one).`
+    };
+  }
+  /** Validate the resolved registry: its two tables, every declared
+   *  capability's resolvability, and every resolvable manifest's own rules. */
+  validateRegistry() {
+    const workspaceRoot = this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+    const registryRel = this.ports.registryRelPath();
+    return validateRegistry(this.validatorFs(), {
+      registryFile: `${workspaceRoot}/${registryRel}`,
+      repoRoot: workspaceRoot,
+      opsDocPath: this.opsDocPath(),
+      registryPathValue: registryRel,
+      installManifest: null
+    });
+  }
+  /** Validate skill slot markers against their interface declarations — one
+   *  skill, one plugin's skills, or (by default) every skill in the tree. */
+  validateSkillInterface(plugin, skill) {
+    const workspaceRoot = this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+    const pluginsRoot = `${workspaceRoot}/plugins`;
+    const wantPlugin = plugin?.trim() || null;
+    const wantSkill = skill?.trim() || null;
+    const skillDirs = [];
+    const pluginNames = wantPlugin ? [wantPlugin] : this.ports.listDirs(pluginsRoot);
+    for (const p of pluginNames) {
+      const skillsRoot = `${pluginsRoot}/${p}/skills`;
+      for (const s of this.ports.listDirs(skillsRoot)) {
+        if (wantSkill && s !== wantSkill) continue;
+        skillDirs.push(`${skillsRoot}/${s}`);
+      }
+    }
+    const target = wantSkill ? `${pluginsRoot}/${wantPlugin ?? "*"}/skills/${wantSkill}` : wantPlugin ? `${pluginsRoot}/${wantPlugin}/skills/*` : `${pluginsRoot}/*/skills/*`;
+    return validateSkillInterface(this.validatorFs(), {
+      opsDocPath: this.opsDocPath(),
+      skillDirs,
+      target
+    });
+  }
+  /** Resolve a caller-supplied path against the workspace root when relative. */
+  absolutize(p) {
+    const norm = p.replace(/\\/g, "/");
+    if (/^(\/|[A-Za-z]:)/.test(norm)) return norm;
+    return `${this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
+  }
 };
 
 // src/ports.ts
@@ -21215,76 +22335,18 @@ import { mkdirSync as mkdirSync2, readdirSync as readdirSync2, writeFileSync as 
 import { dirname as dirname2, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// src/resolver/registry.ts
-function splitRow2(line) {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("|")) return null;
-  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-  return cells;
-}
-function isSeparatorRow2(cells) {
-  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
-}
-function tableRowsUnderHeading(markdown, heading) {
-  const lines = markdown.split(/\r?\n/);
-  const rows = [];
-  let inSection = false;
-  let sawHeader = false;
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex3(heading)}\\s*$`, "i");
-  for (const line of lines) {
-    if (/^#{1,6}\s+/.test(line)) {
-      if (headingRe.test(line)) {
-        inSection = true;
-        sawHeader = false;
-        continue;
-      }
-      if (inSection) break;
-      continue;
-    }
-    if (!inSection) continue;
-    const cells = splitRow2(line);
-    if (!cells) {
-      if (sawHeader && rows.length > 0 && line.trim() === "") break;
-      continue;
-    }
-    if (!sawHeader) {
-      sawHeader = true;
-      continue;
-    }
-    if (isSeparatorRow2(cells)) continue;
-    rows.push(cells);
-  }
-  return rows;
-}
-function escapeRegex3(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-function parseRegistry(markdown) {
-  const capabilities = [];
-  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
-    const [name, path] = cells;
-    if (name && path) capabilities.push({ name, path });
-  }
-  const pluginRoots = [];
-  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
-    const [plugin, root] = cells;
-    if (plugin && root) pluginRoots.push({ plugin, root });
-  }
-  return { capabilities, pluginRoots };
-}
-
 // src/resolver/manifest.ts
-function stripCr(line) {
+function stripCr2(line) {
   return line.replace(/\r$/, "");
 }
-function trimCell(cell) {
+function trimCell2(cell) {
   return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
 }
 function splitCommaList(rest) {
   return rest.split(",").map((v) => v.trim()).filter((v) => v.length > 0);
 }
 function parseManifest(markdown) {
-  const lines = markdown.split(/\r?\n/).map(stripCr);
+  const lines = markdown.split(/\r?\n/).map(stripCr2);
   let kind = null;
   const fragments = [];
   const articles = [];
@@ -21332,10 +22394,10 @@ function parseManifest(markdown) {
       continue;
     }
     const [phaseRaw, kindRaw, dispatchRaw, scopeRaw] = cells;
-    const phase = trimCell(phaseRaw ?? "");
-    const contributionKind = trimCell(kindRaw ?? "");
+    const phase = trimCell2(phaseRaw ?? "");
+    const contributionKind = trimCell2(kindRaw ?? "");
     if (!phase || phase === "phase") continue;
-    let scope = trimCell(scopeRaw ?? "");
+    let scope = trimCell2(scopeRaw ?? "");
     if (scope === "" || scope === "\u2014" || scope === "-") scope = null;
     fragments.push({
       phase,
@@ -21805,7 +22867,7 @@ function buildSnapshot(inputs, io) {
 
 // src/resolver/engine.ts
 import { readFileSync as readFileSync2, readdirSync } from "node:fs";
-import { join as join2 } from "node:path";
+import { join as join3 } from "node:path";
 import { execFileSync } from "node:child_process";
 
 // src/resolver/snapshot-store.ts
@@ -21816,16 +22878,16 @@ import {
   rmSync,
   writeFileSync
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join as join2 } from "node:path";
 import { randomBytes } from "node:crypto";
 function snapshotPath(workspaceRoot) {
-  return join(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
+  return join2(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
 }
 function writeSnapshot(workspaceRoot, snapshot) {
   const target = snapshotPath(workspaceRoot);
   const dir = dirname(target);
   mkdirSync(dir, { recursive: true });
-  const tmp = join(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
+  const tmp = join2(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
   const json = `${JSON.stringify(snapshot, null, 2)}
 `;
   try {
@@ -21906,11 +22968,11 @@ function runPluginList() {
 function resolveSnapshot(opts) {
   const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
   const io = opts.io ?? fsIO;
-  const wfConfigContent = io.readFile(join2(opts.workspaceRoot, "wf.config.js"));
+  const wfConfigContent = io.readFile(join3(opts.workspaceRoot, "wf.config.js"));
   const registryPathValue = extractRegistryPath(wfConfigContent);
-  const registryAbs = join2(opts.workspaceRoot, registryPathValue);
+  const registryAbs = join3(opts.workspaceRoot, registryPathValue);
   const registryContent = io.readFile(registryAbs);
-  const coreConfigAbs = join2(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
+  const coreConfigAbs = join3(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
   const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
   const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
   const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
@@ -22091,6 +23153,30 @@ var contentInput = fromJsonSchema2({
   required: ["class"],
   additionalProperties: false
 });
+var validateManifestInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "A capability folder or a `manifest.md` path (absolute, or relative to the workspace root). Omit to check every active registry capability's manifest."
+    }
+  },
+  additionalProperties: false
+});
+var validateSkillInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    plugin: {
+      type: "string",
+      description: "Plugin name to scope the scan to (e.g. `wf`). Omit to scan every plugin."
+    },
+    skill: {
+      type: "string",
+      description: "Skill slug to scope the scan to. Omit to scan every skill in scope."
+    }
+  },
+  additionalProperties: false
+});
 var registerInput = fromJsonSchema2({
   type: "object",
   properties: {
@@ -22208,6 +23294,32 @@ function registerResolverTools(server, service) {
       inputSchema: surfaceClassInput
     },
     async (args) => guard(() => service.assessSurface(args.surface))
+  );
+  server.registerTool(
+    "validate_manifest",
+    {
+      title: "validate manifest",
+      description: 'Check a capability `manifest.md` against manifest schema v2 (WF-352). Returns the frozen ValidationVerdict `{tool, status: pass|fail|error, target, findings[{rule, severity, file, line, message}], ruleSources[], summary}`. Rule ids mirror `validate-registry.sh` (`CHECK-6` phase/kind tokens, `CHECK-6b` dispatch, `CHECK-6c` slot scope + merge policy, `CHECK-HEADING` heading typos). The phase spine, contribution kinds, and merge policies are derived LIVE from `capability-registry.ops.md` on every call \u2014 no rule is transcribed. A syntactically broken manifest returns `status: "error"` with rule `input-unparseable`; an unreadable rule source returns `rule-source-unresolvable` \u2014 never a crash, never a silent pass. Omit `path` to check every active capability.',
+      inputSchema: validateManifestInput
+    },
+    async (args) => guard(() => service.validateManifest(args?.path))
+  );
+  server.registerTool(
+    "validate_registry",
+    {
+      title: "validate registry",
+      description: "Check the resolved capability registry (WF-352): the `## Capabilities` and `## Plugin Roots` tables plus every resolvable capability manifest \u2014 the same set `validate-registry.sh` folds into one exit code, and it agrees with that guard's verdict. Returns the frozen ValidationVerdict. Rule ids are the guard's own: `CHECK-1` registryPath shape, `CHECK-2` duplicate names, `CHECK-3` filesystem-safe names, `CHECK-4` path resolves + carries a manifest, `CHECK-4a`/`CHECK-4b` plugin-root shape/uniqueness, `CHECK-5` overlapping partitioned ownership (naming both offenders), `CHECK-6`/`6b`/`6c` fragment-row rules, `CHECK-7` requires satisfied, `CHECK-8` co-active conflicts, `CHECK-9` contradictory article clauses. Takes no arguments \u2014 it validates the registry the resolver already resolved."
+    },
+    async () => guard(() => service.validateRegistry())
+  );
+  server.registerTool(
+    "validate_skill_interface",
+    {
+      title: "validate skill interface",
+      description: "Check skill slot markers against their `interface.md` `## Slots` declarations (WF-352), agreeing with `skill-slot-marker-lint.sh` and reusing its defect ids: `D1` malformed declaration, `D2` malformed marker, `D3` undeclared marker, `D4` unbalanced/duplicate marker, `D5` declared-but-unmarked. Returns the frozen ValidationVerdict with file/line diagnostics only \u2014 never any skill-body content (the `resolve_content` body-serving refusal is unchanged). A skill declaring no slots and carrying no markers passes clean (the inert case). Omit both arguments to scan every skill under `plugins/*/skills/*/`.",
+      inputSchema: validateSkillInput
+    },
+    async (args) => guard(() => service.validateSkillInterface(args?.plugin, args?.skill))
   );
   server.registerTool(
     "resolve_inspect",
