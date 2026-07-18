@@ -20523,64 +20523,6 @@ function locateInterface(skill, roots, readFile, joinSlash2) {
   return null;
 }
 
-// src/resolver/registry.ts
-function splitRow(line) {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("|")) return null;
-  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-  return cells;
-}
-function isSeparatorRow(cells) {
-  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
-}
-function tableRowsUnderHeading(markdown, heading) {
-  const lines = markdown.split(/\r?\n/);
-  const rows = [];
-  let inSection = false;
-  let sawHeader = false;
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
-  for (const line of lines) {
-    if (/^#{1,6}\s+/.test(line)) {
-      if (headingRe.test(line)) {
-        inSection = true;
-        sawHeader = false;
-        continue;
-      }
-      if (inSection) break;
-      continue;
-    }
-    if (!inSection) continue;
-    const cells = splitRow(line);
-    if (!cells) {
-      if (sawHeader && rows.length > 0 && line.trim() === "") break;
-      continue;
-    }
-    if (!sawHeader) {
-      sawHeader = true;
-      continue;
-    }
-    if (isSeparatorRow(cells)) continue;
-    rows.push(cells);
-  }
-  return rows;
-}
-function escapeRegex2(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-function parseRegistry(markdown) {
-  const capabilities = [];
-  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
-    const [name, path] = cells;
-    if (name && path) capabilities.push({ name, path });
-  }
-  const pluginRoots = [];
-  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
-    const [plugin, root] = cells;
-    if (plugin && root) pluginRoots.push({ plugin, root });
-  }
-  return { capabilities, pluginRoots };
-}
-
 // src/resolver/validate-rules.ts
 function toPosix(p) {
   return p.replace(/\\/g, "/");
@@ -20663,7 +20605,7 @@ function deriveRules(opsMarkdown, opsPath) {
     return body;
   };
   const phaseBody = need("The SDD phases");
-  const phaseLine = phaseBody.find((l) => l.split("`").length > 4) ?? "";
+  const phaseLine = phaseBody.find((l) => l.includes("\xB7")) ?? phaseBody.reduce((best, l) => backticked(l).length > backticked(best).length ? l : best, "");
   const phases = [];
   for (const seg of phaseLine.split("\xB7")) {
     const tok = backticked(seg)[0];
@@ -20741,6 +20683,35 @@ function trimCell(s) {
 }
 function join(...parts) {
   return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(/\/{2,}/g, "/");
+}
+function tableRowsWithLines(content, heading) {
+  const rows = [];
+  const lines = content.split(/\r?\n/);
+  let inSection = false;
+  let sawHeader = false;
+  lines.forEach((raw, i) => {
+    const line = stripCr(raw);
+    if (line.startsWith("#")) {
+      if (line.trim() === heading) {
+        inSection = true;
+        sawHeader = false;
+      } else if (inSection) {
+        inSection = false;
+      }
+      return;
+    }
+    if (!inSection) return;
+    const t = line.trim();
+    if (!t.startsWith("|")) return;
+    const cells = t.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) return;
+    if (!sawHeader) {
+      sawHeader = true;
+      return;
+    }
+    rows.push({ cells, line: i + 1 });
+  });
+  return rows;
 }
 var CANONICAL_HEADINGS = ["## Capabilities", "## Plugin Roots", "## Fragments"];
 function checkHeadingTypos(file, content, label) {
@@ -20825,6 +20796,9 @@ function readManifest(content) {
     }
     const phase = trimCell(cells[0] ?? "");
     if (!phase || phase.toLowerCase() === "phase") return;
+    const kindCell = trimCell(cells[1] ?? "");
+    const isPlaceholder = (c) => c === "\u2014" || c === "-" || c === "";
+    if (isPlaceholder(phase) && isPlaceholder(kindCell)) return;
     if (cells.length < 4) {
       malformedRows.push({ line: i + 1, raw: trimmed });
       return;
@@ -21076,17 +21050,11 @@ function validateRegistry(fs, opts) {
       );
     }
   }
-  const parsed = parseRegistry(content);
-  const rowLine = (needle) => {
-    const lines = content.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const t = lines[i].trim();
-      if (t.startsWith("|") && t.includes(needle)) return i + 1;
-    }
-    return null;
-  };
+  const capRows = tableRowsWithLines(content, "## Capabilities").map((r) => ({ name: r.cells[0] ?? "", path: r.cells[1] ?? "", line: r.line })).filter((r) => r.name !== "" && r.name !== "Capability");
+  const rootRows = tableRowsWithLines(content, "## Plugin Roots").map((r) => ({ plugin: r.cells[0] ?? "", root: r.cells[1] ?? "", line: r.line })).filter((r) => r.plugin !== "" && r.plugin !== "Plugin");
+  const parsed = { capabilities: capRows, pluginRoots: rootRows };
   parsed.pluginRoots.forEach((pr, i) => {
-    const line = rowLine(pr.plugin);
+    const line = pr.line;
     let bad = "";
     if (pr.root.includes("\\")) bad = "contains a backslash (must use forward slashes)";
     else if (`/${pr.root}/`.includes("/../")) bad = "contains a '..' segment";
@@ -21123,7 +21091,7 @@ function validateRegistry(fs, opts) {
     }
   });
   parsed.capabilities.forEach((cap, i) => {
-    const line = rowLine(cap.name);
+    const line = cap.line;
     for (let j = i + 1; j < parsed.capabilities.length; j++) {
       if (parsed.capabilities[j].name === cap.name) {
         findings.push(
@@ -21188,7 +21156,7 @@ function validateRegistry(fs, opts) {
   };
   const resolvedManifests = [];
   for (const cap of parsed.capabilities) {
-    const line = rowLine(cap.name);
+    const line = cap.line;
     const p = cap.path;
     if (!p || p === "\u2014") {
       findings.push(
@@ -21560,15 +21528,15 @@ function validateSkillInterface(fs, opts) {
 }
 
 // src/resolver/registry-edit.ts
-function splitRow2(line) {
+function splitRow(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
   return trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
 }
-function isSeparatorRow2(cells) {
+function isSeparatorRow(cells) {
   return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
 }
-function escapeRegex3(s) {
+function escapeRegex2(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function renderRow(cells) {
@@ -21577,7 +21545,7 @@ function renderRow(cells) {
 function upsertSectionRow(markdown, heading, columns, key, value) {
   const eol = markdown.includes("\r\n") ? "\r\n" : "\n";
   const lines = markdown.split(/\r?\n/);
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex3(heading)}\\s*$`, "i");
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
   let sectionStart = -1;
   for (let i = 0; i < lines.length; i++) {
     if (headingRe.test(lines[i])) {
@@ -21609,14 +21577,14 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
   let matchIdx = -1;
   let sawHeader = false;
   for (let i = sectionStart + 1; i < sectionEnd; i++) {
-    const cells = splitRow2(lines[i]);
+    const cells = splitRow(lines[i]);
     if (!cells) continue;
     if (!sawHeader) {
       sawHeader = true;
       headerIdx = i;
       continue;
     }
-    if (isSeparatorRow2(cells)) continue;
+    if (isSeparatorRow(cells)) continue;
     lastDataIdx = i;
     if (cells[0] === key) matchIdx = i;
   }
@@ -21632,7 +21600,7 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
     return { content: next2.join(eol), changed: true };
   }
   if (matchIdx !== -1) {
-    const existing = splitRow2(lines[matchIdx]);
+    const existing = splitRow(lines[matchIdx]);
     if ((existing[1] ?? "") === value) {
       return { content: markdown, changed: false };
     }
@@ -22334,6 +22302,64 @@ var ResolverService = class {
 import { mkdirSync as mkdirSync2, readdirSync as readdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
 import { dirname as dirname2, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// src/resolver/registry.ts
+function splitRow2(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|")) return null;
+  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  return cells;
+}
+function isSeparatorRow2(cells) {
+  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
+}
+function tableRowsUnderHeading(markdown, heading) {
+  const lines = markdown.split(/\r?\n/);
+  const rows = [];
+  let inSection = false;
+  let sawHeader = false;
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex3(heading)}\\s*$`, "i");
+  for (const line of lines) {
+    if (/^#{1,6}\s+/.test(line)) {
+      if (headingRe.test(line)) {
+        inSection = true;
+        sawHeader = false;
+        continue;
+      }
+      if (inSection) break;
+      continue;
+    }
+    if (!inSection) continue;
+    const cells = splitRow2(line);
+    if (!cells) {
+      if (sawHeader && rows.length > 0 && line.trim() === "") break;
+      continue;
+    }
+    if (!sawHeader) {
+      sawHeader = true;
+      continue;
+    }
+    if (isSeparatorRow2(cells)) continue;
+    rows.push(cells);
+  }
+  return rows;
+}
+function escapeRegex3(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function parseRegistry(markdown) {
+  const capabilities = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
+    const [name, path] = cells;
+    if (name && path) capabilities.push({ name, path });
+  }
+  const pluginRoots = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
+    const [plugin, root] = cells;
+    if (plugin && root) pluginRoots.push({ plugin, root });
+  }
+  return { capabilities, pluginRoots };
+}
 
 // src/resolver/manifest.ts
 function stripCr2(line) {

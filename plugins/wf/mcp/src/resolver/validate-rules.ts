@@ -230,7 +230,13 @@ export function deriveRules(opsMarkdown: string, opsPath: string): ContractRules
   // phase token in backticks (later backticks in an entry are the kind gloss,
   // e.g. "`plan` (`artifact`)"), so take the first backticked token per entry.
   const phaseBody = need("The SDD phases");
-  const phaseLine = phaseBody.find((l) => l.split("`").length > 4) ?? "";
+  // The spine line is the one enumerating entries with the `·` separator; fall
+  // back to whichever line carries the most backticked tokens. (Picking merely
+  // "a line with backticks" would grab the preamble sentence, which mentions a
+  // kind and a placeholder but no phase.)
+  const phaseLine =
+    phaseBody.find((l) => l.includes("·")) ??
+    phaseBody.reduce((best, l) => (backticked(l).length > backticked(best).length ? l : best), "");
   const phases: string[] = [];
   for (const seg of phaseLine.split("·")) {
     const tok = backticked(seg)[0];

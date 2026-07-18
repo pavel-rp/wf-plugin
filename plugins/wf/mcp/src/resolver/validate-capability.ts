@@ -18,7 +18,6 @@
 // because that is the set `validate-registry.sh` folds into one exit code.
 // `validate_manifest` is the focused manifest-only subset for one manifest.
 
-import { parseRegistry } from "./registry.js";
 import {
   deriveRules,
   finding,
@@ -68,6 +67,53 @@ function trimCell(s: string): string {
 
 function join(...parts: string[]): string {
   return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(/\/{2,}/g, "/");
+}
+
+/**
+ * Read the rows of the table under an exact `## <heading>`, WITH line numbers
+ * and WITHOUT dropping rows that have an empty cell.
+ *
+ * The live-resolution parser (`registry.ts`) drops a row whose second cell is
+ * empty — correct for resolution (there is nothing to resolve), wrong for
+ * validation (an empty `Root` is exactly the CHECK-4a defect). This is the
+ * validator-only strictness the plan places here rather than in the shared
+ * parser.
+ */
+function tableRowsWithLines(
+  content: string,
+  heading: string,
+): Array<{ cells: string[]; line: number }> {
+  const rows: Array<{ cells: string[]; line: number }> = [];
+  const lines = content.split(/\r?\n/);
+  let inSection = false;
+  let sawHeader = false;
+  lines.forEach((raw, i) => {
+    const line = stripCr(raw);
+    if (line.startsWith("#")) {
+      if (line.trim() === heading) {
+        inSection = true;
+        sawHeader = false;
+      } else if (inSection) {
+        inSection = false;
+      }
+      return;
+    }
+    if (!inSection) return;
+    const t = line.trim();
+    if (!t.startsWith("|")) return;
+    const cells = t
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|")
+      .map((c) => c.trim());
+    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) return;
+    if (!sawHeader) {
+      sawHeader = true;
+      return;
+    }
+    rows.push({ cells, line: i + 1 });
+  });
+  return rows;
 }
 
 /** Canonical block headings whose near-misses parse to zero rows (CHECK-HEADING). */
@@ -203,6 +249,12 @@ function readManifest(content: string): {
 
     const phase = trimCell(cells[0] ?? "");
     if (!phase || phase.toLowerCase() === "phase") return;
+
+    // An all-placeholder row declares "this capability attaches no fragment"
+    // (the contract's `—` = not applicable). It is not a fragment to check.
+    const kindCell = trimCell(cells[1] ?? "");
+    const isPlaceholder = (c: string) => c === "—" || c === "-" || c === "";
+    if (isPlaceholder(phase) && isPlaceholder(kindCell)) return;
 
     // The contract's fragments table is four columns. Fewer means the row
     // cannot be evaluated at all — the strictness the resolver forgoes.
@@ -539,19 +591,17 @@ export function validateRegistry(
     }
   }
 
-  const parsed = parseRegistry(content);
-  const rowLine = (needle: string): number | null => {
-    const lines = content.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const t = lines[i].trim();
-      if (t.startsWith("|") && t.includes(needle)) return i + 1;
-    }
-    return null;
-  };
+  const capRows = tableRowsWithLines(content, "## Capabilities")
+    .map((r) => ({ name: r.cells[0] ?? "", path: r.cells[1] ?? "", line: r.line }))
+    .filter((r) => r.name !== "" && r.name !== "Capability");
+  const rootRows = tableRowsWithLines(content, "## Plugin Roots")
+    .map((r) => ({ plugin: r.cells[0] ?? "", root: r.cells[1] ?? "", line: r.line }))
+    .filter((r) => r.plugin !== "" && r.plugin !== "Plugin");
+  const parsed = { capabilities: capRows, pluginRoots: rootRows };
 
   // --- CHECK-4a/4b: plugin-root shape + name uniqueness ------------------
   parsed.pluginRoots.forEach((pr, i) => {
-    const line = rowLine(pr.plugin);
+    const line = pr.line;
     let bad = "";
     if (pr.root.includes("\\")) bad = "contains a backslash (must use forward slashes)";
     else if (`/${pr.root}/`.includes("/../")) bad = "contains a '..' segment";
@@ -590,7 +640,7 @@ export function validateRegistry(
 
   // --- CHECK-2/3: capability names unique + filesystem-safe --------------
   parsed.capabilities.forEach((cap, i) => {
-    const line = rowLine(cap.name);
+    const line = cap.line;
     for (let j = i + 1; j < parsed.capabilities.length; j++) {
       if (parsed.capabilities[j].name === cap.name) {
         findings.push(
@@ -660,7 +710,7 @@ export function validateRegistry(
   const resolvedManifests: Array<{ capability: string; path: string }> = [];
 
   for (const cap of parsed.capabilities) {
-    const line = rowLine(cap.name);
+    const line = cap.line;
     const p = cap.path;
 
     if (!p || p === "—") {
