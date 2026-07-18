@@ -227,11 +227,11 @@ check_avoid_term() {
     offending="$(printf '%s\n' "$content" | grep -Eo "$pattern" | head -1)"
     [ -n "$offending" ] || offending="$content"
     if [ "$avoid" = "none" ]; then
-      alt="use the canonical form — $definition"
+      alt="use the canonical form \`$term\` ($definition)"
     else
       alt="use \`$term\` instead (avoid: $avoid)"
     fi
-    printf '%s:%s: forbidden term \`%s\` — %s\n' "$rel" "$lno" "$offending" "$alt"
+    printf '%s:%s: forbidden term `%s` — %s\n' "$rel" "$lno" "$offending" "$alt"
   done <<EOF
 $raw
 EOF
