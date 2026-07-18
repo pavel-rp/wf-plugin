@@ -1,0 +1,10 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"response":"feature/FAKE-1-demo"}
+{"seq":2,"surface":"delivery","op":"pr-detect","args":{"branch":"feature/FAKE-1-demo"},"response":{"found":true,"url":"https://fake.local/pr/1","state":"OPEN"}}
+{"seq":3,"surface":"delivery","op":"checks-read","args":{"branch":"feature/FAKE-1-demo"},"response":[{"name":"ci","state":"PENDING","link":"https://fake.local/checks/ci"}]}
+{"seq":4,"surface":"delivery","op":"review-threads-read","args":{"head-sha":"HEADSHA-abc123"},"response":{"read-performed":false,"threads":[]}}
+{"seq":5,"surface":"delivery","op":"checks-read","args":{"branch":"feature/FAKE-1-demo"},"response":[{"name":"ci","state":"SUCCESS","link":"https://fake.local/checks/ci"}]}
+{"seq":6,"surface":"delivery","op":"review-threads-read","args":{"head-sha":"HEADSHA-abc123"},"response":{"read-performed":true,"threads":[{"id":"T1","path":"src/demo.ts","line":12,"resolved":false,"body":"Consider a guard here."},{"id":"T2","path":"src/demo.ts","line":40,"resolved":false,"body":"Missing null check."}]}}
+{"seq":7,"surface":"delivery","op":"pr-comments-read","args":{"branch":"feature/FAKE-1-demo"},"response":[{"author":"reviewer-1","body":"wasn't able to review any files","anchor":null,"files-reviewed":0}]}
+{"seq":8,"surface":"delivery","op":"review-thread-reply","args":{"thread-id":"T1","body":"Addressed — a guard was added in code."},"response":{"state":"posted","url":"https://fake.local/pr/1#thread-T1-reply"}}
+{"seq":9,"surface":"delivery","op":"review-thread-resolve","args":{"thread-id":"T1"},"response":{"state":"resolved"}}
+{"seq":10,"surface":"delivery","op":"review-thread-reply","args":{"thread-id":"T2","body":"Acknowledged; not applicable here — rationale in the thread."},"response":{"state":"posted","url":"https://fake.local/pr/1#thread-T2-reply"}}
