@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"oo-seed-1","tools":["Read","Bash","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The personal _local/slots/ship.review.md override has been removed. With no override and no registered review capability, the ship.review slot resolves unfilled and the inline default runs — no reviewer. Checks green — merging."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Merged\n\nTask: FAKE-1\nBuilt: ready for review\nPR: https://fake.local/pr/5\nChecks: green\nMerge: merged (https://fake.local/pr/5)\nNext: none — terminus"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":5250,"output_tokens":290},"total_cost_usd":0.0377}

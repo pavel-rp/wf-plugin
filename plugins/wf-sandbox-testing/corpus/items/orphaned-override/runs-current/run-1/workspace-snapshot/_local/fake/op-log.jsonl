@@ -1,0 +1,5 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"response":"feature/FAKE-1-demo"}
+{"seq":2,"surface":"delivery","op":"pr-detect","args":{"branch":"feature/FAKE-1-demo"},"response":{"found":true,"url":"https://fake.local/pr/5","state":"OPEN"}}
+{"seq":3,"surface":"delivery","op":"checks-read","args":{"branch":"feature/FAKE-1-demo"},"response":[{"name":"ci","state":"SUCCESS","link":"https://fake.local/checks/ci"}]}
+{"seq":4,"surface":"delivery","op":"review-threads-read","args":{"head-sha":"HEADSHA-oo01"},"response":{"read-performed":true,"threads":[{"id":"T1","path":"src/demo.ts","line":20,"resolved":false,"body":"Old-gate finding held open."}]}}
+{"seq":5,"surface":"delivery","op":"review-thread-reply","args":{"thread-id":"T1","body":"Acknowledged under the personal override's gate."},"response":{"state":"posted","url":"https://fake.local/pr/5#thread-T1-reply"}}

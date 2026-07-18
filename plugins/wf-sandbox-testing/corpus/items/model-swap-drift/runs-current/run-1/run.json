@@ -1,0 +1,12 @@
+{
+  "task": "/wf:ship FAKE-1",
+  "skill": "/wf:ship FAKE-1 (unfilled slot; model arm A)",
+  "fixture": "model-swap-drift",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "model_arm": "A",
+  "fingerprints": { "fixture": "fp-fixture-model-swap-3e1b", "plugin_build": "fp-current-ship-9f8e7d", "model": "fp-model-arm-A", "cli_version": "claude 1.0.0", "run": "fp-ms-cur-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "unfilled-slot ship under model arm A: build -> green checks -> merge; op set current-branch-query/pr-detect/checks-read/pr-merge"
+}
