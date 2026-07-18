@@ -201,12 +201,66 @@ check_review_gate() {
   [ "$fail" = "$before" ] || true
 }
 
+# ---------------------------------------------------------------------------
+# 6. ASSERTION ITEMS — items 3-5 (the WF-348 C014 retrofits): each runs-current set
+#    is green against its expect.json; each seeded-breakage set turns red naming a family.
+# ---------------------------------------------------------------------------
+check_assertion_items() {
+  local before=$fail name dir rc rep
+  for name in contribution-survival model-swap-drift orphaned-override; do
+    dir="$ITEMS/$name"
+    [ -d "$dir" ]            || { err "assertion-item: '$name' directory missing at ${dir#$REPO_ROOT/}"; continue; }
+    [ -f "$dir/expect.json" ] || { err "assertion-item[$name]: expect.json missing"; continue; }
+    [ -d "$dir/seeded-breakage/runs" ] || err "assertion-item[$name]: seeded-breakage/runs/ missing"
+    # (a) green: runs-current PASSes the assertion.
+    rc=0; rep="$TMP/ai-green-$name.txt"
+    REPORT="$rep" bash "$ASSERT/tiers.sh" smoke --scenario "$dir" --report "$rep" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ] && grep -q 'Verdict: PASS' "$rep" 2>/dev/null; then
+      ok "assertion-item[$name]: runs-current is green against expect.json"
+    else
+      err "assertion-item[$name]: runs-current did NOT run green (exit $rc)"; [ -f "$rep" ] && sed 's/^/    /' "$rep" >&2
+    fi
+    # (b) seeded-red: the seeded set FAILs, naming a structural family.
+    rc=0; rep="$TMP/ai-red-$name.txt"
+    REPORT="$rep" bash "$ASSERT/tiers.sh" smoke --scenario "$dir" --runs-dir "$dir/seeded-breakage/runs" --report "$rep" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ] && grep -q 'Verdict: FAIL' "$rep" 2>/dev/null \
+         && grep -Eq '(terminal_block|files_touched|ops_invoked) +FAIL' "$rep" 2>/dev/null; then
+      ok "assertion-item[$name]: seeded breakage turns red naming a failed family"
+    else
+      err "assertion-item[$name]: seeded breakage did not turn red naming a family (exit $rc)"; [ -f "$rep" ] && sed 's/^/    /' "$rep" >&2
+    fi
+  done
+  [ "$fail" = "$before" ] && ok "assertion-items: items 3-5 (C014 retrofits) each run green on current + turn red on seeded breakage"
+}
+
+# ---------------------------------------------------------------------------
+# 7. COVERAGE LEDGER — every named C014/C015 item + WF-203 comment is accounted for
+#    (covered / subsumed / deferred) with a resolvable provenance link. Zero silently dropped.
+# ---------------------------------------------------------------------------
+check_ledger() {
+  local before=$fail want missing="" undeferred
+  [ -f "$MANIFEST" ] || { err "ledger: manifest.md not found at $MANIFEST"; return; }
+  grep -q 'Watch-list coverage ledger' "$MANIFEST" || err "ledger: the 'Watch-list coverage ledger' section is missing"
+  grep -q 'Subsumption record'         "$MANIFEST" || err "ledger: the 'Subsumption record' section is missing (C014-1 must name its covering flagship)"
+  # The explicitly-deferred watch-list items must each be present by name (never silently dropped).
+  for want in "constitution payload presence" "dedupe across re-fires" "fleet-shipper coverage" "/wf:tc"; do
+    grep -qF "$want" "$MANIFEST" || missing="$missing [$want]"
+  done
+  [ -z "$missing" ] || err "ledger: a deferred watch-list item is not accounted for in the manifest:$missing"
+  # Every 'deferred with rationale' ledger row must carry a resolvable provenance link on its line.
+  undeferred="$(grep 'deferred with rationale' "$MANIFEST" | grep -Ev 'WF-[0-9]+|C0[0-9]+' || true)"
+  [ -z "$undeferred" ] || err "ledger: a 'deferred with rationale' row lacks a WF-<n>/C0<n> provenance link"
+  [ "$fail" = "$before" ] && ok "ledger: all named C014/C015 items + WF-203 comments accounted for (covered/subsumed/deferred), each provenance-linked — zero silently dropped"
+}
+
 echo "== wf-sandbox-testing CORPUS self-checks (canned run outputs) =="
 check_provenance
 check_slot_enum
 check_flagship
 check_arm_record
 check_review_gate
+check_assertion_items
+check_ledger
 
 if [ "$fail" -ne 0 ]; then
   echo "wf-sandbox-testing corpus self-checks: FAIL" >&2
