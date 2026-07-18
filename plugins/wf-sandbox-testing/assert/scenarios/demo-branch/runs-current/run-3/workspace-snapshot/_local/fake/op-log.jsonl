@@ -1,0 +1,2 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"response":"feature/FAKE-1-demo"}
+{"seq":2,"surface":"delivery","op":"branch-create","args":{"branch-name":"feature/FAKE-1-demo","base":"main"},"response":{"state":"created","base-source":"origin/main","tracking":"origin/feature/FAKE-1-demo","carry":"none"}}

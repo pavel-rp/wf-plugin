@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"broken-2","tools":["Read","Bash","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Re-attempting the FAKE-1 branch creation; the delivery step failed again."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"BRANCH — error\n\nTask: FAKE-1\nReason: simulated delivery failure\nNext: /wf:branch FAKE-1"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"BRANCH — error","usage":{"input_tokens":1670,"output_tokens":190},"total_cost_usd":0.0104}
