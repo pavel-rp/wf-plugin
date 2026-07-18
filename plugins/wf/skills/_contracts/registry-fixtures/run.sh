@@ -304,6 +304,27 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-341: glossary vocabulary lint ----------------------------------------
+# The canonical authoring vocabulary lives in ../GLOSSARY.md; ../glossary-lint.sh
+# is its live consumer — it parses that file directly (no rule is transcribed into
+# the script) and fails authored prose that drifts from it, naming the file, the
+# offending term, and the canonical alternative. Only the --selftest is wired
+# here, and deliberately so: the charter's severity model is ON-TOUCH, so the
+# real-tree file set is computed by the PR gate (WF-342), not by this chain. The
+# self-test runs against its own fixture glossary (so a later edit to a live
+# GLOSSARY.md entry cannot silently delete the term it asserts on) plus a
+# smoke-parse of the REAL GLOSSARY.md — it scans zero real-tree files, so `main`
+# stays green while the seeded-violation catch stays proven on every PR.
+echo ""
+echo "=== Glossary vocabulary lint — fixture self-test (glossary-lint.sh --selftest) ==="
+if bash "$DIR/../glossary-lint.sh" --selftest; then
+  printf 'PASS: %s\n' "glossary lint self-test (seeded violation caught, clean sibling passes, real GLOSSARY.md parses)"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "glossary lint self-test"
+  fail=$((fail + 1))
+fi
+
 # --- WF-304 / WF-305 / WF-306 / WF-307 / WF-308: OUT-2 content-read acceptance --
 # (the COMPOSITE gate — all five content classes)
 # C011 OUT-2: no skill/agent raw-reads a bundled content-class doc — every body
