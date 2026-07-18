@@ -1065,13 +1065,23 @@ export class ResolverService {
     if (path && path.trim()) {
       return validateManifest(fs, this.absolutize(path.trim()), ops);
     }
-    // Default scope: delegate to the registry validator's manifest pass by
-    // validating the resolved registry, which checks every active manifest.
+    // Default scope: every active capability's manifest. The registry validator
+    // already visits exactly that set, so reuse its pass and re-scope the
+    // verdict — keeping only the manifest-level findings, and describing the
+    // target as the scope walked rather than the registry file it was read
+    // from (which is `validate_registry`'s target, not this tool's).
     const full = this.validateRegistry();
+    const manifestFindings = full.findings.filter((f) => /manifest\.md$/.test(f.file));
     return {
       ...full,
       tool: "validate_manifest",
-      summary: `${full.summary} (every active capability's manifest; pass a \`path\` to check one).`,
+      target: "every active capability manifest in the registry",
+      findings: full.status === "error" ? full.findings : manifestFindings,
+      status: full.status === "error" ? "error" : manifestFindings.length === 0 ? "pass" : "fail",
+      summary:
+        full.status === "error"
+          ? full.summary
+          : `${full.ruleSources.filter((s) => s.endsWith("manifest.md")).length} manifest(s) checked, ${manifestFindings.length} finding(s); pass a \`path\` to check one.`,
     };
   }
 

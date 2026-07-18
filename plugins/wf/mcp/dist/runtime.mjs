@@ -22248,10 +22248,14 @@ var ResolverService = class {
       return validateManifest(fs, this.absolutize(path.trim()), ops);
     }
     const full = this.validateRegistry();
+    const manifestFindings = full.findings.filter((f) => /manifest\.md$/.test(f.file));
     return {
       ...full,
       tool: "validate_manifest",
-      summary: `${full.summary} (every active capability's manifest; pass a \`path\` to check one).`
+      target: "every active capability manifest in the registry",
+      findings: full.status === "error" ? full.findings : manifestFindings,
+      status: full.status === "error" ? "error" : manifestFindings.length === 0 ? "pass" : "fail",
+      summary: full.status === "error" ? full.summary : `${full.ruleSources.filter((s) => s.endsWith("manifest.md")).length} manifest(s) checked, ${manifestFindings.length} finding(s); pass a \`path\` to check one.`
     };
   }
   /** Validate the resolved registry: its two tables, every declared

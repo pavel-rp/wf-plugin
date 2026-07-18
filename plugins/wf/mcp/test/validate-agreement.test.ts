@@ -13,8 +13,20 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  statSync,
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  copyFileSync,
+  cpSync,
+  rmSync,
+} from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { validateRegistry, validateManifest, type ValidatorFs } from "../src/resolver/validate-capability.js";
 import { validateSkillInterface } from "../src/resolver/validate-skill-interface.js";
@@ -153,7 +165,36 @@ test("every verdict records the rule sources it parsed", () => {
 // Slot-marker fixtures
 // ---------------------------------------------------------------------------
 
-/** The fixture cases and what the shell lint's --selftest asserts of each. */
+/**
+ * Execute the REAL slot-marker guard against a single fixture directory and
+ * return its exit status.
+ *
+ * The guard exposes no per-directory CLI mode: it either runs `--selftest` over
+ * all fixtures at once, or scans the real tree at `<root>/plugins/*​/skills/*​/`,
+ * where `<root>` is resolved by walking up from the script's OWN location. So
+ * staging one fixture as the only skill in a throwaway tree — with the guard
+ * copied to the path its root-walk expects — makes the guard scan exactly that
+ * one fixture, unmodified. That turns the slot half of the agreement suite into
+ * genuine execution rather than a transcribed expectation table.
+ */
+function slotGuardExit(fixtureDir: string): number {
+  const tmp = mkdtempSync(join(tmpdir(), "wf-352-slot-"));
+  const contractsDir = join(tmp, "plugins", "wf", "skills", "_contracts");
+  mkdirSync(contractsDir, { recursive: true });
+  // The root-walk stops at the marketplace marker; provide it so the guard
+  // resolves <tmp> as the repo root exactly as it does in the real tree.
+  mkdirSync(join(tmp, ".claude-plugin"), { recursive: true });
+  writeFileSync(join(tmp, ".claude-plugin", "marketplace.json"), "{}", "utf8");
+  copyFileSync(join(CONTRACTS, "skill-slot-marker-lint.sh"), join(contractsDir, "skill-slot-marker-lint.sh"));
+  cpSync(join(SLOT_FIXTURES, fixtureDir), join(tmp, "plugins", "wf", "skills", fixtureDir), {
+    recursive: true,
+  });
+  const res = spawnSync("bash", [join(contractsDir, "skill-slot-marker-lint.sh")], { encoding: "utf8" });
+  rmSync(tmp, { recursive: true, force: true });
+  return res.status ?? 2;
+}
+
+/** The fixture cases and the defect class each plants. */
 const SLOT_CASES: Array<{ dir: string; expect: "pass" | "fail"; rule?: string }> = [
   { dir: "slotfree", expect: "pass" },
   { dir: "wellformed-replace", expect: "pass" },
@@ -170,6 +211,24 @@ test("the shell lint's own selftest passes (the guard we are agreeing with is so
     encoding: "utf8",
   });
   assert.equal(res.status, 0, `slot-marker lint selftest failed:\n${res.stdout}\n${res.stderr}`);
+});
+
+test("validate_skill_interface agrees with skill-slot-marker-lint.sh on every fixture", () => {
+  const disagreements: string[] = [];
+  for (const c of SLOT_CASES) {
+    const dir = join(SLOT_FIXTURES, c.dir);
+    const exit = slotGuardExit(c.dir);
+    const v = validateSkillInterface(realFs, { opsDocPath: OPS_DOC, skillDirs: [dir], target: dir });
+    const guardPassed = exit === 0;
+    const toolPassed = v.status === "pass";
+    if (guardPassed !== toolPassed) {
+      disagreements.push(
+        `${c.dir}: guard exit ${exit} (${guardPassed ? "pass" : "fail"}) vs tool ${v.status}` +
+          (v.findings.length > 0 ? ` — ${v.findings.map((f) => f.rule).join(", ")}` : ""),
+      );
+    }
+  }
+  assert.deepEqual(disagreements, [], `slot-marker verdict disagreements:\n${disagreements.join("\n")}`);
 });
 
 test("validate_skill_interface reproduces every planted slot-marker case", () => {
