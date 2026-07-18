@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.101.0",
+  "version": "0.102.0",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature, wf-author-caps authoring toolkit).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -111,7 +111,7 @@
     {
       "name": "wf-author-caps",
       "source": "./plugins/wf-author-caps",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "wf authoring toolkit: the author-caps capability, teaching how to author capabilities, skills, and plugins for this marketplace. Ships two model-invoked reference skills — /wf-author-caps:authoring-guide (core-versus-capability sorting, plugin anatomy, interface-first skill design, skill-versus-subagent, native and registry composition, the registration flow, canonical vocabulary) and /wf-author-caps:authoring-taxonomy (the SDD phase spine, the contribution kinds, aggregate-versus-partition policy, manifest schema v2, the registry row, constitution composition, registry validation) — that load by description auto-selection when an authoring question comes up, no slash command required. Declared kind: both; its fragments table ships empty by design ahead of its first phase contribution. Ships /wf-author-caps:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"

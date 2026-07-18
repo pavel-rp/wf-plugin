@@ -8,6 +8,16 @@ its emission template — and inherits the rest of this procedure unchanged. Reu
 
 Runtime-read: behavior-bearing steps, guards, and outcome mappings only.
 
+## Contents
+
+- [Stage 1 — Interview](#stage-1--interview-validating-each-answer-before-anything-is-written)
+- [Stage 2 — Emit](#stage-2--emit-complete-artifacts-never-placeholders)
+- [Stage 3 — Self-lint](#stage-3--self-lint-against-the-same-gates-ci-applies)
+- [Stage 4 — Fix and re-run](#stage-4--fix-your-own-findings-then-re-run)
+- [Stage 5 — Stop honestly](#stage-5--stop-honestly-on-an-unfixable-finding)
+- [Stage 6 — Hand back only clean](#stage-6--hand-back-only-clean)
+- [Edge Cases](#edge-cases)
+
 ---
 
 ## Stage 1 — Interview, validating each answer before anything is written
