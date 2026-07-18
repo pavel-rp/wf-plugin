@@ -63,7 +63,8 @@ jobs:
 
       - name: Sandbox-testing assertion suite
         # The WF-346 statistical assertion layer over the WF-345 runner's outputs. Not a
-        # capability fixtures suite (wf-sandbox-testing ships no capabilities/ folder), so
+        # capability fixtures suite (the sandbox-testing capability ships no
+        # capabilities/*/fixtures/run.sh — its suites live under assert/ and corpus/), so
         # it is named explicitly here — in the same validate-registry.sh / registry-fixtures
         # family. It runs entirely against committed CANNED run outputs (no container, no
         # model), proving the green report, the red report, the baseline comparison, the

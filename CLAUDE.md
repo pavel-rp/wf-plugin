@@ -91,6 +91,11 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── skills/address-pr/SKILL.md  # /wf-review:address-pr — verify review comments/CI, address the valid ones
 │   ├── skills/review-pr/SKILL.md   # /wf-review:review-pr — review a PR, post verified findings
 │   └── capabilities/pr-review/     # manifest.md (kind: feature; no fragment; routes through the delivery provider)
+├── plugins/wf-sandbox-testing/ # SKILL-EVAL HARNESS PACK — the sandbox-testing feature capability (hermetic runner + statistical assertion layer + behavioral-regression corpus; no provider surface, no phase fragment)
+│   ├── skills/init/SKILL.md   # /wf-sandbox-testing:init — self-registration
+│   ├── runner/ assert/ corpus/ fixtures/ # the WF-345 runner, WF-346 assertion layer, WF-347/348 corpus, fixture seeds
+│   ├── docs/retrofit-procedure.md # the findings-loop procedure (observation → assertion)
+│   └── capabilities/sandbox-testing/ # manifest.md (kind: feature; no fragment; wf-fake pairing per fixture, no requires:)
 ├── docs/ROADMAP.md            # committed grounding doc
 └── _local/                    # gitignored: research notes, working tracking
 ```
