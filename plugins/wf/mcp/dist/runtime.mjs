@@ -20643,12 +20643,8 @@ function deriveRules(opsMarkdown, opsPath) {
     );
   }
   const schemaBody = need("Manifest schema v2");
-  let manifestKinds = [];
   const dispatchPrefixes = [];
   for (const line of schemaBody) {
-    if (manifestKinds.length === 0 && /\*\*`kind:`\*\*/.test(line)) {
-      manifestKinds = backticked(line).filter((t) => t !== "kind:").filter((t) => /^[a-z][a-z-]*$/.test(t));
-    }
     if (/`dispatch`/.test(line)) {
       for (const tok of backticked(line)) {
         const m = /^([a-z][a-z-]*):\s*</.exec(tok);
@@ -20668,7 +20664,6 @@ function deriveRules(opsMarkdown, opsPath) {
     partitionedKinds,
     pointTargetedKinds,
     slotPolicies,
-    manifestKinds,
     dispatchPrefixes,
     sources: [toPosix(opsPath)]
   };
@@ -21527,6 +21522,229 @@ function validateSkillInterface(fs, opts) {
   );
 }
 
+// src/resolver/validate-references.ts
+function liftAssignment(source, name, path) {
+  const m = new RegExp(`^${name}='([^']*)'`, "m").exec(source);
+  if (m === null) {
+    throw new RuleSourceError(
+      `rule source \`${toPosix(path)}\` has no single-quoted \`${name}=\u2026\` classifier assignment \u2014 the instruction-vs-prose rule cannot be derived, so no verdict is issued.`,
+      path
+    );
+  }
+  return m[1];
+}
+function deriveReferenceRules(guardSource, guardPath) {
+  const p1 = liftAssignment(guardSource, "p1", guardPath);
+  const p2 = liftAssignment(guardSource, "p2", guardPath);
+  const inlineFlags = /^\(\?([a-z]+)\)/.exec(p1);
+  return {
+    pluginRootPattern: p2,
+    directiveAxisPattern: p1.replace(/^\(\?[a-z]+\)/, ""),
+    axisFlags: inlineFlags ? inlineFlags[1] : "",
+    sources: [toPosix(guardPath)]
+  };
+}
+var INVOCATION_AXIS = {
+  /** Base forms; inflections are generated, never listed twice. */
+  verbs: ["invoke", "call", "run", "dispatch"],
+  /** Deliberately non-directive — mirrors the guard's own exclusion. */
+  excludedVerbs: ["load", "loads", "loading"],
+  /** `/wf:<skill>` and `/wf-<pack>:<skill>`. A concrete lowercase slug only:
+   *  a placeholder (`/wf:<name>`, `/wf:*`) names no real skill and is not a
+   *  reference to resolve. The leading look-behind keeps a path segment
+   *  (`.../skills/wf:x`) or a longer token from matching mid-string. */
+  skillToken: "(?<![\\w./-])/(wf(?:-[a-z0-9][a-z0-9-]*)?):([a-z][a-z0-9-]*)",
+  /** `subagent_type: wf:<agent>` — the Task-tool dispatch declaration, with or
+   *  without backticks around the value. */
+  agentToken: "subagent_type:?\\s*[`'\"]?(wf(?:-[a-z0-9][a-z0-9-]*)?):([a-z][a-z0-9-]*)"
+};
+function verbAlternation() {
+  const forms = /* @__PURE__ */ new Set();
+  for (const v of INVOCATION_AXIS.verbs) {
+    forms.add(v);
+    forms.add(`${v}s`);
+    forms.add(v.endsWith("e") ? `${v}d` : `${v}ed`);
+    forms.add(v.endsWith("e") ? `${v.slice(0, -1)}ing` : `${v}ing`);
+    if (v === "dispatch") forms.add("dispatches");
+  }
+  for (const x of INVOCATION_AXIS.excludedVerbs) forms.delete(x);
+  return [...forms].join("|");
+}
+function sentences(line) {
+  return line.split(/(?<=[.!?])\s+/);
+}
+function pluginOf(file, repoRoot) {
+  const norm = toPosix(file);
+  const prefix = `${repoRoot}/plugins/`;
+  if (!norm.startsWith(prefix)) return null;
+  const rest = norm.slice(prefix.length);
+  const seg = rest.split("/")[0];
+  return seg && seg !== ".." ? seg : null;
+}
+function validateReferences(fs, opts) {
+  let rules;
+  try {
+    const guardSource = fs.readFile(opts.guardPath);
+    if (guardSource === null) {
+      throw new RuleSourceError(
+        `rule source \`${toPosix(opts.guardPath)}\` is not readable \u2014 the instruction-vs-prose classifier cannot be derived, so no verdict is issued.`,
+        opts.guardPath
+      );
+    }
+    rules = deriveReferenceRules(guardSource, opts.guardPath);
+  } catch (err) {
+    return ruleSourceErrorVerdict("validate_references", opts.target, err, opts.guardPath);
+  }
+  const repoRoot = toPosix(opts.repoRoot).replace(/\/$/, "");
+  const verbRe = new RegExp(`\\b(?:${verbAlternation()})\\b`, "i");
+  const skillRe = new RegExp(INVOCATION_AXIS.skillToken, "g");
+  const agentRe = new RegExp(INVOCATION_AXIS.agentToken, "gi");
+  const pluginRootRe = new RegExp(rules.pluginRootPattern, "g");
+  const findings = [];
+  let filesScanned = 0;
+  let checked = 0;
+  let indeterminate = 0;
+  for (const file of opts.files) {
+    const content = fs.readFile(file);
+    if (content === null) continue;
+    filesScanned++;
+    const owner = pluginOf(file, repoRoot);
+    content.split(/\r?\n/).forEach((raw, i) => {
+      const line = raw.replace(/\r$/, "");
+      const ln = i + 1;
+      pluginRootRe.lastIndex = 0;
+      let pm;
+      const seenPaths = /* @__PURE__ */ new Set();
+      while ((pm = pluginRootRe.exec(line)) !== null) {
+        const token = pm[0];
+        if (seenPaths.has(token)) continue;
+        seenPaths.add(token);
+        if (owner === null) {
+          indeterminate++;
+          continue;
+        }
+        checked++;
+        const rel = token.replace(/^\$\{CLAUDE_PLUGIN_ROOT\}\/?/, "");
+        const abs = `${repoRoot}/plugins/${owner}/${rel}`;
+        if (!fs.isFile(abs)) {
+          findings.push(
+            finding(
+              "REF-2",
+              file,
+              ln,
+              `plugin-root path \`${token}\` resolves to nothing \u2014 \`${abs}\` does not exist in plugin \`${owner}\`.`
+            )
+          );
+        }
+      }
+      const seenRefs = /* @__PURE__ */ new Set();
+      for (const sentence of sentences(line)) {
+        const verbAt = verbRe.exec(sentence);
+        if (verbAt === null) continue;
+        const governsFrom = verbAt.index;
+        for (const [re, kind] of [
+          [skillRe, "skill"],
+          [agentRe, "agent"]
+        ]) {
+          re.lastIndex = 0;
+          let m;
+          while ((m = re.exec(sentence)) !== null) {
+            if (m.index < governsFrom) continue;
+            const plugin = m[1];
+            const name = m[2];
+            const key = `${kind}:${plugin}:${name}`;
+            if (seenRefs.has(key)) continue;
+            seenRefs.add(key);
+            const pluginDir = `${repoRoot}/plugins/${plugin}`;
+            if (!fs.isDirectory(pluginDir)) {
+              indeterminate++;
+              continue;
+            }
+            checked++;
+            const expected = kind === "skill" ? `${pluginDir}/skills/${name}/SKILL.md` : `${pluginDir}/agents/${name}.md`;
+            if (fs.isFile(expected)) continue;
+            findings.push(
+              finding(
+                "REF-1",
+                file,
+                ln,
+                kind === "skill" ? `invocation reference \`/${plugin}:${name}\` names a skill that does not exist \u2014 no \`${expected}\`.` : `invocation reference \`subagent_type: ${plugin}:${name}\` names an agent that does not exist \u2014 no \`${expected}\`.`
+              )
+            );
+          }
+        }
+      }
+    });
+  }
+  if (opts.files.length === 0) {
+    return verdict(
+      "validate_references",
+      opts.target,
+      [
+        finding(
+          "input-unparseable",
+          opts.target,
+          null,
+          `no skill body or agent file found at \`${toPosix(opts.target)}\` \u2014 nothing to check.`
+        )
+      ],
+      rules.sources,
+      "0 files scanned \u2014 the target names no skill body or agent file.",
+      true
+    );
+  }
+  return verdict(
+    "validate_references",
+    opts.target,
+    findings,
+    rules.sources,
+    `${filesScanned} file(s) scanned, ${checked} reference(s) resolved against the tree, ${indeterminate} indeterminate (owning plugin root not resolvable in this workspace), ${findings.length} finding(s).`
+  );
+}
+
+// src/resolver/preview-composition.ts
+function previewComposition(snapshot, phase) {
+  const want = phase?.trim() ? phase.trim() : null;
+  const entries = [];
+  for (const cap of snapshot.capabilities) {
+    for (const fragment of cap.fragments) {
+      if (want !== null && fragment.phase !== want) continue;
+      entries.push({
+        order: entries.length,
+        capability: cap.name,
+        phase: fragment.phase,
+        contributionKind: fragment.contributionKind,
+        dispatch: fragment.dispatch,
+        scope: fragment.scope,
+        registryPath: cap.registryPath,
+        resolvedPath: cap.resolvedPath,
+        manifestPath: cap.manifestPath,
+        provenance: cap.provenance,
+        validity: cap.validity
+      });
+    }
+  }
+  const phasesCovered = [];
+  for (const e of entries) if (!phasesCovered.includes(e.phase)) phasesCovered.push(e.phase);
+  const scope = want === null ? "every phase" : `phase \`${want}\``;
+  const summary = entries.length === 0 ? `nothing would compose at ${scope} \u2014 ${snapshot.capabilities.length} active capability/capabilities contribute no matching fragment (inert, not an error).` : `${entries.length} fragment(s) would fire at ${scope}, in registry order, from ${new Set(entries.map((e) => e.capability)).size} capability/capabilities.`;
+  return {
+    tool: "preview_composition",
+    phase: want,
+    entries,
+    capabilitiesConsidered: snapshot.capabilities.length,
+    phasesCovered,
+    renderedFrom: {
+      schemaVersion: snapshot.schemaVersion,
+      generatedAt: snapshot.generatedAt,
+      generator: snapshot.generator,
+      workspaceRoot: snapshot.workspaceRoot,
+      registryPath: snapshot.registryPath
+    },
+    summary
+  };
+}
+
 // src/resolver/registry-edit.ts
 function splitRow(line) {
   const trimmed = line.trim();
@@ -22293,6 +22511,67 @@ var ResolverService = class {
       skillDirs,
       target
     });
+  }
+  // --- reference existence + composition preview (WF-354) ------------------
+  /** Absolute path of the reference classifier's live rule source, anchored at
+   *  the core plugin root exactly as `opsDocPath()` anchors the ops doc. */
+  guardDocPath() {
+    return `${this.ports.corePluginRoot.replace(/\\/g, "/").replace(/\/$/, "")}/skills/_contracts/out4-skill-read-guard.sh`;
+  }
+  /** Every markdown file under `dir`, one level of nesting deep enough to cover
+   *  a skill's `references/` folder. Degrades to `[]` when the optional
+   *  `listFiles` port is absent. */
+  markdownUnder(dir, depth = 2) {
+    const listFiles = this.ports.listFiles?.bind(this.ports);
+    if (!listFiles) return [];
+    const out = [];
+    for (const f of listFiles(dir)) if (f.endsWith(".md")) out.push(`${dir}/${f}`);
+    if (depth > 1) {
+      for (const sub of this.ports.listDirs(dir)) {
+        out.push(...this.markdownUnder(`${dir}/${sub}`, depth - 1));
+      }
+    }
+    return out;
+  }
+  /** Resolve every invocation reference in skill bodies and agent files against
+   *  the real tree. With no argument the scan covers every plugin's `skills/`
+   *  and `agents/`, mirroring `validateSkillInterface`'s zero-argument default. */
+  validateReferences(path) {
+    const workspaceRoot = this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+    const pluginsRoot = `${workspaceRoot}/plugins`;
+    const guardPath = this.guardDocPath();
+    let files;
+    let target;
+    if (path && path.trim()) {
+      const abs = this.absolutize(path.trim());
+      target = abs;
+      files = this.ports.readFile(abs) !== null ? [abs] : this.markdownUnder(abs, 3);
+    } else {
+      target = `${pluginsRoot}/*/{skills,agents}`;
+      files = [];
+      for (const plugin of this.ports.listDirs(pluginsRoot)) {
+        const skillsRoot = `${pluginsRoot}/${plugin}/skills`;
+        for (const s of this.ports.listDirs(skillsRoot)) {
+          if (s.startsWith("_")) continue;
+          const body = `${skillsRoot}/${s}/SKILL.md`;
+          if (this.ports.readFile(body) !== null) files.push(body);
+          files.push(...this.markdownUnder(`${skillsRoot}/${s}/references`, 1));
+        }
+        files.push(...this.markdownUnder(`${pluginsRoot}/${plugin}/agents`, 1));
+      }
+    }
+    return validateReferences(this.validatorFs(), {
+      repoRoot: workspaceRoot,
+      files,
+      target,
+      guardPath
+    });
+  }
+  /** Render which fragments would compose at a phase, in registry order, with
+   *  provenance. Reads through `ensure()` only — it never refreshes and never
+   *  invalidates, and the renderer itself performs no I/O at all. */
+  previewComposition(phase) {
+    return previewComposition(this.ensure(), phase ?? null);
   }
   /** Resolve a caller-supplied path against the workspace root when relative. */
   absolutize(p) {
@@ -23063,6 +23342,13 @@ function createDefaultPorts(workspaceRoot) {
         return [];
       }
     },
+    listFiles: (absDir) => {
+      try {
+        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
     listPlugins: () => {
       const raw = runPluginList();
       if (raw === null) return { plugins: [], ok: false };
@@ -23203,6 +23489,26 @@ var validateSkillInput = fromJsonSchema2({
     skill: {
       type: "string",
       description: "Skill slug to scope the scan to. Omit to scan every skill in scope."
+    }
+  },
+  additionalProperties: false
+});
+var validateReferencesInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "A skill body, an agent file, or a folder to scan (absolute, or relative to the workspace root). Omit to scan every plugin's `skills/` and `agents/`."
+    }
+  },
+  additionalProperties: false
+});
+var previewCompositionInput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    phase: {
+      type: "string",
+      description: "SDD phase to preview (e.g. `verify`, `qa-execution`). Omit to preview every phase."
     }
   },
   additionalProperties: false
@@ -23350,6 +23656,24 @@ function registerResolverTools(server, service) {
       inputSchema: validateSkillInput
     },
     async (args) => guard(() => service.validateSkillInterface(args?.plugin, args?.skill))
+  );
+  server.registerTool(
+    "validate_references",
+    {
+      title: "validate references",
+      description: "Resolve every cross-reference in skill bodies and agent files against the real tree (WF-354) \u2014 the dead-reference class no structural validator catches (a body instructing invocation of a removed skill). Checks `/wf:<skill>`, `/wf-<pack>:<skill>`, `subagent_type: wf:<agent>`, and `${CLAUDE_PLUGIN_ROOT}` path tokens, but ONLY on invocation-instruction lines: the instruction-vs-prose classifier is DERIVED at call time by parsing the `p1`/`p2` assignments out of `out4-skill-read-guard.sh` (recorded in `ruleSources`), so a bare prose mention \u2014 a README skill table, a cited call shape \u2014 never turns red. Returns the frozen ValidationVerdict with rule ids `REF-1` (unresolvable skill/agent invocation reference) and `REF-2` (unresolvable `${CLAUDE_PLUGIN_ROOT}` path token), alongside `input-unparseable` / `rule-source-unresolvable`. A reference whose owning plugin root is not resolvable in this workspace is indeterminate, not dead: it is excluded from `findings` and counted in `summary`. Omit `path` to scan every plugin's skills and agents.",
+      inputSchema: validateReferencesInput
+    },
+    async (args) => guard(() => service.validateReferences(args?.path))
+  );
+  server.registerTool(
+    "preview_composition",
+    {
+      title: "preview composition",
+      description: "Dry-run preview of what the capability registry would compose (WF-354): every fragment that would fire at a phase, in registry order, each carrying its provenance (owning capability, resolved dispatch target, scope, resolved/manifest paths, how the path resolved). Rendered purely off the already-resolved snapshot \u2014 no manifest is re-parsed, no path re-resolved, and no fragment BODY is ever read or returned (follow the named `dispatch` for that). Read-only: it neither refreshes nor invalidates the snapshot. NOT a ValidationVerdict \u2014 a preview has no pass/fail semantics \u2014 so it returns its own narrow record, and zero entries is a first-class inert outcome (an empty registry composes nothing, which is the contract's designed behaviour, not an error). Omit `phase` to preview every phase.",
+      inputSchema: previewCompositionInput
+    },
+    async (args) => guard(() => service.previewComposition(args?.phase))
   );
   server.registerTool(
     "resolve_inspect",

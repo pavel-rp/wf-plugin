@@ -907,7 +907,11 @@ export function loadRules(fs: ValidatorFs, opsDocPath: string): ContractRules {
 }
 
 export function ruleSourceErrorVerdict(
-  tool: "validate_manifest" | "validate_registry" | "validate_skill_interface",
+  tool:
+    | "validate_manifest"
+    | "validate_registry"
+    | "validate_skill_interface"
+    | "validate_references",
   target: string,
   err: unknown,
   opsDocPath: string,

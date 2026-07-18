@@ -14,8 +14,8 @@
 //        kinds, which of them partition (and so require a `scope`), which of
 //        them target a skill point instead of a phase, and the slot merge
 //        policies
-//   "## Manifest schema v2 (the capability side, …)"  -> the accepted `kind:`
-//        values and the accepted `dispatch` prefixes
+//   "## Manifest schema v2 (the capability side, …)"  -> the accepted
+//        `dispatch` prefixes
 //
 // Nothing below hardcodes a phase name, a kind name, or a policy name. The
 // shell guard `validate-registry.sh` PINS the same vocabularies as literal
@@ -29,8 +29,11 @@ export interface Finding {
    *  `CHECK-4a`/`4b`/`6b`/`6c`, `CHECK-HEADING`, `D1`…`D5`, or one of the two
    *  typed-error ids (`input-unparseable`, `rule-source-unresolvable`). */
   rule: string;
-  /** Single-valued today; the tier exists so WF-354's reference-existence
-   *  check can add `warning` without reshaping the verdict. */
+  /** Single-valued. WF-354's reference-existence check declined the `warning`
+   *  tier (D-3): a reference whose owning plugin root is not resolvable in this
+   *  workspace is INDETERMINATE, not proven dead, so it is excluded from
+   *  `findings` and counted in `summary` instead. The tier stays available as
+   *  an extension point and unused. */
   severity: "error";
   /** Absolute, forward-slash-normalized path. */
   file: string;
@@ -44,7 +47,8 @@ export type VerdictStatus = "pass" | "fail" | "error";
 export type ValidatorTool =
   | "validate_manifest"
   | "validate_registry"
-  | "validate_skill_interface";
+  | "validate_skill_interface"
+  | "validate_references";
 
 /**
  * The frozen verdict shape all three validators return (and that WF-354's
@@ -187,8 +191,6 @@ export interface ContractRules {
   pointTargetedKinds: string[];
   /** The merge policies a slot scope may declare. */
   slotPolicies: string[];
-  /** Accepted `kind:` manifest values. */
-  manifestKinds: string[];
   /** Accepted `dispatch` prefixes (e.g. `inline`, `subagent`). */
   dispatchPrefixes: string[];
   /** Absolute path of every artifact parsed to produce this rule set. */
@@ -281,16 +283,16 @@ export function deriveRules(opsMarkdown: string, opsPath: string): ContractRules
     );
   }
 
-  // --- manifest `kind:` values and `dispatch` prefixes --------------------
+  // --- `dispatch` prefixes ------------------------------------------------
+  // The manifest `kind:` vocabulary is deliberately NOT derived here (WF-354
+  // D-2): `validate-registry.sh` carries no manifest-`kind:` check anywhere, so
+  // enforcing one in the MCP tool would mint an MCP-only rule and break the
+  // executed verdict-agreement invariant between the two surfaces. Enforcement
+  // belongs to a future change that moves the guard and this module together,
+  // per the repo's change-the-contract-and-its-validator-together rule.
   const schemaBody = need("Manifest schema v2");
-  let manifestKinds: string[] = [];
   const dispatchPrefixes: string[] = [];
   for (const line of schemaBody) {
-    if (manifestKinds.length === 0 && /\*\*`kind:`\*\*/.test(line)) {
-      manifestKinds = backticked(line)
-        .filter((t) => t !== "kind:")
-        .filter((t) => /^[a-z][a-z-]*$/.test(t));
-    }
     if (/`dispatch`/.test(line)) {
       for (const tok of backticked(line)) {
         const m = /^([a-z][a-z-]*):\s*</.exec(tok);
@@ -311,7 +313,6 @@ export function deriveRules(opsMarkdown: string, opsPath: string): ContractRules
     partitionedKinds,
     pointTargetedKinds,
     slotPolicies,
-    manifestKinds,
     dispatchPrefixes,
     sources: [toPosix(opsPath)],
   };
