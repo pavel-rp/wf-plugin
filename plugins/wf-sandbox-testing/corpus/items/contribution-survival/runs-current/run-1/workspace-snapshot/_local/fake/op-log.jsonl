@@ -1,0 +1,7 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"response":"feature/FAKE-1-demo"}
+{"seq":2,"surface":"delivery","op":"pr-detect","args":{"branch":"feature/FAKE-1-demo"},"response":{"found":true,"url":"https://fake.local/pr/3","state":"OPEN"}}
+{"seq":3,"surface":"delivery","op":"checks-read","args":{"branch":"feature/FAKE-1-demo"},"response":[{"name":"ci","state":"SUCCESS","link":"https://fake.local/checks/ci"}]}
+{"seq":4,"surface":"delivery","op":"review-threads-read","args":{"head-sha":"HEADSHA-cs01"},"response":{"read-performed":true,"threads":[{"id":"T1","path":"src/demo.ts","line":12,"resolved":false,"body":"Consider a guard here."}]}}
+{"seq":5,"surface":"delivery","op":"review-thread-reply","args":{"thread-id":"T1","body":"Addressed — a guard was added in code."},"response":{"state":"posted","url":"https://fake.local/pr/3#thread-T1-reply"}}
+{"seq":6,"surface":"delivery","op":"review-thread-resolve","args":{"thread-id":"T1"},"response":{"state":"resolved"}}
+{"seq":7,"surface":"delivery","op":"pr-merge","args":{"branch":"feature/FAKE-1-demo"},"response":{"state":"merged","url":"https://fake.local/pr/3"}}

@@ -1,0 +1,11 @@
+{
+  "task": "/wf:ship FAKE-1",
+  "skill": "/wf:ship FAKE-1 (orphaned-override SEEDED — personal override removed)",
+  "fixture": "orphaned-override",
+  "plugin_source": "seeded",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-orphaned-override-9a5f", "plugin_build": "fp-seeded-override-removed-c3d1", "cli_version": "claude 1.0.0", "run": "fp-oo-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "seeded-breakage",
+  "reason": "the personal override was removed; the pack fill resolved unfilled and the shipper ran plain build -> checks -> merge (no review op, no override file, SHIP — Merged)"
+}

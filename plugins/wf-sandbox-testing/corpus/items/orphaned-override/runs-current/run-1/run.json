@@ -1,0 +1,11 @@
+{
+  "task": "/wf:ship FAKE-1",
+  "skill": "/wf:ship FAKE-1 (personal _local/slots/ship.review.md override present)",
+  "fixture": "orphaned-override",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-orphaned-override-9a5f", "plugin_build": "fp-current-ship-9f8e7d", "cli_version": "claude 1.0.0", "run": "fp-oo-cur-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "personal override present; it wins under replace over the pack fill (rank 30 > 10), its review ops fire and its gate holds (SHIP — Blocked)"
+}

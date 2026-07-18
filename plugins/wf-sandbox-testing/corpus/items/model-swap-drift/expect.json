@@ -1,0 +1,24 @@
+{
+  "_comment": "Drift on model swap (WF-348, C014-3, provenance WF-203 comment 2026-07-17 item 3 / C016 OUT-6). Structural over the op log + terminal block, never a transcript exact-match. runs-current holds two runs of the same unfilled-slot /wf:ship scenario under different model arms (see each run.json fingerprints); both settle on the identical op set and terminal block — the gate bakes no model id, so a model swap does not drift the structural signature. See item.md.",
+  "scenario": "model-swap-drift",
+  "skill": "/wf:ship FAKE-1 (unfilled slot; run under two different model arms)",
+  "families": {
+    "terminal_block": {
+      "name": "SHIP",
+      "status_ere": "^Merged$",
+      "min_pass_rate": 1.0
+    },
+    "files_touched": {
+      "required_globs": ["_local/fake/op-log.jsonl"],
+      "forbidden_globs": ["src/*"],
+      "min_pass_rate": 1.0
+    },
+    "ops_invoked": {
+      "required_ops": [
+        "delivery:checks-read",
+        "delivery:pr-merge"
+      ],
+      "min_pass_rate": 1.0
+    }
+  }
+}
