@@ -106,15 +106,6 @@ applies-to: skill-body, reference, contract, capability, agent
 check: avoid-term
 evidence: plugins/wf/skills/_contracts/capability-registry.contract.md — spells "capability" throughout, never the clipped form; the observed confusion is the fixtures folder literally named `caps/` (plugins/wf/skills/_contracts/registry-fixtures/caps/), which trains the abbreviation into compound nouns
 
-### term: pack
-definition: A published plugin shipping one or more capabilities — the distribution unit, not the knowledge unit.
-avoid: capability pack
-pattern: capability[ -]packs?
-except: none
-applies-to: skill-body, reference, contract, capability, agent
-check: avoid-term
-evidence: plugins/wf/skills/_contracts/pack-onboarding.contract.md — "pack" is the standing term for an installed plugin; a pack contains a capability, so "capability pack" collapses two distinct units
-
 ### term: subagent
 definition: An agent file under a plugin's agents/ folder, invoked through the Task tool as subagent_type.
 avoid: sub-agent, sub agent
@@ -185,6 +176,11 @@ Recorded so the same candidates are not re-litigated. Each failed the admission 
 - **`cap` as a bare word.** Rejected as a bare-word pattern: `cap` is legitimate live use as a
   limit (`a silent per-file diff-size cap`, `**Round cap:**`, `a cap on pull requests`). Only
   the compound-noun form survived, and that is what the `capability` entry patterns.
+- **`capability pack` as a collapsed unit.** A pack ships a capability, so the compound looked
+  like drift. The tree says otherwise: `plugins/wf-node-ts/skills/init/SKILL.md` — "simplified
+  for a single-capability pack" — uses it correctly as *a pack holding one capability*, as do
+  the wf-angular and wf-browser-qa init bodies and `plugins/wf/skills/init/SKILL.md`. Live use
+  contradicts the rule, so the rule loses.
 - **`stage` as a synonym for an SDD phase.** No occurrence in the tree, and no observed
   confusion — nothing to extract.
 - **Windows-style backslash paths.** CLAUDE.md bans them, but backslashes are legitimate
