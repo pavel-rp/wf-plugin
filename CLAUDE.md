@@ -47,7 +47,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
 ├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-browser-qa, wf-node-ts, wf-audit, wf-angular, wf-git, wf-ado, wf-linear, wf-review packs)
+│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-browser-qa, wf-node-ts, wf-audit, wf-angular, wf-git, wf-ado, wf-linear, wf-review, wf-author-caps packs)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
 │   ├── .claude-plugin/
 │   │   └── plugin.json        # plugin manifest
@@ -91,6 +91,11 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── skills/address-pr/SKILL.md  # /wf-review:address-pr — verify review comments/CI, address the valid ones
 │   ├── skills/review-pr/SKILL.md   # /wf-review:review-pr — review a PR, post verified findings
 │   └── capabilities/pr-review/     # manifest.md (kind: feature; no fragment; routes through the delivery provider)
+├── plugins/wf-author-caps/    # AUTHORING TOOLKIT PACK — the author-caps capability (kind: both; ships skills now, its five phase fragments + constitution articles land later, so its fragments table ships empty by design)
+│   ├── skills/init/SKILL.md   # /wf-author-caps:init — self-registration via the typed inspect_pack/register_pack resolver tools
+│   ├── skills/authoring-guide/     # /wf-author-caps:authoring-guide — the design half (+ references/subagents-and-vocabulary.md)
+│   ├── skills/authoring-taxonomy/  # /wf-author-caps:authoring-taxonomy — the schema half (taxonomy, manifest schema v2, phase/kind semantics)
+│   └── capabilities/author-caps/   # manifest.md (kind: both; zero fragment rows; no requires, no profile-template)
 ├── plugins/wf-sandbox-testing/ # SKILL-EVAL HARNESS PACK — the sandbox-testing feature capability (hermetic runner + statistical assertion layer + behavioral-regression corpus; no provider surface, no phase fragment)
 │   ├── skills/init/SKILL.md   # /wf-sandbox-testing:init — self-registration
 │   ├── runner/ assert/ corpus/ fixtures/ # the WF-345 runner, WF-346 assertion layer, WF-347/348 corpus, fixture seeds
