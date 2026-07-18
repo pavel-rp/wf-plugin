@@ -1,0 +1,4 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"response":"feature/FAKE-1-demo"}
+{"seq":2,"surface":"delivery","op":"pr-detect","args":{"branch":"feature/FAKE-1-demo"},"response":{"found":true,"url":"https://fake.local/pr/3","state":"OPEN"}}
+{"seq":3,"surface":"delivery","op":"checks-read","args":{"branch":"feature/FAKE-1-demo"},"response":[{"name":"ci","state":"SUCCESS","link":"https://fake.local/checks/ci"}]}
+{"seq":4,"surface":"delivery","op":"pr-merge","args":{"branch":"feature/FAKE-1-demo"},"response":{"state":"merged","url":"https://fake.local/pr/3"}}

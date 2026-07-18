@@ -1,0 +1,25 @@
+{
+  "_comment": "Contribution survival across base-skill rewording (WF-348, C014-2, provenance WF-203 comment 2026-07-17 item 2 / C016 OUT-6). Structural over the op log + terminal block, never a transcript exact-match. runs-current holds two runs against differently-reworded Phase 4.5 prose; both compose the registered fill and drive the same review ops (the fill binds to the ## Slots declaration + the wf:slot marker, not the prose). See item.md.",
+  "scenario": "contribution-survival",
+  "skill": "/wf:ship FAKE-1 (registered ship.review fill; Phase 4.5 prose reworded across runs)",
+  "families": {
+    "terminal_block": {
+      "name": "SHIP",
+      "status_ere": "^Merged$",
+      "min_pass_rate": 1.0
+    },
+    "files_touched": {
+      "required_globs": ["_local/fake/op-log.jsonl"],
+      "forbidden_globs": ["src/*"],
+      "min_pass_rate": 1.0
+    },
+    "ops_invoked": {
+      "required_ops": [
+        "delivery:review-threads-read",
+        "delivery:review-thread-reply",
+        "delivery:pr-merge"
+      ],
+      "min_pass_rate": 1.0
+    }
+  }
+}
