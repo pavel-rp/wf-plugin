@@ -153,6 +153,39 @@ const contentInput = fromJsonSchema({
   additionalProperties: false,
 });
 
+// --- authoring validators (WF-352) -----------------------------------------
+// Each takes only the slots its consumers need (the scaffolders and the
+// acceptance test); the surface is semi-frozen once those land, so it stays
+// deliberately narrow — every argument is optional and every tool has a useful
+// zero-argument default.
+
+const validateManifestInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description:
+        "A capability folder or a `manifest.md` path (absolute, or relative to the workspace root). Omit to check every active registry capability's manifest.",
+    },
+  },
+  additionalProperties: false,
+});
+
+const validateSkillInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    plugin: {
+      type: "string",
+      description: "Plugin name to scope the scan to (e.g. `wf`). Omit to scan every plugin.",
+    },
+    skill: {
+      type: "string",
+      description: "Skill slug to scope the scan to. Omit to scan every skill in scope.",
+    },
+  },
+  additionalProperties: false,
+});
+
 const registerInput = fromJsonSchema({
   type: "object",
   properties: {
@@ -301,6 +334,45 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     },
     async (args: { surface: "local-read" | "tracker-write" | "delivery-write" }) =>
       guard(() => service.assessSurface(args.surface)),
+  );
+
+  // --- authoring validators (WF-352) --------------------------------------
+  // The in-session twin of the CI shell guards (`validate-registry.sh`,
+  // `skill-slot-marker-lint.sh`): same rule sources, same check/defect ids,
+  // agreeing verdicts — an additional surface, never a replacement. All three
+  // are read-only and share the frozen `ValidationVerdict` shape.
+
+  server.registerTool(
+    "validate_manifest",
+    {
+      title: "validate manifest",
+      description:
+        "Check a capability `manifest.md` against manifest schema v2 (WF-352). Returns the frozen ValidationVerdict `{tool, status: pass|fail|error, target, findings[{rule, severity, file, line, message}], ruleSources[], summary}`. Rule ids mirror `validate-registry.sh` (`CHECK-6` phase/kind tokens, `CHECK-6b` dispatch, `CHECK-6c` slot scope + merge policy, `CHECK-HEADING` heading typos). The phase spine, contribution kinds, and merge policies are derived LIVE from `capability-registry.ops.md` on every call — no rule is transcribed. A syntactically broken manifest returns `status: \"error\"` with rule `input-unparseable`; an unreadable rule source returns `rule-source-unresolvable` — never a crash, never a silent pass. Omit `path` to check every active capability.",
+      inputSchema: validateManifestInput,
+    },
+    async (args: { path?: string }) => guard(() => service.validateManifest(args?.path)),
+  );
+
+  server.registerTool(
+    "validate_registry",
+    {
+      title: "validate registry",
+      description:
+        "Check the resolved capability registry (WF-352): the `## Capabilities` and `## Plugin Roots` tables plus every resolvable capability manifest — the same set `validate-registry.sh` folds into one exit code, and it agrees with that guard's verdict. Returns the frozen ValidationVerdict. Rule ids are the guard's own: `CHECK-1` registryPath shape, `CHECK-2` duplicate names, `CHECK-3` filesystem-safe names, `CHECK-4` path resolves + carries a manifest, `CHECK-4a`/`CHECK-4b` plugin-root shape/uniqueness, `CHECK-5` overlapping partitioned ownership (naming both offenders), `CHECK-6`/`6b`/`6c` fragment-row rules, `CHECK-7` requires satisfied, `CHECK-8` co-active conflicts, `CHECK-9` contradictory article clauses. Takes no arguments — it validates the registry the resolver already resolved.",
+    },
+    async () => guard(() => service.validateRegistry()),
+  );
+
+  server.registerTool(
+    "validate_skill_interface",
+    {
+      title: "validate skill interface",
+      description:
+        "Check skill slot markers against their `interface.md` `## Slots` declarations (WF-352), agreeing with `skill-slot-marker-lint.sh` and reusing its defect ids: `D1` malformed declaration, `D2` malformed marker, `D3` undeclared marker, `D4` unbalanced/duplicate marker, `D5` declared-but-unmarked. Returns the frozen ValidationVerdict with file/line diagnostics only — never any skill-body content (the `resolve_content` body-serving refusal is unchanged). A skill declaring no slots and carrying no markers passes clean (the inert case). Omit both arguments to scan every skill under `plugins/*/skills/*/`.",
+      inputSchema: validateSkillInput,
+    },
+    async (args: { plugin?: string; skill?: string }) =>
+      guard(() => service.validateSkillInterface(args?.plugin, args?.skill)),
   );
 
   // --- lifecycle (the /wf:resolve skill routes through these) --------------

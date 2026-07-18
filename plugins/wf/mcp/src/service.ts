@@ -47,6 +47,13 @@ import {
   settingsOverrideRelPath,
 } from "./resolver/settings.js";
 import { isAbsoluteRoot, joinSlash, normalizeSlashes } from "./resolver/paths.js";
+import {
+  validateManifest,
+  validateRegistry,
+  type ValidatorFs,
+} from "./resolver/validate-capability.js";
+import { validateSkillInterface } from "./resolver/validate-skill-interface.js";
+import type { ValidationVerdict } from "./resolver/validate-rules.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
 import {
@@ -1018,5 +1025,115 @@ export class ResolverService {
         manifests: manifestContents.map((c) => sha256Hex(c)),
       }),
     );
+  }
+
+  // --- authoring validators (WF-352) ---------------------------------------
+  //
+  // Read-only rule evaluation over authored artifacts, returning the frozen
+  // `ValidationVerdict`. They mutate no snapshot and never invalidate or
+  // refresh. Every vocabulary is derived live from the ops doc at call time
+  // (validate-rules.ts), so no rule is transcribed where it could fork from the
+  // contract. The CI shell guards stay authoritative; these agree with them.
+
+  /** A `ValidatorFs` over the injected ports — no new port members needed:
+   *  file-ness is "readFile returned content", directory-ness is "the parent
+   *  lists it as a subdirectory". */
+  private validatorFs(): ValidatorFs {
+    const ports = this.ports;
+    return {
+      readFile: (p) => ports.readFile(p),
+      isFile: (p) => ports.readFile(p) !== null,
+      isDirectory: (p) => {
+        const norm = p.replace(/\\/g, "/").replace(/\/$/, "");
+        const idx = norm.lastIndexOf("/");
+        if (idx <= 0) return false;
+        return ports.listDirs(norm.slice(0, idx)).includes(norm.slice(idx + 1));
+      },
+    };
+  }
+
+  /** Absolute path of the live rule source, anchored at the core plugin root. */
+  private opsDocPath(): string {
+    return `${this.ports.corePluginRoot.replace(/\\/g, "/").replace(/\/$/, "")}/skills/_contracts/capability-registry.ops.md`;
+  }
+
+  /** Validate one capability manifest (or, with no argument, every active
+   *  registry capability's manifest) against manifest schema v2. */
+  validateManifest(path?: string | null): ValidationVerdict {
+    const fs = this.validatorFs();
+    const ops = this.opsDocPath();
+    if (path && path.trim()) {
+      return validateManifest(fs, this.absolutize(path.trim()), ops);
+    }
+    // Default scope: every active capability's manifest. The registry validator
+    // already visits exactly that set, so reuse its pass and re-scope the
+    // verdict — keeping only the manifest-level findings, and describing the
+    // target as the scope walked rather than the registry file it was read
+    // from (which is `validate_registry`'s target, not this tool's).
+    const full = this.validateRegistry();
+    const manifestFindings = full.findings.filter((f) => /manifest\.md$/.test(f.file));
+    return {
+      ...full,
+      tool: "validate_manifest",
+      target: "every active capability manifest in the registry",
+      findings: full.status === "error" ? full.findings : manifestFindings,
+      status: full.status === "error" ? "error" : manifestFindings.length === 0 ? "pass" : "fail",
+      summary:
+        full.status === "error"
+          ? full.summary
+          : `${full.ruleSources.filter((s) => s.endsWith("manifest.md")).length} manifest(s) checked, ${manifestFindings.length} finding(s); pass a \`path\` to check one.`,
+    };
+  }
+
+  /** Validate the resolved registry: its two tables, every declared
+   *  capability's resolvability, and every resolvable manifest's own rules. */
+  validateRegistry(): ValidationVerdict {
+    const workspaceRoot = this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+    const registryRel = this.ports.registryRelPath();
+    return validateRegistry(this.validatorFs(), {
+      registryFile: `${workspaceRoot}/${registryRel}`,
+      repoRoot: workspaceRoot,
+      opsDocPath: this.opsDocPath(),
+      registryPathValue: registryRel,
+      installManifest: null,
+    });
+  }
+
+  /** Validate skill slot markers against their interface declarations — one
+   *  skill, one plugin's skills, or (by default) every skill in the tree. */
+  validateSkillInterface(plugin?: string | null, skill?: string | null): ValidationVerdict {
+    const workspaceRoot = this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+    const pluginsRoot = `${workspaceRoot}/plugins`;
+    const wantPlugin = plugin?.trim() || null;
+    const wantSkill = skill?.trim() || null;
+
+    const skillDirs: string[] = [];
+    const pluginNames = wantPlugin ? [wantPlugin] : this.ports.listDirs(pluginsRoot);
+    for (const p of pluginNames) {
+      const skillsRoot = `${pluginsRoot}/${p}/skills`;
+      for (const s of this.ports.listDirs(skillsRoot)) {
+        if (wantSkill && s !== wantSkill) continue;
+        skillDirs.push(`${skillsRoot}/${s}`);
+      }
+    }
+
+    const target = wantSkill
+      ? `${pluginsRoot}/${wantPlugin ?? "*"}/skills/${wantSkill}`
+      : wantPlugin
+        ? `${pluginsRoot}/${wantPlugin}/skills/*`
+        : `${pluginsRoot}/*/skills/*`;
+
+    return validateSkillInterface(this.validatorFs(), {
+      opsDocPath: this.opsDocPath(),
+      skillDirs,
+      target,
+    });
+  }
+
+  /** Resolve a caller-supplied path against the workspace root when relative. */
+  private absolutize(p: string): string {
+    const norm = p.replace(/\\/g, "/");
+    if (/^(\/|[A-Za-z]:)/.test(norm)) return norm;
+    return `${this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "")}/${norm}`;
   }
 }
