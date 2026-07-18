@@ -15,6 +15,11 @@
 > `{domain}`); it is not reopened. The runtime half is generalised separately by
 > WF-22.
 
+> **DEMONSTRATION ONLY — WF-342 / OUT-3. This branch is never merged.** The line
+> below seeds a deliberate vocabulary violation into a real tree file on the lint
+> surface, so the on-touch gate can be observed genuinely failing on a real CI run.
+> A hook is dispatched to a sub-agent, and the caps registry row names it.
+
 ---
 
 ## Purpose
