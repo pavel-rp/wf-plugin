@@ -19,6 +19,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # THE BASE REF MUST BE IN THIS CHECKOUT. The glossary gate below is
+          # on-touch: it fails only on files the PR touched or added, which means
+          # it has to diff against the PR's base commit. actions/checkout@v4
+          # defaults to a depth-1 clone that does NOT contain that commit, and a
+          # gate that cannot see its base would compute an empty touched set and
+          # pass while scanning nothing. `fetch-depth: 0` fetches full history so
+          # the base commit and a real merge base are always present.
+          #
+          # This is belt-and-braces, not the only guard: glossary-on-touch.sh
+          # treats an empty touched set as a mis-computed diff and exits 2, so if
+          # this depth is ever regressed the gate fails loudly instead of going
+          # quietly green.
+          fetch-depth: 0
 
       - name: Ensure jq is present
         # validate-profile.sh exits 2 when jq is absent. ubuntu-latest ships jq,
@@ -30,6 +44,22 @@ jobs:
       - name: Registry-level validation suite
         # Run verbatim. A non-zero exit fails this step (and the job).
         run: bash plugins/wf/skills/_contracts/registry-fixtures/run.sh
+
+      - name: Glossary vocabulary gate (on-touch)
+        # The authored-prose vocabulary gate. It is deliberately NOT inside
+        # registry-fixtures/run.sh like the other guards: the severity model is
+        # on-touch, so the gate needs the PR's base sha — workflow-level git
+        # context the guard chain has no access to. run.sh gates the scoping
+        # SELF-TEST; this step runs the gate itself.
+        #
+        # On a pull_request run, base.sha is the PR's base commit and the step
+        # lints exactly the files this PR touched or added. On a push to main
+        # the expression is empty, --base is omitted, and the gate degrades to a
+        # documented no-op (the catch still runs via the self-test in run.sh) —
+        # so main can never be failed by a pre-existing violation.
+        run: |
+          bash plugins/wf/skills/_contracts/glossary-on-touch.sh \
+            ${{ github.event.pull_request.base.sha && format('--base {0}', github.event.pull_request.base.sha) || '' }}
 
       - name: Each capability's fixture suite
         # Discover every capability fixtures suite by convention — never name a

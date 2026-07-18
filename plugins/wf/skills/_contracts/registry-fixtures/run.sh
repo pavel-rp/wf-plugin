@@ -325,6 +325,29 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-342: on-touch scoping for the glossary gate --------------------------
+# WF-341 supplies the catch; ../glossary-on-touch.sh supplies the SCOPE — which
+# files the gate may fail on (touched + always added, never untouched). The gate
+# itself runs as a sibling step in .github/workflows/ci.yml, because the touched
+# set needs the PR base sha, workflow-level git context this chain cannot reach.
+# Its SCOPING is behaviour, not plumbing, so it is fixture-proven here like every
+# other resident guard: the self-test builds a throwaway repository, replays one
+# PR shape per assertion, and checks both directions — a PR touching no violator
+# passes while a pre-existing violator sits untouched in the same tree, and a
+# touched-into-violation or newly-added violating file hard-fails naming the term.
+# It also pins the charter's High risk: an empty touched set is treated as a
+# mis-computed diff (exit 2), never as a clean PR, so base-ref unavailability can
+# never surface as a vacuous green.
+echo ""
+echo "=== Glossary on-touch gate — scoping self-test (glossary-on-touch.sh --selftest) ==="
+if bash "$DIR/../glossary-on-touch.sh" --selftest; then
+  printf 'PASS: %s\n' "glossary on-touch scoping self-test (touched/added fail, untouched passes, empty set never passes vacuously)"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "glossary on-touch scoping self-test"
+  fail=$((fail + 1))
+fi
+
 # --- WF-304 / WF-305 / WF-306 / WF-307 / WF-308: OUT-2 content-read acceptance --
 # (the COMPOSITE gate — all five content classes)
 # C011 OUT-2: no skill/agent raw-reads a bundled content-class doc — every body
