@@ -1,0 +1,15 @@
+{
+  "_comment": "Per-tier assertion settings — the settings key (WF-346 locked decision 5). Model per tier is resolved from HERE, so changing a model changes the model the tier runs with and NEVER needs a harness-code edit. Resolution precedence (tiers.sh, override > default, mirroring the resolver's profile/settings override machinery): env var WF_ASSERT_<TIER>_MODEL, then a downstream _local/wf-sandbox-testing/tiers.settings.json override, then this committed default. SMOKE prefers a cheap model and few runs and keeps every assertion structural/deterministic (risk mitigation: the future gate must stay trustworthy); STATISTICAL runs the full N-run protocol.",
+  "tiers": {
+    "smoke": {
+      "model": "claude-3-5-haiku",
+      "runs": 2,
+      "note": "cheap model, few runs — a fast trust check that prefers structural/deterministic assertions"
+    },
+    "statistical": {
+      "model": "claude-opus-4-8",
+      "runs": 5,
+      "note": "full N-run protocol — variance-aware pass/fail, schedulable by the host operator into idle windows"
+    }
+  }
+}
