@@ -115,7 +115,7 @@ write_run_json() {
 
 main() {
   local plugin_source="current" skill="/wf:branch FAKE-1" fixture="demo-fake" \
-        out="" on_quota="fail" allow_api_key=0
+        out="" on_quota="fail" allow_api_key=0 model=""
   local marketplace_name="wf-marketplace"
 
   while [ $# -gt 0 ]; do
@@ -126,6 +126,12 @@ main() {
       --skill=*) skill="${1#*=}"; shift;;
       --fixture) fixture="${2:?}"; shift 2;;
       --fixture=*) fixture="${1#*=}"; shift;;
+      # --model threads the tier-resolved model (e.g. the cheap SMOKE model) into the real
+      # `claude -p` invocation below. Empty (the default, and every existing caller) leaves the
+      # invocation byte-identical to before this flag existed — no behavior change for the canned
+      # suites or selfcheck.sh.
+      --model) model="${2:?}"; shift 2;;
+      --model=*) model="${1#*=}"; shift;;
       --out) out="${2:?}"; shift 2;;
       --out=*) out="${1#*=}"; shift;;
       --on-quota) on_quota="${2:?}"; shift 2;;
@@ -174,11 +180,15 @@ main() {
   echo "run-skill.sh: fingerprints — fixture=$fp_fixture plugin=$fp_plugin cli='$cli_version'" >&2
 
   # --- run ONE real headless skill invocation, stream-json, pre-approved permissions ---
+  # When --model was supplied (e.g. the tier-resolved cheap SMOKE model) it is applied here; when
+  # omitted, model_args expands to nothing and the invocation is byte-identical to the pre-flag form.
   local transcript="$out/transcript.jsonl" stderr_log="$out/stderr.log"
+  local -a model_args=()
+  [ -n "$model" ] && model_args=(--model "$model")
   local rc=0
   (
     cd "$ws" && \
-    claude -p "$skill" --output-format stream-json --dangerously-skip-permissions
+    claude -p "$skill" --output-format stream-json --dangerously-skip-permissions "${model_args[@]}"
   ) > "$transcript" 2> "$stderr_log" || rc=$?
 
   # --- quota policy: never a silent API-billed continuation, never a half-run as a pass ---
