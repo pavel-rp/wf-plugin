@@ -16,6 +16,7 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
 - [Scripting a provider with wf-fake](#scripting-a-provider-with-wf-fake)
 - [Writing assertions](#writing-assertions)
 - [Running tiers](#running-tiers)
+- [The CI SMOKE gate](#the-ci-smoke-gate)
 - [The corpus — the worked reference example](#the-corpus--the-worked-reference-example)
 - [The findings loop](#the-findings-loop)
 - [Canned vs real runs (honest disclosure)](#canned-vs-real-runs)
@@ -135,6 +136,55 @@ override > default (env `WF_ASSERT_<TIER>_MODEL`/`_RUNS` → `WF_ASSERT_SETTINGS
 `_local/wf-sandbox-testing/tiers.settings.json` → committed default). Changing a model never touches
 harness code.
 
+## The CI SMOKE gate
+
+The SMOKE tier runs automatically as a **PR check** on `.github/workflows/ci.yml` (the `smoke` job).
+It is **new wiring on top of** the deterministic suites (`validate-registry.sh`,
+`registry-fixtures/run.sh`, `assert/run.sh`, `corpus/run.sh`) — those stay untouched and gate every PR.
+
+The gate **dogfoods the pack's own scripts**: the `smoke` job calls one wrapper,
+[`ci/smoke-gate.sh`](ci/smoke-gate.sh), which resolves the SMOKE model/runs via
+`assert/tiers.sh smoke --print-model` (no model string is hardcoded in CI), builds the hermetic
+runner image, drives `runner/` N times against the gate scenario, and judges the fresh run set with
+`assert/tiers.sh smoke` — emitting the variance-aware report as a job artifact. It is the identical
+command a downstream user runs.
+
+**Trigger semantics — path-gated.** The job runs on every PR, but its judged steps fire **only** when
+the PR touches a trigger path — a **skill** (`plugins/*/skills/**`), a **capability/fragment**
+(`plugins/*/capabilities/**`), or the **resolver** (`plugins/wf/mcp/**`). A PR touching only
+non-trigger files skips the judged steps, so **no model quota is spent** on unaffected PRs.
+
+**Inert-safe rollout.** The token is a repo secret; when it is **absent** the judged steps skip with
+a stated reason and the job **succeeds** — a PR is never blocked red before the secret is provisioned.
+
+### The one manual maintainer step
+
+The gate is inert until a maintainer provisions the subscription token **once**:
+
+```
+claude setup-token          # on the host — mints a CLAUDE_CODE_OAUTH_TOKEN
+# then, in the repo's GitHub settings → Secrets and variables → Actions:
+#   add a repository secret named  CLAUDE_CODE_OAUTH_TOKEN  with that value
+```
+
+The token is injected into the container **only at runtime** (`docker run -e CLAUDE_CODE_OAUTH_TOKEN`,
+name-only passthrough) — never a build arg, image layer, cache, log line, or artifact — and
+`ANTHROPIC_API_KEY` is never set (billing is the subscription via the OAuth token).
+
+### If GitHub Actions proves unsuitable (host-side fallback)
+
+Running the Docker smoke job under GitHub Actions with the token as a repo secret is an unconfirmed
+assumption (charter Assumption 6). If Actions proves unsuitable, the documented fallback — an explicit
+amendment to charter OUT-5 — is a **host-side pre-merge smoke run**: the maintainer runs the same
+wrapper on the host per trigger-path PR and records the verdict, e.g.
+
+```
+CLAUDE_CODE_OAUTH_TOKEN=<host-minted> \
+  bash plugins/wf-sandbox-testing/ci/smoke-gate.sh --report smoke-report.txt
+```
+
+The outcome — a variance-aware SMOKE verdict before merge — is met by substitution, never quietly unmet.
+
 ## The corpus — the worked reference example
 
 This repository's own `corpus/` is the reference example for everything above. It ships five
@@ -180,5 +230,6 @@ only the provenance of the run bytes changes. What ran canned and why is recorde
 | `runner/` | the hermetic container runner |
 | `assert/` | the statistical assertion layer ([README](assert/README.md)) |
 | `corpus/` | the behavioral-regression corpus ([README](corpus/README.md)) |
+| `ci/smoke-gate.sh` | the SMOKE-tier PR-gate wrapper (produce N runs + judge) the CI `smoke` job and a host operator both call |
 | `fixtures/` | fixture seed scripts |
 | `docs/retrofit-procedure.md` | the findings-loop retrofit procedure (observation to assertion) |
