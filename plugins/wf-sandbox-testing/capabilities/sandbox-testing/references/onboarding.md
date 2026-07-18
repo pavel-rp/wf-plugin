@@ -62,7 +62,7 @@ manifest declares **no `requires: fake`** on purpose:
 
 So the pairing is an **install-time pairing documented for the fixture author**, not a registry
 `requires:` edge: install and register wf-fake in any fixture project whose fixtures script a
-provider. The pack README and `../../../FINDINGS-LOOP.md` state this.
+provider. The pack README and `docs/retrofit-procedure.md` state this.
 
 ## Profile seed template
 
