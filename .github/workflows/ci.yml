@@ -61,6 +61,16 @@ jobs:
           bash plugins/wf/skills/_contracts/glossary-on-touch.sh \
             ${{ github.event.pull_request.base.sha && format('--base {0}', github.event.pull_request.base.sha) || '' }}
 
+      - name: Sandbox-testing assertion suite
+        # The WF-346 statistical assertion layer over the WF-345 runner's outputs. Not a
+        # capability fixtures suite (wf-sandbox-testing ships no capabilities/ folder), so
+        # it is named explicitly here — in the same validate-registry.sh / registry-fixtures
+        # family. It runs entirely against committed CANNED run outputs (no container, no
+        # model), proving the green report, the red report, the baseline comparison, the
+        # per-tier settings-key flip, and the no-exact-match / no-orchestrator grep guards.
+        # A non-zero exit fails this step (and the job).
+        run: bash plugins/wf-sandbox-testing/assert/run.sh
+
       - name: Each capability's fixture suite
         # Discover every capability fixtures suite by convention — never name a
         # specific capability, so any future capability that ships a fixtures
