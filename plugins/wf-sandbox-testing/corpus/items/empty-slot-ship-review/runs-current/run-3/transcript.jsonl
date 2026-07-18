@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esr-cur-3","tools":["Read","Bash","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Shipping FAKE-1 on the current build: branch gate, build chain, green checks. Phase 4.5 resolves the ship.review slot — status unfilled (no review capability registered), so no reviewer is driven and the checks-green state carries into the merge unchanged."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Merged\n\nTask: FAKE-1\nPull request: https://fake.local/pr/1 (merged)\nNext: none — terminus"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":4200,"output_tokens":375},"total_cost_usd":0.0317}
