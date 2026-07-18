@@ -353,11 +353,19 @@ selftest() {
   fi
 
   # 6. A PR ADDING a new violating file hard-fails (added is always in scope).
+  #    The new file is a SKILL.md rather than an agent file for a mechanical
+  #    reason: the scratch repo is nested inside the real tree, and of the lint's
+  #    document-class patterns only `skill-body` carries the wildcard slack to
+  #    match through that nesting — an agent path would be classified out and the
+  #    assertion would pass vacuously. What is under test here is the gate's
+  #    added-file scoping, which is class-independent; the surface filter's own
+  #    treatment of agent and capability paths is asserted by `on_surface` through
+  #    assertions 7 and 8.
   reset_to_base
-  write_file plugins/wf-demo/agents/newagent.md '# fixture — a brand-new file carrying a wodget'
+  write_file plugins/wf/skills/brandnew/SKILL.md '# fixture — a brand-new file carrying a wodget'
   tmp_commit "add a new violating file"
   out="$(gate --base base)"; rc=$?
-  if [ "$rc" -ne 1 ] || [ -n "${out##*newagent.md*}" ]; then
+  if [ "$rc" -ne 1 ] || [ -n "${out##*brandnew/SKILL.md*}" ]; then
     say_fail "newly added violating file did not fail (expected exit 1, got $rc):"; echo "$out"
   else
     say_ok "a newly added violating file hard-fails (added files are always in scope)"
