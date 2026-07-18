@@ -1,7 +1,7 @@
 # wf-author-caps — the authoring toolkit
 
 Teaches how to author capabilities, skills, and plugins for the `wf` marketplace — and scaffolds
-them. Ships the `author-caps` capability and four skills across two families: the `authoring-*`
+them. Ships the `author-caps` capability and five skills across two families: the `authoring-*`
 reference pair, and the `new-*` scaffolders that emit real, already-linted files.
 
 **Model:** claude-opus-4-8
@@ -13,6 +13,7 @@ reference pair, and the `new-*` scaffolders that emit real, already-linted files
 | `/wf-author-caps:authoring-guide` | The design half: core-versus-capability sorting, plugin anatomy, interface-first skill design, skill-versus-subagent, native and registry composition, the registration flow, and the canonical vocabulary. |
 | `/wf-author-caps:authoring-taxonomy` | The schema half: the SDD phase spine, the seven contribution kinds, aggregate-versus-partition policy, manifest schema v2, the registry row, constitution composition, and registry validation. |
 | `/wf-author-caps:new-skill` | The build half: interviews for a skill's name, purpose, invocation shape, and zero-argument default, emits a conforming `SKILL.md`, then self-lints it and fixes its own findings before handing it back. Never a template with placeholders. |
+| `/wf-author-caps:new-capability` | The other build half: interviews for a capability's name, kind, and each phase contribution, emits a schema-v2 manifest plus every declared fragment file at exactly the path its row names, then self-lints the set — manifest validation, registry validation, vocabulary lint — and fixes its own findings before handing it back. |
 | `/wf-author-caps:init` | One-command self-registration of the `author-caps` capability into the wf capability registry. |
 
 Both reference skills are written to load by **description auto-selection** — ask an authoring
@@ -29,6 +30,14 @@ rest unchanged. Reuse it; never fork it.
 
 Two properties it guarantees: no emitted file carries a placeholder, and no artifact is handed back
 with an open finding — an unfixable one stops the run with the finding surfaced instead.
+
+`new-capability` is the first sibling to inherit it, supplying only its own three inputs — the
+interview questions, the emission template, and its check set (manifest validation, registry
+validation, and the vocabulary lint; the skill-interface validator has no target on a manifest
+emission). Its emission machinery — the schema-v2 manifest shape, the Fragments-row rules, and the
+fragment-file rules — is likewise factored into one file,
+`skills/new-capability/references/capability-emission.md`, so a scaffolder that emits a capability as
+part of a larger artifact set composes those rules by reference instead of restating them.
 
 ## Install and register
 
