@@ -91,11 +91,11 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── skills/address-pr/SKILL.md  # /wf-review:address-pr — verify review comments/CI, address the valid ones
 │   ├── skills/review-pr/SKILL.md   # /wf-review:review-pr — review a PR, post verified findings
 │   └── capabilities/pr-review/     # manifest.md (kind: feature; no fragment; routes through the delivery provider)
-├── plugins/wf-author-caps/    # AUTHORING TOOLKIT PACK — the author-caps capability (kind: both; ships skills now, its five phase fragments + constitution articles land later, so its fragments table ships empty by design)
+├── plugins/wf-author-caps/    # AUTHORING TOOLKIT PACK — the author-caps capability (kind: both; ships skills + five inline fragment rows — guidance at spec/implement, two findings at verify, a scenario at qa-generation — plus constitution article: keys)
 │   ├── skills/init/SKILL.md   # /wf-author-caps:init — self-registration via the typed inspect_pack/register_pack resolver tools
 │   ├── skills/authoring-guide/     # /wf-author-caps:authoring-guide — the design half (+ references/subagents-and-vocabulary.md)
 │   ├── skills/authoring-taxonomy/  # /wf-author-caps:authoring-taxonomy — the schema half (taxonomy, manifest schema v2, phase/kind semantics)
-│   └── capabilities/author-caps/   # manifest.md (kind: both; zero fragment rows; no requires, no profile-template)
+│   └── capabilities/author-caps/   # manifest.md (kind: both; five fragment rows + article: keys) + fragments/{interface-first,authoring-conventions,structural-validation,reference-existence,authoring-scenarios}.md + references/fragment-rationale.md (no requires, no profile-template)
 ├── plugins/wf-sandbox-testing/ # SKILL-EVAL HARNESS PACK — the sandbox-testing feature capability (hermetic runner + statistical assertion layer + behavioral-regression corpus; no provider surface, no phase fragment)
 │   ├── skills/init/SKILL.md   # /wf-sandbox-testing:init — self-registration
 │   ├── runner/ assert/ corpus/ fixtures/ # the WF-345 runner, WF-346 assertion layer, WF-347/348 corpus, fixture seeds

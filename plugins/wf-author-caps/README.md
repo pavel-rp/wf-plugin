@@ -54,11 +54,26 @@ existed.
 
 ## The capability
 
-`author-caps` is declared `kind: both` — it ships skills today and attaches phase fragments
-(guidance at `spec` and `implement`, a `finding` at `verify`, a `scenario` at `qa-generation`, plus
-constitution articles) in a later change. Its fragments table currently ships empty by design;
-registry validation tolerates zero rows, so the capability registers ahead of its first
-contribution.
+`author-caps` is declared `kind: both` — it ships the skills above **and** attaches five phase
+fragments, every one dispatched `inline:` with an aggregate (`—`) scope:
+
+| Phase | Kind | Fragment |
+|---|---|---|
+| `spec` | `guidance` | Interface-first design prompts — settle invocation shape, terminal block, declared slots, and declared settings keys before any body prose. |
+| `implement` | `guidance` | In-loop authoring conventions — slug and folder agreement, tool-declaration rules, the terminal block, the ops/reference budget. |
+| `verify` | `finding` | Structural validation — manifest, registry, and skill-interface verdicts mapped into the verify phase's finding format. |
+| `verify` | `finding` | Reference existence — dead command, agent, and path references, the defect class that ships unnoticed on fallback branches. |
+| `qa-generation` | `scenario` | Authoring scenarios — interface-matches-body, declared paths resolve, registration composes, and the inert unregistered case. |
+
+The pack's authoring non-negotiables ship as repeatable `article:` manifest **keys** (not
+fragments-table rows — `article` is not a contribution kind), composed by the constitution skill
+and surfaced in fresh sessions through the existing session-start injection path. This pack adds no
+hook.
+
+Every fragment carries an explicit no-op clause, and all findings are provenance-tagged
+`author-caps`. Rationale for the row shapes lives in
+`capabilities/author-caps/references/fragment-rationale.md`, which is never read at runtime.
 
 It owns no provider surface, declares no `requires:` and no `conflicts:`, and ships no
-`profile-template:`.
+`profile-template:`. The `qa-generation` scenarios name `wf-sandbox-testing` as their eventual
+execution engine as a **declaration only** — nothing is wired to it.
