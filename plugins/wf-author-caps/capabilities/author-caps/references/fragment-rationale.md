@@ -1,4 +1,4 @@
-# author-caps fragments — rationale and history
+# author-caps capability — fragment rationale and history
 
 **Version:** 1.0.0 (WF-355)
 **Paired with:** the five fragments under `capabilities/author-caps/fragments/`
