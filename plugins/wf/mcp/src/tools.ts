@@ -186,6 +186,30 @@ const validateSkillInput = fromJsonSchema({
   additionalProperties: false,
 });
 
+const validateReferencesInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description:
+        "A skill body, an agent file, or a folder to scan (absolute, or relative to the workspace root). Omit to scan every plugin's `skills/` and `agents/`.",
+    },
+  },
+  additionalProperties: false,
+});
+
+const previewCompositionInput = fromJsonSchema({
+  type: "object",
+  properties: {
+    phase: {
+      type: "string",
+      description:
+        "SDD phase to preview (e.g. `verify`, `qa-execution`). Omit to preview every phase.",
+    },
+  },
+  additionalProperties: false,
+});
+
 const registerInput = fromJsonSchema({
   type: "object",
   properties: {
@@ -373,6 +397,34 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     },
     async (args: { plugin?: string; skill?: string }) =>
       guard(() => service.validateSkillInterface(args?.plugin, args?.skill)),
+  );
+
+  // --- reference existence + composition preview (WF-354) ------------------
+  // Neither has a shell-guard counterpart — they answer questions no CI guard
+  // owns — so neither claims agreement with one. `validate_references` still
+  // reuses the frozen verdict shape; `preview_composition` deliberately does
+  // NOT, because a preview has no pass/fail semantics (D-4).
+
+  server.registerTool(
+    "validate_references",
+    {
+      title: "validate references",
+      description:
+        "Resolve every cross-reference in skill bodies and agent files against the real tree (WF-354) — the dead-reference class no structural validator catches (a body instructing invocation of a removed skill). Checks `/wf:<skill>`, `/wf-<pack>:<skill>`, `subagent_type: wf:<agent>`, and `${CLAUDE_PLUGIN_ROOT}` path tokens, but ONLY on invocation-instruction lines: the instruction-vs-prose classifier is DERIVED at call time by parsing the `p1`/`p2` assignments out of `out4-skill-read-guard.sh` (recorded in `ruleSources`), so a bare prose mention — a README skill table, a cited call shape — never turns red. Returns the frozen ValidationVerdict with rule ids `REF-1` (unresolvable skill/agent invocation reference) and `REF-2` (unresolvable `${CLAUDE_PLUGIN_ROOT}` path token), alongside `input-unparseable` / `rule-source-unresolvable`. A reference whose owning plugin root is not resolvable in this workspace is indeterminate, not dead: it is excluded from `findings` and counted in `summary`. Omit `path` to scan every plugin's skills and agents.",
+      inputSchema: validateReferencesInput,
+    },
+    async (args: { path?: string }) => guard(() => service.validateReferences(args?.path)),
+  );
+
+  server.registerTool(
+    "preview_composition",
+    {
+      title: "preview composition",
+      description:
+        "Dry-run preview of what the capability registry would compose (WF-354): every fragment that would fire at a phase, in registry order, each carrying its provenance (owning capability, resolved dispatch target, scope, resolved/manifest paths, how the path resolved). Rendered purely off the already-resolved snapshot — no manifest is re-parsed, no path re-resolved, and no fragment BODY is ever read or returned (follow the named `dispatch` for that). Read-only: it neither refreshes nor invalidates the snapshot. NOT a ValidationVerdict — a preview has no pass/fail semantics — so it returns its own narrow record, and zero entries is a first-class inert outcome (an empty registry composes nothing, which is the contract's designed behaviour, not an error). Omit `phase` to preview every phase.",
+      inputSchema: previewCompositionInput,
+    },
+    async (args: { phase?: string }) => guard(() => service.previewComposition(args?.phase)),
   );
 
   // --- lifecycle (the /wf:resolve skill routes through these) --------------

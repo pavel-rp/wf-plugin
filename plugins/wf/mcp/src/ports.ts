@@ -89,6 +89,16 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
       }
     },
 
+    listFiles: (absDir) => {
+      try {
+        return readdirSync(absDir, { withFileTypes: true })
+          .filter((e) => e.isFile())
+          .map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
+
     listPlugins: (): PluginListResult => {
       const raw = runPluginList();
       if (raw === null) return { plugins: [], ok: false };

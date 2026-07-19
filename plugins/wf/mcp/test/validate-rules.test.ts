@@ -72,11 +72,14 @@ test("partitioned kinds and point-targeted kinds are derived from the taxonomy t
   if (r.pointTargetedKinds.length > 0) assert.ok(r.slotPolicies.length >= 2);
 });
 
-test("manifest kind values and dispatch prefixes are derived from schema v2", () => {
+test("dispatch prefixes are derived from schema v2", () => {
   const r = rules();
   assert.ok(r.dispatchPrefixes.length >= 2, `derived dispatch prefixes: ${r.dispatchPrefixes.join(", ")}`);
   for (const d of r.dispatchPrefixes) assert.match(d, /^[a-z][a-z-]*$/);
-  assert.ok(r.manifestKinds.length >= 2, `derived manifest kinds: ${r.manifestKinds.join(", ")}`);
+  // No manifest `kind:` vocabulary is derived (WF-354 D-2): the shell guard
+  // carries no manifest-`kind:` check, so deriving one here would mint an
+  // MCP-only rule and break verdict agreement between the two surfaces.
+  assert.ok(!("manifestKinds" in r), "manifestKinds was removed, not left derived-but-unenforced");
 });
 
 test("every derivation records the rule source it read", () => {

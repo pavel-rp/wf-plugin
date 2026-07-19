@@ -53,6 +53,11 @@ import {
   type ValidatorFs,
 } from "./resolver/validate-capability.js";
 import { validateSkillInterface } from "./resolver/validate-skill-interface.js";
+import { validateReferences } from "./resolver/validate-references.js";
+import {
+  previewComposition,
+  type CompositionPreview,
+} from "./resolver/preview-composition.js";
 import type { ValidationVerdict } from "./resolver/validate-rules.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
@@ -98,6 +103,12 @@ export interface ResolverServicePorts {
    *  register write-path to discover `capabilities/*` folders — never on a
    *  read-query path). Returns `[]` when the directory is absent. */
   listDirs(absDir: string): string[];
+  /** List immediate file names of `absDir` (used ONLY by `validate_references`'
+   *  default tree walk — never on a resolution path). OPTIONAL so every existing
+   *  in-memory port double stays valid; when absent the walk degrades to the
+   *  conventional `SKILL.md` paths `listDirs` already yields. Returns `[]` when
+   *  the directory is absent. */
+  listFiles?(absDir: string): string[];
   /** Installed plugin metadata, exclusively from `claude plugin list --json`. */
   listPlugins(): PluginListResult;
   /** Resolved registry-file location, workspace-relative (default
@@ -1037,18 +1048,21 @@ export class ResolverService {
 
   /** A `ValidatorFs` over the injected ports — no new port members needed:
    *  file-ness is "readFile returned content", directory-ness is "the parent
-   *  lists it as a subdirectory". */
+   *  lists it as a subdirectory". `isFile` screens directories out first,
+   *  because `readFile` swallows only ENOENT and rethrows EISDIR — probing a
+   *  directory by reading it would throw instead of answering `false`. */
   private validatorFs(): ValidatorFs {
     const ports = this.ports;
+    const isDir = (p: string): boolean => {
+      const norm = p.replace(/\\/g, "/").replace(/\/$/, "");
+      const idx = norm.lastIndexOf("/");
+      if (idx <= 0) return false;
+      return ports.listDirs(norm.slice(0, idx)).includes(norm.slice(idx + 1));
+    };
     return {
       readFile: (p) => ports.readFile(p),
-      isFile: (p) => ports.readFile(p) !== null,
-      isDirectory: (p) => {
-        const norm = p.replace(/\\/g, "/").replace(/\/$/, "");
-        const idx = norm.lastIndexOf("/");
-        if (idx <= 0) return false;
-        return ports.listDirs(norm.slice(0, idx)).includes(norm.slice(idx + 1));
-      },
+      isFile: (p) => !isDir(p) && ports.readFile(p) !== null,
+      isDirectory: isDir,
     };
   }
 
@@ -1128,6 +1142,83 @@ export class ResolverService {
       skillDirs,
       target,
     });
+  }
+
+  // --- reference existence + composition preview (WF-354) ------------------
+
+  /** Absolute path of the reference classifier's live rule source, anchored at
+   *  the core plugin root exactly as `opsDocPath()` anchors the ops doc. */
+  private guardDocPath(): string {
+    return `${this.ports.corePluginRoot.replace(/\\/g, "/").replace(/\/$/, "")}/skills/_contracts/out4-skill-read-guard.sh`;
+  }
+
+  /** Every markdown file under `dir`, one level of nesting deep enough to cover
+   *  a skill's `references/` folder. Degrades to `[]` when the optional
+   *  `listFiles` port is absent. */
+  private markdownUnder(dir: string, depth = 2): string[] {
+    const listFiles = this.ports.listFiles?.bind(this.ports);
+    if (!listFiles) return [];
+    const out: string[] = [];
+    for (const f of listFiles(dir)) if (f.endsWith(".md")) out.push(`${dir}/${f}`);
+    if (depth > 1) {
+      for (const sub of this.ports.listDirs(dir)) {
+        out.push(...this.markdownUnder(`${dir}/${sub}`, depth - 1));
+      }
+    }
+    return out;
+  }
+
+  /** Resolve every invocation reference in skill bodies and agent files against
+   *  the real tree. With no argument the scan covers every plugin's `skills/`
+   *  and `agents/`, mirroring `validateSkillInterface`'s zero-argument default. */
+  validateReferences(path?: string | null): ValidationVerdict {
+    const workspaceRoot = this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+    const pluginsRoot = `${workspaceRoot}/plugins`;
+    const guardPath = this.guardDocPath();
+
+    let files: string[];
+    let target: string;
+
+    if (path && path.trim()) {
+      const abs = this.absolutize(path.trim());
+      target = abs;
+      // Directory-ness is settled BEFORE any read: `readFile` only swallows
+      // ENOENT and rethrows EISDIR, so probing file-ness by reading would crash
+      // on the folder form the argument explicitly accepts. A target that is
+      // neither file nor folder yields no files, which the validator reports as
+      // an `input-unparseable` verdict rather than a vacuous pass.
+      const vfs = this.validatorFs();
+      files = vfs.isDirectory(abs) ? this.markdownUnder(abs, 3) : vfs.isFile(abs) ? [abs] : [];
+    } else {
+      target = `${pluginsRoot}/*/{skills,agents}`;
+      files = [];
+      for (const plugin of this.ports.listDirs(pluginsRoot)) {
+        const skillsRoot = `${pluginsRoot}/${plugin}/skills`;
+        for (const s of this.ports.listDirs(skillsRoot)) {
+          // The frozen contract layer is off the surface, exactly as the shell
+          // guard excludes it: it holds the deliberate violation fixtures.
+          if (s.startsWith("_")) continue;
+          const body = `${skillsRoot}/${s}/SKILL.md`;
+          if (this.ports.readFile(body) !== null) files.push(body);
+          files.push(...this.markdownUnder(`${skillsRoot}/${s}/references`, 1));
+        }
+        files.push(...this.markdownUnder(`${pluginsRoot}/${plugin}/agents`, 1));
+      }
+    }
+
+    return validateReferences(this.validatorFs(), {
+      repoRoot: workspaceRoot,
+      files,
+      target,
+      guardPath,
+    });
+  }
+
+  /** Render which fragments would compose at a phase, in registry order, with
+   *  provenance. Reads through `ensure()` only — it never refreshes and never
+   *  invalidates, and the renderer itself performs no I/O at all. */
+  previewComposition(phase?: string | null): CompositionPreview {
+    return previewComposition(this.ensure(), phase ?? null);
   }
 
   /** Resolve a caller-supplied path against the workspace root when relative. */
