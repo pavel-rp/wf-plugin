@@ -22439,18 +22439,21 @@ var ResolverService = class {
   // contract. The CI shell guards stay authoritative; these agree with them.
   /** A `ValidatorFs` over the injected ports — no new port members needed:
    *  file-ness is "readFile returned content", directory-ness is "the parent
-   *  lists it as a subdirectory". */
+   *  lists it as a subdirectory". `isFile` screens directories out first,
+   *  because `readFile` swallows only ENOENT and rethrows EISDIR — probing a
+   *  directory by reading it would throw instead of answering `false`. */
   validatorFs() {
     const ports = this.ports;
+    const isDir = (p) => {
+      const norm = p.replace(/\\/g, "/").replace(/\/$/, "");
+      const idx = norm.lastIndexOf("/");
+      if (idx <= 0) return false;
+      return ports.listDirs(norm.slice(0, idx)).includes(norm.slice(idx + 1));
+    };
     return {
       readFile: (p) => ports.readFile(p),
-      isFile: (p) => ports.readFile(p) !== null,
-      isDirectory: (p) => {
-        const norm = p.replace(/\\/g, "/").replace(/\/$/, "");
-        const idx = norm.lastIndexOf("/");
-        if (idx <= 0) return false;
-        return ports.listDirs(norm.slice(0, idx)).includes(norm.slice(idx + 1));
-      }
+      isFile: (p) => !isDir(p) && ports.readFile(p) !== null,
+      isDirectory: isDir
     };
   }
   /** Absolute path of the live rule source, anchored at the core plugin root. */
@@ -22545,7 +22548,8 @@ var ResolverService = class {
     if (path && path.trim()) {
       const abs = this.absolutize(path.trim());
       target = abs;
-      files = this.ports.readFile(abs) !== null ? [abs] : this.markdownUnder(abs, 3);
+      const vfs = this.validatorFs();
+      files = vfs.isDirectory(abs) ? this.markdownUnder(abs, 3) : vfs.isFile(abs) ? [abs] : [];
     } else {
       target = `${pluginsRoot}/*/{skills,agents}`;
       files = [];

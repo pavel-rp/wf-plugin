@@ -1048,18 +1048,21 @@ export class ResolverService {
 
   /** A `ValidatorFs` over the injected ports — no new port members needed:
    *  file-ness is "readFile returned content", directory-ness is "the parent
-   *  lists it as a subdirectory". */
+   *  lists it as a subdirectory". `isFile` screens directories out first,
+   *  because `readFile` swallows only ENOENT and rethrows EISDIR — probing a
+   *  directory by reading it would throw instead of answering `false`. */
   private validatorFs(): ValidatorFs {
     const ports = this.ports;
+    const isDir = (p: string): boolean => {
+      const norm = p.replace(/\\/g, "/").replace(/\/$/, "");
+      const idx = norm.lastIndexOf("/");
+      if (idx <= 0) return false;
+      return ports.listDirs(norm.slice(0, idx)).includes(norm.slice(idx + 1));
+    };
     return {
       readFile: (p) => ports.readFile(p),
-      isFile: (p) => ports.readFile(p) !== null,
-      isDirectory: (p) => {
-        const norm = p.replace(/\\/g, "/").replace(/\/$/, "");
-        const idx = norm.lastIndexOf("/");
-        if (idx <= 0) return false;
-        return ports.listDirs(norm.slice(0, idx)).includes(norm.slice(idx + 1));
-      },
+      isFile: (p) => !isDir(p) && ports.readFile(p) !== null,
+      isDirectory: isDir,
     };
   }
 
@@ -1179,7 +1182,13 @@ export class ResolverService {
     if (path && path.trim()) {
       const abs = this.absolutize(path.trim());
       target = abs;
-      files = this.ports.readFile(abs) !== null ? [abs] : this.markdownUnder(abs, 3);
+      // Directory-ness is settled BEFORE any read: `readFile` only swallows
+      // ENOENT and rethrows EISDIR, so probing file-ness by reading would crash
+      // on the folder form the argument explicitly accepts. A target that is
+      // neither file nor folder yields no files, which the validator reports as
+      // an `input-unparseable` verdict rather than a vacuous pass.
+      const vfs = this.validatorFs();
+      files = vfs.isDirectory(abs) ? this.markdownUnder(abs, 3) : vfs.isFile(abs) ? [abs] : [];
     } else {
       target = `${pluginsRoot}/*/{skills,agents}`;
       files = [];

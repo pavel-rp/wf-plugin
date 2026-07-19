@@ -387,3 +387,37 @@ test("the SERVICE's zero-argument default scan is clean on the live tree too", (
   const one = svc.validateReferences("plugins/wf/agents/phase-runner.md");
   assert.equal(one.status, "pass", one.findings.map((f) => f.message).join(" | "));
 });
+
+test("the `path` argument accepts a FOLDER, not just a file", () => {
+  // Regression: file-ness used to be probed by reading the path, but the real
+  // `readFile` swallows only ENOENT and rethrows EISDIR — so scoping to a
+  // folder, which the argument explicitly accepts, crashed the tool instead of
+  // returning a verdict. Directory-ness is now settled before any read.
+  process.env.WF_CORE_PLUGIN_ROOT = join(REPO_ROOT, "plugins", "wf");
+  const svc = new ResolverService(createDefaultPorts(normalizeSlashes(REPO_ROOT)));
+
+  const scoped = svc.validateReferences("plugins/wf/agents");
+  assert.equal(
+    scoped.status,
+    "pass",
+    `a folder-scoped scan must return a verdict, not throw:\n${scoped.findings
+      .map((f) => `${f.file}:${f.line ?? "-"} ${f.rule} ${f.message}`)
+      .join("\n")}`,
+  );
+  assert.match(scoped.summary, /[1-9]\d* file\(s\) scanned/, "the folder's markdown must actually be walked");
+
+  // A folder is scoped, not swallowed: it sees strictly fewer files than the
+  // whole-tree default, proving the argument narrowed the scan.
+  const all = svc.validateReferences();
+  const count = (s: string) => Number(/^(\d+) file\(s\) scanned/.exec(s)![1]);
+  assert.ok(
+    count(scoped.summary) < count(all.summary),
+    `folder scope (${scoped.summary}) must be narrower than the default (${all.summary})`,
+  );
+
+  // A path that is neither file nor folder stays an honest typed error rather
+  // than a vacuous pass.
+  const missing = svc.validateReferences("plugins/wf/agents/does-not-exist.md");
+  assert.equal(missing.status, "error");
+  assert.ok(missing.findings.some((f) => f.rule === "input-unparseable"));
+});
