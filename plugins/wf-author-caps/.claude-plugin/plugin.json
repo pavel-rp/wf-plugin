@@ -1,6 +1,6 @@
 {
   "name": "wf-author-caps",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "wf authoring toolkit: the author-caps capability, teaching how to author capabilities, skills, and packs for the wf marketplace. Ships two model-invoked reference skills — /wf-author-caps:authoring-guide (interface-first skill design, plugin anatomy, slot and contribution semantics, the registration flow) and /wf-author-caps:authoring-taxonomy (the contribution taxonomy, manifest schema v2, phase and kind semantics) — that load by description auto-selection when an authoring question comes up, with no slash command required. Ships /wf-author-caps:init for one-command self-registration of the capability.",
   "author": {
     "name": "Pavel Kalabin",
