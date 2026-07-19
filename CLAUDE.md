@@ -95,6 +95,10 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 │   ├── skills/init/SKILL.md   # /wf-author-caps:init — self-registration via the typed inspect_pack/register_pack resolver tools
 │   ├── skills/authoring-guide/     # /wf-author-caps:authoring-guide — the design half (+ references/subagents-and-vocabulary.md)
 │   ├── skills/authoring-taxonomy/  # /wf-author-caps:authoring-taxonomy — the schema half (taxonomy, manifest schema v2, phase/kind semantics)
+│   ├── skills/new-skill/           # /wf-author-caps:new-skill — the skill scaffolder (+ references/scaffolder-loop.md, the shared six-stage loop every new-* skill inherits)
+│   ├── skills/new-capability/      # /wf-author-caps:new-capability — the capability scaffolder (+ references/capability-emission.md, the shared manifest/fragment rule set)
+│   ├── skills/new-pack/            # /wf-author-caps:new-pack — the pack scaffolder (plugin.json + capability folder + init on the pack-onboarding spine); composes both seams, forks neither
+│   ├── skills/new-provider/        # /wf-author-caps:new-provider — the provider scaffolder (surface-scoped provider row + abstract-operation fragment + profile slots); composes both seams, forks neither
 │   └── capabilities/author-caps/   # manifest.md (kind: both; five fragment rows + article: keys) + fragments/{interface-first,authoring-conventions,structural-validation,reference-existence,authoring-scenarios}.md + references/fragment-rationale.md (no requires, no profile-template)
 ├── plugins/wf-sandbox-testing/ # SKILL-EVAL HARNESS PACK — the sandbox-testing feature capability (hermetic runner + statistical assertion layer + behavioral-regression corpus; no provider surface, no phase fragment)
 │   ├── skills/init/SKILL.md   # /wf-sandbox-testing:init — self-registration

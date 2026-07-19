@@ -1,7 +1,7 @@
 # wf-author-caps — the authoring toolkit
 
 Teaches how to author capabilities, skills, and plugins for the `wf` marketplace — and scaffolds
-them. Ships the `author-caps` capability and five skills across two families: the `authoring-*`
+them. Ships the `author-caps` capability and seven skills across two families: the `authoring-*`
 reference pair, and the `new-*` scaffolders that emit real, already-linted files.
 
 **Model:** claude-opus-4-8
@@ -14,6 +14,8 @@ reference pair, and the `new-*` scaffolders that emit real, already-linted files
 | `/wf-author-caps:authoring-taxonomy` | The schema half: the SDD phase spine, the seven contribution kinds, aggregate-versus-partition policy, manifest schema v2, the registry row, constitution composition, and registry validation. |
 | `/wf-author-caps:new-skill` | The build half: interviews for a skill's name, purpose, invocation shape, and zero-argument default, emits a conforming `SKILL.md`, then self-lints it and fixes its own findings before handing it back. Never a template with placeholders. |
 | `/wf-author-caps:new-capability` | The other build half: interviews for a capability's name, kind, and each phase contribution, emits a schema-v2 manifest plus every declared fragment file at exactly the path its row names, then self-lints the set — manifest validation, registry validation, vocabulary lint — and fixes its own findings before handing it back. |
+| `/wf-author-caps:new-pack` | The pack-level build half: interviews for a pack's name, purpose, and its one capability, then emits a complete registerable skeleton — `.claude-plugin/plugin.json`, the capability folder, and an init skill on the pack-onboarding spine that self-registers through the typed `inspect_pack` / `register_pack` tools. States the marketplace entry the author must add, or adds it when scaffolding inside a marketplace repository. |
+| `/wf-author-caps:new-provider` | The integrator's build half: interviews for the contract surface (`tracker`, `delivery`, `engine`, or `host`), warns at interview time when a capability already owns it, then emits a capability whose manifest declares the `provider` contribution with that surface scope and whose fragment speaks only the abstract contract operations — every binding value kept in a profile slot, so no core change is required. |
 | `/wf-author-caps:init` | One-command self-registration of the `author-caps` capability into the wf capability registry. |
 
 Both reference skills are written to load by **description auto-selection** — ask an authoring
@@ -39,6 +41,13 @@ fragment-file rules — is likewise factored into one file,
 `skills/new-capability/references/capability-emission.md`, so a scaffolder that emits a capability as
 part of a larger artifact set composes those rules by reference instead of restating them.
 
+`new-pack` and `new-provider` are what that factoring was for. Each is a **thin layer**: it supplies
+its own interview questions and its own check set, contributes only the artifacts around the
+capability — a plugin manifest and an init skill for `new-pack`, a surface-scoped `provider` row and
+its profile template for `new-provider` — and obtains both rule sets by typed `resolve_content` call.
+Neither carries a second emission implementation, and neither restates a line of either seam. That is
+the property to preserve when a further scaffolder joins the family: add inputs, never a fork.
+
 ## Install and register
 
 Install the plugin from the marketplace, then — once, after `/wf:init` — run:
@@ -47,7 +56,7 @@ Install the plugin from the marketplace, then — once, after `/wf:init` — run
 /wf-author-caps:init
 ```
 
-Registration is only needed for the capability's **phase contributions**. The three skills above
+Registration is only needed for the capability's **phase contributions**. The skills above
 reach you by native plugin composition the moment the plugin is installed; no registry row is
 involved. A project that never registers the capability behaves exactly as it did before the plugin
 existed.
