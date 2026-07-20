@@ -1,0 +1,37 @@
+{
+  "schema": "wf-sandbox-testing.fleet-standard.reference/v1",
+  "fixture_id": "fleet-standard-WF-373",
+  "task_id": "WF-373",
+  "publication": {
+    "status": "unpublished",
+    "reason": "No paid standard-fixture execution was authorized while implementing WF-373. Run the explicit --live command, review reference.candidate.json, and replace this file only after all two-run isolation and phase/role comparability gates pass."
+  },
+  "provenance": {
+    "seed_fingerprint_sha256": "7d5e13a6cecd5627764f3fa07708c2048fd3f53918750105509dfeb83d9ea845",
+    "session_input_fingerprints": []
+  },
+  "comparability": {
+    "accepted": false,
+    "preserves": [
+      "main fleet orchestrator",
+      "at least one isolated shipper",
+      "complete run phase spine",
+      "ship gate-clearing loop",
+      "five registered audit lenses",
+      "tracker and delivery operation shape",
+      "complete nested-session accounting boundary"
+    ],
+    "reduces": [
+      "one child task instead of the historical two-task fleet",
+      "fixed serial execution with --max-parallel 1",
+      "scripted tracker and delivery responses",
+      "no real remote repository",
+      "tiny one-line implementation target",
+      "lower expected absolute spend"
+    ],
+    "divergences": [
+      "Phase and role shape have not yet been observed in a paid run, so reference figures are intentionally withheld."
+    ]
+  },
+  "figures": null
+}

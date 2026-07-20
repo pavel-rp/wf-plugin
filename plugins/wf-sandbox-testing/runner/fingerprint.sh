@@ -37,6 +37,32 @@ fingerprint_tree() {
   )
 }
 
+# fingerprint_session_bundle <source-root> <session-id>
+#   Hashes exactly one main transcript and its nested transcript/metadata pairs.
+#   Relative labels make a byte-identical copied bundle reproduce the same digest.
+fingerprint_session_bundle() {
+  local root="$1" session_id="$2"
+  local main="$root/$session_id.jsonl" bundle="$root/$session_id" subdir
+  subdir="$bundle/subagents"
+  if [ ! -f "$main" ]; then
+    echo "fingerprint_session_bundle: missing main transcript: $main" >&2
+    return 2
+  fi
+  if [ ! -d "$subdir" ]; then
+    echo "fingerprint_session_bundle: missing subagents directory: $subdir" >&2
+    return 2
+  fi
+  (
+    printf '%s  %s\n' "$(sha256sum "$main" | cut -d' ' -f1)" "main.jsonl"
+    find "$subdir" -maxdepth 1 -type f \
+      \( -name 'agent-*.jsonl' -o -name 'agent-*.meta.json' \) -print0 \
+      | LC_ALL=C sort -z \
+      | while IFS= read -r -d '' f; do
+          printf '%s  subagents/%s\n' "$(sha256sum "$f" | cut -d' ' -f1)" "$(basename "$f")"
+        done
+  ) | sha256sum | cut -d' ' -f1
+}
+
 # fingerprint_cli — the claude CLI version string (a fingerprinted input, so CLI
 # drift is a deliberate re-fingerprint event, never a silent behavior change).
 fingerprint_cli() {

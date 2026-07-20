@@ -1,0 +1,294 @@
+{
+  "schema": "wf-sandbox-testing.fleet-standard.seed/v1",
+  "fixture": {
+    "id": "fleet-standard-WF-373",
+    "task": "WF-373",
+    "description": "One-umbrella, one-child hermetic fleet measurement fixture.",
+    "invocation": "/wf:fleet FLEET-100 --max-parallel 1",
+    "plugins": ["wf", "wf-fake", "wf-audit"],
+    "providers": {
+      "tracker": "fake",
+      "delivery": "fake",
+      "networkedProvidersAllowed": false
+    }
+  },
+  "topology": {
+    "umbrella": {
+      "id": "FLEET-100",
+      "title": "Standard fleet fixture umbrella"
+    },
+    "children": [
+      {
+        "id": "FLEET-101",
+        "parent": "FLEET-100",
+        "title": "Set the fixture counter to one"
+      }
+    ]
+  },
+  "git": {
+    "initialBranch": "main",
+    "userName": "fleet-standard fixture",
+    "userEmail": "fixture@fake.local",
+    "commitMessage": "FLEET-100: seed disposable standard fixture",
+    "timestamp": "2026-07-20T00:00:00Z",
+    "remote": null
+  },
+  "workspace": {
+    "files": {
+      ".gitignore": "_local/\n",
+      "src/counter.txt": "0\n",
+      "_local/profiles/audit.profile.json": "{\n  \"lenses\": [\n    \"correctness\",\n    \"security\",\n    \"convention\",\n    \"consistency\",\n    \"operational\"\n  ]\n}\n",
+      "_local/wf/FLEET-100/00_reqs.md": "# FLEET-100 — Standard fleet fixture umbrella\n\n**Fetched by:** gpt-5.6-sol[1m]\n\nThis synthetic umbrella has exactly one child, FLEET-101. It exists only to exercise the fleet orchestration boundary with scripted local providers.\n",
+      "_local/wf/FLEET-101/00_reqs.md": "# FLEET-101 — Set the fixture counter to one\n\n**Fetched by:** gpt-5.6-sol[1m]\n\n## Request\n\nChange only `src/counter.txt` from `0` to `1`. Keep the file to one newline-terminated line.\n\n## Acceptance\n\n- `grep -qx '1' src/counter.txt` exits zero.\n- The workflow authors and gates the complete spec → plan → tasks → implement → verify → qa spine.\n- Every tracker and delivery operation is served by the local `fake` capability.\n"
+    }
+  },
+  "configTemplate": "# Skills Configuration\n\n**Model:** gpt-5.6-sol[1m]\n\nDisposable WF-373 standard fleet fixture. Only fake owns tracker and delivery; audit contributes the registered verify lenses.\n\n## Task Folders\n\n| Key | Value |\n|-----|-------|\n| **Task Root** | `_local/wf` |\n| **Folder Pattern** | `{task-root}/FLEET-<N>/` |\n\n## Build / Verify\n\n| Key | Value |\n|-----|-------|\n| **Verify Command** | `grep -qx '1' src/counter.txt` |\n\n## Capabilities\n\n| Capability | Path |\n|------------|------|\n| fake | plugin:wf-fake/capabilities/fake |\n| audit | plugin:wf-audit/capabilities/audit |\n\n## Plugin Roots\n\n| Plugin | Root |\n|--------|------|\n| wf-fake | __WF_FAKE_ROOT__ |\n| wf-audit | __WF_AUDIT_ROOT__ |\n\n## Fake\n\n| Key | Value |\n|-----|-------|\n| **Fake Scripts** | `_local/fake/scripts.json` |\n| **Fake Op Log** | `_local/fake/op-log.jsonl` |\n",
+  "fakeScripts": {
+    "_comment": "WF-373 fleet-standard scripts. Synthetic FLEET ids and fake.local URLs are inert local data. Every provider operation is resolved by wf-fake; no real tracker, delivery host, remote, credential, or network call is permitted.",
+    "delivery": {
+      "branch-create": {
+        "state": "created",
+        "base-source": "main",
+        "tracking": "fixture/feature/FLEET-101-counter",
+        "carry": "none"
+      },
+      "branch-switch": {
+        "state": "switched",
+        "tracking": "fixture/feature/FLEET-101-counter"
+      },
+      "commit": {
+        "state": "committed",
+        "diffstat": "1 changed (+1 -1)"
+      },
+      "push-upstream": {
+        "state": "pushed (fixture/feature/FLEET-101-counter)"
+      },
+      "pr-create": {
+        "state": "created",
+        "url": "https://fake.local/fleet-standard/pr/101"
+      },
+      "pr-detect": [
+        {
+          "found": false,
+          "state": "ABSENT"
+        },
+        {
+          "found": true,
+          "url": "https://fake.local/fleet-standard/pr/101",
+          "state": "OPEN"
+        },
+        {
+          "found": true,
+          "url": "https://fake.local/fleet-standard/pr/101",
+          "state": "MERGED"
+        }
+      ],
+      "pr-comment-post": {
+        "state": "posted",
+        "url": "https://fake.local/fleet-standard/pr/101#comment-1"
+      },
+      "review-thread-resolve": {
+        "state": "resolved"
+      },
+      "review-thread-reply": {
+        "state": "posted",
+        "url": "https://fake.local/fleet-standard/pr/101#thread-reply"
+      },
+      "pr-merge": {
+        "state": "merged",
+        "url": "https://fake.local/fleet-standard/pr/101"
+      },
+      "workspace-root-resolve": "__WORKSPACE_ROOT__",
+      "current-branch-query": "feature/FLEET-101-counter",
+      "default-base-query": "main",
+      "last-commit-timestamp-query": "2026-07-20T00:00:00Z",
+      "branch-changes-read": [
+        [
+          {
+            "path": "src/counter.txt",
+            "status": "M"
+          }
+        ]
+      ],
+      "pr-comments-read": [
+        []
+      ],
+      "review-threads-read": [
+        {
+          "read-performed": true,
+          "threads": []
+        }
+      ],
+      "checks-read": [
+        [
+          {
+            "name": "fixture-ci",
+            "state": "PENDING",
+            "link": "https://fake.local/fleet-standard/checks/101"
+          }
+        ],
+        [
+          {
+            "name": "fixture-ci",
+            "state": "SUCCESS",
+            "link": "https://fake.local/fleet-standard/checks/101"
+          }
+        ]
+      ],
+      "activity-read": [
+        {
+          "commits": [],
+          "pull-requests": []
+        },
+        {
+          "commits": [
+            {
+              "sha": "fleet101",
+              "when": "2026-07-20T00:00:00Z",
+              "subject": "FLEET-101: set fixture counter"
+            }
+          ],
+          "pull-requests": [
+            {
+              "number": 101,
+              "title": "FLEET-101: set fixture counter",
+              "state": "MERGED",
+              "url": "https://fake.local/fleet-standard/pr/101"
+            }
+          ]
+        }
+      ]
+    },
+    "tracker": {
+      "resolve_config": "configured",
+      "create_umbrella": "FLEET-100",
+      "create_child": "FLEET-101",
+      "update": {
+        "state": "updated"
+      },
+      "get": [
+        {
+          "id": "FLEET-100",
+          "title": "Standard fleet fixture umbrella",
+          "description": "Synthetic one-child umbrella for WF-373.",
+          "status": "In Progress",
+          "parent": null,
+          "labels": ["fixture"]
+        },
+        {
+          "id": "FLEET-101",
+          "title": "Set the fixture counter to one",
+          "description": "Change src/counter.txt from 0 to 1.",
+          "status": "In Progress",
+          "parent": "FLEET-100",
+          "labels": ["fixture"]
+        }
+      ],
+      "list_children": [
+        [
+          {
+            "id": "FLEET-101",
+            "title": "Set the fixture counter to one"
+          }
+        ]
+      ],
+      "post_comment": {
+        "state": "posted"
+      },
+      "set_status": {
+        "state": "status-changed"
+      },
+      "attach_link": {
+        "state": "attached"
+      },
+      "list_by_status": [
+        [
+          {
+            "id": "FLEET-101",
+            "title": "Set the fixture counter to one",
+            "status": "In Progress"
+          }
+        ]
+      ],
+      "list_milestones": [
+        []
+      ],
+      "list_cycles": [
+        []
+      ],
+      "list_blockers": [
+        []
+      ]
+    }
+  },
+  "expectedShape": {
+    "parallelism": 1,
+    "fleet": {
+      "umbrellaCount": 1,
+      "childCount": 1,
+      "isolatedShipperMinimum": 1,
+      "requiredFinalBlocks": ["FLEET — Complete", "SHIP — Merged"]
+    },
+    "requiredPhases": [
+      "fleet",
+      "ship",
+      "spec",
+      "plan",
+      "tasks",
+      "implement",
+      "verify",
+      "qa"
+    ],
+    "requiredRoles": [
+      "fleet-orchestrator",
+      "ship-orchestrator",
+      "phase-runner",
+      "correctness-auditor",
+      "security-auditor",
+      "convention-auditor",
+      "consistency-auditor",
+      "operational-auditor"
+    ],
+    "requiredOperations": {
+      "tracker": [
+        "list_children",
+        "list_blockers",
+        "get",
+        "attach_link",
+        "post_comment",
+        "set_status"
+      ],
+      "delivery": [
+        "branch-create",
+        "commit",
+        "push-upstream",
+        "pr-create",
+        "pr-detect",
+        "checks-read",
+        "review-threads-read",
+        "pr-merge",
+        "activity-read"
+      ]
+    }
+  },
+  "comparability": {
+    "preserves": [
+      "main fleet orchestrator",
+      "at least one isolated shipper",
+      "complete run phase spine",
+      "ship gate-clearing loop",
+      "five registered audit lenses",
+      "tracker and delivery operation shape",
+      "complete nested-session accounting boundary"
+    ],
+    "reduces": [
+      "one child task instead of the historical two-task fleet",
+      "fixed serial execution with --max-parallel 1",
+      "scripted tracker and delivery responses",
+      "no real remote repository",
+      "tiny one-line implementation target",
+      "lower expected absolute spend"
+    ],
+    "rejectUnlessPhaseAndRoleShapeMatches": true
+  }
+}
