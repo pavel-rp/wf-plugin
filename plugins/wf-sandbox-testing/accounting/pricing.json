@@ -1,0 +1,26 @@
+{
+  "schema": "wf-fleet-pricing/v1",
+  "effective_date": "2026-07-20",
+  "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
+  "unit": "usd_per_million_tokens",
+  "models": {
+    "claude-opus-4-8": {
+      "input_tokens": 5.0,
+      "cache_creation_input_tokens": 6.25,
+      "cache_read_input_tokens": 0.5,
+      "output_tokens": 25.0
+    },
+    "claude-sonnet-4-6": {
+      "input_tokens": 3.0,
+      "cache_creation_input_tokens": 3.75,
+      "cache_read_input_tokens": 0.3,
+      "output_tokens": 15.0
+    },
+    "claude-sonnet-4-5-20250929": {
+      "input_tokens": 3.0,
+      "cache_creation_input_tokens": 3.75,
+      "cache_read_input_tokens": 0.3,
+      "output_tokens": 15.0
+    }
+  }
+}
