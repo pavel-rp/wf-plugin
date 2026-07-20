@@ -83,6 +83,34 @@ jobs:
         # seeded "merged while claiming no review landed" turns red). Non-zero exit fails the job.
         run: bash plugins/wf-sandbox-testing/corpus/run.sh
 
+      - name: Fleet accounting and evidence self-checks
+        # Deterministic synthetic bundles only: no model call, token, container, or foreign
+        # transcript is needed. These checks cover complete-bundle rejection, max-field message
+        # deduplication, tool-use deduplication, exact-model pricing, reconciliation, fingerprinting,
+        # baseline comparison, and the runner's evidence-copy boundary.
+        run: |
+          bash plugins/wf-sandbox-testing/accounting/selfcheck.sh
+          bash plugins/wf-sandbox-testing/runner/selfcheck.sh
+          bash plugins/wf-sandbox-testing/fixtures/fleet-standard/run.sh --selfcheck
+
+      - name: Reject raw fleet evidence in derived-output surfaces
+        # Historical and standard-fixture references are derived-only. Existing canned assertion
+        # transcripts elsewhere in this pack are a separate documented test surface, so scope the
+        # guard to the new accounting/reference homes rather than banning all JSONL repository-wide.
+        shell: bash
+        run: |
+          raw="$(git ls-files 'plugins/wf-sandbox-testing/accounting/**/*.jsonl' 'plugins/wf-sandbox-testing/fixtures/fleet-standard/**/*.jsonl')"
+          if [ -n "$raw" ]; then
+            printf 'Raw fleet evidence must not be committed:\n%s\n' "$raw" >&2
+            exit 1
+          fi
+          if grep -RIlE '"type"[[:space:]]*:[[:space:]]*"(assistant|user)"|"message"[[:space:]]*:[[:space:]]*\{' \
+              plugins/wf-sandbox-testing/accounting/baselines \
+              plugins/wf-sandbox-testing/fixtures/fleet-standard/reference.json 2>/dev/null; then
+            echo "Raw conversation-shaped content found in a derived reference." >&2
+            exit 1
+          fi
+
       - name: Each capability's fixture suite
         # Discover every capability fixtures suite by convention — never name a
         # specific capability, so any future capability that ships a fixtures
