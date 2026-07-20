@@ -12,6 +12,7 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
 - [What the pack is](#what-the-pack-is)
 - [Install and register](#install-and-register)
 - [The harness layout](#the-harness-layout)
+- [Fleet-run accounting](#fleet-run-accounting)
 - [Authoring a fixture](#authoring-a-fixture)
 - [Scripting a provider with wf-fake](#scripting-a-provider-with-wf-fake)
 - [Writing assertions](#writing-assertions)
@@ -68,6 +69,42 @@ see [Scripting a provider with wf-fake](#scripting-a-provider-with-wf-fake).
 | `corpus/` | the behavioral-regression corpus — items mined retrofit-first from observed failures, each with a resolvable provenance link | [`corpus/README.md`](corpus/README.md) |
 | `fixtures/` | seed scripts that materialize a throwaway wf workspace for a run | (script headers) |
 | `skills/init/` | `/wf-sandbox-testing:init` — self-registration | this README |
+
+## Fleet-run accounting
+
+The derived-only accountant validates a complete persisted session bundle before writing output,
+groups progressive assistant records by transcript and `message.id` using independent usage-field
+maxima, deduplicates `tool_use.id`, prices exact transcript model ids, and emits reconciled phase,
+role, and agent/context-growth tables.
+
+Reproduce the immutable WF-373 historical baseline without copying raw transcripts:
+
+```bash
+plugins/wf-sandbox-testing/accounting/account-session.sh \
+  --source-root /mnt/c/Users/recky/.claude/projects/B--Projects-claude-smart-roadmap \
+  --session-id 76327173-6061-4d25-bdd9-8b785c49c7e7 \
+  --output /tmp/fleet-76327173.json
+plugins/wf-sandbox-testing/accounting/diff-baseline.sh \
+  plugins/wf-sandbox-testing/accounting/baselines/fleet-76327173.json \
+  /tmp/fleet-76327173.json
+```
+
+The source root is machine-local evidence, never a committed fixture. Missing, corrupt, orphaned,
+unmapped, or unknown-model evidence fails before any table is published. Run the maintained offline
+checks with:
+
+```bash
+plugins/wf-sandbox-testing/accounting/selfcheck.sh
+plugins/wf-sandbox-testing/runner/selfcheck.sh
+plugins/wf-sandbox-testing/fixtures/fleet-standard/run.sh --selfcheck
+```
+
+The smaller `fleet-standard` fixture reconstructs disposable config, workspace, git,
+provider-script, operation-log, and output boundaries. Its exact offline seed, explicit paid two-run
+reference-refresh command, shape-comparability gate, and failure triage are in
+[`fixtures/fleet-standard/README.md`](fixtures/fleet-standard/README.md). CI runs only the offline
+checks; a reference refresh always requires an explicit billing acknowledgement and never overwrites
+the committed reference automatically.
 
 ## Authoring a fixture
 
