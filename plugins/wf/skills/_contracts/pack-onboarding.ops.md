@@ -23,12 +23,10 @@ this doc writes `<pack>`, `<capability>`, or the Phase 4 slot:
 
 ## Phase 0: Preconditions
 
-1. **Confirm a git repo:** `git rev-parse --git-dir`. If not, stop: "`/wf-<pack>:init`
-   must run inside a git repository — run `/wf:init` first."
+1. **Confirm a git repo and capture its root:** `git rev-parse --show-toplevel`. If it fails, stop: "`/wf-<pack>:init` must run inside a git repository — run `/wf:init` first." Call the returned absolute path `<repo-root>`.
 2. **Record the workspace directory:** `pwd -P`.
-3. **Resolve the registry location** exactly as `/wf:init` does — read `wf.config.js` at
-   the repo root and use its optional `registryPath` key, **defaulting to
-   `_local/config.md`** when absent. All registry writes below target this location.
+3. **Resolve the registry location** exactly as `/wf:init` does — read `<repo-root>/wf.config.js` and use its optional `registryPath` key, **defaulting to
+   `_local/config.md`** when absent. Resolve that path against `<repo-root>`; all registry writes below target this location.
 4. **Require `/wf:init` first.** If `_local/` is absent, or the resolved registry file
    does not exist, stop: "Run `/wf:init` first — `/wf-<pack>:init` registers into the
    registry that `/wf:init` creates." (This skill augments a registry; it never
