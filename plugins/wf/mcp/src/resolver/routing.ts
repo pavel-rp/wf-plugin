@@ -470,7 +470,9 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
       : retryDecision.model.fallback
         ? `next model tier fell back: ${retryDecision.model.fallback}`
         : "next model tier did not advance exactly one stable tier");
-    return stopDecision(retryDecision, "invalid-stop", reason, retainedUnitIds);
+    return priorTerminalDecision(
+      retryDecision, evaluation.prior, priorShape, "stop", "invalid-stop", reason, retainedUnitIds,
+    );
   }
 
   const priorExecutionShape = evaluation.prior.executionShape;

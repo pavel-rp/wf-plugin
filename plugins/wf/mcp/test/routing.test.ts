@@ -577,6 +577,11 @@ test("retry stops on masked, unavailable, unsupported, unknown, and non-advancin
     assert.equal(decision.disposition, "invalid-stop");
     assert.match(decision.diagnostic ?? "", row.pattern);
     assert.equal(decision.retry, null);
+    assert.deepEqual(
+      [decision.model, decision.effort, decision.basis, decision.attempt, decision.escalationOrigin, decision.actualModel],
+      [evaluation.prior.model, evaluation.prior.effort, evaluation.prior.basis, evaluation.prior.attempt, evaluation.prior.escalationOrigin, evaluation.prior.actualModel ?? undefined],
+      "a failed retry candidate must leave the prior routing record terminal",
+    );
   }
 });
 

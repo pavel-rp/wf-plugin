@@ -22326,7 +22326,15 @@ function resolveRouting(project, inputs) {
   };
   if (retryDecision.status === "stop" || retryDecision.model.masked || retryDecision.model.fallback || modelTier(retryDecision.model.value) !== nextTier) {
     const reason = retryDecision.diagnostic ?? (retryDecision.model.masked ? "next model tier was masked by host enforcement" : retryDecision.model.fallback ? `next model tier fell back: ${retryDecision.model.fallback}` : "next model tier did not advance exactly one stable tier");
-    return stopDecision(retryDecision, "invalid-stop", reason, retainedUnitIds);
+    return priorTerminalDecision(
+      retryDecision,
+      evaluation.prior,
+      priorShape,
+      "stop",
+      "invalid-stop",
+      reason,
+      retainedUnitIds
+    );
   }
   const priorExecutionShape = evaluation.prior.executionShape;
   const shapeChanged = priorExecutionShape !== retryDecision.executionShape || !sameShapeEvidence(evaluation.prior.shapeEvidence, retryDecision.normalizedEvidence);
