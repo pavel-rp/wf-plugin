@@ -1,0 +1,114 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
+import { resolveRouting } from "../src/resolver/routing.js";
+
+const pkgDir = process.env.WF_MCP_DIR;
+if (!pkgDir) throw new Error("WF_MCP_DIR is required");
+const repoRoot = resolve(pkgDir, "../../..");
+const matrixPath = join(repoRoot, "docs/agent-routing-dispositions.md");
+const agentRoots = [
+  "plugins/wf/agents",
+  "plugins/wf-audit/agents",
+  "plugins/wf-browser-qa/agents",
+  "plugins/wf-angular/agents",
+];
+const dispositions = new Set(["shipped-static", "adaptive", "evidence-gated", "deferred"]);
+
+type MatrixRow = {
+  role: string;
+  path: string;
+  disposition: string;
+  model: string;
+  effort: string;
+};
+
+type InventoryRow = { role: string; path: string; frontmatter: string };
+
+function unquote(value: string): string {
+  return value.trim().replace(/^`|`$/g, "");
+}
+
+function parseMatrix(): MatrixRow[] {
+  const source = readFileSync(matrixPath, "utf8");
+  const heading = "## Complete production matrix";
+  const section = source.slice(source.indexOf(heading) + heading.length);
+  const lines = section.split(/\r?\n/);
+  const header = lines.findIndex((line) => line.startsWith("| Role | Agent path |"));
+  assert.notEqual(header, -1, "routing matrix header is missing");
+  const rows: MatrixRow[] = [];
+  for (const line of lines.slice(header + 2)) {
+    if (!line.startsWith("|")) break;
+    const cells = line.slice(1, -1).split("|").map(unquote);
+    assert.equal(cells.length, 7, `matrix row must have seven cells: ${line}`);
+    rows.push({ role: cells[0], path: cells[1], disposition: cells[3], model: cells[4], effort: cells[5] });
+  }
+  return rows;
+}
+
+function parseInventory(): InventoryRow[] {
+  return agentRoots.flatMap((root) => readdirSync(join(repoRoot, root), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+    .map((entry) => {
+      const absolute = join(repoRoot, root, entry.name);
+      const source = readFileSync(absolute, "utf8");
+      const match = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      assert.ok(match, `agent frontmatter is missing: ${relative(repoRoot, absolute)}`);
+      const role = match[1].match(/^name:\s*([^\s]+)\s*$/m)?.[1];
+      assert.ok(role, `agent name is missing: ${relative(repoRoot, absolute)}`);
+      return { role, path: relative(repoRoot, absolute).split(sep).join("/"), frontmatter: match[1] };
+    }));
+}
+
+function key(row: { role: string; path: string }): string {
+  return `${row.role}|${row.path}`;
+}
+
+test("published dispositions exactly cover the production agent inventory", () => {
+  const matrix = parseMatrix();
+  const inventory = parseInventory();
+  assert.equal(inventory.length, 18, "bounded production inventory changed; disposition review is required");
+  assert.equal(matrix.length, 18, "matrix must contain exactly 18 role/path rows");
+
+  const invalid = matrix.filter((row) => !dispositions.has(row.disposition));
+  const duplicateKeys = [...new Set(matrix.map(key).filter((value, index, all) => all.indexOf(value) !== index))];
+  const multiplyDisposed = [...new Set(matrix
+    .filter((row) => matrix.some((other) => other.role === row.role && other.path === row.path && other.disposition !== row.disposition))
+    .map(key))];
+  const matrixKeys = new Set(matrix.map(key));
+  const inventoryKeys = new Set(inventory.map(key));
+  const missing = [...inventoryKeys].filter((value) => !matrixKeys.has(value));
+  const stale = [...matrixKeys].filter((value) => !inventoryKeys.has(value));
+  assert.deepEqual({ invalid, duplicateKeys, multiplyDisposed, missing, stale }, {
+    invalid: [], duplicateKeys: [], multiplyDisposed: [], missing: [], stale: [],
+  }, "matrix has invalid, duplicate, multiply-disposed, missing, or stale entries");
+
+  for (const agent of inventory) {
+    assert.doesNotMatch(agent.frontmatter, /^(?:model|effort)\s*:/m, `${agent.path} must inherit routing rather than declare agent frontmatter`);
+  }
+});
+
+test("matrix pins only the WF-394 bootstrap Haiku defaults", () => {
+  const matrix = parseMatrix();
+  const staticRows = matrix.filter((row) => row.disposition === "shipped-static");
+  assert.deepEqual(staticRows.map((row) => row.role).sort(), ["branch", "classify"]);
+  assert.deepEqual(staticRows.map((row) => row.model), ["haiku", "haiku"], "WF-394 shipped defaults must remain Haiku");
+
+  for (const row of matrix) {
+    const decision = resolveRouting({}, {
+      role: row.role,
+      executionShape: "task",
+      supportsModelSelector: true,
+      supportsEffortSelector: true,
+      availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-8"],
+    });
+    const expectedModel = row.disposition === "shipped-static" ? row.model : null;
+    assert.equal(decision.model.value, expectedModel, `${row.role} model disagrees with its disposition`);
+    assert.notEqual(decision.model.value, "opus", `${row.role} must not start on static Opus`);
+    assert.equal(decision.effort.value, null, `${row.role} effort must inherit`);
+    assert.equal(decision.effort.source, "inheritance", `${row.role} effort source must be inheritance`);
+    assert.equal(row.effort, "inherit", `${row.role} matrix effort must inherit`);
+    if (row.disposition !== "shipped-static") assert.equal(row.model, "inherit", `${row.role} must not claim a hidden static model`);
+  }
+});
