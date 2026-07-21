@@ -64,19 +64,21 @@ stable plugin id `wf-fake`, and seeds the `## Fake` config section.
 
 ## Onboarding procedure
 
-1. **Precondition.** Call `resolve_config` for the resolved registry location and Read it to
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
+1. **Precondition.** Call `resolve_config({ workspaceRoot: "<workspace-root>" })` for the resolved registry location and Read it to
    confirm `_local/config.md` exists. If it does not, stop: "Run `/wf:init` first —
    `/wf-fake:init` registers into the registry that `/wf:init` creates."
-2. **Check prior state (reporting only).** Call `resolve_registry`; note whether `fake` already
+2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether `fake` already
    appears with `validity: "ok"`. This never skips a later step — it only decides whether the
    Final Output says `onboarded` or `already-registered`.
-3. **Inspect the pack.** Call `inspect_pack({ pluginId: "wf-fake" })`. Read-only; returns
+3. **Inspect the pack.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-fake" })`. Read-only; returns
    `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
    - `valid: false` (not installed, disabled, no readable `capabilities/fake/manifest.md`, or
      `claude plugin list --json` itself unavailable) → go to **Failure path**; do not call
      `register_pack`.
 4. **Register.** Call
-   `register_pack({ pluginId: "wf-fake", expectedFingerprint: <fingerprint from step 3> })`. It
+   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-fake", expectedFingerprint: <fingerprint from step 3> })`. It
    writes the `## Plugin Roots` row and the `fake` `## Capabilities` row in a single write,
    refreshes the resolver snapshot, and self-checks that `fake` now resolves — returning
    `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
@@ -107,7 +109,7 @@ The `fake` capability's manifest declares **no** `profile-template:`, so the Fin
 
 ### Failure path (WF-272 diagnostics)
 
-Call `resolve_gate({ surface: "delivery-write" })` (registering a pack is a registry write).
+Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a pack is a registry write).
 Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specific `issues[]`
 (from `inspect_pack`) or `reason` (from a rejected `register_pack`) — never a bare error. Finish
 with `partial`.
@@ -123,8 +125,8 @@ with `partial`.
   issue naming the CLI call as the cause — failure path; check the `claude` CLI, then re-run.
 - **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the install
   looks corrupted — reinstall the plugin.
-- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run `inspect_pack`
-  to get the current fingerprint and retry `register_pack`.
+- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-fake" })`
+  to get the current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-fake", expectedFingerprint: <current fingerprint> })`.
 - **`fake` already registered:** `register_pack` upserts idempotently — re-running is always
   safe; report `already-registered` per step 2's pre-check.
 - **Co-registered with a real delivery/tracker pack:** this is a fixture-only capability — if

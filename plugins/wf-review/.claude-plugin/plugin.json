@@ -1,6 +1,6 @@
 {
   "name": "wf-review",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "wf PR-review feature pack — a native, user-invoked feature capability shipping the address-pr and review-pr skills. Reads and posts PR review comments and CI results entirely through the wf capability-registry's delivery provider (no git/gh strings of its own), treats review-tool output as hypothesis and verifies every claim against real code, and optionally distils bulk comment/CI via wf:context-distiller. Composes natively on install for its two skills; the pr-review capability itself must be registered via /wf-review:init for a future contribution fragment to resolve.",
   "author": {
     "name": "Pavel Kalabin",

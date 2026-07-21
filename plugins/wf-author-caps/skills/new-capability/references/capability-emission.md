@@ -2,6 +2,8 @@
 
 **Model:** claude-opus-4-8
 
+
+Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
 The single rule source for emitting a capability's artifact set: one schema-v2 `manifest.md` plus one
 fragment file per declared Fragments row. It is written over an abstract **target capability folder**,
 so any scaffolder that emits a capability — on its own, or as one part of a larger pack emission —
@@ -107,9 +109,12 @@ repository's content-read guard.
 
 A scaffolder that emits a capability as part of a larger artifact set — a whole pack, or a provider
 pack with its surface already fixed — obtains this file through the resolver's `resolve_content`
-(`class: references-template`, `plugin: wf-author-caps`, `skill: new-capability`, `ref:
+(`workspaceRoot: <Agent/session absolute current workspace directory>`, `class:
+references-template`, `plugin: wf-author-caps`, `skill: new-capability`, `ref:
 capability-emission.md`) and follows it for the capability portion, supplying its own already-
-validated answers for name, kind, and rows. It contributes the surrounding artifacts itself and
+validated answers for name, kind, and rows. `workspaceRoot` is schema-required, has no default or
+fallback, and omission is a hard schema error; a linked-worktree Agent passes its own worktree root,
+not its parent's. It contributes the surrounding artifacts itself and
 restates nothing above. The composing scaffolder still runs the manifest and registry checks over
 what this rule set emitted; composition changes who asks the questions, never which checks the
 emission must pass.

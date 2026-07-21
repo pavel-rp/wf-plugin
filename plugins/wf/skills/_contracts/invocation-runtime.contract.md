@@ -9,6 +9,10 @@
 
 > **Ops/reference split (WF-208).** This contract is the **reference half** — read at authoring and validation time, never at boot. The **runtime-read half** is [`invocation-runtime.ops.md`](invocation-runtime.ops.md): bounded (≤150 lines), self-sufficient one level deep, the normative home for the whole runtime-followed procedure. Sections below carrying a "Normative runtime text" pointer keep their narrative as background; a boot follows the ops doc, never this file.
 
+## Resolver call root
+
+Before calling a resolver MCP tool, run `pwd -P` in the current Agent/session and explicitly pass its absolute current workspace directory as `workspaceRoot`. Each Agent derives its own value; a linked-worktree Agent never reuses its parent's root. Omission is a hard schema error — resolver MCP calls have no default or fallback root.
+
 ---
 
 ## Purpose
@@ -223,7 +227,7 @@ kinds** the v1 substrate used, unchanged:
 
 | Fragment `dispatch` | Core action |
 |---------------------|-------------|
-| `inline: <rel-path>` | Read `<path>/<rel-path>` — forward-slash, **relative to the capability's registry path** (not repo-relative) — and **follow it in-context**. The reference doc instructs core what to assert/produce; core returns the result in the contribution kind's generic shape. No subagent is spawned. |
+| `inline: <rel-path>` | Call `resolve_content` with `workspaceRoot: <current Agent/session absolute workspace directory>`, `class: fragment`, the capability name, and `<rel-path>` (forward-slash, relative to the capability's registry path); follow the served body in-context. Never raw-read the resolved plugin-cache path. No subagent is spawned. |
 | `subagent: <agent>` | Invoke the Task tool with `subagent_type: <agent>`, passing the artifact under review and the kind's generic shape. The heavy work runs in isolated context; only the agent's final block returns to the caller. |
 | *(no matching row for the phase)* | No-op — this capability contributes the phase's declared empty result (§ no-op path). |
 | *(row present, `dispatch` neither `inline:` nor `subagent:`)* | No-op (fail-safe) — core does not guess a malformed kind (§ fail-safe). |
@@ -312,8 +316,9 @@ primitives verbatim and skips the other two:
    (The `implement` phase value on a delivery row, and the `spec` phase value on
    a tracker row, are registration anchors for the validator, not filter
    conditions here.)
-4. **Per-fragment dispatch** — unchanged (primitive 4): `inline:` read-and-follow,
-   or `subagent:` via the Task tool, exactly as any other fragment dispatches.
+4. **Per-fragment dispatch** — unchanged (primitive 4): `inline:` calls
+   `resolve_content` with `workspaceRoot: <current Agent/session absolute workspace directory>`
+   and `class: fragment`, then follows the served body; `subagent:` invokes the Task tool.
 5. ~~Aggregation~~ — **skipped**. Partitioned ownership (enforced by the
    validator, WF-2's registry pass / WF-28) guarantees **at most one** row can
    match the scope-equality filter registry-wide, so there is nothing to
@@ -391,12 +396,18 @@ The five moving parts and direct provider resolution above all resolve a bundled
 doc to a **path** and then follow (`inline:` read-and-follow) or dispatch it. That
 read was, through WF-268 (C008), a raw `Read`/`Glob` of the version-pinned plugin
 cache — a per-session permission prompt whose grant a version bump relocates and
-loses. **WF-302 (C011 SUB-1)** closes that gap for the five non-skill bundled-doc
-classes — a capability **fragment** body, a `_contracts/*` **contract** ops doc, a
-`_shared/*` **shared** convention doc, a skill **references-template**, and a pack
-**profile-template** body — by serving the *content* through the always-loaded
+loses. **WF-302 (C011 SUB-1)** closes that gap for the six bundled-body classes —
+a capability **fragment** body, a `_contracts/*` **contract** ops doc, a
+`_shared/*` **shared** convention doc, a skill **references-template**, a pack
+**profile-template** body, and a composed per-skill **slot** body — by serving the *content* through the always-loaded
 `wf-resolver` MCP's **`resolve_content`** tool, read by the server's own Node `fs`
 in its own process, never a caller-side raw read.
+
+**Request root and outcomes.** Each `resolve_content` request explicitly includes
+`workspaceRoot: <current Agent/session absolute workspace directory>` plus its class locator.
+The five single-path classes return `served`; `slot` returns `composed` or `unfilled`.
+A linked-worktree consumer derives its own root rather than accepting one in a forwarded
+record.
 
 **It reuses C008's resolution, never re-implementing it.** The tool drives the
 delivered engine (`plugins/wf/mcp/src/resolver/*`) exactly as the metadata queries
@@ -416,10 +427,12 @@ that returns a document body, kept separate so C008's guarantee is not regressed
 **Failures use the existing surface semantics.** An unresolvable / unrecoverable
 ref — an unregistered capability, a plugin root that dangles and whose self-heal
 recovers nothing, a capability with no declared template, or a resolver-build
-failure — reports the matching `resolve_gate` degradation class (a content read is
+failure — reports the matching `resolve_gate` degradation class through a call that
+explicitly passes `workspaceRoot: <current Agent/session absolute workspace directory>`
+(a content read is
 a `local-read` surface → **continue**, best-effort) with a `/wf:resolve` recovery
 path. It **never** returns a wrong-path body and **never** falls through to a raw
-`Read`. A ref outside the five served classes — a **skill body** (owned by the
+`Read`. A ref outside the six served classes — a **skill body** (owned by the
 separate Skill-tool charter; invoke the skill via the Skill tool instead) or a
 **CI-only fixture / validator input** — is **refused**, as is a malformed /
 path-traversal ref. The request/response contract is frozen here with its

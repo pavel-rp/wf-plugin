@@ -1,7 +1,118 @@
 // src/refresh.ts
 import { readFileSync as readFileSync3 } from "node:fs";
-import { dirname as dirname2, resolve } from "node:path";
+import { dirname as dirname2, resolve as resolve2 } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// src/git-workspace.ts
+import { execFileSync } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+
+// src/resolver/paths.ts
+function normalizeSlashes(p) {
+  return p.replace(/\\/g, "/");
+}
+function joinSlash(...segments) {
+  return segments.map((s, i) => {
+    let seg = normalizeSlashes(s);
+    if (i > 0) seg = seg.replace(/^\/+/, "");
+    if (i < segments.length - 1) seg = seg.replace(/\/+$/, "");
+    return seg;
+  }).filter((s) => s.length > 0).join("/");
+}
+var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
+function parsePluginAnchor(registryPath) {
+  const m = PLUGIN_ANCHOR.exec(registryPath.trim());
+  if (!m) return null;
+  return { pluginName: m[1], relPath: m[2] };
+}
+function resolveCapabilityPath(registryPath, opts) {
+  const anchor = parsePluginAnchor(registryPath);
+  if (!anchor) {
+    const folder = joinSlash(opts.workspaceRoot, registryPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+    }
+    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
+  }
+  const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
+  if (recorded) {
+    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
+    const folder = joinSlash(root, anchor.relPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+    }
+  }
+  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
+  if (installed) {
+    const root = normalizeSlashes(installed.installPath);
+    const folder = joinSlash(root, anchor.relPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
+    }
+  }
+  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
+}
+function isAbsoluteRoot(root) {
+  const n = normalizeSlashes(root);
+  return n.startsWith("/") || /^[A-Za-z]:/.test(n);
+}
+
+// src/git-workspace.ts
+function canonicalDirectory(path, label) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${label} must be an absolute path.`);
+  }
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    throw new Error(`${label} does not exist: ${path}`);
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`${label} must be a directory: ${path}`);
+  }
+  return normalizeSlashes(realpathSync(path));
+}
+function gitOutput(directory, ...args) {
+  try {
+    return execFileSync("git", ["-C", directory, "rev-parse", ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }).trim();
+  } catch {
+    throw new Error(`workspaceRoot is not inside a Git worktree: ${directory}`);
+  }
+}
+function resolveGitIdentity(directory, label = "workspaceRoot") {
+  const canonicalInput = canonicalDirectory(directory, label);
+  const topLevel = gitOutput(canonicalInput, "--show-toplevel");
+  const canonicalTopLevel = canonicalDirectory(
+    isAbsolute(topLevel) ? topLevel : resolve(canonicalInput, topLevel),
+    "Git worktree root"
+  );
+  const commonDir = gitOutput(canonicalInput, "--git-common-dir");
+  const canonicalCommonDir = canonicalDirectory(
+    isAbsolute(commonDir) ? commonDir : resolve(canonicalInput, commonDir),
+    "Git common directory"
+  );
+  return { worktreeRoot: canonicalTopLevel, commonDir: canonicalCommonDir };
+}
+function resolveWorkspaceIdentity(directory, label = "workspaceRoot") {
+  const canonicalInput = canonicalDirectory(directory, label);
+  try {
+    const git = resolveGitIdentity(canonicalInput, label);
+    return { kind: "git", root: git.worktreeRoot, commonDir: git.commonDir };
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.startsWith("workspaceRoot is not inside a Git worktree:")) {
+      throw err;
+    }
+    return { kind: "plain", root: canonicalInput };
+  }
+}
 
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 3;
@@ -138,59 +249,6 @@ function parseManifest(markdown) {
     });
   }
   return { kind, fragments, articles, requires, conflicts, profileTemplate };
-}
-
-// src/resolver/paths.ts
-function normalizeSlashes(p) {
-  return p.replace(/\\/g, "/");
-}
-function joinSlash(...segments) {
-  return segments.map((s, i) => {
-    let seg = normalizeSlashes(s);
-    if (i > 0) seg = seg.replace(/^\/+/, "");
-    if (i < segments.length - 1) seg = seg.replace(/\/+$/, "");
-    return seg;
-  }).filter((s) => s.length > 0).join("/");
-}
-var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
-function parsePluginAnchor(registryPath) {
-  const m = PLUGIN_ANCHOR.exec(registryPath.trim());
-  if (!m) return null;
-  return { pluginName: m[1], relPath: m[2] };
-}
-function resolveCapabilityPath(registryPath, opts) {
-  const anchor = parsePluginAnchor(registryPath);
-  if (!anchor) {
-    const folder = joinSlash(opts.workspaceRoot, registryPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
-    }
-    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
-  }
-  const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
-  if (recorded) {
-    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
-    }
-  }
-  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
-  if (installed) {
-    const root = normalizeSlashes(installed.installPath);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
-    }
-  }
-  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
-}
-function isAbsoluteRoot(root) {
-  const n = normalizeSlashes(root);
-  return n.startsWith("/") || /^[A-Za-z]:/.test(n);
 }
 
 // src/resolver/plugin-list.ts
@@ -346,12 +404,12 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   // fresh through fingerprint discipline, never an un-fingerprinted raw read.
   "constitution"
 ]);
-function isAbsolute(p) {
+function isAbsolute2(p) {
   return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
 }
 function absOf(workspaceRoot2, recordedPath) {
   const p = normalizeSlashes(recordedPath);
-  return isAbsolute(p) ? p : joinSlash(workspaceRoot2, p);
+  return isAbsolute2(p) ? p : joinSlash(workspaceRoot2, p);
 }
 function normalizePluginList(raw) {
   if (raw === null) return null;
@@ -985,7 +1043,7 @@ function buildSnapshot(inputs, io) {
 // src/resolver/engine.ts
 import { readFileSync as readFileSync2, readdirSync } from "node:fs";
 import { join as join2 } from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync as execFileSync2 } from "node:child_process";
 
 // src/resolver/snapshot-store.ts
 import {
@@ -1065,15 +1123,18 @@ function listFilesOrEmpty(absDir) {
   }
 }
 var fsIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
-function extractRegistryPath(wfConfig) {
+function extractRegistryPathRaw(wfConfig) {
   if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
   const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
   const v = m?.[1]?.trim();
-  return v && v.length > 0 ? normalizeSlashes(v) : DEFAULT_REGISTRY_RELPATH;
+  return v && v.length > 0 ? v : DEFAULT_REGISTRY_RELPATH;
+}
+function extractRegistryPath(wfConfig) {
+  return normalizeSlashes(extractRegistryPathRaw(wfConfig));
 }
 function runPluginList() {
   try {
-    return execFileSync("claude", ["plugin", "list", "--json"], {
+    return execFileSync2("claude", ["plugin", "list", "--json"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       maxBuffer: 16 * 1024 * 1024
@@ -1149,14 +1210,15 @@ function composeSessionStartStdout(source, record) {
 
 // src/refresh.ts
 function workspaceRoot() {
-  return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
+  const configured = process.env.WF_WORKSPACE_ROOT || process.cwd();
+  return resolveWorkspaceIdentity(resolve2(configured)).root;
 }
 function corePluginRoot() {
   if (process.env.WF_CORE_PLUGIN_ROOT) {
     return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
   }
   const here = fileURLToPath(import.meta.url);
-  return normalizeSlashes(resolve(dirname2(here), "..", ".."));
+  return normalizeSlashes(resolve2(dirname2(here), "..", ".."));
 }
 function log(line) {
   process.stderr.write(`wf-resolver refresh-if-stale: ${line}

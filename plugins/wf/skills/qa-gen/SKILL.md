@@ -8,7 +8,9 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 
 Generates a structured manual test plan for a task. Reads `00_reqs.md` (source of truth), classifies each success criterion by how it can be verified, designs scenarios for the criteria that need a human in a browser, and writes `06_qa.md` in the task folder. Every spec-derived scenario traces back to a numbered spec criterion; untraceable spec scenarios don't ship. The one deliberate exception is the **Baseline health suite** — a small standing set of measurable checks (no console errors, no failed network requests, the view renders) that every plan carries regardless of scope or criteria. See Phase 3.5.
 
-This skill produces **prose, not code**. The output is a plan a tester (human or agent) executes against the running app. Most scenarios are **browser** scenarios — clicks, typed values, observed UI changes, network calls visible in devtools. For a **backend** task (a controller endpoint, a service method, a repository method) it instead writes **API** scenarios that exercise the endpoint over HTTP with a real token and assert status + response shape; when the deliverable is a service with no endpoint yet, the scenario carries a `Backend host required:` precondition the runner satisfies by temporarily wiring the service to a controller (then reverting it). The full API-scenario rules live at `api-scenarios.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: qa-gen`, `ref: api-scenarios.md`), never a raw `Read` of the plugin-cache path. For automated unit tests, the project's registered stack test-authoring capabilities (a component/DI-level sandbox-host harness, a pure-helper unit runner, etc.) cover what this skill deliberately doesn't — core names none of them.
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+
+This skill produces **prose, not code**. The output is a plan a tester (human or agent) executes against the running app. Most scenarios are **browser** scenarios — clicks, typed values, observed UI changes, network calls visible in devtools. For a **backend** task (a controller endpoint, a service method, a repository method) it instead writes **API** scenarios that exercise the endpoint over HTTP with a real token and assert status + response shape; when the deliverable is a service with no endpoint yet, the scenario carries a `Backend host required:` precondition the runner satisfies by temporarily wiring the service to a controller (then reverting it). The full API-scenario rules live at `api-scenarios.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: qa-gen`, `ref: api-scenarios.md`), never a raw `Read` of the plugin-cache path. For automated unit tests, the project's registered stack test-authoring capabilities (a component/DI-level sandbox-host harness, a pure-helper unit runner, etc.) cover what this skill deliberately doesn't — core names none of them.
 
 A backend-only task is therefore **never** a stub PASS: its behavioral criteria become runnable API scenarios, and its Baseline-health suite targets the primary endpoint instead of being marked N/A.
 
@@ -19,13 +21,13 @@ To run the plan, use the family's run-assistant skills:
 - **`/wf:qa-run`** — interactive walkthrough. The skill is the test lead, the user is the tester, one step at a time.
 - **`/wf:qa-auto`** — autonomous run. Drives the browser through each scenario, captures screenshots on FAIL, and writes the same report.
 
-Both write `07_qa-report.md` in the format documented at `report-format.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: qa-gen`, `ref: report-format.md`), never a raw `Read` of the plugin-cache path. Stable `TC-NNN` IDs and `Validates: SC-N` lines on every scenario let the runners address scenarios individually and reconcile back to the spec.
+Both write `07_qa-report.md` in the format documented at `report-format.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: qa-gen`, `ref: report-format.md`), never a raw `Read` of the plugin-cache path. Stable `TC-NNN` IDs and `Validates: SC-N` lines on every scenario let the runners address scenarios individually and reconcile back to the spec.
 
 ---
 
 ## Prerequisites
 
-Obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, qaBaselineIgnore, qaRules, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. From `coreConfig`: `{task-root}` (`taskRoot`); `{qa-baseline-ignore}` (`qaBaselineIgnore`, the allowlist of known-benign console messages / request patterns the Baseline health suite tolerates) — optional; treat an absent value as an empty list; `{qa-rules}` (`qaRules`, the path to the project QA-rules artifact written by `/wf:qa-init`, which supplies the severity rubric the report resolves — see `report-format.md`, same `resolve_content` reference as above) — optional; treat an absent or `<none>` value as not set, and the report falls back to its built-in severity default.
+Obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, qaBaselineIgnore, qaRules, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. From `coreConfig`: `{task-root}` (`taskRoot`); `{qa-baseline-ignore}` (`qaBaselineIgnore`, the allowlist of known-benign console messages / request patterns the Baseline health suite tolerates) — optional; treat an absent value as an empty list; `{qa-rules}` (`qaRules`, the path to the project QA-rules artifact written by `/wf:qa-init`, which supplies the severity rubric the report resolves — see `report-format.md`, same `resolve_content({ workspaceRoot, ... })` reference as above) — optional; treat an absent or `<none>` value as not set, and the report falls back to its built-in severity default.
 
 `00_reqs.md` is the authoritative spec. `01_spec.md` is consulted only if reqs are too thin to derive testable criteria. **Never derive cases from the implementation** — see the black-box rule under Phase 3.
 
@@ -59,7 +61,7 @@ Examples:
 
 ## Direct provider resolution (how `current-branch-query` is reached)
 
-Id inference and the Phase 1 branch gate both reach `current-branch-query` by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain the op body via `resolve_content` (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to reach `current-branch-query` — never a raw `Read` of the path (the metadata queries return only paths/metadata; the body comes from `resolve_content`). On `state: unconfigured`/`unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). (qa-gen has no tracker-surface call site — it never fetches.)
+Id inference and the Phase 1 branch gate both reach `current-branch-query` by calling the bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, candidates?, degradation }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain the op body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to reach `current-branch-query` — never a raw `Read` of the path (the metadata queries return only paths/metadata; the body comes from `resolve_content({ workspaceRoot, ... })`). On `state: unconfigured`/`unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). (qa-gen has no tracker-surface call site — it never fetches.)
 
 ---
 
@@ -68,7 +70,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by ca
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
-- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query) for id inference and branch gating. Diff-based changed-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
+- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference and branch gating. Diff-based changed-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
 - Invoke the **Task** tool for `wf:branch` (branch gate) and `/wf:index` (index update).
 - Write `06_qa.md` ONLY inside the resolved task folder (`{task-root}/{task-id}/`).
 
@@ -84,13 +86,13 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by ca
 
 ## Phase 1: Resolve and gate
 
-1. **Resolve `<id>`.** Resolve the task id per the shared pipeline conventions doc — obtained via the `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`), never a raw `Read` of the plugin-cache path — §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-gen` in its stop messages. Once `{task-id}` is resolved, extract the first 3+-digit run from it — call it `{numeric-id}`; it is used **only** for the branch-gate match in step 4, never for the task folder or any operation.
+1. **Resolve `<id>`.** Resolve the task id per the shared pipeline conventions doc — obtained via the `wf-resolver` MCP tool `resolve_content({ workspaceRoot, ... })` (`class: shared`, `ref: pipeline-conventions.md`), never a raw `Read` of the plugin-cache path — §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-gen` in its stop messages. Once `{task-id}` is resolved, extract the first 3+-digit run from it — call it `{numeric-id}`; it is used **only** for the branch-gate match in step 4, never for the task folder or any operation.
 
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. If it doesn't exist, stop: "Task folder not found. Run `/wf:spec {task-id}` first."
 
 3. **Verify `00_reqs.md` exists** in the task folder. If missing, stop: "No `00_reqs.md` for `{task-id}`. Run `/wf:spec {task-id}` first to fetch requirements."
 
-4. **Branch gate.** Gate on the task branch per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` (from step 1) for the branch-name match; on the bare-core skip, report it and continue to step 5. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch)." and continue to step 5.
+4. **Branch gate.** Gate on the task branch per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` (from step 1) for the branch-name match; on the bare-core skip, report it and continue to step 5. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch)." and continue to step 5.
 
 5. **Resolve scope.** Default `full`. Accept `smoke`, `happy`, `full` — anything else stops with "Unknown scope: `<value>`. Use one of: smoke, happy, full."
 
@@ -114,7 +116,7 @@ Run these reads in parallel where the tools allow:
 
    For each new UI component in the diff, also check whether it is reachable by a route in the running app (grep the project's routing configuration for the component's selector / kebab-name). If it is not routed and no test-host for it exists either, the target is **host-missing** — record this so Phase 3 can emit a `Host required: <component-path>` precondition on scenarios that interact with it. `/wf:qa-auto` resolves the registered `qa-execution` host provider to scaffold a routed test-host on demand.
 
-   **Backend surfaces.** Apply the same signature-only read to backend source files in the diff — controllers, services, repositories, and the DTOs they return — following `api-scenarios.md` § Backend-diff signals (obtained via the resolver's `resolve_content` — `class: references-template`, `skill: qa-gen`, `ref: api-scenarios.md` — never a raw `Read` of the plugin-cache path). For each new/changed controller action, record its verb + route + params + return type (an **endpoint** surface). For each new/changed public method on a service/repository with no controller action calling it, record it as a **service-only** surface so Phase 3 can emit a `Backend host required: <Service>.<method>` precondition. A diff that is entirely backend data-layer files with no UI target is a **backend-only** task — its behavioral criteria classify as **API** in Phase 3.
+   **Backend surfaces.** Apply the same signature-only read to backend source files in the diff — controllers, services, repositories, and the DTOs they return — following `api-scenarios.md` § Backend-diff signals (obtained via the resolver's `resolve_content({ workspaceRoot, ... })` — `class: references-template`, `skill: qa-gen`, `ref: api-scenarios.md` — never a raw `Read` of the plugin-cache path). For each new/changed controller action, record its verb + route + params + return type (an **endpoint** surface). For each new/changed public method on a service/repository with no controller action calling it, record it as a **service-only** surface so Phase 3 can emit a `Backend host required: <Service>.<method>` precondition. A diff that is entirely backend data-layer files with no UI target is a **backend-only** task — its behavioral criteria classify as **API** in Phase 3.
 
 5. **Catalog existing automated coverage.** Look under:
    - `_local/{task-id}/tests/` — a registered unit-test harness's output (e.g. a pure-helper Node runner).
@@ -140,14 +142,14 @@ Cases come from criteria, not code. Implementation reads in Phase 2 are for **na
 | **Build/static** | Compilation, typecheck, lint, file existence | "module exports type X", "config includes key Y", "tsconfig includes path Z" | Listed in coverage matrix. No manual scenario. |
 | **Automated test** | Existing unit/integration test asserts the criterion directly | Matches an assertion you found in Phase 2 step 5 (incl. a page-test harness's backend-smoke test) | Listed in coverage matrix with the test file path. No manual scenario. |
 | **Manual-browser** | Human or agent observes runtime behavior in the running app | "clicking Save shows a green toast", "dropdown filters list to entries matching the search" | One or more browser scenarios depending on scope. |
-| **API** | The behavior of an endpoint or service method, called over HTTP with a real token | "endpoint returns the widgets for the access level", "repository filters out inactive rows", "POST creates the record and returns 201", "service returns an empty list when none match" | One or more API scenarios. Service-only methods get a `Backend host required:` precondition. See `api-scenarios.md` (same `resolve_content` reference as above). |
+| **API** | The behavior of an endpoint or service method, called over HTTP with a real token | "endpoint returns the widgets for the access level", "repository filters out inactive rows", "POST creates the record and returns 201", "service returns an empty list when none match" | One or more API scenarios. Service-only methods get a `Backend host required:` precondition. See `api-scenarios.md` (same `resolve_content({ workspaceRoot, ... })` reference as above). |
 
 ### Classification signals
 
 - **Build/static:** mentions file/export/type/schema/config; verifiable by running `tsc`, `eslint`, or `ls`/`grep`; describes code **structure** (existence, shape, signature) rather than runtime behavior.
 - **Automated test:** an existing test file from Phase 2 step 5 asserts this criterion directly. Cite the test file and the specific test name.
 - **Manual-browser:** describes what a user sees, clicks, or experiences; requires a running app and a browser; involves visual appearance, interaction flow, or cross-system behavior visible to a human.
-- **API:** describes the runtime behavior of a backend call — an endpoint or a service/repository method that returns, filters, persists, or rejects data. Verified by *calling* it with a real token and asserting status + response shape, not by checking it compiles. This is the category that keeps a backend-only task from collapsing into all-Build/static. The existence-vs-behavior line is detailed in `api-scenarios.md` § When a criterion is API vs Build/static (same `resolve_content` reference as above).
+- **API:** describes the runtime behavior of a backend call — an endpoint or a service/repository method that returns, filters, persists, or rejects data. Verified by *calling* it with a real token and asserting status + response shape, not by checking it compiles. This is the category that keeps a backend-only task from collapsing into all-Build/static. The existence-vs-behavior line is detailed in `api-scenarios.md` § When a criterion is API vs Build/static (same `resolve_content({ workspaceRoot, ... })` reference as above).
 
 When a criterion straddles categories, split it and don't double-count: "service is **provided** AND its method **behaves correctly**" → the provided/registered/exported half goes Build/static (or Automated), the behaves-correctly half goes **API** (or Manual-browser if the behavior is only observable in the UI).
 
@@ -179,7 +181,7 @@ Independent of the criteria and the scope, **every** `06_qa.md` ends with a `## 
 
 **Pick the target.** Choose the route the task most directly affects (from the Phase 2 diff / journeys). For a cross-cutting task with no single route, use the most-affected view, or the app root. Substitute it as `<target route>` below.
 
-**Backend-only tasks: emit the API baseline instead.** When the task affects no reachable UI route but *does* add or change a callable endpoint/service (the backend-only case from Phase 2), do **not** mark the baseline `[N/A: no runnable UI]`. Emit the single **API baseline** scenario from `api-scenarios.md` § API baseline health (same `resolve_content` reference as above) — the primary endpoint responds without a 5xx and accepts the token — and skip the three browser baseline scenarios below. Only fall back to a lone `[N/A: no runnable surface]` scenario when the task has neither a route nor any callable endpoint/service (pure type/config/helper work).
+**Backend-only tasks: emit the API baseline instead.** When the task affects no reachable UI route but *does* add or change a callable endpoint/service (the backend-only case from Phase 2), do **not** mark the baseline `[N/A: no runnable UI]`. Emit the single **API baseline** scenario from `api-scenarios.md` § API baseline health (same `resolve_content({ workspaceRoot, ... })` reference as above) — the primary endpoint responds without a 5xx and accepts the token — and skip the three browser baseline scenarios below. Only fall back to a lone `[N/A: no runnable surface]` scenario when the task has neither a route nor any callable endpoint/service (pure type/config/helper work).
 
 **Scenarios to emit (browser target):**
 
@@ -189,7 +191,7 @@ Independent of the criteria and the scope, **every** `06_qa.md` ends with a `## 
 
 Number them in sequence after the spec scenarios (Baseline health is the last suite). Don't invent extra baseline scenarios beyond these three — keep the standing bar small and stable. If the task has no reachable route but has a callable endpoint/service, emit the **API baseline** scenario described above instead of these three (the visual-baseline is browser-only and is skipped). Only when the task has *no runnable surface of any kind* (pure library/helper work — no route, no endpoint, no service) emit the suite with a single scenario marked `[N/A: no runnable surface on this task]` and explain in one line, rather than omitting it.
 
-**The `**Visual:** yes` marker (generation contract).** A scenario may carry a `**Visual:** yes` marker line (alongside `**Priority:**`, and — for API scenarios — `**Type:** API`). The marker is a **generation-contract term**: a scenario carrying it receives the **visual treatment** at execution (a screenshot + geometry probes + a holistic vision review on the pass path, and a `**Visual:**` evidence sub-block in the report even on PASS — see `report-format.md`, same `resolve_content` reference as above); a scenario **without** it stays **DOM-only**, exactly as scenarios behave today (no screenshot on a passing path, one-line PASS). `qa-gen` **writes** the marker on the standing visual-baseline scenario above (and may add it to any spec-traced browser scenario whose criterion is inherently about rendered appearance); it does **not** know how the engine acts on it — the marker is the contract boundary. Keep the term written exactly as `**Visual:** yes` so the execution engine and the report format key off it consistently. **Scope boundary:** the marker requests *absolute* visual-defect detection only — never visual-regression / golden-image pixel-diffing.
+**The `**Visual:** yes` marker (generation contract).** A scenario may carry a `**Visual:** yes` marker line (alongside `**Priority:**`, and — for API scenarios — `**Type:** API`). The marker is a **generation-contract term**: a scenario carrying it receives the **visual treatment** at execution (a screenshot + geometry probes + a holistic vision review on the pass path, and a `**Visual:**` evidence sub-block in the report even on PASS — see `report-format.md`, same `resolve_content({ workspaceRoot, ... })` reference as above); a scenario **without** it stays **DOM-only**, exactly as scenarios behave today (no screenshot on a passing path, one-line PASS). `qa-gen` **writes** the marker on the standing visual-baseline scenario above (and may add it to any spec-traced browser scenario whose criterion is inherently about rendered appearance); it does **not** know how the engine acts on it — the marker is the contract boundary. Keep the term written exactly as `**Visual:** yes` so the execution engine and the report format key off it consistently. **Scope boundary:** the marker requests *absolute* visual-defect detection only — never visual-regression / golden-image pixel-diffing.
 
 ---
 
@@ -206,7 +208,7 @@ Obtain the ordered active registry as metadata from the `wf-resolver` MCP servic
 parameters:
 
 - **Firing phase:** `qa-generation`. **Contribution kind collected:** `scenario`.
-- **Call `resolve_registry`** on the `wf-resolver` service. It returns the ordered active
+- **Call `resolve_registry({ workspaceRoot, ... })`** on the `wf-resolver` service. It returns the ordered active
   `capabilities[]` (**in registry order**, general → specific), each already resolved from
   the registry and its `manifest.md`: `{ name, kind, manifestPath, fragments[] { phase,
   contributionKind, dispatch, scope }, articles[], provenance, validity }`. The resolver
@@ -217,9 +219,9 @@ parameters:
 - **Collect** only the fragment rows (across the returned `capabilities[]`, preserving
   registry order) whose `phase` is `qa-generation` and whose `contributionKind` is
   `scenario`. **Dispatch each on its `dispatch` metadata** (the metadata queries return
-  paths/metadata only; the fragment body comes from the resolver's `resolve_content`
+  paths/metadata only; the fragment body comes from the resolver's `resolve_content({ workspaceRoot, ... })`
   content surface, read prompt-free in this skill's own context): `inline: <rel-path>` →
-  obtain the fragment body via `resolve_content` (`class: fragment`, the capability name,
+  obtain the fragment body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`, the capability name,
   `ref: <rel-path>`) and follow it in-context; `subagent: <agent>` → invoke the **Task**
   tool with `subagent_type: <agent>`.
 - **Generic shape produced:** each contributed scenario in the same `TC-NNN` /
@@ -229,7 +231,7 @@ parameters:
   (the `name`); registry order is cosmetic. Place the aggregated capability
   suites **after** the spec suites and **before** Baseline health.
 
-**No-op:** if `resolve_registry` returns an empty `capabilities[]`, no fragment matches
+**No-op:** if `resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]`, no fragment matches
 `qa-generation` under the `scenario` kind, a dispatched fragment returns an empty list, or
 a `dispatch` is malformed, that contributor — or the whole phase — produces **nothing**
 and the generic plan stands alone (no capability-scenarios section, no
@@ -239,13 +241,13 @@ a spec-traced scenario, carrying its provenance tag.
 
 Write to `{task-root}/{task-id}/06_qa.md`. Overwrite if it exists — the task folder is excluded from version control, so there's no history to fall back on. Warn the user if the file already exists and contains scenarios with run results recorded.
 
-Emit the `06_qa.md` output template at `qa-template.md` (obtained via the resolver's `resolve_content` — `class: references-template`, `skill: qa-gen`, `ref: qa-template.md` — never a raw `Read` of the plugin-cache path) verbatim. Substitute placeholders. Don't invent extra sections.
+Emit the `06_qa.md` output template at `qa-template.md` (obtained via the resolver's `resolve_content({ workspaceRoot, ... })` — `class: references-template`, `skill: qa-gen`, `ref: qa-template.md` — never a raw `Read` of the plugin-cache path) verbatim. Substitute placeholders. Don't invent extra sections.
 
 ---
 
 ## Template: `06_qa.md`
 
-The verbatim output template — the coverage-matrix, browser-scenario, API-scenario, capability-scenario, and Baseline-health shapes the run-assistants parse — lives at `qa-template.md` (same `resolve_content` reference as above). It is read only on this write path, so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
+The verbatim output template — the coverage-matrix, browser-scenario, API-scenario, capability-scenario, and Baseline-health shapes the run-assistants parse — lives at `qa-template.md` (same `resolve_content({ workspaceRoot, ... })` reference as above). It is read only on this write path, so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 ---
 

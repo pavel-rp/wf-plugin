@@ -43,42 +43,44 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 - Append (not rewrite) `.gitignore`
 - Append (not rewrite) `.git/info/exclude`
 - Write the `## Capabilities` registry table to a **configured `registryPath`** location when `wf.config.js` sets one (a repo-relative file path that passes the Phase 0 defensive check) — this is the one sanctioned write outside `_local/`, since relocating the registry is the feature's whole purpose
-- Read-only resolution via the bundled `wf-resolver` MCP service (`resolve_config`, `resolve_registry`, `resolve_profile`), plus one explicit `resolve_refresh` call after Phase 2/2.5 write the config, registry, and profile seeds — never any other resolver write
+- Read-only resolution via the bundled `wf-resolver` MCP service (`resolve_config({ workspaceRoot: resolverWorkspaceRoot, ... })`, `resolve_registry({ workspaceRoot: resolverWorkspaceRoot, ... })`, `resolve_profile({ workspaceRoot: resolverWorkspaceRoot, ... })`), plus one explicit `resolve_refresh({ workspaceRoot: resolverWorkspaceRoot, ... })` call after Phase 2/2.5 write the config, registry, and profile seeds — never any other resolver write
 
 **Forbidden:**
 
 - Modify any source file **except** the writes named in the Allowed list above — i.e. anything other than files under `_local/`, the two exclude files (`.gitignore`, `.git/info/exclude`), and a configured `registryPath` registry location, all of which are explicitly permitted
 - Run builds, tests, linters, installs
-- Invoke a delivery write operation (`branch-create`, `commit`, `push-upstream`, `pr-create`) — init obtains the workspace root as a resolved fact from `resolve_config` (Phase 0), never by dispatching the delivery provider directly, and it never writes through the delivery provider
-- Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive a plugin's install root, a capability's manifest path, or a profile's override-merged values by hand — `resolve_config`/`resolve_registry`/`resolve_profile` already resolve them; if a fact is needed, call the tool that returns it
-- Call `register_pack` — that call registers one pack's own capability under a stable plugin id; `init` establishes the substrate those calls attach to, not a capability of its own
+- Invoke a delivery write operation (`branch-create`, `commit`, `push-upstream`, `pr-create`) — init obtains the workspace root as a resolved fact from `resolve_config({ workspaceRoot: resolverWorkspaceRoot, ... })` (Phase 0), never by dispatching the delivery provider directly, and it never writes through the delivery provider
+- Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive a plugin's install root, a capability's manifest path, or a profile's override-merged values by hand — `resolve_config({ workspaceRoot: resolverWorkspaceRoot, ... })`/`resolve_registry({ workspaceRoot: resolverWorkspaceRoot, ... })`/`resolve_profile({ workspaceRoot: resolverWorkspaceRoot, ... })` already resolve them; if a fact is needed, call the tool with `workspaceRoot: resolverWorkspaceRoot` and its other required arguments
+- Call `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })` — that call registers one pack's own capability under a stable plugin id; `init` establishes the substrate those calls attach to, not a capability of its own
 
 ---
 
 ## Phase 0: Preconditions
 
-1. **Call `resolve_config`** on the bundled `wf-resolver` MCP service. It returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }` in one typed query — the resolver's `R1` operation. It never depends on `_local/config.md` already existing: on a fresh repo `coreConfig`'s fields simply come back unset, which is exactly the state Phase 2 below fills in. `init` performs **no** direct `wf.config.js` parse, no `${CLAUDE_PLUGIN_ROOT}` probe, and no manual `## Capabilities`/manifest/fragment read to derive either fact — the resolver already did that work, the same way `plan`/`tasks`/`run` obtain it.
+1. **Derive `resolverWorkspaceRoot`** by running `pwd -P` in this Agent/session; use its absolute current workspace directory for `workspaceRoot` in **every** bundled resolver MCP call in this run. If this Agent is in a linked worktree, derive that worktree's own root; never reuse a parent Agent's root. Omitting `workspaceRoot` is a hard schema error — resolver MCP calls have no default or fallback root.
+
+2. **Call `resolve_config({ workspaceRoot: resolverWorkspaceRoot })`** on the bundled `wf-resolver` MCP service. It returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }` in one typed query — the resolver's `R1` operation. It never depends on `_local/config.md` already existing: on a fresh repo `coreConfig`'s fields simply come back unset, which is exactly the state Phase 2 below fills in. `init` performs **no** direct `wf.config.js` parse, no `${CLAUDE_PLUGIN_ROOT}` probe, and no manual `## Capabilities`/manifest/fragment read to derive either fact — the resolver already did that work, the same way `plan`/`tasks`/`run` obtain it.
 
    - **`workspaceRoot`** is the resolver's already-normalized `workspace-root-resolve` fact — a plain-directory value when no delivery provider is registered, since the resolver never dispatches a provider to compute it (it is a fixed, environment-supplied input to every snapshot, not derived per query). All paths below are relative to it.
    - **If the `wf-resolver` service is unavailable** (the tool call errors, or the MCP server isn't loaded), **stop**: "The `wf-resolver` service is not available — restart Claude Code so the bundled resolver MCP server loads." Never fall back to hand-parsing `wf.config.js` or the registry as a substitute (WF-272 diagnostics/recovery) — a broken resolver is a stop condition here, not a silent fallback.
 
-2. **Resolve the registry location from the returned `registryPath`.** Use this resolved location everywhere this skill writes or reads the registry — the Phase 2 table write and the Phase 2.5 seeding iteration below. When no `registryPath` override is configured, the resolver's own default is `_local/config.md`, so default behaviour is byte-identical to before this key existed. Record the registry-location state for the Final Output — `default` (no key), `configured` (a key that passed the defensive check below), or `rejected → fell back to default` (a key that failed it).
+3. **Resolve the registry location from the returned `registryPath`.** Use this resolved location everywhere this skill writes or reads the registry — the Phase 2 table write and the Phase 2.5 seeding iteration below. When no `registryPath` override is configured, the resolver's own default is `_local/config.md`, so default behaviour is byte-identical to before this key existed. Record the registry-location state for the Final Output — `default` (no key), `configured` (a key that passed the defensive check below), or `rejected → fell back to default` (a key that failed it).
 
-   **Defensive `registryPath` check (fallback).** The resolver extracts the raw `registryPath` string from `wf.config.js` but does not itself enforce its shape. Before resolving a write location from a non-default `registryPath`, confirm it is a **repo-relative, forward-slash file path** with **no** `..` segment and **no** absolute/drive prefix (no leading `/`, no `C:`-style prefix) — the shape the contract requires. If it violates that shape, do **not** resolve or write to it: fall back to the default `_local/config.md`, record the `rejected → fell back to default` state, and flag the rejected value loudly in the chat summary. Registry validation (WF-2's registry pass / WF-28) should reject such a value upstream; this is a defensive fallback so a configured `registryPath` can never make `init` write outside the resolved workspace root that repo-relative path is resolved against, even if that validation has not run — mirroring the Phase 2.5 defensive token check. (A passing `registryPath` may resolve outside `_local/` — that relocated registry write is the sanctioned exception in the Safety Rules above.)
+   **Defensive `registryPath` check (fallback).** The resolver extracts the raw `registryPath` string from `wf.config.js` but does not itself enforce its shape. Before resolving a write location from a non-default `registryPath`, confirm it is a **repo-relative, forward-slash file path** with **no** `..` segment and **no** absolute/drive prefix (no leading `/`, no `C:`-style prefix) — the shape the contract requires. Then canonicalize the target if it exists, or its nearest existing ancestor if it does not, and require that canonical path to remain under the canonical `resolverWorkspaceRoot`; this catches a repo-relative path that escapes through a symlink. If either check fails, do **not** resolve or write to it: fall back to the default `_local/config.md`, record the `rejected → fell back to default` state, and flag the rejected value loudly in the chat summary. Registry validation (WF-2's registry pass / WF-28) should reject a bad lexical shape upstream; these checks are the defensive fallback that prevents a configured `registryPath` from making `init` write outside the resolved workspace root even when validation has not run — mirroring the Phase 2.5 defensive token check. (A passing `registryPath` may resolve outside `_local/` but remains inside the workspace — that relocated registry write is the sanctioned exception in the Safety Rules above.)
 
 ---
 
 ## Phase 1: Create `_local/`
 
 - If the directory is missing, create it.
-- If it already exists as a directory, continue — do not clobber.
+- If it already exists as a directory, canonicalize it and require that it remains under canonical `resolverWorkspaceRoot`; if `_local` is a symlink to a directory outside the workspace, stop before any write and report the escape.
 - If `_local` exists as a regular file (not a directory), stop and report the conflict.
 
 ---
 
 ## Phase 2: Write `_local/config.md`
 
-> The config template below carries the `## Capabilities` registry table. Its destination is the **Phase 0 resolved registry location** (§Phase 0 step 2), not whether `registryPath` is set. Two named cases, reused below: the **same-file case** — resolved location **is** `_local/config.md` (the `default`, `rejected → fell back to default`, and a `configured` value that points back at `_local/config.md`) — where the table rides inside the config template; and the **relocated case** — resolved location is a **different** file — where the `## Capabilities` table is written there instead, and the rest of the config template still goes to `_local/config.md`. **Same-file case ⇒ the registry stays there, byte-identical to before.**
+> The config template below carries the `## Capabilities` registry table. Its destination is the **Phase 0 resolved registry location** (§Phase 0 step 3), not whether `registryPath` is set. Two named cases, reused below: the **same-file case** — resolved location **is** `_local/config.md` (the `default`, `rejected → fell back to default`, and a `configured` value that points back at `_local/config.md`) — where the table rides inside the config template; and the **relocated case** — resolved location is a **different** file — where the `## Capabilities` table is written there instead, and the rest of the config template still goes to `_local/config.md`. **Same-file case ⇒ the registry stays there, byte-identical to before.**
 
 > **The two writes skip independently**, each guarded by its **own** skip-if-present check keyed on its own resolved destination — so re-running after the registry was pointed elsewhere still creates the registry where it now belongs:
 > - **Same-file case:** the table rides inside the config template, so the single `_local/config.md` skip below covers it.
@@ -93,7 +95,7 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 
 ### Default content
 
-The verbatim `_local/config.md` default content — the `## Task Folders`, `## Build / Verify`, `## QA`, `## Seed`, `## Standup`, and `## Capabilities` sections — lives at `config-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: init`, `ref: config-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 2), so it stays out of the boot body. Follow it, then write it substituting the detected Verify Command and the current model id. **Strip the `<!-- init directive … -->` HTML comment before writing** (per "Strip the authoring aid" above), and apply the "One registry, never two" rule to where the `## Capabilities` section lands.
+The verbatim `_local/config.md` default content — the `## Task Folders`, `## Build / Verify`, `## QA`, `## Seed`, `## Standup`, and `## Capabilities` sections — lives at `config-template.md`, obtained via `resolve_content({ workspaceRoot: resolverWorkspaceRoot, class: "references-template", skill: "init", ref: "config-template.md" })`, never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 2), so it stays out of the boot body. Follow it, then write it substituting the detected Verify Command and the current model id. **Strip the `<!-- init directive … -->` HTML comment before writing** (per "Strip the authoring aid" above), and apply the "One registry, never two" rule to where the `## Capabilities` section lands.
 
 After writing, tell the user to review `_local/config.md` — especially the detected `Verify Command` — and edit values for the current project if they differ from the defaults. The keys must not change — only the values.
 
@@ -134,7 +136,7 @@ The goal is a single shell command that exits 0 when the whole project typecheck
 
 Record the chosen rule (and the rejected candidates, if any) in the chat summary so the user can see the reasoning without reading config.md.
 
-> Registry location (`registryPath`) is resolved once in Phase 0 step 2 — see there for the rule.
+> Registry location (`registryPath`) is resolved once in Phase 0 step 3 — see there for the rule.
 
 ---
 
@@ -142,7 +144,7 @@ Record the chosen rule (and the rejected candidates, if any) in the chat summary
 
 After the `## Capabilities` registry table exists (Phase 2) and before the constitution is established (Phase 7), execute the **profile-seeding convention** defined in `plugins/wf/skills/_contracts/capability-registry.contract.md` (§"The profile-seeding convention"). Do **not** re-derive its rules here — follow the convention **by name**; this phase only invokes it for every registered capability, obtained from the `wf-resolver` MCP service rather than a hand-rolled registry/manifest/plugin-root read.
 
-1. **Call `resolve_registry`** on the `wf-resolver` service. It returns the ordered active `capabilities[]`, each already resolved from the registry and its `manifest.md` — **including plugin-anchored self-heal** — as `{ name, kind, resolvedPath, manifestPath, validity, profileTemplatePath, … }`. No manual `## Capabilities` read, no `## Plugin Roots` lookup, no manifest `Read`: the resolver already performed the registry iteration, the per-capability manifest read, and the plugin-root resolution.
+1. **Call `resolve_registry({ workspaceRoot: resolverWorkspaceRoot })`** on the `wf-resolver` service. It returns the ordered active `capabilities[]`, each already resolved from the registry and its `manifest.md` — **including plugin-anchored self-heal** — as `{ name, kind, resolvedPath, manifestPath, validity, profileTemplatePath, … }`. No manual `## Capabilities` read, no `## Plugin Roots` lookup, no manifest `Read`: the resolver already performed the registry iteration, the per-capability manifest read, and the plugin-root resolution.
    - **Empty `capabilities[]` ⇒ seed nothing** — no destination is created. This is the inert no-op; report "none" in the Final Output. (Matches the contract's no-op-when-absent rule.)
 
 2. **Per capability, read `validity` and `profileTemplatePath`.**
@@ -170,13 +172,13 @@ After the `## Capabilities` registry table exists (Phase 2) and before the const
 
 ## Phase 2.6: Inform the resolver
 
-Phase 2 and Phase 2.5 are the writes that mutate the resolution substrate the `wf-resolver` snapshot models — `_local/config.md`, the `## Capabilities` registry (in the same-file or relocated case), and any seeded `_local/profiles/*.profile.json` overrides. Every typed resolver query already re-validates its recorded input fingerprints and rebuilds on a mismatch, so the very next `resolve_*` call would pick these writes up regardless of this step — but `init` informs the resolver explicitly anyway, the same way a pack's own `register_pack` call folds a refresh into its own registration write, so Phase 6 and Phase 7 (and any skill run afterward) never rely on incidental fingerprint recomputation.
+Phase 2 and Phase 2.5 are the writes that mutate the resolution substrate the `wf-resolver` snapshot models — `_local/config.md`, the `## Capabilities` registry (in the same-file or relocated case), and any seeded `_local/profiles/*.profile.json` overrides. Every typed resolver query already re-validates its recorded input fingerprints and rebuilds on a mismatch, so the very next `resolve_*` call would pick these writes up regardless of this step — but `init` informs the resolver explicitly anyway, the same way a pack's own `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })` call folds a refresh into its own registration write, so Phase 6 and Phase 7 (and any skill run afterward) never rely on incidental fingerprint recomputation.
 
-1. **Call `resolve_refresh`** with `reasons: ["/wf:init wrote _local/config.md, the capability registry, and profile seeds"]`. It rebuilds the snapshot from the now-current files and returns the fresh lifecycle state — `{ valid, counts{ capabilities, packs, providers }, diagnostics[] }`.
+1. **Call `resolve_refresh({ workspaceRoot: resolverWorkspaceRoot, reasons: ["/wf:init wrote _local/config.md, the capability registry, and profile seeds"] })`.** It rebuilds the snapshot from the now-current files and returns the fresh lifecycle state — `{ valid, counts{ capabilities, packs, providers }, diagnostics[] }`.
 2. **On success**, note the returned `counts.capabilities` for the chat summary.
 3. **On failure, or when the service is unavailable, do not stop `init`** — the writes already landed on disk, and the resolver's own fingerprint-driven freshness rebuilds on the next natural query even without this call. Flag in the chat summary that the explicit refresh didn't confirm and suggest `/wf:resolve refresh` (WF-272 diagnostics/recovery) — never fall back to re-deriving the registry by hand to "confirm" it.
 
-This is `init`'s only resolver **write-adjacent** call. It never calls `register_pack`: that call registers one pack's own capability under a stable plugin id, whereas `init` establishes the substrate those calls attach to — the empty (or project-clause-only) registry a pack's own init later registers into.
+This is `init`'s only resolver **write-adjacent** call. It never calls `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })`: that call registers one pack's own capability under a stable plugin id, whereas `init` establishes the substrate those calls attach to — the empty (or project-clause-only) registry a pack's own init later registers into.
 
 ---
 
@@ -237,10 +239,10 @@ resolved registry + capability profiles** — it **keys on the presence of the
 `test-host-root` profile field, never on any capability name.** Model the loop shape and
 the no-name discipline on Phase 2.5 above and `verify-spec`'s registry iteration.
 
-1. **Call `resolve_registry`** on the `wf-resolver` service and iterate the returned
+1. **Call `resolve_registry({ workspaceRoot: resolverWorkspaceRoot })`** on the `wf-resolver` service and iterate the returned
    `capabilities[]` **in order**. **Empty `capabilities[]` ⇒ skip silently** (the inert
    no-op — nothing is appended). No manual `## Capabilities` read.
-2. **Per capability, call `resolve_profile(<name>)`.** It returns the override-merged
+2. **Per capability, call `resolve_profile({ workspaceRoot: resolverWorkspaceRoot, capability: <name> })`.** It returns the override-merged
    profile **values** directly — override `_local/profiles/<name>.profile.json` > the
    capability's default template, the resolver already applying that precedence. No manual
    manifest read, no `## Plugin Roots` lookup, no hand-merge.

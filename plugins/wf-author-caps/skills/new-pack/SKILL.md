@@ -6,6 +6,8 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion]
 
 # /wf-author-caps:new-pack — interview in, registerable pack out
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 Turns a set of validated answers into a real `plugins/<pack>/` tree that installs, registers itself,
 and passes the same gates the repository's own pull-request checks apply. It emits **finished files,
 never a template** — no `TODO` survives to the author, and no artifact is handed back with a
@@ -94,7 +96,7 @@ re-asked when it fails.
 
 This skill follows the plugin's shared scaffolder loop — interview → emit → self-lint →
 fix-and-re-run → hand back only clean. **That loop is the single rule source and is not restated
-here.** Obtain it through the resolver's `resolve_content` (`class: references-template`,
+here.** Obtain it through the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`,
 `plugin: wf-author-caps`, `skill: new-skill`, `ref: scaffolder-loop.md`) and follow it, supplying the
 three pack-specific inputs below. Never reach it by a raw `Read` of the plugin-cache path.
 
@@ -139,15 +141,15 @@ defect, not a convenience.
 pack-specific step, the self-check, and a fenced final block as the very last thing emitted. Its
 mechanics are the typed resolver tools, exactly as the toolkit's own init demonstrates:
 
-- Confirm a git repository and the resolved registry location via `resolve_config`; when the registry
+- Confirm a git repository and the resolved registry location via `resolve_config({ workspaceRoot })`; when the registry
   file is absent, stop and direct the author to run core's own init first.
-- Call `resolve_registry` for prior state — reporting only, never a skipped step.
-- Call `inspect_pack({ pluginId: "<pack-name>" })` with the **stable plugin id**. On `valid: false`,
+- Call `resolve_registry({ workspaceRoot })` for prior state — reporting only, never a skipped step.
+- Call `inspect_pack({ pluginId: "<pack-name>", workspaceRoot })` with the **stable plugin id**. On `valid: false`,
   take the failure path and **do not** call `register_pack`, so nothing is written.
 - Call `register_pack({ pluginId: "<pack-name>", expectedFingerprint: <the fingerprint inspect_pack
-  returned> })`. It owns the `## Plugin Roots` row, the `## Capabilities` row, the snapshot refresh,
+  returned>, workspaceRoot })`. It owns the `## Plugin Roots` row, the `## Capabilities` row, the snapshot refresh,
   and the self-check in one write.
-- On any failure, call `resolve_gate({ surface: "delivery-write" })` and report its categories,
+- On any failure, call `resolve_gate({ surface: "delivery-write", workspaceRoot })` and report its categories,
   diagnostics, and recovery alongside the typed reason — never a bare error, and never a claim of
   success.
 
@@ -170,18 +172,18 @@ repository's content-read guard.
 Run all of these, over the emitted set, on every pass. Map `pass` / `fail` / `error` exactly as the
 loop's table says; `error` is never a pass.
 
-- **The manifest validator** — the resolver's `validate_manifest`, targeted at the emitted
+- **The manifest validator** — the resolver's `validate_manifest({ path: <emitted manifest>, workspaceRoot })`, targeted at the emitted
   `manifest.md`. It checks the schema-v2 shape: the declared kind, that every row names a phase and
   contribution kind core actually defines, and that a partitioned row carries its scope.
-- **The registry validator** — the resolver's `validate_registry`, which takes no arguments and
+- **The registry validator** — the resolver's `validate_registry({ workspaceRoot })` and
   checks the emitted manifest against the whole active registry: name uniqueness, declared paths
   resolving, `requires:` satisfied and `conflicts:` not both active, no contradictory `article:`
   clause, and no ownership scope overlapping an already-active capability's.
 - **The interface-marker validator** — the resolver's `validate_skill_interface` with
-  `{ plugin: <pack-name>, skill: "init" }`. An init emitted with no declared slots and no markers is
+  `{ plugin: <pack-name>, skill: "init", workspaceRoot }`. An init emitted with no declared slots and no markers is
   inert by construction and passes clean — the expected verdict, which must still be obtained by
   running the tool rather than assumed.
-- **The reference-existence validator** — the resolver's `validate_references`, targeted at the
+- **The reference-existence validator** — the resolver's `validate_references({ path: <emitted skill>, workspaceRoot })`, targeted at the
   emitted init skill. Rule id `REF-1`. This is the check that proves the emitted init's resolver-tool
   references resolve, so it is never skipped on a pack emission. Its classifier flags **narrated**
   invocations as well as directive ones, so an emitted body must never embed a live-looking
@@ -193,11 +195,11 @@ loop's table says; `error` is never a pass.
   bash <wf-plugin-root>/skills/_contracts/glossary-lint.sh <emitted-files>
   ```
 
-  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root` for the `wf` plugin.
+  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root({ plugin: "wf", workspaceRoot })`.
 
 - **The plugin-manifest check** — `claude plugin validate` over the emitted pack. A type mismatch
   fails; an unrecognised key warns.
-- **The composition preview** — the resolver's `preview_composition`, for each phase the emitted
+- **The composition preview** — the resolver's `preview_composition({ phase: <declared phase>, workspaceRoot })`, for each phase the emitted
   capability declares a row at. This is **not** a `ValidationVerdict`: it returns
   `{ tool, phase, entries, capabilitiesConsidered, phasesCovered, renderedFrom, summary }` and has no
   `status` field to map. It is **informational** — a freshly emitted, not-yet-registered capability

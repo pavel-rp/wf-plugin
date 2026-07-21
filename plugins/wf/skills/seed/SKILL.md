@@ -1,7 +1,7 @@
 ---
 name: seed
 description: Parses an architecture or design doc's action-items checklist into an append-only local backlog under _local/, minting a local T-prefixed id per item with metadata and a resolvable doc reference so a later /wf:spec has grounded context. Use once per architecture or design doc to turn its action items into tracked task stubs before running /wf:spec on each — re-runnable, appending only newly-added items without clobbering existing entries.
-allowed-tools: [Read, Write, Edit, Glob, Grep]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 ---
 
 # /wf:seed — Turn an architecture doc's action items into a local backlog
@@ -14,9 +14,11 @@ Parse an architecture or design doc's action-items checklist into an append-only
 
 ## Prerequisites
 
-**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, seedArchitectureDoc, seedBacklogPath, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. `{task-root}` and the two `## Seed` values below come from `coreConfig` (`coreConfig.taskRoot`, `coreConfig.seedArchitectureDoc`, `coreConfig.seedBacklogPath`) — never hardcode them. An older config that predates the `## Seed` section is handled gracefully (see Phase 1): the resolver surfaces a missing key as an unset `coreConfig` value — an unset value is a fallback, not an error.
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
 
-**Config values** (surfaced by `resolve_config` from the `## Seed` section of `_local/config.md`):
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, seedArchitectureDoc, seedBacklogPath, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. `{task-root}` and the two `## Seed` values below come from `coreConfig` (`coreConfig.taskRoot`, `coreConfig.seedArchitectureDoc`, `coreConfig.seedBacklogPath`) — never hardcode them. An older config that predates the `## Seed` section is handled gracefully (see Phase 1): the resolver surfaces a missing key as an unset `coreConfig` value — an unset value is a fallback, not an error.
+
+**Config values** (surfaced by `resolve_config({ workspaceRoot, ... })` from the `## Seed` section of `_local/config.md`):
 
 - **`coreConfig.seedArchitectureDoc`** (the **Architecture Doc** key) — the default doc parsed when `/wf:seed` is called with no `<doc>` argument.
 - **`coreConfig.seedBacklogPath`** (the **Backlog Path** key) — the backlog file to write/append. Unset → fall back to `{task-root}/BACKLOG.md`.
@@ -52,7 +54,7 @@ Reach for `/wf:seed` when an architecture or design doc carries an action-items 
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
-- Obtain `{task-root}` and the `## Seed` values from the `wf-resolver` `resolve_config` query (`coreConfig`).
+- Obtain `{task-root}` and the `## Seed` values from the `wf-resolver` `resolve_config({ workspaceRoot, ... })` query (`coreConfig`).
 - Write/create and append the backlog artifact **inside `_local/`** only.
 
 **Forbidden:**
@@ -65,7 +67,7 @@ Reach for `/wf:seed` when an architecture or design doc carries an action-items 
 
 ## Phase 1: Resolve inputs
 
-1. **Resolve config.** From `resolve_config`'s `coreConfig`, read `{task-root}` (`coreConfig.taskRoot`) and the `## Seed` values (`coreConfig.seedArchitectureDoc`, `coreConfig.seedBacklogPath`). If a `## Seed` value is unset (an older config predating the section), degrade gracefully — do not error:
+1. **Resolve config.** From `resolve_config({ workspaceRoot, ... })`'s `coreConfig`, read `{task-root}` (`coreConfig.taskRoot`) and the `## Seed` values (`coreConfig.seedArchitectureDoc`, `coreConfig.seedBacklogPath`). If a `## Seed` value is unset (an older config predating the section), degrade gracefully — do not error:
    - **`coreConfig.seedArchitectureDoc`** unset **and** no `<doc>` argument → stop per `## Edge Cases` ("no doc resolved").
    - **`coreConfig.seedBacklogPath`** unset → use `{task-root}/BACKLOG.md`.
 2. **Resolve the doc.** `<doc>` argument if given, else the **Architecture Doc** key. Read it. If it can't be read (missing/unreadable), stop per `## Edge Cases`.

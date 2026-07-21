@@ -16,7 +16,9 @@ The **review-address loop is out of scope** for this skill's own behaviour — `
 
 ## Prerequisites
 
-**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). `{task-root}` below comes from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). `{task-root}` below comes from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
 
 ---
 
@@ -35,7 +37,7 @@ The **review-address loop is out of scope** for this skill's own behaviour — `
 
 ### Zero-argument default
 
-Invoked with no id, `ship` infers the task from the current branch — resolve the current branch via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query), extract the first 3+-digit run as a token, and resolve that token against `{task-root}` by applying the same first-3+-digit-run extraction to each existing task folder's name (matching both a tracker-prefixed shape and the local `T<NNN>` scheme). **Exactly one match** — reuse that folder's full name as `{task-id}`. **More than one / zero matches / no extractable token** — stop and ask for an explicit id: `/wf:ship <id>`. Require an explicit id only when inference fails.
+Invoked with no id, `ship` infers the task from the current branch — resolve the current branch via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query), extract the first 3+-digit run as a token, and resolve that token against `{task-root}` by applying the same first-3+-digit-run extraction to each existing task folder's name (matching both a tracker-prefixed shape and the local `T<NNN>` scheme). **Exactly one match** — reuse that folder's full name as `{task-id}`. **More than one / zero matches / no extractable token** — stop and ask for an explicit id: `/wf:ship <id>`. Require an explicit id only when inference fails.
 
 ---
 
@@ -43,10 +45,10 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 
 **Allowed:**
 
-- Read the task folder and its artifacts; obtain config via the `wf-resolver` `resolve_config` query.
-- Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query).
-- Resolve the `delivery` surface once via the `wf-resolver` `resolve_provider("delivery")` query, and invoke its **read** operations — `pr-detect` and `checks-read` — by obtaining each op's body via `resolve_content` (`class: fragment`) and following it in this skill's own context.
-- Resolve the `ship.review` slot (Phase 4.5) via `resolve_content` (`class: slot`, `skill: ship`, `point: review`), and — only on a `composed` outcome — follow the served body as prose in this skill's own context.
+- Read the task folder and its artifacts; obtain config via the `wf-resolver` `resolve_config({ workspaceRoot, ... })` query.
+- Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config({ workspaceRoot, ... })` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query).
+- Resolve the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, and invoke its **read** operations — `pr-detect` and `checks-read` — by obtaining each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`) and following it in this skill's own context.
+- Resolve the `ship.review` slot (Phase 4.5) via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: ship`, `point: review`), and — only on a `composed` outcome — follow the served body as prose in this skill's own context.
 - Invoke the sibling `wf:*` commands this skill drives through the **Skill** tool: `/wf:branch`, `/wf:run` (and each gated `/wf:*` command `/wf:run` names in its handoff), `/wf:pr`, and `/wf:tf`.
 
 **Forbidden:**
@@ -64,7 +66,7 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 
 1. **Resolve `{task-id}`** — use the `<id>` argument verbatim when passed; otherwise infer it per the zero-argument default above. Stop with a `SHIP — Blocked` block (ending in `Next: /wf:ship <id>`) if inference cannot yield exactly one task folder.
 
-2. **Require a delivery provider.** Call the `wf-resolver` `resolve_provider("delivery")` query once; hold its run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. Unlike `/wf:tf` — which degrades to a local-only finalize — `ship` has **nothing to merge** without a delivery provider, so a missing one is a hard stop, not a degrade:
+2. **Require a delivery provider.** Call the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query once; hold its run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. Unlike `/wf:tf` — which degrades to a local-only finalize — `ship` has **nothing to merge** without a delivery provider, so a missing one is a hard stop, not a degrade:
    - `state: unconfigured` (no capability owns `delivery`) → **`SHIP — Blocked`**: "No delivery provider is registered — nothing to open or merge. Register a capability that owns the `delivery` surface." **No partial merge, no phase driven.** Stop.
    - `state: unrecoverable` (a registered capability's manifest is unrecoverable) → **`SHIP — Blocked`**, naming the record's `diagnostics` pack as a hedged candidate ("if this is your `delivery` provider, fix its stale root / re-run its init"). Stop.
    - Otherwise hold the record for the delivery reads in Phases 3–4.
@@ -90,13 +92,13 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 
 1. **Open it.** Invoke `/wf:pr <id>` through the Skill tool — it commits and pushes any pending work and opens the pull request through the delivery provider. Read its `PR —` block; on its error state → `SHIP — Blocked`, surface the reason, stop.
 
-2. **Confirm it exists.** Invoke the delivery `pr-detect` operation (obtain its body via `resolve_content` from the Phase-1 record and follow it) for the task branch. If no open pull request is found → `SHIP — Blocked` ("`/wf:pr` opened no pull request for the task branch"), stop — never fabricate one. Otherwise capture the pull request reference for the phases below.
+2. **Confirm it exists.** Invoke the delivery `pr-detect` operation (obtain its body via `resolve_content({ workspaceRoot, ... })` from the Phase-1 record and follow it) for the task branch. If no open pull request is found → `SHIP — Blocked` ("`/wf:pr` opened no pull request for the task branch"), stop — never fabricate one. Otherwise capture the pull request reference for the phases below.
 
 ---
 
 ## Phase 4: Wait for the delivery checks to settle
 
-Never merge a red or unsettled pull request. Invoke the delivery `checks-read` operation for the pull request (obtain its body via `resolve_content` from the Phase-1 record and follow it) and evaluate the returned check states:
+Never merge a red or unsettled pull request. Invoke the delivery `checks-read` operation for the pull request (obtain its body via `resolve_content({ workspaceRoot, ... })` from the Phase-1 record and follow it) and evaluate the returned check states:
 
 - **No checks configured** (an empty check set) → vacuously settled and green; proceed.
 - **All checks passing** → settled and green; proceed.
@@ -107,7 +109,7 @@ The cap keeps the wait bounded so an unattended run can never hang indefinitely;
 
 ## Phase 4.5: Review attachment point (the `ship.review` slot)
 
-This is the declared `ship.review` composition point — between green checks and the merge — where a review-address step attaches (declared in `skills/ship/interface.md`, merge policy `replace`). Resolve it lazily with **one** call: `resolve_content` with `class: slot`, `skill: ship`, `point: review`. Act on the typed outcome — never improvise a review step at this marker:
+This is the declared `ship.review` composition point — between green checks and the merge — where a review-address step attaches (declared in `skills/ship/interface.md`, merge policy `replace`). Resolve it lazily with **one** call: `resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: ship`, `point: review`. Act on the typed outcome — never improvise a review step at this marker:
 
 - **`{status: unfilled}`** (no slot contribution registered and no personal `_local/slots/ship.review.md` override — the state whenever no review capability is registered) → execute **exactly** the inline-default region below, then proceed to Phase 5. No reviewer is driven and no review finding is addressed — the checks-green state from Phase 4 carries into the merge unchanged.
 - **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content` as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale), then proceed to Phase 5.

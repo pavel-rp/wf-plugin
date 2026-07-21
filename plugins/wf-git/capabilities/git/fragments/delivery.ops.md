@@ -114,7 +114,7 @@
 
 **Procedure:**
 
-1. `git rev-parse --show-toplevel`.
+1. `pwd -P`.
 2. Success → that absolute path. Failure (not inside a git working tree) → a genuine **environment error** for a *registered* provider to surface plainly — distinct from core's no-provider plain-directory fallback, which this file does not implement.
 
 **Output:** the absolute workspace root, or a plain environment error.

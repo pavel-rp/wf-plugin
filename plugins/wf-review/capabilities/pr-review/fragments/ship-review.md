@@ -1,5 +1,7 @@
 # ship.review — the pre-merge review gate (slot fill)
 
+
+Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
 The `pr-review` capability's fill for the `ship.review` slot (`replace` policy). `ship`
 reaches this point **after** Phase 4 has confirmed the delivery checks green and **before**
 Phase 5 merges. Because this is a `replace` fill it **supersedes** `ship`'s inline default
@@ -17,7 +19,7 @@ made after an API read-back at HEAD_SHA was actually performed.
 
 **Host access.** Every read/write below is a `delivery`-surface operation. `ship` already
 resolved the `delivery` provider (its Phase 1 record); obtain each operation's body via
-`resolve_content` (`class: fragment`) from that record and follow it in-context — name no
+`resolve_content` (`workspaceRoot`, `class: fragment`) from that record and follow it in-context — name no
 concrete host tool here. The operations this gate uses: `review-threads-read` (HEAD_SHA-scoped
 finding-thread read), `pr-comments-read` (review-summary presence + reviewed-file signal), and
 `review-thread-reply` (per-thread reply keyed by the thread node id). Verifying a finding

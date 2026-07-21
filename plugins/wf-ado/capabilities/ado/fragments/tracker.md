@@ -13,8 +13,11 @@ records how firmly each is grounded.
 
 ## How a core skill reaches this provider
 
-A core skill reaches the runtime-ops half through **direct provider resolution**: it
-resolves the registry row where `contribution-kind = provider AND scope = tracker`, sees
+A core skill reaches the runtime-ops half through **direct provider resolution**: before resolver
+MCP calls it runs `pwd -P` and explicitly passes the returned absolute current Agent/session
+workspace directory as `workspaceRoot`; in a linked-worktree Agent, that cwd is its own worktree,
+never an inherited parent root. Omission is a hard schema error with no default or fallback. It then resolves the registry row where
+`contribution-kind = provider AND scope = tracker`, sees
 `dispatch: inline: fragments/tracker.ops.md`, reads that file, and **follows it
 in-context**. No subagent is spawned; there is no phase-firing gate — any core skill, at
 any point in its own procedure, may invoke any operation. The full procedure this reuses
@@ -80,7 +83,7 @@ it.
 - **Configured/unconfigured gate is behaviour-bearing, so it lives in the ops file.** It
   decides whether the tracker is live or the run degrades to the silent local-only
   fallback — not rationale, an outcome. **WF-280:** the registry-location half now comes
-  from the bundled `wf-resolver` MCP tool's typed `resolve_config` query (`registryPath`),
+  from the bundled `wf-resolver` MCP tool's typed `resolve_config({ workspaceRoot: <current Agent/session absolute workspace directory> })` query (`registryPath`),
   instead of assuming the `_local/config.md` literal — a project's `wf.config.js` may
   relocate it. Only the Azure DevOps section's own values remain a direct local read: the
   resolver's snapshot has a `providerConfig` field reserved for exactly this (consumer

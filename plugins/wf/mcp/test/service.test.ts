@@ -10,7 +10,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { resolveSnapshot } from "../src/resolver/engine.js";
+import { resolveContainedRegistryWritePath } from "../src/ports.js";
 import { normalizeSlashes, joinSlash } from "../src/resolver/paths.js";
 import { parsePluginList } from "../src/resolver/plugin-list.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
@@ -67,6 +71,7 @@ const DISABLED_LIST = JSON.stringify([
 function makePorts(opts?: {
   pluginList?: string | null;
   files?: Record<string, string>;
+  registryPath?: string;
 }): ResolverServicePorts & {
   counts: { resolveFresh: number; persist: number; writeFile: number };
   files: Map<string, string>;
@@ -126,7 +131,7 @@ function makePorts(opts?: {
       pluginListRaw === null
         ? { plugins: [], ok: false }
         : { plugins: parsePluginList(pluginListRaw).plugins, ok: true },
-    registryRelPath: () => "_local/config.md",
+    registryRelPath: () => opts?.registryPath ?? "_local/config.md",
   };
 }
 
@@ -278,6 +283,48 @@ test("register_pack rejects a pack with no readable manifest without writing", (
   assert.equal(reg.status, "rejected");
   assert.match(reg.reason ?? "", /path-invalid or manifest-invalid/);
   assert.equal(ports.counts.writeFile, 0);
+});
+
+test("register_pack rejects invalid registryPath shapes without writing", () => {
+  const cases = [
+    ["../outside.md", /\.\.' segment/],
+    ["/outside.md", /absolute path/],
+    ["C:/outside.md", /drive-prefixed path/],
+    ["_local\\config.md", /backslash/],
+  ] as const;
+
+  for (const [registryPath, reason] of cases) {
+    const ports = makePorts({ registryPath });
+    const svc = new ResolverService(ports);
+    const inspected = svc.inspectPack("wf-demo@local");
+    const registered = svc.registerPack("wf-demo@local", inspected.fingerprint!);
+    assert.equal(registered.status, "rejected", registryPath);
+    assert.match(registered.reason ?? "", reason, registryPath);
+    assert.equal(ports.counts.writeFile, 0, registryPath);
+  }
+});
+
+test("register_pack rejects a symlink escape before mutation", () => {
+  const fixture = mkdtempSync(join(tmpdir(), "wf-registry-containment-"));
+  try {
+    const workspace = join(fixture, "workspace");
+    const outside = join(fixture, "outside");
+    mkdirSync(workspace);
+    mkdirSync(outside);
+    symlinkSync(outside, join(workspace, "linked"), "junction");
+
+    const ports = makePorts({ registryPath: "linked/config.md" });
+    ports.resolveRegistryWritePath = (registryPath) =>
+      resolveContainedRegistryWritePath(workspace, registryPath);
+    const svc = new ResolverService(ports);
+    const inspected = svc.inspectPack("wf-demo@local");
+    const registered = svc.registerPack("wf-demo@local", inspected.fingerprint!);
+    assert.equal(registered.status, "rejected");
+    assert.match(registered.reason ?? "", /escapes the selected workspace/);
+    assert.equal(ports.counts.writeFile, 0);
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
 });
 
 // --- inspect_pack graceful CLI-unavailable --------------------------------

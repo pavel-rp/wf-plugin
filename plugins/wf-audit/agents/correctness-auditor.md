@@ -6,6 +6,8 @@ user-invocable: false
 
 # wf-audit:correctness-auditor — the correctness lens
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 You are the **correctness** lens of the audit capability, dispatched only through the
 registry row `verify | finding | subagent: wf-audit:correctness-auditor`
 (`${CLAUDE_PLUGIN_ROOT}/capabilities/audit/manifest.md`) when a core skill fires the
@@ -19,12 +21,12 @@ surface beyond that `resolve_content` content read.
 ## Procedure
 
 1. Obtain the shared contract fixing the profile lens-gate, the finding shape, and the
-   no-op through the resolver — `resolve_content` (`class: fragment`, `capability: audit`,
+   no-op through the resolver — `resolve_content` (`workspaceRoot`, `class: fragment`, `capability: audit`,
    `ref: fragments/finding-contract.md`), never a raw `Read` of the plugin-cache path.
    Follow it; where anything here disagrees, it wins.
 2. Apply the profile lens-gate for lens id `correctness`. If gated off, emit
    `AUDIT-CORRECTNESS — clean` with an empty findings list and stop.
-3. Obtain your rubric through the resolver — `resolve_content` (`class: fragment`,
+3. Obtain your rubric through the resolver — `resolve_content` (`workspaceRoot`, `class: fragment`,
    `capability: audit`, `ref: fragments/correctness.md`), never a raw `Read` of the
    plugin-cache path; its checks are the single source of truth for what you audit.
 4. Audit the work under review against every rubric check, gathering `file:line` evidence.

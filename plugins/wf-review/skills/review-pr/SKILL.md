@@ -6,6 +6,8 @@ allowed-tools: [Read, Grep, Glob, Bash, Task]
 
 # /wf-review:review-pr — Review a PR, post only verified findings
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 Reviews the changeset a PR introduces and posts feedback the author can act on. This is a
 **native, user-invoked** feature skill: it fills no core seam and is reachable purely by
 installing the wf-review pack. It reaches the host **only** through the active **delivery**
@@ -24,10 +26,10 @@ not a finding until the code confirms it. No speculation reaches the author.
 ## Prerequisites
 
 Confirm the project is initialized by calling the bundled `wf-resolver` MCP service's
-`resolve_config` query — it returns `{ workspaceRoot, registryPath, coreConfig{…}, idShape }`,
+`resolve_config({ workspaceRoot })` query — it returns `{ workspaceRoot, registryPath, coreConfig{…}, idShape }`,
 already resolved (this skill performs **no** direct `_local/config.md` parse and **no**
 `## Capabilities` registry read of its own — the delivery provider is resolved via
-`resolve_provider("delivery")` below). If `resolve_config` returns no usable project config —
+`resolve_provider({ surface: "delivery", workspaceRoot })` below). If `resolve_config` returns no usable project config —
 an empty `coreConfig` with no `taskRoot` (the signal that `_local/config.md` is absent / the
 repo is uninitialized) — stop: "Run `/wf:init` first." If the `wf-resolver` service is
 unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) —
@@ -54,8 +56,8 @@ Zero-argument invocation reviews the PR for the current branch.
 
 **Allowed:**
 
-- Call the bundled `wf-resolver` MCP tools `resolve_config` (confirm initialization) and
-  `resolve_provider("delivery")` (resolve the delivery surface); read the task folder and any
+- Call the bundled `wf-resolver` MCP tools `resolve_config({ workspaceRoot })` (confirm initialization) and
+  `resolve_provider({ surface: "delivery", workspaceRoot })` (resolve the delivery surface); read the task folder and any
   source file.
 - Read-side delivery operations: `current-branch-query`, `pr-comments-read`, `checks-read`.
 - `Read` / `Grep` / `Glob` to read the changeset and to verify every candidate finding
@@ -83,7 +85,7 @@ Zero-argument invocation reviews the PR for the current branch.
 
 Every host operation this skill invokes — `current-branch-query`, `pr-comments-read`,
 `checks-read`, `pr-comment-post` — is a **`delivery`-surface** operation. Resolve the surface
-**once** by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the
+**once** by calling the bundled `wf-resolver` MCP tool `resolve_provider({ surface: "delivery", workspaceRoot })` — the
 typed query that returns the run-scoped resolution record
 `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. The resolver has already
 resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any

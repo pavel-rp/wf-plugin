@@ -6,6 +6,8 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 
 # /wf-angular:test-page — Browser-run black-box tests for Angular targets
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 Some Angular-runtime targets (services, components, pipes, guards,
 interceptors, directives) can't be tested with `/wf-node-ts:test-node`
 because they need the Angular runtime — DI, zone.js, `HttpClient`,
@@ -22,7 +24,7 @@ into chat; the model verifies pass/fail against the spec.
 
 ## Stack profile (read first)
 
-This skill carries no project token. The Angular stack values come from the `angular` capability's **profile** — obtained by calling the bundled `wf-resolver` MCP tool `resolve_profile("angular")`. It returns the override-merged profile **values** directly (`_local/profiles/angular.profile.json` override merged over the capability's `profile.template.json` default, precedence: **override > capability default**) — this skill performs no direct profile-file read and no capability-registry-path walk of its own. If the response reports `present: false`, stop and direct the user to `/wf:init` (which seeds the override on divergence). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-read the profile files as a fallback. The slots this skill uses, referenced as placeholders below:
+This skill carries no project token. The Angular stack values come from the `angular` capability's **profile** — obtained by calling the bundled `wf-resolver` MCP tool `resolve_profile({ capability: "angular", workspaceRoot })`. It returns the override-merged profile **values** directly (`_local/profiles/angular.profile.json` override merged over the capability's `profile.template.json` default, precedence: **override > capability default**) — this skill performs no direct profile-file read and no capability-registry-path walk of its own. If the response reports `present: false`, stop and direct the user to `/wf:init` (which seeds the override on divergence). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-read the profile files as a fallback. The slots this skill uses, referenced as placeholders below:
 
 - `{test-host-root}` — root under which the sandbox module-test component and its `_page-tests/` folder live. The sandbox component folder is `{test-host-root}/{sandbox-host-folder}/`.
 - `{sandbox-host-folder}` — the folder name of the sandbox module-test host that page-tests inject into.
@@ -70,7 +72,7 @@ target's shape — some targets warrant both.
 
 ### Behavioral
 
-The target declares methods with observable input/output. Tests exercise them (worked example: `page-test-template.md` § Behavioral archetype example, obtained via the resolver's `resolve_content` — `class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: page-test-template.md` — never a raw `Read` of the plugin-cache path; read on the write path).
+The target declares methods with observable input/output. Tests exercise them (worked example: `page-test-template.md` § Behavioral archetype example, obtained via the resolver's `resolve_content` — `workspaceRoot`, `class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: page-test-template.md` — never a raw `Read` of the plugin-cache path; read on the write path).
 
 Fit (file suffixes): `.service.ts`, `.component.ts`, `.pipe.ts`,
 `.guard.ts`, `.interceptor.ts`, `.directive.ts`.
@@ -129,7 +131,7 @@ Not fit:
 
 ## Branch-based id inference
 
-When the empty-argument mode infers the `{task-id}` from the current branch, reach the branch name through the delivery contract's `current-branch-query`, never a direct `git` call — so the skill still degrades cleanly in git-free bare-core mode. Resolve the surface by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); this skill performs no registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in-context to dispatch `current-branch-query`. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory case — no error, no capability term surfaces — yielding no branch token, at which point the mode asks for an explicit target. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
+When the empty-argument mode infers the `{task-id}` from the current branch, reach the branch name through the delivery contract's `current-branch-query`, never a direct `git` call — so the skill still degrades cleanly in git-free bare-core mode. Resolve the surface by calling the bundled `wf-resolver` MCP tool `resolve_provider({ surface: "delivery", workspaceRoot })` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); this skill performs no registry / manifest / plugin-root read of its own. Follow the returned `fragmentPath` in-context to dispatch `current-branch-query`. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider), `current-branch-query` falls back silently to the plain-directory case — no error, no capability term surfaces — yielding no branch token, at which point the mode asks for an explicit target. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
 
 ---
 
@@ -265,7 +267,7 @@ only — the index is not updated again.
 
 ### `backend-smoke <task-id> [suite-name]`  → Angular service method + page-test for a .NET endpoint
 
-Smoke-test a newly added .NET controller endpoint by adding a thin Angular service method and wiring it into the harness. Full procedure, argument handling, and runtime requirements at `backend-smoke.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: backend-smoke.md`), never a raw `Read` of the plugin-cache path.
+Smoke-test a newly added .NET controller endpoint by adding a thin Angular service method and wiring it into the harness. Full procedure, argument handling, and runtime requirements at `backend-smoke.md`, obtained via the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: backend-smoke.md`), never a raw `Read` of the plugin-cache path.
 
 ### anything else → freeform
 
@@ -291,7 +293,7 @@ The `.page-test.ts` file template (the `run(injector)` / `runSuite(...)` skeleto
 
 Shared runner + assertion helpers. Minimal, framework-free. Created on first run; reused thereafter. Test files import `runSuite` plus the assertion helpers they need from `./harness`.
 
-Full API surface, output format, and the complete assertion-helper list at `harness.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: harness.md`), never a raw `Read` of the plugin-cache path. Read it when writing tests (for the full helper list) or when verifying pasted run output (for the block delimiters).
+Full API surface, output format, and the complete assertion-helper list at `harness.md`, obtained via the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: harness.md`), never a raw `Read` of the plugin-cache path. Read it when writing tests (for the full helper list) or when verifying pasted run output (for the block delimiters).
 
 ---
 
@@ -301,7 +303,7 @@ Target: `{test-host-root}/{sandbox-host-folder}/{sandbox-host-folder}.component.
 
 Two marker-wrapped edits (`PAGE-TEST-HARNESS-INJECTOR-*` for the `Injector` field, `PAGE-TEST-HARNESS-*` for the `runSuite` call inside `ngOnInit`) so the `clean` subcommand can reverse them surgically. Required during the `new` flow and reversed during `clean`.
 
-Exact edit locations, code to insert, and clean-up rules at `component-injection.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: component-injection.md`), never a raw `Read` of the plugin-cache path.
+Exact edit locations, code to insert, and clean-up rules at `component-injection.md`, obtained via the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: component-injection.md`), never a raw `Read` of the plugin-cache path.
 
 ---
 
@@ -309,7 +311,7 @@ Exact edit locations, code to insert, and clean-up rules at `component-injection
 
 Three one-time setup steps: write the harness file, add the `_page-tests/` path to `.git/info/exclude` (local-only, not `.gitignore`), and sanity-check the exclude took effect via `git check-ignore`. Skip if `_page-tests/harness.ts` already exists — re-running is harmless but wasteful.
 
-Full steps and exact commands at `bootstrap.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: bootstrap.md`), never a raw `Read` of the plugin-cache path.
+Full steps and exact commands at `bootstrap.md`, obtained via the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`, `plugin: wf-angular`, `skill: test-page`, `ref: bootstrap.md`), never a raw `Read` of the plugin-cache path.
 
 ---
 

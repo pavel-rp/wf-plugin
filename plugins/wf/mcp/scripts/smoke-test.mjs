@@ -17,7 +17,7 @@
 
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import {
   mkdtemp,
   mkdir,
@@ -77,6 +77,7 @@ try {
   // Scratch cwd with nothing in it — no package.json, no node_modules.
   const scratchCwd = join(cleanRoot, "scratch");
   await mkdir(scratchCwd, { recursive: true });
+  execFileSync("git", ["-C", scratchCwd, "init", "-b", "main"], { stdio: "ignore" });
 
   await assertNoDependencyArtifacts(cleanRoot);
 
@@ -204,13 +205,69 @@ try {
       fail(`tools/list did not include ${required}: ${JSON.stringify(tools.map((t) => t.name))}`);
     }
   }
+  for (const tool of tools) {
+    const schema = tool.inputSchema;
+    if (!schema?.required?.includes("workspaceRoot")) {
+      fail(`${tool.name} does not require workspaceRoot: ${JSON.stringify(schema)}`);
+    }
+    if (schema.properties?.workspaceRoot?.type !== "string" || schema.properties.workspaceRoot.minLength !== 1) {
+      fail(`${tool.name} does not declare a nonempty workspaceRoot string: ${JSON.stringify(schema)}`);
+    }
+  }
   process.stdout.write(`tools/list OK: ${tools.map((t) => t.name).join(", ")}\n`);
+
+  // Schema validation must reject omitted and empty workspaceRoot values before any handler runs.
+  send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: { name: "wf_resolver_status", arguments: {} },
+  });
+  const missingRootResult = await Promise.race([awaitResponse(3), childExited]);
+  const missingRootText = JSON.stringify(missingRootResult);
+  if (
+    (!missingRootResult.error && !missingRootResult.result?.isError) ||
+    !missingRootText.toLowerCase().includes("validation")
+  ) {
+    fail(`wf_resolver_status did not schema-reject an omitted workspaceRoot: ${missingRootText}`);
+  }
+
+  send({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: { name: "wf_resolver_status", arguments: { workspaceRoot: "" } },
+  });
+  const emptyRootResult = await Promise.race([awaitResponse(4), childExited]);
+  const emptyRootText = JSON.stringify(emptyRootResult);
+  if (
+    (!emptyRootResult.error && !emptyRootResult.result?.isError) ||
+    !emptyRootText.toLowerCase().includes("validation")
+  ) {
+    fail(`wf_resolver_status did not schema-reject an empty workspaceRoot: ${emptyRootText}`);
+  }
+
+  send({
+    jsonrpc: "2.0",
+    id: 5,
+    method: "tools/call",
+    params: { name: "wf_resolver_status", arguments: { workspaceRoot: scratchCwd } },
+  });
+  const statusResult = await Promise.race([awaitResponse(5), childExited]);
+  if (statusResult.error || statusResult.result?.isError) {
+    fail(`wf_resolver_status rejected the launch repository: ${JSON.stringify(statusResult)}`);
+  }
 
   // Call a typed tool end-to-end through the bundle. resolve_inspect is the safe
   // choice: it reports lifecycle state from the (absent) cache under the scratch
   // cwd without a rebuild or a `claude` CLI call — hermetic and deterministic.
-  send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "resolve_inspect", arguments: {} } });
-  const callResult = await Promise.race([awaitResponse(3), childExited]);
+  send({
+    jsonrpc: "2.0",
+    id: 6,
+    method: "tools/call",
+    params: { name: "resolve_inspect", arguments: { workspaceRoot: scratchCwd } },
+  });
+  const callResult = await Promise.race([awaitResponse(6), childExited]);
   if (callResult.error) {
     fail(`resolve_inspect returned an error: ${JSON.stringify(callResult.error)}`);
   }
@@ -225,7 +282,7 @@ try {
   );
 
   process.stdout.write(
-    "SMOKE PASS: clean-copy MCP runtime started, completed the protocol handshake, and served a typed resolver query — with no repo, no node_modules, and no dependency install.\n",
+    "SMOKE PASS: clean-copy MCP runtime started, completed the protocol handshake, enforced workspaceRoot schemas, and served a typed resolver query — with no source checkout, no node_modules, and no dependency install.\n",
   );
 } finally {
   if (child) {

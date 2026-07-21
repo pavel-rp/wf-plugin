@@ -1,6 +1,8 @@
 # Audit lens — shared finding contract (boot doc)
 
 **Wired by:** `plugins/wf-audit/capabilities/audit/manifest.md` (the five
+
+Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
 `verify | finding | subagent:` rows)
 **Contributes:** a `finding` at the `verify` phase, per
 `plugins/wf/skills/_contracts/capability-registry.contract.md`
@@ -17,7 +19,7 @@ deep, no further nesting. Follow it exactly.
 ## Profile lens-gate (run first)
 
 Obtain the resolved audit profile by calling the bundled `wf-resolver` MCP tool
-`resolve_profile("audit")` — it returns `{ capability, present, values }`, the
+`resolve_profile({ capability: "audit", workspaceRoot })` — it returns `{ capability, present, values }`, the
 override-merged profile **values** directly (`_local/profiles/audit.profile.json` override
 merged over the capability's shipped default, precedence: **override > capability
 default**); you perform no direct profile-file read of your own. If `present` is `true`

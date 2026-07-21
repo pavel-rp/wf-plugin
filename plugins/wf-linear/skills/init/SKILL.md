@@ -66,17 +66,19 @@ ships, under the stable plugin id `wf-linear`.
 
 ## Onboarding procedure
 
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
 1. **Precondition.** Confirm a git repository (`git rev-parse --git-dir`); if this fails,
    stop: "`/wf-linear:init` must run inside a git repository — run `/wf:init` first."
-   Call `resolve_config` for the resolved registry location and Read it to confirm the
+   Call `resolve_config({ workspaceRoot: "<workspace-root>" })` for the resolved registry location and Read it to confirm the
    file exists. If it does not, stop: "Run `/wf:init` first — `/wf-linear:init`
    registers into the registry that `/wf:init` creates."
-2. **Check prior state (reporting only).** Call `resolve_registry`; note whether
+2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether
    `linear` already appears with `validity: "ok"`, and whether an `ado` row is also
    present (both would claim the `tracker` provider surface — a partitioned-ownership
    overlap flagged in the Final Output, not something this skill blocks on). This never
    skips a later step — it only affects reported wording.
-3. **Inspect the pack.** Call `inspect_pack({ pluginId: "wf-linear" })`. Read-only;
+3. **Inspect the pack.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-linear" })`. Read-only;
    returns `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
    - `valid: false` (not installed, disabled, no readable
      `capabilities/linear/manifest.md`, or `claude plugin list --json` itself
@@ -117,7 +119,7 @@ ships, under the stable plugin id `wf-linear`.
    - **Write only the rows that changed.** A `carried forward` row is never rewritten; a
      `set to <value>` row replaces exactly that cell.
 5. **Register.** Call
-   `register_pack({ pluginId: "wf-linear", expectedFingerprint: <fingerprint from step 3> })`.
+   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-linear", expectedFingerprint: <fingerprint from step 3> })`.
    It writes the `## Plugin Roots` row and the `linear` `## Capabilities` row in a single
    write (a plain file write, not a filesystem-atomic temp+rename swap; register `linear`
    **even if** an `ado` row already exists — this skill never blocks its own registration
@@ -131,7 +133,7 @@ ships, under the stable plugin id `wf-linear`.
 
 ### Failure path (SUB-4 / WF-272 diagnostics)
 
-Call `resolve_gate({ surface: "delivery-write" })` (registering a pack is a registry
+Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a pack is a registry
 write). Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specific
 `issues[]` (from `inspect_pack`) or `reason` (from a rejected `register_pack`) — never a
 bare error. Finish with `partial`. (A failure here never rolls back the `## Linear`
@@ -152,7 +154,9 @@ registry side is at risk.)
 - **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the
   install looks corrupted — reinstall the plugin.
 - **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run
-  `inspect_pack` to get the current fingerprint and retry `register_pack`.
+  `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-linear" })` to get the
+  current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>",
+  pluginId: "wf-linear", expectedFingerprint: <current fingerprint> })`.
 - **`ado` already registered as the active tracker provider:** register `linear` anyway
   (this skill never blocks its own registration), but flag in the Final Output that both
   `ado` and `linear` are now present and that registry validation will fail on the

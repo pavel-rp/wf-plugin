@@ -1,7 +1,7 @@
 ---
 name: pr
 description: Opens a pull request for the current task branch — first commits and pushes any pending work (via the wf:commit subagent, push on), then composes a PR body from the task's wf artifacts (reqs, spec, plan resolution, verify, QA), links the work item through the active tracker capability, when one is registered, and creates the PR through the active delivery provider. Use when a task is implemented and ready for review. Pass --no-commit to open a PR against exactly what's already pushed, --draft for a draft PR.
-allowed-tools: [Read, Task]
+allowed-tools: [Read, Task, Bash]
 ---
 
 # /wf:pr — Push, then open a PR from the task's wf artifacts
@@ -14,7 +14,9 @@ Opens a PR for the current task through the project's active delivery provider. 
 
 ## Prerequisites
 
-Confirm the project is initialized by querying the bundled `wf-resolver` MCP service via `resolve_config`. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. This host reads no core config value here beyond the initialized check — the two subagents re-resolve the id and `{task-root}` themselves.
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+
+Confirm the project is initialized by querying the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })`. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. This host reads no core config value here beyond the initialized check — the two subagents re-resolve the id and `{task-root}` themselves.
 
 ---
 
@@ -37,9 +39,9 @@ Confirm the project is initialized by querying the bundled `wf-resolver` MCP ser
 
 **Allowed:**
 
-- Read the task folder; obtain config via the `wf-resolver` `resolve_config` query.
-- Read-only resolution for ID/branch inference (`workspace-root-resolve` via `resolve_config` `workspaceRoot`, `current-branch-query` via `resolve_provider("delivery")`).
-- Resolve providers once for the run (Phase 1.5): call `resolve_provider("delivery")` and `resolve_provider("tracker")` on the `wf-resolver` service — metadata records only; the diff and PR body stay inside the subagents.
+- Read the task folder; obtain config via the `wf-resolver` `resolve_config({ workspaceRoot, ... })` query.
+- Read-only resolution for ID/branch inference (`workspace-root-resolve` via `resolve_config({ workspaceRoot, ... })` `workspaceRoot`, `current-branch-query` via `resolve_provider({ workspaceRoot, surface: "delivery" })`).
+- Resolve providers once for the run (Phase 1.5): call `resolve_provider({ workspaceRoot, surface: "delivery" })` and `resolve_provider({ workspaceRoot, surface: "tracker" })` on the `wf-resolver` service — metadata records only; the diff and PR body stay inside the subagents.
 - Invoke the **Task** tool with `subagent_type` `wf:commit` and `wf:pr`.
 
 **Forbidden:**
@@ -58,7 +60,7 @@ Resolve `{task-id}` (the opaque task id — whatever shape the active tracker pr
 
 This host is the **single resolution point** for the `/wf:pr` run: it resolves each required provider surface **once** and forwards the result to the subagents it spawns, so `wf:commit`, both of `wf:pr`'s surfaces, and any nested `wf:branch` consume it without re-resolving (`invocation-runtime.ops.md` §"Run-scoped provider forwarding").
 
-Call the bundled `wf-resolver` MCP tool `resolve_provider(surface)` **once per required surface** — `resolve_provider("delivery")` and `resolve_provider("tracker")`. Each returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`; the resolver has already read the `## Capabilities` registry, each owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"), so the host performs **no** registry / manifest / plugin-root read of its own. Hold each surface's record — its `owner` + resolved `fragmentPath`, or its `state: unconfigured`/`unrecoverable` outcome (with `diagnostics` for the hedged diagnosis) — to forward below. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
+Call the bundled `wf-resolver` MCP tool `resolve_provider` **once per required surface** — `resolve_provider({ workspaceRoot, surface: "delivery" })` and `resolve_provider({ workspaceRoot, surface: "tracker" })`. Each returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`; the resolver has already read the `## Capabilities` registry, each owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"), so the host performs **no** registry / manifest / plugin-root read of its own. Hold each surface's record — its `owner` + resolved `fragmentPath`, or its `state: unconfigured`/`unrecoverable` outcome (with `diagnostics` for the hedged diagnosis) — to forward below. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
 Only these two typed queries happen in the host; the diff and PR-body artifacts stay inside the subagents, so isolation is preserved. The records are run-scoped runtime values — no concrete provider is named in this skill.
 
@@ -96,7 +98,7 @@ Emit the subagent's `PR —` block verbatim as this skill's final output.
 - **Push failed in Phase 2:** stop before PR creation — the branch isn't on the remote.
 - **PR already open for this branch:** the subagent returns `PR — exists` with the existing URL rather than creating a duplicate.
 - **Delivery provider not authenticated:** the subagent returns `PR — Error` with the provider's own authentication-remedy hint.
-- **No readable delivery provider (two-mode diagnosis):** the subagent returns `PR — Error`; no delivery operation of any kind is attempted. It splits the reason on the `resolve_provider("delivery")` record's `state`: **(a) `state: unconfigured`** (no capability owns `delivery`) — states plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`); **(b) `state: unrecoverable`** (a registered capability's manifest can't be read — its recorded root dangled and the install-manifest self-heal recovered nothing) — names the record's `diagnostics` pack as a hedged candidate ("if this is your `delivery` provider, fix its stale root / re-run its init"), never asserting one owns the surface and never telling you to register a provider you already have.
+- **No readable delivery provider (two-mode diagnosis):** the subagent returns `PR — Error`; no delivery operation of any kind is attempted. It splits the reason on the `resolve_provider({ workspaceRoot, surface: "delivery" })` record's `state`: **(a) `state: unconfigured`** (no capability owns `delivery`) — states plainly that no delivery provider is registered and names the remedy (register a capability that owns the `delivery` surface, e.g. install and run `/wf-git:init`); **(b) `state: unrecoverable`** (a registered capability's manifest can't be read — its recorded root dangled and the install-manifest self-heal recovered nothing) — names the record's `diagnostics` pack as a hedged candidate ("if this is your `delivery` provider, fix its stale root / re-run its init"), never asserting one owns the surface and never telling you to register a provider you already have.
 - **No tracker registered:** the composed body omits the Work-item link section and the "Resolves…" sentence entirely; no tracker operation is attempted and no capability term appears anywhere in the output.
 - **Registered-but-unrecoverable tracker** (the `tracker` record's `state` is `unrecoverable`): a registered capability's manifest can't be read after the install-manifest self-heal — the subagent's tracker `get` (a read) stays silent while the `attach_link` (a write) warns once in the hedged candidate-naming form (naming the record's `diagnostics` pack, never asserting ownership) on the `Body sources:` line, for a net of one warn driven by the write; the body composes local-only with no work-item link and PR creation still proceeds. This tracker residual is independent of the delivery-write `PR — Error` above — both can surface when both surfaces are unrecoverable.
 - **Mid-run tracker failure:** a `get`/`attach_link` call that errors after a tracker was registered — the subagent warns once (naming the operation and the error) as a parenthetical on the `Body sources:` line, composes a local-only body with no work-item link, and PR creation still proceeds.

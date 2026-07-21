@@ -2,6 +2,8 @@
 
 **Version:** 1.0.0 (WF-355 — the author-caps `verify`-phase structural validator findings)
 **Wired by:** `plugins/wf-author-caps/capabilities/author-caps/manifest.md`
+
+Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
 (`verify | finding | inline: fragments/structural-validation.md`)
 **Contributes:** a `finding` at the `verify` phase, per
 `plugins/wf/skills/_contracts/capability-registry.ops.md`
@@ -32,14 +34,14 @@ Call the bundled resolver runtime's typed, read-only validation tools. Each retu
 
 Run all three, scoped to the work under review:
 
-- **`validate_manifest`** — `{path}` for a single capability manifest; zero-arg validates every
+- **`validate_manifest`** — `{ path, workspaceRoot }` for a single capability manifest; zero-arg validates every
   active capability's manifest. Schema-v2 conformance: `kind`, the fragments table's four columns,
   phase and contribution-kind drawn from the fixed sets, `dispatch` well-formed, `scope` present
   exactly for partitioned kinds.
-- **`validate_registry`** — no arguments; validates the resolved registry path. Unique capability
+- **`validate_registry`** — `{ workspaceRoot }`; validates the resolved registry path. Unique capability
   names, every declared path present and carrying a manifest, no overlapping ownership scopes,
   `requires:` satisfied, `conflicts:` not both active, no contradictory article clauses.
-- **`validate_skill_interface`** — `{plugin?, skill?}`; zero-arg validates every skill in every
+- **`validate_skill_interface`** — `{ plugin?, skill?, workspaceRoot }`; zero-arg validates every skill in every
   plugin. The interface declaration against the body: declared slots have markers, declared
   settings keys are real, the terminal block is declared.
 
