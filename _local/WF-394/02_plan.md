@@ -173,7 +173,7 @@ Confirm from the live Claude Code subagent contract that per-invocation model se
 
 ---
 
-### - [ ] STEP-005: Finish bootstrap integration, release metadata, and tracker promotion
+### - [x] STEP-005: Finish bootstrap integration, release metadata, and tracker promotion
 
 **Goal:** Close the remaining direct branch paths, publish the configuration contract, and atomically promote WF-376 before dependent umbrella work proceeds.
 
@@ -193,13 +193,13 @@ Confirm from the live Claude Code subagent contract that per-invocation model se
 | `plugins/wf/README.md` | modify |
 | `plugins/wf/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` | modify |
 
-**Implementation status (2026-07-21):** All non-version portions are complete: the branch wrapper, commit agent, and the additional direct implement branch gate found by the repository-wide dispatch audit now resolve routing before spawn; the classify consumer contract has no bypass; the config template plus README document `## Routing` and `resolve_routing`; and the tracker preflight, mutation, and postcondition verification completed successfully. Targeted resolver, bundle, smoke, vocabulary, ops-doc, and skill-read guards pass. **Pending and intentionally unchecked:** version-manifest changes only.
+**Implemented:** Completed bootstrap routing integration and dispatch audit, documented the configuration/query contract, promoted and reconnected the tracker umbrella after a complete preflight, and synchronized the core `0.81.0` plus marketplace `0.109.0` release metadata after rebasing onto the latest delivery base.
 
 **Depends on:** STEP-004
 
 ---
 
-### - [ ] STEP-006: Run build/typecheck — confirm no regressions
+### - [x] STEP-006: Run build/typecheck — confirm no regressions
 
 **Goal:** Verify the changes compile and do not break existing functionality.
 
@@ -207,17 +207,21 @@ Confirm from the live Claude Code subagent contract that per-invocation model se
 
 Also run the resolver test, bundle verification, smoke test, registry fixture/guard chain, vocabulary on-touch check, and `claude plugin validate`; confirm regression scenarios preserve classification buckets plus branch prefix/task-id while allowing descriptive branch-tail variation.
 
+**Implemented:** Build, 215-test resolver suite, bundle reproducibility, smoke test, 65-case contract guard chain, and marketplace validation all pass.
+
 **Depends on:** STEP-005
 
 ---
 
-### - [ ] STEP-007: Ready for review
+### - [x] STEP-007: Ready for review
 
 **Goal:** Hand off the implemented change for review. `/wf:implement` does not commit, push, or open a PR — it ticks this step and records a suggested commit message for whichever step commits next (`/wf:commit`, or a manual commit).
 
 **Suggested commit message:** `feat(WF-394): establish configurable cheap routing for bootstrap roles`
 
 **Depends on:** STEP-006
+
+> Ready for review. Audit against spec with `/wf:verify-spec WF-394`, then continue the ship ceremony.
 
 ---
 
@@ -227,3 +231,9 @@ Also run the resolver test, bundle verification, smoke test, registry fixture/gu
 - Repository search finds no `wf:classify` or `wf:branch` dispatch that bypasses the routing decision; default calls select `haiku`, existing terminal blocks remain byte-shape compatible, and regression scenarios retain classifier buckets and branch prefix/task-id.
 - `(cd plugins/wf/mcp && npm run build)` exits 0, the committed bundle verifies, all repository guards pass, and plugin manifests validate at synchronized versions.
 - WF-376 has the promoted title and C025 umbrella description, no WF-372 parent, WF-372 as a related issue, no obsolete WF-376→WF-373 edge, and all preflighted WF-394–WF-400 dependency edges verified after mutation.
+
+## Resolution Summary
+
+**Implemented by:** gpt-5.6-sol[1m]
+
+Added a typed, cached routing resolver with independent model and effort precedence, validation, masking, fallback, and observability; exposed it as `resolve_routing`; routed the bootstrap classifier and branch call sites while preserving terminal contracts; documented the project routing table; rebuilt and verified the runtime bundle; synchronized core and marketplace MINOR versions; and atomically promoted the WF-376 tracker umbrella and dependency graph after a complete preflight. All resolver tests, build, bundle, smoke, contract guards, and marketplace validation pass.
