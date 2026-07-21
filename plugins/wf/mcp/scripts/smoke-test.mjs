@@ -214,6 +214,15 @@ try {
       fail(`${tool.name} does not declare a nonempty workspaceRoot string: ${JSON.stringify(schema)}`);
     }
   }
+  const routingTool = tools.find((t) => t.name === "resolve_routing");
+  const routingSchema = routingTool?.inputSchema;
+  if (
+    !routingSchema?.required?.includes("shapeEvidence") ||
+    "executionShape" in (routingSchema.properties ?? {}) ||
+    routingSchema.properties?.shapeEvidence?.required?.length
+  ) {
+    fail(`resolve_routing schema does not expose resolver-validated partial shape evidence: ${JSON.stringify(routingSchema)}`);
+  }
   process.stdout.write(`tools/list OK: ${tools.map((t) => t.name).join(", ")}\n`);
 
   // Schema validation must reject omitted and empty workspaceRoot values before any handler runs.

@@ -19864,20 +19864,6 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
         returnContract: { type: "string", enum: ["mechanically-judgeable", "judgment"] },
         requestedParallelism: { type: "integer", minimum: 1 }
       },
-      required: [
-        "workSurface",
-        "atomicity",
-        "unitCount",
-        "unitsIndependent",
-        "ambiguity",
-        "risk",
-        "toolWork",
-        "validation",
-        "contextIsolation",
-        "independentReview",
-        "returnContract",
-        "requestedParallelism"
-      ],
       additionalProperties: false
     },
     invocationModel: { type: ["string", "null"] },
@@ -21892,7 +21878,7 @@ function selectShape(inputs) {
     };
   }
   const isolationWorthy = normalizedEvidence.workSurface === "external-context" || normalizedEvidence.ambiguity !== "none" || normalizedEvidence.risk === "elevated" || normalizedEvidence.toolWork !== "none" || normalizedEvidence.validation === "judgment" || normalizedEvidence.contextIsolation !== "none" || normalizedEvidence.independentReview;
-  const parallelWorthy = normalizedEvidence.unitsIndependent && normalizedEvidence.unitCount >= 2 && normalizedEvidence.returnContract === "mechanically-judgeable" && (normalizedEvidence.ambiguity !== "none" || normalizedEvidence.risk === "elevated" || normalizedEvidence.toolWork !== "none" || normalizedEvidence.contextIsolation !== "none" || normalizedEvidence.independentReview);
+  const parallelWorthy = normalizedEvidence.unitsIndependent && normalizedEvidence.unitCount >= 2 && normalizedEvidence.requestedParallelism >= 2 && normalizedEvidence.returnContract === "mechanically-judgeable" && (normalizedEvidence.ambiguity !== "none" || normalizedEvidence.risk === "elevated" || normalizedEvidence.toolWork !== "none" || normalizedEvidence.contextIsolation !== "none" || normalizedEvidence.independentReview);
   if (parallelWorthy) {
     return {
       executionShape: "bounded-parallel",
@@ -21918,7 +21904,7 @@ function selectShape(inputs) {
   return {
     executionShape: "inline",
     normalizedEvidence,
-    shapeReason: "atomic-caller-context",
+    shapeReason: normalizedEvidence.unitCount === 1 ? "atomic-caller-context" : "nonmaterial-units-inline",
     effectiveParallelism: 1,
     stop: null
   };

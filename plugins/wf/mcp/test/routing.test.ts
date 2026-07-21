@@ -82,7 +82,7 @@ test("selects execution shape deterministically from task evidence", () => {
     {
       name: "independent trivial units",
       evidence: { ...inlineEvidence, atomicity: "composite", unitCount: 3, unitsIndependent: true, requestedParallelism: 3 },
-      shape: "inline", reason: "atomic-caller-context", bound: 1,
+      shape: "inline", reason: "nonmaterial-units-inline", bound: 1,
     },
     {
       name: "dependent material units",
@@ -109,6 +109,20 @@ test("selects execution shape deterministically from task evidence", () => {
 test("caps parallelism by units, request, and the core maximum", () => {
   const evidence = { ...inlineEvidence, atomicity: "composite", unitCount: 3, unitsIndependent: true, toolWork: "material", requestedParallelism: 2 } as const;
   assert.equal(resolveRouting({}, { ...base, shapeEvidence: evidence }).effectiveParallelism, 2);
+});
+
+test("a caller bound of one never selects parallel execution", () => {
+  const evidence = {
+    ...inlineEvidence,
+    atomicity: "composite",
+    unitCount: 3,
+    unitsIndependent: true,
+    toolWork: "material",
+    requestedParallelism: 1,
+  } as const;
+  const decision = resolveRouting({}, { ...base, shapeEvidence: evidence });
+  assert.equal(decision.executionShape, "isolated");
+  assert.equal(decision.effectiveParallelism, 1);
 });
 
 test("contradictory shape evidence stops without changing selector decisions", () => {

@@ -90,6 +90,7 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
   const parallelWorthy =
     normalizedEvidence.unitsIndependent &&
     normalizedEvidence.unitCount >= 2 &&
+    normalizedEvidence.requestedParallelism >= 2 &&
     normalizedEvidence.returnContract === "mechanically-judgeable" &&
     (normalizedEvidence.ambiguity !== "none" ||
       normalizedEvidence.risk === "elevated" ||
@@ -124,7 +125,9 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
   return {
     executionShape: "inline",
     normalizedEvidence,
-    shapeReason: "atomic-caller-context",
+    shapeReason: normalizedEvidence.unitCount === 1
+      ? "atomic-caller-context"
+      : "nonmaterial-units-inline",
     effectiveParallelism: 1,
     stop: null,
   };

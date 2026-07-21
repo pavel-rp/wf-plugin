@@ -290,6 +290,7 @@ export type RoutingShapeReason =
   | "atomic-caller-context"
   | "single-isolation-worthy-unit"
   | "dependent-or-nonmaterial-units"
+  | "nonmaterial-units-inline"
   | "independent-material-units";
 export interface RoutingShapeEvidence {
   workSurface: "caller-context" | "external-context";

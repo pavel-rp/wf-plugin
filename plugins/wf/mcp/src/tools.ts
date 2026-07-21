@@ -123,11 +123,6 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
         returnContract: { type: "string", enum: ["mechanically-judgeable", "judgment"] },
         requestedParallelism: { type: "integer", minimum: 1 },
       },
-      required: [
-        "workSurface", "atomicity", "unitCount", "unitsIndependent", "ambiguity", "risk",
-        "toolWork", "validation", "contextIsolation", "independentReview", "returnContract",
-        "requestedParallelism",
-      ],
       additionalProperties: false,
     },
     invocationModel: { type: ["string", "null"] }, invocationEffort: { type: ["string", "null"] },
