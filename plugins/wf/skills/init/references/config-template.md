@@ -68,7 +68,7 @@ The default tracker workflow statuses `/wf:standup` enumerates open work items f
 
 Optional per-project child-dispatch overrides. Add one row per role using a lowercase role slug (for example `| classify | sonnet | — |`). `Model` accepts a runtime-supported stable alias or full identifier; `Effort` accepts `low`, `medium`, `high`, or `max`. Leave either cell empty or use `—` to inherit that selector independently. The table intentionally starts empty: core ships `haiku` model defaults for `classify` and `branch`, while effort remains inherited. Unknown roles with no row inherit both values safely.
 
-Immediately before a routed child spawn, core calls the body-free `resolve_routing` resolver query. Precedence is host enforcement → invocation override → this project table → shipped role default → inheritance. The returned operational metadata identifies each selector's source plus any masking or fallback; it never replaces an artifact's `**Model:**` attribution. Malformed choices and required-but-unhonorable choices stop before dispatch, while unavailable or selector-unsupported optional choices record an inheritance fallback rather than claiming the override was honored.
+Immediately before a routed child spawn, core calls the body-free `resolve_routing` resolver query. Precedence is host enforcement → invocation override → this project table → shipped role default → inheritance. The returned operational metadata identifies each selector's source plus any masking or fallback; it never replaces an artifact's `**Model:**` attribution. Optional malformed, unavailable, or selector-unsupported choices record an inheritance fallback rather than claiming the override was honored; required-but-unhonorable choices stop before dispatch.
 
 ## Capabilities
 

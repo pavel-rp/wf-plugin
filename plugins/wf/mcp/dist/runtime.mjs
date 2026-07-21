@@ -21839,7 +21839,8 @@ function choose(kind, inputs, project) {
   }
   const valid = kind === "model" ? MODEL_TOKEN.test(requested) : EFFORTS.has(requested);
   if (!valid) {
-    return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "malformed" }, stop: `${kind} choice \`${requested}\` is malformed` };
+    const stop = required2 ? `${kind} choice \`${requested}\` is required but malformed` : null;
+    return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "malformed" }, stop };
   }
   if (!selectorSupported) {
     const stop = required2 ? `${kind} choice \`${requested}\` is required but this runtime cannot honor it` : null;

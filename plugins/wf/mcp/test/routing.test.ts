@@ -50,8 +50,12 @@ test("unavailable required model stops and actual model is only included when su
   assert.equal(resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5" }).actualModel, "claude-haiku-4-5");
 });
 
-test("malformed choices stop rather than silently substituting", () => {
-  const decision = resolveRouting({ classify: { model: "bad model", effort: null } }, base);
-  assert.equal(decision.status, "stop");
-  assert.equal(decision.model.fallback, "malformed");
+test("malformed choices inherit unless required", () => {
+  const fallback = resolveRouting({ classify: { model: "bad model", effort: null } }, base);
+  assert.equal(fallback.status, "dispatch");
+  assert.equal(fallback.model.value, null);
+  assert.equal(fallback.model.fallback, "malformed");
+  const stop = resolveRouting({ classify: { model: "bad model", effort: null } }, { ...base, requireModel: true });
+  assert.equal(stop.status, "stop");
+  assert.equal(stop.model.fallback, "malformed");
 });

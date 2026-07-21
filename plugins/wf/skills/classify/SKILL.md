@@ -83,7 +83,7 @@ Branch inference above reaches `current-branch-query` by resolving the `delivery
 
 ## Phase 2: Delegate to the subagent
 
-**Caller stops here.** Call `resolve_routing` for role `classify` and execution shape `task` immediately before delegation. Emit its compact metadata and stop only on `status: stop`; pass its model selector only when non-null and preserve inherited effort when null. Then invoke the **Task** tool with `subagent_type: wf:classify`, passing the resolved input:
+**Caller stops here.** Call `resolve_routing` for role `classify`, execution shape `task`, `supportsModelSelector: true`, and `supportsEffortSelector: false` immediately before delegation. Emit its compact metadata and stop only on `status: stop`; pass its model selector only when non-null and preserve inherited effort when null. Then invoke the **Task** tool with `subagent_type: wf:classify`, passing the resolved input:
 
 - For file mode: pass the file path. The subagent will read it.
 - For text mode: pass the raw text inline.
