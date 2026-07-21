@@ -7,7 +7,7 @@
 // unset value — `<none>`, `<auto-detect>`, or any `<…>` placeholder — resolves
 // to `null`.
 
-import type { CoreConfig } from "./types.js";
+import type { CoreConfig, RoutingProjectConfig } from "./types.js";
 
 /** Extract every `| **Key** | value |` pair, keyed by the lowercased key. */
 function extractKeyValues(markdown: string): Map<string, string> {
@@ -40,6 +40,25 @@ function normalizeValue(raw: string | undefined): string | null {
   // Any angle-bracketed placeholder (e.g. <none>, <auto-detect>, <FILL: …>).
   if (/^<.*>$/.test(v)) return null;
   return v;
+}
+
+/** Parse `## Routing` rows: `| Role | Model | Effort |`. */
+export function parseRoutingConfig(markdown: string): RoutingProjectConfig {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^##\s+Routing\s*$/.test(line.trim()));
+  if (start < 0) return {};
+  const out: RoutingProjectConfig = {};
+  for (const raw of lines.slice(start + 1)) {
+    const line = raw.trim();
+    if (/^##\s+/.test(line)) break;
+    if (!line.startsWith("|")) continue;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((v) => v.trim());
+    if (cells.length < 3 || /^(role|-+)$/i.test(cells[0])) continue;
+    const role = cells[0].replace(/^`|`$/g, "").trim();
+    if (!/^[a-z][a-z0-9-]*$/.test(role)) continue;
+    out[role] = { model: normalizeValue(cells[1]), effort: normalizeValue(cells[2]) };
+  }
+  return out;
 }
 
 /** Parse the core config values map from the config/registry markdown. */

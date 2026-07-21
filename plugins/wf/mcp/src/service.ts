@@ -14,6 +14,8 @@
 // query (or an explicit `refresh`) to rebuild, and the pack register write-path
 // that is the sole mutation of the discovery substrate.
 
+import { resolveRouting } from "./resolver/routing.js";
+import type { RoutingDecision, RoutingInputs } from "./resolver/types.js";
 import { sha256Hex } from "./resolver/fingerprint.js";
 import {
   annotate,
@@ -753,6 +755,12 @@ export class ResolverService {
       bytes: Buffer.byteLength(content, "utf8"),
       parts: present.map((p) => ({ tier: p.tier, source: p.source, path: p.path })),
     };
+  }
+
+  // --- typed bootstrap routing ---------------------------------------------
+  resolveRouting(inputs: RoutingInputs): RoutingDecision {
+    const snapshot = this.ensure();
+    return resolveRouting(snapshot.routing ?? {}, inputs);
   }
 
   // --- R5 -----------------------------------------------------------------

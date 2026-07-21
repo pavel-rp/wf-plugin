@@ -15,6 +15,7 @@
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import type { ResolverService } from "./service.js";
 import type { ContentRef } from "./resolver/content.js";
+import type { RoutingInputs } from "./resolver/types.js";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -99,6 +100,23 @@ const surfaceClassInput = fromJsonSchema(withWorkspaceRoot({
     },
   },
   required: ["surface"],
+  additionalProperties: false,
+}));
+
+const routingInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
+    executionShape: { type: "string", minLength: 1 },
+    invocationModel: { type: ["string", "null"] }, invocationEffort: { type: ["string", "null"] },
+    requireModel: { type: "boolean" }, requireEffort: { type: "boolean" },
+    supportsModelSelector: { type: "boolean" }, supportsEffortSelector: { type: "boolean" },
+    hostModel: { type: ["string", "null"] }, hostEffort: { type: ["string", "null"] },
+    availableModels: { type: ["array", "null"], items: { type: "string" } },
+    basis: { type: ["string", "null"] }, attempt: { type: "integer", minimum: 1 },
+    escalationOrigin: { type: ["string", "null"] }, actualModel: { type: ["string", "null"] },
+  },
+  required: ["role", "executionShape", "supportsModelSelector", "supportsEffortSelector"],
   additionalProperties: false,
 }));
 
@@ -334,6 +352,19 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       inputSchema: skillInput,
     },
     async (args: WorkspaceArgs & { skill: string }) => selected(args, (service) => service.resolveSettings(args.skill)),
+  );
+
+  server.registerTool(
+    "resolve_routing",
+    {
+      title: "resolve routing",
+      description: "Resolve a bootstrap role's model and effort selectors from the fingerprint-fresh cached project configuration, with precedence, masking, fallback, and stop diagnostics. Body-free.",
+      inputSchema: routingInput,
+    },
+    async (args: WorkspaceArgs & RoutingInputs) => {
+      const { workspaceRoot, ...inputs } = args;
+      return selected({ workspaceRoot }, (service) => service.resolveRouting(inputs));
+    },
   );
 
   server.registerTool(

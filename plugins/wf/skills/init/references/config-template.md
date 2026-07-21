@@ -61,6 +61,15 @@ The two keys `/wf:seed` reads. **Architecture Doc** is the doc parsed on a zero-
 
 The default tracker workflow statuses `/wf:standup` enumerates open work items for, comma-separated in significance order (most active first — e.g. the in-progress status before the not-started one). Status names are tracker-specific, so this ships as `<none>`: leave it until you know your tracker's status names, then set them (or always pass `--status` explicitly). When `<none>` or absent, `/wf:standup` skips only the by-status work-item section and still renders milestones, cycles, recent activity, and local in-flight tasks. A repo initialized before this section existed simply has no `## Standup` key — `/wf:standup` degrades gracefully the same way.
 
+## Routing
+
+| Role | Model | Effort |
+|------|-------|--------|
+
+Optional per-project child-dispatch overrides. Add one row per role using a lowercase role slug (for example `| classify | sonnet | — |`). `Model` accepts a runtime-supported stable alias or full identifier; `Effort` accepts `low`, `medium`, `high`, or `max`. Leave either cell empty or use `—` to inherit that selector independently. The table intentionally starts empty: core ships `haiku` model defaults for `classify` and `branch`, while effort remains inherited. Unknown roles with no row inherit both values safely.
+
+Immediately before a routed child spawn, core calls the body-free `resolve_routing` resolver query. Precedence is host enforcement → invocation override → this project table → shipped role default → inheritance. The returned operational metadata identifies each selector's source plus any masking or fallback; it never replaces an artifact's `**Model:**` attribution. Optional malformed, unavailable, or selector-unsupported choices record an inheritance fallback rather than claiming the override was honored; required-but-unhonorable choices stop before dispatch.
+
 ## Capabilities
 
 <!-- init directive (strip before writing — never emit this comment to any file):

@@ -26,7 +26,9 @@ User-facing slash command for creating and switching to a task branch. The imple
 
 ## Procedure
 
-Invoke the **Task** tool with `subagent_type: wf:branch`, passing:
+Before dispatch, run `pwd -P` and use that absolute current session directory as `workspaceRoot`. Call the bundled `wf-resolver` MCP tool `resolve_routing` immediately before delegation with `role: "branch"`, `executionShape: "task"`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; also pass any selector availability, host enforcement, or actual-model facts the runtime already exposes, and omit facts it does not expose rather than probing. Emit the decision's compact metadata; on `status: stop`, emit `BRANCH — Error` with the routing diagnostic and do not spawn. On `status: dispatch`, pass the returned model selector only when `model.value` is non-null; `effort.value: null` means preserve inherited effort.
+
+Then invoke the **Task** tool with `subagent_type: wf:branch`, passing:
 
 - `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
 
