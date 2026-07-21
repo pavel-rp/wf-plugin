@@ -314,7 +314,7 @@ no prompt or fragment bodies.**
 2. **`registryPath`** — resolved registry location (from `wf.config.js`; default `_local/config.md`). *Consolidation win: only `init` honors a non-default `registryPath` today; the snapshot makes it uniform for all consumers.*
 3. **`coreConfig`** — the core config values map: `taskRoot`, `verifyCommand`, `qaRules`, `qaBaselineIgnore`, `seed.architectureDoc`, `seed.backlogPath`, `standupStatuses`. (`{task-root}` is read by nearly every consumer.)
 4. **`capabilities[]`** — the **active** registry, in order. Per capability: `name`, `manifestPath` (normalized, post-self-heal), `kind`, `fragments[]` (`phase`, `contributionKind`, `dispatch`, `scope`), `articles[]` (`key`,`value`), `requires`, `conflicts`, `profileTemplatePath`, `provenance` (`recorded`|`self-healed`). Metadata only — **fragment bodies are never stored**; the consumer still follows `dispatch` in its own context.
-5. **`providerOwnership`** — surface → owner index for `delivery`, `tracker`, `qa-execution:engine`, `qa-execution:host`: `{owner, fragmentPath, state}` where `state ∈ {ok, unconfigured, unrecoverable}` (+ `candidates[]` for `unrecoverable`, for the two-mode diagnosis). This is the run-scoped resolution record, precomputed.
+5. **`providerOwnership`** — surface → owner index for `delivery`, `tracker`, `qa-execution:engine`, `qa-execution:host`: `{owner, fragmentPath, state}` where `state ∈ {ok, unconfigured, unrecoverable}`. This is the ownership index from which the run-scoped resolution record is projected.
 6. **`pluginRoots`** — `plugin → root` (normalized, post-self-heal), with provenance.
 7. **`installedPacks[]`** — from `claude plugin list --json`: `pluginId`, `version`, `scope`, `enablement`, `installPath`, and snapshot `state ∈ {active, installed/inactive, installed/disabled, registered/unrecoverable}`.
 8. **`profiles`** — `capability → override-merged profile values` (angular slots; audit lens-gates). Values, not templates.
@@ -340,7 +340,7 @@ classes are `fragment`, `contract`, `shared`, `references-template`, `profile-te
 |---|---|---|---|---|
 | **R1 `resolve_config`** | core config + workspace + registry location | `workspaceRoot`, `registryPath`, `coreConfig{taskRoot,verifyCommand,qaRules,qaBaselineIgnore,seed{…},standupStatuses}`, `idShape` | one flat map | `_local/config.md` value reads; `wf.config.js` read; `workspace-root-resolve` |
 | **R2 `resolve_registry`** | ordered active registry (metadata) | `capabilities[]` = `{name,manifestPath,kind,fragments[],articles[],requires,conflicts,profileTemplatePath,provenance}` | O(active capabilities) small rows; **no fragment bodies** | `## Capabilities` read + per-row `manifest.md` reads (the phase-firing sweep) |
-| **R3 `resolve_provider({ workspaceRoot: "<Agent/session absolute current workspace directory>", surface })`** | one surface's resolution record | `{surface, owner, fragmentPath, state∈{ok,unconfigured,unrecoverable}, candidates[]?, degradation}` | one record; **no fragment body** | direct provider resolution (delivery/tracker/qa-execution) **and** the forwarded record |
+| **R3 `resolve_provider({ workspaceRoot: "<Agent/session absolute current workspace directory>", surface })`** | one surface's resolution record | `{surface, owner, fragmentPath, state∈{ok,unconfigured,unrecoverable}, degradation, diagnostics}` | one record; **no fragment body** | direct provider resolution (delivery/tracker/qa-execution) **and** the forwarded record |
 | **R4 `resolve_profile({ workspaceRoot: "<Agent/session absolute current workspace directory>", capability })`** | override-merged profile values | one profile object (values only) | one small object | `_local/profiles/<cap>.profile.json` (override>template) reads |
 | **R5 `resolve_plugin_root({ workspaceRoot: "<Agent/session absolute current workspace directory>", plugin })`** | plugin install root, post-self-heal | `{plugin, root, provenance∈{recorded,self-healed,unrecoverable}}` | one path | `## Plugin Roots` + install-manifest self-heal (`installed_plugins.json`) |
 | **R6 `inspect_pack` / `register_pack`** | init write-path | inspect: `{pluginId,installPath,manifests[],valid}`; register: `{status,capabilities[],root,selfCheck}` | one status record | init hand-writes of `## Plugin Roots` + `## Capabilities` (+ profile seed, config-section write) |
@@ -350,7 +350,7 @@ classes are `fragment`, `contract`, `shared`, `references-template`, `profile-te
 - **R3 is the workhorse** — it is exactly the run-scoped resolution record (surface,
   owner, fragment path, degraded outcome). A consumer calls it once per needed surface
   and then follows the fragment itself; the **degradation semantics stay in the response**
-  (`state`/`candidates`) so bare-core / tracker-warn / delivery-block behavior is
+  (`state`/`diagnostics`) so bare-core / tracker-warn / delivery-block behavior is
   reproduced verbatim without the consumer re-deriving it.
 - **R2 serves the phase-firing consumers** (tasks #3, verify-spec #6, qa-gen #11,
   qa-auto #13, tt #15, commit's pre-commit seam #21, constitution #8): they need the
