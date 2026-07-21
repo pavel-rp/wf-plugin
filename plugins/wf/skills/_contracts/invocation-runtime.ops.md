@@ -1,6 +1,6 @@
 # Capability invocation runtime — runtime ops
 
-**Version:** 1.4.0 (WF-208; WF-209 — run-scoped provider forwarding; WF-302 — the bundled-doc content resolution surface; WF-304 — fragment-body dispatch routed through that surface; WF-396 — evidence-selected execution shape)
+**Version:** 1.5.0 (WF-208; WF-209 — run-scoped provider forwarding; WF-302 — the bundled-doc content resolution surface; WF-304 — fragment-body dispatch routed through that surface; WF-396 — evidence-selected execution shape; WF-397 — parent-owned bounded escalation)
 **Role:** the runtime-read half of the invocation runtime — the exact procedure a core skill follows to fire an SDD phase or to resolve a provider surface, with every guard, no-op case, and fail-safe inline. One level deep: no step below requires opening anything beyond this file and its flat sibling below.
 **Pair (flat sibling, read directly when needed):** `capability-registry.ops.md` — the registry/mapping schemas, the recorded-root-first self-heal algorithm, the surface operation sets, and the degradation rules this procedure resolves against.
 **Reference (rationale, history, v1 lineage, worked demonstrations — never read at boot):** `invocation-runtime.contract.md`.
@@ -23,6 +23,14 @@ On `status: dispatch`, obey `executionShape` exactly while preserving the role's
 - **`bounded-parallel`** — dispatch every independent unit, run no more than `effectiveParallelism` Tasks concurrently, and restore deterministic input order before aggregation. The resolver caps concurrency by unit count, the positive caller bound, and a core maximum of four. Never parallelize dependent work.
 
 Pass `model.value` / `effort.value` only when non-null; null preserves inheritance. Preserve the role's shipped model and effort defaults, and retain actual-model attribution on authored artifacts.
+
+**Parent-owned post-attempt escalation.** The parent judges the returned structured result against its return and validation contracts. Retain the original work input, prior structured result, validation evidence, routing record, shape evidence, and every successful unit result. Submit `postAttempt` to `resolve_routing`; only these insufficiency signals are valid: `low-confidence`, `failed-validation`, `conflicting-or-incomplete-evidence`, `repeated-failure`, `increased-risk-or-scope`, `high-severity-review-uncertainty`.
+
+- `retain`: use the successful result; never rerun it at a stronger tier for reassurance.
+- `retry`: the parent re-dispatches only `retry.unitIds` (or the one insufficient atomic unit), forwarding the retained context above. Obey the recomputed execution shape and exact next tier; never let a child spawn its replacement.
+- `exhausted` / `invalid-stop`: perform no child dispatch; surface the diagnostic and retained successful units.
+
+The default limit is two total attempts. Only the shipped `security-auditor` policy permits attempt three, and only when the signal set is exclusively `high-severity-review-uncertainty`; three is the absolute ceiling. Every retry must retain the prior role and explicit effort choice/provenance (unless host effort masks it), record non-null `escalationOrigin`, preserve selector provenance and actual-model evidence, and advance exactly one tier through `haiku → sonnet → opus`. Masked, unsupported, unavailable, malformed, unknown, or non-advancing tiers stop rather than inherit or repeat. Recompute shape only through the existing evidence selector; changed risk/scope must be explicit in the supplied evidence.
 
 ## The moving parts (the generalised procedure)
 

@@ -22,6 +22,7 @@ type MatrixRow = {
   disposition: string;
   model: string;
   effort: string;
+  attemptLimit: number;
 };
 
 type InventoryRow = { role: string; path: string; frontmatter: string };
@@ -41,8 +42,8 @@ function parseMatrix(): MatrixRow[] {
   for (const line of lines.slice(header + 2)) {
     if (!line.startsWith("|")) break;
     const cells = line.slice(1, -1).split("|").map(unquote);
-    assert.equal(cells.length, 7, `matrix row must have seven cells: ${line}`);
-    rows.push({ role: cells[0], path: cells[1], disposition: cells[3], model: cells[4], effort: cells[5] });
+    assert.equal(cells.length, 8, `matrix row must have eight cells: ${line}`);
+    rows.push({ role: cells[0], path: cells[1], disposition: cells[3], model: cells[4], effort: cells[5], attemptLimit: Number(cells[6]) });
   }
   return rows;
 }
@@ -124,4 +125,72 @@ test("matrix pins only the WF-394 bootstrap Haiku defaults", () => {
     assert.equal(row.effort, "inherit", `${row.role} matrix effort must inherit`);
     if (row.disposition !== "shipped-static") assert.equal(row.model, "inherit", `${row.role} must not claim a hidden static model`);
   }
+});
+
+test("matrix publishes the sole bounded three-attempt role policy", () => {
+  const matrix = parseMatrix();
+  const invalid = matrix.filter((row) => !Number.isInteger(row.attemptLimit) || row.attemptLimit < 2 || row.attemptLimit > 3);
+  assert.deepEqual(invalid, [], "every production role must publish a two- or three-attempt limit");
+  assert.deepEqual(
+    matrix.filter((row) => row.attemptLimit === 3).map((row) => row.role),
+    ["security-auditor"],
+    "security-auditor must remain the sole three-attempt exception",
+  );
+
+  const inputs = {
+    role: "security-auditor",
+    shapeEvidence: {
+      workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
+      ambiguity: "material", risk: "elevated", toolWork: "bounded", validation: "judgment",
+      contextIsolation: "required", independentReview: true,
+      returnContract: "mechanically-judgeable", requestedParallelism: 1,
+    },
+    supportsModelSelector: true,
+    supportsEffortSelector: true,
+  } as const;
+  const initial = resolveRouting({}, { ...inputs, invocationModel: "haiku", actualModel: "haiku" });
+  const first = resolveRouting({}, {
+    ...inputs,
+    invocationModel: "haiku",
+    postAttempt: {
+      sufficient: false,
+      signals: ["low-confidence"],
+      prior: {
+        role: initial.role,
+        attempt: 1,
+        executionShape: initial.executionShape,
+        shapeEvidence: initial.normalizedEvidence,
+        model: initial.model,
+        effort: initial.effort,
+        basis: initial.basis,
+        escalationOrigin: null,
+        actualModel: "haiku",
+      },
+    },
+  });
+  const prior = {
+    role: first.role,
+    attempt: 2,
+    executionShape: first.executionShape,
+    shapeEvidence: first.normalizedEvidence,
+    model: first.model,
+    effort: first.effort,
+    basis: first.basis,
+    escalationOrigin: first.escalationOrigin,
+  };
+  assert.equal(resolveRouting({}, {
+    role: "security-auditor", shapeEvidence: first.normalizedEvidence,
+    supportsModelSelector: true, supportsEffortSelector: true, attempt: 2,
+    postAttempt: { sufficient: false, signals: ["high-severity-review-uncertainty"], prior },
+  }).disposition, "retry");
+  assert.equal(resolveRouting({}, {
+    role: "security-auditor", shapeEvidence: first.normalizedEvidence,
+    supportsModelSelector: true, supportsEffortSelector: true, attempt: 2,
+    postAttempt: { sufficient: false, signals: ["low-confidence"], prior },
+  }).disposition, "exhausted");
+  assert.equal(resolveRouting({}, {
+    role: "security-auditor", shapeEvidence: first.normalizedEvidence,
+    supportsModelSelector: true, supportsEffortSelector: true, attempt: 2,
+    postAttempt: { sufficient: false, signals: ["high-severity-review-uncertainty", "failed-validation"], prior },
+  }).disposition, "exhausted");
 });

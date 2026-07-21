@@ -286,6 +286,46 @@ export interface RoutingChoice {
   fallback: "malformed" | "unavailable" | "selector-unsupported" | null;
 }
 export type ExecutionShape = "inline" | "isolated" | "bounded-parallel";
+export type RoutingInsufficiencySignal =
+  | "low-confidence"
+  | "failed-validation"
+  | "conflicting-or-incomplete-evidence"
+  | "repeated-failure"
+  | "increased-risk-or-scope"
+  | "high-severity-review-uncertainty";
+export interface RoutingUnitEvaluation {
+  unitId: string;
+  sufficient: boolean;
+  signals: RoutingInsufficiencySignal[];
+}
+export interface RoutingPriorAttempt {
+  role: string;
+  attempt: number;
+  executionShape: ExecutionShape;
+  shapeEvidence: RoutingShapeEvidence;
+  model: RoutingChoice;
+  effort: RoutingChoice;
+  basis: string | null;
+  escalationOrigin: string | null;
+  actualModel?: string | null;
+}
+export interface RoutingPostAttemptEvaluation {
+  sufficient: boolean;
+  signals: RoutingInsufficiencySignal[];
+  units?: RoutingUnitEvaluation[];
+  prior: RoutingPriorAttempt;
+}
+export type RoutingDisposition = "dispatch" | "retain" | "retry" | "exhausted" | "invalid-stop";
+export interface RoutingRetryInstruction {
+  attempt: number;
+  signals: RoutingInsufficiencySignal[];
+  unitIds: string[];
+  priorTier: "haiku" | "sonnet" | "opus";
+  nextTier: "haiku" | "sonnet" | "opus";
+  escalationOrigin: string;
+  priorExecutionShape: ExecutionShape;
+  shapeChanged: boolean;
+}
 export type RoutingShapeReason =
   | "atomic-caller-context"
   | "single-isolation-worthy-unit"
@@ -325,6 +365,7 @@ export interface RoutingInputs {
   attempt?: number;
   escalationOrigin?: string | null;
   actualModel?: string | null;
+  postAttempt?: RoutingPostAttemptEvaluation;
 }
 export interface RoutingDecision {
   role: string;
@@ -341,7 +382,10 @@ export interface RoutingDecision {
   fallback: RoutingChoice["fallback"];
   masked: boolean;
   actualModel?: string;
-  status: "dispatch" | "stop";
+  status: "dispatch" | "retain" | "stop";
+  disposition: RoutingDisposition;
+  retry: RoutingRetryInstruction | null;
+  retainedUnitIds: string[];
   diagnostic: string | null;
 }
 

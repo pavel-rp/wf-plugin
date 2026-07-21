@@ -58,6 +58,7 @@ function withWorkspaceRoot(schema: {
   properties?: Record<string, unknown>;
   required?: string[];
   additionalProperties?: boolean;
+  allOf?: unknown[];
 }): Record<string, unknown> {
   return {
     ...schema,
@@ -103,26 +104,51 @@ const surfaceClassInput = fromJsonSchema(withWorkspaceRoot({
   additionalProperties: false,
 }));
 
+const routingSignalValues = [
+  "low-confidence",
+  "failed-validation",
+  "conflicting-or-incomplete-evidence",
+  "repeated-failure",
+  "increased-risk-or-scope",
+  "high-severity-review-uncertainty",
+];
+
+const routingShapeProperties = {
+  workSurface: { type: "string", enum: ["caller-context", "external-context"] },
+  atomicity: { type: "string", enum: ["atomic", "composite"] },
+  unitCount: { type: "integer", minimum: 1 },
+  unitsIndependent: { type: "boolean" },
+  ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
+  risk: { type: "string", enum: ["low", "elevated"] },
+  toolWork: { type: "string", enum: ["none", "bounded", "material"] },
+  validation: { type: "string", enum: ["mechanical", "judgment"] },
+  contextIsolation: { type: "string", enum: ["none", "useful", "required"] },
+  independentReview: { type: "boolean" },
+  returnContract: { type: "string", enum: ["mechanically-judgeable", "judgment"] },
+  requestedParallelism: { type: "integer", minimum: 1 },
+};
+const routingShapeRequired = Object.keys(routingShapeProperties);
+const routingChoiceSchema = {
+  type: "object",
+  properties: {
+    value: { type: ["string", "null"] },
+    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    requested: { type: ["string", "null"] },
+    requestedSource: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    masked: { type: "boolean" },
+    fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] },
+  },
+  required: ["value", "source", "requested", "requestedSource", "masked", "fallback"],
+  additionalProperties: false,
+};
+
 const routingInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
     shapeEvidence: {
       type: "object",
-      properties: {
-        workSurface: { type: "string", enum: ["caller-context", "external-context"] },
-        atomicity: { type: "string", enum: ["atomic", "composite"] },
-        unitCount: { type: "integer", minimum: 1 },
-        unitsIndependent: { type: "boolean" },
-        ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
-        risk: { type: "string", enum: ["low", "elevated"] },
-        toolWork: { type: "string", enum: ["none", "bounded", "material"] },
-        validation: { type: "string", enum: ["mechanical", "judgment"] },
-        contextIsolation: { type: "string", enum: ["none", "useful", "required"] },
-        independentReview: { type: "boolean" },
-        returnContract: { type: "string", enum: ["mechanically-judgeable", "judgment"] },
-        requestedParallelism: { type: "integer", minimum: 1 },
-      },
+      properties: routingShapeProperties,
       additionalProperties: false,
     },
     invocationModel: { type: ["string", "null"] }, invocationEffort: { type: ["string", "null"] },
@@ -130,12 +156,108 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
     supportsModelSelector: { type: "boolean" }, supportsEffortSelector: { type: "boolean" },
     hostModel: { type: ["string", "null"] }, hostEffort: { type: ["string", "null"] },
     availableModels: { type: ["array", "null"], items: { type: "string" } },
-    basis: { type: ["string", "null"] }, attempt: { type: "integer", minimum: 1 },
+    basis: { type: ["string", "null"] }, attempt: { type: "integer", minimum: 1, maximum: 3 },
     escalationOrigin: { type: ["string", "null"] }, actualModel: { type: ["string", "null"] },
+    postAttempt: {
+      type: "object",
+      properties: {
+        sufficient: { type: "boolean" },
+        signals: { type: "array", items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+        units: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: {
+              unitId: { type: "string", minLength: 1 },
+              sufficient: { type: "boolean" },
+              signals: { type: "array", items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+            },
+            required: ["unitId", "sufficient", "signals"],
+            additionalProperties: false,
+          },
+        },
+        prior: {
+          type: "object",
+          properties: {
+            role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
+            attempt: { type: "integer", minimum: 1, maximum: 3 },
+            executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
+            shapeEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
+            model: routingChoiceSchema,
+            effort: routingChoiceSchema,
+            basis: { type: ["string", "null"] },
+            escalationOrigin: { type: ["string", "null"] },
+            actualModel: { type: ["string", "null"] },
+          },
+          required: ["role", "attempt", "executionShape", "shapeEvidence", "model", "effort", "basis", "escalationOrigin"],
+          additionalProperties: false,
+        },
+      },
+      required: ["sufficient", "signals", "prior"],
+      additionalProperties: false,
+    },
   },
   required: ["role", "shapeEvidence", "supportsModelSelector", "supportsEffortSelector"],
+  allOf: [
+    {
+      if: { not: { required: ["postAttempt"] } },
+      then: {
+        properties: {
+          attempt: { const: 1 },
+          escalationOrigin: { type: "null" },
+        },
+      },
+    },
+  ],
   additionalProperties: false,
 }));
+
+const routingOutput = fromJsonSchema({
+  type: "object",
+  properties: {
+    role: { type: "string" },
+    executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
+    normalizedEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
+    shapeReason: { type: "string", enum: ["atomic-caller-context", "single-isolation-worthy-unit", "dependent-or-nonmaterial-units", "nonmaterial-units-inline", "independent-material-units"] },
+    effectiveParallelism: { type: "integer", minimum: 1, maximum: 4 },
+    model: routingChoiceSchema,
+    effort: routingChoiceSchema,
+    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    basis: { type: ["string", "null"] },
+    attempt: { type: "integer", minimum: 1, maximum: 3 },
+    escalationOrigin: { type: ["string", "null"] },
+    fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] },
+    masked: { type: "boolean" },
+    actualModel: { type: "string" },
+    status: { type: "string", enum: ["dispatch", "retain", "stop"] },
+    disposition: { type: "string", enum: ["dispatch", "retain", "retry", "exhausted", "invalid-stop"] },
+    retry: {
+      anyOf: [
+        { type: "null" },
+        {
+          type: "object",
+          properties: {
+            attempt: { type: "integer", minimum: 2, maximum: 3 },
+            signals: { type: "array", minItems: 1, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+            unitIds: { type: "array", items: { type: "string" }, uniqueItems: true },
+            priorTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
+            nextTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
+            escalationOrigin: { type: "string", minLength: 1 },
+            priorExecutionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
+            shapeChanged: { type: "boolean" },
+          },
+          required: ["attempt", "signals", "unitIds", "priorTier", "nextTier", "escalationOrigin", "priorExecutionShape", "shapeChanged"],
+          additionalProperties: false,
+        },
+      ],
+    },
+    retainedUnitIds: { type: "array", items: { type: "string" }, uniqueItems: true },
+    diagnostic: { type: ["string", "null"] },
+  },
+  required: ["role", "executionShape", "normalizedEvidence", "shapeReason", "effectiveParallelism", "model", "effort", "source", "basis", "attempt", "escalationOrigin", "fallback", "masked", "status", "disposition", "retry", "retainedUnitIds", "diagnostic"],
+  additionalProperties: false,
+});
 
 const capabilityInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
@@ -375,8 +497,9 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Select a bootstrap role's execution shape from typed task evidence and resolve its model and effort selectors from the fingerprint-fresh cached project configuration, preserving precedence, masking, fallback, and stop diagnostics. Body-free.",
+      description: "Select execution shape and independent model/effort selectors from the fingerprint-fresh cached configuration. With postAttempt evidence, retain sufficient work, resolve one bounded parent-owned next-tier retry for only insufficient units, or stop on invalid/exhausted state. Preserves precedence, masking, fallback, and provenance. Body-free.",
       inputSchema: routingInput,
+      outputSchema: routingOutput,
     },
     async (args: WorkspaceArgs & RoutingInputs) => {
       const { workspaceRoot, ...inputs } = args;
