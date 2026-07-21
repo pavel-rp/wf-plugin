@@ -285,9 +285,33 @@ export interface RoutingChoice {
   masked: boolean;
   fallback: "malformed" | "unavailable" | "selector-unsupported" | null;
 }
+export type ExecutionShape = "inline" | "isolated" | "bounded-parallel";
+export type RoutingShapeReason =
+  | "atomic-caller-context"
+  | "single-isolation-worthy-unit"
+  | "dependent-or-nonmaterial-units"
+  | "nonmaterial-units-inline"
+  | "independent-material-units";
+export interface RoutingShapeEvidence {
+  workSurface: "caller-context" | "external-context";
+  atomicity: "atomic" | "composite";
+  unitCount: number;
+  unitsIndependent: boolean;
+  ambiguity: "none" | "bounded" | "material";
+  risk: "low" | "elevated";
+  toolWork: "none" | "bounded" | "material";
+  validation: "mechanical" | "judgment";
+  contextIsolation: "none" | "useful" | "required";
+  independentReview: boolean;
+  returnContract: "mechanically-judgeable" | "judgment";
+  requestedParallelism: number;
+}
+export interface NormalizedRoutingShapeEvidence extends RoutingShapeEvidence {
+  requestedParallelism: number;
+}
 export interface RoutingInputs {
   role: string;
-  executionShape: string;
+  shapeEvidence: RoutingShapeEvidence;
   invocationModel?: string | null;
   invocationEffort?: string | null;
   requireModel?: boolean;
@@ -304,7 +328,10 @@ export interface RoutingInputs {
 }
 export interface RoutingDecision {
   role: string;
-  executionShape: string;
+  executionShape: ExecutionShape;
+  normalizedEvidence: NormalizedRoutingShapeEvidence;
+  shapeReason: RoutingShapeReason;
+  effectiveParallelism: number;
   model: RoutingChoice;
   effort: RoutingChoice;
   source: RoutingSource;

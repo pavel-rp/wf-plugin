@@ -1,6 +1,6 @@
 # Capability invocation runtime — runtime ops
 
-**Version:** 1.3.0 (WF-208; WF-209 — run-scoped provider forwarding; WF-302 — the bundled-doc content resolution surface; WF-304 — fragment-body dispatch routed through that surface)
+**Version:** 1.4.0 (WF-208; WF-209 — run-scoped provider forwarding; WF-302 — the bundled-doc content resolution surface; WF-304 — fragment-body dispatch routed through that surface; WF-396 — evidence-selected execution shape)
 **Role:** the runtime-read half of the invocation runtime — the exact procedure a core skill follows to fire an SDD phase or to resolve a provider surface, with every guard, no-op case, and fail-safe inline. One level deep: no step below requires opening anything beyond this file and its flat sibling below.
 **Pair (flat sibling, read directly when needed):** `capability-registry.ops.md` — the registry/mapping schemas, the recorded-root-first self-heal algorithm, the surface operation sets, and the degradation rules this procedure resolves against.
 **Reference (rationale, history, v1 lineage, worked demonstrations — never read at boot):** `invocation-runtime.contract.md`.
@@ -11,6 +11,18 @@
 ## Resolver call root
 
 Every bundled `wf-resolver` MCP call passes `workspaceRoot`: first run `pwd -P` in the current Agent/session to derive its absolute current workspace directory, then include that value explicitly in the call. An Agent running in a linked worktree derives and passes its own current worktree root — never a parent Agent's root. Omitting `workspaceRoot` is a hard schema error; MCP calls have no default or fallback root.
+
+**Resolver-selected execution shape.**
+
+Immediately before child work, call `resolve_routing` with `role`, selector-support facts, and the typed `shapeEvidence`: `workSurface`, `atomicity`, `unitCount`, `unitsIndependent`, `ambiguity`, `risk`, `toolWork`, `validation`, `contextIsolation`, `independentReview`, `returnContract`, and `requestedParallelism`. The caller supplies evidence, never a preferred shape. Emit the compact decision metadata. Any `status: stop` or non-null `diagnostic` is a hard stop before work begins.
+
+On `status: dispatch`, obey `executionShape` exactly while preserving the role's existing failure and output contract:
+
+- **`inline`** — execute the unit in the caller context; do not spawn.
+- **`isolated`** — invoke one Task subagent and forward only its declared final block.
+- **`bounded-parallel`** — dispatch every independent unit, run no more than `effectiveParallelism` Tasks concurrently, and restore deterministic input order before aggregation. The resolver caps concurrency by unit count, the positive caller bound, and a core maximum of four. Never parallelize dependent work.
+
+Pass `model.value` / `effort.value` only when non-null; null preserves inheritance. Preserve the role's shipped model and effort defaults, and retain actual-model attribution on authored artifacts.
 
 ## The moving parts (the generalised procedure)
 

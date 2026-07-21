@@ -3,7 +3,22 @@ import test from "node:test";
 import { parseRoutingConfig } from "../src/resolver/config.js";
 import { resolveRouting } from "../src/resolver/routing.js";
 
-const base = { role: "classify", executionShape: "task", supportsModelSelector: true, supportsEffortSelector: false } as const;
+const inlineEvidence = {
+  workSurface: "caller-context",
+  atomicity: "atomic",
+  unitCount: 1,
+  unitsIndependent: false,
+  ambiguity: "none",
+  risk: "low",
+  toolWork: "none",
+  validation: "mechanical",
+  contextIsolation: "none",
+  independentReview: false,
+  returnContract: "mechanically-judgeable",
+  requestedParallelism: 1,
+} as const;
+
+const base = { role: "classify", shapeEvidence: inlineEvidence, supportsModelSelector: true, supportsEffortSelector: false } as const;
 
 test("parses arbitrary routing roles with independent optional cells", () => {
   assert.deepEqual(parseRoutingConfig("## Routing\n\n| Role | Model | Effort |\n|---|---|---|\n| classify | sonnet | — |\n| custom-role | — | high |\n"), {
@@ -48,6 +63,95 @@ test("unavailable required model stops and actual model is only included when su
   assert.equal(decision.model.fallback, "unavailable");
   assert.equal("actualModel" in decision, false);
   assert.equal(resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5" }).actualModel, "claude-haiku-4-5");
+});
+
+test("selects execution shape deterministically from task evidence", () => {
+  const cases = [
+    { name: "atomic caller-context work", evidence: inlineEvidence, shape: "inline", reason: "atomic-caller-context", bound: 1 },
+    { name: "one-row bookkeeping", evidence: { ...inlineEvidence }, shape: "inline", reason: "atomic-caller-context", bound: 1 },
+    {
+      name: "one isolation-worthy unit",
+      evidence: { ...inlineEvidence, workSurface: "external-context", toolWork: "material", contextIsolation: "useful" },
+      shape: "isolated", reason: "single-isolation-worthy-unit", bound: 1,
+    },
+    {
+      name: "independent material units",
+      evidence: { ...inlineEvidence, atomicity: "composite", unitCount: 7, unitsIndependent: true, toolWork: "material", contextIsolation: "useful", requestedParallelism: 6 },
+      shape: "bounded-parallel", reason: "independent-material-units", bound: 4,
+    },
+    {
+      name: "independent trivial units",
+      evidence: { ...inlineEvidence, atomicity: "composite", unitCount: 3, unitsIndependent: true, requestedParallelism: 3 },
+      shape: "inline", reason: "nonmaterial-units-inline", bound: 1,
+    },
+    {
+      name: "dependent material units",
+      evidence: { ...inlineEvidence, atomicity: "composite", unitCount: 3, toolWork: "material", requestedParallelism: 3 },
+      shape: "isolated", reason: "dependent-or-nonmaterial-units", bound: 1,
+    },
+    {
+      name: "non-judgeable independent units",
+      evidence: { ...inlineEvidence, atomicity: "composite", unitCount: 3, unitsIndependent: true, toolWork: "material", returnContract: "judgment", requestedParallelism: 3 },
+      shape: "isolated", reason: "dependent-or-nonmaterial-units", bound: 1,
+    },
+  ] as const;
+  for (const row of cases) {
+    const decision = resolveRouting({}, { ...base, shapeEvidence: row.evidence });
+    assert.deepEqual(
+      [decision.executionShape, decision.shapeReason, decision.effectiveParallelism],
+      [row.shape, row.reason, row.bound],
+      row.name,
+    );
+    assert.deepEqual(decision.normalizedEvidence, row.evidence, row.name);
+  }
+});
+
+test("caps parallelism by units, request, and the core maximum", () => {
+  const evidence = { ...inlineEvidence, atomicity: "composite", unitCount: 3, unitsIndependent: true, toolWork: "material", requestedParallelism: 2 } as const;
+  assert.equal(resolveRouting({}, { ...base, shapeEvidence: evidence }).effectiveParallelism, 2);
+});
+
+test("a caller bound of one never selects parallel execution", () => {
+  const evidence = {
+    ...inlineEvidence,
+    atomicity: "composite",
+    unitCount: 3,
+    unitsIndependent: true,
+    toolWork: "material",
+    requestedParallelism: 1,
+  } as const;
+  const decision = resolveRouting({}, { ...base, shapeEvidence: evidence });
+  assert.equal(decision.executionShape, "isolated");
+  assert.equal(decision.effectiveParallelism, 1);
+});
+
+test("contradictory shape evidence stops without changing selector decisions", () => {
+  const decision = resolveRouting({}, {
+    ...base,
+    shapeEvidence: { ...inlineEvidence, atomicity: "atomic", unitCount: 2 },
+  });
+  assert.equal(decision.status, "stop");
+  assert.match(decision.diagnostic ?? "", /atomic work must contain exactly one unit/);
+  assert.equal(decision.model.value, "haiku");
+  assert.equal(decision.model.source, "shipped-default");
+});
+
+test("incomplete or legacy shape inputs stop with specific diagnostics", () => {
+  const incomplete = resolveRouting({}, {
+    ...base,
+    shapeEvidence: { ...inlineEvidence, contextIsolation: undefined },
+  } as unknown as Parameters<typeof resolveRouting>[1]);
+  assert.equal(incomplete.status, "stop");
+  assert.match(incomplete.diagnostic ?? "", /contextIsolation must be one of/);
+
+  const legacy = resolveRouting({}, {
+    role: "classify",
+    executionShape: "task",
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
+  } as unknown as Parameters<typeof resolveRouting>[1]);
+  assert.equal(legacy.status, "stop");
+  assert.match(legacy.diagnostic ?? "", /shape evidence is required/);
 });
 
 test("malformed choices inherit unless required", () => {

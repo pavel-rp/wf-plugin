@@ -1,7 +1,7 @@
 ---
 name: branch
 description: Creates and switches to a dedicated branch for a task, deriving the branch name (feature/<id>-…, fix/<id>-…, chore/<id>-…, etc.) from the task's plan or spec — or, when neither exists yet, a single tracker lookup or the bare task id — and setting up remote tracking through the active delivery provider. Works from any state; never blocks on a missing task folder. Thin slash-command wrapper — the full procedure lives in the wf:branch subagent (config resolution, branch derivation, delivery-provider dispatch, index update all happen there). Use directly via /wf:branch <id> for ad-hoc invocation, OR invoke the Task tool with subagent_type wf:branch from another wf:* skill that needs a branch gate (required when called from another skill — bypasses the slash-command's caller-side cost).
-allowed-tools: [Task]
+allowed-tools: [Task, Bash]
 ---
 
 # /wf:branch — Task branch from a plan or spec
@@ -26,9 +26,9 @@ User-facing slash command for creating and switching to a task branch. The imple
 
 ## Procedure
 
-Before dispatch, run `pwd -P` and use that absolute current session directory as `workspaceRoot`. Call the bundled `wf-resolver` MCP tool `resolve_routing` immediately before delegation with `role: "branch"`, `executionShape: "task"`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; also pass any selector availability, host enforcement, or actual-model facts the runtime already exposes, and omit facts it does not expose rather than probing. Emit the decision's compact metadata; on `status: stop`, emit `BRANCH — Error` with the routing diagnostic and do not spawn. On `status: dispatch`, pass the returned model selector only when `model.value` is non-null; `effort.value: null` means preserve inherited effort.
+Before dispatch, run `pwd -P` and use that absolute current session directory as `workspaceRoot`. Call the bundled `wf-resolver` MCP tool `resolve_routing` immediately before delegation with `role: "branch"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; the elevated risk reflects that this unit may create, switch, or publish a branch. Also pass any selector availability, host enforcement, or actual-model facts the runtime already exposes, and omit facts it does not expose rather than probing. Emit the decision's compact metadata. If `status: stop` or `diagnostic` is non-null, emit `BRANCH — Error` with the routing diagnostic and do not dispatch. Otherwise obey `executionShape` exactly per `invocation-runtime.ops.md` §"Resolver call root"; this evidence selects `isolated`, so invoke one **Task**. Pass the returned model selector only when `model.value` is non-null; `effort.value: null` means preserve inherited effort.
 
-Then invoke the **Task** tool with `subagent_type: wf:branch`, passing:
+For the selected `isolated` shape, invoke the **Task** tool with `subagent_type: wf:branch`, passing:
 
 - `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
 

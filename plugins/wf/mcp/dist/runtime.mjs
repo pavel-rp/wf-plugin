@@ -19848,7 +19848,24 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
   type: "object",
   properties: {
     role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
-    executionShape: { type: "string", minLength: 1 },
+    shapeEvidence: {
+      type: "object",
+      properties: {
+        workSurface: { type: "string", enum: ["caller-context", "external-context"] },
+        atomicity: { type: "string", enum: ["atomic", "composite"] },
+        unitCount: { type: "integer", minimum: 1 },
+        unitsIndependent: { type: "boolean" },
+        ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
+        risk: { type: "string", enum: ["low", "elevated"] },
+        toolWork: { type: "string", enum: ["none", "bounded", "material"] },
+        validation: { type: "string", enum: ["mechanical", "judgment"] },
+        contextIsolation: { type: "string", enum: ["none", "useful", "required"] },
+        independentReview: { type: "boolean" },
+        returnContract: { type: "string", enum: ["mechanically-judgeable", "judgment"] },
+        requestedParallelism: { type: "integer", minimum: 1 }
+      },
+      additionalProperties: false
+    },
     invocationModel: { type: ["string", "null"] },
     invocationEffort: { type: ["string", "null"] },
     requireModel: { type: "boolean" },
@@ -19863,7 +19880,7 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
     escalationOrigin: { type: ["string", "null"] },
     actualModel: { type: ["string", "null"] }
   },
-  required: ["role", "executionShape", "supportsModelSelector", "supportsEffortSelector"],
+  required: ["role", "shapeEvidence", "supportsModelSelector", "supportsEffortSelector"],
   additionalProperties: false
 }));
 var capabilityInput = fromJsonSchema2(withWorkspaceRoot({
@@ -20060,7 +20077,7 @@ function registerResolverTools(server, selectService) {
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Resolve a bootstrap role's model and effort selectors from the fingerprint-fresh cached project configuration, with precedence, masking, fallback, and stop diagnostics. Body-free.",
+      description: "Select a bootstrap role's execution shape from typed task evidence and resolve its model and effort selectors from the fingerprint-fresh cached project configuration, preserving precedence, masking, fallback, and stop diagnostics. Body-free.",
       inputSchema: routingInput
     },
     async (args) => {
@@ -21819,6 +21836,79 @@ var DEFAULTS = {
 };
 var MODEL_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 var EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
+var MAX_PARALLELISM = 4;
+function selectShape(inputs) {
+  const evidence = inputs.shapeEvidence;
+  const normalizedEvidence = {
+    workSurface: evidence?.workSurface ?? "caller-context",
+    atomicity: evidence?.atomicity ?? "atomic",
+    unitCount: evidence?.unitCount ?? 0,
+    unitsIndependent: evidence?.unitsIndependent ?? false,
+    ambiguity: evidence?.ambiguity ?? "none",
+    risk: evidence?.risk ?? "low",
+    toolWork: evidence?.toolWork ?? "none",
+    validation: evidence?.validation ?? "mechanical",
+    contextIsolation: evidence?.contextIsolation ?? "none",
+    independentReview: evidence?.independentReview ?? false,
+    returnContract: evidence?.returnContract ?? "mechanically-judgeable",
+    requestedParallelism: evidence?.requestedParallelism ?? 0
+  };
+  const enumFields = [
+    ["workSurface", evidence?.workSurface, ["caller-context", "external-context"]],
+    ["atomicity", evidence?.atomicity, ["atomic", "composite"]],
+    ["ambiguity", evidence?.ambiguity, ["none", "bounded", "material"]],
+    ["risk", evidence?.risk, ["low", "elevated"]],
+    ["toolWork", evidence?.toolWork, ["none", "bounded", "material"]],
+    ["validation", evidence?.validation, ["mechanical", "judgment"]],
+    ["contextIsolation", evidence?.contextIsolation, ["none", "useful", "required"]],
+    ["returnContract", evidence?.returnContract, ["mechanically-judgeable", "judgment"]]
+  ];
+  const invalidEnum = enumFields.find(([, value, allowed]) => typeof value !== "string" || !allowed.includes(value));
+  const invalidBoolean = ["unitsIndependent", "independentReview"].find(
+    (field) => typeof evidence?.[field] !== "boolean"
+  );
+  const stop = !evidence ? "shape evidence is required" : invalidEnum ? `shape evidence ${invalidEnum[0]} must be one of: ${invalidEnum[2].join(", ")}` : invalidBoolean ? `shape evidence ${invalidBoolean} must be boolean` : !Number.isInteger(evidence.unitCount) || (evidence.unitCount ?? 0) < 1 ? "shape evidence unitCount must be a positive integer" : !Number.isInteger(evidence.requestedParallelism) || (evidence.requestedParallelism ?? 0) < 1 ? "shape evidence requestedParallelism must be a positive integer" : evidence.atomicity === "atomic" && evidence.unitCount !== 1 ? "shape evidence is contradictory: atomic work must contain exactly one unit" : evidence.atomicity === "composite" && (evidence.unitCount ?? 0) < 2 ? "shape evidence is contradictory: composite work must contain at least two units" : evidence.unitsIndependent && (evidence.unitCount ?? 0) < 2 ? "shape evidence is contradictory: independence requires at least two units" : null;
+  if (stop) {
+    return {
+      executionShape: "inline",
+      normalizedEvidence,
+      shapeReason: "dependent-or-nonmaterial-units",
+      effectiveParallelism: 1,
+      stop
+    };
+  }
+  const isolationWorthy = normalizedEvidence.workSurface === "external-context" || normalizedEvidence.ambiguity !== "none" || normalizedEvidence.risk === "elevated" || normalizedEvidence.toolWork !== "none" || normalizedEvidence.validation === "judgment" || normalizedEvidence.contextIsolation !== "none" || normalizedEvidence.independentReview;
+  const parallelWorthy = normalizedEvidence.unitsIndependent && normalizedEvidence.unitCount >= 2 && normalizedEvidence.requestedParallelism >= 2 && normalizedEvidence.returnContract === "mechanically-judgeable" && (normalizedEvidence.ambiguity !== "none" || normalizedEvidence.risk === "elevated" || normalizedEvidence.toolWork !== "none" || normalizedEvidence.contextIsolation !== "none" || normalizedEvidence.independentReview);
+  if (parallelWorthy) {
+    return {
+      executionShape: "bounded-parallel",
+      normalizedEvidence,
+      shapeReason: "independent-material-units",
+      effectiveParallelism: Math.min(
+        normalizedEvidence.unitCount,
+        normalizedEvidence.requestedParallelism,
+        MAX_PARALLELISM
+      ),
+      stop: null
+    };
+  }
+  if (isolationWorthy) {
+    return {
+      executionShape: "isolated",
+      normalizedEvidence,
+      shapeReason: normalizedEvidence.unitCount === 1 ? "single-isolation-worthy-unit" : "dependent-or-nonmaterial-units",
+      effectiveParallelism: 1,
+      stop: null
+    };
+  }
+  return {
+    executionShape: "inline",
+    normalizedEvidence,
+    shapeReason: normalizedEvidence.unitCount === 1 ? "atomic-caller-context" : "nonmaterial-units-inline",
+    effectiveParallelism: 1,
+    stop: null
+  };
+}
 function choose(kind, inputs, project) {
   const selectorSupported = kind === "model" ? inputs.supportsModelSelector : inputs.supportsEffortSelector;
   const host = kind === "model" ? inputs.hostModel : inputs.hostEffort;
@@ -21857,12 +21947,16 @@ function choose(kind, inputs, project) {
 }
 function resolveRouting(project, inputs) {
   if (!/^[a-z][a-z0-9-]*$/.test(inputs.role)) throw new Error(`invalid routing role \`${inputs.role}\``);
+  const shape = selectShape(inputs);
   const model = choose("model", inputs, project);
   const effort = choose("effort", inputs, project);
-  const stops = [model.stop, effort.stop].filter((v) => v !== null);
+  const stops = [shape.stop, model.stop, effort.stop].filter((v) => v !== null);
   return {
     role: inputs.role,
-    executionShape: inputs.executionShape,
+    executionShape: shape.executionShape,
+    normalizedEvidence: shape.normalizedEvidence,
+    shapeReason: shape.shapeReason,
+    effectiveParallelism: shape.effectiveParallelism,
     model: model.choice,
     effort: effort.choice,
     source: model.choice.source,

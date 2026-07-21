@@ -98,7 +98,20 @@ test("matrix pins only the WF-394 bootstrap Haiku defaults", () => {
   for (const row of matrix) {
     const decision = resolveRouting({}, {
       role: row.role,
-      executionShape: "task",
+      shapeEvidence: {
+        workSurface: "external-context",
+        atomicity: "atomic",
+        unitCount: 1,
+        unitsIndependent: false,
+        ambiguity: "bounded",
+        risk: "low",
+        toolWork: "bounded",
+        validation: "judgment",
+        contextIsolation: "useful",
+        independentReview: false,
+        returnContract: "mechanically-judgeable",
+        requestedParallelism: 1,
+      },
       supportsModelSelector: true,
       supportsEffortSelector: true,
       availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-8"],
