@@ -46,7 +46,12 @@ import {
   parseSettingsOverride,
   settingsOverrideRelPath,
 } from "./resolver/settings.js";
-import { isAbsoluteRoot, joinSlash, normalizeSlashes } from "./resolver/paths.js";
+import {
+  isAbsoluteRoot,
+  joinSlash,
+  normalizeSlashes,
+  registryPathShapeError,
+} from "./resolver/paths.js";
 import {
   validateManifest,
   validateRegistry,
@@ -114,6 +119,9 @@ export interface ResolverServicePorts {
   /** Resolved registry-file location, workspace-relative (default
    *  `_local/config.md`). */
   registryRelPath(): string;
+  /** Production-only containment boundary for the registry write. Test doubles
+   *  may omit it and use the shape-validated workspace-relative join. */
+  resolveRegistryWritePath?(registryRelPath: string): string;
 }
 
 // --- bounded response shapes (metadata only; no bodies) --------------------
@@ -959,8 +967,29 @@ export class ResolverService {
       })),
     ];
 
+    // Validate and contain the sole mutation target before reading or writing it.
+    const registryRel = this.ports.registryRelPath();
+    const shapeError = registryPathShapeError(registryRel);
+    if (shapeError) {
+      return reject(
+        `registryPath \`${registryRel}\` is not a forward-slash repo-relative file path: ${shapeError}.`,
+      );
+    }
+
+    let registryAbs: string;
+    try {
+      registryAbs =
+        this.ports.resolveRegistryWritePath?.(registryRel) ??
+        joinSlash(this.ports.workspaceRoot, registryRel);
+    } catch (err) {
+      return reject(
+        `registryPath \`${registryRel}\` escapes the selected workspace: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
     // Own the registry write (the sole mutation), then refresh the snapshot.
-    const registryAbs = joinSlash(this.ports.workspaceRoot, this.ports.registryRelPath());
     let content = this.ports.readFile(registryAbs) ?? "";
     for (const row of preview) {
       const columns: [string, string] =

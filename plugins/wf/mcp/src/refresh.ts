@@ -15,6 +15,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveWorkspaceIdentity } from "./git-workspace.js";
 import {
   CONSTITUTION_RELPATH,
   RESOLVER_GENERATOR,
@@ -31,7 +32,8 @@ import {
 } from "./resolver/index.js";
 
 function workspaceRoot(): string {
-  return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
+  const configured = process.env.WF_WORKSPACE_ROOT || process.cwd();
+  return resolveWorkspaceIdentity(resolve(configured)).root;
 }
 
 /** Resolve the core `wf` plugin root — the anchor for locating a core skill's

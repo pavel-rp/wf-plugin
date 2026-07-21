@@ -9,6 +9,10 @@
 
 > **Ops/reference split (WF-208).** This contract is the **reference half** — read at authoring and validation time, never at boot. The **runtime-read half** is [`capability-registry.ops.md`](capability-registry.ops.md): bounded (≤150 lines), self-sufficient one level deep, the normative home for every runtime-followed clause. Sections below carrying a "Normative runtime text" pointer keep their narrative as background; a boot follows the ops doc, never this file.
 
+## Resolver call root
+
+Before calling a resolver MCP tool, run `pwd -P` in the current Agent/session and explicitly pass its absolute current workspace directory as `workspaceRoot`. Each Agent derives its own value; an Agent in a linked worktree never reuses its parent's root. Omission is a hard schema error — resolver MCP calls have no default or fallback root.
+
 ---
 
 ## Purpose
@@ -938,8 +942,9 @@ not a code-generated file.
 
 **Filled-slot composition (WF-327).** WF-326 fixes the *unfilled* behaviour; WF-327
 defines how a *filled* slot is resolved and served. Execution reaching a marker
-obtains the winning body with **one** `resolve_content` call — the `slot` content
-class, keyed by the `<skill>.<point>` id (`skill` + `point` args) — following the
+obtains the winning body with **one** `resolve_content` call — explicitly passing
+`workspaceRoot: <current Agent/session absolute workspace directory>`, using the `slot` content
+class, and keyed by the `<skill>.<point>` id (`skill` + `point` args) — following the
 same metadata → body-fetch → follow dispatch pattern as every other served class.
 The composition is **code in the bundled resolver runtime, not prose the model
 arbitrates**: for any input set the per-slot winner is a pure function of the
@@ -1014,7 +1019,8 @@ lifecycle (no parallel freshness mechanism):
   undeclared-key check). Loud failure covers **id-level** orphans only; an override
   whose slot id survived but whose *meaning* drifted is watch-list territory, not
   solved here.
-- **Per-slot provenance.** `resolve_inspect` lists each composed slot with its
+- **Per-slot provenance.** `resolve_inspect`, called with
+  `workspaceRoot: <current Agent/session absolute workspace directory>`, lists each composed slot with its
   **winning source** and the **tier** it won from (`local-override` / `pack-contribution`
   / `unfilled`), the override-presence flag, and the ordered contributors — full
   composition provenance for anyone debugging what a slot resolved to — plus the
@@ -1117,7 +1123,8 @@ mechanism** (locked decision 10).
   seeded only when the project **diverges** (a fully-default project keeps no
   settings override). An **undeclared** key is never silently merged in.
 - **Resolution — the `resolve_settings` query.** A consumer obtains the
-  override-merged VALUES with one `resolve_settings` call keyed by the skill slug.
+  override-merged VALUES with one `resolve_settings` call, explicitly passing
+  `workspaceRoot: <current Agent/session absolute workspace directory>` and the skill slug.
   The resolver locates the skill's `interface.md` (the core plugin root first, then
   every resolved pack root), reads the optional override via its own fs, and merges.
   Values only — never a skill body or interface prose (the body-free invariant holds:

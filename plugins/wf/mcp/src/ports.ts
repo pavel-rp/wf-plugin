@@ -6,11 +6,11 @@
 // facts. Kept apart from service.ts so the service logic stays a pure function
 // of its ports and can be tested with in-memory doubles.
 
-import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { lstatSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  extractRegistryPath,
+  extractRegistryPathRaw,
   fsIO,
   resolveSnapshot,
   readSnapshot,
@@ -22,13 +22,6 @@ import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
 import type { ResolverServicePorts, PluginListResult } from "./service.js";
 
 const DEFAULT_REGISTRY_RELPATH = "_local/config.md";
-
-/** Resolve the workspace root the server operates against. The MCP process is
- *  launched with the Claude Code workspace as its cwd; `WF_WORKSPACE_ROOT`
- *  overrides it (tests / non-standard hosts). */
-export function resolveWorkspaceRoot(): string {
-  return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
-}
 
 /** Resolve the core `wf` plugin root — the anchor for `contract` / `shared` /
  *  core `references-template` content refs. This module is bundled into
@@ -45,10 +38,40 @@ export function resolveCorePluginRoot(): string {
   return normalizeSlashes(resolve(dirname(here), "..", "..")); // .../plugins/wf
 }
 
+/** Resolve a write target only when its existing path chain stays in the workspace. */
+export function resolveContainedRegistryWritePath(
+  workspaceRoot: string,
+  registryRelPath: string,
+): string {
+  const canonicalRoot = realpathSync(workspaceRoot);
+  const target = resolve(workspaceRoot, registryRelPath);
+  let existing = target;
+  while (true) {
+    try {
+      lstatSync(existing);
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      const parent = dirname(existing);
+      if (parent === existing) throw err;
+      existing = parent;
+    }
+  }
+  const canonicalExisting = realpathSync(existing);
+  const fromRoot = relative(canonicalRoot, canonicalExisting);
+  if (
+    fromRoot === "" ||
+    (fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot))
+  ) {
+    return normalizeSlashes(target);
+  }
+  throw new Error(`resolved path leaves workspace root \`${normalizeSlashes(canonicalRoot)}\`.`);
+}
+
 export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts {
   const registryRelPath = (): string => {
     const wfConfig = fsIO.readFile(joinSlash(workspaceRoot, "wf.config.js"));
-    return extractRegistryPath(wfConfig);
+    return extractRegistryPathRaw(wfConfig);
   };
 
   return {
@@ -106,5 +129,7 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     },
 
     registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH,
+    resolveRegistryWritePath: (registryRelPath) =>
+      resolveContainedRegistryWritePath(workspaceRoot, registryRelPath),
   };
 }

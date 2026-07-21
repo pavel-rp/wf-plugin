@@ -50,8 +50,10 @@ from the registry.
 ## Prerequisites
 
 **Before any other phase**, obtain project config and the active registry from the bundled
-`wf-resolver` MCP service: `resolve_config` for project values (`coreConfig`,
-`workspaceRoot`, `registryPath`) and `resolve_registry` for the ordered active
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+
+`wf-resolver` MCP service: `resolve_config({ workspaceRoot, ... })` for project values (`coreConfig`,
+`workspaceRoot`, `registryPath`) and `resolve_registry({ workspaceRoot, ... })` for the ordered active
 `capabilities[]` (`name`, `kind`, `manifestPath`, `fragments[]`, `articles[]`,
 `provenance`) — both already resolved from `_local/config.md` and every `manifest.md`, so
 composition performs no direct registry/manifest parse of its own. If the resolver reports
@@ -91,8 +93,8 @@ default detects the right one.
 **Allowed:**
 
 - Read any file in the project (`Read`, `Glob`).
-- Obtain each registered capability's composed `article`s from the `wf-resolver` `resolve_registry` query (the `articles[]` metadata per capability) — no direct `manifest.md` read for composition.
-- Read-only workspace resolution via the `wf-resolver` `resolve_config` (`workspaceRoot`) query; plain-directory fallback when no delivery provider is registered.
+- Obtain each registered capability's composed `article`s from the `wf-resolver` `resolve_registry({ workspaceRoot, ... })` query (the `articles[]` metadata per capability) — no direct `manifest.md` read for composition.
+- Read-only workspace resolution via the `wf-resolver` `resolve_config({ workspaceRoot, ... })` (`workspaceRoot`) query; plain-directory fallback when no delivery provider is registered.
 - Write **only** these two `_local/`-scoped targets:
   - `_local/constitution.md` (the composed constitution record).
   - the `## Capabilities` table inside `_local/config.md` (maintained, not the rest of the file).
@@ -153,11 +155,11 @@ Plus these additional core articles (provenance `core`), recorded **verbatim**:
 
 ### 2. Capability articles — composed from the registry (provenance-tagged)
 
-Compose each registered capability's non-negotiables from the `wf-resolver` `resolve_registry`
+Compose each registered capability's non-negotiables from the `wf-resolver` `resolve_registry({ workspaceRoot, ... })`
 query — do **not** read `## Capabilities` or any `manifest.md` yourself — referencing the
 taxonomy by **contribution-kind name** (`article`), never by heading:
 
-1. **Call `resolve_registry`.** It returns the ordered active `capabilities[]` (**in registry
+1. **Call `resolve_registry({ workspaceRoot, ... })`.** It returns the ordered active `capabilities[]` (**in registry
    order**, general → specific), each already resolved from the registry and its `manifest.md`,
    carrying its composed **`articles[]`** metadata (the declared non-negotiable principles).
    The resolver has done the registry iteration and per-capability manifest read; core reads
@@ -169,7 +171,7 @@ taxonomy by **contribution-kind name** (`article`), never by heading:
    the recorded articles — attribution is explicit.
 
 **No-op (the only permitted branch is "zero capability articles" vs "one or more"):** if
-`resolve_registry` returns an empty `capabilities[]`, or a capability declares no `article`, that
+`resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]`, or a capability declares no `article`, that
 contributor — or the whole group — produces **nothing**. The constitution is then **core-only**:
 no capability section, no capability/stack/domain term surfaced, no STOP. Never hardcode or
 special-case a concrete capability, count the registry, or carry a per-capability code path
@@ -220,7 +222,7 @@ instead. Mirror the update-merge / skip-if-present idempotency of `qa-gen` and `
 
 1. Read the existing `_local/constitution.md`.
 2. **Re-compose** the core articles (verbatim — they don't drift) and the **capability
-   articles** (re-query `resolve_registry`; refresh to match the current registered
+   articles** (re-query `resolve_registry({ workspaceRoot, ... })`; refresh to match the current registered
    capabilities).
 3. **Preserve the project clauses** exactly as authored. Never silently overwrite a
    user-authored clause — if a re-compose would change or drop anything inside the project
@@ -234,7 +236,7 @@ instead. Mirror the update-merge / skip-if-present idempotency of `qa-gen` and `
 ## Maintain the `## Capabilities` table (second write target)
 
 The skill keeps the `## Capabilities` registry table in `_local/config.md` consistent — it is
-the source the `wf-resolver` snapshot (and thus this skill's own `resolve_registry` query and
+the source the `wf-resolver` snapshot (and thus this skill's own `resolve_registry({ workspaceRoot, ... })` query and
 every capability-firing phase) resolves from. This is the **one** direct `_local/config.md`
 write this skill performs; the composition reads all go through the resolver. Maintain **only**
 this table; never rewrite the rest of `config.md`. After maintaining it, the resolver
@@ -264,7 +266,7 @@ shape if needed. Never invent capability rows.
 
 ## Template: `_local/constitution.md`
 
-The verbatim `_local/constitution.md` template — the metadata block, `## Precedence`, `## Core articles`, `## Capability articles`, and `## Project clauses` — lives at `constitution-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: constitution`, `ref: constitution-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (establish/update), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
+The verbatim `_local/constitution.md` template — the metadata block, `## Precedence`, `## Core articles`, `## Capability articles`, and `## Project clauses` — lives at `constitution-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: constitution`, `ref: constitution-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (establish/update), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 Do **not** bake a flattened single-source file anywhere else — this record *is* the
 composition. Do **not** name any concrete stack, domain, or capability in the core articles
@@ -280,7 +282,7 @@ the registry.
 - **`## Capabilities` registry is empty or absent.** Not an error — write a **core-only**
   constitution (the inert path) and, if the table is absent, append an empty one. No
   capability term surfaces.
-- **A capability resolves as invalid** (its `manifest.md` unreadable — `resolve_registry` marks
+- **A capability resolves as invalid** (its `manifest.md` unreadable — `resolve_registry({ workspaceRoot, ... })` marks
   it with an invalid `validity` and empty `articles[]`). Compose the rest; record that
   capability with no articles and note it in the chat summary. The registry validator
   (WF-2 / WF-28) is the gate for malformed registries — this skill does not STOP on it.

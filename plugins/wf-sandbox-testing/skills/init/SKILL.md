@@ -61,21 +61,23 @@ under the stable plugin id `wf-sandbox-testing`.
 
 ## Onboarding procedure
 
-1. **Precondition.** Call `resolve_config` for the resolved registry location and Read it to confirm
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
+1. **Precondition.** Call `resolve_config({ workspaceRoot: "<workspace-root>" })` for the resolved registry location and Read it to confirm
    `_local/config.md` exists. If the resolver reports the project is uninitialized (no resolved
    config / absent `_local/config.md`), **stop loudly**: "Run `/wf:init` first —
    `/wf-sandbox-testing:init` registers into the registry that `/wf:init` creates. It never registers
    into a half-configured repo." Do not call `inspect_pack` or `register_pack`.
-2. **Check prior state (reporting only).** Call `resolve_registry`; note whether `sandbox-testing`
+2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether `sandbox-testing`
    already appears with `validity: "ok"`. This never skips a later step — it only decides whether the
    Final Output says `onboarded` or `already-registered`.
-3. **Inspect the pack.** Call `inspect_pack({ pluginId: "wf-sandbox-testing" })`. Read-only; returns
+3. **Inspect the pack.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-sandbox-testing" })`. Read-only; returns
    `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
    - `valid: false` (not installed, disabled, no readable
      `capabilities/sandbox-testing/manifest.md`, or `claude plugin list --json` itself unavailable) →
      go to **Failure path**; do not call `register_pack`.
 4. **Register.** Call
-   `register_pack({ pluginId: "wf-sandbox-testing", expectedFingerprint: <fingerprint from step 3> })`.
+   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-sandbox-testing", expectedFingerprint: <fingerprint from step 3> })`.
    It writes the `## Plugin Roots` row and the `sandbox-testing` `## Capabilities` row in a single
    write, refreshes the resolver snapshot, and self-checks that `sandbox-testing` now resolves —
    returning `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
@@ -91,7 +93,7 @@ Output's `Profile:` row is always `skipped — no template` — a static fact, n
 
 ### Failure path (WF-272 diagnostics)
 
-Call `resolve_gate({ surface: "delivery-write" })` (registering a pack is a registry write). Report
+Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a pack is a registry write). Report
 its `categories`, `diagnostics`, and `recovery` alongside the pack-specific `issues[]` (from
 `inspect_pack`) or `reason` (from a rejected `register_pack`) — never a bare error. Finish with
 `partial`.
@@ -108,8 +110,10 @@ its `categories`, `diagnostics`, and `recovery` alongside the pack-specific `iss
   issue naming the CLI call as the cause — failure path; check the `claude` CLI, then re-run.
 - **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the install looks
   corrupted — reinstall the plugin.
-- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run `inspect_pack` to
-  get the current fingerprint and retry `register_pack`.
+- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run
+  `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-sandbox-testing" })` to
+  get the current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>",
+  pluginId: "wf-sandbox-testing", expectedFingerprint: <current fingerprint> })`.
 - **`sandbox-testing` already registered:** `register_pack` upserts idempotently — re-running is
   always safe; report `already-registered` per step 2's pre-check.
 - **Self-check FAIL:** report `partial`; never claim success.

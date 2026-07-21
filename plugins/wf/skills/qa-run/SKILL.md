@@ -18,11 +18,13 @@ For an autonomous run (no human in the loop), use `/wf:qa-auto` instead. The two
 
 ## Prerequisites
 
-Obtain `{task-root}` from the bundled `wf-resolver` MCP service via `resolve_config` (`coreConfig.taskRoot`; `coreConfig` also carries `qaBaselineIgnore` and `qaRules`, which the report format resolves — plus `workspaceRoot`, `registryPath`, `idShape`), already resolved from `_local/config.md` — core performs no direct config-file parse. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+
+Obtain `{task-root}` from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` (`coreConfig.taskRoot`; `coreConfig` also carries `qaBaselineIgnore` and `qaRules`, which the report format resolves — plus `workspaceRoot`, `registryPath`, `idShape`), already resolved from `_local/config.md` — core performs no direct config-file parse. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop with: "Run `/wf:init` first." If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
 
 `06_qa.md` must exist in the task folder. If missing, stop: "No QA plan found. Run `/wf:qa-gen` first."
 
-The report shape is documented once in `qa-gen`'s `report-format.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: qa-gen`, `ref: report-format.md`), never a raw `Read` of the plugin-cache path. This skill writes that exact shape — keep both in lockstep when editing.
+The report shape is documented once in `qa-gen`'s `report-format.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: qa-gen`, `ref: report-format.md`), never a raw `Read` of the plugin-cache path. This skill writes that exact shape — keep both in lockstep when editing.
 
 ---
 
@@ -46,7 +48,7 @@ Argument-parser disambiguation: if a token contains a 3+-digit run, or exactly m
 
 ## Direct provider resolution (how `current-branch-query` is reached)
 
-Id inference reaches `current-branch-query` by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain the op body via `resolve_content` (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to reach `current-branch-query` — never a raw `Read` of the path (the metadata queries return only paths/metadata; the body comes from `resolve_content`). On `state: unconfigured` (no `delivery` provider registered), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). (qa-run has no tracker-surface call site — it never fetches.)
+Id inference reaches `current-branch-query` by calling the bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }` for the `delivery` surface. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain the op body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to reach `current-branch-query` — never a raw `Read` of the path (the metadata queries return only paths/metadata; the body comes from `resolve_content({ workspaceRoot, ... })`). On `state: unconfigured` (no `delivery` provider registered), `current-branch-query` falls back silently to the plain-directory / already-known-branch case — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery). (qa-run has no tracker-surface call site — it never fetches.)
 
 ---
 
@@ -56,7 +58,7 @@ Id inference reaches `current-branch-query` by calling the bundled `wf-resolver`
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
 - Use the question tool (`AskUserQuestion`) to interact with the tester.
-- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider("delivery")` query) for id inference.
+- Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference.
 - Resolve the report's `Tester` field to the environment's configured user identity (Phase 2, Phase 4) — a documented contract-completeness gap, not a literal identity lookup: the delivery provider surface has no identity/user operation, so this never routes through a contract call.
 - Write `07_qa-report.md` ONLY inside the resolved task folder.
 - Invoke the **Task** tool for `/wf:index` to record the report after writing.
@@ -72,7 +74,7 @@ Id inference reaches `current-branch-query` by calling the bundled `wf-resolver`
 
 ## Phase 1: Resolve and load
 
-1. **Resolve `<id>`.** Resolve the task id per the shared pipeline conventions doc — obtained via the `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`), never a raw `Read` of the plugin-cache path — §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-run` in its stop messages.
+1. **Resolve `<id>`.** Resolve the task id per the shared pipeline conventions doc — obtained via the `wf-resolver` MCP tool `resolve_content({ workspaceRoot, ... })` (`class: shared`, `ref: pipeline-conventions.md`), never a raw `Read` of the plugin-cache path — §"Id inference from the current branch" (explicit `<id>` used verbatim; otherwise inferred from the branch via `current-branch-query` — the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" above — and resolved against `{task-root}`), naming `/wf:qa-run` in its stop messages.
 2. **Locate the task folder.** Compute `{task-root}/{task-id}/`. Stop if `06_qa.md` is missing: "No QA plan found. Run `/wf:qa-gen` first."
 3. **Parse `06_qa.md`.** Extract: scope, suites, scenarios (TC-NNN with title, priority, validates, preconditions, steps table, teardown). Preserve TC-NNN ordering as it appears in the file.
 4. **Filter by `--suite`** if passed.
@@ -184,7 +186,7 @@ Announce: `TC-NNN: <verdict>`. Move to the next scenario.
 
 ### 3d. Incremental save
 
-After every 3 completed scenarios (or on `abort`), write the current state to `07_qa-report.md` in the format from `qa-gen`'s `report-format.md` (obtained via `resolve_content`, `class: references-template`, `skill: qa-gen`, `ref: report-format.md` — see Prerequisites above). Scenarios not yet executed appear with verdict `Not run`. This is the safety net for crashed sessions.
+After every 3 completed scenarios (or on `abort`), write the current state to `07_qa-report.md` in the format from `qa-gen`'s `report-format.md` (obtained via `resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: qa-gen`, `ref: report-format.md` — see Prerequisites above). Scenarios not yet executed appear with verdict `Not run`. This is the safety net for crashed sessions.
 
 ---
 
@@ -192,12 +194,12 @@ After every 3 completed scenarios (or on `abort`), write the current state to `0
 
 After the loop completes (or aborts), write the full `07_qa-report.md`:
 
-- Header: run date, `Mode: manual`, `Tester:` the environment's configured user identity (or `"tester"` if unavailable — see `qa-gen`'s `report-format.md` (obtained via `resolve_content`, `class: references-template`, `skill: qa-gen`, `ref: report-format.md`); a documented contract-completeness gap, since the delivery provider surface has no identity/user operation), `Driver model:` is the current model identifier, `Plan: 06_qa.md (scope: <scope>)`, `App:` empty for manual mode, status from the deterministic rule.
+- Header: run date, `Mode: manual`, `Tester:` the environment's configured user identity (or `"tester"` if unavailable — see `qa-gen`'s `report-format.md` (obtained via `resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: qa-gen`, `ref: report-format.md`); a documented contract-completeness gap, since the delivery provider surface has no identity/user operation), `Driver model:` is the current model identifier, `Plan: 06_qa.md (scope: <scope>)`, `App:` empty for manual mode, status from the deterministic rule.
 - Summary table.
 - Traceability matrix (rolled up from each scenario's `Validates: SC-N` and verdict).
 - Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table.
 - Notes & Observations — any `Note` annotations recorded.
-- Defects table — one row per FAIL, severity resolved per the rubric in `qa-gen`'s `report-format.md` (same `resolve_content` reference as above; §Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from the observed-value text the tester gave.
+- Defects table — one row per FAIL, severity resolved per the rubric in `qa-gen`'s `report-format.md` (same `resolve_content({ workspaceRoot, ... })` reference as above; §Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from the observed-value text the tester gave.
 
 After writing, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · manual · <status> · <P>/<T> passed`.
 

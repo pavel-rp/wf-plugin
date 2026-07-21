@@ -66,10 +66,12 @@ ships, under the fixed plugin id `wf-angular`.
 
 ## Phase 0: Preconditions
 
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
 1. **Confirm a git repo:** `git rev-parse --git-dir`. If not, stop: "`/wf-angular:init`
    must run inside a git repository — run `/wf:init` first."
 2. **Resolve the registry location** exactly as `/wf:init` does — read `wf.config.js` at
-   the repo root (`git rev-parse --show-toplevel`) and use its optional `registryPath`
+   the workspace directory (`pwd -P`) and use its optional `registryPath`
    key, **defaulting to `_local/config.md`** when absent. Call this `<registry-location>`.
 3. **Require `/wf:init` first.** If `_local/` is absent, or `<registry-location>` does not
    exist, stop: "Run `/wf:init` first — `/wf-angular:init` registers into the registry
@@ -77,7 +79,7 @@ ships, under the fixed plugin id `wf-angular`.
 
 ## Phase 1: Inspect the pack (read-only)
 
-1. Call `inspect_pack` with `{ pluginId: "wf-angular" }`. It returns `{ pluginId,
+1. Call `inspect_pack` with `{ workspaceRoot: "<workspace-root>", pluginId: "wf-angular" }`. It returns `{ pluginId,
    pluginName, installed, enabled, version, installPath, capabilities[], fingerprint,
    valid, issues[] }` — resolved via `claude plugin list --json`, no environment probing
    of any kind on wf-angular's part.
@@ -96,7 +98,7 @@ ships, under the fixed plugin id `wf-angular`.
 Registering a pack **writes** the shared registry, so it uses the same
 block-before-mutation policy as any other registry-mutating write.
 
-1. Call `resolve_gate` with `{ surface: "delivery-write" }`.
+1. Call `resolve_gate` with `{ workspaceRoot: "<workspace-root>", surface: "delivery-write" }`.
 2. **If `healthy` is `false`**, STOP — do not call `register_pack`. Report, verbatim:
    - `reaction` (will read `block`),
    - each `categories` entry (one or more of `snapshot-missing`, `snapshot-malformed`,
@@ -109,7 +111,7 @@ block-before-mutation policy as any other registry-mutating write.
    This is the resolver itself being unhealthy — a different failure class from an
    uninstalled/disabled pack (Phase 1). Do not attempt any manual fallback discovery;
    direct the user to the named `/wf:resolve` recovery, then re-run `/wf-angular:init`.
-3. If `healthy` is `true`, call `register_pack` with `{ pluginId: "wf-angular",
+3. If `healthy` is `true`, call `register_pack` with `{ workspaceRoot: "<workspace-root>", pluginId: "wf-angular",
    expectedFingerprint: <fingerprint from Phase 1> }`. It re-validates internally, then —
    on success — owns the entire `## Plugin Roots` + `## Capabilities` write and refreshes
    the resolver snapshot. This skill performs none of that writing itself.
@@ -143,7 +145,7 @@ Apply the **profile-seeding convention by name** — the same convention `/wf:in
   `profile-template: profile.template.json` — seed a downstream **override** at
   `_local/profiles/angular.profile.json` **only on divergence** from the capability's
   default template. Obtain that default **template body** to compare against through the
-  resolver — `resolve_content` (`class: profile-template`, `capability: angular`) — never a
+  resolver — `resolve_content` (`workspaceRoot: "<workspace-root>"`, `class: profile-template`, `capability: angular`) — never a
   raw `Read`/`Glob` of the pack's version-pinned plugin-cache path (this ref serves the
   template *body* needed at seed time; C008's `resolve_profile` serves override-merged
   profile *values*, a different thing). **Idempotent** — never overwrite an existing

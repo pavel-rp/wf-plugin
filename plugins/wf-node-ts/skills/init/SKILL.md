@@ -63,21 +63,23 @@ ships, under the stable plugin id `wf-node-ts`.
 
 ## Onboarding procedure
 
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
 1. **Precondition.** Confirm a git repository (`git rev-parse --git-dir`); if this fails,
    stop: "`/wf-node-ts:init` must run inside a git repository — run `/wf:init` first."
-   Call `resolve_config` for the resolved registry location and Read it to confirm the
+   Call `resolve_config({ workspaceRoot: "<workspace-root>" })` for the resolved registry location and Read it to confirm the
    file exists. If it does not, stop: "Run `/wf:init` first — `/wf-node-ts:init`
    registers into the registry that `/wf:init` creates."
-2. **Check prior state (reporting only).** Call `resolve_registry`; note whether
+2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether
    `node-ts` already appears with `validity: "ok"`. This never skips a later step — it
    only decides whether the Final Output says `onboarded` or `already-registered`.
-3. **Inspect the pack.** Call `inspect_pack({ pluginId: "wf-node-ts" })`. Read-only;
+3. **Inspect the pack.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-node-ts" })`. Read-only;
    returns `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
    - `valid: false` (not installed, disabled, no readable
      `capabilities/node-ts/manifest.md`, or `claude plugin list --json` itself
      unavailable) → go to **Failure path**; do not call `register_pack`.
 4. **Register.** Call
-   `register_pack({ pluginId: "wf-node-ts", expectedFingerprint: <fingerprint from step 3> })`.
+   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-node-ts", expectedFingerprint: <fingerprint from step 3> })`.
    It writes the `## Plugin Roots` row and the `node-ts` `## Capabilities` row in a single
    write (a plain file write, not a filesystem-atomic temp+rename swap), refreshes the
    resolver snapshot, and self-checks that `node-ts` now resolves — returning
@@ -94,7 +96,7 @@ resolver call.
 
 ### Failure path (SUB-4 / WF-272 diagnostics)
 
-Call `resolve_gate({ surface: "delivery-write" })` (registering a pack is a registry
+Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a pack is a registry
 write). Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specific
 `issues[]` (from `inspect_pack`) or `reason` (from a rejected `register_pack`) — never a
 bare error. Finish with `partial`.
@@ -113,7 +115,9 @@ bare error. Finish with `partial`.
 - **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the
   install looks corrupted — reinstall the plugin.
 - **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run
-  `inspect_pack` to get the current fingerprint and retry `register_pack`.
+  `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-node-ts" })` to get the
+  current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>",
+  pluginId: "wf-node-ts", expectedFingerprint: <current fingerprint> })`.
 - **`node-ts` already registered:** `register_pack` upserts idempotently — re-running is
   always safe; report `already-registered` per step 2's pre-check.
 - **Self-check FAIL:** report `partial`; never claim success.

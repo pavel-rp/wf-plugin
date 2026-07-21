@@ -5,6 +5,8 @@
 **Wired by:** `plugins/wf-audit/capabilities/audit/manifest.md` (§"Composite retrospective report")
 **Model:** claude-opus-4-8
 
+
+Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
 ---
 
 The audit capability's **optional, on-request** composite output — a process-retrospective and
@@ -20,7 +22,7 @@ composition · report artifact · degradation summary · final block.
 ## Registry-membership gate (run first)
 
 Obtain the ordered active registry as metadata by calling the bundled `wf-resolver` MCP tool
-`resolve_registry` — it returns `capabilities[]` (each `{ name, kind, resolvedPath, manifestPath,
+`resolve_registry({ workspaceRoot })` — it returns `capabilities[]` (each `{ name, kind, resolvedPath, manifestPath,
 provenance, validity, fragments, articles, requires, conflicts, profileTemplatePath }`), already
 resolved from the `## Capabilities` registry and each capability's `manifest.md`; you perform no
 direct registry-file read or manifest walk of your own. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not
@@ -49,7 +51,7 @@ this report run. Never surface this as an error.
 ## Delivery evidence (fold in only when a delivery provider is registered)
 
 Reach three **read-side** delivery operations — `pr-comments-read`, `checks-read`,
-`activity-read` — by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")`
+`activity-read` — by calling the bundled `wf-resolver` MCP tool `resolve_provider({ surface: "delivery", workspaceRoot })`
 **once** — the typed query that returns the run-scoped resolution record `{ surface, owner,
 fragmentPath, state, degradation, diagnostics }`. The resolver has already resolved the
 `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root

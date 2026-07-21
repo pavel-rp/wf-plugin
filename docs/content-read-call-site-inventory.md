@@ -10,7 +10,7 @@ the wf core plugin and every pack — every place a skill or agent, at runtime, 
 raw `Read`/`Glob` of a **bundled non-skill document body**: a capability **fragment**, a
 `_contracts/*.ops.md` **contract-ops** doc, a `_shared/*` **shared** doc, a skill
 `references/*` **template**, or a pack's **`profile.template.json`**. It assigns **every**
-such call site exactly one of the **five content classes** and its owning sweep slice, so
+such call site exactly one of the **five content classes then in scope** and its owning sweep slice, so
 the C011 consumer sweep is bounded against a reviewed list and cannot silently expand.
 
 > **This is a NEW inventory, distinct from C008's.** The predecessor
@@ -23,6 +23,15 @@ the C011 consumer sweep is bounded against a reviewed list and cannot silently e
 > C008 read a *path/metadata* through the resolver, C011 reads the *body*; the two are
 > orthogonal and this document covers only the latter.
 
+> **Current resolver call contract.** Before every resolver MCP invocation named in this historical
+> inventory, run `pwd -P` and pass the returned absolute current Agent/session workspace directory
+> explicitly as schema-required `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's
+> own worktree; never inherit the parent session's root. Omission is a hard schema error; there is no
+> default or fallback.
+> Metadata queries remain body-free; the distinct `resolve_content` tool serves approved bodies.
+> It now accepts six classes: the five inventoried here plus `slot`, which composes a per-skill
+> composition point from `skill` + `point`.
+>
 > **Change control.** This inventory is the reviewed baseline that bounds the SUB-3…SUB-7
 > sweep. A newly discovered content-read call site — or a new skill/agent/pack/doc surface
 > added later — requires an **explicit reviewed update here and a class/owner assignment**,
@@ -80,7 +89,8 @@ in turn reads another fragment) that, at runtime, performs — or instructs — 
 
 - A **resolver-metadata** call (`resolve_config`, `resolve_registry`, `resolve_provider`,
   `resolve_profile`, `resolve_plugin_root`, `inspect_pack`, `register_pack`) is **not** a
-  content read — C008 returns paths/metadata/values, never a body. Those calls stay as-is.
+  content read — these metadata tools return paths/metadata/values, never a body. Body serving
+  belongs exclusively to `resolve_content`.
 - The C008 body-free split is why so many reads survive: `resolve_provider` returns the
   `fragmentPath`, then the consumer **still raw-reads that fragment body in its own
   context** (`invocation-runtime.ops.md` step 4 / run-scoped forwarding "carries no
@@ -129,7 +139,7 @@ The bundled non-skill bodies the sweep serves through the resolver, by class:
 The largest class. Split into three read patterns.
 
 **(a) Provider-fragment reads — `delivery.ops.md` (delivery surface).** After
-`resolve_provider("delivery")` returns the record, the boot raw-reads the resolved
+`resolve_provider({ workspaceRoot: "<Agent/session absolute current workspace directory>", surface: "delivery" })` returns the record, the boot raw-reads the resolved
 `delivery.ops.md` body to dispatch the operation. Every delivery-operation boot is a call
 site:
 
@@ -285,7 +295,7 @@ Init reads the capability's `profile.template.json` **body** to seed a downstrea
 | `wf-angular/skills/init` | `wf-angular/capabilities/angular/profile.template.json` |
 
 > `wf-angular/skills/qa-host` and `wf-angular/skills/test-page` do **not** read the template
-> — they call `resolve_profile("angular")` for override-merged **values** (C008 R4) and
+> — they call `resolve_profile({ workspaceRoot: "<Agent/session absolute current workspace directory>", capability: "angular" })` for override-merged **values** (C008 R4) and
 > state "this skill performs no direct profile-file read." Their `profile.template.json`
 > mentions are precedence prose, not reads. Not call sites for this class.
 

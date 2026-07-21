@@ -6,6 +6,8 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion]
 
 # /wf-author-caps:new-provider — interview in, surface-bound provider out
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 Turns a surface answer into a real `capabilities/<name>/` folder whose manifest declares a `provider`
 contribution scoped to that surface, and whose fragment speaks **only the abstract contract
 operations** — every endpoint, credential, and command string kept in a profile or config slot, so
@@ -61,9 +63,9 @@ re-asked when it fails.
 **Allowed:**
 
 - Read any file in the workspace, and glob it to detect the target plugin and collisions.
-- Read the active registry through the resolver's `resolve_registry` to detect a surface collision.
+- Read the active registry through the resolver's `resolve_registry({ workspaceRoot })` to detect a surface collision.
 - Write and edit files **only** under the resolved `plugins/<plugin-name>/capabilities/<name>/` folder.
-- Run the resolver's `validate_manifest`, `validate_registry`, and `preview_composition` tools and the
+- Run the resolver's `validate_manifest({ path: <emitted manifest>, workspaceRoot })`, `validate_registry({ workspaceRoot })`, and `preview_composition({ phase: <surface anchor phase>, workspaceRoot })` tools and the
   repository's `glossary-lint.sh`.
 
 **Forbidden:**
@@ -90,7 +92,7 @@ re-asked when it fails.
 
 This skill follows the plugin's shared scaffolder loop — interview → emit → self-lint →
 fix-and-re-run → hand back only clean. **That loop is the single rule source and is not restated
-here.** Obtain it through the resolver's `resolve_content` (`class: references-template`,
+here.** Obtain it through the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`,
 `plugin: wf-author-caps`, `skill: new-skill`, `ref: scaffolder-loop.md`) and follow it, supplying the
 three provider-specific inputs below. Never reach it by a raw `Read` of the plugin-cache path.
 
@@ -113,7 +115,7 @@ Answers 1 and 3 fix the emission path and the row's scope:
 `<plugin-name>` from `--plugin`, else from a sole `plugins/*` folder, else ask. Emission targets this
 downstream plugin shape — never core's own tree.
 
-**The collision path in full.** After answer 3, call `resolve_registry` and look for an active
+**The collision path in full.** After answer 3, call `resolve_registry({ workspaceRoot })` and look for an active
 capability whose manifest declares a `provider` row scoped to the same surface token. When one
 exists, say so before anything is written: name the surface, name the incumbent, and state that
 partition permits exactly one owner, so registering both will fail validation naming both offenders.
@@ -126,7 +128,7 @@ honestly, leave the artifacts on disk, and report plainly that the set is not cl
 ### Input 2 — the emission template
 
 The manifest shape, the Fragments-row rules, and the fragment-file rules are **one rule set**,
-obtained through the resolver's `resolve_content` (`class: references-template`,
+obtained through the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`,
 `plugin: wf-author-caps`, `skill: new-capability`, `ref: capability-emission.md`) and followed
 against the validated answers. Follow it and restate none of it; emitting a second manifest or
 fragment implementation here is a defect, not a convenience. Supply it: the capability name (answer
@@ -173,9 +175,9 @@ repository's content-read guard.
 Run all of these, over the emitted set, on every pass. Map `pass` / `fail` / `error` exactly as the
 loop's table says; `error` is never a pass.
 
-- **The manifest validator** — the resolver's `validate_manifest`, targeted at the emitted
+- **The manifest validator** — the resolver's `validate_manifest({ path: <emitted manifest>, workspaceRoot })`, targeted at the emitted
   `manifest.md`. It checks the schema-v2 shape, and that the `provider` row carries its scope.
-- **The registry validator** — the resolver's `validate_registry`, which takes no arguments and
+- **The registry validator** — the resolver's `validate_registry({ workspaceRoot })` and
   checks the emitted manifest against the whole active registry. **This is the check that proves the
   partition holds**: an overlapping surface returns `fail` naming both offenders. On a confirmed
   collision that finding is expected, unfixable without guessing intent, and routes to Stage 5.
@@ -186,9 +188,9 @@ loop's table says; `error` is never a pass.
   bash <wf-plugin-root>/skills/_contracts/glossary-lint.sh <emitted-files>
   ```
 
-  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root` for the `wf` plugin.
+  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root({ plugin: "wf", workspaceRoot })`.
 
-- **The composition preview** — the resolver's `preview_composition` for the phase the surface
+- **The composition preview** — the resolver's `preview_composition({ phase: <surface anchor phase>, workspaceRoot })` for the phase the surface
   anchors at. This is **not** a `ValidationVerdict`: it returns
   `{ tool, phase, entries, capabilitiesConsidered, phasesCovered, renderedFrom, summary }` and has no
   `status` field to map. It is **informational** — a freshly emitted, not-yet-registered capability

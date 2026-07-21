@@ -62,10 +62,12 @@ under the fixed plugin id `wf-ado`.
 
 ## Phase 0: Preconditions
 
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
 1. **Confirm a git repo:** `git rev-parse --git-dir`. If not, stop: "`/wf-ado:init` must
    run inside a git repository — run `/wf:init` first."
 2. **Resolve the registry location** exactly as `/wf:init` does — read `wf.config.js` at
-   the repo root (`git rev-parse --show-toplevel`) and use its optional `registryPath`
+   the workspace directory (`pwd -P`) and use its optional `registryPath`
    key, **defaulting to `_local/config.md`** when absent. Call this `<registry-location>`.
 3. **Require `/wf:init` first.** If `_local/` is absent, or `<registry-location>` does not
    exist, stop: "Run `/wf:init` first — `/wf-ado:init` registers into the registry that
@@ -73,7 +75,7 @@ under the fixed plugin id `wf-ado`.
 
 ## Phase 1: Inspect the pack (read-only)
 
-1. Call `inspect_pack` with `{ pluginId: "wf-ado" }`. It returns `{ pluginId,
+1. Call `inspect_pack` with `{ workspaceRoot: "<workspace-root>", pluginId: "wf-ado" }`. It returns `{ pluginId,
    pluginName, installed, enabled, version, installPath, capabilities[], fingerprint,
    valid, issues[] }` — resolved via `claude plugin list --json`, no environment probing
    of any kind on wf-ado's part.
@@ -92,7 +94,7 @@ under the fixed plugin id `wf-ado`.
 Registering a pack **writes** the shared registry, so it uses the same
 block-before-mutation policy as any other registry-mutating write.
 
-1. Call `resolve_gate` with `{ surface: "delivery-write" }`.
+1. Call `resolve_gate` with `{ workspaceRoot: "<workspace-root>", surface: "delivery-write" }`.
 2. **If `healthy` is `false`**, STOP — do not call `register_pack`. Report, verbatim:
    - `reaction` (will read `block`),
    - each `categories` entry (one or more of `snapshot-missing`, `snapshot-malformed`,
@@ -109,7 +111,7 @@ block-before-mutation policy as any other registry-mutating write.
 
 ## Phase 3: Register the pack
 
-1. Call `register_pack` with `{ pluginId: "wf-ado", expectedFingerprint: <fingerprint
+1. Call `register_pack` with `{ workspaceRoot: "<workspace-root>", pluginId: "wf-ado", expectedFingerprint: <fingerprint
    from Phase 1> }`. It re-validates internally, then — on success — owns the entire
    `## Plugin Roots` + `## Capabilities` write and refreshes the resolver snapshot. This
    skill performs none of that writing itself.
@@ -125,7 +127,7 @@ block-before-mutation policy as any other registry-mutating write.
    whether its row was inserted fresh, replaced, or left as a no-op.
 4. **`selfCheck: "failed"`** on an otherwise-successful registration means the write
    landed but resolution still doesn't resolve `ado` to `ok`. Treat this as a SUB-4-style
-   diagnosis, not a silent partial success: call `resolve_gate` with `{ surface:
+   diagnosis, not a silent partial success: call `resolve_gate` with `{ workspaceRoot: "<workspace-root>", surface:
    "delivery-write" }` again, report its diagnostics + recovery, and direct the user to
    `/wf:resolve refresh` before re-running `/wf-ado:init`.
 

@@ -28,11 +28,11 @@ _(none)_
 ## Safety rules
 
 **Allowed:** read the task folder and its artifacts; obtain config via the
-`wf-resolver` `resolve_config` query; read-only resolution via
+`wf-resolver` `resolve_config({ workspaceRoot, ... })` query; read-only resolution via
 `workspace-root-resolve` and `current-branch-query`; resolve the `delivery`
 surface once and invoke its **read** operations (`pr-detect`, `checks-read`) via
-`resolve_content` (`class: fragment`); resolve the `ship.review` slot via
-`resolve_content` (`class: slot`); invoke the sibling `wf:*` commands this skill
+`resolve_content({ workspaceRoot, ... })` (`class: fragment`); resolve the `ship.review` slot via
+`resolve_content({ workspaceRoot, ... })` (`class: slot`); invoke the sibling `wf:*` commands this skill
 drives through the **Skill** tool (`/wf:branch`, `/wf:run` and each gated
 `/wf:*` it names, `/wf:pr`, `/wf:tf`).
 

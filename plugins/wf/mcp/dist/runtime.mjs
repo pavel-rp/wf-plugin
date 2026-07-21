@@ -9978,14 +9978,14 @@ function inputRequiredRoundsExceededMessage(method, maxRounds) {
   return `Multi-round-trip request '${method}' still required input after ${maxRounds} rounds (inputRequired.maxRounds)`;
 }
 function sleep(ms, signal) {
-  return new Promise((resolve2, reject) => {
+  return new Promise((resolve3, reject) => {
     if (signal?.aborted) {
       reject(signal.reason instanceof SdkError ? signal.reason : new SdkError(SdkErrorCode.RequestTimeout, String(signal.reason)));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve2();
+      resolve3();
     }, ms);
     const onAbort = () => {
       clearTimeout(timer);
@@ -10778,7 +10778,7 @@ var Protocol = class {
     const flowStartedAt = Date.now();
     let onAbort;
     let cleanupMessageId;
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -10846,7 +10846,7 @@ var Protocol = class {
         }
         if (decoded.kind === "invalid") return reject(decoded.error);
         if (decoded.kind === "input_required") {
-          if (options?.allowInputRequired === true) return resolve2(manualInputRequiredValue(decoded));
+          if (options?.allowInputRequired === true) return resolve3(manualInputRequiredValue(decoded));
           const flow = {
             codec,
             request,
@@ -10858,11 +10858,11 @@ var Protocol = class {
               params
             }, resultSchema, legOptions)
           };
-          return resolve2(this._resolveNonCompleteResult(decoded, flow));
+          return resolve3(this._resolveNonCompleteResult(decoded, flow));
         }
         const result = decoded.result;
         validateStandardSchema(resultSchema, result).then((parseResult) => {
-          if (parseResult.success) resolve2(parseResult.data);
+          if (parseResult.success) resolve3(parseResult.data);
           else reject(new SdkError(SdkErrorCode.InvalidResult, `Invalid result for ${request.method}: ${parseResult.error}`));
         }, reject);
       });
@@ -13778,7 +13778,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
     ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, ref);
     const schOrFunc = root.refs[ref];
     if (schOrFunc) return schOrFunc;
-    let _sch = resolve2.call(this, root, ref);
+    let _sch = resolve3.call(this, root, ref);
     if (_sch === void 0) {
       const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
       const { schemaId } = this.opts;
@@ -13804,7 +13804,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
   function sameSchemaEnv(s1, s2) {
     return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
   }
-  function resolve2(root, ref) {
+  function resolve3(root, ref) {
     let sch;
     while (typeof (sch = this.refs[ref]) == "string") ref = sch;
     return sch || this.schemas[ref] || resolveSchema.call(this, root, ref);
@@ -14254,47 +14254,47 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
     else if (typeof uri === "object") uri = parse3(serialize(uri, options), options);
     return uri;
   }
-  function resolve2(baseURI, relativeURI, options) {
+  function resolve3(baseURI, relativeURI, options) {
     const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
     const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
     schemelessOptions.skipEscape = true;
     return serialize(resolved, schemelessOptions);
   }
-  function resolveComponent(base, relative, options, skipNormalization) {
+  function resolveComponent(base, relative2, options, skipNormalization) {
     const target = {};
     if (!skipNormalization) {
       base = parse3(serialize(base, options), options);
-      relative = parse3(serialize(relative, options), options);
+      relative2 = parse3(serialize(relative2, options), options);
     }
     options = options || {};
-    if (!options.tolerant && relative.scheme) {
-      target.scheme = relative.scheme;
-      target.userinfo = relative.userinfo;
-      target.host = relative.host;
-      target.port = relative.port;
-      target.path = removeDotSegments(relative.path || "");
-      target.query = relative.query;
+    if (!options.tolerant && relative2.scheme) {
+      target.scheme = relative2.scheme;
+      target.userinfo = relative2.userinfo;
+      target.host = relative2.host;
+      target.port = relative2.port;
+      target.path = removeDotSegments(relative2.path || "");
+      target.query = relative2.query;
     } else {
-      if (relative.userinfo !== void 0 || relative.host !== void 0 || relative.port !== void 0) {
-        target.userinfo = relative.userinfo;
-        target.host = relative.host;
-        target.port = relative.port;
-        target.path = removeDotSegments(relative.path || "");
-        target.query = relative.query;
+      if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
+        target.userinfo = relative2.userinfo;
+        target.host = relative2.host;
+        target.port = relative2.port;
+        target.path = removeDotSegments(relative2.path || "");
+        target.query = relative2.query;
       } else {
-        if (!relative.path) {
+        if (!relative2.path) {
           target.path = base.path;
-          if (relative.query !== void 0) target.query = relative.query;
+          if (relative2.query !== void 0) target.query = relative2.query;
           else target.query = base.query;
         } else {
-          if (relative.path[0] === "/") target.path = removeDotSegments(relative.path);
+          if (relative2.path[0] === "/") target.path = removeDotSegments(relative2.path);
           else {
-            if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) target.path = "/" + relative.path;
-            else if (!base.path) target.path = relative.path;
-            else target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative.path;
+            if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) target.path = "/" + relative2.path;
+            else if (!base.path) target.path = relative2.path;
+            else target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
             target.path = removeDotSegments(target.path);
           }
-          target.query = relative.query;
+          target.query = relative2.query;
         }
         target.userinfo = base.userinfo;
         target.host = base.host;
@@ -14302,7 +14302,7 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
       }
       target.scheme = base.scheme;
     }
-    target.fragment = relative.fragment;
+    target.fragment = relative2.fragment;
     return target;
   }
   function equal(uriA, uriB, options) {
@@ -14428,7 +14428,7 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
   const fastUri = {
     SCHEMES,
     normalize,
-    resolve: resolve2,
+    resolve: resolve3,
     resolveComponent,
     equal,
     serialize,
@@ -19364,7 +19364,7 @@ var StdioServerTransport = class {
   }
   send(message) {
     if (this._closed) return Promise.reject(/* @__PURE__ */ new Error("StdioServerTransport is closed"));
-    return new Promise((resolve2, reject) => {
+    return new Promise((resolve3, reject) => {
       const json = serializeMessage(message);
       let settled = false;
       const onError = (error2) => {
@@ -19379,14 +19379,14 @@ var StdioServerTransport = class {
         settled = true;
         this._stdout.off("error", onError);
         this._stdout.off("drain", onDrain);
-        resolve2();
+        resolve3();
       };
       this._stdout.once("error", onError);
       if (this._stdout.write(json)) {
         if (settled) return;
         settled = true;
         this._stdout.off("error", onError);
-        resolve2();
+        resolve3();
       } else if (!settled) this._stdout.once("drain", onDrain);
     });
   }
@@ -19440,14 +19440,14 @@ var StdioConnectionChannel = class {
   */
   async whenRequestsAnswered(timeoutMs) {
     if (this._closed || this._pendingRequests.size === 0) return true;
-    return await new Promise((resolve2) => {
+    return await new Promise((resolve3) => {
       const waiter = () => {
         clearTimeout(timer);
-        resolve2(true);
+        resolve3(true);
       };
       const timer = setTimeout(() => {
         this._drainWaiters = this._drainWaiters.filter((pending) => pending !== waiter);
-        resolve2(false);
+        resolve3(false);
       }, timeoutMs);
       this._drainWaiters.push(waiter);
     });
@@ -19786,92 +19786,389 @@ function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
 
-// src/resolver/fingerprint.ts
-import { createHash } from "node:crypto";
-function sha256Hex(content) {
-  return createHash("sha256").update(content, "utf8").digest("hex");
-}
-function fingerprint(kind, path, content) {
-  if (content === null) {
-    return { kind, path, sha256: null, bytes: null, present: false };
-  }
+// src/tools.ts
+function ok(payload) {
   return {
-    kind,
-    path,
-    sha256: sha256Hex(content),
-    bytes: Buffer.byteLength(content, "utf8"),
-    present: true
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    structuredContent: payload
   };
 }
+function guard(fn) {
+  try {
+    return ok(fn());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return {
+      content: [{ type: "text", text: `resolver error: ${message}` }],
+      isError: true
+    };
+  }
+}
+var workspaceRootProperty = {
+  type: "string",
+  minLength: 1,
+  description: "Absolute path to a directory in the launch repository's main/linked worktree family."
+};
+function withWorkspaceRoot(schema) {
+  return {
+    ...schema,
+    properties: { workspaceRoot: workspaceRootProperty, ...schema.properties ?? {} },
+    required: ["workspaceRoot", ...schema.required ?? []]
+  };
+}
+var workspaceOnlyInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {},
+  additionalProperties: false
+}));
+var surfaceInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    surface: {
+      type: "string",
+      description: 'Provider surface to resolve: `delivery`, `tracker`, `engine`, `host`, or the composite `qa-execution:engine` / `qa-execution:host` (equivalent to the bare `engine` / `host` forms \u2014 both resolve to the same ownership record). An unrecognized token is an invalid argument and returns an MCP error result, distinct from a genuine `state: "unconfigured"` response.'
+    }
+  },
+  required: ["surface"],
+  additionalProperties: false
+}));
+var surfaceClassInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    surface: {
+      type: "string",
+      enum: ["local-read", "tracker-write", "delivery-write"],
+      description: "The surface class about to act: `local-read` (best-effort read), `tracker-write`, or `delivery-write`."
+    }
+  },
+  required: ["surface"],
+  additionalProperties: false
+}));
+var capabilityInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    capability: { type: "string", description: "Registered capability name." }
+  },
+  required: ["capability"],
+  additionalProperties: false
+}));
+var pluginInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    plugin: { type: "string", description: "Plugin name (left of `@`)." }
+  },
+  required: ["plugin"],
+  additionalProperties: false
+}));
+var pluginIdInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    pluginId: {
+      type: "string",
+      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
+    }
+  },
+  required: ["pluginId"],
+  additionalProperties: false
+}));
+var skillInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    skill: {
+      type: "string",
+      description: "Slotted skill slug whose declared settings keys to resolve (lowercase, hyphenated)."
+    }
+  },
+  required: ["skill"],
+  additionalProperties: false
+}));
+var contentInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    class: {
+      type: "string",
+      enum: ["fragment", "contract", "shared", "references-template", "profile-template", "slot"],
+      description: "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), `profile-template` (a pack's `profile.template.json` body), or `slot` (the single composed body for a per-skill composition point \u2014 see `skill`+`point`). Skill bodies and CI-only fixtures are not served."
+    },
+    capability: {
+      type: "string",
+      description: "Registered capability name \u2014 required for `fragment` and `profile-template`."
+    },
+    plugin: {
+      type: "string",
+      description: "Plugin name for a pack-owned `references-template`; omit (or use `wf`/`core`) for a core-plugin skill."
+    },
+    skill: {
+      type: "string",
+      description: "Skill slug \u2014 required for `references-template`; the `<skill>` segment for `slot`."
+    },
+    point: {
+      type: "string",
+      description: "The `<point>` segment for a `slot` ref \u2014 the composition point inside the named skill (the pair forms the `<skill>.<point>` id, e.g. skill `ship` + point `review`)."
+    },
+    ref: {
+      type: "string",
+      description: "The relative doc ref: within the capability folder, subfolder included \u2014 e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template` / `slot`."
+    }
+  },
+  required: ["class"],
+  additionalProperties: false
+}));
+var validateManifestInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "A capability folder or a `manifest.md` path (absolute, or relative to the workspace root). Omit to check every active registry capability's manifest."
+    }
+  },
+  additionalProperties: false
+}));
+var validateSkillInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    plugin: {
+      type: "string",
+      description: "Plugin name to scope the scan to (e.g. `wf`). Omit to scan every plugin."
+    },
+    skill: {
+      type: "string",
+      description: "Skill slug to scope the scan to. Omit to scan every skill in scope."
+    }
+  },
+  additionalProperties: false
+}));
+var validateReferencesInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "A skill body, an agent file, or a folder to scan (absolute, or relative to the workspace root). Omit to scan every plugin's `skills/` and `agents/`."
+    }
+  },
+  additionalProperties: false
+}));
+var previewCompositionInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    phase: {
+      type: "string",
+      description: "SDD phase to preview (e.g. `verify`, `qa-execution`). Omit to preview every phase."
+    }
+  },
+  additionalProperties: false
+}));
+var registerInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    pluginId: {
+      type: "string",
+      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
+    },
+    expectedFingerprint: {
+      type: "string",
+      description: "The pack fingerprint returned by a prior inspect_pack; a mismatch rejects the write."
+    }
+  },
+  required: ["pluginId", "expectedFingerprint"],
+  additionalProperties: false
+}));
+var reasonsInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    reasons: {
+      type: "array",
+      items: { type: "string" },
+      description: "Optional typed suspected-stale reasons (one short message each) recorded as diagnostics on the resulting lifecycle state."
+    }
+  },
+  additionalProperties: false
+}));
+function toReasons(reasons, code) {
+  return (reasons ?? []).filter((r) => typeof r === "string" && r.trim().length > 0).map((message) => ({ code, message: message.trim() }));
+}
+function registerResolverTools(server, selectService) {
+  const selected = (args, fn) => guard(() => fn(selectService(args.workspaceRoot)));
+  server.registerTool(
+    "resolve_config",
+    {
+      title: "resolve config",
+      inputSchema: workspaceOnlyInput,
+      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies."
+    },
+    async (args) => selected(args, (service) => service.resolveConfig())
+  );
+  server.registerTool(
+    "resolve_registry",
+    {
+      title: "resolve registry",
+      inputSchema: workspaceOnlyInput,
+      description: "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body."
+    },
+    async (args) => selected(args, (service) => service.resolveRegistry())
+  );
+  server.registerTool(
+    "resolve_provider",
+    {
+      title: "resolve provider",
+      description: "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
+      inputSchema: surfaceInput
+    },
+    async (args) => selected(args, (service) => service.resolveProvider(args.surface))
+  );
+  server.registerTool(
+    "resolve_profile",
+    {
+      title: "resolve profile",
+      description: "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
+      inputSchema: capabilityInput
+    },
+    async (args) => selected(args, (service) => service.resolveProfile(args.capability))
+  );
+  server.registerTool(
+    "resolve_settings",
+    {
+      title: "resolve settings",
+      description: "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default \u2014 the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
+      inputSchema: skillInput
+    },
+    async (args) => selected(args, (service) => service.resolveSettings(args.skill))
+  );
+  server.registerTool(
+    "resolve_plugin_root",
+    {
+      title: "resolve plugin root",
+      description: "A plugin's resolved install root + provenance, post-self-heal (R5). One path record.",
+      inputSchema: pluginInput
+    },
+    async (args) => selected(args, (service) => service.resolvePluginRoot(args.plugin))
+  );
+  server.registerTool(
+    "resolve_content",
+    {
+      title: "resolve content",
+      description: "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path \u2014 the metadata queries stay body-free.",
+      inputSchema: contentInput
+    },
+    async (args) => {
+      const { workspaceRoot, ...ref } = args;
+      return selected({ workspaceRoot }, (service) => service.resolveContent(ref));
+    }
+  );
+  server.registerTool(
+    "inspect_pack",
+    {
+      title: "inspect pack",
+      description: "Read-only pack inspection (R6): resolves a plugin id via `claude plugin list --json`, validates enabled state / version / installPath and the pack manifest(s), and returns a fingerprint. Writes nothing.",
+      inputSchema: pluginIdInput
+    },
+    async (args) => selected(args, (service) => service.inspectPack(args.pluginId))
+  );
+  server.registerTool(
+    "register_pack",
+    {
+      title: "register pack",
+      description: "Mutating pack registration (R6). Rejects a missing / disabled / stale-fingerprint / path-invalid / manifest-invalid request WITHOUT writing; on success owns the registry write, refreshes the snapshot, and self-checks. Core does not infer skill provenance.",
+      inputSchema: registerInput
+    },
+    async (args) => selected(args, (service) => service.registerPack(args.pluginId, args.expectedFingerprint))
+  );
+  server.registerTool(
+    "resolve_gate",
+    {
+      title: "resolve gate",
+      description: "Surface-specific resolver-failure gate (WF-272). Given the current resolver health and the acting surface (`local-read` | `tracker-write` | `delivery-write`), returns the reaction (continue | warn | block), the failure categories, categorized diagnostics with a `/wf:resolve` recovery path, and a marker proving the failure path never re-walks folders or probes the environment. A local read continues best-effort, a tracker write warns and continues, a delivery write blocks before any mutation.",
+      inputSchema: surfaceClassInput
+    },
+    async (args) => selected(args, (service) => service.assessSurface(args.surface))
+  );
+  server.registerTool(
+    "validate_manifest",
+    {
+      title: "validate manifest",
+      description: 'Check a capability `manifest.md` against manifest schema v2 (WF-352). Returns the frozen ValidationVerdict `{tool, status: pass|fail|error, target, findings[{rule, severity, file, line, message}], ruleSources[], summary}`. Rule ids mirror `validate-registry.sh` (`CHECK-6` phase/kind tokens, `CHECK-6b` dispatch, `CHECK-6c` slot scope + merge policy, `CHECK-HEADING` heading typos). The phase spine, contribution kinds, and merge policies are derived LIVE from `capability-registry.ops.md` on every call \u2014 no rule is transcribed. A syntactically broken manifest returns `status: "error"` with rule `input-unparseable`; an unreadable rule source returns `rule-source-unresolvable` \u2014 never a crash, never a silent pass. Omit `path` to check every active capability.',
+      inputSchema: validateManifestInput
+    },
+    async (args) => selected(args, (service) => service.validateManifest(args.path))
+  );
+  server.registerTool(
+    "validate_registry",
+    {
+      title: "validate registry",
+      inputSchema: workspaceOnlyInput,
+      description: "Check the resolved capability registry (WF-352): the `## Capabilities` and `## Plugin Roots` tables plus every resolvable capability manifest \u2014 the same set `validate-registry.sh` folds into one exit code, and it agrees with that guard's verdict. Returns the frozen ValidationVerdict. Rule ids are the guard's own: `CHECK-1` registryPath shape, `CHECK-2` duplicate names, `CHECK-3` filesystem-safe names, `CHECK-4` path resolves + carries a manifest, `CHECK-4a`/`CHECK-4b` plugin-root shape/uniqueness, `CHECK-5` overlapping partitioned ownership (naming both offenders), `CHECK-6`/`6b`/`6c` fragment-row rules, `CHECK-7` requires satisfied, `CHECK-8` co-active conflicts, `CHECK-9` contradictory article clauses. Takes no arguments \u2014 it validates the registry the resolver already resolved."
+    },
+    async (args) => selected(args, (service) => service.validateRegistry())
+  );
+  server.registerTool(
+    "validate_skill_interface",
+    {
+      title: "validate skill interface",
+      description: "Check skill slot markers against their `interface.md` `## Slots` declarations (WF-352), agreeing with `skill-slot-marker-lint.sh` and reusing its defect ids: `D1` malformed declaration, `D2` malformed marker, `D3` undeclared marker, `D4` unbalanced/duplicate marker, `D5` declared-but-unmarked. Returns the frozen ValidationVerdict with file/line diagnostics only \u2014 never any skill-body content (the `resolve_content` body-serving refusal is unchanged). A skill declaring no slots and carrying no markers passes clean (the inert case). Omit both arguments to scan every skill under `plugins/*/skills/*/`.",
+      inputSchema: validateSkillInput
+    },
+    async (args) => selected(args, (service) => service.validateSkillInterface(args.plugin, args.skill))
+  );
+  server.registerTool(
+    "validate_references",
+    {
+      title: "validate references",
+      description: "Resolve every cross-reference in skill bodies and agent files against the real tree (WF-354) \u2014 the dead-reference class no structural validator catches (a body instructing invocation of a removed skill). Checks `/wf:<skill>`, `/wf-<pack>:<skill>`, `subagent_type: wf:<agent>`, and `${CLAUDE_PLUGIN_ROOT}` path tokens, but ONLY on invocation-instruction lines: the instruction-vs-prose classifier is DERIVED at call time by parsing the `p1`/`p2` assignments out of `out4-skill-read-guard.sh` (recorded in `ruleSources`), so a bare prose mention \u2014 a README skill table, a cited call shape \u2014 never turns red. Returns the frozen ValidationVerdict with rule ids `REF-1` (unresolvable skill/agent invocation reference) and `REF-2` (unresolvable `${CLAUDE_PLUGIN_ROOT}` path token), alongside `input-unparseable` / `rule-source-unresolvable`. A reference whose owning plugin root is not resolvable in this workspace is indeterminate, not dead: it is excluded from `findings` and counted in `summary`. Omit `path` to scan every plugin's skills and agents.",
+      inputSchema: validateReferencesInput
+    },
+    async (args) => selected(args, (service) => service.validateReferences(args.path))
+  );
+  server.registerTool(
+    "preview_composition",
+    {
+      title: "preview composition",
+      description: "Dry-run preview of what the capability registry would compose (WF-354): every fragment that would fire at a phase, in registry order, each carrying its provenance (owning capability, resolved dispatch target, scope, resolved/manifest paths, how the path resolved). Rendered purely off the already-resolved snapshot \u2014 no manifest is re-parsed, no path re-resolved, and no fragment BODY is ever read or returned (follow the named `dispatch` for that). Read-only: it neither refreshes nor invalidates the snapshot. NOT a ValidationVerdict \u2014 a preview has no pass/fail semantics \u2014 so it returns its own narrow record, and zero entries is a first-class inert outcome (an empty registry composes nothing, which is the contract's designed behaviour, not an error). Omit `phase` to preview every phase.",
+      inputSchema: previewCompositionInput
+    },
+    async (args) => selected(args, (service) => service.previewComposition(args.phase))
+  );
+  server.registerTool(
+    "resolve_inspect",
+    {
+      title: "resolve inspect",
+      inputSchema: workspaceOnlyInput,
+      description: "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, per-slot composition provenance (each composed `skill.point` \u2192 winning source \u2192 tier, plus override presence), the per-skill settings-override presence index, and diagnostics. Does not rebuild."
+    },
+    async (args) => selected(args, (service) => service.inspect())
+  );
+  server.registerTool(
+    "resolve_refresh",
+    {
+      title: "resolve refresh",
+      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state. Optional `reasons` are recorded as diagnostics explaining the refresh.",
+      inputSchema: reasonsInput
+    },
+    async (args) => selected(args, (service) => service.refresh(toReasons(args.reasons, "explicit-request")))
+  );
+  server.registerTool(
+    "resolve_invalidate",
+    {
+      title: "resolve invalidate",
+      description: "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Typed consumers may pass `reasons` (suspected-stale messages) which surface as diagnostics. Returns the lifecycle state.",
+      inputSchema: reasonsInput
+    },
+    async (args) => selected(args, (service) => service.invalidate(toReasons(args.reasons, "suspected-stale")))
+  );
+}
 
-// src/resolver/failure.ts
-function categorizeCode(code) {
-  if (code === "plugin-list/cli-unavailable") return "cli-unavailable";
-  if (code.startsWith("snapshot/missing")) return "snapshot-missing";
-  if (code.startsWith("snapshot/malformed")) return "snapshot-malformed";
-  if (code.startsWith("schema/")) return "schema-incompatible";
-  if (code.startsWith("resolver/version")) return "schema-incompatible";
-  if (code.startsWith("fingerprint/")) return "fingerprint-unresolvable";
-  if (code.startsWith("registry/") || code.startsWith("capability/") || code.startsWith("profile/") || code.startsWith("settings/") || code.startsWith("manifest/") || code.startsWith("plugin-list/")) {
-    return "registry-invalid";
-  }
-  return null;
-}
-function isFailureSignal(d) {
-  if (d.severity === "error") return true;
-  return categorizeCode(d.code) !== null;
-}
-function recoveryFor(category) {
-  switch (category) {
-    case "snapshot-missing":
-      return "No resolution snapshot exists yet. Run `/wf:resolve refresh` to build it.";
-    case "snapshot-malformed":
-      return "The cached snapshot is unreadable. Run `/wf:resolve refresh` to rebuild it, or `/wf:resolve invalidate` to force a rebuild on the next query.";
-    case "schema-incompatible":
-      return "The snapshot schema is incompatible with this runtime. Run `/wf:resolve refresh` to rebuild it under the current schema.";
-    case "fingerprint-unresolvable":
-      return "A recorded source input could not be re-read to validate freshness. Restore the missing input, then run `/wf:resolve refresh` (or `/wf:resolve invalidate`).";
-    case "cli-unavailable":
-      return "`claude plugin list --json` could not run, so installed-pack facts are unknown. Ensure the `claude` CLI is on PATH, then run `/wf:resolve refresh`.";
-    case "registry-invalid":
-      return "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.";
-    case "ref-not-found":
-      return "The root resolved fine but no file exists at the joined path \u2014 the ref shape is likely wrong. A ref is relative to its root including any subfolder (a capability fragment ref is e.g. `fragments/tracker.ops.md`, never the bare filename; the provider record's `fragmentPath` shows the exact shape). Fix the ref and retry; run `/wf:resolve refresh` only if the pack was genuinely relocated.";
-  }
-}
-function annotate(d) {
-  if (d.category) return d.recovery ? d : { ...d, recovery: recoveryFor(d.category) };
-  const category = categorizeCode(d.code);
-  if (!category) return d;
-  return { ...d, category, recovery: recoveryFor(category) };
-}
-function classifyThrow(err) {
-  const message = err instanceof Error ? err.message : String(err);
-  let category;
-  if (/schema\s*version|schemaversion|incompatible schema|schema is incompatible/i.test(message)) {
-    category = "schema-incompatible";
-  } else if (/fingerprint|re-?read|unresolvable source/i.test(message)) {
-    category = "fingerprint-unresolvable";
-  } else if (/malformed|corrupt|unparse|json|parse error|invalid snapshot/i.test(message)) {
-    category = "snapshot-malformed";
-  } else {
-    category = "snapshot-missing";
-  }
-  return { category, failedInput: "resolution snapshot", message };
-}
-function reactionFor(surface, healthy) {
-  if (healthy) return "continue";
-  switch (surface) {
-    case "local-read":
-      return "continue";
-    case "tracker-write":
-      return "warn";
-    case "delivery-write":
-      return "block";
-  }
-}
+// src/git-workspace.ts
+import { execFileSync } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
 
 // src/resolver/paths.ts
+function registryPathShapeError(path) {
+  if (path.includes("\\")) return "contains a backslash (must use forward slashes)";
+  if (/^\//.test(path)) return "absolute path (leading '/')";
+  if (/^[A-Za-z]:/.test(path)) return "drive-prefixed path";
+  if (`/${path}/`.includes("/../")) return "contains a '..' segment";
+  return null;
+}
 function normalizeSlashes(p) {
   return p.replace(/\\/g, "/");
 }
@@ -19922,6 +20219,201 @@ function resolveCapabilityPath(registryPath, opts) {
 function isAbsoluteRoot(root) {
   const n = normalizeSlashes(root);
   return n.startsWith("/") || /^[A-Za-z]:/.test(n);
+}
+
+// src/git-workspace.ts
+function canonicalDirectory(path, label) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${label} must be an absolute path.`);
+  }
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    throw new Error(`${label} does not exist: ${path}`);
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`${label} must be a directory: ${path}`);
+  }
+  return normalizeSlashes(realpathSync(path));
+}
+function gitOutput(directory, ...args) {
+  try {
+    return execFileSync("git", ["-C", directory, "rev-parse", ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }).trim();
+  } catch {
+    throw new Error(`workspaceRoot is not inside a Git worktree: ${directory}`);
+  }
+}
+function resolveGitIdentity(directory, label = "workspaceRoot") {
+  const canonicalInput = canonicalDirectory(directory, label);
+  const topLevel = gitOutput(canonicalInput, "--show-toplevel");
+  const canonicalTopLevel = canonicalDirectory(
+    isAbsolute(topLevel) ? topLevel : resolve(canonicalInput, topLevel),
+    "Git worktree root"
+  );
+  const commonDir = gitOutput(canonicalInput, "--git-common-dir");
+  const canonicalCommonDir = canonicalDirectory(
+    isAbsolute(commonDir) ? commonDir : resolve(canonicalInput, commonDir),
+    "Git common directory"
+  );
+  return { worktreeRoot: canonicalTopLevel, commonDir: canonicalCommonDir };
+}
+function resolveWorkspaceIdentity(directory, label = "workspaceRoot") {
+  const canonicalInput = canonicalDirectory(directory, label);
+  try {
+    const git = resolveGitIdentity(canonicalInput, label);
+    return { kind: "git", root: git.worktreeRoot, commonDir: git.commonDir };
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.startsWith("workspaceRoot is not inside a Git worktree:")) {
+      throw err;
+    }
+    return { kind: "plain", root: canonicalInput };
+  }
+}
+
+// src/ports.ts
+import { lstatSync, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync2, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname2, isAbsolute as isAbsolute3, relative, resolve as resolve2, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// src/resolver/types.ts
+var SNAPSHOT_SCHEMA_VERSION = 3;
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" };
+var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
+
+// src/resolver/registry.ts
+function splitRow(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|")) return null;
+  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  return cells;
+}
+function isSeparatorRow(cells) {
+  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
+}
+function tableRowsUnderHeading(markdown, heading) {
+  const lines = markdown.split(/\r?\n/);
+  const rows = [];
+  let inSection = false;
+  let sawHeader = false;
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
+  for (const line of lines) {
+    if (/^#{1,6}\s+/.test(line)) {
+      if (headingRe.test(line)) {
+        inSection = true;
+        sawHeader = false;
+        continue;
+      }
+      if (inSection) break;
+      continue;
+    }
+    if (!inSection) continue;
+    const cells = splitRow(line);
+    if (!cells) {
+      if (sawHeader && rows.length > 0 && line.trim() === "") break;
+      continue;
+    }
+    if (!sawHeader) {
+      sawHeader = true;
+      continue;
+    }
+    if (isSeparatorRow(cells)) continue;
+    rows.push(cells);
+  }
+  return rows;
+}
+function escapeRegex2(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function parseRegistry(markdown) {
+  const capabilities = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
+    const [name, path] = cells;
+    if (name && path) capabilities.push({ name, path });
+  }
+  const pluginRoots = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
+    const [plugin, root] = cells;
+    if (plugin && root) pluginRoots.push({ plugin, root });
+  }
+  return { capabilities, pluginRoots };
+}
+
+// src/resolver/manifest.ts
+function stripCr(line) {
+  return line.replace(/\r$/, "");
+}
+function trimCell(cell) {
+  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function splitCommaList(rest) {
+  return rest.split(",").map((v) => v.trim()).filter((v) => v.length > 0);
+}
+function parseManifest(markdown) {
+  const lines = markdown.split(/\r?\n/).map(stripCr);
+  let kind = null;
+  const fragments = [];
+  const articles = [];
+  const requires = [];
+  const conflicts = [];
+  let profileTemplate = null;
+  let inFragments = false;
+  let sawFragHeader = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (kind === null) {
+      const km = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/.exec(trimmed);
+      if (km) kind = km[1];
+    }
+    if (/^requires:/i.test(trimmed)) {
+      requires.push(...splitCommaList(trimmed.replace(/^requires:/i, "")));
+    } else if (/^conflicts:/i.test(trimmed)) {
+      conflicts.push(...splitCommaList(trimmed.replace(/^conflicts:/i, "")));
+    } else if (/^article:/i.test(trimmed)) {
+      const decl = trimmed.replace(/^article:/i, "").trim();
+      const eq = decl.indexOf("=");
+      if (eq > 0) {
+        const key = decl.slice(0, eq).trim();
+        const value = decl.slice(eq + 1).trim();
+        if (key) articles.push({ key, value });
+      }
+    } else if (/^profile-template:/i.test(trimmed)) {
+      const v = trimmed.replace(/^profile-template:/i, "").trim();
+      if (v) profileTemplate = v;
+    }
+    if (/^#{1,6}\s+/.test(line)) {
+      if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
+        inFragments = true;
+        sawFragHeader = false;
+        continue;
+      }
+      if (inFragments) inFragments = false;
+    }
+    if (!inFragments) continue;
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
+    if (!sawFragHeader) {
+      sawFragHeader = true;
+      continue;
+    }
+    const [phaseRaw, kindRaw, dispatchRaw, scopeRaw] = cells;
+    const phase = trimCell(phaseRaw ?? "");
+    const contributionKind = trimCell(kindRaw ?? "");
+    if (!phase || phase === "phase") continue;
+    let scope = trimCell(scopeRaw ?? "");
+    if (scope === "" || scope === "\u2014" || scope === "-") scope = null;
+    fragments.push({
+      phase,
+      contributionKind,
+      dispatch: (dispatchRaw ?? "").trim().replace(/^`/, "").replace(/`$/, "").trim(),
+      scope
+    });
+  }
+  return { kind, fragments, articles, requires, conflicts, profileTemplate };
 }
 
 // src/resolver/plugin-list.ts
@@ -20003,10 +20495,60 @@ function parsePluginList(raw) {
   return { plugins, contractOk: issues.length === 0, issues };
 }
 
-// src/resolver/types.ts
-var SNAPSHOT_SCHEMA_VERSION = 3;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" };
-var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
+// src/resolver/config.ts
+function extractKeyValues(markdown) {
+  const map = /* @__PURE__ */ new Map();
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.replace(/\r$/, "").trim();
+    if (!line.startsWith("|")) continue;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (cells.length < 2) continue;
+    const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
+    if (!keyMatch) continue;
+    const key = keyMatch[1].trim().toLowerCase();
+    map.set(key, cells[1]);
+  }
+  return map;
+}
+function normalizeValue(raw) {
+  if (raw === void 0) return null;
+  let v = raw.trim();
+  const bt = /^`(.*)`$/.exec(v);
+  if (bt) v = bt[1].trim();
+  if (v === "" || v === "\u2014") return null;
+  if (/^<.*>$/.test(v)) return null;
+  return v;
+}
+function parseCoreConfig(markdown) {
+  const kv = extractKeyValues(markdown);
+  return {
+    taskRoot: normalizeValue(kv.get("task root")),
+    verifyCommand: normalizeValue(kv.get("verify command")),
+    qaRules: normalizeValue(kv.get("qa rules")),
+    qaBaselineIgnore: normalizeValue(kv.get("qa baseline ignore")),
+    seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
+    seedBacklogPath: normalizeValue(kv.get("backlog path")),
+    standupStatuses: normalizeValue(kv.get("standup statuses"))
+  };
+}
+
+// src/resolver/fingerprint.ts
+import { createHash } from "node:crypto";
+function sha256Hex(content) {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+function fingerprint(kind, path, content) {
+  if (content === null) {
+    return { kind, path, sha256: null, bytes: null, present: false };
+  }
+  return {
+    kind,
+    path,
+    sha256: sha256Hex(content),
+    bytes: Buffer.byteLength(content, "utf8"),
+    present: true
+  };
+}
 
 // src/resolver/freshness.ts
 var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
@@ -20027,12 +20569,12 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   // fresh through fingerprint discipline, never an un-fingerprinted raw read.
   "constitution"
 ]);
-function isAbsolute(p) {
+function isAbsolute2(p) {
   return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
 }
 function absOf(workspaceRoot, recordedPath) {
   const p = normalizeSlashes(recordedPath);
-  return isAbsolute(p) ? p : joinSlash(workspaceRoot, p);
+  return isAbsolute2(p) ? p : joinSlash(workspaceRoot, p);
 }
 function normalizePluginList(raw) {
   if (raw === null) return null;
@@ -20096,6 +20638,73 @@ function evaluateFreshness(snapshot, workspaceRoot, probe) {
     }
   }
   return { fresh: reasons.length === 0, reasons };
+}
+
+// src/resolver/failure.ts
+function categorizeCode(code) {
+  if (code === "plugin-list/cli-unavailable") return "cli-unavailable";
+  if (code.startsWith("snapshot/missing")) return "snapshot-missing";
+  if (code.startsWith("snapshot/malformed")) return "snapshot-malformed";
+  if (code.startsWith("schema/")) return "schema-incompatible";
+  if (code.startsWith("resolver/version")) return "schema-incompatible";
+  if (code.startsWith("fingerprint/")) return "fingerprint-unresolvable";
+  if (code.startsWith("registry/") || code.startsWith("capability/") || code.startsWith("profile/") || code.startsWith("settings/") || code.startsWith("manifest/") || code.startsWith("plugin-list/")) {
+    return "registry-invalid";
+  }
+  return null;
+}
+function isFailureSignal(d) {
+  if (d.severity === "error") return true;
+  return categorizeCode(d.code) !== null;
+}
+function recoveryFor(category) {
+  switch (category) {
+    case "snapshot-missing":
+      return "No resolution snapshot exists yet. Run `/wf:resolve refresh` to build it.";
+    case "snapshot-malformed":
+      return "The cached snapshot is unreadable. Run `/wf:resolve refresh` to rebuild it, or `/wf:resolve invalidate` to force a rebuild on the next query.";
+    case "schema-incompatible":
+      return "The snapshot schema is incompatible with this runtime. Run `/wf:resolve refresh` to rebuild it under the current schema.";
+    case "fingerprint-unresolvable":
+      return "A recorded source input could not be re-read to validate freshness. Restore the missing input, then run `/wf:resolve refresh` (or `/wf:resolve invalidate`).";
+    case "cli-unavailable":
+      return "`claude plugin list --json` could not run, so installed-pack facts are unknown. Ensure the `claude` CLI is on PATH, then run `/wf:resolve refresh`.";
+    case "registry-invalid":
+      return "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.";
+    case "ref-not-found":
+      return "The root resolved fine but no file exists at the joined path \u2014 the ref shape is likely wrong. A ref is relative to its root including any subfolder (a capability fragment ref is e.g. `fragments/tracker.ops.md`, never the bare filename; the provider record's `fragmentPath` shows the exact shape). Fix the ref and retry; run `/wf:resolve refresh` only if the pack was genuinely relocated.";
+  }
+}
+function annotate(d) {
+  if (d.category) return d.recovery ? d : { ...d, recovery: recoveryFor(d.category) };
+  const category = categorizeCode(d.code);
+  if (!category) return d;
+  return { ...d, category, recovery: recoveryFor(category) };
+}
+function classifyThrow(err) {
+  const message = err instanceof Error ? err.message : String(err);
+  let category;
+  if (/schema\s*version|schemaversion|incompatible schema|schema is incompatible/i.test(message)) {
+    category = "schema-incompatible";
+  } else if (/fingerprint|re-?read|unresolvable source/i.test(message)) {
+    category = "fingerprint-unresolvable";
+  } else if (/malformed|corrupt|unparse|json|parse error|invalid snapshot/i.test(message)) {
+    category = "snapshot-malformed";
+  } else {
+    category = "snapshot-missing";
+  }
+  return { category, failedInput: "resolution snapshot", message };
+}
+function reactionFor(surface, healthy) {
+  if (healthy) return "continue";
+  switch (surface) {
+    case "local-read":
+      return "continue";
+    case "tracker-write":
+      return "warn";
+    case "delivery-write":
+      return "block";
+  }
 }
 
 // src/resolver/content.ts
@@ -20259,6 +20868,87 @@ function resolveReferencesTemplate(ref, ctx) {
     root = toAbsolute(workspaceRoot, rootRow.resolvedRoot);
   }
   return { kind: "path", refClass: cls, path: joinSlash(root, "skills", ref.skill, "references", ref.ref) };
+}
+
+// src/resolver/settings.ts
+var SETTINGS_STORAGE_DIR = "_local/profiles";
+var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
+var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
+var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
+function isSkillSlug2(s) {
+  return typeof s === "string" && SEGMENT.test(s);
+}
+function settingsOverrideRelPath(skill) {
+  return `${SETTINGS_STORAGE_DIR}/${skill}${SETTINGS_OVERRIDE_SUFFIX}`;
+}
+function skillFromSettingsFilename(filename) {
+  if (!filename.endsWith(SETTINGS_OVERRIDE_SUFFIX)) return null;
+  const stem = filename.slice(0, -SETTINGS_OVERRIDE_SUFFIX.length);
+  return isSkillSlug2(stem) ? stem : null;
+}
+function unquote(cell) {
+  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function parseSettingsDeclaration(interfaceMd) {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = /* @__PURE__ */ new Map();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^settings$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 2) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const key = unquote(cells[0]);
+    if (key === "key" || !SETTINGS_KEY.test(key)) continue;
+    decl.set(key, unquote(cells[1]));
+  }
+  return sawSection ? decl : null;
+}
+function parseSettingsOverride(jsonText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "a settings override must be a JSON object of key \u2192 value" };
+  }
+  return { ok: true, value: parsed };
+}
+function mergeSettings(declared, override) {
+  const values = {};
+  for (const [key, def] of declared) {
+    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
+  }
+  const undeclared = [];
+  if (override) {
+    for (const key of Object.keys(override)) {
+      if (!declared.has(key)) undeclared.push(key);
+    }
+  }
+  undeclared.sort();
+  return { values, undeclared };
+}
+function locateInterface(skill, roots, readFile, joinSlash2) {
+  for (const root of roots) {
+    const path = joinSlash2(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSettingsDeclaration(content);
+    if (declared === null) continue;
+    return { root, path, declared };
+  }
+  return null;
 }
 
 // src/resolver/slot.ts
@@ -20442,85 +21132,630 @@ function composeSlotBody(policy, present) {
   return present.map((p) => p.content).join(APPEND_SEPARATOR);
 }
 
-// src/resolver/settings.ts
-var SETTINGS_STORAGE_DIR = "_local/profiles";
-var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
-var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
-var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
-function isSkillSlug2(s) {
-  return typeof s === "string" && SEGMENT.test(s);
+// src/resolver/resolve.ts
+function relativize(workspaceRoot, absPath) {
+  const abs = normalizeSlashes(absPath);
+  const root = normalizeSlashes(workspaceRoot).replace(/\/+$/, "");
+  if (abs === root) return ".";
+  if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
+  return abs;
 }
-function settingsOverrideRelPath(skill) {
-  return `${SETTINGS_STORAGE_DIR}/${skill}${SETTINGS_OVERRIDE_SUFFIX}`;
+function toAbsolute3(workspaceRoot, snapshotPath2) {
+  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
 }
-function skillFromSettingsFilename(filename) {
-  if (!filename.endsWith(SETTINGS_OVERRIDE_SUFFIX)) return null;
-  const stem = filename.slice(0, -SETTINGS_OVERRIDE_SUFFIX.length);
-  return isSkillSlug2(stem) ? stem : null;
+function inlineDispatchRel(dispatch) {
+  const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
+  return m ? m[1].trim() : null;
 }
-function unquote(cell) {
-  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
-}
-function parseSettingsDeclaration(interfaceMd) {
-  const lines = interfaceMd.split(/\r?\n/);
-  let inSection = false;
-  let sawSection = false;
-  const decl = /* @__PURE__ */ new Map();
-  for (const line of lines) {
-    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
-    if (heading) {
-      inSection = /^settings$/i.test(heading[1].trim());
-      if (inSection) sawSection = true;
+function buildSnapshot(inputs, io) {
+  const { workspaceRoot } = inputs;
+  const diagnostics = [];
+  const sources = [];
+  const registryPath = normalizeSlashes(inputs.registryPathValue);
+  sources.push(fingerprint("wf-config", "wf.config.js", inputs.wfConfigContent));
+  sources.push(fingerprint("registry", registryPath, inputs.registryContent));
+  if (registryPath !== "_local/config.md") {
+    sources.push(fingerprint("core-config", "_local/config.md", inputs.coreConfigContent));
+  }
+  sources.push(
+    fingerprint(
+      "plugin-list",
+      "claude plugin list --json",
+      normalizePluginList(inputs.pluginListRaw)
+    )
+  );
+  sources.push(
+    fingerprint(
+      "constitution",
+      "_local/constitution.md",
+      io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"))
+    )
+  );
+  const registry2 = parseRegistry(inputs.registryContent ?? "");
+  const coreConfig = parseCoreConfig(inputs.coreConfigContent ?? inputs.registryContent ?? "");
+  let pluginList;
+  if (inputs.pluginListRaw === null) {
+    pluginList = { plugins: [], contractOk: true, issues: [] };
+    diagnostics.push({
+      severity: "warning",
+      code: "plugin-list/cli-unavailable",
+      message: "`claude plugin list --json` could not be run (CLI unavailable or errored); installed-pack facts are unknown for this snapshot. The plugin-list source is recorded as absent rather than an empty result \u2014 re-run once the `claude` CLI is available on PATH."
+    });
+  } else {
+    pluginList = parsePluginList(inputs.pluginListRaw);
+    for (const issue2 of pluginList.issues) {
+      diagnostics.push({ severity: "error", code: issue2.code, message: issue2.message });
+    }
+  }
+  const recordedRoots = registry2.pluginRoots.map((r) => ({
+    plugin: r.plugin,
+    root: r.root
+  }));
+  const installedRoots = pluginList.plugins.map((p) => ({
+    pluginName: p.name,
+    installPath: p.installPath
+  }));
+  const manifestExists = (p) => io.readFile(p) !== null;
+  const registeredByPlugin = /* @__PURE__ */ new Map();
+  const pluginRootProvenance = /* @__PURE__ */ new Map();
+  const capabilities = registry2.capabilities.map((row) => {
+    const anchor = /^plugin:([^/]+)\//.exec(row.path);
+    const pluginName = anchor ? anchor[1] : null;
+    const resolved = resolveCapabilityPath(row.path, {
+      workspaceRoot,
+      recordedRoots,
+      installedRoots,
+      manifestExists
+    });
+    let kind = null;
+    let fragments = [];
+    let articles = [];
+    let requires = [];
+    let conflicts = [];
+    let profileTemplatePath = null;
+    if (resolved.manifestPath) {
+      const content = io.readFile(resolved.manifestPath);
+      if (content !== null) {
+        sources.push(
+          fingerprint("manifest", relativize(workspaceRoot, resolved.manifestPath), content)
+        );
+        const m = parseManifest(content);
+        kind = m.kind;
+        fragments = m.fragments;
+        articles = m.articles;
+        requires = m.requires;
+        conflicts = m.conflicts;
+        if (m.profileTemplate && resolved.resolvedPath) {
+          profileTemplatePath = relativize(
+            workspaceRoot,
+            joinSlash(resolved.resolvedPath, m.profileTemplate)
+          );
+        }
+      }
+    }
+    const validity = resolved.manifestPath !== null ? "ok" : "unrecoverable";
+    if (validity === "unrecoverable") {
+      diagnostics.push({
+        severity: "error",
+        code: "capability/unrecoverable",
+        message: `capability \`${row.name}\` (path \`${row.path}\`) has no readable manifest \u2014 unrecoverable; re-run the owning pack's init to refresh its plugin root.`
+      });
+    }
+    if (pluginName) {
+      const entry = registeredByPlugin.get(pluginName) ?? {
+        capabilities: [],
+        anyUnrecoverable: false
+      };
+      entry.capabilities.push(row.name);
+      if (validity === "unrecoverable") entry.anyUnrecoverable = true;
+      registeredByPlugin.set(pluginName, entry);
+      const prev = pluginRootProvenance.get(pluginName);
+      if (resolved.provenance !== "unrecoverable" && prev !== "self-healed") {
+        pluginRootProvenance.set(pluginName, resolved.provenance);
+      } else if (!prev) {
+        pluginRootProvenance.set(pluginName, resolved.provenance);
+      }
+    }
+    return {
+      name: row.name,
+      registryPath: row.path,
+      resolvedPath: resolved.resolvedPath ? relativize(workspaceRoot, resolved.resolvedPath) : null,
+      manifestPath: resolved.manifestPath ? relativize(workspaceRoot, resolved.manifestPath) : null,
+      provenance: resolved.provenance,
+      kind,
+      fragments,
+      articles,
+      requires,
+      conflicts,
+      profileTemplatePath,
+      validity
+    };
+  });
+  const pluginRoots = registry2.pluginRoots.map((r) => {
+    const provenance = pluginRootProvenance.get(r.plugin) ?? "recorded";
+    const recordedRoot = normalizeSlashes(r.root);
+    let resolvedRoot = recordedRoot;
+    if (provenance === "self-healed") {
+      const installed = installedRoots.find((ir) => ir.pluginName === r.plugin);
+      resolvedRoot = installed ? relativize(workspaceRoot, installed.installPath) : null;
+    } else if (provenance === "unrecoverable") {
+      resolvedRoot = null;
+    } else {
+      resolvedRoot = relativize(workspaceRoot, recordedRoot);
+    }
+    return {
+      plugin: r.plugin,
+      recordedRoot: relativize(workspaceRoot, recordedRoot),
+      resolvedRoot,
+      provenance
+    };
+  });
+  const packs = [];
+  const seenPlugins = /* @__PURE__ */ new Set();
+  for (const p of pluginList.plugins) {
+    seenPlugins.add(p.name);
+    const reg = registeredByPlugin.get(p.name);
+    let state;
+    if (!p.enabled) {
+      state = "installed/disabled";
+    } else if (reg && reg.capabilities.length > 0) {
+      state = reg.anyUnrecoverable ? "registered/unrecoverable" : "active";
+    } else {
+      state = "installed/inactive";
+    }
+    packs.push({
+      pluginId: p.id,
+      pluginName: p.name,
+      version: p.version,
+      scope: p.scope,
+      enablement: p.enabled ? "enabled" : "disabled",
+      installPath: relativize(workspaceRoot, p.installPath),
+      state,
+      registeredCapabilities: reg?.capabilities ?? [],
+      diagnostics: state === "registered/unrecoverable" ? "registered capability manifest is unreadable under this installed pack \u2014 refresh its plugin root (re-run the pack init)." : null
+    });
+  }
+  for (const [pluginName, reg] of registeredByPlugin) {
+    if (seenPlugins.has(pluginName)) continue;
+    packs.push({
+      pluginId: pluginName,
+      pluginName,
+      version: null,
+      scope: null,
+      enablement: "unknown",
+      installPath: null,
+      state: "registered/unrecoverable",
+      registeredCapabilities: reg.capabilities,
+      diagnostics: `registered pack \`${pluginName}\` is not installed (absent from \`claude plugin list --json\`) \u2014 install it or remove its registry rows.`
+    });
+  }
+  const providerOwnership = [];
+  for (const cap of capabilities) {
+    for (const frag of cap.fragments) {
+      if (frag.contributionKind !== "provider" || !frag.scope) continue;
+      let fragmentPath = null;
+      const rel = inlineDispatchRel(frag.dispatch);
+      if (rel && cap.resolvedPath) {
+        fragmentPath = joinSlash(cap.resolvedPath, rel);
+      }
+      providerOwnership.push({
+        surface: frag.scope,
+        owner: cap.name,
+        fragmentPath,
+        state: cap.validity === "ok" ? "ok" : "unrecoverable"
+      });
+    }
+  }
+  const trackerOwner = providerOwnership.find(
+    (o) => o.surface === "tracker" && o.state === "ok"
+  );
+  const idShape = trackerOwner ? { source: `tracker:${trackerOwner.owner}`, scheme: null } : { source: "bare-core", scheme: "T<NNN>" };
+  const profiles = {};
+  for (const cap of capabilities) {
+    const profilePath = joinSlash(
+      workspaceRoot,
+      "_local/profiles",
+      `${cap.name}.profile.json`
+    );
+    const content = io.readFile(profilePath);
+    if (content === null) continue;
+    sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
+    try {
+      profiles[cap.name] = JSON.parse(content);
+    } catch (err) {
+      diagnostics.push({
+        severity: "warning",
+        code: "profile/unparseable",
+        message: `profile for \`${cap.name}\` is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+      });
+    }
+  }
+  const interfaceRoots = [];
+  if (inputs.corePluginRoot) interfaceRoots.push(normalizeSlashes(inputs.corePluginRoot));
+  for (const r of pluginRoots) {
+    if (r.resolvedRoot) interfaceRoots.push(toAbsolute3(workspaceRoot, r.resolvedRoot));
+  }
+  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
+  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
+  const settingsOverrides = [];
+  for (const filename of [...settingsFiles].sort()) {
+    const skill = skillFromSettingsFilename(filename);
+    if (!skill) continue;
+    const overridePath = joinSlash(settingsDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("settings-override", `${SETTINGS_STORAGE_DIR}/${filename}`, overrideRaw)
+    );
+    settingsOverrides.push(skill);
+    const parsed = parseSettingsOverride(overrideRaw);
+    if (!parsed.ok) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/unparseable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`
+      });
       continue;
     }
-    if (!inSection) continue;
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
-    if (cells.length < 2) continue;
-    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
-    const key = unquote(cells[0]);
-    if (key === "key" || !SETTINGS_KEY.test(key)) continue;
-    decl.set(key, unquote(cells[1]));
-  }
-  return sawSection ? decl : null;
-}
-function parseSettingsOverride(jsonText) {
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, error: "a settings override must be a JSON object of key \u2192 value" };
-  }
-  return { ok: true, value: parsed };
-}
-function mergeSettings(declared, override) {
-  const values = {};
-  for (const [key, def] of declared) {
-    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
-  }
-  const undeclared = [];
-  if (override) {
-    for (const key of Object.keys(override)) {
-      if (!declared.has(key)) undeclared.push(key);
+    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    if (!located) {
+      diagnostics.push({
+        severity: "warning",
+        code: "settings/interface-unresolvable",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove the override.`
+      });
+      continue;
+    }
+    const { undeclared } = mergeSettings(located.declared, parsed.value);
+    if (undeclared.length > 0) {
+      diagnostics.push({
+        severity: "error",
+        code: "settings/undeclared-key",
+        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}. Remove the undeclared ${undeclared.length === 1 ? "key" : "keys"} or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
+        category: "registry-invalid",
+        recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
+      });
     }
   }
-  undeclared.sort();
-  return { values, undeclared };
-}
-function locateInterface(skill, roots, readFile, joinSlash2) {
-  for (const root of roots) {
-    const path = joinSlash2(root, "skills", skill, "interface.md");
-    const content = readFile(path);
-    if (content === null) continue;
-    const declared = parseSettingsDeclaration(content);
-    if (declared === null) continue;
-    return { root, path, declared };
+  const SLOT_RECOVERY = "The capability registry or a skill interface is invalid. Declare the missing slot in the skill's `## Slots` interface table, or remove the orphaned contribution/override, then run `/wf:resolve refresh`.";
+  const declaredSlotsCache = /* @__PURE__ */ new Map();
+  const declaredSlotsFor = (skill) => {
+    if (declaredSlotsCache.has(skill)) return declaredSlotsCache.get(skill) ?? null;
+    const located = locateSlotInterface(skill, interfaceRoots, io.readFile, joinSlash);
+    const set = located ? located.declared : null;
+    declaredSlotsCache.set(skill, set);
+    return set;
+  };
+  const isDeclared = (skillPoint, skill) => declaredSlotsFor(skill)?.has(skillPoint) ?? false;
+  const packSlots = [];
+  for (const cap of capabilities) {
+    if (cap.validity !== "ok" || !cap.resolvedPath) continue;
+    for (const frag of cap.fragments) {
+      if (frag.contributionKind !== "slot") continue;
+      const parsed = parseSlotScope(frag.scope);
+      if (!parsed) continue;
+      const rel = inlineDispatchRel(frag.dispatch);
+      if (!rel) continue;
+      const bodyAbs = joinSlash(toAbsolute3(workspaceRoot, cap.resolvedPath), rel);
+      packSlots.push({
+        capability: cap.name,
+        skillPoint: parsed.skillPoint,
+        skill: parsed.skillPoint.split(".")[0],
+        policy: parsed.policy,
+        bodyPath: bodyAbs,
+        bodyRel: relativize(workspaceRoot, bodyAbs)
+      });
+    }
   }
-  return null;
+  const fingerprintedBodies = /* @__PURE__ */ new Set();
+  for (const ps of packSlots) {
+    if (!fingerprintedBodies.has(ps.bodyPath)) {
+      fingerprintedBodies.add(ps.bodyPath);
+      sources.push(fingerprint("slot-contribution", ps.bodyRel, io.readFile(ps.bodyPath)));
+    }
+    if (!isDeclared(ps.skillPoint, ps.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-contribution",
+        message: `capability \`${ps.capability}\` contributes to slot \`${ps.skillPoint}\`, which no active skill interface declares \u2014 the contribution would silently never fire. Declare the slot in the skill's \`## Slots\` interface table or remove the capability's \`slot\` fragment row.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
+  const slotOverrideDir = joinSlash(workspaceRoot, OVERRIDE_DIR);
+  const slotOverrideFiles = io.listFiles ? io.listFiles(slotOverrideDir) : [];
+  const overridePresent = /* @__PURE__ */ new Set();
+  for (const filename of [...slotOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue;
+    const overridePath = joinSlash(slotOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-override", `${OVERRIDE_DIR}/${filename}`, overrideRaw)
+    );
+    overridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-override",
+        message: `slot override \`${OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
+  const slotIds = /* @__PURE__ */ new Set([
+    ...packSlots.map((p) => p.skillPoint),
+    ...overridePresent
+  ]);
+  const slots = [...slotIds].sort().map((skillPoint) => {
+    const contributors = packSlots.filter((p) => p.skillPoint === skillPoint).map((p) => p.capability);
+    const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
+    const hasOverride = overridePresent.has(skillPoint);
+    let tier;
+    let winningSource;
+    if (hasOverride) {
+      tier = "local-override";
+      winningSource = "local-override";
+    } else if (contributors.length > 0) {
+      tier = "pack-contribution";
+      winningSource = contributors[contributors.length - 1];
+    } else {
+      tier = "unfilled";
+      winningSource = null;
+    }
+    return {
+      skillPoint,
+      policy: policyOwner ? policyOwner.policy : null,
+      overridePresent: hasOverride,
+      contributors,
+      tier,
+      winningSource
+    };
+  });
+  const providerConfig = {};
+  if (providerOwnership.some((o) => o.surface === "tracker")) {
+    diagnostics.push({
+      severity: "info",
+      code: "provider-config/deferred",
+      message: "tracker provider config values are resolved by the provider surface at query time (WF-270); the snapshot records ownership only, never a tracker product's config section."
+    });
+  }
+  const constitutionInputs = [];
+  for (const cap of capabilities) {
+    for (const a of cap.articles) {
+      constitutionInputs.push({ capability: cap.name, key: a.key, value: a.value });
+    }
+  }
+  return {
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
+    generatedAt: inputs.generatedAt,
+    generator: inputs.generator,
+    workspaceRoot: normalizeSlashes(workspaceRoot),
+    registryPath,
+    coreConfig,
+    capabilities,
+    pluginRoots,
+    packs,
+    providerOwnership,
+    idShape,
+    profiles,
+    providerConfig,
+    constitutionInputs,
+    slots,
+    settingsOverrides,
+    sources,
+    diagnostics
+  };
+}
+
+// src/resolver/engine.ts
+import { readFileSync as readFileSync2, readdirSync } from "node:fs";
+import { join as join2 } from "node:path";
+import { execFileSync as execFileSync2 } from "node:child_process";
+
+// src/resolver/snapshot-store.ts
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
+import { dirname, join } from "node:path";
+import { randomBytes } from "node:crypto";
+function snapshotPath(workspaceRoot) {
+  return join(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
+}
+function writeSnapshot(workspaceRoot, snapshot) {
+  const target = snapshotPath(workspaceRoot);
+  const dir = dirname(target);
+  mkdirSync(dir, { recursive: true });
+  const tmp = join(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
+  const json = `${JSON.stringify(snapshot, null, 2)}
+`;
+  try {
+    writeFileSync(tmp, json, { encoding: "utf8" });
+    renameSync(tmp, target);
+  } catch (err) {
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+    }
+    throw err;
+  }
+  return target;
+}
+var SnapshotSchemaError = class extends Error {
+  constructor(found, expected) {
+    super(
+      `resolver snapshot schemaVersion ${String(found)} is incompatible with this runtime (expects ${expected}); rebuild the snapshot.`
+    );
+    this.found = found;
+    this.expected = expected;
+    this.name = "SnapshotSchemaError";
+  }
+  found;
+  expected;
+};
+function readSnapshot(workspaceRoot) {
+  const target = snapshotPath(workspaceRoot);
+  let raw;
+  try {
+    raw = readFileSync(target, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+  const parsed = JSON.parse(raw);
+  if (parsed.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+    throw new SnapshotSchemaError(parsed.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
+  }
+  return parsed;
+}
+
+// src/resolver/engine.ts
+var DEFAULT_REGISTRY_RELPATH = "_local/config.md";
+function readOrNull(absPath) {
+  try {
+    return readFileSync2(absPath, "utf8");
+  } catch (err) {
+    if (err.code === "ENOENT") return null;
+    throw err;
+  }
+}
+function listFilesOrEmpty(absDir) {
+  try {
+    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
+var fsIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
+function extractRegistryPathRaw(wfConfig) {
+  if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
+  const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
+  const v = m?.[1]?.trim();
+  return v && v.length > 0 ? v : DEFAULT_REGISTRY_RELPATH;
+}
+function extractRegistryPath(wfConfig) {
+  return normalizeSlashes(extractRegistryPathRaw(wfConfig));
+}
+function runPluginList() {
+  try {
+    return execFileSync2("claude", ["plugin", "list", "--json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      maxBuffer: 16 * 1024 * 1024
+    });
+  } catch {
+    return null;
+  }
+}
+function resolveSnapshot(opts) {
+  const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
+  const io = opts.io ?? fsIO;
+  const wfConfigContent = io.readFile(join2(opts.workspaceRoot, "wf.config.js"));
+  const registryPathValue = extractRegistryPath(wfConfigContent);
+  const registryAbs = join2(opts.workspaceRoot, registryPathValue);
+  const registryContent = io.readFile(registryAbs);
+  const coreConfigAbs = join2(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
+  const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
+  const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
+  const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
+  const inputs = {
+    workspaceRoot,
+    registryPathValue,
+    registryContent,
+    wfConfigContent,
+    coreConfigContent,
+    pluginListRaw,
+    generatedAt: now.toISOString(),
+    generator: opts.generator ?? { ...RESOLVER_GENERATOR },
+    corePluginRoot: opts.corePluginRoot ?? null
+  };
+  return buildSnapshot(inputs, io);
+}
+
+// src/ports.ts
+var DEFAULT_REGISTRY_RELPATH2 = "_local/config.md";
+function resolveCorePluginRoot() {
+  if (process.env.WF_CORE_PLUGIN_ROOT) {
+    return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
+  }
+  const here = fileURLToPath(import.meta.url);
+  return normalizeSlashes(resolve2(dirname2(here), "..", ".."));
+}
+function resolveContainedRegistryWritePath(workspaceRoot, registryRelPath) {
+  const canonicalRoot = realpathSync2(workspaceRoot);
+  const target = resolve2(workspaceRoot, registryRelPath);
+  let existing = target;
+  while (true) {
+    try {
+      lstatSync(existing);
+      break;
+    } catch (err) {
+      if (err.code !== "ENOENT") throw err;
+      const parent = dirname2(existing);
+      if (parent === existing) throw err;
+      existing = parent;
+    }
+  }
+  const canonicalExisting = realpathSync2(existing);
+  const fromRoot = relative(canonicalRoot, canonicalExisting);
+  if (fromRoot === "" || fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute3(fromRoot)) {
+    return normalizeSlashes(target);
+  }
+  throw new Error(`resolved path leaves workspace root \`${normalizeSlashes(canonicalRoot)}\`.`);
+}
+function createDefaultPorts(workspaceRoot) {
+  const registryRelPath = () => {
+    const wfConfig = fsIO.readFile(joinSlash(workspaceRoot, "wf.config.js"));
+    return extractRegistryPathRaw(wfConfig);
+  };
+  return {
+    workspaceRoot,
+    corePluginRoot: resolveCorePluginRoot(),
+    resolveFresh: () => resolveSnapshot({ workspaceRoot, corePluginRoot: resolveCorePluginRoot() }),
+    persist: (snapshot) => {
+      writeSnapshot(workspaceRoot, snapshot);
+    },
+    readCache: () => {
+      try {
+        return readSnapshot(workspaceRoot);
+      } catch {
+        return null;
+      }
+    },
+    readFile: (absPath) => fsIO.readFile(absPath),
+    writeFile: (absPath, content) => {
+      mkdirSync2(dirname2(absPath), { recursive: true });
+      writeFileSync2(absPath, content, { encoding: "utf8" });
+    },
+    listDirs: (absDir) => {
+      try {
+        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
+    listFiles: (absDir) => {
+      try {
+        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
+    listPlugins: () => {
+      const raw = runPluginList();
+      if (raw === null) return { plugins: [], ok: false };
+      return { plugins: parsePluginList(raw).plugins, ok: true };
+    },
+    registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH2,
+    resolveRegistryWritePath: (registryRelPath2) => resolveContainedRegistryWritePath(workspaceRoot, registryRelPath2)
+  };
 }
 
 // src/resolver/validate-rules.ts
@@ -20670,13 +21905,13 @@ function deriveRules(opsMarkdown, opsPath) {
 }
 
 // src/resolver/validate-capability.ts
-function stripCr(s) {
+function stripCr2(s) {
   return s.replace(/\r$/, "");
 }
-function trimCell(s) {
+function trimCell2(s) {
   return s.trim().replace(/^`/, "").replace(/`$/, "").trim();
 }
-function join(...parts) {
+function join3(...parts) {
   return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(/\/{2,}/g, "/");
 }
 function tableRowsWithLines(content, heading) {
@@ -20685,7 +21920,7 @@ function tableRowsWithLines(content, heading) {
   let inSection = false;
   let sawHeader = false;
   lines.forEach((raw, i) => {
-    const line = stripCr(raw);
+    const line = stripCr2(raw);
     if (line.startsWith("#")) {
       if (line.trim() === heading) {
         inSection = true;
@@ -20717,7 +21952,7 @@ function checkHeadingTypos(file, content, label) {
   }
   const lines = content.split(/\r?\n/);
   lines.forEach((raw, i) => {
-    const line = stripCr(raw);
+    const line = stripCr2(raw);
     if (!line.startsWith("#")) return;
     if (CANONICAL_HEADINGS.includes(line)) return;
     const norm = line.replace(/^#{1,6}\s*/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -20736,7 +21971,7 @@ function checkHeadingTypos(file, content, label) {
   return out;
 }
 function readManifest(content) {
-  const lines = content.split(/\r?\n/).map(stripCr);
+  const lines = content.split(/\r?\n/).map(stripCr2);
   const fragments = [];
   const requires = [];
   const conflicts = [];
@@ -20789,9 +22024,9 @@ function readManifest(content) {
       sawHeader = true;
       return;
     }
-    const phase = trimCell(cells[0] ?? "");
+    const phase = trimCell2(cells[0] ?? "");
     if (!phase || phase.toLowerCase() === "phase") return;
-    const kindCell = trimCell(cells[1] ?? "");
+    const kindCell = trimCell2(cells[1] ?? "");
     const isPlaceholder = (c) => c === "\u2014" || c === "-" || c === "";
     if (isPlaceholder(phase) && isPlaceholder(kindCell)) return;
     if (cells.length < 4) {
@@ -20800,9 +22035,9 @@ function readManifest(content) {
     }
     fragments.push({
       phase,
-      kind: trimCell(cells[1] ?? ""),
-      dispatch: trimCell(cells[2] ?? ""),
-      scope: trimCell(cells[3] ?? ""),
+      kind: trimCell2(cells[1] ?? ""),
+      dispatch: trimCell2(cells[2] ?? ""),
+      scope: trimCell2(cells[3] ?? ""),
       line: i + 1
     });
   });
@@ -20956,7 +22191,7 @@ function checkManifest(capability, manifestPath, content, rules) {
   };
 }
 function validateManifest(fs, target, opsDocPath) {
-  const manifestPath = /manifest\.md$/i.test(target) ? toPosix(target) : join(target, "manifest.md");
+  const manifestPath = /manifest\.md$/i.test(target) ? toPosix(target) : join3(target, "manifest.md");
   let rules;
   try {
     rules = loadRules(fs, opsDocPath);
@@ -21029,11 +22264,7 @@ function validateRegistry(fs, opts) {
   findings.push(...checkHeadingTypos(registryFile, content, "registry"));
   const rpv = opts.registryPathValue ?? "";
   if (rpv) {
-    let bad = "";
-    if (rpv.includes("\\")) bad = "contains a backslash (must use forward slashes)";
-    else if (/^\//.test(rpv)) bad = "absolute path (leading '/')";
-    else if (/^[A-Za-z]:/.test(rpv)) bad = "drive-prefixed path";
-    else if (`/${rpv}/`.includes("/../")) bad = "contains a '..' segment";
+    const bad = registryPathShapeError(rpv);
     if (bad) {
       findings.push(
         finding(
@@ -21122,7 +22353,7 @@ function validateRegistry(fs, opts) {
   const resolvePluginRoot = (name) => {
     const row = parsed.pluginRoots.find((p) => p.plugin === name);
     if (!row) return null;
-    return /^(\/|[A-Za-z]:)/.test(row.root) ? row.root : join(repoRoot, row.root);
+    return /^(\/|[A-Za-z]:)/.test(row.root) ? row.root : join3(repoRoot, row.root);
   };
   const healFromInstallManifest = (name) => {
     if (!opts.installManifest) return null;
@@ -21143,7 +22374,7 @@ function validateRegistry(fs, opts) {
         const p = rec?.installPath;
         if (!p) continue;
         let norm = toPosix(p);
-        if (!/^(\/|[A-Za-z]:)/.test(norm)) norm = join(repoRoot, norm);
+        if (!/^(\/|[A-Za-z]:)/.test(norm)) norm = join3(repoRoot, norm);
         if (fs.isDirectory(norm)) return norm;
       }
     }
@@ -21179,8 +22410,8 @@ function validateRegistry(fs, opts) {
       let primaryFail = "";
       const root = resolvePluginRoot(plName);
       if (root) {
-        const folder2 = join(root, plRel);
-        if (fs.isFile(join(folder2, "manifest.md"))) resolved = folder2;
+        const folder2 = join3(root, plRel);
+        if (fs.isFile(join3(folder2, "manifest.md"))) resolved = folder2;
         else if (!fs.isDirectory(folder2)) {
           primaryFail = `plugin-anchored path \`${p}\` does not resolve to a directory via its recorded root (looked in \`${folder2}\` via plugin root \`${plName}\`)`;
         } else {
@@ -21191,8 +22422,8 @@ function validateRegistry(fs, opts) {
       }
       if (!resolved) {
         const healed = healFromInstallManifest(plName);
-        if (healed && fs.isFile(join(healed, plRel, "manifest.md"))) {
-          resolved = join(healed, plRel);
+        if (healed && fs.isFile(join3(healed, plRel, "manifest.md"))) {
+          resolved = join3(healed, plRel);
         } else {
           findings.push(
             finding(
@@ -21204,10 +22435,10 @@ function validateRegistry(fs, opts) {
           );
         }
       }
-      if (resolved) resolvedManifests.push({ capability: cap.name, path: join(resolved, "manifest.md") });
+      if (resolved) resolvedManifests.push({ capability: cap.name, path: join3(resolved, "manifest.md") });
       continue;
     }
-    const folder = join(repoRoot, p);
+    const folder = join3(repoRoot, p);
     if (!fs.isDirectory(folder)) {
       findings.push(
         finding(
@@ -21217,7 +22448,7 @@ function validateRegistry(fs, opts) {
           `capability \`${cap.name}\` path does not exist: \`${p}\` (no directory at \`${folder}\`).`
         )
       );
-    } else if (!fs.isFile(join(folder, "manifest.md"))) {
+    } else if (!fs.isFile(join3(folder, "manifest.md"))) {
       findings.push(
         finding(
           "CHECK-4",
@@ -21227,7 +22458,7 @@ function validateRegistry(fs, opts) {
         )
       );
     } else {
-      resolvedManifests.push({ capability: cap.name, path: join(folder, "manifest.md") });
+      resolvedManifests.push({ capability: cap.name, path: join3(folder, "manifest.md") });
     }
   }
   const claims = [];
@@ -21746,15 +22977,15 @@ function previewComposition(snapshot, phase) {
 }
 
 // src/resolver/registry-edit.ts
-function splitRow(line) {
+function splitRow2(line) {
   const trimmed = line.trim();
   if (!trimmed.startsWith("|")) return null;
   return trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
 }
-function isSeparatorRow(cells) {
+function isSeparatorRow2(cells) {
   return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
 }
-function escapeRegex2(s) {
+function escapeRegex3(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 function renderRow(cells) {
@@ -21763,7 +22994,7 @@ function renderRow(cells) {
 function upsertSectionRow(markdown, heading, columns, key, value) {
   const eol = markdown.includes("\r\n") ? "\r\n" : "\n";
   const lines = markdown.split(/\r?\n/);
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex3(heading)}\\s*$`, "i");
   let sectionStart = -1;
   for (let i = 0; i < lines.length; i++) {
     if (headingRe.test(lines[i])) {
@@ -21795,14 +23026,14 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
   let matchIdx = -1;
   let sawHeader = false;
   for (let i = sectionStart + 1; i < sectionEnd; i++) {
-    const cells = splitRow(lines[i]);
+    const cells = splitRow2(lines[i]);
     if (!cells) continue;
     if (!sawHeader) {
       sawHeader = true;
       headerIdx = i;
       continue;
     }
-    if (isSeparatorRow(cells)) continue;
+    if (isSeparatorRow2(cells)) continue;
     lastDataIdx = i;
     if (cells[0] === key) matchIdx = i;
   }
@@ -21818,7 +23049,7 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
     return { content: next2.join(eol), changed: true };
   }
   if (matchIdx !== -1) {
-    const existing = splitRow(lines[matchIdx]);
+    const existing = splitRow2(lines[matchIdx]);
     if ((existing[1] ?? "") === value) {
       return { content: markdown, changed: false };
     }
@@ -22370,7 +23601,21 @@ var ResolverService = class {
         value: c.path
       }))
     ];
-    const registryAbs = joinSlash(this.ports.workspaceRoot, this.ports.registryRelPath());
+    const registryRel = this.ports.registryRelPath();
+    const shapeError = registryPathShapeError(registryRel);
+    if (shapeError) {
+      return reject(
+        `registryPath \`${registryRel}\` is not a forward-slash repo-relative file path: ${shapeError}.`
+      );
+    }
+    let registryAbs;
+    try {
+      registryAbs = this.ports.resolveRegistryWritePath?.(registryRel) ?? joinSlash(this.ports.workspaceRoot, registryRel);
+    } catch (err) {
+      return reject(
+        `registryPath \`${registryRel}\` escapes the selected workspace: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
     let content = this.ports.readFile(registryAbs) ?? "";
     for (const row of preview) {
       const columns = row.section === "Plugin Roots" ? ["Plugin", "Root"] : ["Capability", "Path"];
@@ -22585,1153 +23830,79 @@ var ResolverService = class {
   }
 };
 
-// src/ports.ts
-import { mkdirSync as mkdirSync2, readdirSync as readdirSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// src/resolver/registry.ts
-function splitRow2(line) {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("|")) return null;
-  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-  return cells;
-}
-function isSeparatorRow2(cells) {
-  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
-}
-function tableRowsUnderHeading(markdown, heading) {
-  const lines = markdown.split(/\r?\n/);
-  const rows = [];
-  let inSection = false;
-  let sawHeader = false;
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex3(heading)}\\s*$`, "i");
-  for (const line of lines) {
-    if (/^#{1,6}\s+/.test(line)) {
-      if (headingRe.test(line)) {
-        inSection = true;
-        sawHeader = false;
-        continue;
-      }
-      if (inSection) break;
-      continue;
-    }
-    if (!inSection) continue;
-    const cells = splitRow2(line);
-    if (!cells) {
-      if (sawHeader && rows.length > 0 && line.trim() === "") break;
-      continue;
-    }
-    if (!sawHeader) {
-      sawHeader = true;
-      continue;
-    }
-    if (isSeparatorRow2(cells)) continue;
-    rows.push(cells);
+// src/workspace-services.ts
+var WorkspaceServiceRegistry = class {
+  constructor(launchDirectory, createService = (root) => new ResolverService(createDefaultPorts(root))) {
+    this.createService = createService;
+    this.launchIdentity = resolveWorkspaceIdentity(launchDirectory, "launch directory");
   }
-  return rows;
-}
-function escapeRegex3(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-function parseRegistry(markdown) {
-  const capabilities = [];
-  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
-    const [name, path] = cells;
-    if (name && path) capabilities.push({ name, path });
-  }
-  const pluginRoots = [];
-  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
-    const [plugin, root] = cells;
-    if (plugin && root) pluginRoots.push({ plugin, root });
-  }
-  return { capabilities, pluginRoots };
-}
-
-// src/resolver/manifest.ts
-function stripCr2(line) {
-  return line.replace(/\r$/, "");
-}
-function trimCell2(cell) {
-  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
-}
-function splitCommaList(rest) {
-  return rest.split(",").map((v) => v.trim()).filter((v) => v.length > 0);
-}
-function parseManifest(markdown) {
-  const lines = markdown.split(/\r?\n/).map(stripCr2);
-  let kind = null;
-  const fragments = [];
-  const articles = [];
-  const requires = [];
-  const conflicts = [];
-  let profileTemplate = null;
-  let inFragments = false;
-  let sawFragHeader = false;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (kind === null) {
-      const km = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/.exec(trimmed);
-      if (km) kind = km[1];
-    }
-    if (/^requires:/i.test(trimmed)) {
-      requires.push(...splitCommaList(trimmed.replace(/^requires:/i, "")));
-    } else if (/^conflicts:/i.test(trimmed)) {
-      conflicts.push(...splitCommaList(trimmed.replace(/^conflicts:/i, "")));
-    } else if (/^article:/i.test(trimmed)) {
-      const decl = trimmed.replace(/^article:/i, "").trim();
-      const eq = decl.indexOf("=");
-      if (eq > 0) {
-        const key = decl.slice(0, eq).trim();
-        const value = decl.slice(eq + 1).trim();
-        if (key) articles.push({ key, value });
-      }
-    } else if (/^profile-template:/i.test(trimmed)) {
-      const v = trimmed.replace(/^profile-template:/i, "").trim();
-      if (v) profileTemplate = v;
-    }
-    if (/^#{1,6}\s+/.test(line)) {
-      if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
-        inFragments = true;
-        sawFragHeader = false;
-        continue;
-      }
-      if (inFragments) inFragments = false;
-    }
-    if (!inFragments) continue;
-    if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
-    if (!sawFragHeader) {
-      sawFragHeader = true;
-      continue;
-    }
-    const [phaseRaw, kindRaw, dispatchRaw, scopeRaw] = cells;
-    const phase = trimCell2(phaseRaw ?? "");
-    const contributionKind = trimCell2(kindRaw ?? "");
-    if (!phase || phase === "phase") continue;
-    let scope = trimCell2(scopeRaw ?? "");
-    if (scope === "" || scope === "\u2014" || scope === "-") scope = null;
-    fragments.push({
-      phase,
-      contributionKind,
-      dispatch: (dispatchRaw ?? "").trim().replace(/^`/, "").replace(/`$/, "").trim(),
-      scope
-    });
-  }
-  return { kind, fragments, articles, requires, conflicts, profileTemplate };
-}
-
-// src/resolver/config.ts
-function extractKeyValues(markdown) {
-  const map = /* @__PURE__ */ new Map();
-  for (const rawLine of markdown.split(/\r?\n/)) {
-    const line = rawLine.replace(/\r$/, "").trim();
-    if (!line.startsWith("|")) continue;
-    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-    if (cells.length < 2) continue;
-    const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
-    if (!keyMatch) continue;
-    const key = keyMatch[1].trim().toLowerCase();
-    map.set(key, cells[1]);
-  }
-  return map;
-}
-function normalizeValue(raw) {
-  if (raw === void 0) return null;
-  let v = raw.trim();
-  const bt = /^`(.*)`$/.exec(v);
-  if (bt) v = bt[1].trim();
-  if (v === "" || v === "\u2014") return null;
-  if (/^<.*>$/.test(v)) return null;
-  return v;
-}
-function parseCoreConfig(markdown) {
-  const kv = extractKeyValues(markdown);
-  return {
-    taskRoot: normalizeValue(kv.get("task root")),
-    verifyCommand: normalizeValue(kv.get("verify command")),
-    qaRules: normalizeValue(kv.get("qa rules")),
-    qaBaselineIgnore: normalizeValue(kv.get("qa baseline ignore")),
-    seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
-    seedBacklogPath: normalizeValue(kv.get("backlog path")),
-    standupStatuses: normalizeValue(kv.get("standup statuses"))
-  };
-}
-
-// src/resolver/resolve.ts
-function relativize(workspaceRoot, absPath) {
-  const abs = normalizeSlashes(absPath);
-  const root = normalizeSlashes(workspaceRoot).replace(/\/+$/, "");
-  if (abs === root) return ".";
-  if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
-  return abs;
-}
-function toAbsolute3(workspaceRoot, snapshotPath2) {
-  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
-}
-function inlineDispatchRel(dispatch) {
-  const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
-  return m ? m[1].trim() : null;
-}
-function buildSnapshot(inputs, io) {
-  const { workspaceRoot } = inputs;
-  const diagnostics = [];
-  const sources = [];
-  const registryPath = normalizeSlashes(inputs.registryPathValue);
-  sources.push(fingerprint("wf-config", "wf.config.js", inputs.wfConfigContent));
-  sources.push(fingerprint("registry", registryPath, inputs.registryContent));
-  if (registryPath !== "_local/config.md") {
-    sources.push(fingerprint("core-config", "_local/config.md", inputs.coreConfigContent));
-  }
-  sources.push(
-    fingerprint(
-      "plugin-list",
-      "claude plugin list --json",
-      normalizePluginList(inputs.pluginListRaw)
-    )
-  );
-  sources.push(
-    fingerprint(
-      "constitution",
-      "_local/constitution.md",
-      io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"))
-    )
-  );
-  const registry2 = parseRegistry(inputs.registryContent ?? "");
-  const coreConfig = parseCoreConfig(inputs.coreConfigContent ?? inputs.registryContent ?? "");
-  let pluginList;
-  if (inputs.pluginListRaw === null) {
-    pluginList = { plugins: [], contractOk: true, issues: [] };
-    diagnostics.push({
-      severity: "warning",
-      code: "plugin-list/cli-unavailable",
-      message: "`claude plugin list --json` could not be run (CLI unavailable or errored); installed-pack facts are unknown for this snapshot. The plugin-list source is recorded as absent rather than an empty result \u2014 re-run once the `claude` CLI is available on PATH."
-    });
-  } else {
-    pluginList = parsePluginList(inputs.pluginListRaw);
-    for (const issue2 of pluginList.issues) {
-      diagnostics.push({ severity: "error", code: issue2.code, message: issue2.message });
-    }
-  }
-  const recordedRoots = registry2.pluginRoots.map((r) => ({
-    plugin: r.plugin,
-    root: r.root
-  }));
-  const installedRoots = pluginList.plugins.map((p) => ({
-    pluginName: p.name,
-    installPath: p.installPath
-  }));
-  const manifestExists = (p) => io.readFile(p) !== null;
-  const registeredByPlugin = /* @__PURE__ */ new Map();
-  const pluginRootProvenance = /* @__PURE__ */ new Map();
-  const capabilities = registry2.capabilities.map((row) => {
-    const anchor = /^plugin:([^/]+)\//.exec(row.path);
-    const pluginName = anchor ? anchor[1] : null;
-    const resolved = resolveCapabilityPath(row.path, {
-      workspaceRoot,
-      recordedRoots,
-      installedRoots,
-      manifestExists
-    });
-    let kind = null;
-    let fragments = [];
-    let articles = [];
-    let requires = [];
-    let conflicts = [];
-    let profileTemplatePath = null;
-    if (resolved.manifestPath) {
-      const content = io.readFile(resolved.manifestPath);
-      if (content !== null) {
-        sources.push(
-          fingerprint("manifest", relativize(workspaceRoot, resolved.manifestPath), content)
+  createService;
+  launchIdentity;
+  services = /* @__PURE__ */ new Map();
+  /** Validate, admit, and select the service for one MCP request. */
+  select(workspaceRoot) {
+    const identity = resolveWorkspaceIdentity(workspaceRoot);
+    if (this.launchIdentity.kind === "git") {
+      if (identity.kind !== "git" || identity.commonDir !== this.launchIdentity.commonDir) {
+        throw new Error(
+          `workspaceRoot is outside the launch repository's worktree family: ${workspaceRoot}`
         );
-        const m = parseManifest(content);
-        kind = m.kind;
-        fragments = m.fragments;
-        articles = m.articles;
-        requires = m.requires;
-        conflicts = m.conflicts;
-        if (m.profileTemplate && resolved.resolvedPath) {
-          profileTemplatePath = relativize(
-            workspaceRoot,
-            joinSlash(resolved.resolvedPath, m.profileTemplate)
-          );
-        }
       }
+    } else if (identity.root !== this.launchIdentity.root) {
+      throw new Error(
+        `workspaceRoot is outside the plain launch directory: ${workspaceRoot}`
+      );
     }
-    const validity = resolved.manifestPath !== null ? "ok" : "unrecoverable";
-    if (validity === "unrecoverable") {
-      diagnostics.push({
-        severity: "error",
-        code: "capability/unrecoverable",
-        message: `capability \`${row.name}\` (path \`${row.path}\`) has no readable manifest \u2014 unrecoverable; re-run the owning pack's init to refresh its plugin root.`
-      });
+    let service = this.services.get(identity.root);
+    if (!service) {
+      service = this.createService(identity.root);
+      this.services.set(identity.root, service);
     }
-    if (pluginName) {
-      const entry = registeredByPlugin.get(pluginName) ?? {
-        capabilities: [],
-        anyUnrecoverable: false
-      };
-      entry.capabilities.push(row.name);
-      if (validity === "unrecoverable") entry.anyUnrecoverable = true;
-      registeredByPlugin.set(pluginName, entry);
-      const prev = pluginRootProvenance.get(pluginName);
-      if (resolved.provenance !== "unrecoverable" && prev !== "self-healed") {
-        pluginRootProvenance.set(pluginName, resolved.provenance);
-      } else if (!prev) {
-        pluginRootProvenance.set(pluginName, resolved.provenance);
-      }
-    }
-    return {
-      name: row.name,
-      registryPath: row.path,
-      resolvedPath: resolved.resolvedPath ? relativize(workspaceRoot, resolved.resolvedPath) : null,
-      manifestPath: resolved.manifestPath ? relativize(workspaceRoot, resolved.manifestPath) : null,
-      provenance: resolved.provenance,
-      kind,
-      fragments,
-      articles,
-      requires,
-      conflicts,
-      profileTemplatePath,
-      validity
-    };
-  });
-  const pluginRoots = registry2.pluginRoots.map((r) => {
-    const provenance = pluginRootProvenance.get(r.plugin) ?? "recorded";
-    const recordedRoot = normalizeSlashes(r.root);
-    let resolvedRoot = recordedRoot;
-    if (provenance === "self-healed") {
-      const installed = installedRoots.find((ir) => ir.pluginName === r.plugin);
-      resolvedRoot = installed ? relativize(workspaceRoot, installed.installPath) : null;
-    } else if (provenance === "unrecoverable") {
-      resolvedRoot = null;
-    } else {
-      resolvedRoot = relativize(workspaceRoot, recordedRoot);
-    }
-    return {
-      plugin: r.plugin,
-      recordedRoot: relativize(workspaceRoot, recordedRoot),
-      resolvedRoot,
-      provenance
-    };
-  });
-  const packs = [];
-  const seenPlugins = /* @__PURE__ */ new Set();
-  for (const p of pluginList.plugins) {
-    seenPlugins.add(p.name);
-    const reg = registeredByPlugin.get(p.name);
-    let state;
-    if (!p.enabled) {
-      state = "installed/disabled";
-    } else if (reg && reg.capabilities.length > 0) {
-      state = reg.anyUnrecoverable ? "registered/unrecoverable" : "active";
-    } else {
-      state = "installed/inactive";
-    }
-    packs.push({
-      pluginId: p.id,
-      pluginName: p.name,
-      version: p.version,
-      scope: p.scope,
-      enablement: p.enabled ? "enabled" : "disabled",
-      installPath: relativize(workspaceRoot, p.installPath),
-      state,
-      registeredCapabilities: reg?.capabilities ?? [],
-      diagnostics: state === "registered/unrecoverable" ? "registered capability manifest is unreadable under this installed pack \u2014 refresh its plugin root (re-run the pack init)." : null
-    });
+    return service;
   }
-  for (const [pluginName, reg] of registeredByPlugin) {
-    if (seenPlugins.has(pluginName)) continue;
-    packs.push({
-      pluginId: pluginName,
-      pluginName,
-      version: null,
-      scope: null,
-      enablement: "unknown",
-      installPath: null,
-      state: "registered/unrecoverable",
-      registeredCapabilities: reg.capabilities,
-      diagnostics: `registered pack \`${pluginName}\` is not installed (absent from \`claude plugin list --json\`) \u2014 install it or remove its registry rows.`
-    });
-  }
-  const providerOwnership = [];
-  for (const cap of capabilities) {
-    for (const frag of cap.fragments) {
-      if (frag.contributionKind !== "provider" || !frag.scope) continue;
-      let fragmentPath = null;
-      const rel = inlineDispatchRel(frag.dispatch);
-      if (rel && cap.resolvedPath) {
-        fragmentPath = joinSlash(cap.resolvedPath, rel);
-      }
-      providerOwnership.push({
-        surface: frag.scope,
-        owner: cap.name,
-        fragmentPath,
-        state: cap.validity === "ok" ? "ok" : "unrecoverable"
-      });
-    }
-  }
-  const trackerOwner = providerOwnership.find(
-    (o) => o.surface === "tracker" && o.state === "ok"
-  );
-  const idShape = trackerOwner ? { source: `tracker:${trackerOwner.owner}`, scheme: null } : { source: "bare-core", scheme: "T<NNN>" };
-  const profiles = {};
-  for (const cap of capabilities) {
-    const profilePath = joinSlash(
-      workspaceRoot,
-      "_local/profiles",
-      `${cap.name}.profile.json`
-    );
-    const content = io.readFile(profilePath);
-    if (content === null) continue;
-    sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
-    try {
-      profiles[cap.name] = JSON.parse(content);
-    } catch (err) {
-      diagnostics.push({
-        severity: "warning",
-        code: "profile/unparseable",
-        message: `profile for \`${cap.name}\` is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
-      });
-    }
-  }
-  const interfaceRoots = [];
-  if (inputs.corePluginRoot) interfaceRoots.push(normalizeSlashes(inputs.corePluginRoot));
-  for (const r of pluginRoots) {
-    if (r.resolvedRoot) interfaceRoots.push(toAbsolute3(workspaceRoot, r.resolvedRoot));
-  }
-  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
-  const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
-  const settingsOverrides = [];
-  for (const filename of [...settingsFiles].sort()) {
-    const skill = skillFromSettingsFilename(filename);
-    if (!skill) continue;
-    const overridePath = joinSlash(settingsDir, filename);
-    const overrideRaw = io.readFile(overridePath);
-    if (overrideRaw === null) continue;
-    sources.push(
-      fingerprint("settings-override", `${SETTINGS_STORAGE_DIR}/${filename}`, overrideRaw)
-    );
-    settingsOverrides.push(skill);
-    const parsed = parseSettingsOverride(overrideRaw);
-    if (!parsed.ok) {
-      diagnostics.push({
-        severity: "warning",
-        code: "settings/unparseable",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) is not a valid JSON object: ${parsed.error}`
-      });
-      continue;
-    }
-    const located = locateInterface(skill, interfaceRoots, io.readFile, joinSlash);
-    if (!located) {
-      diagnostics.push({
-        severity: "warning",
-        code: "settings/interface-unresolvable",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) has no locatable declaring \`interface.md\` \u2014 its keys cannot be validated. Install the owning pack or remove the override.`
-      });
-      continue;
-    }
-    const { undeclared } = mergeSettings(located.declared, parsed.value);
-    if (undeclared.length > 0) {
-      diagnostics.push({
-        severity: "error",
-        code: "settings/undeclared-key",
-        message: `settings override for skill \`${skill}\` (\`${SETTINGS_STORAGE_DIR}/${filename}\`) carries ${undeclared.length === 1 ? "a key" : "keys"} its \`interface.md\` does not declare: ${undeclared.map((k) => `\`${k}\``).join(", ")}. Remove the undeclared ${undeclared.length === 1 ? "key" : "keys"} or declare ${undeclared.length === 1 ? "it" : "them"} in the skill's \`## Settings\` table.`,
-        category: "registry-invalid",
-        recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
-      });
-    }
-  }
-  const SLOT_RECOVERY = "The capability registry or a skill interface is invalid. Declare the missing slot in the skill's `## Slots` interface table, or remove the orphaned contribution/override, then run `/wf:resolve refresh`.";
-  const declaredSlotsCache = /* @__PURE__ */ new Map();
-  const declaredSlotsFor = (skill) => {
-    if (declaredSlotsCache.has(skill)) return declaredSlotsCache.get(skill) ?? null;
-    const located = locateSlotInterface(skill, interfaceRoots, io.readFile, joinSlash);
-    const set = located ? located.declared : null;
-    declaredSlotsCache.set(skill, set);
-    return set;
-  };
-  const isDeclared = (skillPoint, skill) => declaredSlotsFor(skill)?.has(skillPoint) ?? false;
-  const packSlots = [];
-  for (const cap of capabilities) {
-    if (cap.validity !== "ok" || !cap.resolvedPath) continue;
-    for (const frag of cap.fragments) {
-      if (frag.contributionKind !== "slot") continue;
-      const parsed = parseSlotScope(frag.scope);
-      if (!parsed) continue;
-      const rel = inlineDispatchRel(frag.dispatch);
-      if (!rel) continue;
-      const bodyAbs = joinSlash(toAbsolute3(workspaceRoot, cap.resolvedPath), rel);
-      packSlots.push({
-        capability: cap.name,
-        skillPoint: parsed.skillPoint,
-        skill: parsed.skillPoint.split(".")[0],
-        policy: parsed.policy,
-        bodyPath: bodyAbs,
-        bodyRel: relativize(workspaceRoot, bodyAbs)
-      });
-    }
-  }
-  const fingerprintedBodies = /* @__PURE__ */ new Set();
-  for (const ps of packSlots) {
-    if (!fingerprintedBodies.has(ps.bodyPath)) {
-      fingerprintedBodies.add(ps.bodyPath);
-      sources.push(fingerprint("slot-contribution", ps.bodyRel, io.readFile(ps.bodyPath)));
-    }
-    if (!isDeclared(ps.skillPoint, ps.skill)) {
-      diagnostics.push({
-        severity: "error",
-        code: "slot/orphaned-contribution",
-        message: `capability \`${ps.capability}\` contributes to slot \`${ps.skillPoint}\`, which no active skill interface declares \u2014 the contribution would silently never fire. Declare the slot in the skill's \`## Slots\` interface table or remove the capability's \`slot\` fragment row.`,
-        category: "registry-invalid",
-        recovery: SLOT_RECOVERY
-      });
-    }
-  }
-  const slotOverrideDir = joinSlash(workspaceRoot, OVERRIDE_DIR);
-  const slotOverrideFiles = io.listFiles ? io.listFiles(slotOverrideDir) : [];
-  const overridePresent = /* @__PURE__ */ new Set();
-  for (const filename of [...slotOverrideFiles].sort()) {
-    const parsedName = slotPointFromOverrideFilename(filename);
-    if (!parsedName) continue;
-    const overridePath = joinSlash(slotOverrideDir, filename);
-    const overrideRaw = io.readFile(overridePath);
-    if (overrideRaw === null) continue;
-    sources.push(
-      fingerprint("slot-override", `${OVERRIDE_DIR}/${filename}`, overrideRaw)
-    );
-    overridePresent.add(parsedName.skillPoint);
-    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
-      diagnostics.push({
-        severity: "error",
-        code: "slot/orphaned-override",
-        message: `slot override \`${OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
-        category: "registry-invalid",
-        recovery: SLOT_RECOVERY
-      });
-    }
-  }
-  const slotIds = /* @__PURE__ */ new Set([
-    ...packSlots.map((p) => p.skillPoint),
-    ...overridePresent
-  ]);
-  const slots = [...slotIds].sort().map((skillPoint) => {
-    const contributors = packSlots.filter((p) => p.skillPoint === skillPoint).map((p) => p.capability);
-    const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
-    const hasOverride = overridePresent.has(skillPoint);
-    let tier;
-    let winningSource;
-    if (hasOverride) {
-      tier = "local-override";
-      winningSource = "local-override";
-    } else if (contributors.length > 0) {
-      tier = "pack-contribution";
-      winningSource = contributors[contributors.length - 1];
-    } else {
-      tier = "unfilled";
-      winningSource = null;
-    }
-    return {
-      skillPoint,
-      policy: policyOwner ? policyOwner.policy : null,
-      overridePresent: hasOverride,
-      contributors,
-      tier,
-      winningSource
-    };
-  });
-  const providerConfig = {};
-  if (providerOwnership.some((o) => o.surface === "tracker")) {
-    diagnostics.push({
-      severity: "info",
-      code: "provider-config/deferred",
-      message: "tracker provider config values are resolved by the provider surface at query time (WF-270); the snapshot records ownership only, never a tracker product's config section."
-    });
-  }
-  const constitutionInputs = [];
-  for (const cap of capabilities) {
-    for (const a of cap.articles) {
-      constitutionInputs.push({ capability: cap.name, key: a.key, value: a.value });
-    }
-  }
-  return {
-    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
-    generatedAt: inputs.generatedAt,
-    generator: inputs.generator,
-    workspaceRoot: normalizeSlashes(workspaceRoot),
-    registryPath,
-    coreConfig,
-    capabilities,
-    pluginRoots,
-    packs,
-    providerOwnership,
-    idShape,
-    profiles,
-    providerConfig,
-    constitutionInputs,
-    slots,
-    settingsOverrides,
-    sources,
-    diagnostics
-  };
-}
-
-// src/resolver/engine.ts
-import { readFileSync as readFileSync2, readdirSync } from "node:fs";
-import { join as join3 } from "node:path";
-import { execFileSync } from "node:child_process";
-
-// src/resolver/snapshot-store.ts
-import {
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync
-} from "node:fs";
-import { dirname, join as join2 } from "node:path";
-import { randomBytes } from "node:crypto";
-function snapshotPath(workspaceRoot) {
-  return join2(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
-}
-function writeSnapshot(workspaceRoot, snapshot) {
-  const target = snapshotPath(workspaceRoot);
-  const dir = dirname(target);
-  mkdirSync(dir, { recursive: true });
-  const tmp = join2(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
-  const json = `${JSON.stringify(snapshot, null, 2)}
-`;
-  try {
-    writeFileSync(tmp, json, { encoding: "utf8" });
-    renameSync(tmp, target);
-  } catch (err) {
-    try {
-      rmSync(tmp, { force: true });
-    } catch {
-    }
-    throw err;
-  }
-  return target;
-}
-var SnapshotSchemaError = class extends Error {
-  constructor(found, expected) {
-    super(
-      `resolver snapshot schemaVersion ${String(found)} is incompatible with this runtime (expects ${expected}); rebuild the snapshot.`
-    );
-    this.found = found;
-    this.expected = expected;
-    this.name = "SnapshotSchemaError";
-  }
-  found;
-  expected;
 };
-function readSnapshot(workspaceRoot) {
-  const target = snapshotPath(workspaceRoot);
-  let raw;
-  try {
-    raw = readFileSync(target, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") return null;
-    throw err;
-  }
-  const parsed = JSON.parse(raw);
-  if (parsed.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
-    throw new SnapshotSchemaError(parsed.schemaVersion, SNAPSHOT_SCHEMA_VERSION);
-  }
-  return parsed;
-}
-
-// src/resolver/engine.ts
-var DEFAULT_REGISTRY_RELPATH = "_local/config.md";
-function readOrNull(absPath) {
-  try {
-    return readFileSync2(absPath, "utf8");
-  } catch (err) {
-    if (err.code === "ENOENT") return null;
-    throw err;
-  }
-}
-function listFilesOrEmpty(absDir) {
-  try {
-    return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
-  } catch {
-    return [];
-  }
-}
-var fsIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
-function extractRegistryPath(wfConfig) {
-  if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
-  const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
-  const v = m?.[1]?.trim();
-  return v && v.length > 0 ? normalizeSlashes(v) : DEFAULT_REGISTRY_RELPATH;
-}
-function runPluginList() {
-  try {
-    return execFileSync("claude", ["plugin", "list", "--json"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      maxBuffer: 16 * 1024 * 1024
-    });
-  } catch {
-    return null;
-  }
-}
-function resolveSnapshot(opts) {
-  const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
-  const io = opts.io ?? fsIO;
-  const wfConfigContent = io.readFile(join3(opts.workspaceRoot, "wf.config.js"));
-  const registryPathValue = extractRegistryPath(wfConfigContent);
-  const registryAbs = join3(opts.workspaceRoot, registryPathValue);
-  const registryContent = io.readFile(registryAbs);
-  const coreConfigAbs = join3(opts.workspaceRoot, DEFAULT_REGISTRY_RELPATH);
-  const coreConfigContent = registryPathValue === DEFAULT_REGISTRY_RELPATH ? registryContent : io.readFile(coreConfigAbs);
-  const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
-  const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
-  const inputs = {
-    workspaceRoot,
-    registryPathValue,
-    registryContent,
-    wfConfigContent,
-    coreConfigContent,
-    pluginListRaw,
-    generatedAt: now.toISOString(),
-    generator: opts.generator ?? { ...RESOLVER_GENERATOR },
-    corePluginRoot: opts.corePluginRoot ?? null
-  };
-  return buildSnapshot(inputs, io);
-}
-
-// src/ports.ts
-var DEFAULT_REGISTRY_RELPATH2 = "_local/config.md";
-function resolveWorkspaceRoot() {
-  return normalizeSlashes(process.env.WF_WORKSPACE_ROOT || process.cwd());
-}
-function resolveCorePluginRoot() {
-  if (process.env.WF_CORE_PLUGIN_ROOT) {
-    return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
-  }
-  const here = fileURLToPath(import.meta.url);
-  return normalizeSlashes(resolve(dirname2(here), "..", ".."));
-}
-function createDefaultPorts(workspaceRoot) {
-  const registryRelPath = () => {
-    const wfConfig = fsIO.readFile(joinSlash(workspaceRoot, "wf.config.js"));
-    return extractRegistryPath(wfConfig);
-  };
-  return {
-    workspaceRoot,
-    corePluginRoot: resolveCorePluginRoot(),
-    resolveFresh: () => resolveSnapshot({ workspaceRoot, corePluginRoot: resolveCorePluginRoot() }),
-    persist: (snapshot) => {
-      writeSnapshot(workspaceRoot, snapshot);
-    },
-    readCache: () => {
-      try {
-        return readSnapshot(workspaceRoot);
-      } catch {
-        return null;
-      }
-    },
-    readFile: (absPath) => fsIO.readFile(absPath),
-    writeFile: (absPath, content) => {
-      mkdirSync2(dirname2(absPath), { recursive: true });
-      writeFileSync2(absPath, content, { encoding: "utf8" });
-    },
-    listDirs: (absDir) => {
-      try {
-        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
-      } catch {
-        return [];
-      }
-    },
-    listFiles: (absDir) => {
-      try {
-        return readdirSync2(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
-      } catch {
-        return [];
-      }
-    },
-    listPlugins: () => {
-      const raw = runPluginList();
-      if (raw === null) return { plugins: [], ok: false };
-      return { plugins: parsePluginList(raw).plugins, ok: true };
-    },
-    registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH2
-  };
-}
-
-// src/tools.ts
-function ok(payload) {
-  return {
-    content: [{ type: "text", text: JSON.stringify(payload) }],
-    structuredContent: payload
-  };
-}
-function guard(fn) {
-  try {
-    return ok(fn());
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      content: [{ type: "text", text: `resolver error: ${message}` }],
-      isError: true
-    };
-  }
-}
-var surfaceInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    surface: {
-      type: "string",
-      description: 'Provider surface to resolve: `delivery`, `tracker`, `engine`, `host`, or the composite `qa-execution:engine` / `qa-execution:host` (equivalent to the bare `engine` / `host` forms \u2014 both resolve to the same ownership record). An unrecognized token is an invalid argument and returns an MCP error result, distinct from a genuine `state: "unconfigured"` response.'
-    }
-  },
-  required: ["surface"],
-  additionalProperties: false
-});
-var surfaceClassInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    surface: {
-      type: "string",
-      enum: ["local-read", "tracker-write", "delivery-write"],
-      description: "The surface class about to act: `local-read` (best-effort read), `tracker-write`, or `delivery-write`."
-    }
-  },
-  required: ["surface"],
-  additionalProperties: false
-});
-var capabilityInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    capability: { type: "string", description: "Registered capability name." }
-  },
-  required: ["capability"],
-  additionalProperties: false
-});
-var pluginInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    plugin: { type: "string", description: "Plugin name (left of `@`)." }
-  },
-  required: ["plugin"],
-  additionalProperties: false
-});
-var pluginIdInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    pluginId: {
-      type: "string",
-      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
-    }
-  },
-  required: ["pluginId"],
-  additionalProperties: false
-});
-var skillInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    skill: {
-      type: "string",
-      description: "Slotted skill slug whose declared settings keys to resolve (lowercase, hyphenated)."
-    }
-  },
-  required: ["skill"],
-  additionalProperties: false
-});
-var contentInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    class: {
-      type: "string",
-      enum: ["fragment", "contract", "shared", "references-template", "profile-template", "slot"],
-      description: "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), `profile-template` (a pack's `profile.template.json` body), or `slot` (the single composed body for a per-skill composition point \u2014 see `skill`+`point`). Skill bodies and CI-only fixtures are not served."
-    },
-    capability: {
-      type: "string",
-      description: "Registered capability name \u2014 required for `fragment` and `profile-template`."
-    },
-    plugin: {
-      type: "string",
-      description: "Plugin name for a pack-owned `references-template`; omit (or use `wf`/`core`) for a core-plugin skill."
-    },
-    skill: {
-      type: "string",
-      description: "Skill slug \u2014 required for `references-template`; the `<skill>` segment for `slot`."
-    },
-    point: {
-      type: "string",
-      description: "The `<point>` segment for a `slot` ref \u2014 the composition point inside the named skill (the pair forms the `<skill>.<point>` id, e.g. skill `ship` + point `review`)."
-    },
-    ref: {
-      type: "string",
-      description: "The relative doc ref: within the capability folder, subfolder included \u2014 e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template` / `slot`."
-    }
-  },
-  required: ["class"],
-  additionalProperties: false
-});
-var validateManifestInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "A capability folder or a `manifest.md` path (absolute, or relative to the workspace root). Omit to check every active registry capability's manifest."
-    }
-  },
-  additionalProperties: false
-});
-var validateSkillInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    plugin: {
-      type: "string",
-      description: "Plugin name to scope the scan to (e.g. `wf`). Omit to scan every plugin."
-    },
-    skill: {
-      type: "string",
-      description: "Skill slug to scope the scan to. Omit to scan every skill in scope."
-    }
-  },
-  additionalProperties: false
-});
-var validateReferencesInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "A skill body, an agent file, or a folder to scan (absolute, or relative to the workspace root). Omit to scan every plugin's `skills/` and `agents/`."
-    }
-  },
-  additionalProperties: false
-});
-var previewCompositionInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    phase: {
-      type: "string",
-      description: "SDD phase to preview (e.g. `verify`, `qa-execution`). Omit to preview every phase."
-    }
-  },
-  additionalProperties: false
-});
-var registerInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    pluginId: {
-      type: "string",
-      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
-    },
-    expectedFingerprint: {
-      type: "string",
-      description: "The pack fingerprint returned by a prior inspect_pack; a mismatch rejects the write."
-    }
-  },
-  required: ["pluginId", "expectedFingerprint"],
-  additionalProperties: false
-});
-var reasonsInput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    reasons: {
-      type: "array",
-      items: { type: "string" },
-      description: "Optional typed suspected-stale reasons (one short message each) recorded as diagnostics on the resulting lifecycle state."
-    }
-  },
-  additionalProperties: false
-});
-function toReasons(reasons, code) {
-  return (reasons ?? []).filter((r) => typeof r === "string" && r.trim().length > 0).map((message) => ({ code, message: message.trim() }));
-}
-function registerResolverTools(server, service) {
-  server.registerTool(
-    "resolve_config",
-    {
-      title: "resolve config",
-      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies."
-    },
-    async () => guard(() => service.resolveConfig())
-  );
-  server.registerTool(
-    "resolve_registry",
-    {
-      title: "resolve registry",
-      description: "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body."
-    },
-    async () => guard(() => service.resolveRegistry())
-  );
-  server.registerTool(
-    "resolve_provider",
-    {
-      title: "resolve provider",
-      description: "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
-      inputSchema: surfaceInput
-    },
-    async (args) => guard(() => service.resolveProvider(args.surface))
-  );
-  server.registerTool(
-    "resolve_profile",
-    {
-      title: "resolve profile",
-      description: "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
-      inputSchema: capabilityInput
-    },
-    async (args) => guard(() => service.resolveProfile(args.capability))
-  );
-  server.registerTool(
-    "resolve_settings",
-    {
-      title: "resolve settings",
-      description: "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default \u2014 the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
-      inputSchema: skillInput
-    },
-    async (args) => guard(() => service.resolveSettings(args.skill))
-  );
-  server.registerTool(
-    "resolve_plugin_root",
-    {
-      title: "resolve plugin root",
-      description: "A plugin's resolved install root + provenance, post-self-heal (R5). One path record.",
-      inputSchema: pluginInput
-    },
-    async (args) => guard(() => service.resolvePluginRoot(args.plugin))
-  );
-  server.registerTool(
-    "resolve_content",
-    {
-      title: "resolve content",
-      description: "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path \u2014 the metadata queries stay body-free.",
-      inputSchema: contentInput
-    },
-    async (args) => guard(() => service.resolveContent(args))
-  );
-  server.registerTool(
-    "inspect_pack",
-    {
-      title: "inspect pack",
-      description: "Read-only pack inspection (R6): resolves a plugin id via `claude plugin list --json`, validates enabled state / version / installPath and the pack manifest(s), and returns a fingerprint. Writes nothing.",
-      inputSchema: pluginIdInput
-    },
-    async (args) => guard(() => service.inspectPack(args.pluginId))
-  );
-  server.registerTool(
-    "register_pack",
-    {
-      title: "register pack",
-      description: "Mutating pack registration (R6). Rejects a missing / disabled / stale-fingerprint / path-invalid / manifest-invalid request WITHOUT writing; on success owns the registry write, refreshes the snapshot, and self-checks. Core does not infer skill provenance.",
-      inputSchema: registerInput
-    },
-    async (args) => guard(() => service.registerPack(args.pluginId, args.expectedFingerprint))
-  );
-  server.registerTool(
-    "resolve_gate",
-    {
-      title: "resolve gate",
-      description: "Surface-specific resolver-failure gate (WF-272). Given the current resolver health and the acting surface (`local-read` | `tracker-write` | `delivery-write`), returns the reaction (continue | warn | block), the failure categories, categorized diagnostics with a `/wf:resolve` recovery path, and a marker proving the failure path never re-walks folders or probes the environment. A local read continues best-effort, a tracker write warns and continues, a delivery write blocks before any mutation.",
-      inputSchema: surfaceClassInput
-    },
-    async (args) => guard(() => service.assessSurface(args.surface))
-  );
-  server.registerTool(
-    "validate_manifest",
-    {
-      title: "validate manifest",
-      description: 'Check a capability `manifest.md` against manifest schema v2 (WF-352). Returns the frozen ValidationVerdict `{tool, status: pass|fail|error, target, findings[{rule, severity, file, line, message}], ruleSources[], summary}`. Rule ids mirror `validate-registry.sh` (`CHECK-6` phase/kind tokens, `CHECK-6b` dispatch, `CHECK-6c` slot scope + merge policy, `CHECK-HEADING` heading typos). The phase spine, contribution kinds, and merge policies are derived LIVE from `capability-registry.ops.md` on every call \u2014 no rule is transcribed. A syntactically broken manifest returns `status: "error"` with rule `input-unparseable`; an unreadable rule source returns `rule-source-unresolvable` \u2014 never a crash, never a silent pass. Omit `path` to check every active capability.',
-      inputSchema: validateManifestInput
-    },
-    async (args) => guard(() => service.validateManifest(args?.path))
-  );
-  server.registerTool(
-    "validate_registry",
-    {
-      title: "validate registry",
-      description: "Check the resolved capability registry (WF-352): the `## Capabilities` and `## Plugin Roots` tables plus every resolvable capability manifest \u2014 the same set `validate-registry.sh` folds into one exit code, and it agrees with that guard's verdict. Returns the frozen ValidationVerdict. Rule ids are the guard's own: `CHECK-1` registryPath shape, `CHECK-2` duplicate names, `CHECK-3` filesystem-safe names, `CHECK-4` path resolves + carries a manifest, `CHECK-4a`/`CHECK-4b` plugin-root shape/uniqueness, `CHECK-5` overlapping partitioned ownership (naming both offenders), `CHECK-6`/`6b`/`6c` fragment-row rules, `CHECK-7` requires satisfied, `CHECK-8` co-active conflicts, `CHECK-9` contradictory article clauses. Takes no arguments \u2014 it validates the registry the resolver already resolved."
-    },
-    async () => guard(() => service.validateRegistry())
-  );
-  server.registerTool(
-    "validate_skill_interface",
-    {
-      title: "validate skill interface",
-      description: "Check skill slot markers against their `interface.md` `## Slots` declarations (WF-352), agreeing with `skill-slot-marker-lint.sh` and reusing its defect ids: `D1` malformed declaration, `D2` malformed marker, `D3` undeclared marker, `D4` unbalanced/duplicate marker, `D5` declared-but-unmarked. Returns the frozen ValidationVerdict with file/line diagnostics only \u2014 never any skill-body content (the `resolve_content` body-serving refusal is unchanged). A skill declaring no slots and carrying no markers passes clean (the inert case). Omit both arguments to scan every skill under `plugins/*/skills/*/`.",
-      inputSchema: validateSkillInput
-    },
-    async (args) => guard(() => service.validateSkillInterface(args?.plugin, args?.skill))
-  );
-  server.registerTool(
-    "validate_references",
-    {
-      title: "validate references",
-      description: "Resolve every cross-reference in skill bodies and agent files against the real tree (WF-354) \u2014 the dead-reference class no structural validator catches (a body instructing invocation of a removed skill). Checks `/wf:<skill>`, `/wf-<pack>:<skill>`, `subagent_type: wf:<agent>`, and `${CLAUDE_PLUGIN_ROOT}` path tokens, but ONLY on invocation-instruction lines: the instruction-vs-prose classifier is DERIVED at call time by parsing the `p1`/`p2` assignments out of `out4-skill-read-guard.sh` (recorded in `ruleSources`), so a bare prose mention \u2014 a README skill table, a cited call shape \u2014 never turns red. Returns the frozen ValidationVerdict with rule ids `REF-1` (unresolvable skill/agent invocation reference) and `REF-2` (unresolvable `${CLAUDE_PLUGIN_ROOT}` path token), alongside `input-unparseable` / `rule-source-unresolvable`. A reference whose owning plugin root is not resolvable in this workspace is indeterminate, not dead: it is excluded from `findings` and counted in `summary`. Omit `path` to scan every plugin's skills and agents.",
-      inputSchema: validateReferencesInput
-    },
-    async (args) => guard(() => service.validateReferences(args?.path))
-  );
-  server.registerTool(
-    "preview_composition",
-    {
-      title: "preview composition",
-      description: "Dry-run preview of what the capability registry would compose (WF-354): every fragment that would fire at a phase, in registry order, each carrying its provenance (owning capability, resolved dispatch target, scope, resolved/manifest paths, how the path resolved). Rendered purely off the already-resolved snapshot \u2014 no manifest is re-parsed, no path re-resolved, and no fragment BODY is ever read or returned (follow the named `dispatch` for that). Read-only: it neither refreshes nor invalidates the snapshot. NOT a ValidationVerdict \u2014 a preview has no pass/fail semantics \u2014 so it returns its own narrow record, and zero entries is a first-class inert outcome (an empty registry composes nothing, which is the contract's designed behaviour, not an error). Omit `phase` to preview every phase.",
-      inputSchema: previewCompositionInput
-    },
-    async (args) => guard(() => service.previewComposition(args?.phase))
-  );
-  server.registerTool(
-    "resolve_inspect",
-    {
-      title: "resolve inspect",
-      description: "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, per-slot composition provenance (each composed `skill.point` \u2192 winning source \u2192 tier, plus override presence), the per-skill settings-override presence index, and diagnostics. Does not rebuild."
-    },
-    async () => guard(() => service.inspect())
-  );
-  server.registerTool(
-    "resolve_refresh",
-    {
-      title: "resolve refresh",
-      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state. Optional `reasons` are recorded as diagnostics explaining the refresh.",
-      inputSchema: reasonsInput
-    },
-    async (args) => guard(() => service.refresh(toReasons(args?.reasons, "explicit-request")))
-  );
-  server.registerTool(
-    "resolve_invalidate",
-    {
-      title: "resolve invalidate",
-      description: "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Typed consumers may pass `reasons` (suspected-stale messages) which surface as diagnostics. Returns the lifecycle state.",
-      inputSchema: reasonsInput
-    },
-    async (args) => guard(() => service.invalidate(toReasons(args?.reasons, "suspected-stale")))
-  );
-}
 
 // src/index.ts
 var SERVER_NAME = "wf-resolver";
-var SERVER_VERSION = "0.2.0";
+var SERVER_VERSION = "0.3.0";
 function createServer() {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     { capabilities: { tools: {} } }
   );
+  const services = new WorkspaceServiceRegistry(process.cwd());
+  const workspaceInput = fromJsonSchema2({
+    type: "object",
+    properties: {
+      workspaceRoot: {
+        type: "string",
+        minLength: 1,
+        description: "Absolute path admitted by the launch workspace: the same plain directory, or a main/linked worktree in the same Git family."
+      }
+    },
+    required: ["workspaceRoot"],
+    additionalProperties: false
+  });
   server.registerTool(
     "wf_resolver_status",
     {
       title: "wf resolver status",
-      description: "Reports that the bundled wf resolver MCP runtime is alive. Liveness probe for the resolver runtime; the typed resolver queries are the resolve_* / *_pack tools."
+      description: "Reports that the bundled wf resolver MCP runtime is ready for the supplied workspace. Readiness probe for the resolver runtime; the typed resolver queries are the resolve_* / *_pack tools.",
+      inputSchema: workspaceInput
     },
-    async () => ({
-      content: [
-        {
-          type: "text",
-          text: `${SERVER_NAME} ${SERVER_VERSION} ready`
-        }
-      ]
-    })
+    async (args) => {
+      services.select(args.workspaceRoot);
+      return {
+        content: [
+          {
+            type: "text",
+            text: `${SERVER_NAME} ${SERVER_VERSION} ready`
+          }
+        ]
+      };
+    }
   );
-  const service = new ResolverService(createDefaultPorts(resolveWorkspaceRoot()));
-  registerResolverTools(server, service);
+  registerResolverTools(server, (workspaceRoot) => services.select(workspaceRoot));
   return server;
 }
 serveStdio(createServer);

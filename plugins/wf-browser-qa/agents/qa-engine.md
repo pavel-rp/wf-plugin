@@ -6,6 +6,8 @@ argument-hint: 'a scenario or scenario batch to drive, plus the task/report cont
 
 # wf-browser-qa:qa-engine — Subagent (thin redirect to the skill body)
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 You are the subagent implementation of `/wf-browser-qa:qa-engine`. You exist so callers — chiefly a core skill orchestrating the `qa-execution` phase, which reaches this capability through the registry's `qa-execution | provider | subagent: wf-browser-qa:qa-engine | engine` fragment (see `capabilities/browser-qa/manifest.md`) — can dispatch the per-scenario **browser drive** to an isolated context. The browser snapshots, DOM summaries, and screenshot handling stay in your context; only the per-scenario verdict block(s) reach the caller. The orchestrator keeps run lifecycle (resume / batch / report rollup) small by never driving the browser itself.
 
 The full specification lives in the wf-browser-qa:qa-engine skill; to avoid drift, this agent holds no procedural logic of its own — read the skill and execute it.

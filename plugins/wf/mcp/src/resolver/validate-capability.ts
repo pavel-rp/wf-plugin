@@ -28,6 +28,7 @@ import {
   type Finding,
   type ValidationVerdict,
 } from "./validate-rules.js";
+import { registryPathShapeError } from "./paths.js";
 
 /** The filesystem surface these validators need. Injected so the tests can
  *  drive them over fixtures without standing up the whole service. */
@@ -574,11 +575,7 @@ export function validateRegistry(
   // --- CHECK-1: registryPath shape ---------------------------------------
   const rpv = opts.registryPathValue ?? "";
   if (rpv) {
-    let bad = "";
-    if (rpv.includes("\\")) bad = "contains a backslash (must use forward slashes)";
-    else if (/^\//.test(rpv)) bad = "absolute path (leading '/')";
-    else if (/^[A-Za-z]:/.test(rpv)) bad = "drive-prefixed path";
-    else if (`/${rpv}/`.includes("/../")) bad = "contains a '..' segment";
+    const bad = registryPathShapeError(rpv);
     if (bad) {
       findings.push(
         finding(

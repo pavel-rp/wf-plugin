@@ -14,9 +14,9 @@ for you by calling core's bundled **typed resolver MCP service** — the same `w
 tools every wf skill uses (see `plugins/wf/skills/resolve/SKILL.md`) — with the pack's own
 stable plugin id.
 
-Its core pair — `inspect_pack("wf-browser-qa")` (read-only — resolves the plugin via
+Its core pair — `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-browser-qa" })` (read-only — resolves the plugin via
 `claude plugin list --json`, validates it, and returns a fingerprint) then
-`register_pack("wf-browser-qa", <fingerprint>)` (the sole mutation — writes the
+`register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-browser-qa", expectedFingerprint: <fingerprint> })` (the sole mutation — writes the
 `## Plugin Roots` row and the `## Capabilities` row for the pack's capability, refreshes
 the snapshot, and self-checks) — replaces every manual discovery step this skill used to
 perform itself; `resolve_registry` (a pre-registration check) and `resolve_gate`
@@ -45,7 +45,7 @@ Takes no arguments — it always registers the single `browser-qa` capability th
 **Validation:**
 
 - **Registry location:** resolve exactly as `/wf:init` does — read `wf.config.js` at the
-  repo root (`git rev-parse --show-toplevel`) and use its optional `registryPath` key,
+  workspace directory (`pwd -P`) and use its optional `registryPath` key,
   **defaulting to `_local/config.md`** when absent. Used only for the Phase 0 precondition
   check and to report the location in the Final Output — `register_pack` resolves and
   writes it independently.
@@ -80,9 +80,11 @@ Takes no arguments — it always registers the single `browser-qa` capability th
 
 ## Phase 0: Preconditions
 
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
 1. **Confirm a git repo:** `git rev-parse --git-dir`. If not, stop: "wf-browser-qa:init must
    run inside a git repository — run `/wf:init` first."
-2. **Record the repo root:** `git rev-parse --show-toplevel`.
+2. **Record the workspace directory:** `pwd -P`.
 3. **Require `/wf:init` first.** Resolve the registry location (see Validation). If
    `_local/` is absent, or the resolved registry file does not exist, stop: "Run
    `/wf:init` first — wf-browser-qa:init registers into the registry that `/wf:init`
@@ -92,17 +94,17 @@ Takes no arguments — it always registers the single `browser-qa` capability th
 
 ## Phase 1: Inspect the pack
 
-Call `inspect_pack` with `pluginId: "wf-browser-qa"` — this pack's exact stable plugin id
+Call `inspect_pack` with `workspaceRoot: "<workspace-root>"` and `pluginId: "wf-browser-qa"` — this pack's exact stable plugin id
 (bare, no `@marketplace` suffix; `inspect_pack` matches a bare id against either the
 installed plugin's full id or its bare name, so this is unambiguous regardless of which
 marketplace it was installed from).
 
 1. **Tool unreachable / errors.** The resolver MCP service itself may be unhealthy — not
-   a pack problem. Call `resolve_gate` with `surface: "local-read"` (inspection is a
+   a pack problem. Call `resolve_gate` with `workspaceRoot: "<workspace-root>"` and `surface: "local-read"` (inspection is a
    read) and present its `categories` / `diagnostics` / `recovery` verbatim as the
    failure. This is the WF-272 diagnostics/recovery contract every wf consumer uses (see
    the capability-registry contract ops doc — obtained via the resolver content surface
-   (`resolve_content`, `class: contract`, `ref: capability-registry.ops.md`), never a raw
+   (`resolve_content`, `workspaceRoot: "<workspace-root>"`, `class: contract`, `ref: capability-registry.ops.md`), never a raw
    read of the plugin-cache path — §"Recorded-root-first resolution with install-manifest
    self-heal" → "Resolver-failure semantics"). Stop; report `partial`.
 2. **Returns `valid: false`.** A genuine pack problem, not a resolver failure — present
@@ -120,10 +122,10 @@ marketplace it was installed from).
 
 ## Phase 2: Register the pack
 
-1. Call `resolve_registry` and note whether `browser-qa` already appears as an **active**
+1. Call `resolve_registry({ workspaceRoot: "<workspace-root>" })` and note whether `browser-qa` already appears as an **active**
    registry row — used only to report `already registered` vs `registered` below;
    `register_pack`'s own write is idempotent regardless of what this step finds.
-2. Call `register_pack` with `pluginId: "wf-browser-qa"` and `expectedFingerprint` = the
+2. Call `register_pack` with `workspaceRoot: "<workspace-root>"`, `pluginId: "wf-browser-qa"`, and `expectedFingerprint` = the
    `fingerprint` from Phase 1. One call performs everything this skill used to hand-write:
    it discovers `capabilities/browser-qa/manifest.md` under the pack, upserts one
    `## Plugin Roots` row (`wf-browser-qa` → the pack's install root) and the
@@ -131,7 +133,7 @@ marketplace it was installed from).
    self-checks that the capability now resolves. Registry order is preserved — a new row
    appends at the end (general → specific), matching the contract's injection-order rule.
    - **Tool unreachable / errors.** The same resolver-health failure as Phase 1 — call
-     `resolve_gate` with `surface: "delivery-write"` (registration blocks before any
+     `resolve_gate` with `workspaceRoot: "<workspace-root>"` and `surface: "delivery-write"` (registration blocks before any
      mutation on failure, the same reaction a delivery write takes on a broken resolver),
      present its diagnostics/recovery verbatim. Stop; report `partial`.
    - **`status: "rejected"`.** Present `reason` verbatim (a stale fingerprint, the plugin
@@ -159,7 +161,7 @@ Relay `register_pack`'s own `selfCheck` — no separate resolution walk needed, 
 validated the registered capability there.
 
 1. `selfCheck: "ok"` → `browser-qa` resolves. Record `PASS`.
-2. `selfCheck: "failed"` → call `resolve_registry` again and find the `browser-qa` entry
+2. `selfCheck: "failed"` → call `resolve_registry({ workspaceRoot: "<workspace-root>" })` again and find the `browser-qa` entry
    carrying `validity: "unrecoverable"`. Its `manifestPath` is `null` at that point —
    record `FAIL`, naming its `registryPath` (the stable registered token) instead. This
    means the pack is unrecoverable even after the write — surface it loudly and direct

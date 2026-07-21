@@ -28,7 +28,9 @@ generic verdict stands alone.
 ## Prerequisites
 
 **Before any other phase**, obtain project config from the bundled `wf-resolver` MCP
-service via `resolve_config` — it returns `{ workspaceRoot, registryPath,
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+
+service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath,
 coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core
 performs no direct config-file parse). All references to `{task-root}` below come from
 `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is
@@ -46,10 +48,10 @@ Parse the first token. Recognized forms:
 ### empty → infer from current branch
 
 1. Resolve the task id per the shared pipeline conventions doc — obtained via the
-   `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`),
+   `wf-resolver` MCP tool `resolve_content({ workspaceRoot, ... })` (`class: shared`, `ref: pipeline-conventions.md`),
    never a raw `Read` of the plugin-cache path — §"Id inference from the current branch";
    inferred from the branch via `current-branch-query` (the `wf-resolver`
-   `resolve_provider("delivery")` query, see "Direct provider resolution" below) and
+   `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" below) and
    resolved against `{task-root}`, naming `/wf:verify-spec` in its stop messages.
 2. Confirm the resolved task folder's requirements artifact (`00_reqs.md`) exists. If
    not, stop and ask the user to either pass the id explicitly or point at a
@@ -77,14 +79,14 @@ author it (`/wf:spec`) or pass a path explicitly.
 Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch
 id inference above, and the Implementation-scope branch name below) and
 `last-commit-timestamp-query` (the spec-staleness edge case) — is reached by calling the
-bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that
+bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query that
 returns the run-scoped resolution record `{ surface, owner, fragmentPath, state,
 degradation, diagnostics }`. The resolver has already resolved the `## Capabilities`
 registry, the owning capability's `manifest.md`, and any plugin-anchored root (post
 install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first
 resolution with install-manifest self-heal"); core performs **no** registry / manifest /
 plugin-root read of its own. Obtain the operation body through the resolver's
-`resolve_content` content surface (`class: fragment`, keyed on the record's `owner` and
+`resolve_content({ workspaceRoot, ... })` content surface (`class: fragment`, keyed on the record's `owner` and
 fragment `ref`) and follow it in this skill's own context to dispatch the operation —
 never a raw `Read` of the resolved path. On `state: unconfigured` or `unrecoverable` (no
 readable `delivery` provider), both operations fall back silently to their
@@ -118,7 +120,7 @@ Always read, in order:
    §"The delivery provider surface" for the operation set); gather the following by
    outcome, described generically and never as a literal command:
    - the current branch name — via `current-branch-query` (the `wf-resolver`
-     `resolve_provider("delivery")` query, see "Direct provider resolution" above)
+     `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" above)
    - the current HEAD commit coordinate (full SHA)
    - the base commit coordinate where the branch diverged from `main`
    - whether the working tree is clean or dirty, and which files are dirty if so
@@ -202,7 +204,7 @@ Obtain the ordered active registry as metadata from the `wf-resolver` MCP servic
 **not** read `## Capabilities` or any `manifest.md` yourself — referencing the taxonomy
 by **phase name / contribution-kind name**, never by heading:
 
-1. **Call `resolve_registry`.** It returns the ordered active `capabilities[]` (in
+1. **Call `resolve_registry({ workspaceRoot, ... })`.** It returns the ordered active `capabilities[]` (in
    registry order), each already resolved from the registry and its `manifest.md`:
    `{ name, kind, manifestPath, fragments[] { phase, contributionKind, dispatch, scope },
    articles[], provenance, validity }`. The resolver has done the registry iteration,
@@ -212,9 +214,9 @@ by **phase name / contribution-kind name**, never by heading:
 2. **Collect** the fragment rows whose `phase` is `verify` and `contributionKind` is
    `finding`, in registry order.
 3. **Dispatch each** on its `dispatch` metadata (the metadata queries return only
-   paths/metadata; the fragment body comes from the resolver's `resolve_content` content
+   paths/metadata; the fragment body comes from the resolver's `resolve_content({ workspaceRoot, ... })` content
    surface, read prompt-free in this skill's own context):
-   `inline: <rel-path>` → obtain the fragment body via `resolve_content` (`class: fragment`,
+   `inline: <rel-path>` → obtain the fragment body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`,
    the capability name, `ref: <rel-path>`) and follow it in-context,
    producing each finding in the generic finding shape (the "Capability findings" report
    shape below); `subagent: <agent>` → invoke the **Task** tool with `subagent_type:
@@ -223,7 +225,7 @@ by **phase name / contribution-kind name**, never by heading:
 4. **Aggregate provenance-tagged** — render every contributor's findings, each tagged
    with its **source capability** (the `name` field); registry order is cosmetic.
 
-**No-op:** if `resolve_registry` returns an empty `capabilities[]`, no fragment matches
+**No-op:** if `resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]`, no fragment matches
 `verify` under the `finding` kind, or a `dispatch` is malformed, that contributor — or
 the whole phase — produces **nothing** and the generic verdict stands alone (no
 capability findings section, no capability/stack/domain term surfaced, no broken subagent
@@ -239,7 +241,7 @@ Two outputs, always both:
 
 1. **Full report** — written to the task folder's `04_verify.md`, which always holds the
    latest run. Before overwriting, rotate the prior `04_verify.md` into
-   `04_verify.history.md` per the shared pipeline conventions doc (`resolve_content`,
+   `04_verify.history.md` per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`,
    `class: shared`, `ref: pipeline-conventions.md`)
    §"Artifact rotation into `.history.md`". This gives a trail of every prior audit run at
    this path, so the user can compare findings across iterations and see what a fix broke
@@ -262,7 +264,7 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 
 The verbatim `04_verify.md` output shape — the report header, `## Requirements`,
 `## Capability findings`, `## Deviations`, and `## Recommended next actions` structure —
-lives at `verify-template.md`, obtained via the resolver's `resolve_content`
+lives at `verify-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })`
 (`class: references-template`, `skill: verify-spec`, `ref: verify-template.md`), never a
 raw `Read` of the plugin-cache path. It is read only on this write path, so it stays out of
 the boot body. Follow it, then emit it with placeholders substituted. Keep quoted snippets short — one or two lines max; the reader
@@ -316,9 +318,9 @@ End with the final-output block (see below).
 ## Edge Cases
 
 - **Spec is stale**: run the staleness check per the shared pipeline conventions doc
-  (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`)
+  (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`)
   §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the
-  `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution"
+  `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution"
   above) against the spec header's fetch/author date. If the branch has moved since, warn the
   user — the spec may have been updated since — and continue anyway, but flag it.
 - **Requirements reference files that no longer exist**: the file may have moved or been

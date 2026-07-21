@@ -71,21 +71,23 @@ under the stable plugin id `wf-author-caps`.
 
 ## Onboarding procedure
 
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
 1. **Precondition.** Confirm a git repository (`git rev-parse --git-dir`); if this fails, stop:
    "`/wf-author-caps:init` must run inside a git repository — run `/wf:init` first." Call
    `resolve_config` for the resolved registry location and Read it to confirm the file exists. If it
    does not, stop: "Run `/wf:init` first — `/wf-author-caps:init` registers into the registry that
    `/wf:init` creates."
-2. **Check prior state (reporting only).** Call `resolve_registry`; note whether `author-caps`
+2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether `author-caps`
    already appears with `validity: "ok"`. This never skips a later step — it only decides whether the
    Final Output says `onboarded` or `already-registered`.
-3. **Inspect the plugin.** Call `inspect_pack({ pluginId: "wf-author-caps" })`. Read-only; returns
+3. **Inspect the plugin.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-author-caps" })`. Read-only; returns
    `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
    - `valid: false` (not installed, disabled, no readable
      `capabilities/author-caps/manifest.md`, or `claude plugin list --json` itself unavailable) → go
      to **Failure path**; **do not call `register_pack`**, so nothing is written.
 4. **Register.** Call
-   `register_pack({ pluginId: "wf-author-caps", expectedFingerprint: <fingerprint from step 3> })`.
+   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-author-caps", expectedFingerprint: <fingerprint from step 3> })`.
    It writes the `## Plugin Roots` row and the `author-caps` `## Capabilities` row in a single write
    (a plain file write, not a filesystem-atomic temp+rename swap), refreshes the resolver snapshot,
    and self-checks that `author-caps` now resolves — returning
@@ -102,7 +104,7 @@ is always `skipped — no template` — a static fact, not a resolver call.
 
 ### Failure path
 
-Call `resolve_gate({ surface: "delivery-write" })` (registering a capability is a registry write).
+Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a capability is a registry write).
 Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specific `issues[]` (from
 `inspect_pack`) or `reason` (from a rejected `register_pack`) — never a bare error. Finish with
 `partial`, and state explicitly that nothing was registered.
@@ -122,8 +124,8 @@ Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specif
 - **Path-invalid install** (`register_pack` rejects on an install path that fails validation): the
   rejection precedes the write, so the registry is untouched — failure path; report the typed
   `reason` and re-run after fixing the install.
-- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run `inspect_pack`
-  for the current fingerprint and retry `register_pack`.
+- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-author-caps" })`
+  to get the current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-author-caps", expectedFingerprint: <current fingerprint> })`.
 - **`author-caps` already registered:** `register_pack` upserts idempotently — re-running is always
   safe; report `already-registered` per step 2's pre-check.
 - **The capability declares no fragment row yet:** expected — it registers ahead of its first

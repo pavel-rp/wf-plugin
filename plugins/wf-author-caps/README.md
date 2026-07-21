@@ -45,6 +45,10 @@ part of a larger artifact set composes those rules by reference instead of resta
 its own interview questions and its own check set, contributes only the artifacts around the
 capability — a plugin manifest and an init skill for `new-pack`, a surface-scoped `provider` row and
 its profile template for `new-provider` — and obtains both rule sets by typed `resolve_content` call.
+Every resolver call explicitly passes schema-required `workspaceRoot`: before the call, run `pwd -P`
+and use the returned absolute current Agent/session workspace directory. It has no default or
+fallback, omission is a hard schema error, and in a linked-worktree Agent that cwd is the Agent's
+own worktree; never inherit the parent session's root.
 Neither carries a second emission implementation, and neither restates a line of either seam. That is
 the property to preserve when a further scaffolder joins the family: add inputs, never a fork.
 

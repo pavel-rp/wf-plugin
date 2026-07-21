@@ -6,6 +6,15 @@
 // list --json` install paths — never a private Claude install manifest
 // (~/.claude/plugins/installed_plugins.json), per the WF-269 scope boundary.
 
+/** Explain why a configured registry path is not a forward-slash repo-relative path. */
+export function registryPathShapeError(path: string): string | null {
+  if (path.includes("\\")) return "contains a backslash (must use forward slashes)";
+  if (/^\//.test(path)) return "absolute path (leading '/')";
+  if (/^[A-Za-z]:/.test(path)) return "drive-prefixed path";
+  if (`/${path}/`.includes("/../")) return "contains a '..' segment";
+  return null;
+}
+
 /** Replace every backslash with a forward slash. Idempotent. */
 export function normalizeSlashes(p: string): string {
   return p.replace(/\\/g, "/");

@@ -16,13 +16,15 @@
 
 **Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles · list_blockers.
 
+
+Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
 ## resolve_config
 
 **Inputs:** none.
 
 **Procedure:**
 
-1. Call the bundled `wf-resolver` MCP tool `resolve_config` (R1) to obtain `registryPath` — never assume the `_local/config.md` literal; a project's `wf.config.js` may relocate it. On a resolver failure (snapshot-missing/malformed/schema-incompatible/etc.), call `resolve_gate` with `{ surface: "local-read" }` and follow its `reaction` — a local read continues best-effort per `capability-registry.ops.md` §"Resolver-failure semantics" — falling back to the conventional default `_local/config.md` location rather than blocking or prompting.
+1. Call the bundled `wf-resolver` MCP tool `resolve_config({ workspaceRoot })` (R1) to obtain `registryPath` — never assume the `_local/config.md` literal; a project's `wf.config.js` may relocate it. On a resolver failure (snapshot-missing/malformed/schema-incompatible/etc.), call `resolve_gate` with `{ surface: "local-read", workspaceRoot }` and follow its `reaction` — a local read continues best-effort per `capability-registry.ops.md` §"Resolver-failure semantics" — falling back to the conventional default `_local/config.md` location rather than blocking or prompting.
 2. Read the `## Azure DevOps` section at the resolved `registryPath`.
 3. **Configured** — all three rows (`ADO Project`, `ADO Organization`, `Work Item ID Prefix`) hold a real value: not the `<...>` bracket placeholder shape `/wf:init`'s template uses for an unset value, and not a missing section/file.
 4. **Unconfigured** — any row is still a placeholder, or the section/file is missing entirely. This is the silent local-only fallback the contract's degradation rules define — **no prompt, no error**.

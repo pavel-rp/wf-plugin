@@ -1,10 +1,12 @@
 ---
 name: authoring-guide
 description: Explains how to author a wf capability, skill, or marketplace plugin — how to structure a plugin, where a skill body versus a subagent belongs, how a skill declares a composition point, how knowledge attaches to the SDD phase spine, and how a plugin self-registers. Use whenever the user asks how to write, structure, scaffold, extend, or register a wf capability, skill, subagent, fragment, or plugin, asks where some piece of authoring knowledge belongs, or asks why their capability or fragment is not firing.
-allowed-tools: [Read, Glob, Grep]
+allowed-tools: [Read, Glob, Grep, Bash]
 ---
 
 # /wf-author-caps:authoring-guide — how to author for the wf marketplace
+
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
 
 The design half of the authoring toolkit: what to build, where it belongs, and how it reaches a
 user. For the exact schemas and token vocabularies — the contribution taxonomy, manifest schema v2,
@@ -97,7 +99,7 @@ Skip it when the skill is action-oriented, used in one place, and already emits 
 Two rules govern them: **omit the `tools:` field** unless you mean to restrict, since it overrides
 the inherited toolset and silently starves the subagent of MCP access; and **never filesystem-read a
 sibling skill body — invoke the skill.** The four delegation patterns and both rules in full live at
-`subagents-and-vocabulary.md`, obtained via the resolver's `resolve_content` (`class:
+`subagents-and-vocabulary.md`, obtained via the resolver's `resolve_content` (`workspaceRoot`, `class:
 references-template`, `plugin: wf-author-caps`, `skill: authoring-guide`, `ref:
 subagents-and-vocabulary.md`) — never a raw `Read` of the plugin-cache path.
 

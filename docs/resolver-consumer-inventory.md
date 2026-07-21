@@ -299,6 +299,12 @@ migration owner** by name and reason:
 
 ## 7. Minimum snapshot fields (WF-269)
 
+> **Current resolver call contract.** Before every resolver MCP call, run `pwd -P` and explicitly
+> pass the returned absolute current Agent/session workspace directory as schema-required
+> `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit
+> the parent session's root. Omission is a hard schema error with no default or fallback. This
+> request argument is distinct from the resolved snapshot's `workspaceRoot` field below.
+
 The fields below are the **union** of what the 51 consumers actually read. WF-269 derives
 the snapshot schema from this set. Per the charter: **normalized paths, metadata,
 provenance, fingerprints, validity, dependencies, provider ownership, and profiles only —
@@ -324,20 +330,19 @@ no prompt or fragment bodies.**
 
 ## 8. Smallest typed MCP operation set (WF-270)
 
-WF-270 derives the typed resolver queries + `/wf:resolve` from this set. **Global
-response-size constraint:** every response is **metadata / normalized paths / enums /
-small maps only — never a fragment or prompt body.** The fragment **dispatch read** (the
-`inline:` follow) stays in the **consuming** boot's own isolated context, so diff /
-artifact / fragment bodies never transit the resolver (matches run-scoped forwarding,
-which "carries no fragment body").
+WF-270 originally derived the metadata-only query set plus `/wf:resolve` from this inventory.
+Those query responses remain **metadata / normalized paths / enums / small maps only** — never a
+fragment or prompt body. Bundled bodies now use the distinct `resolve_content` interface, whose six
+classes are `fragment`, `contract`, `shared`, `references-template`, `profile-template`, and `slot`;
+`slot` composes one per-skill composition point from `skill` + `point`.
 
 | Op | Purpose | Response fields (bounded) | Size bound | Replaces |
 |---|---|---|---|---|
 | **R1 `resolve_config`** | core config + workspace + registry location | `workspaceRoot`, `registryPath`, `coreConfig{taskRoot,verifyCommand,qaRules,qaBaselineIgnore,seed{…},standupStatuses}`, `idShape` | one flat map | `_local/config.md` value reads; `wf.config.js` read; `workspace-root-resolve` |
 | **R2 `resolve_registry`** | ordered active registry (metadata) | `capabilities[]` = `{name,manifestPath,kind,fragments[],articles[],requires,conflicts,profileTemplatePath,provenance}` | O(active capabilities) small rows; **no fragment bodies** | `## Capabilities` read + per-row `manifest.md` reads (the phase-firing sweep) |
-| **R3 `resolve_provider(surface)`** | one surface's resolution record | `{surface, owner, fragmentPath, state∈{ok,unconfigured,unrecoverable}, candidates[]?, degradation}` | one record; **no fragment body** | direct provider resolution (delivery/tracker/qa-execution) **and** the forwarded record |
-| **R4 `resolve_profile(capability)`** | override-merged profile values | one profile object (values only) | one small object | `_local/profiles/<cap>.profile.json` (override>template) reads |
-| **R5 `resolve_plugin_root(plugin)`** | plugin install root, post-self-heal | `{plugin, root, provenance∈{recorded,self-healed,unrecoverable}}` | one path | `## Plugin Roots` + install-manifest self-heal (`installed_plugins.json`) |
+| **R3 `resolve_provider({ workspaceRoot: "<Agent/session absolute current workspace directory>", surface })`** | one surface's resolution record | `{surface, owner, fragmentPath, state∈{ok,unconfigured,unrecoverable}, candidates[]?, degradation}` | one record; **no fragment body** | direct provider resolution (delivery/tracker/qa-execution) **and** the forwarded record |
+| **R4 `resolve_profile({ workspaceRoot: "<Agent/session absolute current workspace directory>", capability })`** | override-merged profile values | one profile object (values only) | one small object | `_local/profiles/<cap>.profile.json` (override>template) reads |
+| **R5 `resolve_plugin_root({ workspaceRoot: "<Agent/session absolute current workspace directory>", plugin })`** | plugin install root, post-self-heal | `{plugin, root, provenance∈{recorded,self-healed,unrecoverable}}` | one path | `## Plugin Roots` + install-manifest self-heal (`installed_plugins.json`) |
 | **R6 `inspect_pack` / `register_pack`** | init write-path | inspect: `{pluginId,installPath,manifests[],valid}`; register: `{status,capabilities[],root,selfCheck}` | one status record | init hand-writes of `## Plugin Roots` + `## Capabilities` (+ profile seed, config-section write) |
 
 **Notes for WF-270:**

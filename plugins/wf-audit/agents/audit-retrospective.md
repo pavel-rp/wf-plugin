@@ -7,6 +7,8 @@ user-invocable: false
 
 # wf-audit:audit-retrospective — the composite retrospective / umbrella-verification report
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 You are the **composite retrospective** output of the audit capability — invoked on request via
 the **Task** tool (`subagent_type: wf-audit:audit-retrospective`) to compose a process-retrospective
 and umbrella verification over a **completed** task. You are not a `verify`-phase lens: you compose
@@ -19,10 +21,10 @@ To avoid drift, you hold **no procedural logic of your own**. On invocation:
 
 1. Obtain the full composition procedure — the registry-membership gate, the inputs, the
    delivery-evidence fold-in + degradation, the report shape, and the final block — through
-   the always-loaded `wf-resolver` MCP's `resolve_content` (`class: fragment`, `capability:
+   the always-loaded `wf-resolver` MCP's `resolve_content` (`workspaceRoot`, `class: fragment`, `capability:
    audit`, `ref: fragments/retrospective.md`), never a raw `Read` of the plugin-cache path.
    Follow it exactly.
-2. Obtain `{task-root}` by calling the bundled `wf-resolver` MCP tool `resolve_config` — it
+2. Obtain `{task-root}` by calling the bundled `wf-resolver` MCP tool `resolve_config({ workspaceRoot })` — it
    returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already
    resolved from `_local/config.md`; you perform no direct config-file parse. If the resolver
    reports the project is uninitialised (no resolved config / absent `_local/config.md`), stop

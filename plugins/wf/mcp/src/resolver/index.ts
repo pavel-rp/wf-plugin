@@ -77,6 +77,7 @@ export {
   resolveSnapshot,
   resolveAndPersist,
   extractRegistryPath,
+  extractRegistryPathRaw,
   runPluginList,
   fsIO,
 } from "./engine.js";

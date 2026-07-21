@@ -6,6 +6,8 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion]
 
 # /wf-author-caps:new-skill — interview in, clean SKILL.md out
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 Turns four answers into a real `skills/<name>/SKILL.md` that already passes the same gates the
 repository's own pull-request checks apply. It emits **finished files, never a template** — no `TODO`
 survives to the author, and no artifact is handed back with a validator finding still open.
@@ -46,7 +48,7 @@ re-asked when it fails.
 
 - Read any file in the workspace, and glob it to detect the target plugin and collisions.
 - Write and edit files **only** under the resolved `plugins/<plugin-name>/skills/<name>/` folder.
-- Run the resolver's `validate_skill_interface` tool and the repository's `glossary-lint.sh`.
+- Run the resolver's `validate_skill_interface({ plugin: <plugin-name>, skill: <name>, workspaceRoot })` tool and the repository's `glossary-lint.sh`.
 
 **Forbidden:**
 
@@ -64,7 +66,7 @@ re-asked when it fails.
 
 This skill follows the plugin's shared scaffolder loop — interview → emit → self-lint →
 fix-and-re-run → hand back only clean. **That loop is the single rule source and is not restated
-here.** Obtain it through the resolver's `resolve_content` (`class: references-template`,
+here.** Obtain it through the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`,
 `plugin: wf-author-caps`, `skill: new-skill`, `ref: scaffolder-loop.md`) and follow it, supplying the
 two skill-specific inputs below. Never reach it by a raw `Read` of the plugin-cache path.
 
@@ -115,7 +117,7 @@ repository's content-read guard.
 Run both, over the emitted file, on every pass:
 
 - **The interface-marker validator** — the resolver's `validate_skill_interface` tool with
-  `{ plugin: <plugin-name>, skill: <name> }`. It checks body slot markers against the skill's
+  `{ plugin: <plugin-name>, skill: <name>, workspaceRoot }`. It checks body slot markers against the skill's
   `interface.md` `## Slots` declarations under defect ids `D1`–`D5`. A skill emitted with no declared
   slots and no markers is **inert by construction** and passes clean — that is the expected verdict
   here, and it still must be obtained by running the tool, never assumed. Map `pass`/`fail`/`error`
@@ -127,7 +129,7 @@ Run both, over the emitted file, on every pass:
   bash <wf-plugin-root>/skills/_contracts/glossary-lint.sh <emitted-file>
   ```
 
-  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root` for the `wf` plugin. The
+  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root({ plugin: "wf", workspaceRoot })`. The
   lint scopes each rule by path shape; a file emitted outside `plugins/*/skills/**/SKILL.md` is out
   of its `skill-body` scope, and the loop's scope-honesty rule then applies — report it as *not
   applicable*, never as clean.

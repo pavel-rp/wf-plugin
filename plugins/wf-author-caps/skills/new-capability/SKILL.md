@@ -6,6 +6,8 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion]
 
 # /wf-author-caps:new-capability — interview in, clean capability out
 
+Before any resolver MCP call, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
+
 Turns a set of validated answers into a real `capabilities/<name>/manifest.md` and every fragment file
 its Fragments table declares, already passing the same gates the repository's own pull-request checks
 apply. It emits **finished files, never a template** — no `TODO` survives to the author, and no
@@ -49,7 +51,7 @@ re-asked when it fails.
 
 - Read any file in the workspace, and glob it to detect the target plugin and collisions.
 - Write and edit files **only** under the resolved `plugins/<plugin-name>/capabilities/<name>/` folder.
-- Run the resolver's `validate_manifest` and `validate_registry` tools and the repository's
+- Run the resolver's `validate_manifest({ path: <emitted manifest>, workspaceRoot })` and `validate_registry({ workspaceRoot })` tools and the repository's
   `glossary-lint.sh`.
 
 **Forbidden:**
@@ -73,7 +75,7 @@ re-asked when it fails.
 
 This skill follows the plugin's shared scaffolder loop — interview → emit → self-lint →
 fix-and-re-run → hand back only clean. **That loop is the single rule source and is not restated
-here.** Obtain it through the resolver's `resolve_content` (`class: references-template`,
+here.** Obtain it through the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`,
 `plugin: wf-author-caps`, `skill: new-skill`, `ref: scaffolder-loop.md`) and follow it, supplying the
 three capability-specific inputs below. Never reach it by a raw `Read` of the plugin-cache path.
 
@@ -100,7 +102,7 @@ downstream plugin shape — never core's own tree.
 ### Input 2 — the emission template
 
 The manifest shape, the Fragments-row rules, and the fragment-file rules are **one rule set**,
-obtained through the resolver's `resolve_content` (`class: references-template`,
+obtained through the resolver's `resolve_content` (`workspaceRoot`, `class: references-template`,
 `plugin: wf-author-caps`, `skill: new-capability`, `ref: capability-emission.md`) and followed
 against the validated answers. It is deliberately factored out of this body so a scaffolder emitting
 a capability as part of a larger artifact set composes the same rules rather than restating them.
@@ -115,10 +117,10 @@ repository's content-read guard.
 
 Run all three, over the emitted set, on every pass:
 
-- **The manifest validator** — the resolver's `validate_manifest` tool, targeted at the emitted
+- **The manifest validator** — the resolver's `validate_manifest({ path: <emitted manifest>, workspaceRoot })` tool, targeted at the emitted
   `manifest.md`. It checks the schema-v2 shape: the declared kind, that every row names a phase and
   contribution kind core actually defines, and that a partitioned row carries its scope.
-- **The registry validator** — the resolver's `validate_registry` tool, which takes no arguments and
+- **The registry validator** — the resolver's `validate_registry({ workspaceRoot })` tool, which takes no other arguments and
   checks the emitted manifest in the context of the whole active registry: name uniqueness, declared
   paths resolving, `requires:` satisfied and `conflicts:` not both active, no contradictory `article:`
   clause, and — the check this scaffolder exists to make unnecessary to run by hand — **no ownership
@@ -130,7 +132,7 @@ Run all three, over the emitted set, on every pass:
   bash <wf-plugin-root>/skills/_contracts/glossary-lint.sh <emitted-files>
   ```
 
-  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root` for the `wf` plugin.
+  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root({ plugin: "wf", workspaceRoot })`.
 
 Map `pass` / `fail` / `error` exactly as the loop's table says; `error` is never a pass. The lint
 scopes each rule by path shape, and a manifest or fragment under `plugins/*/capabilities/**` is in

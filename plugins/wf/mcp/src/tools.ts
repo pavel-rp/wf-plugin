@@ -43,11 +43,39 @@ function guard(fn: () => unknown): ToolResult {
   }
 }
 
+type WorkspaceArgs = { workspaceRoot: string };
+type ServiceSelector = (workspaceRoot: string) => ResolverService;
+
+const workspaceRootProperty = {
+  type: "string",
+  minLength: 1,
+  description: "Absolute path to a directory in the launch repository's main/linked worktree family.",
+};
+
+function withWorkspaceRoot(schema: {
+  type: string;
+  properties?: Record<string, unknown>;
+  required?: string[];
+  additionalProperties?: boolean;
+}): Record<string, unknown> {
+  return {
+    ...schema,
+    properties: { workspaceRoot: workspaceRootProperty, ...(schema.properties ?? {}) },
+    required: ["workspaceRoot", ...(schema.required ?? [])],
+  };
+}
+
+const workspaceOnlyInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: {},
+  additionalProperties: false,
+}));
+
 // Deliberately no `enum` here (unlike `surfaceClassInput` below): the
 // KNOWN_SURFACES check lives in `resolveProvider` itself so an unrecognized
 // token surfaces the service's specific "expected one of: …" message via
 // `guard()`'s `isError` channel, not a generic MCP schema-validation error.
-const surfaceInput = fromJsonSchema({
+const surfaceInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     surface: {
@@ -58,9 +86,9 @@ const surfaceInput = fromJsonSchema({
   },
   required: ["surface"],
   additionalProperties: false,
-});
+}));
 
-const surfaceClassInput = fromJsonSchema({
+const surfaceClassInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     surface: {
@@ -72,27 +100,27 @@ const surfaceClassInput = fromJsonSchema({
   },
   required: ["surface"],
   additionalProperties: false,
-});
+}));
 
-const capabilityInput = fromJsonSchema({
+const capabilityInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     capability: { type: "string", description: "Registered capability name." },
   },
   required: ["capability"],
   additionalProperties: false,
-});
+}));
 
-const pluginInput = fromJsonSchema({
+const pluginInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     plugin: { type: "string", description: "Plugin name (left of `@`)." },
   },
   required: ["plugin"],
   additionalProperties: false,
-});
+}));
 
-const pluginIdInput = fromJsonSchema({
+const pluginIdInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     pluginId: {
@@ -102,9 +130,9 @@ const pluginIdInput = fromJsonSchema({
   },
   required: ["pluginId"],
   additionalProperties: false,
-});
+}));
 
-const skillInput = fromJsonSchema({
+const skillInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     skill: {
@@ -114,9 +142,9 @@ const skillInput = fromJsonSchema({
   },
   required: ["skill"],
   additionalProperties: false,
-});
+}));
 
-const contentInput = fromJsonSchema({
+const contentInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     class: {
@@ -151,15 +179,15 @@ const contentInput = fromJsonSchema({
   },
   required: ["class"],
   additionalProperties: false,
-});
+}));
 
 // --- authoring validators (WF-352) -----------------------------------------
 // Each takes only the slots its consumers need (the scaffolders and the
 // acceptance test); the surface is semi-frozen once those land, so it stays
-// deliberately narrow — every argument is optional and every tool has a useful
-// zero-argument default.
+// deliberately narrow — every domain argument is optional where documented;
+// workspaceRoot remains mandatory for every call.
 
-const validateManifestInput = fromJsonSchema({
+const validateManifestInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     path: {
@@ -169,9 +197,9 @@ const validateManifestInput = fromJsonSchema({
     },
   },
   additionalProperties: false,
-});
+}));
 
-const validateSkillInput = fromJsonSchema({
+const validateSkillInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     plugin: {
@@ -184,9 +212,9 @@ const validateSkillInput = fromJsonSchema({
     },
   },
   additionalProperties: false,
-});
+}));
 
-const validateReferencesInput = fromJsonSchema({
+const validateReferencesInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     path: {
@@ -196,9 +224,9 @@ const validateReferencesInput = fromJsonSchema({
     },
   },
   additionalProperties: false,
-});
+}));
 
-const previewCompositionInput = fromJsonSchema({
+const previewCompositionInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     phase: {
@@ -208,9 +236,9 @@ const previewCompositionInput = fromJsonSchema({
     },
   },
   additionalProperties: false,
-});
+}));
 
-const registerInput = fromJsonSchema({
+const registerInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     pluginId: {
@@ -225,9 +253,9 @@ const registerInput = fromJsonSchema({
   },
   required: ["pluginId", "expectedFingerprint"],
   additionalProperties: false,
-});
+}));
 
-const reasonsInput = fromJsonSchema({
+const reasonsInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     reasons: {
@@ -238,7 +266,7 @@ const reasonsInput = fromJsonSchema({
     },
   },
   additionalProperties: false,
-});
+}));
 
 /** Map optional caller-supplied reason strings to typed StaleReasons. */
 function toReasons(reasons: string[] | undefined, code: string): Array<{ code: string; message: string }> {
@@ -247,26 +275,31 @@ function toReasons(reasons: string[] | undefined, code: string): Array<{ code: s
     .map((message) => ({ code, message: message.trim() }));
 }
 
-/** Register every typed resolver tool on the server, backed by one service. */
-export function registerResolverTools(server: McpServer, service: ResolverService): void {
+/** Register every typed resolver tool with request-scoped service selection. */
+export function registerResolverTools(server: McpServer, selectService: ServiceSelector): void {
+  const selected = <T>(args: WorkspaceArgs, fn: (service: ResolverService) => T): ToolResult =>
+    guard(() => fn(selectService(args.workspaceRoot)));
+
   server.registerTool(
     "resolve_config",
     {
       title: "resolve config",
+      inputSchema: workspaceOnlyInput,
       description:
         "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
     },
-    async () => guard(() => service.resolveConfig()),
+    async (args: WorkspaceArgs) => selected(args, (service) => service.resolveConfig()),
   );
 
   server.registerTool(
     "resolve_registry",
     {
       title: "resolve registry",
+      inputSchema: workspaceOnlyInput,
       description:
         "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body.",
     },
-    async () => guard(() => service.resolveRegistry()),
+    async (args: WorkspaceArgs) => selected(args, (service) => service.resolveRegistry()),
   );
 
   server.registerTool(
@@ -277,7 +310,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
       inputSchema: surfaceInput,
     },
-    async (args: { surface: string }) => guard(() => service.resolveProvider(args.surface)),
+    async (args: WorkspaceArgs & { surface: string }) => selected(args, (service) => service.resolveProvider(args.surface)),
   );
 
   server.registerTool(
@@ -288,8 +321,8 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
       inputSchema: capabilityInput,
     },
-    async (args: { capability: string }) =>
-      guard(() => service.resolveProfile(args.capability)),
+    async (args: WorkspaceArgs & { capability: string }) =>
+      selected(args, (service) => service.resolveProfile(args.capability)),
   );
 
   server.registerTool(
@@ -300,7 +333,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default — the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
       inputSchema: skillInput,
     },
-    async (args: { skill: string }) => guard(() => service.resolveSettings(args.skill)),
+    async (args: WorkspaceArgs & { skill: string }) => selected(args, (service) => service.resolveSettings(args.skill)),
   );
 
   server.registerTool(
@@ -311,7 +344,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "A plugin's resolved install root + provenance, post-self-heal (R5). One path record.",
       inputSchema: pluginInput,
     },
-    async (args: { plugin: string }) => guard(() => service.resolvePluginRoot(args.plugin)),
+    async (args: WorkspaceArgs & { plugin: string }) => selected(args, (service) => service.resolvePluginRoot(args.plugin)),
   );
 
   server.registerTool(
@@ -322,7 +355,10 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path — the metadata queries stay body-free.",
       inputSchema: contentInput,
     },
-    async (args: ContentRef) => guard(() => service.resolveContent(args)),
+    async (args: WorkspaceArgs & ContentRef) => {
+      const { workspaceRoot, ...ref } = args;
+      return selected({ workspaceRoot }, (service) => service.resolveContent(ref as ContentRef));
+    },
   );
 
   server.registerTool(
@@ -333,7 +369,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Read-only pack inspection (R6): resolves a plugin id via `claude plugin list --json`, validates enabled state / version / installPath and the pack manifest(s), and returns a fingerprint. Writes nothing.",
       inputSchema: pluginIdInput,
     },
-    async (args: { pluginId: string }) => guard(() => service.inspectPack(args.pluginId)),
+    async (args: WorkspaceArgs & { pluginId: string }) => selected(args, (service) => service.inspectPack(args.pluginId)),
   );
 
   server.registerTool(
@@ -344,8 +380,8 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Mutating pack registration (R6). Rejects a missing / disabled / stale-fingerprint / path-invalid / manifest-invalid request WITHOUT writing; on success owns the registry write, refreshes the snapshot, and self-checks. Core does not infer skill provenance.",
       inputSchema: registerInput,
     },
-    async (args: { pluginId: string; expectedFingerprint: string }) =>
-      guard(() => service.registerPack(args.pluginId, args.expectedFingerprint)),
+    async (args: WorkspaceArgs & { pluginId: string; expectedFingerprint: string }) =>
+      selected(args, (service) => service.registerPack(args.pluginId, args.expectedFingerprint)),
   );
 
   server.registerTool(
@@ -356,8 +392,8 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Surface-specific resolver-failure gate (WF-272). Given the current resolver health and the acting surface (`local-read` | `tracker-write` | `delivery-write`), returns the reaction (continue | warn | block), the failure categories, categorized diagnostics with a `/wf:resolve` recovery path, and a marker proving the failure path never re-walks folders or probes the environment. A local read continues best-effort, a tracker write warns and continues, a delivery write blocks before any mutation.",
       inputSchema: surfaceClassInput,
     },
-    async (args: { surface: "local-read" | "tracker-write" | "delivery-write" }) =>
-      guard(() => service.assessSurface(args.surface)),
+    async (args: WorkspaceArgs & { surface: "local-read" | "tracker-write" | "delivery-write" }) =>
+      selected(args, (service) => service.assessSurface(args.surface)),
   );
 
   // --- authoring validators (WF-352) --------------------------------------
@@ -374,17 +410,18 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Check a capability `manifest.md` against manifest schema v2 (WF-352). Returns the frozen ValidationVerdict `{tool, status: pass|fail|error, target, findings[{rule, severity, file, line, message}], ruleSources[], summary}`. Rule ids mirror `validate-registry.sh` (`CHECK-6` phase/kind tokens, `CHECK-6b` dispatch, `CHECK-6c` slot scope + merge policy, `CHECK-HEADING` heading typos). The phase spine, contribution kinds, and merge policies are derived LIVE from `capability-registry.ops.md` on every call — no rule is transcribed. A syntactically broken manifest returns `status: \"error\"` with rule `input-unparseable`; an unreadable rule source returns `rule-source-unresolvable` — never a crash, never a silent pass. Omit `path` to check every active capability.",
       inputSchema: validateManifestInput,
     },
-    async (args: { path?: string }) => guard(() => service.validateManifest(args?.path)),
+    async (args: WorkspaceArgs & { path?: string }) => selected(args, (service) => service.validateManifest(args.path)),
   );
 
   server.registerTool(
     "validate_registry",
     {
       title: "validate registry",
+      inputSchema: workspaceOnlyInput,
       description:
         "Check the resolved capability registry (WF-352): the `## Capabilities` and `## Plugin Roots` tables plus every resolvable capability manifest — the same set `validate-registry.sh` folds into one exit code, and it agrees with that guard's verdict. Returns the frozen ValidationVerdict. Rule ids are the guard's own: `CHECK-1` registryPath shape, `CHECK-2` duplicate names, `CHECK-3` filesystem-safe names, `CHECK-4` path resolves + carries a manifest, `CHECK-4a`/`CHECK-4b` plugin-root shape/uniqueness, `CHECK-5` overlapping partitioned ownership (naming both offenders), `CHECK-6`/`6b`/`6c` fragment-row rules, `CHECK-7` requires satisfied, `CHECK-8` co-active conflicts, `CHECK-9` contradictory article clauses. Takes no arguments — it validates the registry the resolver already resolved.",
     },
-    async () => guard(() => service.validateRegistry()),
+    async (args: WorkspaceArgs) => selected(args, (service) => service.validateRegistry()),
   );
 
   server.registerTool(
@@ -395,8 +432,8 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Check skill slot markers against their `interface.md` `## Slots` declarations (WF-352), agreeing with `skill-slot-marker-lint.sh` and reusing its defect ids: `D1` malformed declaration, `D2` malformed marker, `D3` undeclared marker, `D4` unbalanced/duplicate marker, `D5` declared-but-unmarked. Returns the frozen ValidationVerdict with file/line diagnostics only — never any skill-body content (the `resolve_content` body-serving refusal is unchanged). A skill declaring no slots and carrying no markers passes clean (the inert case). Omit both arguments to scan every skill under `plugins/*/skills/*/`.",
       inputSchema: validateSkillInput,
     },
-    async (args: { plugin?: string; skill?: string }) =>
-      guard(() => service.validateSkillInterface(args?.plugin, args?.skill)),
+    async (args: WorkspaceArgs & { plugin?: string; skill?: string }) =>
+      selected(args, (service) => service.validateSkillInterface(args.plugin, args.skill)),
   );
 
   // --- reference existence + composition preview (WF-354) ------------------
@@ -413,7 +450,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Resolve every cross-reference in skill bodies and agent files against the real tree (WF-354) — the dead-reference class no structural validator catches (a body instructing invocation of a removed skill). Checks `/wf:<skill>`, `/wf-<pack>:<skill>`, `subagent_type: wf:<agent>`, and `${CLAUDE_PLUGIN_ROOT}` path tokens, but ONLY on invocation-instruction lines: the instruction-vs-prose classifier is DERIVED at call time by parsing the `p1`/`p2` assignments out of `out4-skill-read-guard.sh` (recorded in `ruleSources`), so a bare prose mention — a README skill table, a cited call shape — never turns red. Returns the frozen ValidationVerdict with rule ids `REF-1` (unresolvable skill/agent invocation reference) and `REF-2` (unresolvable `${CLAUDE_PLUGIN_ROOT}` path token), alongside `input-unparseable` / `rule-source-unresolvable`. A reference whose owning plugin root is not resolvable in this workspace is indeterminate, not dead: it is excluded from `findings` and counted in `summary`. Omit `path` to scan every plugin's skills and agents.",
       inputSchema: validateReferencesInput,
     },
-    async (args: { path?: string }) => guard(() => service.validateReferences(args?.path)),
+    async (args: WorkspaceArgs & { path?: string }) => selected(args, (service) => service.validateReferences(args.path)),
   );
 
   server.registerTool(
@@ -424,7 +461,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Dry-run preview of what the capability registry would compose (WF-354): every fragment that would fire at a phase, in registry order, each carrying its provenance (owning capability, resolved dispatch target, scope, resolved/manifest paths, how the path resolved). Rendered purely off the already-resolved snapshot — no manifest is re-parsed, no path re-resolved, and no fragment BODY is ever read or returned (follow the named `dispatch` for that). Read-only: it neither refreshes nor invalidates the snapshot. NOT a ValidationVerdict — a preview has no pass/fail semantics — so it returns its own narrow record, and zero entries is a first-class inert outcome (an empty registry composes nothing, which is the contract's designed behaviour, not an error). Omit `phase` to preview every phase.",
       inputSchema: previewCompositionInput,
     },
-    async (args: { phase?: string }) => guard(() => service.previewComposition(args?.phase)),
+    async (args: WorkspaceArgs & { phase?: string }) => selected(args, (service) => service.previewComposition(args.phase)),
   );
 
   // --- lifecycle (the /wf:resolve skill routes through these) --------------
@@ -432,10 +469,11 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
     "resolve_inspect",
     {
       title: "resolve inspect",
+      inputSchema: workspaceOnlyInput,
       description:
         "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, per-slot composition provenance (each composed `skill.point` → winning source → tier, plus override presence), the per-skill settings-override presence index, and diagnostics. Does not rebuild.",
     },
-    async () => guard(() => service.inspect()),
+    async (args: WorkspaceArgs) => selected(args, (service) => service.inspect()),
   );
 
   server.registerTool(
@@ -446,8 +484,8 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state. Optional `reasons` are recorded as diagnostics explaining the refresh.",
       inputSchema: reasonsInput,
     },
-    async (args: { reasons?: string[] }) =>
-      guard(() => service.refresh(toReasons(args?.reasons, "explicit-request"))),
+    async (args: WorkspaceArgs & { reasons?: string[] }) =>
+      selected(args, (service) => service.refresh(toReasons(args.reasons, "explicit-request"))),
   );
 
   server.registerTool(
@@ -458,7 +496,7 @@ export function registerResolverTools(server: McpServer, service: ResolverServic
         "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Typed consumers may pass `reasons` (suspected-stale messages) which surface as diagnostics. Returns the lifecycle state.",
       inputSchema: reasonsInput,
     },
-    async (args: { reasons?: string[] }) =>
-      guard(() => service.invalidate(toReasons(args?.reasons, "suspected-stale"))),
+    async (args: WorkspaceArgs & { reasons?: string[] }) =>
+      selected(args, (service) => service.invalidate(toReasons(args.reasons, "suspected-stale"))),
   );
 }

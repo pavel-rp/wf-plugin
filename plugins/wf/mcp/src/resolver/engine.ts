@@ -41,16 +41,21 @@ function listFilesOrEmpty(absDir: string): string[] {
 /** Real read-only IO port backed by the filesystem. */
 export const fsIO: ResolverIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
 
+/** Extract the configured value verbatim (apart from surrounding whitespace). */
+export function extractRegistryPathRaw(wfConfig: string | null): string {
+  if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
+  const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
+  const v = m?.[1]?.trim();
+  return v && v.length > 0 ? v : DEFAULT_REGISTRY_RELPATH;
+}
+
 /** Extract `registryPath` from wf.config.js text without evaluating the module
  *  (mirrors validate-registry.sh CHECK 1: a single quoted value, first hit). The
  *  value is forward-slash normalized so both the read path and the recorded
  *  `snapshot.registryPath` / registry source-fingerprint honor the documented
  *  "normalized (forward-slash), workspace-relative" contract (see types.ts). */
 export function extractRegistryPath(wfConfig: string | null): string {
-  if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
-  const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
-  const v = m?.[1]?.trim();
-  return v && v.length > 0 ? normalizeSlashes(v) : DEFAULT_REGISTRY_RELPATH;
+  return normalizeSlashes(extractRegistryPathRaw(wfConfig));
 }
 
 /** Run `claude plugin list --json`. Returns raw stdout on success, or `null`

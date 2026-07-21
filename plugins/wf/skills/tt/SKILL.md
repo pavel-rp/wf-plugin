@@ -27,7 +27,9 @@ or publishes anything.
 ## Prerequisites
 
 **Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service
-via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot,
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+
+via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot,
 verifyCommand, … }, idShape }`, already resolved from `_local/config.md` (core performs no
 direct config-file parse). All references to `{task-root}` (`coreConfig.taskRoot`) and
 `{verify-command}` (`coreConfig.verifyCommand`) below come from that query — never hardcode
@@ -56,7 +58,7 @@ Claude Code) — do not hand-parse config as a fallback.
 
 If `<id>` is provided, use it verbatim. If omitted, try to infer a numeric token by
 extracting the first 3+-digit run from the current branch name (via `current-branch-query`,
-reached through the `wf-resolver` `resolve_provider("delivery")` query below), then resolve that token against
+reached through the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query below), then resolve that token against
 `{task-root}` by the same extraction on each existing folder's name — exactly one match
 reuses that folder's full name as `<id>`. Any failure (no delivery provider, no branch
 token, zero or multiple folder matches) leaves `<id>` unresolved — a non-fatal outcome:
@@ -99,16 +101,16 @@ token, zero or multiple folder matches) leaves `<id>` unresolved — a non-fatal
 
 Every delivery operation this file invokes — `branch-changes-read` (the change set) and
 `current-branch-query` (optional id inference) — is reached by calling the bundled
-`wf-resolver` MCP tool `resolve_provider("delivery")`, the typed query that returns the
+`wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })`, the typed query that returns the
 run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation,
 diagnostics }` for the `delivery` surface. The resolver has already resolved the
 `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored
 root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first
 resolution with install-manifest self-heal"); core performs **no** registry / manifest /
-plugin-root read of its own. Obtain each op's body via `resolve_content` (`class: fragment`, keyed
+plugin-root read of its own. Obtain each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`, keyed
 on the record's `owner` and fragment `ref`) and follow it in this skill's own context to
 invoke the ops — never a raw `Read` of the path (the metadata queries return only paths/metadata;
-the body comes from `resolve_content`). If the
+the body comes from `resolve_content({ workspaceRoot, ... })`). If the
 `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded —
 do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
@@ -128,7 +130,7 @@ Determine the set of changed files to author tests for, in this order:
 1. **`--files` override.** If `--files` was passed, that list **is** the change set — skip
    the rest of this phase. (An override is honored regardless of provider state.)
 
-2. **Resolve the delivery record** via `resolve_provider("delivery")` (above), then branch on
+2. **Resolve the delivery record** via `resolve_provider({ workspaceRoot, surface: "delivery" })` (above), then branch on
    the record's `state` — **not** on any change-set return:
 
    - **`state: ok` (delivery provider registered):** read the change set via
@@ -200,7 +202,7 @@ test-authoring idioms. Obtain the ordered active registry as metadata from the `
 MCP service — do **not** read `## Capabilities` or any `manifest.md` yourself — referencing the
 taxonomy by **phase name / contribution-kind name**, never by heading:
 
-1. **Call `resolve_registry`** on the `wf-resolver` service. It returns the ordered active
+1. **Call `resolve_registry({ workspaceRoot, ... })`** on the `wf-resolver` service. It returns the ordered active
    `capabilities[]` (**in registry order**, general → specific), each already resolved from the
    registry and its `manifest.md`: `{ name, kind, manifestPath, fragments[] { phase,
    contributionKind, dispatch, scope }, articles[], provenance, validity }`. The resolver has
@@ -212,9 +214,9 @@ taxonomy by **phase name / contribution-kind name**, never by heading:
    registry order) whose `phase` is `implement` and whose `contributionKind` is `guidance`.
    Ignore all other rows for this firing.
 3. **Dispatch each collected fragment** on its `dispatch` metadata (the metadata queries return
-   paths/metadata only; the fragment body comes from the resolver's `resolve_content` content
+   paths/metadata only; the fragment body comes from the resolver's `resolve_content({ workspaceRoot, ... })` content
    surface, read prompt-free in this skill's own context):
-   - `inline: <rel-path>` → obtain the fragment body via `resolve_content` (`class: fragment`,
+   - `inline: <rel-path>` → obtain the fragment body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`,
      the capability name, `ref: <rel-path>`) and **follow it in-context**, applying its authoring
      idioms.
    - `subagent: <agent>` → invoke the **Task** tool with `subagent_type: <agent>`, passing
@@ -226,7 +228,7 @@ taxonomy by **phase name / contribution-kind name**, never by heading:
    apply only what each contributor actually returns.
 
 **No-op (the only permitted branch is "zero `implement` guidance fragments" vs "one or
-more"):** if `resolve_registry` returns an empty `capabilities[]`, no fragment row matches
+more"):** if `resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]`, no fragment row matches
 the `implement` phase under the `guidance` kind, or a `dispatch` is malformed (neither
 `inline:` nor `subagent:`), that contributor — or the whole phase — produces **nothing**.
 The **discover-and-match default then stands alone**: no capability term surfaces, no broken
@@ -296,7 +298,7 @@ this when `<id>` did not resolve.
 ## Edge Cases
 
 - **No delivery provider registered (bare-core mode):** detected via the delivery record's
-  `state` (`unconfigured`) from `resolve_provider("delivery")`, never via a change-set return. `tt` degrades to an explicit
+  `state` (`unconfigured`) from `resolve_provider({ workspaceRoot, surface: "delivery" })`, never via a change-set return. `tt` degrades to an explicit
   `--files` list or an artifact-derived change set, or stops with a register-a-provider /
   pass-files message — never a raw working-directory fallback dressed as a change set.
 - **Delivery provider registered but the branch is clean:** `branch-changes-read` returns an

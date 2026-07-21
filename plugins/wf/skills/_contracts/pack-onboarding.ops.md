@@ -25,7 +25,7 @@ this doc writes `<pack>`, `<capability>`, or the Phase 4 slot:
 
 1. **Confirm a git repo:** `git rev-parse --git-dir`. If not, stop: "`/wf-<pack>:init`
    must run inside a git repository — run `/wf:init` first."
-2. **Record the repo root:** `git rev-parse --show-toplevel`.
+2. **Record the workspace directory:** `pwd -P`.
 3. **Resolve the registry location** exactly as `/wf:init` does — read `wf.config.js` at
    the repo root and use its optional `registryPath` key, **defaulting to
    `_local/config.md`** when absent. All registry writes below target this location.

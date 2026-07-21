@@ -59,21 +59,23 @@ under the stable plugin id `wf-git`.
 
 ## Onboarding procedure
 
+Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+
 1. **Precondition.** Confirm a git repository (`git rev-parse --git-dir`); if this fails,
    stop: "`/wf-git:init` must run inside a git repository — run `/wf:init` first." Call
    `resolve_config` for the resolved registry location and Read it to confirm the file
    exists. If it does not, stop: "Run `/wf:init` first — `/wf-git:init` registers into
    the registry that `/wf:init` creates."
-2. **Check prior state (reporting only).** Call `resolve_registry`; note whether `git`
+2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether `git`
    already appears with `validity: "ok"`. This never skips a later step — it only
    decides whether the Final Output says `onboarded` or `already-registered`.
-3. **Inspect the pack.** Call `inspect_pack({ pluginId: "wf-git" })`. Read-only; returns
+3. **Inspect the pack.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-git" })`. Read-only; returns
    `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
    - `valid: false` (not installed, disabled, no readable
      `capabilities/git/manifest.md`, or `claude plugin list --json` itself unavailable) →
      go to **Failure path**; do not call `register_pack`.
 4. **Register.** Call
-   `register_pack({ pluginId: "wf-git", expectedFingerprint: <fingerprint from step 3> })`.
+   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-git", expectedFingerprint: <fingerprint from step 3> })`.
    It writes the `## Plugin Roots` row and the `git` `## Capabilities` row in a single
    write (a plain file write, not a filesystem-atomic temp+rename swap), refreshes the
    resolver snapshot, and self-checks that `git` now resolves —
@@ -90,7 +92,7 @@ resolver call.
 
 ### Failure path (SUB-4 / WF-272 diagnostics)
 
-Call `resolve_gate({ surface: "delivery-write" })` (registering a pack is a registry
+Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a pack is a registry
 write). Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specific
 `issues[]` (from `inspect_pack`) or `reason` (from a rejected `register_pack`) — never a
 bare error. Finish with `partial`.
@@ -109,7 +111,9 @@ bare error. Finish with `partial`.
 - **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the
   install looks corrupted — reinstall the plugin.
 - **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run
-  `inspect_pack` to get the current fingerprint and retry `register_pack`.
+  `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-git" })` to get the
+  current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>",
+  pluginId: "wf-git", expectedFingerprint: <current fingerprint> })`.
 - **`git` already registered:** `register_pack` upserts idempotently — re-running is
   always safe; report `already-registered` per step 2's pre-check.
 - **Self-check FAIL:** report `partial`; never claim success.

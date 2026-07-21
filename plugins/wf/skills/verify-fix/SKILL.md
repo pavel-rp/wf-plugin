@@ -30,7 +30,9 @@ This skill does **not** re-verify. After it runs, re-invoke `/wf:verify-spec` to
 
 ## Prerequisites
 
-**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). All references to `{task-root}` below come from `coreConfig.taskRoot`. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
+Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). All references to `{task-root}` below come from `coreConfig.taskRoot`. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
 
 ---
 
@@ -41,10 +43,10 @@ Parse the first token.
 ### empty → infer from current branch
 
 1. Resolve the task id per the shared pipeline conventions doc — obtained via the
-   `wf-resolver` MCP tool `resolve_content` (`class: shared`, `ref: pipeline-conventions.md`),
+   `wf-resolver` MCP tool `resolve_content({ workspaceRoot, ... })` (`class: shared`, `ref: pipeline-conventions.md`),
    never a raw `Read` of the plugin-cache path — §"Id inference from the current branch";
    inferred from the branch via `current-branch-query` (the `wf-resolver`
-   `resolve_provider("delivery")` query, see "Direct provider resolution" below) and
+   `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" below) and
    resolved against `{task-root}`, naming `/wf:verify-fix` in its stop messages.
 2. Confirm `{task-root}/{task-id}/04_verify.md` exists. If not, stop: "No audit report found. Run `/wf:verify-spec {task-id}` first."
 
@@ -60,7 +62,7 @@ Treat as an explicit override. Useful when the report lives outside `{task-root}
 
 ## Direct provider resolution (how `current-branch-query` and `last-commit-timestamp-query` are reached)
 
-Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch id inference above and the Phase 1 branch gate) and `last-commit-timestamp-query` (Phase 2's staleness check) — is reached by calling the bundled `wf-resolver` MCP tool `resolve_provider("delivery")` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain each op's body via `resolve_content` (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to dispatch the operation — never a raw `Read` of the path. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider — the `unrecoverable` case names the candidate pack(s) in the record's `diagnostics` string), both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
+Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch id inference above and the Phase 1 branch gate) and `last-commit-timestamp-query` (Phase 2's staleness check) — is reached by calling the bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query that returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. The resolver has already resolved the `## Capabilities` registry, the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"); core performs **no** registry / manifest / plugin-root read of its own. Obtain each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and follow it in this skill's own context to dispatch the operation — never a raw `Read` of the path. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider — the `unrecoverable` case names the candidate pack(s) in the record's `diagnostics` string), both `current-branch-query` and `last-commit-timestamp-query` fall back silently to their plain-directory-safe cases — no error, no capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
 
 ---
 
@@ -71,7 +73,7 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 - Read any file in the repo.
 - **Edit source files, but only** at `file:line` locations cited in the loaded `04_verify.md`.
 - Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path).
-- Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider("delivery")` query) for branch gating, id inference, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
+- Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for branch gating, id inference, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits.
 
 ### Forbidden
@@ -89,7 +91,7 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 
 Before editing any code, verify the current branch matches the audit's target. Extract the first 3+-digit run from `{task-id}` — call it `{numeric-id}`; it is used **only** for the branch-name match below, never for the task folder or any operation.
 
-Gate on the task branch per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` (extracted above) for the branch-name match. On the bare-core skip, report it and proceed (the gate is satisfied).
+Gate on the task branch per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` (extracted above) for the branch-name match. On the bare-core skip, report it and proceed (the gate is satisfied).
 
 Rationale: the audit's evidence lines (`file:line`) are only meaningful on the branch that produced them. Fixing on `main` or an unrelated branch edits the wrong state.
 
@@ -110,7 +112,7 @@ If the report is malformed (no `## Requirements` heading, no verdict lines), sto
 
 ### Staleness check
 
-After parsing the header, run the staleness check per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider("delivery")` query, see "Direct provider resolution" above) against the report's own `**Audited at:**` field. If the branch has moved since, print a prominent warning at the top of Phase 4's plan:
+After parsing the header, run the staleness check per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" above) against the report's own `**Audited at:**` field. If the branch has moved since, print a prominent warning at the top of Phase 4's plan:
 
 `⚠ Audit ran at <audited-at>; the branch's last commit is now <last-commit-at>. Cited file:line citations may be stale — consider re-running `/wf:verify-spec` first.`
 
@@ -230,9 +232,9 @@ After printing all questions, **stop**. Do not proceed to further edits in the s
 
 ## Phase 7: Write the Fix Log
 
-Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per the shared pipeline conventions doc (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
+Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
 
-The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at `verify-fix-template.md`, obtained via the resolver's `resolve_content` (`class: references-template`, `skill: verify-fix`, `ref: verify-fix-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 7), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
+The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at `verify-fix-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-fix`, `ref: verify-fix-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 7), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
 If the write fails (permissions, path missing), stop and report. Do not fall back to printing the log inline instead of to disk — the durable artifact matters for later re-runs.
 

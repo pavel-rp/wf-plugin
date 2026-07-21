@@ -2,6 +2,8 @@
 
 **Version:** 1.0.0 (WF-355 — the author-caps `verify`-phase reference-existence findings)
 **Wired by:** `plugins/wf-author-caps/capabilities/author-caps/manifest.md`
+
+Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
 (`verify | finding | inline: fragments/reference-existence.md`)
 **Contributes:** a `finding` at the `verify` phase, per
 `plugins/wf/skills/_contracts/capability-registry.ops.md`
@@ -40,7 +42,7 @@ explaining dead references that itself contains one is the defect, not a descrip
 
 ## Run the validator
 
-Call the bundled resolver runtime's typed, read-only `validate_references` tool. It takes `{path?}`
+Call the bundled resolver runtime's typed, read-only `validate_references` tool. It takes `{ path?, workspaceRoot }`
 — a **file or a folder**; zero-arg walks every plugin's `skills/` and `agents/` trees. Scope it to
 the work under review. Its rule id is `REF-1`. It returns the frozen `ValidationVerdict`:
 
