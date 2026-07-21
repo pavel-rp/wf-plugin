@@ -19844,6 +19844,28 @@ var surfaceClassInput = fromJsonSchema2(withWorkspaceRoot({
   required: ["surface"],
   additionalProperties: false
 }));
+var routingInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
+    executionShape: { type: "string", minLength: 1 },
+    invocationModel: { type: ["string", "null"] },
+    invocationEffort: { type: ["string", "null"] },
+    requireModel: { type: "boolean" },
+    requireEffort: { type: "boolean" },
+    supportsModelSelector: { type: "boolean" },
+    supportsEffortSelector: { type: "boolean" },
+    hostModel: { type: ["string", "null"] },
+    hostEffort: { type: ["string", "null"] },
+    availableModels: { type: ["array", "null"], items: { type: "string" } },
+    basis: { type: ["string", "null"] },
+    attempt: { type: "integer", minimum: 1 },
+    escalationOrigin: { type: ["string", "null"] },
+    actualModel: { type: ["string", "null"] }
+  },
+  required: ["role", "executionShape", "supportsModelSelector", "supportsEffortSelector"],
+  additionalProperties: false
+}));
 var capabilityInput = fromJsonSchema2(withWorkspaceRoot({
   type: "object",
   properties: {
@@ -20033,6 +20055,18 @@ function registerResolverTools(server, selectService) {
       inputSchema: skillInput
     },
     async (args) => selected(args, (service) => service.resolveSettings(args.skill))
+  );
+  server.registerTool(
+    "resolve_routing",
+    {
+      title: "resolve routing",
+      description: "Resolve a bootstrap role's model and effort selectors from the fingerprint-fresh cached project configuration, with precedence, masking, fallback, and stop diagnostics. Body-free.",
+      inputSchema: routingInput
+    },
+    async (args) => {
+      const { workspaceRoot, ...inputs } = args;
+      return selected({ workspaceRoot }, (service) => service.resolveRouting(inputs));
+    }
   );
   server.registerTool(
     "resolve_plugin_root",
@@ -20518,6 +20552,23 @@ function normalizeValue(raw) {
   if (v === "" || v === "\u2014") return null;
   if (/^<.*>$/.test(v)) return null;
   return v;
+}
+function parseRoutingConfig(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^##\s+Routing\s*$/.test(line.trim()));
+  if (start < 0) return {};
+  const out = {};
+  for (const raw of lines.slice(start + 1)) {
+    const line = raw.trim();
+    if (/^##\s+/.test(line)) break;
+    if (!line.startsWith("|")) continue;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((v) => v.trim());
+    if (cells.length < 3 || /^(role|-+)$/i.test(cells[0])) continue;
+    const role = cells[0].replace(/^`|`$/g, "").trim();
+    if (!/^[a-z][a-z0-9-]*$/.test(role)) continue;
+    out[role] = { model: normalizeValue(cells[1]), effort: normalizeValue(cells[2]) };
+  }
+  return out;
 }
 function parseCoreConfig(markdown) {
   const kv = extractKeyValues(markdown);
@@ -21172,7 +21223,9 @@ function buildSnapshot(inputs, io) {
     )
   );
   const registry2 = parseRegistry(inputs.registryContent ?? "");
-  const coreConfig = parseCoreConfig(inputs.coreConfigContent ?? inputs.registryContent ?? "");
+  const configMarkdown = inputs.coreConfigContent ?? inputs.registryContent ?? "";
+  const coreConfig = parseCoreConfig(configMarkdown);
+  const routing = parseRoutingConfig(configMarkdown);
   let pluginList;
   if (inputs.pluginListRaw === null) {
     pluginList = { plugins: [], contractOk: true, issues: [] };
@@ -21536,6 +21589,7 @@ function buildSnapshot(inputs, io) {
     workspaceRoot: normalizeSlashes(workspaceRoot),
     registryPath,
     coreConfig,
+    routing,
     capabilities,
     pluginRoots,
     packs,
@@ -21755,6 +21809,70 @@ function createDefaultPorts(workspaceRoot) {
     },
     registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH2,
     resolveRegistryWritePath: (registryRelPath2) => resolveContainedRegistryWritePath(workspaceRoot, registryRelPath2)
+  };
+}
+
+// src/resolver/routing.ts
+var DEFAULTS = {
+  classify: { model: "haiku", effort: null },
+  branch: { model: "haiku", effort: null }
+};
+var MODEL_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+var EFFORTS = /* @__PURE__ */ new Set(["low", "medium", "high", "max"]);
+function choose(kind, inputs, project) {
+  const selectorSupported = kind === "model" ? inputs.supportsModelSelector : inputs.supportsEffortSelector;
+  const host = kind === "model" ? inputs.hostModel : inputs.hostEffort;
+  const invocation = kind === "model" ? inputs.invocationModel : inputs.invocationEffort;
+  const configured = project[inputs.role]?.[kind] ?? null;
+  const shipped = DEFAULTS[inputs.role]?.[kind] ?? null;
+  const required2 = kind === "model" ? inputs.requireModel : inputs.requireEffort;
+  const requested = invocation ?? configured ?? shipped;
+  const requestedSource = invocation ? "invocation" : configured ? "project" : shipped ? "shipped-default" : "inheritance";
+  if (host) {
+    return {
+      choice: { value: host, source: "host", requested, requestedSource, masked: requested !== null && requested !== host, fallback: null },
+      stop: null
+    };
+  }
+  if (!requested) {
+    return { choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: null }, stop: required2 ? `${kind} override is required but none was supplied` : null };
+  }
+  const valid = kind === "model" ? MODEL_TOKEN.test(requested) : EFFORTS.has(requested);
+  if (!valid) {
+    return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "malformed" }, stop: `${kind} choice \`${requested}\` is malformed` };
+  }
+  if (!selectorSupported) {
+    const stop = required2 ? `${kind} choice \`${requested}\` is required but this runtime cannot honor it` : null;
+    return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "selector-unsupported" }, stop };
+  }
+  const modelAvailable = (choice) => !inputs.availableModels || inputs.availableModels.some(
+    (available) => available === choice || (choice === "haiku" || choice === "sonnet" || choice === "opus") && available.includes(`-${choice}-`)
+  );
+  if (kind === "model" && !modelAvailable(requested)) {
+    const stop = required2 ? `model choice \`${requested}\` is required but unavailable` : null;
+    return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "unavailable" }, stop };
+  }
+  return { choice: { value: requested, source: requestedSource, requested, requestedSource, masked: false, fallback: null }, stop: null };
+}
+function resolveRouting(project, inputs) {
+  if (!/^[a-z][a-z0-9-]*$/.test(inputs.role)) throw new Error(`invalid routing role \`${inputs.role}\``);
+  const model = choose("model", inputs, project);
+  const effort = choose("effort", inputs, project);
+  const stops = [model.stop, effort.stop].filter((v) => v !== null);
+  return {
+    role: inputs.role,
+    executionShape: inputs.executionShape,
+    model: model.choice,
+    effort: effort.choice,
+    source: model.choice.source,
+    basis: inputs.basis ?? null,
+    attempt: inputs.attempt ?? 1,
+    escalationOrigin: inputs.escalationOrigin ?? null,
+    fallback: model.choice.fallback ?? effort.choice.fallback,
+    masked: model.choice.masked || effort.choice.masked,
+    ...inputs.actualModel ? { actualModel: inputs.actualModel } : {},
+    status: stops.length ? "stop" : "dispatch",
+    diagnostic: stops.length ? stops.join("; ") : null
   };
 }
 
@@ -23420,6 +23538,11 @@ var ResolverService = class {
       bytes: Buffer.byteLength(content, "utf8"),
       parts: present.map((p) => ({ tier: p.tier, source: p.source, path: p.path }))
     };
+  }
+  // --- typed bootstrap routing ---------------------------------------------
+  resolveRouting(inputs) {
+    const snapshot = this.ensure();
+    return resolveRouting(snapshot.routing ?? {}, inputs);
   }
   // --- R5 -----------------------------------------------------------------
   resolvePluginRoot(plugin) {

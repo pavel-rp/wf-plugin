@@ -354,6 +354,23 @@ function normalizeValue(raw) {
   if (/^<.*>$/.test(v)) return null;
   return v;
 }
+function parseRoutingConfig(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^##\s+Routing\s*$/.test(line.trim()));
+  if (start < 0) return {};
+  const out = {};
+  for (const raw of lines.slice(start + 1)) {
+    const line = raw.trim();
+    if (/^##\s+/.test(line)) break;
+    if (!line.startsWith("|")) continue;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((v) => v.trim());
+    if (cells.length < 3 || /^(role|-+)$/i.test(cells[0])) continue;
+    const role = cells[0].replace(/^`|`$/g, "").trim();
+    if (!/^[a-z][a-z0-9-]*$/.test(role)) continue;
+    out[role] = { model: normalizeValue(cells[1]), effort: normalizeValue(cells[2]) };
+  }
+  return out;
+}
 function parseCoreConfig(markdown) {
   const kv = extractKeyValues(markdown);
   return {
@@ -661,7 +678,9 @@ function buildSnapshot(inputs, io) {
     )
   );
   const registry = parseRegistry(inputs.registryContent ?? "");
-  const coreConfig = parseCoreConfig(inputs.coreConfigContent ?? inputs.registryContent ?? "");
+  const configMarkdown = inputs.coreConfigContent ?? inputs.registryContent ?? "";
+  const coreConfig = parseCoreConfig(configMarkdown);
+  const routing = parseRoutingConfig(configMarkdown);
   let pluginList;
   if (inputs.pluginListRaw === null) {
     pluginList = { plugins: [], contractOk: true, issues: [] };
@@ -1025,6 +1044,7 @@ function buildSnapshot(inputs, io) {
     workspaceRoot: normalizeSlashes(workspaceRoot2),
     registryPath,
     coreConfig,
+    routing,
     capabilities,
     pluginRoots,
     packs,

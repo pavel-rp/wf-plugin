@@ -274,6 +274,50 @@ export interface SlotProvenanceRecord {
   winningSource: string | null;
 }
 
+export type RoutingSource = "host" | "invocation" | "project" | "shipped-default" | "inheritance";
+export interface RoutingRow { model: string | null; effort: string | null }
+export type RoutingProjectConfig = Record<string, RoutingRow>;
+export interface RoutingChoice {
+  value: string | null;
+  source: RoutingSource;
+  requested: string | null;
+  requestedSource: RoutingSource;
+  masked: boolean;
+  fallback: "malformed" | "unavailable" | "selector-unsupported" | null;
+}
+export interface RoutingInputs {
+  role: string;
+  executionShape: string;
+  invocationModel?: string | null;
+  invocationEffort?: string | null;
+  requireModel?: boolean;
+  requireEffort?: boolean;
+  supportsModelSelector: boolean;
+  supportsEffortSelector: boolean;
+  hostModel?: string | null;
+  hostEffort?: string | null;
+  availableModels?: string[] | null;
+  basis?: string | null;
+  attempt?: number;
+  escalationOrigin?: string | null;
+  actualModel?: string | null;
+}
+export interface RoutingDecision {
+  role: string;
+  executionShape: string;
+  model: RoutingChoice;
+  effort: RoutingChoice;
+  source: RoutingSource;
+  basis: string | null;
+  attempt: number;
+  escalationOrigin: string | null;
+  fallback: RoutingChoice["fallback"];
+  masked: boolean;
+  actualModel?: string;
+  status: "dispatch" | "stop";
+  diagnostic: string | null;
+}
+
 /** The full versioned resolution snapshot. */
 export interface ResolverSnapshot {
   schemaVersion: number;
@@ -288,6 +332,8 @@ export interface ResolverSnapshot {
    *  normalized workspace-relative. */
   registryPath: string;
   coreConfig: CoreConfig;
+  /** Project routing rows keyed by arbitrary valid role slug. */
+  routing?: RoutingProjectConfig;
   /** Active registry capabilities, in registry (injection) order. */
   capabilities: CapabilityRecord[];
   pluginRoots: PluginRootRecord[];

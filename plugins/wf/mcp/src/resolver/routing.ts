@@ -51,7 +51,11 @@ function choose(
     const stop = required ? `${kind} choice \`${requested}\` is required but this runtime cannot honor it` : null;
     return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "selector-unsupported" }, stop };
   }
-  if (kind === "model" && inputs.availableModels && !inputs.availableModels.includes(requested)) {
+  const modelAvailable = (choice: string): boolean =>
+    !inputs.availableModels || inputs.availableModels.some((available) =>
+      available === choice || (choice === "haiku" || choice === "sonnet" || choice === "opus") && available.includes(`-${choice}-`),
+    );
+  if (kind === "model" && !modelAvailable(requested)) {
     const stop = required ? `model choice \`${requested}\` is required but unavailable` : null;
     return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "unavailable" }, stop };
   }
@@ -74,7 +78,7 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     escalationOrigin: inputs.escalationOrigin ?? null,
     fallback: model.choice.fallback ?? effort.choice.fallback,
     masked: model.choice.masked || effort.choice.masked,
-    actualModel: inputs.actualModel ?? undefined,
+    ...(inputs.actualModel ? { actualModel: inputs.actualModel } : {}),
     status: stops.length ? "stop" : "dispatch",
     diagnostic: stops.length ? stops.join("; ") : null,
   };

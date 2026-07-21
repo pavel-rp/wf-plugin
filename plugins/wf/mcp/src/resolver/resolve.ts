@@ -36,7 +36,7 @@ import {
 import { parseRegistry } from "./registry.js";
 import { parseManifest } from "./manifest.js";
 import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
-import { parseCoreConfig } from "./config.js";
+import { parseCoreConfig, parseRoutingConfig } from "./config.js";
 import { fingerprint } from "./fingerprint.js";
 import { normalizePluginList } from "./freshness.js";
 import {
@@ -161,7 +161,9 @@ export function buildSnapshot(
 
   // --- parse inputs --------------------------------------------------------
   const registry = parseRegistry(inputs.registryContent ?? "");
-  const coreConfig = parseCoreConfig(inputs.coreConfigContent ?? inputs.registryContent ?? "");
+  const configMarkdown = inputs.coreConfigContent ?? inputs.registryContent ?? "";
+  const coreConfig = parseCoreConfig(configMarkdown);
+  const routing = parseRoutingConfig(configMarkdown);
 
   // A real CLI success (including an empty `"[]"`) parses normally: zero packs,
   // contractOk, no diagnostic. A `null` (CLI unavailable/errored) is NOT parsed
@@ -652,6 +654,7 @@ export function buildSnapshot(
     workspaceRoot: normalizeSlashes(workspaceRoot),
     registryPath,
     coreConfig,
+    routing,
     capabilities,
     pluginRoots,
     packs,

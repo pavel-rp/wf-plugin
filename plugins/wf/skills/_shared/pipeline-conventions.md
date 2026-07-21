@@ -71,7 +71,10 @@ branch-name match.
    (bare-core mode)." and continue. **One matching row** — resolve the current branch via
    `current-branch-query` and apply step 2.
 2. **If the resolved branch name contains `/{numeric-id}-`** — proceed. **Otherwise** —
-   invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id
+   call `resolve_routing` for role `branch` and execution shape `task` immediately before
+   dispatch. Emit the compact decision metadata; stop only when it returns `status: stop`.
+   Pass its model selector only when non-null, and preserve inherited effort when effort is
+   null. Then invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id
    `{task-id}` generically in prose **and the forwarded `delivery` resolution record**
    resolved above (the optional spawn extension — `invocation-runtime.ops.md`
    §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving.
