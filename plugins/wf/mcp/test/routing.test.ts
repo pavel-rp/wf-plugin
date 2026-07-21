@@ -122,6 +122,24 @@ test("contradictory shape evidence stops without changing selector decisions", (
   assert.equal(decision.model.source, "shipped-default");
 });
 
+test("incomplete or legacy shape inputs stop with specific diagnostics", () => {
+  const incomplete = resolveRouting({}, {
+    ...base,
+    shapeEvidence: { ...inlineEvidence, contextIsolation: undefined },
+  } as unknown as Parameters<typeof resolveRouting>[1]);
+  assert.equal(incomplete.status, "stop");
+  assert.match(incomplete.diagnostic ?? "", /contextIsolation must be one of/);
+
+  const legacy = resolveRouting({}, {
+    role: "classify",
+    executionShape: "task",
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
+  } as unknown as Parameters<typeof resolveRouting>[1]);
+  assert.equal(legacy.status, "stop");
+  assert.match(legacy.diagnostic ?? "", /shape evidence is required/);
+});
+
 test("malformed choices inherit unless required", () => {
   const fallback = resolveRouting({ classify: { model: "bad model", effort: null } }, base);
   assert.equal(fallback.status, "dispatch");

@@ -22,25 +22,52 @@ type ShapeDecision = Pick<RoutingDecision, "executionShape" | "normalizedEvidenc
 };
 
 function selectShape(inputs: RoutingInputs): ShapeDecision {
-  const evidence = inputs.shapeEvidence;
-  const requested = Number.isInteger(evidence?.requestedParallelism) ? evidence.requestedParallelism : 0;
+  const evidence = inputs.shapeEvidence as Partial<RoutingInputs["shapeEvidence"]> | undefined;
   const normalizedEvidence: NormalizedRoutingShapeEvidence = {
-    ...evidence,
-    requestedParallelism: requested,
+    workSurface: evidence?.workSurface ?? "caller-context",
+    atomicity: evidence?.atomicity ?? "atomic",
+    unitCount: evidence?.unitCount ?? 0,
+    unitsIndependent: evidence?.unitsIndependent ?? false,
+    ambiguity: evidence?.ambiguity ?? "none",
+    risk: evidence?.risk ?? "low",
+    toolWork: evidence?.toolWork ?? "none",
+    validation: evidence?.validation ?? "mechanical",
+    contextIsolation: evidence?.contextIsolation ?? "none",
+    independentReview: evidence?.independentReview ?? false,
+    returnContract: evidence?.returnContract ?? "mechanically-judgeable",
+    requestedParallelism: evidence?.requestedParallelism ?? 0,
   };
+  const enumFields = [
+    ["workSurface", evidence?.workSurface, ["caller-context", "external-context"]],
+    ["atomicity", evidence?.atomicity, ["atomic", "composite"]],
+    ["ambiguity", evidence?.ambiguity, ["none", "bounded", "material"]],
+    ["risk", evidence?.risk, ["low", "elevated"]],
+    ["toolWork", evidence?.toolWork, ["none", "bounded", "material"]],
+    ["validation", evidence?.validation, ["mechanical", "judgment"]],
+    ["contextIsolation", evidence?.contextIsolation, ["none", "useful", "required"]],
+    ["returnContract", evidence?.returnContract, ["mechanically-judgeable", "judgment"]],
+  ] as const;
+  const invalidEnum = enumFields.find(([, value, allowed]) => typeof value !== "string" || !allowed.includes(value as never));
+  const invalidBoolean = ["unitsIndependent", "independentReview"].find(
+    (field) => typeof evidence?.[field as "unitsIndependent" | "independentReview"] !== "boolean",
+  );
   const stop = !evidence
     ? "shape evidence is required"
-    : !Number.isInteger(evidence.unitCount) || evidence.unitCount < 1
-      ? "shape evidence unitCount must be a positive integer"
-      : requested < 1
-        ? "shape evidence requestedParallelism must be a positive integer"
-        : evidence.atomicity === "atomic" && evidence.unitCount !== 1
-          ? "shape evidence is contradictory: atomic work must contain exactly one unit"
-          : evidence.atomicity === "composite" && evidence.unitCount < 2
-            ? "shape evidence is contradictory: composite work must contain at least two units"
-            : evidence.unitsIndependent && evidence.unitCount < 2
-              ? "shape evidence is contradictory: independence requires at least two units"
-              : null;
+    : invalidEnum
+      ? `shape evidence ${invalidEnum[0]} must be one of: ${invalidEnum[2].join(", ")}`
+      : invalidBoolean
+        ? `shape evidence ${invalidBoolean} must be boolean`
+        : !Number.isInteger(evidence.unitCount) || (evidence.unitCount ?? 0) < 1
+          ? "shape evidence unitCount must be a positive integer"
+          : !Number.isInteger(evidence.requestedParallelism) || (evidence.requestedParallelism ?? 0) < 1
+            ? "shape evidence requestedParallelism must be a positive integer"
+            : evidence.atomicity === "atomic" && evidence.unitCount !== 1
+              ? "shape evidence is contradictory: atomic work must contain exactly one unit"
+              : evidence.atomicity === "composite" && (evidence.unitCount ?? 0) < 2
+                ? "shape evidence is contradictory: composite work must contain at least two units"
+                : evidence.unitsIndependent && (evidence.unitCount ?? 0) < 2
+                  ? "shape evidence is contradictory: independence requires at least two units"
+                  : null;
 
   if (stop) {
     return {
@@ -53,29 +80,33 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
   }
 
   const isolationWorthy =
-    evidence.workSurface === "external-context" ||
-    evidence.ambiguity !== "none" ||
-    evidence.risk === "elevated" ||
-    evidence.toolWork !== "none" ||
-    evidence.validation === "judgment" ||
-    evidence.contextIsolation !== "none" ||
-    evidence.independentReview;
+    normalizedEvidence.workSurface === "external-context" ||
+    normalizedEvidence.ambiguity !== "none" ||
+    normalizedEvidence.risk === "elevated" ||
+    normalizedEvidence.toolWork !== "none" ||
+    normalizedEvidence.validation === "judgment" ||
+    normalizedEvidence.contextIsolation !== "none" ||
+    normalizedEvidence.independentReview;
   const parallelWorthy =
-    evidence.unitsIndependent &&
-    evidence.unitCount >= 2 &&
-    evidence.returnContract === "mechanically-judgeable" &&
-    (evidence.ambiguity !== "none" ||
-      evidence.risk === "elevated" ||
-      evidence.toolWork !== "none" ||
-      evidence.contextIsolation !== "none" ||
-      evidence.independentReview);
+    normalizedEvidence.unitsIndependent &&
+    normalizedEvidence.unitCount >= 2 &&
+    normalizedEvidence.returnContract === "mechanically-judgeable" &&
+    (normalizedEvidence.ambiguity !== "none" ||
+      normalizedEvidence.risk === "elevated" ||
+      normalizedEvidence.toolWork !== "none" ||
+      normalizedEvidence.contextIsolation !== "none" ||
+      normalizedEvidence.independentReview);
 
   if (parallelWorthy) {
     return {
       executionShape: "bounded-parallel",
       normalizedEvidence,
       shapeReason: "independent-material-units",
-      effectiveParallelism: Math.min(evidence.unitCount, requested, MAX_PARALLELISM),
+      effectiveParallelism: Math.min(
+        normalizedEvidence.unitCount,
+        normalizedEvidence.requestedParallelism,
+        MAX_PARALLELISM,
+      ),
       stop: null,
     };
   }
@@ -83,7 +114,7 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
     return {
       executionShape: "isolated",
       normalizedEvidence,
-      shapeReason: evidence.unitCount === 1
+      shapeReason: normalizedEvidence.unitCount === 1
         ? "single-isolation-worthy-unit"
         : "dependent-or-nonmaterial-units",
       effectiveParallelism: 1,
