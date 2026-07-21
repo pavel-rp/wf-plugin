@@ -3,6 +3,8 @@ import type {
   RoutingChoice,
   RoutingDecision,
   RoutingInputs,
+  RoutingInsufficiencySignal,
+  RoutingPostAttemptEvaluation,
   RoutingProjectConfig,
   RoutingShapeReason,
   RoutingSource,
@@ -16,7 +18,17 @@ const DEFAULTS: RoutingProjectConfig = {
 const MODEL_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const EFFORTS = new Set(["low", "medium", "high", "max"]);
 const MAX_PARALLELISM = 4;
+const MODEL_TIERS = ["haiku", "sonnet", "opus"] as const;
+const INSUFFICIENCY_SIGNALS = new Set<RoutingInsufficiencySignal>([
+  "low-confidence",
+  "failed-validation",
+  "conflicting-or-incomplete-evidence",
+  "repeated-failure",
+  "increased-risk-or-scope",
+  "high-severity-review-uncertainty",
+]);
 
+type ModelTier = (typeof MODEL_TIERS)[number];
 type ShapeDecision = Pick<RoutingDecision, "executionShape" | "normalizedEvidence" | "shapeReason" | "effectiveParallelism"> & {
   stop: string | null;
 };
@@ -182,8 +194,80 @@ function choose(
   return { choice: { value: requested, source: requestedSource, requested, requestedSource, masked: false, fallback: null }, stop: null };
 }
 
-export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInputs): RoutingDecision {
-  if (!/^[a-z][a-z0-9-]*$/.test(inputs.role)) throw new Error(`invalid routing role \`${inputs.role}\``);
+function modelTier(value: string | null | undefined): ModelTier | null {
+  if (!value) return null;
+  const exact = MODEL_TIERS.find((tier) => value === tier);
+  if (exact) return exact;
+  const matches = MODEL_TIERS.filter((tier) => new RegExp(`(^|[-_.])${tier}([-_.]|$)`).test(value));
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function validSignals(signals: unknown): signals is RoutingInsufficiencySignal[] {
+  return Array.isArray(signals) && signals.every((signal) => INSUFFICIENCY_SIGNALS.has(signal));
+}
+
+function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: RoutingInputs): string | null {
+  const { prior } = evaluation;
+  if (!prior || !Number.isInteger(prior.attempt) || prior.attempt < 1 || prior.attempt > 3) {
+    return "post-attempt prior attempt must be an integer from 1 to 3";
+  }
+  if (inputs.attempt !== undefined && inputs.attempt !== prior.attempt) {
+    return "post-attempt attempt contradicts the prior routing attempt";
+  }
+  if (!prior.model || !prior.effort || !prior.shapeEvidence || !prior.executionShape) {
+    return "post-attempt prior routing context is incomplete";
+  }
+  const priorShape = selectShape({ ...inputs, shapeEvidence: prior.shapeEvidence, postAttempt: undefined });
+  if (priorShape.stop || priorShape.executionShape !== prior.executionShape) {
+    return priorShape.stop
+      ? `post-attempt prior shape evidence is invalid: ${priorShape.stop}`
+      : "post-attempt prior execution shape contradicts its shape evidence";
+  }
+  if (prior.attempt > 1 && !prior.escalationOrigin) {
+    return "post-attempt retry provenance requires a non-null escalationOrigin";
+  }
+  if (!validSignals(evaluation.signals)) return "post-attempt signals contain an unsupported insufficiency signal";
+  const units = evaluation.units;
+  if (units !== undefined) {
+    if (!Array.isArray(units) || units.length === 0) return "post-attempt units must be a non-empty array when supplied";
+    const ids = new Set<string>();
+    for (const unit of units) {
+      if (!unit || typeof unit.unitId !== "string" || !unit.unitId.trim()) return "post-attempt unitId must be non-empty";
+      if (ids.has(unit.unitId)) return `post-attempt unitId \`${unit.unitId}\` is duplicated`;
+      ids.add(unit.unitId);
+      if (typeof unit.sufficient !== "boolean" || !validSignals(unit.signals)) return `post-attempt unit \`${unit.unitId}\` is incomplete`;
+      if (unit.sufficient && unit.signals.length) return `post-attempt unit \`${unit.unitId}\` is sufficient but carries insufficiency signals`;
+      if (!unit.sufficient && unit.signals.length === 0) return `post-attempt unit \`${unit.unitId}\` is insufficient but carries no signal`;
+    }
+    if (prior.executionShape !== "bounded-parallel") return "post-attempt unit evaluations require a bounded-parallel prior attempt";
+    if (units.length !== prior.shapeEvidence.unitCount) return "post-attempt unit evaluations must cover every prior bounded-parallel unit";
+  }
+  const insufficientUnits = units?.filter((unit) => !unit.sufficient) ?? [];
+  if (evaluation.sufficient && (evaluation.signals.length || insufficientUnits.length)) {
+    return "post-attempt evaluation is sufficient but carries insufficiency evidence";
+  }
+  if (!evaluation.sufficient && evaluation.signals.length === 0 && insufficientUnits.length === 0) {
+    return "post-attempt evaluation is insufficient but carries no insufficiency signal";
+  }
+  if (evaluation.sufficient && units?.some((unit) => !unit.sufficient)) {
+    return "post-attempt evaluation contradicts an insufficient unit result";
+  }
+  if (!evaluation.sufficient && units && insufficientUnits.length === 0) {
+    return "post-attempt evaluation is insufficient but every unit is sufficient";
+  }
+  return null;
+}
+
+function stopDecision(
+  decision: RoutingDecision,
+  disposition: "exhausted" | "invalid-stop",
+  diagnostic: string,
+  retainedUnitIds: string[] = [],
+): RoutingDecision {
+  return { ...decision, status: "stop", disposition, retry: null, retainedUnitIds, diagnostic };
+}
+
+function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): RoutingDecision {
   const shape = selectShape(inputs);
   const model = choose("model", inputs, project);
   const effort = choose("effort", inputs, project);
@@ -204,6 +288,106 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     masked: model.choice.masked || effort.choice.masked,
     ...(inputs.actualModel ? { actualModel: inputs.actualModel } : {}),
     status: stops.length ? "stop" : "dispatch",
+    disposition: stops.length ? "invalid-stop" : "dispatch",
+    retry: null,
+    retainedUnitIds: [],
     diagnostic: stops.length ? stops.join("; ") : null,
+  };
+}
+
+export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInputs): RoutingDecision {
+  if (!/^[a-z][a-z0-9-]*$/.test(inputs.role)) throw new Error(`invalid routing role \`${inputs.role}\``);
+  if (!inputs.postAttempt) return baseDecision(project, inputs);
+
+  const evaluation = inputs.postAttempt;
+  const retainedUnitIds = evaluation.units?.filter((unit) => unit.sufficient).map((unit) => unit.unitId) ?? [];
+  const problem = evaluationProblem(evaluation, inputs);
+  const current = baseDecision(project, inputs);
+  if (problem) return stopDecision(current, "invalid-stop", problem, retainedUnitIds);
+  if (evaluation.sufficient) {
+    const priorShape = selectShape({ ...inputs, shapeEvidence: evaluation.prior.shapeEvidence, postAttempt: undefined });
+    const { actualModel: _currentActualModel, ...withoutCurrentActualModel } = current;
+    return {
+      ...withoutCurrentActualModel,
+      executionShape: evaluation.prior.executionShape,
+      normalizedEvidence: priorShape.normalizedEvidence,
+      shapeReason: priorShape.shapeReason,
+      effectiveParallelism: priorShape.effectiveParallelism,
+      model: evaluation.prior.model,
+      effort: evaluation.prior.effort,
+      source: evaluation.prior.model.source,
+      attempt: evaluation.prior.attempt,
+      escalationOrigin: evaluation.prior.escalationOrigin,
+      fallback: evaluation.prior.model.fallback ?? evaluation.prior.effort.fallback,
+      masked: evaluation.prior.model.masked || evaluation.prior.effort.masked,
+      ...(evaluation.prior.actualModel ? { actualModel: evaluation.prior.actualModel } : {}),
+      status: "retain",
+      disposition: "retain",
+      retry: null,
+      retainedUnitIds,
+      diagnostic: null,
+    };
+  }
+  if (current.status === "stop") return stopDecision(current, "invalid-stop", current.diagnostic ?? "retry routing is invalid", retainedUnitIds);
+
+  const signals = [...new Set([
+    ...evaluation.signals,
+    ...(evaluation.units ?? []).flatMap((unit) => unit.sufficient ? [] : unit.signals),
+  ])];
+  const maxAttempts = inputs.role === "security-auditor" && signals.includes("high-severity-review-uncertainty") ? 3 : 2;
+  if (evaluation.prior.attempt >= maxAttempts) {
+    return stopDecision(current, "exhausted", `retry limit exhausted after ${evaluation.prior.attempt} attempts`, retainedUnitIds);
+  }
+
+  const priorSelector = evaluation.prior.actualModel ?? evaluation.prior.model.value;
+  const priorTier = modelTier(priorSelector);
+  if (!priorTier) return stopDecision(current, "invalid-stop", "prior model does not map unambiguously to a stable tier", retainedUnitIds);
+  const nextTier = MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1];
+  if (!nextTier) return stopDecision(current, "invalid-stop", "prior model is already at the highest stable tier", retainedUnitIds);
+
+  const attempt = evaluation.prior.attempt + 1;
+  const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
+  const retryInputs: RoutingInputs = {
+    ...inputs,
+    postAttempt: undefined,
+    invocationModel: nextTier,
+    requireModel: true,
+    attempt,
+    escalationOrigin,
+    actualModel: undefined,
+  };
+  const retryDecision = baseDecision(project, retryInputs);
+  if (
+    retryDecision.status === "stop" ||
+    retryDecision.model.masked ||
+    retryDecision.model.fallback ||
+    modelTier(retryDecision.model.value) !== nextTier
+  ) {
+    const reason = retryDecision.diagnostic ?? (retryDecision.model.masked
+      ? "next model tier was masked by host enforcement"
+      : retryDecision.model.fallback
+        ? `next model tier fell back: ${retryDecision.model.fallback}`
+        : "next model tier did not advance exactly one stable tier");
+    return stopDecision(retryDecision, "invalid-stop", reason, retainedUnitIds);
+  }
+
+  const retryUnitIds = evaluation.units?.filter((unit) => !unit.sufficient).map((unit) => unit.unitId) ?? [];
+  const priorShape = evaluation.prior.executionShape;
+  const shapeChanged = priorShape !== retryDecision.executionShape ||
+    JSON.stringify(evaluation.prior.shapeEvidence) !== JSON.stringify(retryDecision.normalizedEvidence);
+  return {
+    ...retryDecision,
+    disposition: "retry",
+    retry: {
+      attempt,
+      signals,
+      unitIds: retryUnitIds,
+      priorTier,
+      nextTier,
+      escalationOrigin,
+      priorExecutionShape: priorShape,
+      shapeChanged,
+    },
+    retainedUnitIds,
   };
 }

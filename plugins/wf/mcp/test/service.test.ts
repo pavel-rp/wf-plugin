@@ -156,6 +156,28 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
   });
   assert.equal(routed.executionShape, "isolated");
   assert.equal(routed.model.value, "haiku");
+  const escalated = svc.resolveRouting({
+    role: "classify",
+    shapeEvidence: routed.normalizedEvidence,
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
+    availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
+    postAttempt: {
+      sufficient: false,
+      signals: ["low-confidence"],
+      prior: {
+        attempt: 1,
+        executionShape: routed.executionShape,
+        shapeEvidence: routed.normalizedEvidence,
+        model: routed.model,
+        effort: routed.effort,
+        escalationOrigin: null,
+        actualModel: "claude-haiku-4-5",
+      },
+    },
+  });
+  assert.equal(escalated.disposition, "retry");
+  assert.equal(escalated.model.value, "sonnet");
   const incomplete = svc.resolveRouting({
     role: "classify",
     shapeEvidence: { workSurface: "caller-context" },

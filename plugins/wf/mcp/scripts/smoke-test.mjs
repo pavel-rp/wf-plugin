@@ -219,9 +219,12 @@ try {
   if (
     !routingSchema?.required?.includes("shapeEvidence") ||
     "executionShape" in (routingSchema.properties ?? {}) ||
-    routingSchema.properties?.shapeEvidence?.required?.length
+    routingSchema.properties?.shapeEvidence?.required?.length ||
+    !routingSchema.properties?.postAttempt?.properties?.signals?.items?.enum?.includes("high-severity-review-uncertainty") ||
+    !routingTool?.outputSchema?.properties?.disposition?.enum?.includes("retry") ||
+    !routingTool?.outputSchema?.properties?.retry
   ) {
-    fail(`resolve_routing schema does not expose resolver-validated partial shape evidence: ${JSON.stringify(routingSchema)}`);
+    fail(`resolve_routing schema does not expose the typed shape and escalation contract: ${JSON.stringify(routingTool)}`);
   }
   process.stdout.write(`tools/list OK: ${tools.map((t) => t.name).join(", ")}\n`);
 
@@ -289,6 +292,56 @@ try {
   process.stdout.write(
     `tools/call resolve_inspect OK: valid=${parsed.valid}, cached=${parsed.cached}\n`,
   );
+
+  const shapeEvidence = {
+    workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
+    ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical",
+    contextIsolation: "none", independentReview: false,
+    returnContract: "mechanically-judgeable", requestedParallelism: 1,
+  };
+  const routingBase = {
+    workspaceRoot: scratchCwd,
+    role: "classify",
+    shapeEvidence,
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
+    availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
+  };
+  send({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "resolve_routing", arguments: routingBase } });
+  const initialResult = await Promise.race([awaitResponse(7), childExited]);
+  const initialText = initialResult.result?.content?.find((c) => c.type === "text")?.text;
+  const initial = initialResult.result?.structuredContent ?? (initialText ? JSON.parse(initialText) : undefined);
+  if (initialResult.error || initialResult.result?.isError || initial?.disposition !== "dispatch") {
+    fail(`resolve_routing initial dispatch failed: ${JSON.stringify(initialResult)}`);
+  }
+  const postAttempt = {
+    sufficient: false,
+    signals: ["low-confidence"],
+    prior: {
+      attempt: 1,
+      executionShape: initial.executionShape,
+      shapeEvidence: initial.normalizedEvidence,
+      model: initial.model,
+      effort: initial.effort,
+      escalationOrigin: null,
+      actualModel: "claude-haiku-4-5",
+    },
+  };
+  send({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "resolve_routing", arguments: { ...routingBase, postAttempt } } });
+  const retryResult = await Promise.race([awaitResponse(8), childExited]);
+  const retryText = retryResult.result?.content?.find((c) => c.type === "text")?.text;
+  const retry = retryResult.result?.structuredContent ?? (retryText ? JSON.parse(retryText) : undefined);
+  if (retryResult.error || retryResult.result?.isError || retry?.disposition !== "retry" || retry?.retry?.nextTier !== "sonnet") {
+    fail(`resolve_routing escalation failed: ${JSON.stringify(retryResult)}`);
+  }
+  send({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "resolve_routing", arguments: { ...routingBase, postAttempt: { sufficient: true, signals: [], prior: postAttempt.prior } } } });
+  const retainResult = await Promise.race([awaitResponse(9), childExited]);
+  const retainText = retainResult.result?.content?.find((c) => c.type === "text")?.text;
+  const retained = retainResult.result?.structuredContent ?? (retainText ? JSON.parse(retainText) : undefined);
+  if (retainResult.error || retainResult.result?.isError || retained?.disposition !== "retain" || retained?.retry !== null) {
+    fail(`resolve_routing retain failed: ${JSON.stringify(retainResult)}`);
+  }
+  process.stdout.write("tools/call resolve_routing escalation OK: retain and bounded retry\n");
 
   process.stdout.write(
     "SMOKE PASS: clean-copy MCP runtime started, completed the protocol handshake, enforced workspaceRoot schemas, and served a typed resolver query — with no source checkout, no node_modules, and no dependency install.\n",

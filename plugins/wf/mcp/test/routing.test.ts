@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { parseRoutingConfig } from "../src/resolver/config.js";
 import { resolveRouting } from "../src/resolver/routing.js";
+import type { RoutingDecision, RoutingInsufficiencySignal, RoutingPostAttemptEvaluation } from "../src/resolver/types.js";
 
 const inlineEvidence = {
   workSurface: "caller-context",
@@ -162,4 +163,194 @@ test("malformed choices inherit unless required", () => {
   const stop = resolveRouting({ classify: { model: "bad model", effort: null } }, { ...base, requireModel: true });
   assert.equal(stop.status, "stop");
   assert.equal(stop.model.fallback, "malformed");
+});
+
+function prior(decision: RoutingDecision, attempt = 1): RoutingPostAttemptEvaluation["prior"] {
+  return {
+    attempt,
+    executionShape: decision.executionShape,
+    shapeEvidence: decision.normalizedEvidence,
+    model: decision.model,
+    effort: decision.effort,
+    escalationOrigin: attempt > 1 ? "routing:test:attempt-1" : null,
+    ...(decision.actualModel ? { actualModel: decision.actualModel } : {}),
+  };
+}
+
+function evaluated(signal: RoutingInsufficiencySignal, overrides: Partial<RoutingPostAttemptEvaluation> = {}): RoutingPostAttemptEvaluation {
+  const first = resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5" });
+  return { sufficient: false, signals: [signal], prior: prior(first), ...overrides };
+}
+
+test("all six insufficiency signals independently produce one Haiku to Sonnet retry", () => {
+  const signals: RoutingInsufficiencySignal[] = [
+    "low-confidence",
+    "failed-validation",
+    "conflicting-or-incomplete-evidence",
+    "repeated-failure",
+    "increased-risk-or-scope",
+    "high-severity-review-uncertainty",
+  ];
+  for (const signal of signals) {
+    const decision = resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5", postAttempt: evaluated(signal) });
+    assert.equal(decision.status, "dispatch", signal);
+    assert.equal(decision.disposition, "retry", signal);
+    assert.equal(decision.attempt, 2, signal);
+    assert.equal(decision.model.value, "sonnet", signal);
+    assert.equal(decision.model.source, "invocation", signal);
+    assert.equal(decision.retry?.priorTier, "haiku", signal);
+    assert.equal(decision.retry?.nextTier, "sonnet", signal);
+    assert.deepEqual(decision.retry?.signals, [signal], signal);
+    assert.ok(decision.retry?.escalationOrigin, signal);
+    assert.equal(decision.effort.value, null, signal);
+  }
+});
+
+test("sufficient attempts are terminal retains and never emit a retry", () => {
+  const first = resolveRouting({}, base);
+  const decision = resolveRouting({}, {
+    ...base,
+    supportsModelSelector: false,
+    requireModel: true,
+    postAttempt: { sufficient: true, signals: [], prior: prior(first) },
+  });
+  assert.equal(decision.status, "retain");
+  assert.equal(decision.disposition, "retain");
+  assert.equal(decision.retry, null);
+});
+
+test("bounded-parallel evaluation retains successful units and retries only insufficient units", () => {
+  const evidence = {
+    ...inlineEvidence,
+    atomicity: "composite",
+    unitCount: 3,
+    unitsIndependent: true,
+    toolWork: "material",
+    contextIsolation: "useful",
+    requestedParallelism: 3,
+  } as const;
+  const first = resolveRouting({}, { ...base, shapeEvidence: evidence, actualModel: "haiku" });
+  const decision = resolveRouting({}, {
+    ...base,
+    shapeEvidence: evidence,
+    postAttempt: {
+      sufficient: false,
+      signals: [],
+      prior: prior(first),
+      units: [
+        { unitId: "a", sufficient: true, signals: [] },
+        { unitId: "b", sufficient: false, signals: ["failed-validation"] },
+        { unitId: "c", sufficient: true, signals: [] },
+      ],
+    },
+  });
+  assert.equal(decision.disposition, "retry");
+  assert.deepEqual(decision.retainedUnitIds, ["a", "c"]);
+  assert.deepEqual(decision.retry?.unitIds, ["b"]);
+  assert.equal(decision.executionShape, "bounded-parallel");
+  assert.equal(decision.retry?.shapeChanged, false);
+});
+
+test("default and security-auditor role policies exhaust at their shipped limits", () => {
+  const sonnet = resolveRouting({}, { ...base, invocationModel: "sonnet", attempt: 2, escalationOrigin: "routing:test:attempt-1" });
+  const exhausted = resolveRouting({}, {
+    ...base,
+    attempt: 2,
+    postAttempt: {
+      sufficient: false,
+      signals: ["repeated-failure"],
+      prior: prior(sonnet, 2),
+    },
+  });
+  assert.equal(exhausted.disposition, "exhausted");
+  assert.equal(exhausted.retry, null);
+
+  const security = resolveRouting({}, {
+    ...base,
+    role: "security-auditor",
+    invocationModel: "sonnet",
+    attempt: 2,
+    escalationOrigin: "routing:security-auditor:attempt-1",
+  });
+  const retry = resolveRouting({}, {
+    ...base,
+    role: "security-auditor",
+    attempt: 2,
+    postAttempt: {
+      sufficient: false,
+      signals: ["high-severity-review-uncertainty"],
+      prior: prior(security, 2),
+    },
+  });
+  assert.equal(retry.disposition, "retry");
+  assert.equal(retry.attempt, 3);
+  assert.equal(retry.model.value, "opus");
+
+  const opusPrior = prior(retry, 3);
+  const final = resolveRouting({}, {
+    ...base,
+    role: "security-auditor",
+    attempt: 3,
+    postAttempt: { sufficient: false, signals: ["high-severity-review-uncertainty"], prior: opusPrior },
+  });
+  assert.equal(final.disposition, "exhausted");
+});
+
+test("contradictory and incomplete retry contexts stop with diagnostics", () => {
+  const first = resolveRouting({}, base);
+  const cases = [
+    { sufficient: true, signals: ["low-confidence"], prior: prior(first) },
+    { sufficient: false, signals: [], prior: prior(first) },
+    { sufficient: false, signals: ["low-confidence"], prior: { ...prior(first), attempt: 2, escalationOrigin: null } },
+  ] as RoutingPostAttemptEvaluation[];
+  for (const postAttempt of cases) {
+    const decision = resolveRouting({}, { ...base, postAttempt });
+    assert.equal(decision.status, "stop");
+    assert.equal(decision.disposition, "invalid-stop");
+    assert.ok(decision.diagnostic);
+    assert.equal(decision.retry, null);
+  }
+});
+
+test("retry stops on masked, unavailable, unsupported, unknown, and non-advancing model tiers", () => {
+  const first = resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5" });
+  const postAttempt = evaluated("failed-validation", { prior: prior(first) });
+  const cases = [
+    { inputs: { hostModel: "haiku" }, pattern: /masked/ },
+    { inputs: { availableModels: ["haiku"] }, pattern: /unavailable/ },
+    { inputs: { supportsModelSelector: false }, pattern: /cannot honor/ },
+    { inputs: {}, priorModel: "custom-model", pattern: /does not map/ },
+    { inputs: {}, priorModel: "opus", pattern: /highest stable tier/ },
+  ] as const;
+  for (const row of cases) {
+    const evaluation = row.priorModel
+      ? { ...postAttempt, prior: { ...postAttempt.prior, model: { ...postAttempt.prior.model, value: row.priorModel }, actualModel: null } }
+      : postAttempt;
+    const decision = resolveRouting({}, { ...base, ...row.inputs, postAttempt: evaluation });
+    assert.equal(decision.disposition, "invalid-stop");
+    assert.match(decision.diagnostic ?? "", row.pattern);
+    assert.equal(decision.retry, null);
+  }
+});
+
+test("retry accepts full model identifiers and recomputes shape only from supplied evidence", () => {
+  const first = resolveRouting({}, { ...base, invocationModel: "claude-haiku-4-5", actualModel: "claude-haiku-4-5" });
+  const unchanged = resolveRouting({}, {
+    ...base,
+    postAttempt: evaluated("low-confidence", { prior: prior(first) }),
+    availableModels: ["claude-sonnet-4-6"],
+  });
+  assert.equal(unchanged.disposition, "retry");
+  assert.equal(unchanged.executionShape, first.executionShape);
+  assert.equal(unchanged.retry?.shapeChanged, false);
+
+  const changedEvidence = { ...inlineEvidence, risk: "elevated", contextIsolation: "required" } as const;
+  const changed = resolveRouting({}, {
+    ...base,
+    shapeEvidence: changedEvidence,
+    postAttempt: evaluated("increased-risk-or-scope", { prior: prior(first) }),
+  });
+  assert.equal(changed.executionShape, "isolated");
+  assert.equal(changed.retry?.shapeChanged, true);
+  assert.deepEqual(changed.normalizedEvidence, changedEvidence);
 });
