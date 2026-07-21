@@ -20,7 +20,7 @@ Run one calibration per role and representative workload revision.
 
 Each record must contain these fields, either as a table row below or in a linked role-specific report:
 
-- stable record id, role/path, owner issue, evaluated date, and workload/evidence references;
+- stable record id, role (linked from its disposition row and agent path), owner issue, evaluated date, and workload/evidence references;
 - current selection and candidate tiers/efforts;
 - correctness result against the terminal/return contract;
 - latency/context result and cost result;
