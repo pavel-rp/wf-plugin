@@ -108,7 +108,7 @@ The subagent's rubric — the type buckets, decision rules, confidence anchors, 
 
 Skills that call `wf:classify` (`wf:spec`, `wf:plan`, `wf:lite`, indirectly `wf:branch`) should:
 
-1. Invoke the **Task** tool with `subagent_type: wf:classify`, passing the resolved input (task id once requirements are fetched, or a file path).
+1. Immediately before dispatch, call `resolve_routing` for role `classify` and execution shape `task`; stop only on `status: stop`, pass a non-null model selector, and preserve inherited effort when null. Then invoke the **Task** tool with `subagent_type: wf:classify`, passing the resolved input (task id once requirements are fetched, or a file path).
 2. Parse `Type` and `Confidence` from the structured block.
 3. Branch on confidence:
    - **high** → use silently.
