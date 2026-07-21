@@ -173,6 +173,7 @@ function prior(decision: RoutingDecision, attempt = 1): RoutingPostAttemptEvalua
     shapeEvidence: decision.normalizedEvidence,
     model: decision.model,
     effort: decision.effort,
+    basis: decision.basis,
     escalationOrigin: attempt > 1 ? "routing:test:attempt-1" : null,
     ...(decision.actualModel ? { actualModel: decision.actualModel } : {}),
   };
@@ -404,6 +405,41 @@ test("retry preserves prior explicit effort provenance unless host effort masks 
   });
   assert.equal(hostRetried.disposition, "retry");
   assert.deepEqual(hostRetried.effort, hostFirst.effort, "existing host-masked effort provenance must survive retry");
+});
+
+test("retry and retain preserve prior basis and reject replacement or malformed basis", () => {
+  const first = resolveRouting({}, { ...base, basis: "original-basis", actualModel: "haiku" });
+  const retry = resolveRouting({}, {
+    ...base,
+    postAttempt: evaluated("low-confidence", { prior: prior(first) }),
+  });
+  assert.equal(retry.disposition, "retry");
+  assert.equal(retry.basis, "original-basis");
+
+  const retained = resolveRouting({}, {
+    ...base,
+    postAttempt: { sufficient: true, signals: [], prior: prior(first) },
+  });
+  assert.equal(retained.disposition, "retain");
+  assert.equal(retained.basis, "original-basis");
+
+  const replacement = resolveRouting({}, {
+    ...base,
+    basis: "replacement-basis",
+    postAttempt: evaluated("low-confidence", { prior: prior(first) }),
+  });
+  assert.equal(replacement.disposition, "invalid-stop");
+  assert.match(replacement.diagnostic ?? "", /basis contradicts/);
+
+  const malformedPrior = { ...prior(first), basis: undefined };
+  const malformed = resolveRouting({}, {
+    ...base,
+    postAttempt: evaluated("low-confidence", {
+      prior: malformedPrior as unknown as RoutingPostAttemptEvaluation["prior"],
+    }),
+  });
+  assert.equal(malformed.disposition, "invalid-stop");
+  assert.match(malformed.diagnostic ?? "", /basis must be a string or null/);
 });
 
 test("malformed or duplicate unit evaluations stop before retained ids are derived", () => {

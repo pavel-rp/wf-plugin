@@ -222,6 +222,7 @@ try {
     routingSchema.properties?.shapeEvidence?.required?.length ||
     !routingSchema.properties?.postAttempt?.properties?.signals?.items?.enum?.includes("high-severity-review-uncertainty") ||
     !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("role") ||
+    !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("basis") ||
     routingSchema.properties?.attempt?.maximum !== 3 ||
     !routingSchema.allOf?.some((rule) => rule?.then?.properties?.attempt?.const === 1) ||
     !routingTool?.outputSchema?.properties?.disposition?.enum?.includes("retry") ||
@@ -309,6 +310,7 @@ try {
     supportsModelSelector: true,
     supportsEffortSelector: false,
     availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
+    basis: "smoke-basis",
   };
   send({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "resolve_routing", arguments: routingBase } });
   const initialResult = await Promise.race([awaitResponse(7), childExited]);
@@ -327,6 +329,7 @@ try {
       shapeEvidence: initial.normalizedEvidence,
       model: initial.model,
       effort: initial.effort,
+      basis: initial.basis,
       escalationOrigin: null,
       actualModel: "claude-haiku-4-5",
     },
@@ -335,7 +338,7 @@ try {
   const retryResult = await Promise.race([awaitResponse(8), childExited]);
   const retryText = retryResult.result?.content?.find((c) => c.type === "text")?.text;
   const retry = retryResult.result?.structuredContent ?? (retryText ? JSON.parse(retryText) : undefined);
-  if (retryResult.error || retryResult.result?.isError || retry?.disposition !== "retry" || retry?.retry?.nextTier !== "sonnet") {
+  if (retryResult.error || retryResult.result?.isError || retry?.disposition !== "retry" || retry?.retry?.nextTier !== "sonnet" || retry?.basis !== "smoke-basis") {
     fail(`resolve_routing escalation failed: ${JSON.stringify(retryResult)}`);
   }
   send({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "resolve_routing", arguments: { ...routingBase, postAttempt: { sufficient: true, signals: [], prior: postAttempt.prior } } } });

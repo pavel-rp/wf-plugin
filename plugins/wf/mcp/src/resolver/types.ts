@@ -305,6 +305,7 @@ export interface RoutingPriorAttempt {
   shapeEvidence: RoutingShapeEvidence;
   model: RoutingChoice;
   effort: RoutingChoice;
+  basis: string | null;
   escalationOrigin: string | null;
   actualModel?: string | null;
 }

@@ -231,8 +231,14 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
   if (inputs.escalationOrigin !== undefined && inputs.escalationOrigin !== prior.escalationOrigin) {
     return "post-attempt escalationOrigin contradicts the prior routing attempt";
   }
+  if (inputs.basis !== undefined && (inputs.basis ?? null) !== prior.basis) {
+    return "post-attempt basis contradicts the prior routing attempt";
+  }
   if (!prior.model || !prior.effort || !prior.shapeEvidence || !prior.executionShape) {
     return "post-attempt prior routing context is incomplete";
+  }
+  if (prior.basis === undefined || prior.basis !== null && typeof prior.basis !== "string") {
+    return "post-attempt prior basis must be a string or null";
   }
   const priorShape = selectShape({ ...inputs, shapeEvidence: prior.shapeEvidence, postAttempt: undefined });
   if (priorShape.stop || priorShape.executionShape !== prior.executionShape) {
@@ -345,6 +351,7 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
       model: evaluation.prior.model,
       effort: evaluation.prior.effort,
       source: evaluation.prior.model.source,
+      basis: evaluation.prior.basis,
       attempt: evaluation.prior.attempt,
       escalationOrigin: evaluation.prior.escalationOrigin,
       fallback: evaluation.prior.model.fallback ?? evaluation.prior.effort.fallback,
@@ -399,6 +406,7 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     hostEffort: undefined,
     attempt,
     escalationOrigin,
+    basis: evaluation.prior.basis,
     actualModel: undefined,
   };
   let retryDecision = baseDecision(project, retryInputs);

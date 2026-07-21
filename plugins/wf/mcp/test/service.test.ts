@@ -153,6 +153,7 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
     },
     supportsModelSelector: true,
     supportsEffortSelector: false,
+    basis: "service-cache-basis",
   });
   assert.equal(routed.executionShape, "isolated");
   assert.equal(routed.model.value, "haiku");
@@ -162,6 +163,7 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
     supportsModelSelector: true,
     supportsEffortSelector: false,
     availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
+    basis: "service-cache-basis",
     postAttempt: {
       sufficient: false,
       signals: ["low-confidence"],
@@ -172,6 +174,7 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
         shapeEvidence: routed.normalizedEvidence,
         model: routed.model,
         effort: routed.effort,
+        basis: routed.basis,
         escalationOrigin: null,
         actualModel: "claude-haiku-4-5",
       },
@@ -179,6 +182,7 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
   });
   assert.equal(escalated.disposition, "retry");
   assert.equal(escalated.model.value, "sonnet");
+  assert.equal(escalated.basis, "service-cache-basis");
   const incomplete = svc.resolveRouting({
     role: "classify",
     shapeEvidence: { workSurface: "caller-context" },

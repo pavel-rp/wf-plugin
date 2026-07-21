@@ -19930,10 +19930,11 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
             shapeEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
             model: routingChoiceSchema,
             effort: routingChoiceSchema,
+            basis: { type: ["string", "null"] },
             escalationOrigin: { type: ["string", "null"] },
             actualModel: { type: ["string", "null"] }
           },
-          required: ["role", "attempt", "executionShape", "shapeEvidence", "model", "effort", "escalationOrigin"],
+          required: ["role", "attempt", "executionShape", "shapeEvidence", "model", "effort", "basis", "escalationOrigin"],
           additionalProperties: false
         }
       },
@@ -22113,8 +22114,14 @@ function evaluationProblem(evaluation, inputs) {
   if (inputs.escalationOrigin !== void 0 && inputs.escalationOrigin !== prior.escalationOrigin) {
     return "post-attempt escalationOrigin contradicts the prior routing attempt";
   }
+  if (inputs.basis !== void 0 && (inputs.basis ?? null) !== prior.basis) {
+    return "post-attempt basis contradicts the prior routing attempt";
+  }
   if (!prior.model || !prior.effort || !prior.shapeEvidence || !prior.executionShape) {
     return "post-attempt prior routing context is incomplete";
+  }
+  if (prior.basis === void 0 || prior.basis !== null && typeof prior.basis !== "string") {
+    return "post-attempt prior basis must be a string or null";
   }
   const priorShape = selectShape({ ...inputs, shapeEvidence: prior.shapeEvidence, postAttempt: void 0 });
   if (priorShape.stop || priorShape.executionShape !== prior.executionShape) {
@@ -22216,6 +22223,7 @@ function resolveRouting(project, inputs) {
       model: evaluation.prior.model,
       effort: evaluation.prior.effort,
       source: evaluation.prior.model.source,
+      basis: evaluation.prior.basis,
       attempt: evaluation.prior.attempt,
       escalationOrigin: evaluation.prior.escalationOrigin,
       fallback: evaluation.prior.model.fallback ?? evaluation.prior.effort.fallback,
@@ -22264,6 +22272,7 @@ function resolveRouting(project, inputs) {
     hostEffort: void 0,
     attempt,
     escalationOrigin,
+    basis: evaluation.prior.basis,
     actualModel: void 0
   };
   let retryDecision = baseDecision(project, retryInputs);

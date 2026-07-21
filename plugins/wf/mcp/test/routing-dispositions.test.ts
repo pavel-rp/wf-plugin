@@ -162,6 +162,7 @@ test("matrix publishes the sole bounded three-attempt role policy", () => {
         shapeEvidence: initial.normalizedEvidence,
         model: initial.model,
         effort: initial.effort,
+        basis: initial.basis,
         escalationOrigin: null,
         actualModel: "haiku",
       },
@@ -174,6 +175,7 @@ test("matrix publishes the sole bounded three-attempt role policy", () => {
     shapeEvidence: first.normalizedEvidence,
     model: first.model,
     effort: first.effort,
+    basis: first.basis,
     escalationOrigin: first.escalationOrigin,
   };
   assert.equal(resolveRouting({}, {
