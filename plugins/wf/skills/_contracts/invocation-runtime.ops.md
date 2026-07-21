@@ -12,6 +12,18 @@
 
 Every bundled `wf-resolver` MCP call passes `workspaceRoot`: first run `pwd -P` in the current Agent/session to derive its absolute current workspace directory, then include that value explicitly in the call. An Agent running in a linked worktree derives and passes its own current worktree root — never a parent Agent's root. Omitting `workspaceRoot` is a hard schema error; MCP calls have no default or fallback root.
 
+**Resolver-selected execution shape.**
+
+Immediately before child work, call `resolve_routing` with `role`, selector-support facts, and the typed `shapeEvidence`: `workSurface`, `atomicity`, `unitCount`, `unitsIndependent`, `ambiguity`, `risk`, `toolWork`, `validation`, `contextIsolation`, `independentReview`, `returnContract`, and `requestedParallelism`. The caller supplies evidence, never a preferred shape. Emit the compact decision metadata. Any `status: stop` or non-null `diagnostic` is a hard stop before work begins.
+
+On `status: dispatch`, obey `executionShape` exactly while preserving the role's existing failure and output contract:
+
+- **`inline`** — execute the unit in the caller context; do not spawn.
+- **`isolated`** — invoke one Task subagent and forward only its declared final block.
+- **`bounded-parallel`** — dispatch only the independent units, with at most `effectiveParallelism` Tasks, then restore deterministic input order before aggregation. Never parallelize dependent work.
+
+Pass `model.value` / `effort.value` only when non-null; null preserves inheritance. Preserve the role's shipped model and effort defaults, and retain actual-model attribution on authored artifacts.
+
 ## The moving parts (the generalised procedure)
 
 A core skill firing a phase performs, in order: **1** registry iteration → **2** per-capability manifest read → **3** per-phase fragment collection → **4** per-fragment dispatch → **5** aggregation. There is no dispatcher, codegen, or compile step — composition is reading the registry and following fragments in-context, re-read every run.

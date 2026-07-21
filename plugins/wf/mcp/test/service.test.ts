@@ -143,7 +143,18 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
   svc.resolveConfig();
   svc.resolveRegistry();
   svc.resolveProvider("delivery");
-  const routed = svc.resolveRouting({ role: "classify", executionShape: "task", supportsModelSelector: true, supportsEffortSelector: false });
+  const routed = svc.resolveRouting({
+    role: "classify",
+    shapeEvidence: {
+      workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
+      ambiguity: "bounded", risk: "low", toolWork: "bounded", validation: "judgment",
+      contextIsolation: "useful", independentReview: false,
+      returnContract: "mechanically-judgeable", requestedParallelism: 1,
+    },
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
+  });
+  assert.equal(routed.executionShape, "isolated");
   assert.equal(routed.model.value, "haiku");
   svc.resolvePluginRoot("wf-demo");
   assert.equal(ports.counts.resolveFresh, 1, "all read queries resolved from one snapshot");

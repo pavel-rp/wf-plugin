@@ -71,17 +71,22 @@ branch-name match.
    (bare-core mode)." and continue. **One matching row** — resolve the current branch via
    `current-branch-query` and apply step 2.
 2. **If the resolved branch name contains `/{numeric-id}-`** — proceed. **Otherwise** —
-   call `resolve_routing` for role `branch`, execution shape `task`,
-   `supportsModelSelector: true`, and `supportsEffortSelector: false` immediately before
-   dispatch. Emit the compact decision metadata; stop only when it returns `status: stop`.
-   Pass its model selector only when non-null, and preserve inherited effort when effort is
-   null. Then invoke the **Task** tool with `subagent_type: wf:branch`, passing the task id
-   `{task-id}` generically in prose **and the forwarded `delivery` resolution record**
-   resolved above (the optional spawn extension — `invocation-runtime.ops.md`
-   §"Run-scoped provider forwarding"), so `wf:branch` consumes it instead of re-resolving.
-   (Do NOT call `/wf:branch` — that loads its `SKILL.md` into this skill's context. The
-   subagent is self-sufficient.) On `BRANCH — created`/`switched`/`already-active`,
-   continue. On `BRANCH — Error`, stop and surface the subagent's reason.
+   call `resolve_routing` immediately before dispatch with `role: "branch"`,
+   `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
+   unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded",
+   validation: "mechanical", contextIsolation: "useful", independentReview: false,
+   returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
+   `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact
+   decision metadata. If `status: stop` or `diagnostic` is non-null, stop and surface the
+   diagnostic. Otherwise obey `executionShape` per `invocation-runtime.ops.md`
+   §"Resolver call root"; this evidence selects `isolated`, so invoke one
+   **Task** with `subagent_type: wf:branch`, passing `{task-id}` and the forwarded
+   `delivery` resolution record resolved above (the optional spawn extension —
+   `invocation-runtime.ops.md` §"Run-scoped provider forwarding"). Pass the model selector
+   only when non-null, and preserve inherited effort when effort is null. (Do NOT call
+   `/wf:branch` — that loads its `SKILL.md` into this skill's context. The subagent is
+   self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On
+   `BRANCH — Error`, stop and surface the subagent's reason.
 
 Each skill keeps its own behavior for **Task-tool unavailability** (some skills skip the
 gate with a stated reason and proceed on the current branch; others treat it as a hard

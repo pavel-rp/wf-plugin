@@ -107,7 +107,29 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
-    executionShape: { type: "string", minLength: 1 },
+    shapeEvidence: {
+      type: "object",
+      properties: {
+        workSurface: { type: "string", enum: ["caller-context", "external-context"] },
+        atomicity: { type: "string", enum: ["atomic", "composite"] },
+        unitCount: { type: "integer", minimum: 1 },
+        unitsIndependent: { type: "boolean" },
+        ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
+        risk: { type: "string", enum: ["low", "elevated"] },
+        toolWork: { type: "string", enum: ["none", "bounded", "material"] },
+        validation: { type: "string", enum: ["mechanical", "judgment"] },
+        contextIsolation: { type: "string", enum: ["none", "useful", "required"] },
+        independentReview: { type: "boolean" },
+        returnContract: { type: "string", enum: ["mechanically-judgeable", "judgment"] },
+        requestedParallelism: { type: "integer", minimum: 1 },
+      },
+      required: [
+        "workSurface", "atomicity", "unitCount", "unitsIndependent", "ambiguity", "risk",
+        "toolWork", "validation", "contextIsolation", "independentReview", "returnContract",
+        "requestedParallelism",
+      ],
+      additionalProperties: false,
+    },
     invocationModel: { type: ["string", "null"] }, invocationEffort: { type: ["string", "null"] },
     requireModel: { type: "boolean" }, requireEffort: { type: "boolean" },
     supportsModelSelector: { type: "boolean" }, supportsEffortSelector: { type: "boolean" },
@@ -116,7 +138,7 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
     basis: { type: ["string", "null"] }, attempt: { type: "integer", minimum: 1 },
     escalationOrigin: { type: ["string", "null"] }, actualModel: { type: ["string", "null"] },
   },
-  required: ["role", "executionShape", "supportsModelSelector", "supportsEffortSelector"],
+  required: ["role", "shapeEvidence", "supportsModelSelector", "supportsEffortSelector"],
   additionalProperties: false,
 }));
 
@@ -358,7 +380,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Resolve a bootstrap role's model and effort selectors from the fingerprint-fresh cached project configuration, with precedence, masking, fallback, and stop diagnostics. Body-free.",
+      description: "Select a bootstrap role's execution shape from typed task evidence and resolve its model and effort selectors from the fingerprint-fresh cached project configuration, preserving precedence, masking, fallback, and stop diagnostics. Body-free.",
       inputSchema: routingInput,
     },
     async (args: WorkspaceArgs & RoutingInputs) => {
