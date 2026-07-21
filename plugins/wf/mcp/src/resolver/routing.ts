@@ -4,6 +4,7 @@ import type {
   RoutingDecision,
   RoutingInputs,
   RoutingInsufficiencySignal,
+  RoutingMeasurement,
   RoutingPostAttemptEvaluation,
   RoutingProjectConfig,
   RoutingShapeReason,
@@ -352,6 +353,24 @@ function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): Rou
     retry: null,
     retainedUnitIds: [],
     diagnostic: stops.length ? stops.join("; ") : null,
+  };
+}
+
+export function projectRoutingMeasurement(decision: RoutingDecision): RoutingMeasurement {
+  return {
+    role: decision.role,
+    executionShape: decision.executionShape,
+    shapeReason: decision.shapeReason,
+    model: decision.model.value,
+    effort: decision.effort.value,
+    source: decision.source,
+    basis: decision.basis,
+    attempt: decision.attempt,
+    escalationOrigin: decision.escalationOrigin,
+    modelFallback: decision.model.fallback,
+    effortFallback: decision.effort.fallback,
+    masked: decision.masked,
+    ...(decision.actualModel ? { actualModel: decision.actualModel } : {}),
   };
 }
 

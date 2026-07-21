@@ -389,6 +389,25 @@ export interface RoutingDecision {
   diagnostic: string | null;
 }
 
+/** Compact runtime-selection metadata for reproducible routing measurements.
+ * Artifact producer attribution is deliberately absent: `actualModel` is host
+ * runtime evidence, while an artifact's `Model` metadata is not a selector. */
+export interface RoutingMeasurement {
+  role: string;
+  executionShape: ExecutionShape;
+  shapeReason: RoutingShapeReason;
+  model: string | null;
+  effort: string | null;
+  source: RoutingSource;
+  basis: string | null;
+  attempt: number;
+  escalationOrigin: string | null;
+  modelFallback: RoutingChoice["fallback"];
+  effortFallback: RoutingChoice["fallback"];
+  masked: boolean;
+  actualModel?: string;
+}
+
 /** The full versioned resolution snapshot. */
 export interface ResolverSnapshot {
   schemaVersion: number;
