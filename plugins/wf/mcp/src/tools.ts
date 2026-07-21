@@ -58,6 +58,7 @@ function withWorkspaceRoot(schema: {
   properties?: Record<string, unknown>;
   required?: string[];
   additionalProperties?: boolean;
+  allOf?: unknown[];
 }): Record<string, unknown> {
   return {
     ...schema,
@@ -155,7 +156,7 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
     supportsModelSelector: { type: "boolean" }, supportsEffortSelector: { type: "boolean" },
     hostModel: { type: ["string", "null"] }, hostEffort: { type: ["string", "null"] },
     availableModels: { type: ["array", "null"], items: { type: "string" } },
-    basis: { type: ["string", "null"] }, attempt: { type: "integer", minimum: 1 },
+    basis: { type: ["string", "null"] }, attempt: { type: "integer", minimum: 1, maximum: 3 },
     escalationOrigin: { type: ["string", "null"] }, actualModel: { type: ["string", "null"] },
     postAttempt: {
       type: "object",
@@ -179,6 +180,7 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
         prior: {
           type: "object",
           properties: {
+            role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
             attempt: { type: "integer", minimum: 1, maximum: 3 },
             executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
             shapeEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
@@ -187,7 +189,7 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
             escalationOrigin: { type: ["string", "null"] },
             actualModel: { type: ["string", "null"] },
           },
-          required: ["attempt", "executionShape", "shapeEvidence", "model", "effort", "escalationOrigin"],
+          required: ["role", "attempt", "executionShape", "shapeEvidence", "model", "effort", "escalationOrigin"],
           additionalProperties: false,
         },
       },
@@ -196,6 +198,17 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
     },
   },
   required: ["role", "shapeEvidence", "supportsModelSelector", "supportsEffortSelector"],
+  allOf: [
+    {
+      if: { not: { required: ["postAttempt"] } },
+      then: {
+        properties: {
+          attempt: { const: 1 },
+          escalationOrigin: { type: "null" },
+        },
+      },
+    },
+  ],
   additionalProperties: false,
 }));
 

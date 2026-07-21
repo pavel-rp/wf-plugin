@@ -137,7 +137,7 @@ test("matrix publishes the sole bounded three-attempt role policy", () => {
     "security-auditor must remain the sole three-attempt exception",
   );
 
-  const first = resolveRouting({}, {
+  const inputs = {
     role: "security-auditor",
     shapeEvidence: {
       workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
@@ -145,13 +145,30 @@ test("matrix publishes the sole bounded three-attempt role policy", () => {
       contextIsolation: "required", independentReview: true,
       returnContract: "mechanically-judgeable", requestedParallelism: 1,
     },
-    invocationModel: "sonnet",
     supportsModelSelector: true,
     supportsEffortSelector: true,
-    attempt: 2,
-    escalationOrigin: "routing:security-auditor:attempt-1",
+  } as const;
+  const initial = resolveRouting({}, { ...inputs, invocationModel: "haiku", actualModel: "haiku" });
+  const first = resolveRouting({}, {
+    ...inputs,
+    invocationModel: "haiku",
+    postAttempt: {
+      sufficient: false,
+      signals: ["low-confidence"],
+      prior: {
+        role: initial.role,
+        attempt: 1,
+        executionShape: initial.executionShape,
+        shapeEvidence: initial.normalizedEvidence,
+        model: initial.model,
+        effort: initial.effort,
+        escalationOrigin: null,
+        actualModel: "haiku",
+      },
+    },
   });
   const prior = {
+    role: first.role,
     attempt: 2,
     executionShape: first.executionShape,
     shapeEvidence: first.normalizedEvidence,
@@ -168,5 +185,10 @@ test("matrix publishes the sole bounded three-attempt role policy", () => {
     role: "security-auditor", shapeEvidence: first.normalizedEvidence,
     supportsModelSelector: true, supportsEffortSelector: true, attempt: 2,
     postAttempt: { sufficient: false, signals: ["low-confidence"], prior },
+  }).disposition, "exhausted");
+  assert.equal(resolveRouting({}, {
+    role: "security-auditor", shapeEvidence: first.normalizedEvidence,
+    supportsModelSelector: true, supportsEffortSelector: true, attempt: 2,
+    postAttempt: { sufficient: false, signals: ["high-severity-review-uncertainty", "failed-validation"], prior },
   }).disposition, "exhausted");
 });

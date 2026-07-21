@@ -166,6 +166,7 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
       sufficient: false,
       signals: ["low-confidence"],
       prior: {
+        role: routed.role,
         attempt: 1,
         executionShape: routed.executionShape,
         shapeEvidence: routed.normalizedEvidence,

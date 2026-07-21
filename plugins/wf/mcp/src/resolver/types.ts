@@ -299,6 +299,7 @@ export interface RoutingUnitEvaluation {
   signals: RoutingInsufficiencySignal[];
 }
 export interface RoutingPriorAttempt {
+  role: string;
   attempt: number;
   executionShape: ExecutionShape;
   shapeEvidence: RoutingShapeEvidence;

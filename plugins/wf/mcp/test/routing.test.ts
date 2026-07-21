@@ -167,6 +167,7 @@ test("malformed choices inherit unless required", () => {
 
 function prior(decision: RoutingDecision, attempt = 1): RoutingPostAttemptEvaluation["prior"] {
   return {
+    role: decision.role,
     attempt,
     executionShape: decision.executionShape,
     shapeEvidence: decision.normalizedEvidence,
@@ -247,12 +248,18 @@ test("bounded-parallel evaluation retains successful units and retries only insu
   assert.equal(decision.disposition, "retry");
   assert.deepEqual(decision.retainedUnitIds, ["a", "c"]);
   assert.deepEqual(decision.retry?.unitIds, ["b"]);
-  assert.equal(decision.executionShape, "bounded-parallel");
-  assert.equal(decision.retry?.shapeChanged, false);
+  assert.equal(decision.executionShape, "isolated");
+  assert.equal(decision.normalizedEvidence.unitCount, 1);
+  assert.equal(decision.normalizedEvidence.atomicity, "atomic");
+  assert.equal(decision.retry?.shapeChanged, true);
 });
 
 test("default and security-auditor role policies exhaust at their shipped limits", () => {
-  const sonnet = resolveRouting({}, { ...base, invocationModel: "sonnet", attempt: 2, escalationOrigin: "routing:test:attempt-1" });
+  const first = resolveRouting({}, { ...base, actualModel: "haiku" });
+  const sonnet = resolveRouting({}, {
+    ...base,
+    postAttempt: evaluated("low-confidence", { prior: prior(first) }),
+  });
   const exhausted = resolveRouting({}, {
     ...base,
     attempt: 2,
@@ -265,12 +272,21 @@ test("default and security-auditor role policies exhaust at their shipped limits
   assert.equal(exhausted.disposition, "exhausted");
   assert.equal(exhausted.retry, null);
 
+  const securityFirst = resolveRouting({}, {
+    ...base,
+    role: "security-auditor",
+    invocationModel: "haiku",
+    actualModel: "haiku",
+  });
   const security = resolveRouting({}, {
     ...base,
     role: "security-auditor",
-    invocationModel: "sonnet",
-    attempt: 2,
-    escalationOrigin: "routing:security-auditor:attempt-1",
+    invocationModel: "haiku",
+    postAttempt: {
+      sufficient: false,
+      signals: ["low-confidence"],
+      prior: prior(securityFirst),
+    },
   });
   const retry = resolveRouting({}, {
     ...base,
@@ -286,6 +302,19 @@ test("default and security-auditor role policies exhaust at their shipped limits
   assert.equal(retry.attempt, 3);
   assert.equal(retry.model.value, "opus");
 
+  const mixed = resolveRouting({}, {
+    ...base,
+    role: "security-auditor",
+    attempt: 2,
+    postAttempt: {
+      sufficient: false,
+      signals: ["high-severity-review-uncertainty", "low-confidence"],
+      prior: prior(security, 2),
+    },
+  });
+  assert.equal(mixed.disposition, "exhausted");
+  assert.equal(mixed.retry, null);
+
   const opusPrior = prior(retry, 3);
   const final = resolveRouting({}, {
     ...base,
@@ -294,6 +323,124 @@ test("default and security-auditor role policies exhaust at their shipped limits
     postAttempt: { sufficient: false, signals: ["high-severity-review-uncertainty"], prior: opusPrior },
   });
   assert.equal(final.disposition, "exhausted");
+});
+
+test("initial routing cannot bypass escalation attempts or provenance", () => {
+  const cases = [
+    { attempt: 2 },
+    { attempt: 3 },
+    { attempt: 4 },
+    { attempt: 0 },
+    { escalationOrigin: "caller-forged" },
+    { escalationOrigin: "" },
+  ];
+  for (const extra of cases) {
+    const decision = resolveRouting({}, { ...base, ...extra });
+    assert.equal(decision.status, "stop");
+    assert.equal(decision.disposition, "invalid-stop");
+    assert.equal(decision.retry, null);
+    assert.ok(decision.diagnostic);
+    assert.ok(decision.attempt >= 1 && decision.attempt <= 3);
+  }
+});
+
+test("role continuity prevents gaining the security-auditor attempt exception", () => {
+  const sonnet = resolveRouting({}, { ...base, invocationModel: "sonnet" });
+  const switchedPrior = { ...prior(sonnet, 2), role: "classify", escalationOrigin: "routing:classify:attempt-1" };
+  const decision = resolveRouting({}, {
+    ...base,
+    role: "security-auditor",
+    attempt: 2,
+    postAttempt: {
+      sufficient: false,
+      signals: ["high-severity-review-uncertainty"],
+      prior: switchedPrior,
+    },
+  });
+  assert.equal(decision.status, "stop");
+  assert.equal(decision.disposition, "invalid-stop");
+  assert.match(decision.diagnostic ?? "", /prior role must match/);
+});
+
+test("retry preserves prior explicit effort provenance unless host effort masks it", () => {
+  const project = { classify: { model: "haiku", effort: "high" } };
+  const first = resolveRouting(project, { ...base, supportsEffortSelector: true, actualModel: "haiku" });
+  assert.deepEqual([first.effort.value, first.effort.source], ["high", "project"]);
+  const postAttempt = evaluated("failed-validation", { prior: prior(first) });
+
+  const preserved = resolveRouting({ classify: { model: "haiku", effort: "low" } }, {
+    ...base,
+    supportsEffortSelector: true,
+    invocationEffort: "max",
+    postAttempt,
+  });
+  assert.equal(preserved.disposition, "retry");
+  assert.deepEqual(preserved.effort, first.effort);
+
+  const masked = resolveRouting(project, {
+    ...base,
+    supportsEffortSelector: true,
+    hostEffort: "low",
+    postAttempt,
+  });
+  assert.equal(masked.disposition, "retry");
+  assert.deepEqual(
+    [masked.effort.value, masked.effort.source, masked.effort.requested, masked.effort.requestedSource, masked.effort.masked],
+    ["low", "host", "high", "project", true],
+  );
+
+  const hostFirst = resolveRouting({}, {
+    ...base,
+    supportsEffortSelector: true,
+    invocationEffort: "low",
+    hostEffort: "high",
+    actualModel: "haiku",
+  });
+  const hostRetried = resolveRouting({}, {
+    ...base,
+    supportsEffortSelector: true,
+    hostEffort: "high",
+    postAttempt: evaluated("failed-validation", { prior: prior(hostFirst) }),
+  });
+  assert.equal(hostRetried.disposition, "retry");
+  assert.deepEqual(hostRetried.effort, hostFirst.effort, "existing host-masked effort provenance must survive retry");
+});
+
+test("malformed or duplicate unit evaluations stop before retained ids are derived", () => {
+  const evidence = {
+    ...inlineEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true,
+    toolWork: "material", requestedParallelism: 2,
+  } as const;
+  const first = resolveRouting({}, { ...base, shapeEvidence: evidence, actualModel: "haiku" });
+  const decision = resolveRouting({}, {
+    ...base,
+    shapeEvidence: evidence,
+    postAttempt: {
+      sufficient: false,
+      signals: [],
+      prior: prior(first),
+      units: [
+        { unitId: "same", sufficient: true, signals: [] },
+        { unitId: "same", sufficient: false, signals: ["failed-validation"] },
+      ],
+    },
+  });
+  assert.equal(decision.disposition, "invalid-stop");
+  assert.deepEqual(decision.retainedUnitIds, []);
+  assert.match(decision.diagnostic ?? "", /duplicated/);
+});
+
+test("shape-change comparison ignores object property insertion order", () => {
+  const first = resolveRouting({}, { ...base, actualModel: "haiku" });
+  const reordered = Object.fromEntries(Object.entries(first.normalizedEvidence).reverse()) as typeof inlineEvidence;
+  const decision = resolveRouting({}, {
+    ...base,
+    postAttempt: evaluated("low-confidence", {
+      prior: { ...prior(first), shapeEvidence: reordered },
+    }),
+  });
+  assert.equal(decision.disposition, "retry");
+  assert.equal(decision.retry?.shapeChanged, false);
 });
 
 test("contradictory and incomplete retry contexts stop with diagnostics", () => {

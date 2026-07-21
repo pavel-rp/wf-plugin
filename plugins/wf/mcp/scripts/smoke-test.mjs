@@ -221,6 +221,9 @@ try {
     "executionShape" in (routingSchema.properties ?? {}) ||
     routingSchema.properties?.shapeEvidence?.required?.length ||
     !routingSchema.properties?.postAttempt?.properties?.signals?.items?.enum?.includes("high-severity-review-uncertainty") ||
+    !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("role") ||
+    routingSchema.properties?.attempt?.maximum !== 3 ||
+    !routingSchema.allOf?.some((rule) => rule?.then?.properties?.attempt?.const === 1) ||
     !routingTool?.outputSchema?.properties?.disposition?.enum?.includes("retry") ||
     !routingTool?.outputSchema?.properties?.retry
   ) {
@@ -318,6 +321,7 @@ try {
     sufficient: false,
     signals: ["low-confidence"],
     prior: {
+      role: initial.role,
       attempt: 1,
       executionShape: initial.executionShape,
       shapeEvidence: initial.normalizedEvidence,
@@ -341,7 +345,12 @@ try {
   if (retainResult.error || retainResult.result?.isError || retained?.disposition !== "retain" || retained?.retry !== null) {
     fail(`resolve_routing retain failed: ${JSON.stringify(retainResult)}`);
   }
-  process.stdout.write("tools/call resolve_routing escalation OK: retain and bounded retry\n");
+  send({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "resolve_routing", arguments: { ...routingBase, attempt: 2 } } });
+  const bypassResult = await Promise.race([awaitResponse(10), childExited]);
+  if ((!bypassResult.error && !bypassResult.result?.isError) || !JSON.stringify(bypassResult).toLowerCase().includes("validation")) {
+    fail(`resolve_routing schema accepted an initial attempt bypass: ${JSON.stringify(bypassResult)}`);
+  }
+  process.stdout.write("tools/call resolve_routing escalation OK: retain, bounded retry, and attempt guard\n");
 
   process.stdout.write(
     "SMOKE PASS: clean-copy MCP runtime started, completed the protocol handshake, enforced workspaceRoot schemas, and served a typed resolver query — with no source checkout, no node_modules, and no dependency install.\n",

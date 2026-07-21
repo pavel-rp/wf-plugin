@@ -19899,7 +19899,7 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
     hostEffort: { type: ["string", "null"] },
     availableModels: { type: ["array", "null"], items: { type: "string" } },
     basis: { type: ["string", "null"] },
-    attempt: { type: "integer", minimum: 1 },
+    attempt: { type: "integer", minimum: 1, maximum: 3 },
     escalationOrigin: { type: ["string", "null"] },
     actualModel: { type: ["string", "null"] },
     postAttempt: {
@@ -19924,6 +19924,7 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
         prior: {
           type: "object",
           properties: {
+            role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
             attempt: { type: "integer", minimum: 1, maximum: 3 },
             executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
             shapeEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
@@ -19932,7 +19933,7 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
             escalationOrigin: { type: ["string", "null"] },
             actualModel: { type: ["string", "null"] }
           },
-          required: ["attempt", "executionShape", "shapeEvidence", "model", "effort", "escalationOrigin"],
+          required: ["role", "attempt", "executionShape", "shapeEvidence", "model", "effort", "escalationOrigin"],
           additionalProperties: false
         }
       },
@@ -19941,6 +19942,17 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
     }
   },
   required: ["role", "shapeEvidence", "supportsModelSelector", "supportsEffortSelector"],
+  allOf: [
+    {
+      if: { not: { required: ["postAttempt"] } },
+      then: {
+        properties: {
+          attempt: { const: 1 },
+          escalationOrigin: { type: "null" }
+        }
+      }
+    }
+  ],
   additionalProperties: false
 }));
 var routingOutput = fromJsonSchema2({
@@ -22068,15 +22080,38 @@ function modelTier(value) {
   return matches.length === 1 ? matches[0] : null;
 }
 function validSignals(signals) {
-  return Array.isArray(signals) && signals.every((signal) => INSUFFICIENCY_SIGNALS.has(signal));
+  return Array.isArray(signals) && new Set(signals).size === signals.length && signals.every((signal) => INSUFFICIENCY_SIGNALS.has(signal));
+}
+var SHAPE_EVIDENCE_KEYS = [
+  "workSurface",
+  "atomicity",
+  "unitCount",
+  "unitsIndependent",
+  "ambiguity",
+  "risk",
+  "toolWork",
+  "validation",
+  "contextIsolation",
+  "independentReview",
+  "returnContract",
+  "requestedParallelism"
+];
+function sameShapeEvidence(a, b) {
+  return SHAPE_EVIDENCE_KEYS.every((key) => a[key] === b[key]);
 }
 function evaluationProblem(evaluation, inputs) {
   const { prior } = evaluation;
   if (!prior || !Number.isInteger(prior.attempt) || prior.attempt < 1 || prior.attempt > 3) {
     return "post-attempt prior attempt must be an integer from 1 to 3";
   }
+  if (prior.role !== inputs.role) {
+    return "post-attempt prior role must match the routed role";
+  }
   if (inputs.attempt !== void 0 && inputs.attempt !== prior.attempt) {
     return "post-attempt attempt contradicts the prior routing attempt";
+  }
+  if (inputs.escalationOrigin !== void 0 && inputs.escalationOrigin !== prior.escalationOrigin) {
+    return "post-attempt escalationOrigin contradicts the prior routing attempt";
   }
   if (!prior.model || !prior.effort || !prior.shapeEvidence || !prior.executionShape) {
     return "post-attempt prior routing context is incomplete";
@@ -22084,6 +22119,9 @@ function evaluationProblem(evaluation, inputs) {
   const priorShape = selectShape({ ...inputs, shapeEvidence: prior.shapeEvidence, postAttempt: void 0 });
   if (priorShape.stop || priorShape.executionShape !== prior.executionShape) {
     return priorShape.stop ? `post-attempt prior shape evidence is invalid: ${priorShape.stop}` : "post-attempt prior execution shape contradicts its shape evidence";
+  }
+  if (prior.attempt === 1 && prior.escalationOrigin) {
+    return "post-attempt initial attempt must not carry escalationOrigin";
   }
   if (prior.attempt > 1 && !prior.escalationOrigin) {
     return "post-attempt retry provenance requires a non-null escalationOrigin";
@@ -22137,7 +22175,7 @@ function baseDecision(project, inputs) {
     effort: effort.choice,
     source: model.choice.source,
     basis: inputs.basis ?? null,
-    attempt: inputs.attempt ?? 1,
+    attempt: Number.isInteger(inputs.attempt) && (inputs.attempt ?? 0) >= 1 && (inputs.attempt ?? 0) <= 3 ? inputs.attempt : 1,
     escalationOrigin: inputs.escalationOrigin ?? null,
     fallback: model.choice.fallback ?? effort.choice.fallback,
     masked: model.choice.masked || effort.choice.masked,
@@ -22151,12 +22189,21 @@ function baseDecision(project, inputs) {
 }
 function resolveRouting(project, inputs) {
   if (!/^[a-z][a-z0-9-]*$/.test(inputs.role)) throw new Error(`invalid routing role \`${inputs.role}\``);
-  if (!inputs.postAttempt) return baseDecision(project, inputs);
+  if (!inputs.postAttempt) {
+    const initial = baseDecision(project, inputs);
+    if (inputs.attempt !== void 0 && inputs.attempt !== 1) {
+      return stopDecision(initial, "invalid-stop", "initial routing dispatch must use attempt 1");
+    }
+    if (inputs.escalationOrigin !== void 0 && inputs.escalationOrigin !== null) {
+      return stopDecision(initial, "invalid-stop", "initial routing dispatch must not carry escalationOrigin");
+    }
+    return initial;
+  }
   const evaluation = inputs.postAttempt;
-  const retainedUnitIds = evaluation.units?.filter((unit) => unit.sufficient).map((unit) => unit.unitId) ?? [];
   const problem = evaluationProblem(evaluation, inputs);
   const current = baseDecision(project, inputs);
-  if (problem) return stopDecision(current, "invalid-stop", problem, retainedUnitIds);
+  if (problem) return stopDecision(current, "invalid-stop", problem);
+  const retainedUnitIds = evaluation.units?.filter((unit) => unit.sufficient).map((unit) => unit.unitId) ?? [];
   if (evaluation.sufficient) {
     const priorShape2 = selectShape({ ...inputs, shapeEvidence: evaluation.prior.shapeEvidence, postAttempt: void 0 });
     const { actualModel: _currentActualModel, ...withoutCurrentActualModel } = current;
@@ -22181,12 +22228,11 @@ function resolveRouting(project, inputs) {
       diagnostic: null
     };
   }
-  if (current.status === "stop") return stopDecision(current, "invalid-stop", current.diagnostic ?? "retry routing is invalid", retainedUnitIds);
   const signals = [.../* @__PURE__ */ new Set([
     ...evaluation.signals,
     ...(evaluation.units ?? []).flatMap((unit) => unit.sufficient ? [] : unit.signals)
   ])];
-  const maxAttempts = inputs.role === "security-auditor" && signals.includes("high-severity-review-uncertainty") ? 3 : 2;
+  const maxAttempts = inputs.role === "security-auditor" && signals.length === 1 && signals[0] === "high-severity-review-uncertainty" ? 3 : 2;
   if (evaluation.prior.attempt >= maxAttempts) {
     return stopDecision(current, "exhausted", `retry limit exhausted after ${evaluation.prior.attempt} attempts`, retainedUnitIds);
   }
@@ -22197,23 +22243,52 @@ function resolveRouting(project, inputs) {
   if (!nextTier) return stopDecision(current, "invalid-stop", "prior model is already at the highest stable tier", retainedUnitIds);
   const attempt = evaluation.prior.attempt + 1;
   const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
+  const retryUnitIds = evaluation.units?.filter((unit) => !unit.sufficient).map((unit) => unit.unitId) ?? [];
+  const retryUnitCount = retryUnitIds.length;
+  const retryShapeEvidence = evaluation.units ? {
+    ...inputs.shapeEvidence,
+    atomicity: retryUnitCount === 1 ? "atomic" : "composite",
+    unitCount: retryUnitCount,
+    unitsIndependent: retryUnitCount > 1 && inputs.shapeEvidence.unitsIndependent,
+    requestedParallelism: Math.min(inputs.shapeEvidence.requestedParallelism, retryUnitCount)
+  } : inputs.shapeEvidence;
   const retryInputs = {
     ...inputs,
+    shapeEvidence: retryShapeEvidence,
     postAttempt: void 0,
     invocationModel: nextTier,
+    invocationEffort: void 0,
     requireModel: true,
+    requireEffort: false,
+    supportsEffortSelector: true,
+    hostEffort: void 0,
     attempt,
     escalationOrigin,
     actualModel: void 0
   };
-  const retryDecision = baseDecision(project, retryInputs);
+  let retryDecision = baseDecision(project, retryInputs);
+  const priorRequestedEffort = evaluation.prior.effort.source === "host" ? evaluation.prior.effort.requested : evaluation.prior.effort.value;
+  const priorRequestedEffortSource = evaluation.prior.effort.source === "host" ? evaluation.prior.effort.requestedSource : evaluation.prior.effort.source;
+  const retryEffort = inputs.hostEffort ? {
+    value: inputs.hostEffort,
+    source: "host",
+    requested: priorRequestedEffort,
+    requestedSource: priorRequestedEffortSource,
+    masked: evaluation.prior.effort.masked || priorRequestedEffort !== null && priorRequestedEffort !== inputs.hostEffort,
+    fallback: null
+  } : evaluation.prior.effort;
+  retryDecision = {
+    ...retryDecision,
+    effort: retryEffort,
+    fallback: retryDecision.model.fallback ?? retryEffort.fallback,
+    masked: retryDecision.model.masked || retryEffort.masked
+  };
   if (retryDecision.status === "stop" || retryDecision.model.masked || retryDecision.model.fallback || modelTier(retryDecision.model.value) !== nextTier) {
     const reason = retryDecision.diagnostic ?? (retryDecision.model.masked ? "next model tier was masked by host enforcement" : retryDecision.model.fallback ? `next model tier fell back: ${retryDecision.model.fallback}` : "next model tier did not advance exactly one stable tier");
     return stopDecision(retryDecision, "invalid-stop", reason, retainedUnitIds);
   }
-  const retryUnitIds = evaluation.units?.filter((unit) => !unit.sufficient).map((unit) => unit.unitId) ?? [];
   const priorShape = evaluation.prior.executionShape;
-  const shapeChanged = priorShape !== retryDecision.executionShape || JSON.stringify(evaluation.prior.shapeEvidence) !== JSON.stringify(retryDecision.normalizedEvidence);
+  const shapeChanged = priorShape !== retryDecision.executionShape || !sameShapeEvidence(evaluation.prior.shapeEvidence, retryDecision.normalizedEvidence);
   return {
     ...retryDecision,
     disposition: "retry",

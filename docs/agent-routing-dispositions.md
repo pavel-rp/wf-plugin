@@ -30,7 +30,7 @@ For every row, host enforcement, invocation override, project override, shipped 
 | `convention-auditor` | `plugins/wf-audit/agents/convention-auditor.md` | audit | `deferred` | `inherit` | `inherit` | `2` | WF-380/WF-381 own audit consolidation and verification fan-out. |
 | `correctness-auditor` | `plugins/wf-audit/agents/correctness-auditor.md` | audit | `deferred` | `inherit` | `inherit` | `2` | WF-380/WF-381 own audit consolidation and verification fan-out. |
 | `operational-auditor` | `plugins/wf-audit/agents/operational-auditor.md` | audit | `deferred` | `inherit` | `inherit` | `2` | WF-380/WF-381 own audit consolidation and verification fan-out. |
-| `security-auditor` | `plugins/wf-audit/agents/security-auditor.md` | audit | `deferred` | `inherit` | `inherit` | `3` | A third attempt is permitted only for `high-severity-review-uncertainty`; every other signal exhausts after two attempts. |
+| `security-auditor` | `plugins/wf-audit/agents/security-auditor.md` | audit | `deferred` | `inherit` | `inherit` | `3` | A third attempt is permitted only when the signal set is exclusively `high-severity-review-uncertainty`; every other or mixed signal set exhausts after two attempts. |
 | `qa-engine` | `plugins/wf-browser-qa/agents/qa-engine.md` | browser-QA | `evidence-gated` | `inherit` | `inherit` | `2` | Browser execution quality requires role-specific comparison evidence. |
 | `qa-host` | `plugins/wf-angular/agents/qa-host.md` | Angular | `evidence-gated` | `inherit` | `inherit` | `2` | Source-mutating test-host work requires role-specific comparison evidence. |
 
