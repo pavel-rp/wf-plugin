@@ -326,6 +326,70 @@ test("default and security-auditor role policies exhaust at their shipped limits
   assert.equal(final.disposition, "exhausted");
 });
 
+test("validated pre-retry stops preserve the exhausted or unmappable prior routing record", () => {
+  const project = { classify: { model: "haiku", effort: "high" } };
+  const first = resolveRouting(project, {
+    ...base,
+    supportsEffortSelector: true,
+    basis: "stable-basis",
+    actualModel: "claude-haiku-4-5",
+  });
+  const second = resolveRouting(project, {
+    ...base,
+    supportsEffortSelector: true,
+    basis: "stable-basis",
+    postAttempt: evaluated("low-confidence", { prior: prior(first) }),
+  });
+  const exhaustedPrior = { ...prior(second, 2), actualModel: "claude-sonnet-4-6" };
+  const exhausted = resolveRouting({}, {
+    role: "classify",
+    shapeEvidence: second.normalizedEvidence,
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
+    postAttempt: { sufficient: false, signals: ["repeated-failure"], prior: exhaustedPrior },
+  });
+  assert.equal(exhausted.disposition, "exhausted");
+  assert.deepEqual(
+    {
+      role: exhausted.role, shape: exhausted.executionShape, evidence: exhausted.normalizedEvidence,
+      model: exhausted.model, effort: exhausted.effort, basis: exhausted.basis,
+      attempt: exhausted.attempt, origin: exhausted.escalationOrigin, actualModel: exhausted.actualModel,
+    },
+    {
+      role: exhaustedPrior.role, shape: exhaustedPrior.executionShape, evidence: exhaustedPrior.shapeEvidence,
+      model: exhaustedPrior.model, effort: exhaustedPrior.effort, basis: exhaustedPrior.basis,
+      attempt: exhaustedPrior.attempt, origin: exhaustedPrior.escalationOrigin, actualModel: exhaustedPrior.actualModel,
+    },
+  );
+
+  const terminalCases = [
+    { model: "opus", actualModel: "claude-opus-4-8", diagnostic: /highest stable tier/ },
+    { model: "custom-model", actualModel: "custom-model", diagnostic: /does not map/ },
+  ] as const;
+  for (const row of terminalCases) {
+    const routed = resolveRouting({}, {
+      ...base,
+      invocationModel: row.model,
+      basis: "terminal-basis",
+      actualModel: row.actualModel,
+    });
+    const terminalPrior = prior(routed);
+    const stopped = resolveRouting({}, {
+      role: "classify",
+      shapeEvidence: routed.normalizedEvidence,
+      supportsModelSelector: true,
+      supportsEffortSelector: false,
+      postAttempt: { sufficient: false, signals: ["low-confidence"], prior: terminalPrior },
+    });
+    assert.equal(stopped.disposition, "invalid-stop");
+    assert.match(stopped.diagnostic ?? "", row.diagnostic);
+    assert.deepEqual(
+      [stopped.model, stopped.effort, stopped.basis, stopped.attempt, stopped.escalationOrigin, stopped.actualModel],
+      [terminalPrior.model, terminalPrior.effort, terminalPrior.basis, terminalPrior.attempt, terminalPrior.escalationOrigin, terminalPrior.actualModel],
+    );
+  }
+});
+
 test("initial routing cannot bypass escalation attempts or provenance", () => {
   const cases = [
     { attempt: 2 },

@@ -293,6 +293,40 @@ function stopDecision(
   return { ...decision, status: "stop", disposition, retry: null, retainedUnitIds, diagnostic };
 }
 
+function priorTerminalDecision(
+  current: RoutingDecision,
+  prior: RoutingPostAttemptEvaluation["prior"],
+  shape: ShapeDecision,
+  status: "retain" | "stop",
+  disposition: "retain" | "exhausted" | "invalid-stop",
+  diagnostic: string | null,
+  retainedUnitIds: string[],
+): RoutingDecision {
+  const { actualModel: _currentActualModel, ...withoutCurrentActualModel } = current;
+  return {
+    ...withoutCurrentActualModel,
+    role: prior.role,
+    executionShape: prior.executionShape,
+    normalizedEvidence: shape.normalizedEvidence,
+    shapeReason: shape.shapeReason,
+    effectiveParallelism: shape.effectiveParallelism,
+    model: prior.model,
+    effort: prior.effort,
+    source: prior.model.source,
+    basis: prior.basis,
+    attempt: prior.attempt,
+    escalationOrigin: prior.escalationOrigin,
+    fallback: prior.model.fallback ?? prior.effort.fallback,
+    masked: prior.model.masked || prior.effort.masked,
+    ...(prior.actualModel ? { actualModel: prior.actualModel } : {}),
+    status,
+    disposition,
+    retry: null,
+    retainedUnitIds,
+    diagnostic,
+  };
+}
+
 function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): RoutingDecision {
   const shape = selectShape(inputs);
   const model = choose("model", inputs, project);
@@ -339,30 +373,9 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
   const current = baseDecision(project, inputs);
   if (problem) return stopDecision(current, "invalid-stop", problem);
   const retainedUnitIds = evaluation.units?.filter((unit) => unit.sufficient).map((unit) => unit.unitId) ?? [];
+  const priorShape = selectShape({ ...inputs, shapeEvidence: evaluation.prior.shapeEvidence, postAttempt: undefined });
   if (evaluation.sufficient) {
-    const priorShape = selectShape({ ...inputs, shapeEvidence: evaluation.prior.shapeEvidence, postAttempt: undefined });
-    const { actualModel: _currentActualModel, ...withoutCurrentActualModel } = current;
-    return {
-      ...withoutCurrentActualModel,
-      executionShape: evaluation.prior.executionShape,
-      normalizedEvidence: priorShape.normalizedEvidence,
-      shapeReason: priorShape.shapeReason,
-      effectiveParallelism: priorShape.effectiveParallelism,
-      model: evaluation.prior.model,
-      effort: evaluation.prior.effort,
-      source: evaluation.prior.model.source,
-      basis: evaluation.prior.basis,
-      attempt: evaluation.prior.attempt,
-      escalationOrigin: evaluation.prior.escalationOrigin,
-      fallback: evaluation.prior.model.fallback ?? evaluation.prior.effort.fallback,
-      masked: evaluation.prior.model.masked || evaluation.prior.effort.masked,
-      ...(evaluation.prior.actualModel ? { actualModel: evaluation.prior.actualModel } : {}),
-      status: "retain",
-      disposition: "retain",
-      retry: null,
-      retainedUnitIds,
-      diagnostic: null,
-    };
+    return priorTerminalDecision(current, evaluation.prior, priorShape, "retain", "retain", null, retainedUnitIds);
   }
 
   const signals = [...new Set([
@@ -372,14 +385,27 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
   const maxAttempts = inputs.role === "security-auditor" &&
     signals.length === 1 && signals[0] === "high-severity-review-uncertainty" ? 3 : 2;
   if (evaluation.prior.attempt >= maxAttempts) {
-    return stopDecision(current, "exhausted", `retry limit exhausted after ${evaluation.prior.attempt} attempts`, retainedUnitIds);
+    return priorTerminalDecision(
+      current, evaluation.prior, priorShape, "stop", "exhausted",
+      `retry limit exhausted after ${evaluation.prior.attempt} attempts`, retainedUnitIds,
+    );
   }
 
   const priorSelector = evaluation.prior.actualModel ?? evaluation.prior.model.value;
   const priorTier = modelTier(priorSelector);
-  if (!priorTier) return stopDecision(current, "invalid-stop", "prior model does not map unambiguously to a stable tier", retainedUnitIds);
+  if (!priorTier) {
+    return priorTerminalDecision(
+      current, evaluation.prior, priorShape, "stop", "invalid-stop",
+      "prior model does not map unambiguously to a stable tier", retainedUnitIds,
+    );
+  }
   const nextTier = MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1];
-  if (!nextTier) return stopDecision(current, "invalid-stop", "prior model is already at the highest stable tier", retainedUnitIds);
+  if (!nextTier) {
+    return priorTerminalDecision(
+      current, evaluation.prior, priorShape, "stop", "invalid-stop",
+      "prior model is already at the highest stable tier", retainedUnitIds,
+    );
+  }
 
   const attempt = evaluation.prior.attempt + 1;
   const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
@@ -447,8 +473,8 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     return stopDecision(retryDecision, "invalid-stop", reason, retainedUnitIds);
   }
 
-  const priorShape = evaluation.prior.executionShape;
-  const shapeChanged = priorShape !== retryDecision.executionShape ||
+  const priorExecutionShape = evaluation.prior.executionShape;
+  const shapeChanged = priorExecutionShape !== retryDecision.executionShape ||
     !sameShapeEvidence(evaluation.prior.shapeEvidence, retryDecision.normalizedEvidence);
   return {
     ...retryDecision,
@@ -460,7 +486,7 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
       priorTier,
       nextTier,
       escalationOrigin,
-      priorExecutionShape: priorShape,
+      priorExecutionShape,
       shapeChanged,
     },
     retainedUnitIds,
