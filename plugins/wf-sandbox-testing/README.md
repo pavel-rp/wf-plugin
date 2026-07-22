@@ -63,6 +63,7 @@ see [Scripting a provider with wf-fake](#scripting-a-provider-with-wf-fake).
 
 | Folder | Role | Reference |
 |--------|------|-----------|
+| `accounting/` | deterministic fleet-session cost accounting, derived-only historical baseline, comparison command, and standard-fixture comparability finding ([README](accounting/README.md)) |
 | `runner/` | the hermetic container runner — one real headless `wf:*` invocation per run, fingerprinting every input, asserting stream-json parseability, guarding auth/billing | (script headers) |
 | `assert/` | the statistical assertion layer — three structural families judged over N runs, variance-aware, SMOKE/STATISTICAL tiers, baseline comparison | [`assert/README.md`](assert/README.md) |
 | `corpus/` | the behavioral-regression corpus — items mined retrofit-first from observed failures, each with a resolvable provenance link | [`corpus/README.md`](corpus/README.md) |
@@ -227,6 +228,7 @@ only the provenance of the run bytes changes. What ran canned and why is recorde
 | `.claude-plugin/plugin.json` | the plugin manifest |
 | `capabilities/sandbox-testing/manifest.md` | the feature-capability manifest (no fragments; the wf-fake pairing rationale) |
 | `skills/init/SKILL.md` | `/wf-sandbox-testing:init` — self-registration |
+| `accounting/` | fleet-session cost harness and derived-only references ([README](accounting/README.md)) |
 | `runner/` | the hermetic container runner |
 | `assert/` | the statistical assertion layer ([README](assert/README.md)) |
 | `corpus/` | the behavioral-regression corpus ([README](corpus/README.md)) |
