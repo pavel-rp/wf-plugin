@@ -39,6 +39,10 @@
     { "agent": "ship-sm-2", "role": "ship orchestrator", "messages": 174, "cost": 20.26, "firstContext": 43000, "lastContext": 422000, "contextGrowth": 379000, "inflation": 1.74 },
     { "agent": "ship-sm-3", "role": "ship orchestrator", "messages": 88, "cost": 13.41, "inflation": 1.8 },
     { "agent": "implement-sm-2", "role": "implement", "messages": 97, "cost": 9.13, "inflation": 2.14 },
-    { "agent": "implement-sm-3", "role": "implement", "messages": 76, "cost": 7.33, "inflation": 1.71 }
+    { "agent": "implement-sm-3", "role": "implement", "messages": 76, "cost": 7.33, "inflation": 1.71 },
+    { "agent": "verify-spec-sm-2", "role": "verify-spec/fix", "messages": 54, "cost": 5.18, "inflation": 2.41 },
+    { "agent": "verify-spec-sm-3-rerun", "role": "verify-spec/fix", "messages": 49, "cost": 4.07, "inflation": 2.24 },
+    { "agent": "verify-spec-sm-3", "role": "verify-spec/fix", "messages": 34, "cost": 3.84, "inflation": 2.38 },
+    { "agent": "verify-fix-sm-3", "role": "verify-spec/fix", "messages": 34, "cost": 2.5, "inflation": 1.91 }
   ]
 }
