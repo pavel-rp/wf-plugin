@@ -107,22 +107,22 @@ The goal is a single shell command that exits 0 when the whole project typecheck
 
 2. **Prefer explicit scripts.** For each `package.json`, parse `scripts` and look for a verification-ish script in this priority: `typecheck` > `check` > `verify` > `build:check` > `lint:types`. First hit wins:
    ```
-   (cd <dir> && npm run <script>)       # drop the cd wrapper if <dir> is the repo root
+   npm --prefix <dir> run <script>
    ```
 
 3. **Framework AoT build.** If no script matched but the candidate dir's `package.json` lists a framework CLI under `devDependencies` whose canonical verification is an ahead-of-time / production build, use that CLI's AoT/production build — it's the canonical way to catch template, metadata, and TS errors together. Derive the exact command from the detected CLI at runtime (its AoT/production build invocation, e.g. a development-configuration build with output hashing disabled):
    ```
-   (cd <dir> && <framework CLI's AoT/production build command>)
+   npm --prefix <dir> exec -- <framework CLI's AoT/production build command>
    ```
 
 4. **Generic `build` script.** If a `build` script exists in `package.json`, use it as a last resort — it almost always includes typechecking as a side effect:
    ```
-   (cd <dir> && npm run build)
+   npm --prefix <dir> run build
    ```
 
 5. **Plain TypeScript.** If the dir has `tsconfig.json` but nothing better matched:
    ```
-   (cd <dir> && npx tsc --noEmit)
+   npm --prefix <dir> exec -- tsc --noEmit
    ```
    Warn in the chat summary that this catches only plain-TS errors; it's fine for pure-TS libraries, not for framework projects.
 
