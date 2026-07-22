@@ -175,7 +175,13 @@ function compareValues(actual, expected, path, tolerance, differences) {
     return;
   }
   if (Array.isArray(expected)) {
-    for (let index = 0; index < expected.length; index += 1) compareValues(actual?.[index], expected[index], `${path}[${index}]`, tolerance, differences);
+    const key = ['agent', 'phase', 'role'].find((candidate) => expected.every((item) => item && typeof item === 'object' && candidate in item));
+    if (key) {
+      const actualByKey = new Map((actual ?? []).map((item) => [item?.[key], item]));
+      for (const item of expected) compareValues(actualByKey.get(item[key]), item, `${path}[${key}=${item[key]}]`, tolerance, differences);
+    } else {
+      for (let index = 0; index < expected.length; index += 1) compareValues(actual?.[index], expected[index], `${path}[${index}]`, tolerance, differences);
+    }
     return;
   }
   if (expected && typeof expected === 'object') for (const [key, value] of Object.entries(expected)) compareValues(actual?.[key], value, path ? `${path}.${key}` : key, tolerance, differences);

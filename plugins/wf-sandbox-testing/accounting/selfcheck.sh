@@ -40,4 +40,14 @@ node "$ACCOUNTING/fleet-cost.mjs" compare \
   --reference "$ACCOUNTING/baseline-reference.json" \
   --tolerance 0.01
 
+if node "$ACCOUNTING/fleet-cost.mjs" compare \
+  --actual "$ACTUAL" \
+  --reference "$ACCOUNTING/testdata/different-reference.json" \
+  --tolerance 0.01 >"$SCRATCH/different.stdout"; then
+  printf '%s\n' 'selfcheck: changed cost unexpectedly compared equal' >&2
+  exit 1
+fi
+
+grep -F 'totals.cost: expected 1' "$SCRATCH/different.stdout" >/dev/null
+
 printf '%s\n' 'fleet-cost selfcheck: PASS'
