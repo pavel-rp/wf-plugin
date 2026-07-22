@@ -10,6 +10,125 @@ DEFAULT_INVENTORY="$DIR/core-dispatch-inventory.tsv"
 fail=0
 err() { printf 'core-dispatch-routing-guard: %s\n' "$*" >&2; fail=$((fail + 1)); }
 
+is_prose_only_skill_line() {
+  local line="$1"
+  while case "$line" in [[:space:]\>\*-]*) true ;; *) false ;; esac; do
+    line="${line:1}"
+  done
+  case "$line" in Next:*|Example:*|example:*|Recommendation:*|recommendation:*|Suggestion:*|suggestion:*) return 0 ;; esac
+  case "$1" in *"may invoke"*|*"should never invoke"*|*"that invoked"*|*"If the Skill-tool invocation fails"*) return 0 ;; esac
+  return 1
+}
+
+permission_list_context() {
+  local file="$1" line="$2"
+  awk -v stop="$line" '
+    NR>stop{exit}
+    /^## /{active=0; started=0}
+    /^\*\*Allowed:\*\*/ || /^\*\*Forbidden:\*\*/{active=1; started=0; next}
+    active {
+      if ($0 ~ /^[[:space:]]*$/) {
+        if (started) active=0
+      } else if ($0 ~ /^[[:space:]]*[-*][[:space:]]/) {
+        started=1
+      } else if (!started || $0 !~ /^[[:space:]]{2,}/) {
+        active=0
+      }
+    }
+    END{print active+0}
+  ' "$file"
+}
+
+inventory_target_present() {
+  local path="$1" raw="$2"
+  TARGET="$raw" perl -0777 -ne '
+    $raw=$ENV{TARGET};
+    if ($raw =~ m{/(?:wf:[a-z0-9-]+|<skill>|wf:<phase>)}) {
+      $token=$&; exit 0 if /\Q$token\E(?![a-z0-9-])/;
+    } elsif ($raw =~ /(?:^|[^a-z0-9-])((?:wf:[a-z0-9-]+|general-purpose))(?![a-z0-9-])/) {
+      $token=$1; exit 0 if /(?<![a-z0-9\/-])\Q$token\E(?![a-z0-9-])/;
+    } else {
+      exit 0 if index($_, $raw) >= 0;
+    }
+    exit 1;
+  ' "$path"
+}
+
+inventory_count_task_target() {
+  local inventory="$1" file="$2" target="$3"
+  awk -F '\t' -v f="$file" -v t="$target" '
+    $2=="included" && $3==f && $7!="index-wrapper-mediated" && $7!="fixed-skill-route" {
+      s=$4; matched=0
+      while (match(s, /\/?wf:[a-z0-9-]+|general-purpose/)) {
+        token=substr(s, RSTART, RLENGTH); sub(/^\//, "", token)
+        if (token==t) matched=1
+        s=substr(s, RSTART+RLENGTH)
+      }
+      if (matched) n++
+    }
+    END{print n+0}
+  ' "$inventory"
+}
+
+inventory_has_task_target() {
+  local inventory="$1" file="$2" target="$3"
+  awk -F '\t' -v f="$file" -v t="$target" '
+    $2=="included" && $3==f {
+      s=$4
+      while (match(s, /\/?wf:[a-z0-9-]+|general-purpose/)) {
+        token=substr(s, RSTART, RLENGTH)
+        sub(/^\//, "", token)
+        if (token==t) found=1
+        s=substr(s, RSTART+RLENGTH)
+      }
+    }
+    END{exit !found}
+  ' "$inventory"
+}
+
+inventory_has_index_wrapper_target() {
+  local inventory="$1" file="$2" target="$3"
+  awk -F '\t' -v f="$file" -v t="$target" '
+    $2=="included" && $3==f && $7=="index-wrapper-mediated" {
+      s=$4
+      while (match(s, /\/?wf:[a-z0-9-]+/)) {
+        token=substr(s, RSTART, RLENGTH); sub(/^\//, "", token)
+        if (token==t) found=1
+        s=substr(s, RSTART+RLENGTH)
+      }
+    }
+    END{exit !found}
+  ' "$inventory"
+}
+
+inventory_has_skill_target() {
+  local inventory="$1" file="$2" target="$3"
+  awk -F '\t' -v f="$file" -v t="$target" '
+    $2=="included" && $3==f {
+      s=$4
+      while (match(s, /\/(wf:[a-z0-9-]+|<skill>|wf:<phase>)/)) {
+        if (substr(s, RSTART, RLENGTH)==t) found=1
+        s=substr(s, RSTART+RLENGTH)
+      }
+    }
+    END{exit !found}
+  ' "$inventory"
+}
+
+inventory_count_fixed_skill_target() {
+  local inventory="$1" file="$2" target="$3"
+  awk -F '\t' -v f="$file" -v t="$target" '
+    $2=="included" && $3==f && $7=="fixed-skill-route" {
+      s=$4
+      while (match(s, /\/(wf:[a-z0-9-]+|<skill>|wf:<phase>)/)) {
+        if (substr(s, RSTART, RLENGTH)==t) n++
+        s=substr(s, RSTART+RLENGTH)
+      }
+    }
+    END{print n+0}
+  ' "$inventory"
+}
+
 scan() {
   local root="$1" inventory="$2" id class file target role selectors evidence retry path body
   [ -f "$inventory" ] || { err "inventory missing: $inventory"; return 1; }
@@ -33,7 +152,7 @@ scan() {
     local target_part old_ifs="$IFS"
     IFS=','
     for target_part in $target; do
-      case "$body" in *"$target_part"*) ;; *) err "$id: stale target $target_part in $file" ;; esac
+      inventory_target_present "$path" "$target_part" || err "$id: stale or non-exact target $target_part in $file"
     done
     IFS="$old_ifs"
     case "$evidence" in
@@ -62,6 +181,15 @@ scan() {
         if [ "$retry" != "—" ]; then
           case "$body" in *"postAttempt"*"never self"*|*"postAttempt"*"never invokes its own replacement"*) ;; *) err "$id: parent retry ownership is not explicit in $file" ;; esac
         fi
+        continue
+        ;;
+      fleet-cardinality-route)
+        case "$body" in *"resolve_routing"*"role: \"shipper\""*"subagent_type: general-purpose"*) ;; *) err "$id: fleet shipper route is incomplete in $file" ;; esac
+        case "$body" in *"One-item wave"*"workSurface: \"external-context\""*"atomicity: \"atomic\""*"unitCount: 1"*"unitsIndependent: false"*"requestedParallelism: 1"*"isolated"*) ;; *) err "$id: singleton fleet evidence is not the exact atomic isolated contract in $file" ;; esac
+        case "$body" in *"Multi-item wave"*"workSurface: \"external-context\""*"atomicity: \"composite\""*"unitCount: <wave-size>"*"unitsIndependent: true"*"requestedParallelism: <configured-pool-bound>"*"bounded-parallel"*) ;; *) err "$id: multi-item fleet evidence is not the exact composite bounded contract in $file" ;; esac
+        case "$body" in *"supportsModelSelector: true"*"supportsEffortSelector: false"*"invocationModel"*) ;; *) err "$id: fleet selector facts are incomplete in $file" ;; esac
+        case "$body" in *"compact operational record"*"status: stop"*"diagnostic"*"executionShape"*"effectiveParallelism"*) ;; *) err "$id: fleet routing outcome handling is incomplete in $file" ;; esac
+        case "$body" in *"postAttempt"*"never"*"self"*) ;; *) err "$id: fleet parent retry ownership is absent in $file" ;; esac
         continue
         ;;
       fleet-recovery-route)
@@ -136,19 +264,42 @@ scan() {
   while IFS=: read -r file line text; do
     [ -n "$file" ] || continue
     case "$file" in *"/_contracts/"*|*"/references/"*) continue ;; esac
+    local task_permission task_heading task_routed
+    task_permission="$(permission_list_context "$file" "$line")"
+    task_heading="$(awk -v stop="$line" 'NR>stop{exit} /^## /{heading=$0} END{print heading}' "$file")"
+    [ "$task_permission" -eq 1 ] && continue
+    case "$task_heading" in ""|*" contract"*) continue ;; esac
     case "$text" in *"may invoke"*|*"registered"*"provider"*|*"fragment"*"subagent"*|*"Next:"*) continue ;; esac
+    task_routed="$(awk -v stop="$line" 'NR>stop{exit} /^## /{routed=0} /resolve_routing/{routed=1} END{print routed+0}' "$file")"
     while IFS= read -r target; do
       [ -n "$target" ] || continue
       target="${target#subagent_type: }"
-      printf '%s\t%s\t%s\n' "${file#$root/}" "$line" "$target" >> "$candidates"
+      printf '%s\t%s\t%s\t%s\n' "${file#$root/}" "$line" "$target" "$task_routed" >> "$candidates"
     done < <(printf '%s' "$text" | grep -oE 'subagent_type: (wf:[a-z0-9-]+|general-purpose)' || true)
   done < <(grep -RInE 'subagent_type: (wf:[a-z0-9-]+|general-purpose)' "$root/plugins/wf/skills" "$root/plugins/wf/agents" --include='*.md' 2>/dev/null || true)
 
-  while IFS=$'\t' read -r file line target; do
-    if ! awk -F '\t' -v f="$file" -v t="$target" '$2=="included" && $3==f && index($4,t){found=1} END{exit !found}' "$inventory"; then
+  while IFS=$'\t' read -r file line target routed; do
+    if ! inventory_has_task_target "$inventory" "$file" "$target"; then
       err "unlisted live Task/Agent dispatch $file:$line ($target)"
     fi
   done < "$candidates"
+
+  # One Task/Agent inventory row represents one executable occurrence. Exact token
+  # counts prevent a single row or a longer sibling name from laundering another edge.
+  while IFS=$'\t' read -r file target; do
+    [ -n "$file" ] && [ -n "$target" ] || continue
+    local task_discovered task_declared
+    task_discovered="$(awk -F '\t' -v f="$file" -v t="$target" '$1==f && $3==t{n++} END{print n+0}' "$candidates")"
+    task_declared="$(inventory_count_task_target "$inventory" "$file" "$target")"
+    # Index-wrapper rows are counted by their concrete Skill occurrences below; their
+    # single shared Task wrapper is not another logical edge.
+    if [ "$task_declared" -eq 0 ] && inventory_has_index_wrapper_target "$inventory" "$file" "$target"; then
+      continue
+    fi
+    if [ "$task_discovered" -ne "$task_declared" ]; then
+      err "$file: Task/Agent target $target has $task_discovered executable occurrence(s) but $task_declared inventory row(s)"
+    fi
+  done < <(cut -f1,3 "$candidates" | sort -u)
 
   local skill_candidates declared_skill_pairs skill_pairs
   skill_candidates="$(mktemp)" || { err "cannot create Skill discovery file"; rm -f "$candidates"; return 1; }
@@ -157,22 +308,47 @@ scan() {
   while IFS=: read -r file line text; do
     [ -n "$file" ] || continue
     case "$file" in *"/_contracts/"*|*"/references/"*) continue ;; esac
-    local subsection
-    subsection="$(awk -v stop="$line" 'NR>stop{exit} /^## /{subsection=""} /^\*\*Allowed:\*\*/{subsection="allowed"} /^\*\*Forbidden:\*\*/{subsection="forbidden"} END{print subsection}' "$file")"
-    # Permission lists describe what a caller may or may not do; they are not execution.
-    # Headings such as Edge Cases or Final Output receive no blanket exemption: an
-    # executable invocation directive there must still be inventoried.
-    case "$subsection" in allowed|forbidden) continue ;; esac
-    case "$text" in *"Next:"*|*"Forbidden"*|*"recommend"*|*"suggest"*|*"may invoke"*|*"should never invoke"*|*"that invoked"*|*"If the Skill-tool invocation fails"*) continue ;; esac
+    local permission
+    permission="$(permission_list_context "$file" "$line")"
+    # Only contiguous Allowed/Forbidden list prose is non-executable. Headings such
+    # as Edge Cases or Final Output receive no blanket exemption.
+    [ "$permission" -eq 1 ] && continue
+    is_prose_only_skill_line "$text" && continue
     file="${file#$root/}"
     while IFS= read -r target; do
       [ -n "$target" ] || continue
       printf '%s\t%s\t%s\n' "$file" "$line" "$target" >> "$skill_candidates"
-      if ! awk -F '\t' -v f="$file" -v t="$target" '$2=="included" && $3==f && index($4,t){found=1} END{exit !found}' "$inventory"; then
+      if ! inventory_has_skill_target "$inventory" "$file" "$target"; then
         err "unlisted live Skill dispatch $file:$line ($target)"
       fi
     done < <(printf '%s' "$text" | grep -oE '/(wf:[a-z0-9-]+|<skill>|wf:<phase>)' || true)
   done < <(grep -RInE '([Ss]kill tool|Skill-tool).*/(wf:[a-z0-9-]+|<skill>|wf:<phase>)|/(wf:[a-z0-9-]+|<skill>|wf:<phase>).*([Ss]kill tool|Skill-tool)|(^|[[:space:]])(invoke|re-invoke|execute|call).*/wf:index' "$root/plugins/wf/skills" "$root/plugins/wf/agents" --include='*.md' 2>/dev/null || true)
+
+  # A Skill-tool execution signal may be split from its concrete target by one
+  # adjacent markdown line. Join that pair structurally; prose-only signals remain inert.
+  while IFS=: read -r file line text; do
+    [ -n "$file" ] || continue
+    case "$file" in *"/_contracts/"*|*"/references/"*) continue ;; esac
+    case "$text" in *"/wf:"*|*"/<skill>"*) continue ;; esac
+    local permission next_line next_text next_permission
+    permission="$(permission_list_context "$file" "$line")"
+    [ "$permission" -eq 1 ] && continue
+    is_prose_only_skill_line "$text" && continue
+    next_line=$((line + 1))
+    next_text="$(awk -v target="$next_line" 'NR==target{print; exit}' "$file")"
+    [ -n "$next_text" ] || continue
+    next_permission="$(permission_list_context "$file" "$next_line")"
+    [ "$next_permission" -eq 1 ] && continue
+    is_prose_only_skill_line "$next_text" && continue
+    file="${file#$root/}"
+    while IFS= read -r target; do
+      [ -n "$target" ] || continue
+      printf '%s\t%s\t%s\n' "$file" "$next_line" "$target" >> "$skill_candidates"
+      if ! inventory_has_skill_target "$inventory" "$file" "$target"; then
+        err "unlisted adjacent-line Skill dispatch $file:$next_line ($target)"
+      fi
+    done < <(printf '%s' "$next_text" | grep -oE '/(wf:[a-z0-9-]+|<skill>|wf:<phase>)' || true)
+  done < <(grep -RInE '([Ss]kill tool|Skill-tool)' "$root/plugins/wf/skills" "$root/plugins/wf/agents" --include='*.md' 2>/dev/null || true)
 
   # A fixed Skill target cannot disappear or be laundered by another occurrence in
   # the same file. Compare the union of declared and discovered file+target pairs;
@@ -192,7 +368,7 @@ scan() {
     [ -n "$file" ] && [ -n "$target" ] || continue
     local discovered declared
     discovered="$(awk -F '\t' -v f="$file" -v t="$target" '$1==f && $3==t{n++} END{print n+0}' "$skill_candidates")"
-    declared="$(awk -F '\t' -v f="$file" -v t="$target" '$2=="included" && $3==f && $7=="fixed-skill-route" && index($4,t){n++} END{print n+0}' "$inventory")"
+    declared="$(inventory_count_fixed_skill_target "$inventory" "$file" "$target")"
     if [ "$declared" -gt 0 ] && [ "$discovered" -ne "$declared" ]; then
       err "$file: fixed Skill target $target has $discovered executable occurrence(s) but $declared inventory row(s)"
     fi
@@ -215,6 +391,8 @@ scan() {
   local fleet="$root/plugins/wf/skills/fleet/SKILL.md"
   if awk -F '\t' '$2=="included" && $3=="plugins/wf/skills/fleet/SKILL.md"{found=1} END{exit !found}' "$inventory"; then
     local fleet_body="$(<"$fleet")"
+    case "$fleet_body" in *"One-item wave"*"atomicity: \"atomic\""*"unitCount: 1"*"unitsIndependent: false"*"isolated"*) ;; *) err "fleet: singleton wave evidence must be atomic, dependent, and isolated" ;; esac
+    case "$fleet_body" in *"Multi-item wave"*"atomicity: \"composite\""*"unitsIndependent: true"*"bounded-parallel"*) ;; *) err "fleet: multi-item wave evidence must remain composite and bounded" ;; esac
     case "$fleet_body" in *"min(available slots, effectiveParallelism)"*"excess ready item"*"queued"*) ;; *) err "fleet: effectiveParallelism does not bound and defer the ready wave" ;; esac
     case "$fleet_body" in *"postAttempt"*"child never self"*|*"postAttempt"*"child never invokes"*) ;; *) err "fleet: retry owner is not mechanically the parent" ;; esac
   fi
@@ -232,6 +410,7 @@ selftest() {
   tmp="$(mktemp -d)"
   mkdir -p "$tmp/plugins/wf/skills/demo"
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Procedure
 Call `resolve_routing` with `role: "demo"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null. Invoke the **Task** tool with `subagent_type: wf:demo`.
 EOF
   cat > "$tmp/pass.tsv" <<'EOF'
@@ -239,6 +418,21 @@ demo	included	plugins/wf/skills/demo/SKILL.md	wf:demo	demo	model=true;effort=fal
 provider	excluded	plugins/wf/skills/**	provider	WF-400	—	registry-derived provider dispatch	—
 EOF
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null || rc=1
+  cat > "$tmp/mediation.tsv" <<'EOF'
+index-edge	included	plugins/wf/skills/demo/SKILL.md	/wf:demo	index	model=false;effort=false	index-wrapper-mediated	parent
+fixed-edge	included	plugins/wf/skills/demo/SKILL.md	/wf:fixed	child	model=false;effort=false	fixed-skill-route	parent
+EOF
+  inventory_has_index_wrapper_target "$tmp/mediation.tsv" "plugins/wf/skills/demo/SKILL.md" "wf:demo" || rc=1
+  inventory_has_index_wrapper_target "$tmp/mediation.tsv" "plugins/wf/skills/demo/SKILL.md" "wf:fixed" && rc=1
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/one-task.bak"
+  sed 's/subagent_type: wf:demo/subagent_type: wf:demo and subagent_type: wf:demo/' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  # Every same-line Task/Agent occurrence requires its own exact inventory row.
+  fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/one-task.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  cp "$tmp/pass.tsv" "$tmp/overdeclared.tsv"
+  sed 's/^demo/inventory-extra/' "$tmp/pass.tsv" >> "$tmp/overdeclared.tsv"
+  # A stale second row for one executable occurrence must also fail cardinality.
+  fail=0; scan "$tmp" "$tmp/overdeclared.tsv" >/dev/null 2>&1 && rc=1
   cp "$tmp/pass.tsv" "$tmp/bad.tsv"; printf 'stale\tincluded\tplugins/wf/skills/missing.md\twf:missing\tindex\tmodel=false;effort=false\texternal-context,atomic,1,dependent,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1\tparent\n' >> "$tmp/bad.tsv"
   fail=0; scan "$tmp" "$tmp/bad.tsv" >/dev/null 2>&1 && rc=1
   sed 's/,mechanically-judgeable,1/,1/' "$tmp/pass.tsv" > "$tmp/evidence.tsv"
@@ -246,6 +440,25 @@ EOF
   sed 's/compact metadata/metadata/' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
   rm -rf "$tmp/plugins/wf/skills/demo"
+
+  mkdir -p "$tmp/plugins/wf/skills/fleet"
+  cat > "$tmp/plugins/wf/skills/fleet/SKILL.md" <<'EOF'
+Call `resolve_routing` with `role: "shipper"` and cardinality evidence.
+One-item wave: `workSurface: "external-context"`, `atomicity: "atomic"`, `unitCount: 1`, `unitsIndependent: false`, `requestedParallelism: 1`; select `isolated`.
+Multi-item wave: `workSurface: "external-context"`, `atomicity: "composite"`, `unitCount: <wave-size>`, `unitsIndependent: true`, `requestedParallelism: <configured-pool-bound>`; select `bounded-parallel`.
+Use `supportsModelSelector: true`, `supportsEffortSelector: false`, and `invocationModel`; emit the compact operational record. On `status: stop` or `diagnostic`, stop and obey `executionShape` and `effectiveParallelism`. Parent owns `postAttempt`; child never self-replaces. Dispatch `min(available slots, effectiveParallelism)` and leave every excess ready item queued. Invoke the Agent tool with `subagent_type: general-purpose`.
+EOF
+  cat > "$tmp/fleet.tsv" <<'EOF'
+fleet	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	fleet-cardinality-route	fleet
+EOF
+  fail=0; scan "$tmp" "$tmp/fleet.tsv" >/dev/null || rc=1
+  cp "$tmp/plugins/wf/skills/fleet/SKILL.md" "$tmp/fleet-valid.bak"
+  sed '0,/atomicity: "atomic"/s//atomicity: "composite"/' "$tmp/plugins/wf/skills/fleet/SKILL.md" > "$tmp/plugins/wf/skills/fleet/tmp" && mv "$tmp/plugins/wf/skills/fleet/tmp" "$tmp/plugins/wf/skills/fleet/SKILL.md"
+  fail=0; scan "$tmp" "$tmp/fleet.tsv" >/dev/null 2>&1 && rc=1
+  cp "$tmp/fleet-valid.bak" "$tmp/plugins/wf/skills/fleet/SKILL.md"
+  sed 's/requestedParallelism: <configured-pool-bound>/requestedParallelism: 1/' "$tmp/plugins/wf/skills/fleet/SKILL.md" > "$tmp/plugins/wf/skills/fleet/tmp" && mv "$tmp/plugins/wf/skills/fleet/tmp" "$tmp/plugins/wf/skills/fleet/SKILL.md"
+  fail=0; scan "$tmp" "$tmp/fleet.tsv" >/dev/null 2>&1 && rc=1
+  rm -rf "$tmp/plugins/wf/skills/fleet"
 
   mkdir -p "$tmp/plugins/wf/skills/skill-edge"
   cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
@@ -259,19 +472,37 @@ EOF
   fail=0; scan "$tmp" "$tmp/skill.tsv" >/dev/null || rc=1
   grep -v '^child-skill' "$tmp/skill.tsv" > "$tmp/missing-skill.tsv"
   fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null 2>&1 && rc=1
-  cp "$tmp/plugins/wf/skills/skill-edge/SKILL.md" "$tmp/plugins/wf/skills/skill-edge/one-target.md"
+  cp "$tmp/plugins/wf/skills/skill-edge/SKILL.md" "$tmp/one-target.bak"
   sed 's#`/wf:child`#`/wf:child` then `/wf:other`#' "$tmp/plugins/wf/skills/skill-edge/SKILL.md" > "$tmp/plugins/wf/skills/skill-edge/tmp" && mv "$tmp/plugins/wf/skills/skill-edge/tmp" "$tmp/plugins/wf/skills/skill-edge/SKILL.md"
   # The second same-line target must not be laundered by the first target's row.
   fail=0; scan "$tmp" "$tmp/skill.tsv" >/dev/null 2>&1 && rc=1
-  mv "$tmp/plugins/wf/skills/skill-edge/one-target.md" "$tmp/plugins/wf/skills/skill-edge/SKILL.md"
+  mv "$tmp/one-target.bak" "$tmp/plugins/wf/skills/skill-edge/SKILL.md"
+  cp "$tmp/plugins/wf/skills/skill-edge/SKILL.md" "$tmp/exact-target.bak"
+  printf '\nNext: `/wf:child2`\n' >> "$tmp/plugins/wf/skills/skill-edge/SKILL.md"
+  sed 's#/wf:child#/wf:child2#' "$tmp/skill.tsv" > "$tmp/substring-skill.tsv"
+  # A longer declared token must not cover a distinct shorter executable target.
+  fail=0; scan "$tmp" "$tmp/substring-skill.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/exact-target.bak" "$tmp/plugins/wf/skills/skill-edge/SKILL.md"
   sed 's/owns `postAttempt`; the child must never self-replace/retains the result/' "$tmp/plugins/wf/skills/skill-edge/SKILL.md" > "$tmp/plugins/wf/skills/skill-edge/tmp" && mv "$tmp/plugins/wf/skills/skill-edge/tmp" "$tmp/plugins/wf/skills/skill-edge/SKILL.md"
   fail=0; scan "$tmp" "$tmp/skill.tsv" >/dev/null 2>&1 && rc=1
   cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
 ## Next
 Next: `/wf:child`
 Recommendation only: run `/wf:child` manually.
+Example: execute `/wf:example` via the Skill tool.
+Recommendation: execute `/wf:recommended` via the Skill tool.
 EOF
   fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null || rc=1
+  cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
+## Execute
+Invoke the recommended `/wf:hidden` via the Skill tool.
+EOF
+  fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null 2>&1 && rc=1
+  cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
+## Execute
+Execute the suggested `/wf:hidden` via the Skill tool.
+EOF
+  fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null 2>&1 && rc=1
 
   local heading
   for heading in "Command Syntax" "Edge Cases" "Final Output"; do
@@ -282,6 +513,57 @@ EOF
 ## Safety Rules
 **Allowed:**
 - Invoke `/wf:hidden` through the Skill tool when the procedure calls for it.
+EOF
+  fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null || rc=1
+  cat >> "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
+
+Execute `/wf:hidden-after-permission` via the Skill tool.
+EOF
+  # Permission-list exclusion ends at the blank line; later operational calls are live.
+  fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null 2>&1 && rc=1
+
+  cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
+## Execute
+Execute via the Skill tool.
+`/wf:hidden`
+EOF
+  # Adjacent-line execution must be discovered even when the signal and target split.
+  fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null 2>&1 && rc=1
+
+  cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
+## Next
+Next: execute via the Skill tool.
+`/wf:hidden`
+
+Example: execute via the Skill tool.
+`/wf:example`
+
+Recommendation: execute via the Skill tool.
+`/wf:recommended`
+
+Execute via the Skill tool.
+A caller may invoke `/wf:optional` manually.
+
+Execute via the Skill tool.
+A child should never invoke `/wf:forbidden` itself.
+
+Execute via the Skill tool.
+If the Skill-tool invocation fails, name `/wf:failed` in the error.
+
+Execute via the Skill tool.
+Report the caller that invoked `/wf:historical`.
+
+Report the caller that invoked the Skill tool.
+`/wf:historical-signal`
+EOF
+  fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null || rc=1
+  cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
+## Safety Rules
+**Allowed:**
+- Execute via the Skill tool.
+  `/wf:hidden`
+**Forbidden:**
+- Execute `/wf:forbidden-permission` via the Skill tool.
 EOF
   fail=0; scan "$tmp" "$tmp/missing-skill.tsv" >/dev/null || rc=1
 

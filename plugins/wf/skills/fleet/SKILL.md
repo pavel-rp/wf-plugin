@@ -142,13 +142,12 @@ The shippers close their own items (via `/wf:tf`), but **parent/umbrella tasks a
 
 ## The shipper dispatch template (every lesson is in here)
 
-For each dependency-ready wave, call `resolve_routing` immediately before shipper work with
-`role: "shipper"`, `shapeEvidence: { workSurface: "external-context", atomicity:
-"composite", unitCount: <wave-size>, unitsIndependent: true, ambiguity: "material", risk:
-"elevated", toolWork: "material", validation: "judgment", contextIsolation: "required",
-independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism:
-<configured-pool-bound> }`, `supportsModelSelector: true`, and `supportsEffortSelector:
-false`. A wave is model-homogeneous: pass its shared per-item choice as `invocationModel` on every initial and recovery call — the explicit `--model` value when pinned, otherwise the per-item `sonnet`/`opus` choice from §"Model selection". Emit the compact operational record separately from every task artifact's
+For each dependency-ready wave, call `resolve_routing` immediately before shipper work with `role: "shipper"` and shape evidence selected solely from wave cardinality:
+
+- **One-item wave:** `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`. This valid singleton evidence selects one `isolated` shipper.
+- **Multi-item wave:** `shapeEvidence: { workSurface: "external-context", atomicity: "composite", unitCount: <wave-size>, unitsIndependent: true, ambiguity: "material", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: <configured-pool-bound> }`. This selects `bounded-parallel` subject to `effectiveParallelism`.
+
+For both shapes pass `supportsModelSelector: true` and `supportsEffortSelector: false`. A wave is model-homogeneous: pass its shared per-item choice as `invocationModel` on every initial and recovery call — the explicit `--model` value when pinned, otherwise the per-item `sonnet`/`opus` choice from §"Model selection". Emit the compact operational record separately from every task artifact's
 `**Model:**` attribution. On `status: stop` or non-null `diagnostic`, dispatch none of the
 wave and surface the reason. Otherwise obey `executionShape` exactly: a one-item wave runs
 one isolated shipper; a multi-item independent wave runs bounded-parallel and never exceeds

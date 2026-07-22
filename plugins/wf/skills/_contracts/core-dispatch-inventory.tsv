@@ -40,7 +40,7 @@ ship-gated-phase	included	plugins/wf/skills/ship/SKILL.md	/wf:<phase>	phase-runn
 ship-run-resume	included	plugins/wf/skills/ship/SKILL.md	re-invoke `/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	ship
 ship-pr	included	plugins/wf/skills/ship/SKILL.md	/wf:pr	pr	model=false;effort=false	fixed-skill-route	ship
 ship-finalize	included	plugins/wf/skills/ship/SKILL.md	/wf:tf	finalize	model=false;effort=false	fixed-skill-route	ship
-fleet-agent-initial	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	external-context,composite,dynamic,true,material,elevated,material,judgment,required,false,mechanically-judgeable,dynamic	fleet
+fleet-agent-initial	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	fleet-cardinality-route	fleet
 fleet-skill-initial	included	plugins/wf/skills/fleet/SKILL.md	/wf:ship <ID>	shipper	model=false;effort=false	fixed-skill-route	shipper
 fleet-run-initial	included	plugins/wf/skills/fleet/SKILL.md	initial `/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	shipper
 fleet-run-resume	included	plugins/wf/skills/fleet/SKILL.md	before `/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	shipper
