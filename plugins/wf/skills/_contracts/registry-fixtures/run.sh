@@ -411,6 +411,17 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-374: gated lens dispatch and contract inlining --------------------------
+echo ""
+echo "=== Verify dispatch cost guard — caller gate and contract inlining ==="
+if bash "$DIR/../verify-dispatch-cost-guard.sh"; then
+  printf 'PASS: %s\n' "verify dispatch skips gated lenses and agents do not refetch the contract"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "verify dispatch cost guard"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

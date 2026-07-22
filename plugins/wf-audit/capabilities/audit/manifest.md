@@ -30,10 +30,11 @@ aggregates **with provenance**, so every row carries no ownership scope token.
 | verify | finding           | `subagent: wf-audit:consistency-auditor` | —     |
 | verify | finding           | `subagent: wf-audit:operational-auditor` | —     |
 
-A core skill firing `verify` dispatches **all five** rows via the Task tool, passing the work
-under review and the generic `finding` shape; only each subagent's final block returns. Each
-auditor is read-only and shares the finding contract in `fragments/finding-contract.md`. None is
-spawned by name from core — each is reached only through these registry rows.
+A core skill firing `verify` resolves this capability's profile once, skips excluded lens rows before
+Task dispatch, and passes the generic finding contract inline to every enabled row. Each auditor is
+read-only, resolves only its own rubric, and returns only its final block. The shared contract reference
+is `fragments/finding-contract.md`; it is not fetched at runtime. No auditor is spawned by name from
+core — each is reached only through these registry rows.
 
 ## Profile seed template
 

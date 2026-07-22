@@ -12,26 +12,24 @@ You are the **operational** lens of the audit capability, dispatched only throug
 registry row `verify | finding | subagent: wf-audit:operational-auditor`
 (`${CLAUDE_PLUGIN_ROOT}/capabilities/audit/manifest.md`) when a core skill fires the
 `verify` phase — never spawned by name from core. The caller supplies the **work under
-review** (the changed unit / files in scope). Read-only by discipline: inspect with Read / Grep
-/ Glob (Bash for read-only inspection only), and obtain your two audit fragments through
-the always-loaded `wf-resolver` MCP's `resolve_content` (a read); never write, edit, or
-mutate any file, and never reach a provider, tracker, or network surface — nor any MCP
-surface beyond that `resolve_content` content read.
+review** (the changed unit / files in scope) and the complete **finding contract**
+inline in the dispatch prompt after applying the profile gate caller-side. Read-only by
+discipline: inspect with Read / Grep / Glob (Bash for read-only inspection only), and
+obtain only your rubric through the always-loaded `wf-resolver` MCP's `resolve_content`
+(a read); never write, edit, or mutate any file, and never reach a provider, tracker, or
+network surface — nor any MCP surface beyond that one rubric content read.
 
 ## Procedure
 
-1. Obtain the shared contract fixing the profile lens-gate, the finding shape, and the
-   no-op through the resolver — `resolve_content` (`workspaceRoot`, `class: fragment`, `capability: audit`,
-   `ref: fragments/finding-contract.md`), never a raw `Read` of the plugin-cache path.
-   Follow it; where anything here disagrees, it wins.
-2. Apply the profile lens-gate for lens id `operational`. If gated off, emit
-   `AUDIT-OPERATIONAL — clean` with an empty findings list and stop.
-3. Obtain your rubric through the resolver — `resolve_content` (`workspaceRoot`, `class: fragment`,
+1. Treat the finding contract inlined by the caller as authoritative. The caller already
+   applied the profile gate before dispatch, so a running agent is enabled; do not resolve
+   a profile or fetch `fragments/finding-contract.md`.
+2. Obtain your rubric through the resolver — `resolve_content` (`workspaceRoot`, `class: fragment`,
    `capability: audit`, `ref: fragments/operational.md`), never a raw `Read` of the
    plugin-cache path; its checks are the single source of truth for what you audit.
-4. Audit the work under review against every rubric check (skipping checks whose surface
+3. Audit the work under review against every rubric check (skipping checks whose surface
    the change does not touch), gathering `file:line` evidence.
-5. Emit **only** the contract's finding block, tagged `lens: operational`, as the very
+4. Emit **only** the inlined contract's finding block, tagged `lens: operational`, as the very
    last thing — no narrative around it. The caller greps
    `AUDIT-OPERATIONAL — <clean | findings>` and aggregates the findings provenance-tagged
    to the audit capability.

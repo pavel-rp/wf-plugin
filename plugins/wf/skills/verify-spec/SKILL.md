@@ -214,12 +214,64 @@ by **phase name / contribution-kind name**, never by heading:
 2. **Collect** the fragment rows whose `phase` is `verify` and `contributionKind` is
    `finding`, in registry order.
 3. **Dispatch each** on its `dispatch` metadata (the metadata queries return only
-   paths/metadata; the fragment body comes from the resolver's `resolve_content({ workspaceRoot, ... })` content
-   surface, read prompt-free in this skill's own context):
-   `inline: <rel-path>` → obtain the fragment body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`,
-   the capability name, `ref: <rel-path>`) and follow it in-context,
-   producing each finding in the generic finding shape (the "Capability findings" report
-   shape below). <!-- capability-route:verify-finding --> For `subagent: <agent>`, first validate the token as a registered Task target and derive the stable routing `role` from its final colon-delimited slug (core never names the capability or target). Immediately before each Task attempt, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, that role, `unitIds: ["verify:<source-capability>:<role>"]` canonicalized by the shared routing rule, `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: true, returnContract: "judgment", requestedParallelism: 1 }`. Include `actualModel` only when exposed and emit the compact operational record separately from report attribution. A `status: stop`, diagnostic, malformed derived role, or non-`isolated` shape is a hard stop before Task; otherwise invoke one Task with `subagent_type: <agent>`, passing the artifact under audit and generic finding shape, pass `model.value` only when non-null (effort is unsupported), and forward only its final block. The parent validates that block against the generic finding contract and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the child never self-replaces. If the Task target itself is unavailable, preserve the existing optional-contributor no-op.
+   paths/metadata; inline fragment bodies come from the resolver's
+   `resolve_content({ workspaceRoot, ... })` content surface, read prompt-free in this
+   skill's own context):
+   `inline: <rel-path>` → obtain the fragment body via
+   `resolve_content({ workspaceRoot, ... })` (`class: fragment`, the capability name,
+   `ref: <rel-path>`) and follow it in-context, producing each finding in the generic
+   finding shape below.
+
+   For `subagent: <agent>`, apply the optional contributor gate **before any routing or
+   Task call**. Resolve the source capability's profile values once per capability with
+   `resolve_profile({ workspaceRoot, capability: <source-capability> })`. When the
+   resolved values contain a `lenses` array, derive this row's contributor id from the
+   final colon-delimited dispatch slug by removing one trailing `-auditor`; if that id is
+   absent from `lenses`, skip the row without routing or spawning it. A missing profile,
+   or a profile without a `lenses` array, leaves the row enabled. This is a generic,
+   data-driven optional-contributor gate: core names no capability or contributor.
+
+   <!-- capability-route:verify-finding --> For every enabled row, validate the agent
+   token as a registered Task target and derive the stable routing `role` from its final
+   colon-delimited slug (core never names the capability or target). Immediately before
+   each Task attempt, call `resolve_routing` with `workspaceRoot: <absolute pwd -P
+   workspace root>`, that role, `unitIds:
+   ["verify:<source-capability>:<role>"]` canonicalized by the shared routing rule,
+   `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence: {
+   workSurface: "external-context", atomicity: "atomic", unitCount: 1,
+   unitsIndependent: false, ambiguity: "material", risk: "elevated", toolWork:
+   "material", validation: "judgment", contextIsolation: "required",
+   independentReview: true, returnContract: "judgment", requestedParallelism: 1 }`.
+   Include `actualModel` only when exposed and emit the compact operational record
+   separately from report attribution. A `status: stop`, diagnostic, malformed derived
+   role, or non-`isolated` shape is a hard stop before Task; otherwise invoke one Task
+   with `subagent_type: <agent>`, passing the artifact under audit **and the following
+   finding contract inline in the dispatch prompt** (the same bytes enter every enabled
+   lens context; no per-agent resolver fetch and no payload-reduction claim):
+
+   ```text
+   Return only this block, with one item per concrete, evidenced issue and an empty
+   `findings:` list when clean:
+
+   AUDIT-<LENS> — <clean | findings>
+
+   lens: <lens>
+   findings:
+   - severity: <fail | warn>
+     location: <file:line, or unit identifier>
+     issue: <the concrete defect, one line>
+     evidence: <what proves it — a quoted line or grep result>
+     recommendation: <the concrete bounded change, or "escalate">
+
+   `fail` blocks shipment; `warn` is non-blocking. Report no speculation, style nits,
+   or restated generic requirements.
+   ```
+
+   Pass `model.value` only when non-null (effort is unsupported), and forward only the
+   final block. The parent validates that block against this generic finding contract
+   and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the
+   child never self-replaces. If the Task target itself is unavailable, preserve the
+   existing optional-contributor no-op.
 4. **Aggregate provenance-tagged** — render every contributor's findings, each tagged
    with its **source capability** (the `name` field); registry order is cosmetic.
 
