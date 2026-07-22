@@ -1,7 +1,7 @@
 ---
 name: qa-followup
 description: Reads a QA run report (07_qa-report.md), triages every non-passing scenario into harness blocks, product defects, and escalations, then closes the loop in one run — fixes the test harness and re-runs blocked scenarios via /wf:qa-auto, writes a checkbox remediation plan (08_qa-fix.md) for the defects, gates on a single approval, applies the source fixes, and recommends a fresh QA pass to confirm. Use after /wf:qa-run or /wf:qa-auto when the report came back with FAIL or BLOCKED scenarios and you want them unblocked and fixed under a plan-then-implement discipline.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, Skill]
 ---
 
 # /wf:qa-followup — Unblock and fix what the QA report found
@@ -67,7 +67,7 @@ Id inference, the Phase 2 branch gate, and the staleness check below all reach `
 - **Edit source files**, but only to apply a fix described by a step in the `08_qa-fix.md` plan this run produced, and only after the approval gate (Phase 7) clears.
 - Write `08_qa-fix.md` (and rotate `08_qa-fix.history.md`) ONLY inside the resolved task folder.
 - Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference, branch gating, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
-- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 2 branch gate, and `subagent_type: wf:index` after writing the artifact. Both perform non-destructive operations only.
+- Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 2 branch gate. Invoke `/wf:index` only through the **Skill** tool after writing the artifact so its wrapper owns routing.
 - Invoke the registered `qa-execution` host provider (operations: `route` / `new` / `augment` for frontend test hosts; `api-probe` / `api-revert` for backend endpoints) to scaffold or resolve a test surface, and `/wf:qa-auto --only` to re-run unblocked scenarios. These own their own write permissions (including the ephemeral backend-host wiring, which the host provider reverts).
 
 **Forbidden:**

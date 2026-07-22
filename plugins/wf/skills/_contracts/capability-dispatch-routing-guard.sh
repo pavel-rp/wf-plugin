@@ -54,6 +54,28 @@ for base in scan_roots:
         relative = path.relative_to(root).as_posix(); texts[relative] = text
         for match in re.finditer(r"<!-- capability-route:([a-z0-9-]+) -->", text):
             markers.setdefault(match.group(1), []).append((relative, match.start()))
+        discovery_enabled = (
+            relative in {
+                "plugins/wf/skills/verify-spec/SKILL.md",
+                "plugins/wf/skills/qa-auto/SKILL.md",
+                "plugins/wf/skills/qa-followup/SKILL.md",
+            }
+            or (
+                relative.startswith(("plugins/wf-audit/", "plugins/wf-browser-qa/", "plugins/wf-angular/"))
+                and "/references/" not in relative
+                and not relative.endswith("/manifest.md")
+            )
+        )
+        for number, line in enumerate(text.splitlines(), 1):
+            if not discovery_enabled: continue
+            executable = (
+                re.search(r"subagent_type: wf-[a-z0-9-]+:[a-z0-9-]+", line)
+                or re.search(r"(?:invoke|re-invoke).*?/wf-(?:audit|browser-qa|angular):[a-z0-9-]+.*?Skill", line, re.I)
+                or re.search(r"(?:invoke|dispatch).*?Task.*?subagent_type: <[^>]+>", line, re.I)
+            )
+            prose = re.search(r"normally invoked|caller hands|dispatch target of|fragment.*names|user-facing entry|to compose a process-retrospective", line, re.I)
+            if executable and not prose and "<!-- capability-route:" not in line:
+                fail(f"unregistered capability dispatch at {relative}:{number}")
 
 included = {ident: fields for ident, fields in rows.items() if fields[1] == "included"}
 for ident, occurrences in markers.items():
@@ -68,6 +90,7 @@ for ident, fields in included.items():
     text = texts[relative]
     window = text[max(0, offset - 1800):offset + 2200]
     target, role, selectors, evidence, owner = fields[3:]
+    if target not in window: fail(f"edge {ident} lacks declared target {target}")
     if evidence == "index-wrapper-mediated":
         for token in ("/wf:index", "Skill", "wrapper", "routing"):
             if token not in window: fail(f"edge {ident} lacks wrapper fact {token}")
@@ -83,6 +106,9 @@ for ident, fields in included.items():
         if "supportsEffortSelector: false" not in window: fail(f"edge {ident} changes effort inheritance")
         if role != "derived-final-slug" and f'role: "{role}"' not in window:
             fail(f"edge {ident} lacks role {role}")
+        if owner == "parent" and not re.search(r"(?:parent|agent) (?:validates|alone owns)|parent.*owns", window, re.I | re.S):
+            fail(f"edge {ident} does not preserve parent retry ownership")
+        if owner != "parent": fail(f"edge {ident} has unsupported retry owner {owner}")
         for value in evidence.split(","):
             if value not in window: fail(f"edge {ident} lacks shape evidence value {value}")
 
@@ -122,6 +148,11 @@ p=Path(__import__('sys').argv[1]); p.write_text(p.read_text().replace('<!-- capa
 PY
   if CAPABILITY_DISPATCH_ROOT="$tmp" CAPABILITY_DISPATCH_INVENTORY="$tmp/inventory.tsv" run_guard >/dev/null 2>&1; then
     printf 'capability-dispatch-routing-guard: missing-marker fixture passed unexpectedly\n' >&2; exit 1
+  fi
+  cp "$ROOT/plugins/wf/skills/qa-auto/SKILL.md" "$tmp/plugins/wf/skills/qa-auto/SKILL.md" || exit 1
+  printf '\nInvoke the Task tool with `subagent_type: wf-rogue:unrouted`.\n' >> "$tmp/plugins/wf-browser-qa/skills/qa-engine/SKILL.md"
+  if CAPABILITY_DISPATCH_ROOT="$tmp" CAPABILITY_DISPATCH_INVENTORY="$tmp/inventory.tsv" run_guard >/dev/null 2>&1; then
+    printf 'capability-dispatch-routing-guard: rogue-dispatch fixture passed unexpectedly\n' >&2; exit 1
   fi
   printf 'capability-dispatch-routing-guard: self-test passed\n'
   exit 0
