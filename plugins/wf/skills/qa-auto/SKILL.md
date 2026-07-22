@@ -21,7 +21,7 @@ For a human-in-the-loop run, use `/wf:qa-run` — the same plan, the same report
 If **no** `qa-execution` engine provider is registered, core stops:
 
 ```
-No qa-execution engine registered. A browser-QA (or other execution) capability must
+No qa-execution engine registered. An execution capability must
 be active in _local/config.md's ## Capabilities table to drive scenarios. See the
 capability's manifest for registration, then re-run.
 ```
@@ -125,7 +125,7 @@ Resolve the engine provider through two `wf-resolver` queries — the resolver h
 The engine owns credential handling, the browser drive, precondition reaching, console/network capture, and per-scenario verdict blocks. Core hands it the work and manages the loop boundary.
 
 1. **Compute the scenario set** for this run — the full plan, the `--suite` subset, the `--resume` tail (first un-verdicted onward), or the `--only` list — in execution order (P0 → P1 → P2, file order within a tier), capped by the `--batch N` ceiling (default 25).
-2. **Dispatch** to the resolved engine provider via the **Task** tool (`subagent_type: <engine dispatch target>`), passing: the scenario set, the resolved task id + task-folder path, the `07_qa-report.md` location, `{qa-baseline-ignore}` (or empty), and the forwarded `--reset-creds` flag. The engine drives each scenario in its isolated context and returns per-scenario verdict blocks in the shared report format.
+2. <!-- capability-route:qa-engine --> **Route and dispatch.** Validate the resolved `subagent: <agent>` token as a registered Task target and derive its stable routing `role` from the final colon-delimited slug; core never hardcodes the provider or target. Immediately before each attempt call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role`, `unitIds: ["qa-auto:engine"]`, `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`. Include `actualModel` only when exposed and emit the compact operational record separately from report attribution. A `status: stop`, diagnostic, malformed derived role, or non-`isolated` shape stops before work as runtime-inapplicable. Otherwise invoke one **Task** (`subagent_type: <engine dispatch target>`), passing the scenario set, resolved task id + task-folder path, `07_qa-report.md` location, `{qa-baseline-ignore}` (or empty), and forwarded `--reset-creds`; pass `model.value` only when non-null and no effort selector. The parent validates returned per-scenario blocks and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the engine never self-replaces.
 3. **Merge** the returned verdict blocks into `07_qa-report.md` incrementally (the engine may also append directly; core is the owner of the run-level rollup either way). For `--only`, **merge** into the existing report: replace just the listed scenarios' blocks, preserve every other scenario's recorded verdict verbatim.
 4. **Batch / early-stop signals from the engine.** If the engine reports a batch ceiling reached or a first-scenario auth/unreachable failure, stop the loop, mark remaining scenarios `Not run`, and proceed to assembly with `Status: INCOMPLETE`.
 

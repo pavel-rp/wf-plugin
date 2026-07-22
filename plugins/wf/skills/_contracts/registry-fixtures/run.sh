@@ -390,6 +390,27 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-400: capability-dispatch routing adoption ------------------------------
+echo ""
+echo "=== Capability dispatch routing guard — seeded self-test ==="
+if bash "$DIR/../capability-dispatch-routing-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "capability dispatch routing guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "capability dispatch routing guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Capability dispatch routing guard — real-tree scan ==="
+if bash "$DIR/../capability-dispatch-routing-guard.sh"; then
+  printf 'PASS: %s\n' "capability dispatch routing guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "capability dispatch routing guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

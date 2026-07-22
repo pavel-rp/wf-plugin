@@ -31,7 +31,7 @@ The caller hands you, in its Task prompt:
 
 ## Tools
 
-This agent declares no `tools:` field, so it inherits the full session catalog. The built-in `Read` / `Grep` / `Glob` / `Edit` / `Write` / `Bash` are directly callable, as is the **Task** tool and **every connected MCP server** — including the **browser-automation MCP tools** the engine drives (`open_browser_page`, `click_element`, `type_in_page`, `read_page`, `screenshot_page`, `run_playwright_code`, `navigate_page`, `hover_element`, `drag_element`, `handle_dialog`). Omitting `tools:` is required: a narrow built-in-only allowlist would silently starve the engine of the browser tools it cannot run without (per `CLAUDE.md` §8).
+This agent declares no `tools:` field, so it inherits the full session catalog, including the **Skill** tool for the engine procedure and routed `/wf:index` wrapper, plus every connected MCP server — especially the browser-automation tools the engine drives. Omitting `tools:` is required: a narrow allowlist would silently starve the engine of those surfaces (per `CLAUDE.md` §8).
 
 ## Return — the skill's per-scenario verdict block(s)
 

@@ -11,7 +11,7 @@ Disposition meanings:
 
 For every row, host enforcement, invocation override, project override, shipped default, and inheritance retain WF-394 precedence. `inherit` means the selector remains unset at this layer.
 
-WF-399 completes routing-contract adoption for every fixed core-owned child execution. The authoritative callsite inventory and guard live at `plugins/wf/skills/_contracts/core-dispatch-inventory.tsv` and `core-dispatch-routing-guard.sh`. This adoption changes no disposition, default, effort, attempt limit, artifact attribution, or role outcome; dynamic capability and qa-execution provider dispatch remain reserved for WF-400.
+WF-399 completed fixed core-owned adoption; WF-400 completes live capability adoption for registry-selected verify findings, QA engine/host providers, retrospective bulk distillation, and pack-owned index updates. The two authoritative inventories and guards are `plugins/wf/skills/_contracts/core-dispatch-inventory.tsv` / `core-dispatch-routing-guard.sh` and `capability-dispatch-inventory.tsv` / `capability-dispatch-routing-guard.sh`. Pack-owned index work reaches the already-routed `/wf:index` wrapper; the optional retrospective's own on-request entrypoint remains caller-owned because the repository has no executable caller. Adoption changes no disposition, default, effort, attempt limit, artifact attribution, or role outcome.
 
 ## Complete production matrix
 

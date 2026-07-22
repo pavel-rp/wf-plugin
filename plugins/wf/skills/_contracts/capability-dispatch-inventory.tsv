@@ -1,0 +1,15 @@
+# id	classification	file	target	role	selector-support	shape-evidence	retry-owner
+verify-finding	included	plugins/wf/skills/verify-spec/SKILL.md	registry subagent	derived-final-slug	model=true;effort=false	external-context,atomic,1,false,material,elevated,material,judgment,required,true,judgment,1	parent
+qa-engine	included	plugins/wf/skills/qa-auto/SKILL.md	engine provider	derived-final-slug	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,judgment,required,false,judgment,1	parent
+qa-host	included	plugins/wf/skills/qa-followup/SKILL.md	host provider	derived-final-slug	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	parent
+audit-distill-review	included	plugins/wf-audit/capabilities/audit/fragments/retrospective.md	wf:context-distiller	context-distiller	model=true;effort=false	external-context,atomic,1,false,material,elevated,material,judgment,required,false,mechanically-judgeable,1	parent
+audit-distill-ci	included	plugins/wf-audit/capabilities/audit/fragments/retrospective.md	wf:context-distiller	context-distiller	model=true;effort=false	external-context,atomic,1,false,material,elevated,material,judgment,required,false,mechanically-judgeable,1	parent
+audit-index	included	plugins/wf-audit/capabilities/audit/fragments/retrospective.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	wrapper
+browser-index	included	plugins/wf-browser-qa/skills/qa-engine/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	wrapper
+angular-index-new	included	plugins/wf-angular/skills/qa-host/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	wrapper
+angular-index-augment	included	plugins/wf-angular/skills/qa-host/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	wrapper
+audit-retrospective-entry	excluded	plugins/wf-audit/agents/audit-retrospective.md	wf-audit:audit-retrospective	audit-retrospective	—	caller-owned on-request entry; no repository caller	—
+inline-fragments	excluded	plugins/wf-*/capabilities/**	inline: fragments	prose	—	no child execution	—
+manifest-declarations	excluded	plugins/wf-*/capabilities/*/manifest.md	subagent declarations	prose	—	metadata consumed by routed core callers	—
+thin-target-prose	excluded	plugins/wf-*/agents/*.md	normally invoked via Task	prose	—	dispatch description, not caller execution	—
+review-pack	excluded	plugins/wf-review/**	review dispatches	WF-400	—	out of scope	—

@@ -43,7 +43,7 @@ These fields are compatible inputs for WF-373/WF-382 measurements; consumers can
 
 ## Current adoption records
 
-The initial records deliberately preserve every unresolved role. `inherit` means no static model or effort is introduced at this layer. Candidate tiers enumerate the comparison set; they do not authorize a default.
+The initial records deliberately preserve every unresolved role. `inherit` means no static model or effort is introduced at this layer. Candidate tiers enumerate the comparison set; they do not authorize a default. WF-400 makes the audit/QA/index records operational at capability dispatch callsites without changing any `retain`/`defer` outcome; compact routing facts are now available for future matched evidence.
 
 | Record | Role | Owner | Evaluated | Current | Candidate tiers | Correctness | Latency/context | Cost | Ownership | Evidence refs | Decision | Rationale / next evidence |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|

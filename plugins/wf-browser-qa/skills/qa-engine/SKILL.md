@@ -1,7 +1,7 @@
 ---
 name: qa-engine
 description: Stack-agnostic browser-automation QA engine. Drives a web app in-thread — preflights browser tools, authenticates once, reaches each scenario's browser-level preconditions (clears/seeds localStorage, sessionStorage, cookies; sets URL/viewport), runs the steps with observation discipline, captures console/network signals, screenshots on FAIL, and emits per-scenario verdict blocks in the shared QA report format. The execution provider behind the browser-qa capability's qa-execution provider fragment. Use when a QA orchestrator dispatches the per-scenario browser drive, or to drive scenarios directly against a running app of any stack.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Skill]
 ---
 
 # /wf-browser-qa:qa-engine — Stack-agnostic browser-automation QA engine
@@ -79,7 +79,7 @@ Branch-based id inference (Phase 1) reaches `current-branch-query` through the d
 - Use the IDE's question tool to prompt for creds on first run.
 - Use the browser-automation tools (`open_browser_page`, `click_element`, `type_in_page`, `read_page`, `screenshot_page`, `run_playwright_code`, `navigate_page`, `hover_element`, `drag_element`, `handle_dialog`).
 - **Manipulate browser storage** via `run_playwright_code` to satisfy preconditions: `localStorage`, `sessionStorage`, cookies for the test app's origin only.
-- Invoke the **Task** tool with `subagent_type: wf:index` after a report is written (direct-invocation mode).
+- Invoke `/wf:index` through the **Skill** tool after a report is written (direct-invocation mode); its wrapper owns routing.
 
 **Forbidden:**
 
@@ -279,7 +279,7 @@ After the loop completes (or stops at batch / abort):
 
 - `Mode: agentic`, `Tester: wf-browser-qa:qa-engine`, `Driver model:` current model id, `App:` base URL from creds, `Status:` deterministic from the PASS/FAIL/INCOMPLETE rule.
 - Summary table; traceability matrix rolled up from per-scenario `Validates: SC-N` references and verdicts; per-suite results (PASS = one line, FAIL/BLOCKED = full step table); Notes & Observations; Defects table (one row per FAIL, severity from priority P0→High / P1→Medium / P2→Low).
-- On direct invocation, if the Task tool is available, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`.
+- <!-- capability-route:browser-index --> On direct invocation, if the Skill tool is available, invoke `/wf:index` through that tool with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`. The wrapper performs the `index` routing decision; never dispatch `wf:index` directly.
 
 ---
 
