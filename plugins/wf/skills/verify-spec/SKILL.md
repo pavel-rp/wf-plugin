@@ -224,12 +224,14 @@ by **phase name / contribution-kind name**, never by heading:
 
    For `subagent: <agent>`, apply the optional contributor gate **before any routing or
    Task call**. Resolve the source capability's profile values once per capability with
-   `resolve_profile({ workspaceRoot, capability: <source-capability> })`. When the
-   resolved values contain a `lenses` array, derive this row's contributor id from the
-   final colon-delimited dispatch slug by removing one trailing `-auditor`; if that id is
-   absent from `lenses`, skip the row without routing or spawning it. A missing profile,
-   or a profile without a `lenses` array, leaves the row enabled. This is a generic,
-   data-driven optional-contributor gate: core names no capability or contributor.
+   `resolve_profile({ workspaceRoot, capability: <source-capability> })`. For that
+   capability's collected subagent rows, derive each contributor id as the first
+   hyphen-delimited segment of the final colon-delimited dispatch slug. If a resolved
+   top-level string-array contains at least one of those derived ids, treat that array as
+   the capability's contributor allowlist and skip every row whose id is absent — without
+   routing or spawning it. No matching string-array means no contributor gate and leaves
+   every row enabled. This is generic and data-driven: core names no profile key,
+   capability, contributor, or target suffix.
 
    <!-- capability-route:verify-finding --> For every enabled row, validate the agent
    token as a registered Task target and derive the stable routing `role` from its final
