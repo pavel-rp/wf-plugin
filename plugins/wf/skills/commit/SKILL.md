@@ -57,7 +57,7 @@ Emit the subagent's Final Output block (`COMMIT — committed`, `COMMIT — noth
 The subagent owns every stop condition; each surfaces through the Final Output block below. It returns:
 
 - **Nothing staged** — `COMMIT — nothing-to-commit`; the staged set is empty (the default mode stages everything via the delivery provider first, so this means a clean tree; under `--staged` it means nothing is staged, even if the working tree has unstaged changes). A no-op commit path — a `--push` still syncs any unpushed commits.
-- **Not on the task branch** — the subagent invokes its branch gate (`wf:branch`); if that gate fails (e.g. a dirty tree blocks the switch), it returns `COMMIT — Error` with the branch reason. To commit into a task branch you must already be on it.
+- **Not on the task branch** — the subagent invokes its branch gate (`wf:branch`). The delivery provider captures and reapplies dirty work across the switch, so a dirty working state is preserved carry, not an error by itself. If the gate reports an actual carry conflict or provider failure, the subagent returns `COMMIT — Error` with that reason.
 - **Detached HEAD** — `COMMIT — Error`; task work cannot be committed from a detached HEAD.
 - **Unresolvable task ID** — `COMMIT — Error`; no ID was passed and none could be inferred from the current branch.
 - **Missing config / no resolvable workspace** — `COMMIT — Error`; the resolver reports the project is uninitialized (absent `_local/config.md` — run `/wf:init` first), or the `resolve_config({ workspaceRoot, ... })` `workspaceRoot` could not be resolved with a delivery provider active (a genuine environment error — no working tree found).

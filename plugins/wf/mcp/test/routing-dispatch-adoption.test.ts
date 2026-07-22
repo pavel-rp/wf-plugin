@@ -9,13 +9,13 @@ if (!pkgDir) throw new Error("WF_MCP_DIR is required");
 const repoRoot = resolve(pkgDir, "../../..");
 const inventoryPath = join(repoRoot, "plugins/wf/skills/_contracts/core-dispatch-inventory.tsv");
 
-type Row = { id: string; classification: string; file: string; target: string; role: string; selectors: string; evidence: string };
+type Row = { id: string; classification: string; file: string; target: string; role: string; selectors: string; evidence: string; retryOwner: string };
 function rows(): Row[] {
   return readFileSync(inventoryPath, "utf8").split(/\r?\n/)
     .filter((line) => line && !line.startsWith("#"))
     .map((line) => {
-      const [id, classification, file, target, role, selectors, evidence] = line.split("\t");
-      return { id, classification, file, target, role, selectors, evidence };
+      const [id, classification, file, target, role, selectors, evidence, retryOwner] = line.split("\t");
+      return { id, classification, file, target, role, selectors, evidence, retryOwner };
     });
 }
 
@@ -29,15 +29,21 @@ const atomicEvidence = {
 test("authoritative dispatch inventory is normalized and bidirectional", () => {
   const inventory = rows();
   assert.equal(new Set(inventory.map((row) => row.id)).size, inventory.length, "inventory ids must be unique");
-  assert.equal(inventory.filter((row) => row.classification === "excluded").length, 4, "only the four revised-spec exclusions are allowed");
+  assert.equal(inventory.filter((row) => row.classification === "excluded").length, 5, "only the revised-spec structural exclusions are allowed");
   const included = inventory.filter((row) => row.classification === "included");
-  assert.equal(included.length, 29, "fixed core dispatch inventory changed; review and guard update required");
+  assert.equal(included.length, 63, "fixed core dispatch inventory changed; review and guard update required");
   for (const row of included) {
     const source = readFileSync(join(repoRoot, row.file), "utf8");
-    for (const target of row.target.split(",")) assert.ok(source.includes(target), `${row.id} target is stale`);
-    assert.ok(["shared-gate-and-index", "index-wrapper-mediated"].includes(row.evidence) || row.evidence.split(",").length === 12, `${row.id} requires complete shape evidence`);
+    assert.ok(source.includes(row.target), `${row.id} target is stale`);
+    assert.ok(["shared-branch-gate", "index-wrapper-mediated", "fixed-skill-route", "fleet-recovery-route"].includes(row.evidence) || row.evidence.split(",").length === 12, `${row.id} requires complete shape evidence`);
     assert.match(row.selectors, /^(?:model=(?:true|false);effort=(?:true|false)|mixed)$/);
+    assert.ok(row.retryOwner, `${row.id} requires explicit retry ownership`);
   }
+  assert.ok(included.some((row) => row.id === "init-constitution"));
+  assert.ok(included.some((row) => row.id === "qa-followup-rerun"));
+  assert.ok(included.some((row) => row.id === "ship-gated-phase"));
+  assert.ok(included.some((row) => row.id === "fleet-run-resume"));
+  assert.ok(included.some((row) => row.id === "phase-runner-skill"));
 });
 
 test("routing rejects contradictory evidence and preserves safe fallback metadata", () => {
@@ -57,7 +63,28 @@ test("routing rejects contradictory evidence and preserves safe fallback metadat
   assert.equal(unsupported.executionShape, "isolated");
   const compact = projectRoutingMeasurement(unsupported);
   assert.equal(compact.modelFallback, "selector-unsupported");
+  assert.ok(!Object.hasOwn(compact, "actualModel"), "actualModel is omitted when the host does not expose it");
   assert.ok(!Object.hasOwn(compact, "Model"), "artifact attribution must stay outside routing metadata");
+
+  const observed = resolveRouting({}, {
+    role: "index", shapeEvidence: atomicEvidence, actualModel: "sonnet",
+    supportsModelSelector: false, supportsEffortSelector: false,
+  });
+  assert.equal(projectRoutingMeasurement(observed).actualModel, "sonnet");
+});
+
+test("fleet consumes effective parallelism and owns selective recovery", () => {
+  const fleet = readFileSync(join(repoRoot, "plugins/wf/skills/fleet/SKILL.md"), "utf8");
+  assert.match(fleet, /min\(available slots, effectiveParallelism\)/);
+  assert.match(fleet, /excess ready item[^\n]*queued/);
+  assert.match(fleet, /model-homogeneous waves/);
+  assert.match(fleet, /shared model as `invocationModel`/);
+  assert.match(fleet, /same `invocationModel` selected for that item/);
+  assert.match(fleet, /fleet parent[^\n]*postAttempt|parent-owned `postAttempt`/);
+  assert.match(fleet, /retain every successful|Retain every successful/);
+  assert.match(fleet, /dependency\/input order/);
+  assert.match(fleet, /do not raw-query the child's worktree/);
+  assert.match(fleet, /no explicit dirty working-state checkpoint/);
 });
 
 test("bounded parallel work keeps the effective bound and retained retry units", () => {

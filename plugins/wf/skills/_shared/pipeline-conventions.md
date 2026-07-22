@@ -88,8 +88,11 @@ branch-name match.
    `invocation-runtime.ops.md` §"Run-scoped provider forwarding"). Pass the model selector
    only when non-null, and preserve inherited effort when effort is null. (Do NOT call
    `/wf:branch` — that loads its `SKILL.md` into this skill's context. The subagent is
-   self-sufficient.) On `BRANCH — created`/`switched`/`already-active`, continue. On
-   `BRANCH — Error`, stop and surface the subagent's reason.
+   self-sufficient.) The delivery provider's branch operation captures and reapplies dirty
+   work across a switch. A dirty working state is therefore preserved carry and never an
+   error or stall by itself; only an actual reapply conflict or provider failure is an error.
+   On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop
+   and surface the subagent's reason.
 
 Each skill keeps its own behavior for **Task-tool unavailability** (some skills skip the
 gate with a stated reason and proceed on the current branch; others treat it as a hard
