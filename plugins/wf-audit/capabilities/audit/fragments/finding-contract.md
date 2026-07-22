@@ -1,39 +1,23 @@
-# Audit lens — shared finding contract (boot doc)
+# Audit lens — finding contract reference
 
-**Wired by:** `plugins/wf-audit/capabilities/audit/manifest.md` (the five
-
-Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
-`verify | finding | subagent:` rows)
-**Contributes:** a `finding` at the `verify` phase, per
-`plugins/wf/skills/_contracts/capability-registry.contract.md`
-**Read by:** every audit auditor on boot, alongside its own lens rubric
-**Model:** claude-opus-4-8
+**Wired by:** `plugins/wf/skills/verify-spec/SKILL.md` (caller-side dispatch)
+**Contributes:** the generic finding shape used by the audit capability's five `verify | finding | subagent:` rows
+**Read by:** authors only; auditor agents receive the contract inline and never fetch this file
+**Model:** gpt-5.6-sol
 
 ---
 
-The single contract every audit lens shares — it fixes the profile lens-gate, the finding
-shape, and the no-op, so a core skill firing `verify` aggregates all lenses uniformly. Each
-auditor reads this file **and** its one lens rubric on boot — two direct reads, one level
-deep, no further nesting. Follow it exactly.
+This reference records the shared semantics every audit lens keeps. The verify caller owns the runtime copy: it applies the optional profile gate before Task dispatch and includes the complete contract in every enabled agent's prompt. Consequently a gated-off lens has no agent boot, and an enabled lens performs no resolver fetch for this file. The same contract bytes still enter each enabled lens context; this is a round-trip optimization, not payload reduction.
 
-## Profile lens-gate (run first)
+## Caller-side profile lens gate
 
-Obtain the resolved audit profile by calling the bundled `wf-resolver` MCP tool
-`resolve_profile({ capability: "audit", workspaceRoot })` — it returns `{ capability, present, values }`, the
-override-merged profile **values** directly (`_local/profiles/audit.profile.json` override
-merged over the capability's shipped default, precedence: **override > capability
-default**); you perform no direct profile-file read of your own. If `present` is `true`
-**and** `values.lenses` does **not** contain your own lens id, emit the empty findings block
-(see No-op) and stop — do no audit work. If `present` is `false`, or your lens id is listed,
-proceed. (No override present = the shipped default: all lenses enabled.) If the
-`wf-resolver` service is unavailable, stop and report that the resolver runtime is not
-loaded (restart Claude Code) — do not hand-read the profile file as a fallback (WF-272
-diagnostics/recovery).
+The verify caller resolves the source capability profile once. When its values expose a `lenses` array, the caller derives the contributor id from the dispatch target's final slug (removing one trailing `-auditor`) and skips the row before routing or Task invocation when the id is absent. A missing profile or missing `lenses` key leaves the contributor enabled.
 
-## The finding shape you return
+Auditor agents never repeat this gate. Reaching an auditor is proof that the caller enabled it.
 
-Walk the work under review against every check in your lens rubric. For each real issue,
-emit one finding. Return **only** this fenced block — no prose around it:
+## Finding shape
+
+For each real issue, emit one finding and return only this block:
 
 ```
 AUDIT-<LENS> — <clean | findings>
@@ -43,18 +27,12 @@ findings:
 - severity: <fail | warn>
   location: <file:line, or unit identifier>
   issue: <the concrete defect, one line>
-  evidence: <what you observed that proves it — a quoted line or grep result>
-  recommendation: <the concrete change that resolves it, or "escalate" if not bounded>
+  evidence: <what proves it — a quoted line or grep result>
+  recommendation: <the concrete bounded change, or "escalate">
 ```
 
-Severity: `fail` = a real defect that must not ship (it drives the verdict to FAIL, like a
-failed requirement); `warn` = a genuine concern that does not block. Only report issues you
-can cite with concrete evidence — no speculation, no style nits, no restating requirements
-the generic audit already covers.
+`fail` is a real defect that blocks shipment. `warn` is a genuine non-blocking concern. Findings require concrete evidence; never report speculation, style nits, or requirements already covered by the generic audit.
 
-## No-op
+## Clean result
 
-If every check passes (or the lens is gated off), return the block with an empty findings
-list and `AUDIT-<LENS> — clean`. An empty result is the conformant / not-applicable signal;
-never STOP the verdict and never surface a lens/capability term on this path. The core
-proceeds either way — this lens contributes findings, it does not halt the workflow.
+If every rubric check passes, return the block with an empty `findings:` list and `AUDIT-<LENS> — clean`. The core proceeds either way: a lens contributes findings and never halts the workflow itself.
