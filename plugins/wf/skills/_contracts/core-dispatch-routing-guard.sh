@@ -306,27 +306,61 @@ inventory_task_roles() {
 task_occurrence_routed() {
   local file="$1" line="$2" target="$3" roles="$4"
   [ -n "$roles" ] || return 1
-  awk -v stop="$line" -v target="$target" -v roles="$roles" '
-    BEGIN{n=split(roles,role,",")}
-    NR>stop{exit}
-    /^## /{active=0; matched_role=0; role_ok=0; waiting_role=0}
-    /resolve_routing/{active=1; matched_role=0; role_ok=0; waiting_role=0}
-    active && !matched_role {
-      candidate=""
-      if (match($0, /role:[[:space:]]*"[a-z0-9-]+"/)) {
-        candidate=substr($0,RSTART,RLENGTH); sub(/^role:[[:space:]]*"/,"",candidate); sub(/"$/,"",candidate)
-      } else if (waiting_role && match($0, /^[[:space:]]*"[a-z0-9-]+"/)) {
-        candidate=substr($0,RSTART,RLENGTH); gsub(/^[[:space:]]*"|"$/,"",candidate)
-      }
-      if (candidate != "") {
-        matched_role=1
-        for(i=1;i<=n;i++) if(candidate==role[i]) role_ok=1
-      }
-      waiting_role=($0 ~ /role:[[:space:]]*$/)
-    }
-    NR<stop && $0 ~ /subagent_type: (wf:[a-z0-9-]+|general-purpose)/ {active=0; matched_role=0; role_ok=0; waiting_role=0}
-    END{exit !(active && matched_role && role_ok)}
-  ' "$file"
+  python3 - "$file" "$line" "$target" "$roles" <<'PY'
+import re, sys
+path, stop_raw, target, roles_raw = sys.argv[1:]
+stop = int(stop_raw)
+roles = set(roles_raw.split(","))
+lines = open(path, encoding="utf-8").read().splitlines()
+if stop < 1 or stop > len(lines):
+    raise SystemExit(1)
+prefix = "\n".join(lines[:stop])
+dispatch_line = lines[stop - 1]
+if target not in dispatch_line:
+    raise SystemExit(1)
+routes = list(re.finditer(r"resolve_routing", prefix))
+if not routes:
+    raise SystemExit(1)
+route = routes[-1]
+route_line = prefix.count("\n", 0, route.start()) + 1
+# One decision may bind only the next intended dispatch. Any earlier executable
+# dispatch between it and this occurrence consumes that decision.
+intervening = "\n".join(lines[route_line:stop - 1])
+if re.search(r"subagent_type:\s*(?:wf:[a-z0-9-]+|general-purpose)", intervening):
+    raise SystemExit(1)
+segment = "\n".join(lines[route_line - 1:stop])
+role_match = re.search(r"role:\s*(?:`?\"([a-z][a-z0-9-]{0,63})\"|\n\s*\"([a-z][a-z0-9-]{0,63})\")", segment)
+role = next((value for value in role_match.groups() if value), None) if role_match else None
+if role not in roles:
+    raise SystemExit(1)
+for required in ("shapeEvidence", "supportsModelSelector", "supportsEffortSelector"):
+    if required not in segment:
+        raise SystemExit(1)
+# workspaceRoot must be bound no later than the role field. A later mention in
+# the same paragraph cannot backfill this call.
+start = max(
+    prefix.rfind("\n\n", 0, route.start()),
+    prefix.rfind("\n## ", 0, route.start()),
+    prefix.rfind("resolve_routing", 0, route.start()),
+)
+local_through_role = prefix[start + 1:route.start()] + segment[:role_match.end()]
+if "workspaceRoot" not in local_through_role:
+    raise SystemExit(1)
+# Formatting continuations may span paragraphs only when each intermediate
+# paragraph is still routing-contract material. Arbitrary prose breaks the
+# one-to-one route→dispatch binding.
+parts = [part.strip() for part in re.split(r"\n\s*\n", segment) if part.strip()]
+for part in parts[1:-1]:
+    if not re.search(
+        r"shapeEvidence|unitIds|supportsModelSelector|supportsEffortSelector|"
+        r"executionShape|effectiveParallelism|status:\s*stop|diagnostic|"
+        r"model selector|effort|postAttempt|routing|retry|dispatch|spawn",
+        part,
+        re.I,
+    ):
+        raise SystemExit(1)
+raise SystemExit(0)
+PY
 }
 
 inventory_has_index_wrapper_target() {
@@ -370,6 +404,57 @@ inventory_count_fixed_skill_target() {
     }
     END{print n+0}
   ' "$inventory"
+}
+
+validate_routing_root_blocks() {
+  local snapshot_root="$1"
+  python3 - "$snapshot_root" <<'PY'
+import pathlib, re, sys
+root = pathlib.Path(sys.argv[1])
+for base in (root / "plugins/wf/skills", root / "plugins/wf/agents"):
+    paths = sorted(base.glob("*/SKILL.md")) if base.name == "skills" else sorted(base.glob("*.md"))
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        routing = []
+        for occurrence in re.finditer(r"resolve_routing", text):
+            line_start = text.rfind("\n", 0, occurrence.start()) + 1
+            line_prefix = text[line_start:occurrence.start()].lower()
+            if "never" in line_prefix:
+                continue
+            routing.append(occurrence)
+        if not routing:
+            continue
+        # Every occurrence in this scan is an executable routing instruction; prose-only
+        # resolver mentions are outside this validator's call surface.
+        first_resolver = routing[0]
+        prefix = text[:first_resolver.start()]
+        prefix_capture = re.search(r"pwd -P(?:(?!\n[ \t]*\n)[\s\S])*(?:workspaceRoot|workspace-root)", prefix)
+        if not prefix_capture:
+            line = text.count("\n", 0, routing[0].start()) + 1
+            print(f"{path.relative_to(root)}:{line}: capture absolute pwd -P as workspaceRoot before the first bundled resolver call")
+        for index, occurrence in enumerate(routing):
+            next_start = routing[index + 1].start() if index + 1 < len(routing) else len(text)
+            tail = text[occurrence.start():min(next_start, occurrence.start() + 2500)]
+            role_match = re.search(r"role:\s*(?:`?\"[a-z][a-z0-9-]{0,63}\"|\n\s*\"[a-z][a-z0-9-]{0,63}\")", tail)
+            # Generic references to a routing operation are not executable call
+            # blocks; concrete calls carry a typed role field.
+            if not role_match:
+                continue
+            previous_dispatch = max(
+                text.rfind("subagent_type:", 0, occurrence.start()),
+                text.rfind("via the Skill tool", 0, occurrence.start()),
+            )
+            block_start = max(
+                text.rfind("\n\n", 0, occurrence.start()),
+                text.rfind("\n## ", 0, occurrence.start()),
+                text.rfind("resolve_routing", 0, occurrence.start()),
+                previous_dispatch,
+            )
+            call_through_role = text[block_start + 1:occurrence.start()] + tail[:role_match.end()]
+            line = text.count("\n", 0, occurrence.start()) + 1
+            if "workspaceRoot" not in call_through_role:
+                print(f"{path.relative_to(root)}:{line}: resolve_routing call must explicitly bind captured workspaceRoot before its role field")
+PY
 }
 
 scan() {
@@ -416,6 +501,11 @@ PY
     rm -rf "$safe_sources"
     return 1
   }
+  local routing_root_problems
+  routing_root_problems="$(validate_routing_root_blocks "$source_snapshot")"
+  if [ -n "$routing_root_problems" ]; then
+    while IFS= read -r problem; do err "$problem"; done <<< "$routing_root_problems"
+  fi
   local seen=""
   while IFS=$'\t' read -r id class file target role selectors evidence retry; do
     [ -z "$id" ] && continue
@@ -710,7 +800,7 @@ PY
     case "$fleet_body" in *"Preserve the activation"*"SendMessage"*"retained routing decision"*"Do not "*"TaskStop"*"elapsed silence"*"explicit terminal/idle child response"*"awaiting-confirmation"*"re-arm supervision"*"never mark it "*"blocked"*"child may still run"*) ;; *) err "fleet: silence can terminally block, stop, or replace a live child without proof" ;; esac
     case "$fleet_body" in *"Reconcile each persisted activation intent deterministically"*"Never infer absence from a missing "*"agentId"*"never spawn the item again until absence or termination is conclusively proved"*) ;; *) err "fleet: resume can duplicate or strand a persisted activation intent" ;; esac
     case "$fleet_body" in *"correlates that token to an active agent"*"awaiting-confirmation"*) ;; *) err "fleet: resume lacks authoritative activation-intent correlation" ;; esac
-    case "$fleet_body" in *"activationIntent | agentId | worktree | branch | PR"*"atomically persist that token with status "*"dispatched"*"crash between spawn and response persistence"*) ;; *) err "fleet: activation intent is not durable across spawn-before-persist interruption" ;; esac
+    case "$fleet_body" in *"activationIntent | routingAttempt | agentId | worktree | branch | PR"*"atomically persist that token with status "*"dispatched"*"crash between spawn and response persistence"*) ;; *) err "fleet: activation intent is not durable across spawn-before-persist interruption" ;; esac
     case "$fleet_body" in *"written before spawn"*|*"before every spawn"*) ;; *) err "fleet: activation intent is not persisted before spawn" ;; esac
     case "$fleet_body" in *"awaiting-confirmation"*"occupies an in-flight pool slot"*"never satisfies a dependency blocker or closeout"*"re-arm supervision"*"After a successful spawn response, persist "*"agentId"*"worktree, and branch"*) ;; *) err "fleet: nonterminal activation state can escape capacity, dependency, supervision, or closeout accounting" ;; esac
     case "$fleet_body" in *"bounded-parallel"*"do not submit "*"postAttempt"*"every launched sibling"*"still-running siblings remain "*"in-flight"*"unknown siblings remain "*"awaiting-confirmation"*"Only terminal/idle failed activations"*"TaskStop"*) ;; *) err "fleet: bounded recovery can stop or evaluate a partial live wave" ;; esac
@@ -720,6 +810,10 @@ PY
     case "$fleet_body" in *"isolated"*"singleton"*"signals: [\"repeated-failure\"]"*"omit "*"postAttempt.units"*"retry.unitIds"*"retained decision order"*) ;; *) err "fleet: isolated singleton recovery is not shape-valid and identity-bound" ;; esac
     case "$fleet_body" in *"bounded-parallel"*"wave"*"complete retained launch wave"*"postAttempt.units"*"queued"*"not included"*"successful launched siblings"*"sufficient"*"repeated-failure"*"retry.unitIds"*) ;; *) err "fleet: bounded replacement lacks exact selective-retry launch-wave evaluation" ;; esac
     case "$fleet_body" in *"exact resolver-returned next-tier model/effort"*"never the original "*"invocationModel"*) ;; *) err "fleet: replacement model is not resolver-owned" ;; esac
+    case "$fleet_body" in *"durable routing ledger"*"ordered "*"unitIds"*"bijective canonical token→opaque-item-id map"*"normalized shape evidence"*"effectiveParallelism"*"selector values"*"source, fallback, and masked state"*"basis"*"attempt"*"escalation origin"*"actualModel"*"disposition"*"retry.unitIds"*"retained unit ids"*"terminal outcome"*"complete ordered evaluation"*) ;; *) err "fleet: durable routing ledger omits required decision or recovery state" ;; esac
+    case "$fleet_body" in *"Boundary 1 — before spawn"*"persist"*"Boundary 2 — before "*"postAttempt"*"persist"*"Boundary 3 — before replacement spawn"*"persist"*) ;; *) err "fleet: routing state is not persisted at all three interruption boundaries" ;; esac
+    case "$fleet_body" in *"persisted decision with no spawn"*"persisted terminal outcome and complete evaluation"*"persisted retry disposition with no replacement spawn"*"Never issue a fresh initial "*"resolve_routing"*"never reset the retry cap"*"preserve the recorded attempt"*"across "*"/clear"*) ;; *) err "fleet: interrupted routing operations cannot resume from retained state" ;; esac
+    case "$fleet_body" in *"awaiting-confirmation"*"cannot substitute for a missing routing-ledger record"*) ;; *) err "fleet: activation state can substitute for durable routing state" ;; esac
   fi
 
   local included_count excluded_count
@@ -738,7 +832,8 @@ selftest() {
   mkdir -p "$tmp/plugins/wf/skills/demo" "$tmp/plugins/wf/agents"
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
 ## Procedure
-Call `resolve_routing` with `workspaceRoot: "/tmp/worktree"`, `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null. Invoke the **Task** tool with `subagent_type: wf:demo`.
+Before the first bundled resolver MCP call, run `pwd -P` and retain it as `workspaceRoot`.
+Call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null. Invoke the **Task** tool with `subagent_type: wf:demo`.
 EOF
   cat > "$tmp/pass.tsv" <<'EOF'
 demo	included	plugins/wf/skills/demo/SKILL.md	wf:demo	demo	model=true;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
@@ -751,10 +846,52 @@ EOF
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
   mv "$tmp/demo-with-identity.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
   cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-with-root.bak"
-  sed 's/`workspaceRoot: "\/tmp\/worktree"`, //' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  sed 's/`workspaceRoot: workspaceRoot`, //' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
   # Every fixed route must explicitly pass its current workspace root.
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
   mv "$tmp/demo-with-root.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-capture-before.bak"
+  grep -v 'Before the first bundled resolver MCP call' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  printf '\nLater unrelated prose says to run `pwd -P` and retain it as `workspaceRoot`.\n' >> "$tmp/plugins/wf/skills/demo/SKILL.md"
+  # A later root mention cannot launder a call that ran before the capture.
+  fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/demo-capture-before.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
+
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-single-line-route.bak"
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Procedure
+Before the first bundled resolver MCP call, run `pwd -P` and retain it as `workspaceRoot`.
+Call `resolve_routing` with
+`workspaceRoot: workspaceRoot`,
+`role: "demo"`,
+`unitIds: ["demo:single"]`,
+`shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
+`supportsModelSelector: true`, and
+`supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null.
+Invoke the **Task** tool with `subagent_type: wf:demo`.
+EOF
+  # A documented multiline call continuation binds to its immediate dispatch.
+  fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null || rc=1
+
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Procedure
+Call `resolve_routing` with `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; later in the same paragraph say `workspaceRoot: workspaceRoot`. Invoke the **Task** tool with `subagent_type: wf:demo`.
+EOF
+  # A workspaceRoot mention after the role/call cannot backfill that invocation.
+  fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
+
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Procedure
+Before the first bundled resolver MCP call, run `pwd -P` and retain it as `workspaceRoot`.
+Call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata.
+
+This unrelated prose discusses another operation and carries no routing continuation.
+
+Invoke the **Task** tool with `subagent_type: wf:demo`.
+EOF
+  # Arbitrary prose consumes the decision; it cannot authorize a later dispatch.
+  fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/demo-single-line-route.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
 
   cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-routed.bak"
   printf '\nYou may invoke the **Task** tool with `subagent_type: wf:demo`.\n' >> "$tmp/plugins/wf/skills/demo/SKILL.md"
@@ -897,12 +1034,16 @@ EOF
 
   mkdir -p "$tmp/plugins/wf/skills/fleet"
   cat > "$tmp/plugins/wf/skills/fleet/SKILL.md" <<'EOF'
-Call `resolve_routing` with `role: "shipper"` and cardinality evidence.
+Before the first bundled resolver MCP call, run `pwd -P` and retain it as `workspaceRoot`.
+Call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "shipper"` and cardinality evidence.
 One-item wave: `workSurface: "external-context"`, `atomicity: "atomic"`, `unitCount: 1`, `unitsIndependent: false`, `requestedParallelism: 1`; select `isolated`.
 Multi-item wave: `workSurface: "external-context"`, `atomicity: "composite"`, `unitCount: <wave-size>`, `unitsIndependent: true`, `requestedParallelism: <configured-pool-bound>`; select `bounded-parallel`.
 Reconcile each persisted activation intent deterministically: Never infer absence from a missing `agentId`; authoritative runtime state correlates that token to an active agent, otherwise use `awaiting-confirmation` and never spawn the item again until absence or termination is conclusively proved.
-Scoreboard columns include activationIntent | agentId | worktree | branch | PR. The token is written before spawn: atomically persist that token with status `dispatched`; a crash between spawn and response persistence remains correlatable.
+Scoreboard columns include activationIntent | routingAttempt | agentId | worktree | branch | PR. The token is written before spawn: atomically persist that token with status `dispatched`; a crash between spawn and response persistence remains correlatable.
 Use `supportsModelSelector: true`, `supportsEffortSelector: false`, and `invocationModel`; emit the compact operational record. On `status: stop` or `diagnostic`, stop and obey `executionShape` and `effectiveParallelism`. Parent owns `postAttempt`; child never self-replaces. Select a candidate launch wave, pass its ordered canonical identity tokens as `unitIds` with a retained token→item-id map. Token `unit-a1` maps to opaque item id `TASK@42`: spawn `/wf:ship TASK@42`, never `/wf:ship unit-a1`; a missing, ambiguous, stale, or duplicate mapping hard-stops that dispatch. Use `effectiveParallelism` to narrow it to the exact launch wave when smaller, retain only that decision, and leave excess outside the decision queued for fresh initial routing. Preserve the activation and use `SendMessage` under the retained routing decision. Do not `TaskStop` on elapsed silence; require an explicit terminal/idle child response or a conclusive documented runtime terminal state. Until then keep `awaiting-confirmation`, which occupies an in-flight pool slot, never satisfies a dependency blocker or closeout, and must re-arm supervision; After a successful spawn response, persist `agentId`, worktree, and branch; never mark it `blocked` while the child may still run. For `bounded-parallel`, do not submit `postAttempt` until every launched sibling is conclusive: still-running siblings remain `in-flight`, unknown siblings remain `awaiting-confirmation`, and Only terminal/idle failed activations may be `TaskStop`ped. Submit the complete retained launch-wave evaluation with successful siblings as `sufficient`; limit only the fresh replacement Agent dispatch to `retry.unitIds`. For an `isolated` singleton submit signals: ["repeated-failure"] and omit `postAttempt.units`; dispatch only the returned `retry.unitIds` in retained decision order. For a `bounded-parallel` wave evaluate the complete retained launch wave in `postAttempt.units`; queued excess is not included; mark successful launched siblings `sufficient`, failed units `repeated-failure`, and dispatch only `retry.unitIds` with the exact resolver-returned next-tier model/effort, never the original `invocationModel`. Invoke the Agent tool with `subagent_type: general-purpose`.
+The durable routing ledger persists ordered `unitIds`, a bijective canonical token→opaque-item-id map, normalized shape evidence, execution shape, `effectiveParallelism`, selector values with source, fallback, and masked state, basis, attempt, escalation origin, optional `actualModel`, disposition, `retry.unitIds`, retained unit ids, terminal outcome, and complete ordered evaluation.
+Boundary 1 — before spawn: persist the decision. Boundary 2 — before `postAttempt`: persist terminal outcomes and evaluation. Boundary 3 — before replacement spawn: persist disposition and retry.
+Resume a persisted decision with no spawn, a persisted terminal outcome and complete evaluation, or a persisted retry disposition with no replacement spawn. Never issue a fresh initial `resolve_routing` call, never reset the retry cap, and preserve the recorded attempt across `/clear`. `awaiting-confirmation` cannot substitute for a missing routing-ledger record.
 EOF
   cat > "$tmp/fleet.tsv" <<'EOF'
 fleet	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	fleet-cardinality-route	fleet
@@ -925,7 +1066,8 @@ EOF
   mkdir -p "$tmp/plugins/wf/skills/skill-edge"
   cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
 ## Execute
-Immediately before execution call `resolve_routing` with `workspaceRoot: "/tmp/worktree"`, `role: "child"`, `unitIds: ["child:single"]`, complete `shapeEvidence`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it; emit the compact operational record. On `status: stop` or non-null `diagnostic`, stop. Obey `executionShape` inline. The parent evaluates the result and owns `postAttempt`; the child must never self-replace. Execute via the Skill tool `/wf:child`.
+Before the first bundled resolver MCP call, run `pwd -P` and retain it as `workspaceRoot`.
+Immediately before execution call `resolve_routing` with `workspaceRoot: workspaceRoot`, `role: "child"`, `unitIds: ["child:single"]`, complete `shapeEvidence`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it; emit the compact operational record. On `status: stop` or non-null `diagnostic`, stop. Obey `executionShape` inline. The parent evaluates the result and owns `postAttempt`; the child must never self-replace. Execute via the Skill tool `/wf:child`.
 EOF
   cat > "$tmp/skill.tsv" <<'EOF'
 child-skill	included	plugins/wf/skills/skill-edge/SKILL.md	/wf:child	child	model=false;effort=false	fixed-skill-route	parent

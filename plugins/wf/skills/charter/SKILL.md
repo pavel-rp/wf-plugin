@@ -32,6 +32,8 @@ interview → writer → decomposer → reviewer ─┬─ CLEAN or accepted war
 
 ## Prerequisites
 
+Before the first bundled resolver MCP call, run `pwd -P` once and retain the absolute result as `workspaceRoot`; pass that same value explicitly in every resolver call.
+
 **Before any other phase**, read `_local/config.md` at the workspace root (the current working directory) and take `{task-root}` from its `## Task Folders` section — never hardcode it. If `_local/config.md` is absent, stop and direct the user to run `/wf:init` first. (Core reads `_local/config.md` for `{task-root}` — not any `wf.config.js` `docsRoot`.) The charter folder and every seeded sub-task folder live under `{task-root}`.
 
 ---
@@ -121,7 +123,7 @@ De-vague the idea before anything is drafted:
 
 ### Phase 2 — Dispatch the writer
 
-Immediately before each writer execution, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role:
+Immediately before each writer execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role:
 "charter-writer"`, `unitIds: ["charter:writer"]`, `shapeEvidence: { workSurface: "external-context", atomicity:
 "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
 "elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
@@ -141,7 +143,7 @@ Invoke the **Task** tool, `subagent_type: wf:charter-writer`, passing (fill the 
 
 ### Phase 3 — Dispatch the decomposer
 
-Immediately before each decomposer execution, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role:
+Immediately before each decomposer execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role:
 "charter-decomposer"`, `unitIds: ["charter:decomposer"]`, `shapeEvidence: { workSurface: "external-context", atomicity:
 "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
 "elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
@@ -159,7 +161,7 @@ Same shape — invoke the **Task** tool, `subagent_type: wf:charter-decomposer`:
 
 ### Phase 4 — Dispatch the reviewer
 
-Immediately before each reviewer execution, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role:
+Immediately before each reviewer execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role:
 "charter-reviewer"`, `unitIds: ["charter:reviewer"]`, `shapeEvidence: { workSurface: "external-context", atomicity:
 "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
 "elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
@@ -195,7 +197,7 @@ Publish runs **once, only after the loop has converged** (Phase 5 rule 2/3 has s
 
 #### Direct provider resolution (how the tracker ops are reached)
 
-Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
+Reuse the absolute `workspaceRoot` captured in Prerequisites for every operation below.
 
 Every operation below (`get`, `create_umbrella`, `create_child`, `update`, `list_children`, `post_comment`) is reached via the identical **direct provider resolution** procedure `invocation-runtime.ops.md` §"Direct provider resolution" defines — core names only the abstract operations, never a tracker. Resolve the `tracker` surface through the bundled `wf-resolver` MCP `resolve_provider({ workspaceRoot, surface: "tracker" })` query, which returns the run-scoped record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`; then obtain each op's body through the resolver's `resolve_content({ workspaceRoot, ... })` content surface (`class: fragment`, keyed on the record's `owner` and its registry-relative fragment `ref` — the locator the record carries; its `fragmentPath` field shows that `ref`'s shape) and follow it in this skill's own context to dispatch the operation. A resolved locator is never opened directly — the body always comes from `resolve_content({ workspaceRoot, ... })`. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback.
 

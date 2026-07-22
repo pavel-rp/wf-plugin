@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { projectRoutingMeasurement, resolveRouting } from "../src/resolver/routing.js";
 
@@ -63,6 +64,13 @@ test("authoritative dispatch inventory is normalized and bidirectional", () => {
   assert.ok(included.some((row) => row.id === "phase-runner-skill"));
   const init = readFileSync(join(repoRoot, "plugins/wf/skills/init/SKILL.md"), "utf8");
   assert.match(init, /role: "constitution"`, `unitIds: \["init:constitution"\]/);
+});
+
+test("real routing guard enforces workspace-root ordering and explicit binding", () => {
+  const guard = join(repoRoot, "plugins/wf/skills/_contracts/core-dispatch-routing-guard.sh");
+  const result = spawnSync("bash", [guard, "--selftest"], { cwd: repoRoot, encoding: "utf8" });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /Core dispatch routing guard self-test passed/);
 });
 
 test("dirty-tree carry remains additive branch success across callers", () => {
@@ -151,7 +159,7 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /mark it `awaiting-confirmation`, keep it occupying capacity/);
   assert.match(fleet, /never spawn the item again until absence or termination is conclusively proved/);
   assert.match(fleet, /status \(queued\|dispatched\|in-flight\|awaiting-confirmation\|merged\|blocked\)/);
-  assert.match(fleet, /activationIntent \| agentId \| worktree \| branch \| PR/);
+  assert.match(fleet, /activationIntent \| routingAttempt \| agentId \| worktree \| branch \| PR/);
   assert.match(fleet, /atomically persist that token with status `dispatched`, then include the same token in the spawn prompt/);
   assert.match(fleet, /crash between spawn and response persistence/);
   assert.match(fleet, /awaiting-confirmation.*occupies an in-flight pool slot/);
@@ -171,6 +179,33 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /complete retained launch-wave evaluation/);
   assert.match(fleet, /including successful siblings as `sufficient`/);
   assert.match(fleet, /limit only the fresh replacement Agent dispatch to the items obtained by validating and mapping the resolver-returned canonical `retry\.unitIds`/);
+  assert.match(fleet, /durable routing ledger[\s\S]{0,900}ordered `unitIds`[\s\S]{0,500}bijective canonical token→opaque-item-id map/);
+  assert.match(fleet, /normalized shape evidence[\s\S]{0,500}`effectiveParallelism`/);
+  assert.match(fleet, /selector values[\s\S]{0,300}source, fallback, and masked state/);
+  assert.match(fleet, /basis, attempt, escalation origin, optional `actualModel`/);
+  assert.match(fleet, /disposition, `retry\.unitIds`, retained unit ids, terminal outcome, and the complete ordered evaluation/);
+  assert.match(fleet, /`awaiting-confirmation` cannot substitute for a missing routing-ledger record/);
+});
+
+test("fleet resumes an interruption after decision persistence without rerouting", () => {
+  const fleet = readFileSync(join(repoRoot, "plugins/wf/skills/fleet/SKILL.md"), "utf8");
+  assert.match(fleet, /Boundary 1 — before spawn:[\s\S]{0,300}persist[\s\S]{0,200}before[\s\S]{0,120}calling the Agent tool/);
+  assert.match(fleet, /persisted decision with no spawn continues that decision's spawn/);
+  assert.match(fleet, /Never issue a fresh initial `resolve_routing` call for those attempts/);
+});
+
+test("fleet resumes an interruption after evaluation persistence with retained postAttempt", () => {
+  const fleet = readFileSync(join(repoRoot, "plugins/wf/skills/fleet/SKILL.md"), "utf8");
+  assert.match(fleet, /Boundary 2 — before `postAttempt`:[\s\S]{0,350}persist every terminal outcome and the complete ordered evaluation/);
+  assert.match(fleet, /persisted terminal outcome and complete evaluation with no `postAttempt` response submits `postAttempt` against the retained prior/);
+  assert.match(fleet, /never reset the retry cap[\s\S]{0,180}preserve the recorded attempt[\s\S]{0,180}across `\/clear`/);
+});
+
+test("fleet resumes an interruption after retry persistence without repeating postAttempt", () => {
+  const fleet = readFileSync(join(repoRoot, "plugins/wf/skills/fleet/SKILL.md"), "utf8");
+  assert.match(fleet, /Boundary 3 — before replacement spawn:[\s\S]{0,350}persist the complete returned decision/);
+  assert.match(fleet, /persisted retry disposition with no replacement spawn launches only its recorded `retry\.unitIds`/);
+  assert.match(fleet, /resume only that persisted replacement operation; never rerun `postAttempt`/);
 });
 
 test("singleton shipper wave uses valid atomic isolated evidence", () => {

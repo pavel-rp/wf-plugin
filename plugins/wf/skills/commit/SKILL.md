@@ -1,7 +1,7 @@
 ---
 name: commit
 description: Commits the current task changes with a terse, auto-authored message — the first commit on the branch gets a subject of the id then the task name, every later commit the id then a concise summary, followed by a bulleted what-changed body. Diff reading and message authoring happen inside an isolated subagent so the main agent's context never sees the diff. Optional --push (off by default). Use to commit work on a task branch — between implementation steps, once at the end, or whenever; safe to re-run (no-ops when there is nothing to commit).
-allowed-tools: [Task]
+allowed-tools: [Task, Bash]
 ---
 
 # /wf:commit — Brief commit, authored in isolation
@@ -28,7 +28,9 @@ User-facing slash command for committing the current task changes with a concise
 
 ## Procedure
 
-Immediately before delegation, call `resolve_routing` with `role: "commit"`, `unitIds: ["commit:author"]`,
+Immediately before delegation, run `pwd -P` and retain its absolute result as
+`<workspace-root>` for this routing call. Then call `resolve_routing` with
+`workspaceRoot: <workspace-root>`, `role: "commit"`, `unitIds: ["commit:author"]`,
 `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
 unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material",
 validation: "mechanical", contextIsolation: "required", independentReview: false,
