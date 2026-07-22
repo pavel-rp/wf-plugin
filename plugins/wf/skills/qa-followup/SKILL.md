@@ -157,8 +157,8 @@ Skip this phase if the UNBLOCK bucket is empty.
    - **`Backend host required:` (API scenario)** → the host provider's `api-probe <Service>.<method>` operation. It resolves the real endpoint or re-wires the ephemeral one; the re-run (`/wf:qa-auto --only`) reverts it again in teardown. If the block was `API not rebuilt`, surface to the user that the backend host must be rebuilt before the re-run will reach the endpoint (the provider names the stack-specific rebuild step) — that part the skill can't do for them.
    - **Transient-session** blocks need no fix — the re-run clears them.
 2. **Collect the now-runnable TC list.**
-3. **Re-run — unless `--no-rerun`.** Confirm the browser-automation tools (`open_browser_page`, …) are available. 
-   - **Browser tools available** → invoke `/wf:qa-auto <id> --only <TC-list>` to re-execute just those scenarios. `/wf:qa-auto` drives them in-thread and overwrites their verdicts in `07_qa-report.md`.
+3. **Re-run — unless `--no-rerun`.** Confirm the browser-automation tools (`open_browser_page`, …) are available.
+   - **Browser tools available** → immediately before each initial or repeated Skill-tool attempt, call `resolve_routing` with `role: "qa-auto"`, `unitIds: ["qa-followup:qa-auto"]`, `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical", contextIsolation: "none", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it and emit the compact operational record. Hard-stop the rerun on `status: stop` or non-null `diagnostic`; otherwise obey the selected `inline` shape, pass no selectors, and invoke `/wf:qa-auto <id> --only <TC-list>`. The `qa-followup` parent evaluates the returned QA verdict and owns any contract-defined `postAttempt`; the child never invokes its own replacement. The selected QA Skill drives the scenarios in-thread and overwrites their verdicts in `07_qa-report.md`.
    - **Browser tools unavailable, or `--no-rerun`** → degrade: skip the auto re-run, leave the scenarios BLOCKED, and record the exact `/wf:qa-auto <id> --only <TC-list>` command in `08_qa-fix.md`'s Next section for the user to run. (Same fallback `/wf:qa-auto` itself uses when browser tools are missing.)
 4. **Re-read `07_qa-report.md`** for the updated verdicts. New `FAIL` → move to the DEFECT bucket. Still `BLOCKED` → move to ESCALATE with the new reason.
 
@@ -179,7 +179,7 @@ For each remaining DEFECT, in report order:
 
 Write `08_qa-fix.md` now (rotate any existing file into `08_qa-fix.history.md` first, per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`"). The file holds the unblock-pass table, the remediation plan, the escalations, and an empty fix log that Phase 8 fills.
 
-After writing, invoke `/wf:index <id> qa-fix "<u> unblocked · <d> planned · <e> escalated"`.
+After writing, invoke the routed `/wf:index <id> qa-fix "<u> unblocked · <d> planned · <e> escalated"` wrapper. The wrapper owns fixed `index` routing; do not inline it.
 
 ---
 
@@ -211,7 +211,7 @@ If a plan step schedules the `{verify-command}` typecheck, run it and record the
 ## Phase 9: Re-verify, index, output
 
 1. **Recommend a fresh QA pass.** The Phase 5 re-run is now stale for any scenario whose source you just changed. Recommend `/wf:qa-auto <id> --only <fixed-TC-list>` (or `--resume` for a full pass) to confirm the fixes land. This is the loop-closing analog of `/wf:verify-fix` → re-run `/wf:verify-spec`.
-2. **Update the index** if any counts changed since Phase 6 (e.g., a defect reclassified to STALE): re-invoke `/wf:index <id> qa-fix "<summary>"`.
+2. **Update the index** if any counts changed since Phase 6 (e.g., a defect reclassified to STALE): re-invoke the routed `/wf:index <id> qa-fix "<summary>"` wrapper; never bypass its routing decision.
 3. **Emit the final-output block** — the very last thing in chat.
 
 ---

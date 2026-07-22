@@ -1,7 +1,7 @@
 ---
 name: commit
 description: Commits the current task changes with a terse, auto-authored message — the first commit on the branch gets a subject of the id then the task name, every later commit the id then a concise summary, followed by a bulleted what-changed body. Diff reading and message authoring happen inside an isolated subagent so the main agent's context never sees the diff. Optional --push (off by default). Use to commit work on a task branch — between implementation steps, once at the end, or whenever; safe to re-run (no-ops when there is nothing to commit).
-allowed-tools: [Task]
+allowed-tools: [Task, Bash]
 ---
 
 # /wf:commit — Brief commit, authored in isolation
@@ -28,6 +28,20 @@ User-facing slash command for committing the current task changes with a concise
 
 ## Procedure
 
+Immediately before delegation, run `pwd -P` and retain its absolute result as
+`<workspace-root>` for this routing call. Then call `resolve_routing` with
+`workspaceRoot: <workspace-root>`, `role: "commit"`, `unitIds: ["commit:author"]`,
+`shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
+unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material",
+validation: "mechanical", contextIsolation: "required", independentReview: false,
+returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, and both
+selector-support facts `supportsModelSelector: true` and `supportsEffortSelector: false`.
+Emit the compact operational record separately from commit message and artifact attribution.
+If `status: stop` or `diagnostic` is non-null, emit `COMMIT — Error` without delegation.
+Otherwise obey `executionShape` exactly; this evidence selects `isolated`, so invoke one
+Task, passing the model selector only when non-null and preserving inherited effort.
+The wrapper preserves the child result contract and never reruns a sufficient commit.
+
 Invoke the **Task** tool with `subagent_type: wf:commit`, passing:
 
 - `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
@@ -45,7 +59,7 @@ Emit the subagent's Final Output block (`COMMIT — committed`, `COMMIT — noth
 The subagent owns every stop condition; each surfaces through the Final Output block below. It returns:
 
 - **Nothing staged** — `COMMIT — nothing-to-commit`; the staged set is empty (the default mode stages everything via the delivery provider first, so this means a clean tree; under `--staged` it means nothing is staged, even if the working tree has unstaged changes). A no-op commit path — a `--push` still syncs any unpushed commits.
-- **Not on the task branch** — the subagent invokes its branch gate (`wf:branch`); if that gate fails (e.g. a dirty tree blocks the switch), it returns `COMMIT — Error` with the branch reason. To commit into a task branch you must already be on it.
+- **Not on the task branch** — the subagent invokes its branch gate (`wf:branch`). The delivery provider captures and reapplies dirty work across the switch, so a dirty working state is preserved carry, not an error by itself. `Carry: none`/`applied` continues. A successful branch result whose `Carry:` names a preserved entry/manual follow-up returns `COMMIT — Error` and stops before reading or committing the incomplete working set; this does not relabel the branch result as `BRANCH — Error`.
 - **Detached HEAD** — `COMMIT — Error`; task work cannot be committed from a detached HEAD.
 - **Unresolvable task ID** — `COMMIT — Error`; no ID was passed and none could be inferred from the current branch.
 - **Missing config / no resolvable workspace** — `COMMIT — Error`; the resolver reports the project is uninitialized (absent `_local/config.md` — run `/wf:init` first), or the `resolve_config({ workspaceRoot, ... })` `workspaceRoot` could not be resolved with a delivery provider active (a genuine environment error — no working tree found).

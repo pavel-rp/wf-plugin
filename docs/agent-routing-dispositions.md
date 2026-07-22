@@ -11,6 +11,8 @@ Disposition meanings:
 
 For every row, host enforcement, invocation override, project override, shipped default, and inheritance retain WF-394 precedence. `inherit` means the selector remains unset at this layer.
 
+WF-399 completes routing-contract adoption for every fixed core-owned child execution. The authoritative callsite inventory and guard live at `plugins/wf/skills/_contracts/core-dispatch-inventory.tsv` and `core-dispatch-routing-guard.sh`. This adoption changes no disposition, default, effort, attempt limit, artifact attribution, or role outcome; dynamic capability and qa-execution provider dispatch remain reserved for WF-400.
+
 ## Complete production matrix
 
 | Role | Agent path | Surface | Disposition | Model | Effort | Attempt limit | Evidence or owner |

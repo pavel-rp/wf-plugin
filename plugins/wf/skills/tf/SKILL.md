@@ -130,7 +130,21 @@ Move the task folder out of the active task root into the archive, so a finalize
 
 ## Phase 6: Update the index
 
-After archiving, invoke the **Task** tool with `subagent_type: wf:index`, passing:
+After archiving, call `resolve_routing` immediately before index work with `workspaceRoot:
+<absolute pwd -P workspace root>`, `role:
+"index"`, `unitIds: ["finalize:index"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
+unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork:
+"bounded", validation: "mechanical", contextIsolation: "useful", independentReview:
+false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
+`supportsModelSelector: false`, and `supportsEffortSelector: false`. Emit the compact
+operational record (role; shape + reason; model/effort inheritance fallback + source;
+basis; attempt; escalation origin; masking; actual model when available; diagnostic;
+retained units; retry disposition), separately from artifact attribution. Treat `status:
+stop` or a non-null `diagnostic` exactly like an index error so finalization remains
+successful. Otherwise obey `executionShape`; this evidence selects `isolated`, so invoke
+one Task without selector arguments.
+
+Invoke the **Task** tool with `subagent_type: wf:index`, passing:
 
 - `task-folder` — the **archived** absolute path (`{task-root}/_archive/{task-id}/`); `wf:index` derives `{task-id}` from the folder basename.
 - `slot` — the literal string `finalize`.

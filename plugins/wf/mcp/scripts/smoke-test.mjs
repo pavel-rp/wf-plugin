@@ -210,8 +210,13 @@ try {
     if (!schema?.required?.includes("workspaceRoot")) {
       fail(`${tool.name} does not require workspaceRoot: ${JSON.stringify(schema)}`);
     }
-    if (schema.properties?.workspaceRoot?.type !== "string" || schema.properties.workspaceRoot.minLength !== 1) {
-      fail(`${tool.name} does not declare a nonempty workspaceRoot string: ${JSON.stringify(schema)}`);
+    if (
+      schema.properties?.workspaceRoot?.type !== "string" ||
+      schema.properties.workspaceRoot.minLength !== 1 ||
+      schema.properties.workspaceRoot.maxLength !== 4096 ||
+      schema.properties.workspaceRoot.pattern !== "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+    ) {
+      fail(`${tool.name} does not declare a bounded terminal-safe workspaceRoot string: ${JSON.stringify(schema)}`);
     }
   }
   const routingTool = tools.find((t) => t.name === "resolve_routing");
@@ -220,6 +225,27 @@ try {
     !routingSchema?.required?.includes("shapeEvidence") ||
     "executionShape" in (routingSchema.properties ?? {}) ||
     routingSchema.properties?.shapeEvidence?.required?.length ||
+    routingSchema.properties?.role?.pattern !== "^[a-z][a-z0-9-]{0,63}$" ||
+    routingSchema.properties?.unitIds?.items?.pattern !== "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$" ||
+    routingSchema.properties?.shapeEvidence?.properties?.unitCount?.maximum !== 4 ||
+    routingSchema.properties?.unitIds?.maxItems !== 4 ||
+    routingSchema.properties?.unitIds?.items?.maxLength !== 128 ||
+    routingSchema.properties?.availableModels?.maxItems !== 64 ||
+    routingSchema.properties?.availableModels?.items?.maxLength !== 128 ||
+    routingSchema.properties?.invocationModel?.maxLength !== 128 ||
+    routingSchema.properties?.invocationEffort?.maxLength !== 16 ||
+    routingSchema.properties?.hostModel?.maxLength !== 128 ||
+    routingSchema.properties?.hostEffort?.maxLength !== 16 ||
+    routingSchema.properties?.basis?.maxLength !== 256 ||
+    routingSchema.properties?.escalationOrigin?.maxLength !== 256 ||
+    routingSchema.properties?.actualModel?.maxLength !== 128 ||
+    routingSchema.properties?.postAttempt?.properties?.units?.maxItems !== 4 ||
+    routingSchema.properties?.postAttempt?.properties?.units?.items?.properties?.unitId?.maxLength !== 128 ||
+    routingSchema.properties?.postAttempt?.properties?.prior?.properties?.unitIds?.maxItems !== 4 ||
+    routingSchema.properties?.postAttempt?.properties?.prior?.properties?.unitIds?.items?.maxLength !== 128 ||
+    routingSchema.properties?.postAttempt?.properties?.signals?.maxItems !== 6 ||
+    routingSchema.properties?.postAttempt?.properties?.units?.items?.properties?.signals?.maxItems !== 6 ||
+    routingSchema.properties?.postAttempt?.properties?.prior?.properties?.effort?.properties?.value?.maxLength !== 16 ||
     !routingSchema.properties?.postAttempt?.properties?.signals?.items?.enum?.includes("high-severity-review-uncertainty") ||
     !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("role") ||
     !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("basis") ||
@@ -310,6 +336,7 @@ try {
     supportsModelSelector: true,
     supportsEffortSelector: false,
     availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
+    unitIds: ["classify:smoke"],
     basis: "smoke-basis",
   };
   send({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "resolve_routing", arguments: routingBase } });
@@ -327,6 +354,7 @@ try {
       attempt: 1,
       executionShape: initial.executionShape,
       shapeEvidence: initial.normalizedEvidence,
+      unitIds: initial.unitIds,
       model: initial.model,
       effort: initial.effort,
       basis: initial.basis,

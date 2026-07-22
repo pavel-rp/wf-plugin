@@ -83,7 +83,20 @@ The only delivery operation this file invokes — `current-branch-query` (the br
 
 ## Phase 2: Delegate to the subagent
 
-**Caller stops here.** Invoke the **Task** tool with `subagent_type: wf:index`, passing:
+**Caller stops here.** Immediately before delegation, call `resolve_routing` with
+`workspaceRoot: <absolute pwd -P workspace root>`, `role: "index"`, `unitIds: ["index:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
+unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork:
+"bounded", validation: "mechanical", contextIsolation: "useful", independentReview:
+false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
+`supportsModelSelector: false`, and `supportsEffortSelector: false`. Emit the compact
+operational record (role; shape + reason; model/effort inheritance fallback + source;
+basis; attempt; escalation origin; masking; actual model when available; diagnostic;
+retained units; retry disposition), separately from artifact attribution. If `status:
+stop` or `diagnostic` is non-null, emit `INDEX — Error` and do not delegate. Otherwise
+obey `executionShape` exactly; this evidence selects `isolated`, so invoke one Task.
+Both selectors are unsupported and remain null; never invent or pass selector values.
+
+Invoke the **Task** tool with `subagent_type: wf:index`, passing:
 
 - `task-folder` — the absolute path resolved in Phase 1
 - `slot` — the validated slot key

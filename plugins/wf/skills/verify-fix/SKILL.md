@@ -238,7 +238,7 @@ The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Aut
 
 If the write fails (permissions, path missing), stop and report. Do not fall back to printing the log inline instead of to disk — the durable artifact matters for later re-runs.
 
-**After writing the fix log**, invoke `/wf:index <id> verify-fix "<a> auto-fixed · <b> open questions"` to record it in the per-task index. Substitute the AUTO and ASK counts produced in Phases 5 and 6. Skip this step when the `<path-to-04_verify.md>` override form is used and the log lives outside `{task-root}/`.
+**After writing the fix log**, invoke the routed `/wf:index <id> verify-fix "<a> auto-fixed · <b> open questions"` wrapper to record it in the per-task index. The wrapper owns the fixed `index` routing decision; do not inline or bypass it. Substitute the AUTO and ASK counts produced in Phases 5 and 6. Skip this step when the `<path-to-04_verify.md>` override form is used and the log lives outside `{task-root}/`.
 
 ---
 

@@ -124,6 +124,19 @@ On success, `<state>` = `created` with the new PR's `<url>`.
 
 ## Step 5 — Update the index
 
+Immediately before index work, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "index"`, `unitIds: ["pr:index"]`,
+`shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
+unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded",
+validation: "mechanical", contextIsolation: "useful", independentReview: false,
+returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
+`supportsModelSelector: false`, and `supportsEffortSelector: false`. Emit the compact
+operational record (role; shape + reason; model/effort inheritance fallback + source;
+basis; attempt; escalation origin; masking; actual model when available; diagnostic;
+retained units; retry disposition), separately from artifact attribution. Treat `status:
+stop` or a non-null `diagnostic` exactly like an index error, preserving PR success.
+Otherwise obey `executionShape`; this evidence selects `isolated`, so invoke one Task
+without selector arguments.
+
 Invoke the **Task** tool with `subagent_type: wf:index`, passing:
 
 - `task-folder` — `<task-folder-abs>`

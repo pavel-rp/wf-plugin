@@ -31,12 +31,19 @@ function ok(payload: unknown): ToolResult {
   };
 }
 
+const safeTerminalStringPattern = "^[^\\u0000-\\u001F\\u007F-\\u009F]*$";
+
+function terminalSafeDiagnostic(value: unknown): string {
+  const message = value instanceof Error ? value.message : String(value);
+  return message.replace(/\p{C}/gu, "?").slice(0, 512);
+}
+
 /** Run a service call, mapping any unexpected throw to an MCP error result. */
 function guard(fn: () => unknown): ToolResult {
   try {
     return ok(fn());
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = terminalSafeDiagnostic(err);
     return {
       content: [{ type: "text", text: `resolver error: ${message}` }],
       isError: true,
@@ -50,6 +57,8 @@ type ServiceSelector = (workspaceRoot: string) => ResolverService;
 const workspaceRootProperty = {
   type: "string",
   minLength: 1,
+  maxLength: 4096,
+  pattern: safeTerminalStringPattern,
   description: "Absolute path to a directory in the launch repository's main/linked worktree family.",
 };
 
@@ -104,6 +113,8 @@ const surfaceClassInput = fromJsonSchema(withWorkspaceRoot({
   additionalProperties: false,
 }));
 
+const safeRoutingStringPattern = safeTerminalStringPattern;
+const unitIdPattern = "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$";
 const routingSignalValues = [
   "low-confidence",
   "failed-validation",
@@ -116,7 +127,7 @@ const routingSignalValues = [
 const routingShapeProperties = {
   workSurface: { type: "string", enum: ["caller-context", "external-context"] },
   atomicity: { type: "string", enum: ["atomic", "composite"] },
-  unitCount: { type: "integer", minimum: 1 },
+  unitCount: { type: "integer", minimum: 1, maximum: 4 },
   unitsIndependent: { type: "boolean" },
   ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
   risk: { type: "string", enum: ["low", "elevated"] },
@@ -128,50 +139,52 @@ const routingShapeProperties = {
   requestedParallelism: { type: "integer", minimum: 1 },
 };
 const routingShapeRequired = Object.keys(routingShapeProperties);
-const routingChoiceSchema = {
+const routingChoiceSchema = (maxLength: number) => ({
   type: "object",
   properties: {
-    value: { type: ["string", "null"] },
+    value: { type: ["string", "null"], maxLength, pattern: safeRoutingStringPattern },
     source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
-    requested: { type: ["string", "null"] },
+    requested: { type: ["string", "null"], maxLength, pattern: safeRoutingStringPattern },
     requestedSource: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
     masked: { type: "boolean" },
     fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] },
   },
   required: ["value", "source", "requested", "requestedSource", "masked", "fallback"],
   additionalProperties: false,
-};
+});
 
 const routingInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
-    role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
+    role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
     shapeEvidence: {
       type: "object",
       properties: routingShapeProperties,
       additionalProperties: false,
     },
-    invocationModel: { type: ["string", "null"] }, invocationEffort: { type: ["string", "null"] },
+    unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
+    invocationModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern }, invocationEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
     requireModel: { type: "boolean" }, requireEffort: { type: "boolean" },
     supportsModelSelector: { type: "boolean" }, supportsEffortSelector: { type: "boolean" },
-    hostModel: { type: ["string", "null"] }, hostEffort: { type: ["string", "null"] },
-    availableModels: { type: ["array", "null"], items: { type: "string" } },
-    basis: { type: ["string", "null"] }, attempt: { type: "integer", minimum: 1, maximum: 3 },
-    escalationOrigin: { type: ["string", "null"] }, actualModel: { type: ["string", "null"] },
+    hostModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern }, hostEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
+    availableModels: { type: ["array", "null"], maxItems: 64, items: { type: "string", minLength: 1, maxLength: 128, pattern: safeRoutingStringPattern }, uniqueItems: true },
+    basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern }, attempt: { type: "integer", minimum: 1, maximum: 3 },
+    escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern }, actualModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
     postAttempt: {
       type: "object",
       properties: {
         sufficient: { type: "boolean" },
-        signals: { type: "array", items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+        signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
         units: {
           type: "array",
           minItems: 1,
+          maxItems: 4,
           items: {
             type: "object",
             properties: {
-              unitId: { type: "string", minLength: 1 },
+              unitId: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern },
               sufficient: { type: "boolean" },
-              signals: { type: "array", items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+              signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
             },
             required: ["unitId", "sufficient", "signals"],
             additionalProperties: false,
@@ -180,17 +193,18 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
         prior: {
           type: "object",
           properties: {
-            role: { type: "string", pattern: "^[a-z][a-z0-9-]*$" },
+            role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
             attempt: { type: "integer", minimum: 1, maximum: 3 },
             executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
             shapeEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
-            model: routingChoiceSchema,
-            effort: routingChoiceSchema,
-            basis: { type: ["string", "null"] },
-            escalationOrigin: { type: ["string", "null"] },
-            actualModel: { type: ["string", "null"] },
+            unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
+            model: routingChoiceSchema(128),
+            effort: routingChoiceSchema(16),
+            basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+            escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+            actualModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
           },
-          required: ["role", "attempt", "executionShape", "shapeEvidence", "model", "effort", "basis", "escalationOrigin"],
+          required: ["role", "attempt", "executionShape", "shapeEvidence", "unitIds", "model", "effort", "basis", "escalationOrigin"],
           additionalProperties: false,
         },
       },
@@ -216,20 +230,21 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
 const routingOutput = fromJsonSchema({
   type: "object",
   properties: {
-    role: { type: "string" },
+    role: { type: "string", maxLength: 64 },
     executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
     normalizedEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
+    unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
     shapeReason: { type: "string", enum: ["atomic-caller-context", "single-isolation-worthy-unit", "dependent-or-nonmaterial-units", "nonmaterial-units-inline", "independent-material-units"] },
     effectiveParallelism: { type: "integer", minimum: 1, maximum: 4 },
-    model: routingChoiceSchema,
-    effort: routingChoiceSchema,
+    model: routingChoiceSchema(128),
+    effort: routingChoiceSchema(16),
     source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
-    basis: { type: ["string", "null"] },
+    basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
     attempt: { type: "integer", minimum: 1, maximum: 3 },
-    escalationOrigin: { type: ["string", "null"] },
+    escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
     fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] },
     masked: { type: "boolean" },
-    actualModel: { type: "string" },
+    actualModel: { type: "string", maxLength: 128, pattern: safeRoutingStringPattern },
     status: { type: "string", enum: ["dispatch", "retain", "stop"] },
     disposition: { type: "string", enum: ["dispatch", "retain", "retry", "exhausted", "invalid-stop"] },
     retry: {
@@ -239,11 +254,11 @@ const routingOutput = fromJsonSchema({
           type: "object",
           properties: {
             attempt: { type: "integer", minimum: 2, maximum: 3 },
-            signals: { type: "array", minItems: 1, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
-            unitIds: { type: "array", items: { type: "string" }, uniqueItems: true },
+            signals: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+            unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
             priorTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
             nextTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
-            escalationOrigin: { type: "string", minLength: 1 },
+            escalationOrigin: { type: "string", minLength: 1, maxLength: 256, pattern: safeRoutingStringPattern },
             priorExecutionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
             shapeChanged: { type: "boolean" },
           },
@@ -252,10 +267,10 @@ const routingOutput = fromJsonSchema({
         },
       ],
     },
-    retainedUnitIds: { type: "array", items: { type: "string" }, uniqueItems: true },
+    retainedUnitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
     diagnostic: { type: ["string", "null"] },
   },
-  required: ["role", "executionShape", "normalizedEvidence", "shapeReason", "effectiveParallelism", "model", "effort", "source", "basis", "attempt", "escalationOrigin", "fallback", "masked", "status", "disposition", "retry", "retainedUnitIds", "diagnostic"],
+  required: ["role", "executionShape", "normalizedEvidence", "unitIds", "shapeReason", "effectiveParallelism", "model", "effort", "source", "basis", "attempt", "escalationOrigin", "fallback", "masked", "status", "disposition", "retry", "retainedUnitIds", "diagnostic"],
   additionalProperties: false,
 });
 
@@ -497,7 +512,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Select execution shape and independent model/effort selectors from the fingerprint-fresh cached configuration. With postAttempt evidence, retain sufficient work, resolve one bounded parent-owned next-tier retry for only insufficient units, or stop on invalid/exhausted state. Preserves precedence, masking, fallback, and provenance. Body-free.",
+      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. Body-free.",
       inputSchema: routingInput,
       outputSchema: routingOutput,
     },

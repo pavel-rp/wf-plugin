@@ -26,7 +26,7 @@ User-facing slash command for creating and switching to a task branch. The imple
 
 ## Procedure
 
-Before dispatch, run `pwd -P` and use that absolute current session directory as `workspaceRoot`. Call the bundled `wf-resolver` MCP tool `resolve_routing` immediately before delegation with `role: "branch"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; the elevated risk reflects that this unit may create, switch, or publish a branch. Also pass any selector availability, host enforcement, or actual-model facts the runtime already exposes, and omit facts it does not expose rather than probing. Emit the decision's compact metadata. If `status: stop` or `diagnostic` is non-null, emit `BRANCH — Error` with the routing diagnostic and do not dispatch. Otherwise obey `executionShape` exactly per `invocation-runtime.ops.md` §"Resolver call root"; this evidence selects `isolated`, so invoke one **Task**. Pass the returned model selector only when `model.value` is non-null; `effort.value: null` means preserve inherited effort.
+Before dispatch, run `pwd -P` and use that absolute current session directory as `workspaceRoot`. Call the bundled `wf-resolver` MCP tool `resolve_routing` immediately before delegation with `role: "branch"`, `unitIds: ["branch:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; the elevated risk reflects that this unit may create, switch, or publish a branch. Also pass any selector availability, host enforcement, or actual-model facts the runtime already exposes, and omit facts it does not expose rather than probing. Emit the decision's compact metadata. If `status: stop` or `diagnostic` is non-null, emit `BRANCH — Error` with the routing diagnostic and do not dispatch. Otherwise obey `executionShape` exactly per `invocation-runtime.ops.md` §"Resolver call root"; this evidence selects `isolated`, so invoke one **Task**. Pass the returned model selector only when `model.value` is non-null; `effort.value: null` means preserve inherited effort.
 
 For the selected `isolated` shape, invoke the **Task** tool with `subagent_type: wf:branch`, passing:
 
@@ -44,7 +44,7 @@ The subagent owns every stop condition; each surfaces through the Final Output b
 
 - **Already on the task branch** — `BRANCH — already-active`; no new branch is created (the current branch already carries `/{id}-`).
 - **Branch already exists for this task** — `BRANCH — switched`; checks out the existing branch rather than recreating it.
-- **Dirty working tree** — `BRANCH — Error`; uncommitted changes block the base switch. Commit or stash first.
+- **Dirty working tree** — uncommitted changes do not block the switch: the delivery provider captures and reapplies them. Clean reapply returns success with `Carry: applied`; a conflicting reapply still returns branch success with a preserved entry and an explicit manual follow-up to finish reapplying and resolve it.
 - **Detached HEAD** — `BRANCH — Error`; branches cannot be created from a detached HEAD.
 - **Unresolvable task ID** — `BRANCH — Error`; no ID was passed and none could be inferred from the current branch.
 - **Missing config** — `BRANCH — Error`; the resolver reports the project is uninitialized (absent `_local/config.md` — run `/wf:init` first).
@@ -67,11 +67,14 @@ Task: {task-id} — <title>
 Branch: <branch-name>
 Base: <base-source>
 Tracking: <tracking>
+Carry: <none | applied | preserved entry — manual follow-up required>
 ```
 
 `<base-source>` variants (provider-supplied tokens, emitted verbatim): `<remote>/<base>` (created with the remote fetched), `<base>` (created locally, no remote), `already existed` (switched-to-existing or already-active).
 
 `<tracking>` variants (provider-supplied tokens, emitted verbatim): `<remote>/<branch-name>` (push succeeded, or upstream already configured), `local-only (push failed)`, `local-only (no remote)`, `local-only (no upstream)`. May carry an appended ` (index update failed)` when the nested wf:index call returned an error.
+
+`<carry>` is forwarded from the successful branch result: `none`, `applied`, or a sanitized conflict outcome naming a preserved entry and the manual follow-up required to finish reapplying and resolve it. A conflict carry remains `BRANCH — created`/`switched`, never `BRANCH — Error`; callers must inspect `Carry:` before continuing source-mutating work.
 
 Error:
 
