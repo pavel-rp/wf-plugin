@@ -250,7 +250,6 @@ try {
     !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("role") ||
     !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("basis") ||
     routingSchema.properties?.attempt?.maximum !== 3 ||
-    !routingSchema.allOf?.some((rule) => rule?.then?.properties?.attempt?.const === 1) ||
     !routingTool?.outputSchema?.properties?.disposition?.enum?.includes("retry") ||
     !routingTool?.outputSchema?.properties?.retry
   ) {
@@ -378,8 +377,13 @@ try {
   }
   send({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "resolve_routing", arguments: { ...routingBase, attempt: 2 } } });
   const bypassResult = await Promise.race([awaitResponse(10), childExited]);
-  if ((!bypassResult.error && !bypassResult.result?.isError) || !JSON.stringify(bypassResult).toLowerCase().includes("validation")) {
-    fail(`resolve_routing schema accepted an initial attempt bypass: ${JSON.stringify(bypassResult)}`);
+  const bypassText = bypassResult.result?.content?.find((c) => c.type === "text")?.text;
+  const bypass = bypassResult.result?.structuredContent ?? (bypassText ? JSON.parse(bypassText) : undefined);
+  // The "no postAttempt => attempt 1" invariant is enforced in resolveRouting() (an
+  // invalid-stop decision), not by a top-level schema allOf — the Anthropic API rejects a
+  // tool input_schema that uses top-level allOf, which makes the whole tool unregistrable.
+  if (bypassResult.error || bypassResult.result?.isError || bypass?.status !== "stop" || bypass?.disposition !== "invalid-stop") {
+    fail(`resolve_routing did not reject an initial attempt bypass: ${JSON.stringify(bypassResult)}`);
   }
   process.stdout.write("tools/call resolve_routing escalation OK: retain, bounded retry, and attempt guard\n");
 
