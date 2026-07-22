@@ -179,7 +179,7 @@ For each remaining DEFECT, in report order:
 
 Write `08_qa-fix.md` now (rotate any existing file into `08_qa-fix.history.md` first, per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`"). The file holds the unblock-pass table, the remediation plan, the escalations, and an empty fix log that Phase 8 fills.
 
-After writing, invoke `/wf:index <id> qa-fix "<u> unblocked · <d> planned · <e> escalated"`.
+After writing, invoke the routed `/wf:index <id> qa-fix "<u> unblocked · <d> planned · <e> escalated"` wrapper. The wrapper owns fixed `index` routing; do not inline it.
 
 ---
 
@@ -211,7 +211,7 @@ If a plan step schedules the `{verify-command}` typecheck, run it and record the
 ## Phase 9: Re-verify, index, output
 
 1. **Recommend a fresh QA pass.** The Phase 5 re-run is now stale for any scenario whose source you just changed. Recommend `/wf:qa-auto <id> --only <fixed-TC-list>` (or `--resume` for a full pass) to confirm the fixes land. This is the loop-closing analog of `/wf:verify-fix` → re-run `/wf:verify-spec`.
-2. **Update the index** if any counts changed since Phase 6 (e.g., a defect reclassified to STALE): re-invoke `/wf:index <id> qa-fix "<summary>"`.
+2. **Update the index** if any counts changed since Phase 6 (e.g., a defect reclassified to STALE): re-invoke the routed `/wf:index <id> qa-fix "<summary>"` wrapper; never bypass its routing decision.
 3. **Emit the final-output block** — the very last thing in chat.
 
 ---

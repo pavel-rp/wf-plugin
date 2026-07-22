@@ -1,0 +1,34 @@
+# id	classification	file	target	role	selector-support	shape-evidence	retry-owner
+branch-wrapper	included	plugins/wf/skills/branch/SKILL.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+classify-wrapper	included	plugins/wf/skills/classify/SKILL.md	wf:classify	classify	model=true;effort=false	dynamic,atomic,1,false,bounded,low,dynamic,judgment,useful,false,mechanically-judgeable,1	parent
+spec-branch	included	plugins/wf/skills/spec/SKILL.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+spec-classify	included	plugins/wf/skills/spec/SKILL.md	wf:classify	classify	model=true;effort=false	external-context,atomic,1,false,bounded,low,bounded,judgment,useful,false,mechanically-judgeable,1	parent
+plan-branch	included	plugins/wf/skills/plan/SKILL.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+plan-classify	included	plugins/wf/skills/plan/SKILL.md	wf:classify	classify	model=true;effort=false	external-context,atomic,1,false,bounded,low,bounded,judgment,useful,false,mechanically-judgeable,1	parent
+lite-branch	included	plugins/wf/skills/lite/SKILL.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+lite-classify	included	plugins/wf/skills/lite/SKILL.md	wf:classify	classify	model=true;effort=false	external-context,atomic,1,false,bounded,low,bounded,judgment,useful,false,mechanically-judgeable,1	parent
+implement-branch	included	plugins/wf/skills/implement/SKILL.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+commit-agent-branch	included	plugins/wf/agents/commit.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+charter-writer	included	plugins/wf/skills/charter/SKILL.md	wf:charter-writer	charter-writer	model=true;effort=false	external-context,atomic,1,false,material,elevated,bounded,judgment,required,false,judgment,1	charter
+charter-decomposer	included	plugins/wf/skills/charter/SKILL.md	wf:charter-decomposer	charter-decomposer	model=true;effort=false	external-context,atomic,1,false,material,elevated,bounded,judgment,required,false,judgment,1	charter
+charter-reviewer	included	plugins/wf/skills/charter/SKILL.md	wf:charter-reviewer	charter-reviewer	model=true;effort=false	external-context,atomic,1,false,material,elevated,bounded,judgment,required,true,judgment,1	charter
+run-phase	included	plugins/wf/skills/run/SKILL.md	wf:phase-runner	phase-runner	model=true;effort=false	external-context,atomic,1,false,material,elevated,material,judgment,required,false,mechanically-judgeable,1	run
+fleet-shipper	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	external-context,composite,dynamic,true,material,elevated,material,judgment,required,false,mechanically-judgeable,dynamic	fleet
+commit-wrapper	included	plugins/wf/skills/commit/SKILL.md	wf:commit	commit	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	parent
+pr-commit	included	plugins/wf/skills/pr/SKILL.md	wf:commit	commit	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	parent
+pr-agent	included	plugins/wf/skills/pr/SKILL.md	wf:pr	pr	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	parent
+index-wrapper	included	plugins/wf/skills/index/SKILL.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+branch-index	included	plugins/wf/agents/branch.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+commit-index	included	plugins/wf/agents/commit.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+pr-index	included	plugins/wf/agents/pr.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+tf-index	included	plugins/wf/skills/tf/SKILL.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+qa-auto-fixed	included	plugins/wf/skills/qa-auto/SKILL.md	wf:branch,/wf:index	branch,index	mixed	shared-gate-and-index	parent
+qa-gen-fixed	included	plugins/wf/skills/qa-gen/SKILL.md	wf:branch,/wf:index	branch,index	mixed	shared-gate-and-index	parent
+qa-followup-fixed	included	plugins/wf/skills/qa-followup/SKILL.md	wf:branch,/wf:index	branch,index	mixed	shared-gate-and-index	parent
+qa-run-index	included	plugins/wf/skills/qa-run/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+verify-fix-fixed	included	plugins/wf/skills/verify-fix/SKILL.md	wf:branch,wf:index	branch,index	mixed	shared-gate-and-index	parent
+pipeline-branch	included	plugins/wf/skills/_shared/pipeline-conventions.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+capability-phase	excluded	plugins/wf/skills/**	manifest subagent dispatch	WF-400	—	dynamic capability contribution	—
+qa-provider	excluded	plugins/wf/skills/qa-auto/SKILL.md	qa-execution engine/host	WF-400	—	registry-derived provider dispatch	—
+pack-owned	excluded	plugins/wf-*/**	pack caller	WF-400	—	capability-pack-owned	—
+prose-only	excluded	plugins/wf/{skills,agents}/**	examples and Next suggestions	prose	—	non-executable mention	—

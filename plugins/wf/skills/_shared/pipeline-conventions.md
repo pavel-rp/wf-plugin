@@ -77,7 +77,10 @@ branch-name match.
    validation: "mechanical", contextIsolation: "useful", independentReview: false,
    returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
    `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact
-   decision metadata. If `status: stop` or `diagnostic` is non-null, stop and surface the
+   operational record (role; shape + reason; model/effort value or inheritance fallback +
+   source; basis; attempt; escalation origin; masking; actual model when available;
+   diagnostic; retained units; retry disposition), separately from artifact attribution.
+   If `status: stop` or `diagnostic` is non-null, stop and surface the
    diagnostic. Otherwise obey `executionShape` per `invocation-runtime.ops.md`
    §"Resolver call root"; this evidence selects `isolated`, so invoke one
    **Task** with `subagent_type: wf:branch`, passing `{task-id}` and the forwarded

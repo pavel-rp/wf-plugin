@@ -121,6 +121,18 @@ De-vague the idea before anything is drafted:
 
 ### Phase 2 — Dispatch the writer
 
+Immediately before each writer execution, call `resolve_routing` with `role:
+"charter-writer"`, `shapeEvidence: { workSurface: "external-context", atomicity:
+"atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
+"elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
+independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`, and
+`supportsModelSelector: true` and `supportsEffortSelector: false`. Emit the compact operational record separately from
+artifact `**Model:**` attribution. Hard-stop before work on `status: stop` or non-null
+`diagnostic`; otherwise obey `executionShape` exactly (this evidence selects `isolated`),
+invoke one Task, pass the model selector only when non-null, and preserve inherited effort. The host validates the
+returned block and artifact; only a contract-defined insufficient result may be submitted
+as `postAttempt` for one parent-owned retry, with sufficient work retained.
+
 Invoke the **Task** tool, `subagent_type: wf:charter-writer`, passing (fill the placeholders; paths absolute, forward slashes):
 
 > Charter folder: `<abs-folder>`. Mode: `<initial | revision>`. For revision mode, apply these findings and user answers: `<the routed findings + any new clarification answers, verbatim>`. Return only the final block your role contract defines.
@@ -129,6 +141,16 @@ Invoke the **Task** tool, `subagent_type: wf:charter-writer`, passing (fill the 
 
 ### Phase 3 — Dispatch the decomposer
 
+Immediately before each decomposer execution, call `resolve_routing` with `role:
+"charter-decomposer"`, `shapeEvidence: { workSurface: "external-context", atomicity:
+"atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
+"elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
+independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`,
+`supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact
+operational record, hard-stop on `status: stop` or non-null `diagnostic`, obey
+`executionShape` exactly, pass the model selector only when non-null, and preserve inherited
+effort. The host retains valid decomposition work and owns any bounded `postAttempt` retry.
+
 Same shape — invoke the **Task** tool, `subagent_type: wf:charter-decomposer`:
 
 > Charter folder: `<abs-folder>`. Mode: `<initial | revision>`. For revision mode, apply these findings: `<the routed findings, verbatim>`. Return only the final block your role contract defines.
@@ -136,6 +158,18 @@ Same shape — invoke the **Task** tool, `subagent_type: wf:charter-decomposer`:
 `DECOMPOSER — Complete` → confirm `02_subtasks.md` exists. If its `Flags:` line names a product choice, raise it via `AskUserQuestion` now (Phase 5 rule 1 shape), fold the answer into the intake, and re-dispatch the decomposer with it before any review; carry an overscoped flag forward to the final block's `Flags:` line. Then continue. Anything else → halt as above.
 
 ### Phase 4 — Dispatch the reviewer
+
+Immediately before each reviewer execution, call `resolve_routing` with `role:
+"charter-reviewer"`, `shapeEvidence: { workSurface: "external-context", atomicity:
+"atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
+"elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
+independentReview: true, returnContract: "judgment", requestedParallelism: 1 }`,
+`supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact
+operational record separately from the review log's `**Audited by:**` attribution. Hard-stop
+on `status: stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly, invoke
+one isolated Task, pass the model selector only when non-null, and preserve inherited effort. Phase 5 remains the sole retry owner: retain clean/sufficient
+results and submit only contract-defined insufficiency through `postAttempt` within the
+existing revision cap.
 
 Invoke the **Task** tool, `subagent_type: wf:charter-reviewer`:
 

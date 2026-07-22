@@ -497,7 +497,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Select execution shape and independent model/effort selectors from the fingerprint-fresh cached configuration. With postAttempt evidence, retain sufficient work, resolve one bounded parent-owned next-tier retry for only insufficient units, or stop on invalid/exhausted state. Preserves precedence, masking, fallback, and provenance. Body-free.",
+      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. Body-free.",
       inputSchema: routingInput,
       outputSchema: routingOutput,
     },

@@ -82,7 +82,21 @@ Derive `<branch-name>` from Step 2 (unchanged, tracker-side logic — out of sco
 
 ## Step 4 — Update the index
 
-After a successful path through Step 3 (`created`, `switched`, or `already-active`), invoke the **Task** tool with `subagent_type: wf:index`, passing:
+After a successful path through Step 3 (`created`, `switched`, or `already-active`), call
+`resolve_routing` immediately before index work with `role: "index"`, `shapeEvidence: {
+workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent:
+false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical",
+contextIsolation: "useful", independentReview: false, returnContract:
+"mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and
+`supportsEffortSelector: false`. Emit the compact operational record (role; shape + reason;
+model/effort inheritance fallback + source; basis; attempt; escalation origin; masking;
+actual model when available; diagnostic; retained units; retry disposition), separately
+from artifact attribution. A `status: stop` or non-null `diagnostic` degrades exactly like
+an `INDEX — Error`: retain branch success and append the index failure to tracking. Otherwise
+obey `executionShape`; this evidence selects `isolated`, so invoke one Task with no selector
+arguments.
+
+Invoke the **Task** tool with `subagent_type: wf:index`, passing:
 
 - `task-folder` — `<task-folder-abs>` (the absolute path computed in Step 1, step 5 — never the relative `{task-root}/...` form)
 - `slot` — the literal string `branch`

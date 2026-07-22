@@ -153,7 +153,7 @@ After the run completes (or stops at batch / abort):
 - Notes & Observations — any anomalies the engine surfaced (entity substitutions, retries, teardown failures).
 - Defects table — one row per FAIL, severity resolved per the rubric in `qa-gen`'s `report-format.md` (same `resolve_content({ workspaceRoot, ... })` reference as above; §Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from observed value.
 
-If subagent invocation is available, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`.
+If subagent invocation is available, invoke the routed `/wf:index` wrapper with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`. The wrapper owns the fixed `index` routing decision; do not inline or bypass it.
 
 ---
 

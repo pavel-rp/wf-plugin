@@ -141,7 +141,22 @@ The shippers close their own items (via `/wf:tf`), but **parent/umbrella tasks a
 
 ## The shipper dispatch template (every lesson is in here)
 
-Spawn each shipper with the **Agent tool**: `subagent_type: general-purpose`, `isolation: worktree`, `run_in_background: true`, and `model:` per Model selection. Fill the prompt from this template — the CAPITALISED rules are the hard-won ones; keep them verbatim. Fill `<COMPOSED CONSTITUTION>` with the run-scoped constitution payload obtained at Prerequisites (and drop that block entirely when there is no constitution record):
+For each dependency-ready wave, call `resolve_routing` immediately before shipper work with
+`role: "shipper"`, `shapeEvidence: { workSurface: "external-context", atomicity:
+"composite", unitCount: <wave-size>, unitsIndependent: true, ambiguity: "material", risk:
+"elevated", toolWork: "material", validation: "judgment", contextIsolation: "required",
+independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism:
+<configured-pool-bound> }`, `supportsModelSelector: true`, and `supportsEffortSelector:
+false`. Emit the compact operational record separately from every task artifact's
+`**Model:**` attribution. On `status: stop` or non-null `diagnostic`, dispatch none of the
+wave and surface the reason. Otherwise obey `executionShape` exactly: a one-item wave runs
+one isolated shipper; a multi-item independent wave runs bounded-parallel and never exceeds
+`effectiveParallelism`. Pass the model selector only when non-null and preserve inherited
+effort. Retain every successful item, submit only
+insufficient item ids through parent-owned `postAttempt`, never reassurance-rerun success,
+and restore dependency/input order before scoreboard aggregation.
+
+Spawn each shipper with the **Agent tool**: `subagent_type: general-purpose`, `isolation: worktree`, `run_in_background: true`, and `model:` only when routing returned a non-null model (otherwise inherit; effort always inherits because this dispatch exposes no effort selector). Fill the prompt from this template — the CAPITALISED rules are the hard-won ones; keep them verbatim. Fill `<COMPOSED CONSTITUTION>` with the run-scoped constitution payload obtained at Prerequisites (and drop that block entirely when there is no constitution record):
 
 > Ship tracker item **`<ID>`** ("`<title>`") end-to-end to a **merged pull request**. You are in an isolated worktree of the repository.
 >

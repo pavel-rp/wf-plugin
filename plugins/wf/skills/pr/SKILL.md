@@ -66,7 +66,17 @@ Only these two typed queries happen in the host; the diff and PR-body artifacts 
 
 ## Phase 2 — Commit and push (unless --no-commit)
 
-Unless `--no-commit` was passed, invoke the **Task** tool with `subagent_type: wf:commit`, passing `id: {task-id}` (or omit `id` when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`, **and the forwarded `delivery` resolution record from Phase 1.5** (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:commit` and the `wf:branch` it may nest consume it instead of re-resolving.
+Unless `--no-commit` was passed, call `resolve_routing` immediately before commit work with
+`role: "commit"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
+unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork:
+"material", validation: "mechanical", contextIsolation: "required", independentReview:
+false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
+`supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact
+operational record separately from commit or artifact attribution. Hard-stop on `status:
+stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly, pass the model
+selector only when non-null, and preserve inherited effort.
+
+Then invoke the **Task** tool with `subagent_type: wf:commit`, passing `id: {task-id}` (or omit `id` when unset, so `wf:commit` infers from the task branch name), `push: true`, `staged: false`, **and the forwarded `delivery` resolution record from Phase 1.5** (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"), so `wf:commit` and the `wf:branch` it may nest consume it instead of re-resolving.
 
 Gate on its `COMMIT —` block:
 
@@ -79,6 +89,17 @@ Surface a single one-line summary of the commit result (e.g. "Committed 4 files,
 If `--no-commit` was passed, skip straight to Phase 3.
 
 ## Phase 3 — Compose the body and create the PR
+
+Call `resolve_routing` independently immediately before PR-agent work with `role: "pr"`,
+`shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
+unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material",
+validation: "mechanical", contextIsolation: "required", independentReview: false,
+returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
+`supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit its own compact operational record; provider records remain forwarded
+unchanged and are never absorbed into routing metadata. On `status: stop` or non-null
+`diagnostic`, stop before PR creation. Otherwise obey `executionShape` exactly, invoke one isolated Task, pass the model selector only
+when non-null, and preserve inherited effort. Retain a sufficient result; any
+bounded retry is parent-owned and accepts only contract-defined insufficiency.
 
 Invoke the **Task** tool with `subagent_type: wf:pr`, passing:
 

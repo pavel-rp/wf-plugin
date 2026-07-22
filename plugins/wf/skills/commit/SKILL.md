@@ -28,6 +28,18 @@ User-facing slash command for committing the current task changes with a concise
 
 ## Procedure
 
+Immediately before delegation, call `resolve_routing` with `role: "commit"`,
+`shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
+unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material",
+validation: "mechanical", contextIsolation: "required", independentReview: false,
+returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, and both
+selector-support facts `supportsModelSelector: true` and `supportsEffortSelector: false`.
+Emit the compact operational record separately from commit message and artifact attribution.
+If `status: stop` or `diagnostic` is non-null, emit `COMMIT — Error` without delegation.
+Otherwise obey `executionShape` exactly; this evidence selects `isolated`, so invoke one
+Task, passing the model selector only when non-null and preserving inherited effort.
+The wrapper preserves the child result contract and never reruns a sufficient commit.
+
 Invoke the **Task** tool with `subagent_type: wf:commit`, passing:
 
 - `id` — the user-supplied id, or omit to let the subagent infer from the current branch.
