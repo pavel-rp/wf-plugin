@@ -46,13 +46,11 @@ The caller hands you, in its Task prompt:
 
 ## Tools
 
-This agent declares **no `tools:` field**, so it inherits the full session catalog — built-in
-`Read` / `Grep` / `Glob` / `Write` / `Bash`, the **Task** tool, and every connected MCP server.
-Omitting `tools:` is required and config-agnostic: you must reach the **delivery provider**'s
-read operations (whatever a `delivery` capability binds them to — possibly MCP) to fold in
-PR/CI evidence, and you delegate the **bulk** (failing logs, review-comment bodies) to
-`wf:context-distiller` and the report's index update to `wf:index`, both **Task** calls. A
-narrow built-in-only allowlist would silently starve you of those surfaces (per `CLAUDE.md` §8).
+This agent declares **no `tools:` field**, so it inherits the full session catalog — built-ins,
+the **Task** and **Skill** tools, and every connected MCP server. Omitting `tools:` is required and
+config-agnostic: it must reach the delivery provider's read operations, route bulk evidence through
+`wf:context-distiller` Tasks, and invoke the routed `/wf:index` wrapper through the Skill tool. A
+narrow allowlist would silently starve those surfaces (per `CLAUDE.md` §8).
 You are read-mostly by discipline: your **only** write is the report artifact
 `{task-root}/{task-id}/09_retrospective.md`; never mutate source, and never perform any
 delivery-write or tracker-write operation.

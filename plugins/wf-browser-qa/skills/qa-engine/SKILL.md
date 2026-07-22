@@ -1,7 +1,7 @@
 ---
 name: qa-engine
 description: Stack-agnostic browser-automation QA engine. Drives a web app in-thread — preflights browser tools, authenticates once, reaches each scenario's browser-level preconditions (clears/seeds localStorage, sessionStorage, cookies; sets URL/viewport), runs the steps with observation discipline, captures console/network signals, screenshots on FAIL, and emits per-scenario verdict blocks in the shared QA report format. The execution provider behind the browser-qa capability's qa-execution provider fragment. Use when a QA orchestrator dispatches the per-scenario browser drive, or to drive scenarios directly against a running app of any stack.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Skill]
 ---
 
 # /wf-browser-qa:qa-engine — Stack-agnostic browser-automation QA engine
@@ -37,7 +37,7 @@ So this engine drives the browser in its own thread (already isolated from the o
 - **Task / report context** — the task id (or the branch to infer it from) and the task-folder path, so the engine locates `06_qa.md` and the `07_qa-report.md` it appends to.
 - **Credentials** — read from `_local/qa-creds.md`; on first run the engine prompts and saves them.
 
-**Output** — per-scenario **verdict blocks** in the shared report format (`output-format.md`, obtained via the resolver's `resolve_content` — `workspaceRoot`, `class: references-template`, `plugin: wf-browser-qa`, `skill: qa-engine`, `ref: output-format.md` — never a raw `Read` of the plugin-cache path), appended into `07_qa-report.md` incrementally, plus the `QA-ENGINE — <status>` final block. The engine does **not** own the run-level report header / Summary / traceability rollup — that is the orchestrator's job; the engine supplies the per-scenario results the orchestrator merges. (On direct invocation with empty input, the engine writes a complete report itself.)
+**Output** — a `Driver model: <current model identifier>` metadata line followed by per-scenario **verdict blocks** in the shared report format (`output-format.md`, obtained via the resolver's `resolve_content` — `workspaceRoot`, `class: references-template`, `plugin: wf-browser-qa`, `skill: qa-engine`, `ref: output-format.md` — never a raw `Read` of the plugin-cache path), appended into `07_qa-report.md` incrementally, plus the `QA-ENGINE — <status>` final block. The engine does **not** own the run-level report header / Summary / traceability rollup — that is the orchestrator's job; the engine supplies the per-scenario results the orchestrator merges. (On direct invocation with empty input, the engine writes a complete report itself.)
 
 ---
 
@@ -79,7 +79,7 @@ Branch-based id inference (Phase 1) reaches `current-branch-query` through the d
 - Use the IDE's question tool to prompt for creds on first run.
 - Use the browser-automation tools (`open_browser_page`, `click_element`, `type_in_page`, `read_page`, `screenshot_page`, `run_playwright_code`, `navigate_page`, `hover_element`, `drag_element`, `handle_dialog`).
 - **Manipulate browser storage** via `run_playwright_code` to satisfy preconditions: `localStorage`, `sessionStorage`, cookies for the test app's origin only.
-- Invoke the **Task** tool with `subagent_type: wf:index` after a report is written (direct-invocation mode).
+- Invoke `/wf:index` through the **Skill** tool after a report is written (direct-invocation mode); its wrapper owns routing.
 
 **Forbidden:**
 
@@ -275,11 +275,11 @@ After the loop completes (or stops at batch / abort):
 
 **Evaluate the full-run baseline check (after the loop, before writing).** Read the entire session console/network buffer ([5a-measure](#5a-measure-measurable-assertions-console--network) step 2), filter the baseline-ignore allowlist, and record the verdict for the `Console & network clean across the full run` baseline TC: clean → `PASS`; otherwise `FAIL`, listing each finding prefixed with the TC that was active when it fired, and adding the distinct errors to the Defects table. Its `FAIL` flips the run `Status` to `FAIL` via the normal rule. **Only meaningful over a complete pass:** on an `--only` run, or a batch/abort that left scenarios `Not run`, mark this TC `Not run` and add a Notes line ("full-run console sweep skipped — partial session") rather than passing it on incomplete coverage. If only the in-page fallback capture was available (resets on navigation), mark it `BLOCKED · setup: session-wide capture unavailable`.
 
-**Report header / rollup ownership.** When dispatched by an orchestrator, return the per-scenario verdict blocks plus the full-run baseline verdict for the orchestrator to merge into the run-level header (`Mode`, `Tester`, `Driver model`, `App`, `Status`), Summary table, and traceability matrix. When invoked **directly** with empty input, write the complete report yourself per `output-format.md` (same `resolve_content` reference as above):
+**Report header / rollup ownership.** When dispatched by an orchestrator, return `Driver model: <current model identifier>` as compact run metadata before the per-scenario verdict blocks plus the full-run baseline verdict; this is the actual engine runtime identity the orchestrator writes to the header, never the selected model when they differ. The orchestrator uses it while merging results into the run-level header (`Mode`, `Tester`, `Driver model`, `App`, `Status`), Summary table, and traceability matrix. When invoked **directly** with empty input, write the complete report yourself per `output-format.md` (same `resolve_content` reference as above):
 
 - `Mode: agentic`, `Tester: wf-browser-qa:qa-engine`, `Driver model:` current model id, `App:` base URL from creds, `Status:` deterministic from the PASS/FAIL/INCOMPLETE rule.
 - Summary table; traceability matrix rolled up from per-scenario `Validates: SC-N` references and verdicts; per-suite results (PASS = one line, FAIL/BLOCKED = full step table); Notes & Observations; Defects table (one row per FAIL, severity from priority P0→High / P1→Medium / P2→Low).
-- On direct invocation, if the Task tool is available, invoke `/wf:index` with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`.
+- <!-- capability-route:browser-index --> On direct invocation, if the Skill tool is available, invoke `/wf:index` through that tool with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`. The wrapper performs the `index` routing decision; never dispatch `wf:index` directly.
 
 ---
 

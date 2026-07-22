@@ -1,7 +1,7 @@
 ---
 name: qa-auto
 description: Orchestrates an autonomous QA run over 06_qa.md — resolves the task and plan, enforces the branch gate, manages run lifecycle (resume / --batch / --only), and dispatches the per-scenario browser drive to the qa-execution provider registered in the capability registry, then assembles 07_qa-report.md with the Summary, traceability matrix, and a full-run console/network baseline rollup. Domain-free — it names no stack and drives no browser itself; the execution engine is supplied by a registered capability. Use when you want a hands-off run; pair with /wf:qa-run for human-in-the-loop runs.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, Skill]
 ---
 
 # /wf:qa-auto — Agentic QA run orchestrator
@@ -21,7 +21,7 @@ For a human-in-the-loop run, use `/wf:qa-run` — the same plan, the same report
 If **no** `qa-execution` engine provider is registered, core stops:
 
 ```
-No qa-execution engine registered. A browser-QA (or other execution) capability must
+No qa-execution engine registered. An execution capability must
 be active in _local/config.md's ## Capabilities table to drive scenarios. See the
 capability's manifest for registration, then re-run.
 ```
@@ -39,7 +39,8 @@ Obtain project config from the bundled `wf-resolver` MCP service via `resolve_co
 This skill depends on two runtime capabilities:
 
 1. **A registered `qa-execution` engine provider** — its ownership gated by the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "qa-execution:engine" })` record and its subagent dispatch target sourced from `resolve_registry({ workspaceRoot, ... })` (see "How execution is supplied"). If none is registered (record `state: unconfigured`), stop with the message above.
-2. **The Task tool** (a standard Claude Code tool) — used for the `wf:branch` **Task** call (branch gate), the engine **provider dispatch**, and the `wf:index` **Task** call (post-run index update). If subagent invocation is unavailable, the skill cannot dispatch the engine — stop and direct the user to a manual `/wf:qa-run`.
+2. **The Task tool** — used for the `wf:branch` branch gate and engine provider dispatch. If Task invocation is unavailable, stop and direct the user to a manual `/wf:qa-run`.
+3. **The Skill tool** — invokes the routed `/wf:index` wrapper after report assembly.
 
 ---
 
@@ -77,7 +78,7 @@ Id inference and the Phase 2 branch gate both reach `current-branch-query` by ca
 - Read any file in the project.
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference and branch gating.
 - Write `07_qa-report.md` ONLY inside the resolved task folder (assembling the run-level header / Summary / matrix from the engine's per-scenario blocks).
-- Invoke the **Task** tool: `subagent_type: wf:branch` (branch gate), the registered `qa-execution` engine provider (per-scenario drive), and `subagent_type: wf:index` (after the report is written).
+- Invoke the **Task** tool for `subagent_type: wf:branch` (branch gate) and the registered engine provider; invoke `/wf:index` only through the **Skill** tool so its wrapper owns routing.
 
 **Forbidden:**
 
@@ -125,7 +126,7 @@ Resolve the engine provider through two `wf-resolver` queries — the resolver h
 The engine owns credential handling, the browser drive, precondition reaching, console/network capture, and per-scenario verdict blocks. Core hands it the work and manages the loop boundary.
 
 1. **Compute the scenario set** for this run — the full plan, the `--suite` subset, the `--resume` tail (first un-verdicted onward), or the `--only` list — in execution order (P0 → P1 → P2, file order within a tier), capped by the `--batch N` ceiling (default 25).
-2. **Dispatch** to the resolved engine provider via the **Task** tool (`subagent_type: <engine dispatch target>`), passing: the scenario set, the resolved task id + task-folder path, the `07_qa-report.md` location, `{qa-baseline-ignore}` (or empty), and the forwarded `--reset-creds` flag. The engine drives each scenario in its isolated context and returns per-scenario verdict blocks in the shared report format.
+2. <!-- capability-route:qa-engine --> **Route and dispatch.** Validate the resolved `subagent: <agent>` token as a registered Task target and derive its stable routing `role` from the final colon-delimited slug; core never hardcodes the provider or target. Immediately before each attempt call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role`, `unitIds: ["qa-auto:engine"]`, `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`. Include `actualModel` only when exposed and emit the compact operational record separately from report attribution. A `status: stop`, diagnostic, malformed derived role, or non-`isolated` shape stops before work as runtime-inapplicable. Otherwise invoke one **Task** (`subagent_type: <engine dispatch target>`), passing the scenario set, resolved task id + task-folder path, `07_qa-report.md` location, `{qa-baseline-ignore}` (or empty), and forwarded `--reset-creds`; pass `model.value` only when non-null and no effort selector. The parent validates the returned `Driver model: <actual engine model>` metadata and per-scenario blocks and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the engine never self-replaces.
 3. **Merge** the returned verdict blocks into `07_qa-report.md` incrementally (the engine may also append directly; core is the owner of the run-level rollup either way). For `--only`, **merge** into the existing report: replace just the listed scenarios' blocks, preserve every other scenario's recorded verdict verbatim.
 4. **Batch / early-stop signals from the engine.** If the engine reports a batch ceiling reached or a first-scenario auth/unreachable failure, stop the loop, mark remaining scenarios `Not run`, and proceed to assembly with `Status: INCOMPLETE`.
 
@@ -144,7 +145,7 @@ After the run completes (or stops at batch / abort):
 - Header per `qa-gen`'s `report-format.md` (same `resolve_content({ workspaceRoot, ... })` reference as above):
   - `Mode: agentic`
   - `Tester: wf:qa-auto`
-  - `Driver model:` — current model identifier (the model the engine ran under, as reported back).
+  - `Driver model:` — actual current model identifier from the engine's returned `Driver model:` metadata; never substitute the selected or parent model when they differ.
   - `App:` — base URL the engine authenticated against (reported back).
   - `Status:` — deterministic from the PASS/FAIL/INCOMPLETE rule.
 - Summary table.

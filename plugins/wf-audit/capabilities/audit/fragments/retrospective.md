@@ -66,17 +66,11 @@ omit the evidence section entirely, and surface **no** provider/tool term on tha
 `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded —
 do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
-Distill only the **bulk**; read the **compact** signals directly:
+Distill only the **bulk**; read compact signals directly. Immediately before every review-batch or failing-log `wf:context-distiller` Task attempt, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "context-distiller"`, a canonical singleton `unitIds` value (`audit-retrospective:distill:review` or `audit-retrospective:distill:ci:<check>`), replacing every run outside `[A-Za-z0-9._:/-]` with `-`, trimming replacement edges, and using a stable SHA-256 prefix if the result is empty or exceeds 128 characters, `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`. Include `actualModel` only when exposed; emit the compact operational record separately from artifact attribution. Stop that evidence fold-in before Task on `status: stop`, diagnostic, or non-`isolated` shape; otherwise pass non-null `model.value` only, then validate the compact block. This parent alone owns any `postAttempt`, retaining identity/evidence; the child never self-replaces.
 
-- **`pr-comments-read`** — the review-comment **bodies** are bulk. Hand the batch (each body
-  tagged with its thread id) to `wf:context-distiller` with a `MODE: review` line, so the bulk
-  stays in the distiller's isolated context; fold its compact `REVIEW DISTILL` verdicts in.
-- **`checks-read`** — the check **summary** (names + pass/fail states) is compact: read it
-  directly. For a **failing** check whose provider exposes a failing-log reference, hand that
-  **reference** to `wf:context-distiller` with a `MODE: ci` line — it self-fetches the bulk log
-  in its own context — and fold the compact `CI DISTILL` block in. Never pull a raw log into this
-  report's own context.
-- **`activity-read`** — the recent-activity summary is compact: read it directly.
+- <!-- capability-route:audit-distill-review --> **`pr-comments-read`** — route one `MODE: review` distiller Task over the thread-id-tagged body batch; fold its compact `REVIEW DISTILL` verdicts in.
+- <!-- capability-route:audit-distill-ci --> **`checks-read`** — read compact names/states directly. For each failing check with a log reference, route one `MODE: ci` distiller Task over that reference; it self-fetches the bulk, and only its compact `CI DISTILL` block returns.
+- **`activity-read`** — read the compact recent-activity summary directly.
 
 ## Compose the composite report
 
@@ -112,8 +106,7 @@ commit coordinates so a reader can tell which state it reflects:
 ```
 
 Carry **no** AI-attribution or promotional content — model attribution only. After writing,
-catalogue it: invoke `wf:index` (Task tool, `subagent_type: wf:index`) with the task folder, slot
-`retrospective`, and a ≤80-char summary.
+<!-- capability-route:audit-index --> catalogue it by invoking `/wf:index {task-id} retrospective "<summary ≤80 chars>"` through the **Skill** tool. Its wrapper owns the fixed `index` routing decision; never dispatch `wf:index` directly.
 
 ## Degradation summary (the only branches)
 

@@ -1,7 +1,7 @@
 ---
 name: qa-host
 description: Scaffolds a routed Angular test-host page for a component that lacks one — creates a host folder under the stack's configured web root with a real-DI component plus status-panel template, and makes the standard routing-module edits (import, child route with the configured guards, static-components array). Every project-specific token — web/test-host paths, routing-module class, route prefix, sandbox host, and route guards — comes from the angular capability profile. Also augments an existing host with type-driven input controls and output observation, and can temporarily wire a backend method to a controller so a QA scenario can exercise it over HTTP. Idempotent — re-invoking on an existing host returns its route URL. Use when /wf:qa-auto or /wf:qa-followup needs a runnable URL or endpoint for a component or service still in development.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Skill]
 ---
 
 # /wf-angular:qa-host — Routed Angular test-host scaffolder
@@ -132,7 +132,7 @@ Steps:
 
 8. **Report:** new folder + files, the route URL (`/{route-prefix}/<kebab>-test` relative to the app root), `Typecheck: PASS`, login+entity reminder.
 
-After typecheck passes, invoke `/wf:index <task-id> qa-host "<kebab>-test · /{route-prefix}/<kebab>-test"` (string slot — file lives in source tree, not under `_local/`).
+<!-- capability-route:angular-index-new --> After typecheck passes, invoke `/wf:index <task-id> qa-host "<kebab>-test · /{route-prefix}/<kebab>-test"` through the **Skill** tool. The wrapper owns the `index` routing decision; never dispatch `wf:index` directly.
 
 ### `augment <component>` → add controls / observation to an EXISTING host
 
@@ -163,7 +163,7 @@ Steps:
 8. **Typecheck** with `{verify-command}`. Same handling as `new` step 7: on errors touching the host files, show the TSC output and offer to revert just the augment edits — don't report success.
 9. **Report** what was added per target (`control` / `observe` / `show` / `already present`), the unchanged route URL, `Typecheck: PASS`.
 
-After typecheck passes, invoke `/wf:index <task-id> qa-host "<kebab>-test · augmented: <one-line summary of what was added>"`.
+<!-- capability-route:angular-index-augment --> After typecheck passes, invoke `/wf:index <task-id> qa-host "<kebab>-test · augmented: <one-line summary of what was added>"` through the **Skill** tool. Its wrapper owns routing.
 
 ### `route <component>` → look up the URL only
 
@@ -253,7 +253,7 @@ Stop reading at the first `{` of any method body. Don't read the target's `ngOnI
 - Edit `{routing-module}` (three exact edits documented in `new`).
 - **Backend mode only:** insert/remove exactly one sentinel-delimited (`WF-QA-EPHEMERAL`) ephemeral action per target inside an *existing* controller — the single carve-out for editing a pre-existing source file. Read controller/constructor/DTO signatures and combine route templates to do so. Full constraints in `backend-host.md` § Safety rules (same `resolve_content` reference as above).
 - Run `{verify-command}` to typecheck.
-- Invoke the **Task** tool with `subagent_type: wf:index` after typecheck passes (Angular host only — `api-probe`/`api-revert` write no index row).
+- Invoke `/wf:index` through the **Skill** tool after typecheck passes (Angular host only — `api-probe`/`api-revert` write no index row); its wrapper performs routing.
 
 **Forbidden:**
 
