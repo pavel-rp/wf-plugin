@@ -95,16 +95,47 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /One-item wave:[\s\S]{0,500}atomicity: "atomic"[\s\S]{0,300}unitCount: 1[\s\S]{0,300}unitsIndependent: false/);
   assert.match(fleet, /valid singleton evidence selects one `isolated` shipper/);
   assert.match(fleet, /Multi-item wave:[\s\S]{0,500}atomicity: "composite"[\s\S]{0,300}unitsIndependent: true/);
-  assert.match(fleet, /min\(available slots, effectiveParallelism\)/);
-  assert.match(fleet, /excess ready item[^\n]*queued/);
-  assert.match(fleet, /model-homogeneous waves/);
-  assert.match(fleet, /shared model as `invocationModel`/);
-  assert.match(fleet, /same `invocationModel` selected for that item/);
+  assert.match(fleet, /candidate launch wave[\s\S]{0,500}effectiveParallelism[\s\S]{0,500}exact launch wave/);
+  assert.match(fleet, /excess ready items outside the decision[^\n]*`queued`[^\n]*fresh initial routing/);
+  assert.match(fleet, /model-homogeneous groups/);
+  assert.match(fleet, /initial[\s\S]{0,300}shared per-item choice as `invocationModel`/);
+  assert.match(fleet, /same agent id once under the retained routing decision/);
+  assert.match(fleet, /`isolated` singleton:[\s\S]{0,300}signals: \["repeated-failure"\][\s\S]{0,200}omit `postAttempt\.units`/);
+  assert.match(fleet, /`bounded-parallel` wave:[\s\S]{0,300}complete retained launch wave[\s\S]{0,500}`postAttempt\.units`/);
+  assert.match(fleet, /queued outside that decision are not included/);
+  assert.match(fleet, /successful launched siblings[\s\S]{0,300}`sufficient`/);
+  assert.match(fleet, /failed launched items carry `repeated-failure`/);
+  assert.match(fleet, /resolver-authorized retry shape[\s\S]{0,200}composite-to-atomic/);
+  assert.match(fleet, /ordered item ids as `unitIds`/);
+  assert.match(fleet, /dispatch replacements solely for the resolver-returned `retry\.unitIds`, in retained decision order/);
+  assert.match(fleet, /exact resolver-returned next-tier model\/effort/);
+  assert.doesNotMatch(fleet, /same `invocationModel` selected for that item/);
   assert.match(fleet, /fleet parent[^\n]*postAttempt|parent-owned `postAttempt`/);
-  assert.match(fleet, /retain every successful|Retain every successful/);
+  assert.match(fleet, /Never omit successes from evaluation or reassurance-rerun them/);
   assert.match(fleet, /dependency\/input order/);
-  assert.match(fleet, /do not raw-query the child's worktree/);
-  assert.match(fleet, /no explicit dirty working-state checkpoint/);
+  assert.match(fleet, /Do not raw-query or infer a child's dirty state from silence/);
+  assert.match(fleet, /absence of an explicit dirty working-state checkpoint/);
+  assert.match(fleet, /Do not `TaskStop` on elapsed silence/);
+  assert.match(fleet, /explicit terminal\/idle child response or a conclusive documented runtime terminal state/);
+  assert.match(fleet, /Reconcile each persisted `dispatched` row deterministically/);
+  assert.match(fleet, /no recorded `agentId`.*returns it to `queued`/);
+  assert.match(fleet, /runtime confirms active becomes `in-flight`/);
+  assert.match(fleet, /without conclusive live-or-terminal state becomes `awaiting-confirmation`/);
+  assert.match(fleet, /Never leave a resumed row stranded in `dispatched`/);
+  assert.match(fleet, /status \(queued\|dispatched\|in-flight\|awaiting-confirmation\|merged\|blocked\)/);
+  assert.match(fleet, /awaiting-confirmation.*occupies an in-flight pool slot/);
+  assert.match(fleet, /never satisfies a dependency blocker or closeout/);
+  assert.match(fleet, /counting every `in-flight` and `awaiting-confirmation` activation/);
+  assert.match(fleet, /after a successful spawn, immediately mark it `in-flight`/);
+  assert.match(fleet, /nonterminal scoreboard state to `awaiting-confirmation`/);
+  assert.match(fleet, /re-arm supervision/);
+  assert.match(fleet, /never mark it `blocked` or enter closeout while the child may still run/);
+  assert.match(fleet, /do not submit `postAttempt` until \*\*every launched sibling\*\*/);
+  assert.match(fleet, /still-running siblings remain `in-flight`, unknown siblings remain `awaiting-confirmation`/);
+  assert.match(fleet, /Only terminal\/idle failed activations may be `TaskStop`ped/);
+  assert.match(fleet, /complete retained launch-wave evaluation/);
+  assert.match(fleet, /including successful siblings as `sufficient`/);
+  assert.match(fleet, /limit only the fresh replacement Agent dispatch to the resolver-returned `retry\.unitIds`/);
 });
 
 test("singleton shipper wave uses valid atomic isolated evidence", () => {
@@ -132,17 +163,205 @@ test("singleton shipper wave uses valid atomic isolated evidence", () => {
   assert.equal(singleton.normalizedEvidence.unitsIndependent, false);
 });
 
-test("bounded parallel work keeps the effective bound and retained retry units", () => {
+test("isolated singleton recovery omits units and authorizes one exact-tier retry", () => {
   const first = resolveRouting({}, {
     role: "shipper",
-    shapeEvidence: { ...atomicEvidence, atomicity: "composite", unitCount: 6, unitsIndependent: true, toolWork: "material", contextIsolation: "required", returnContract: "mechanically-judgeable", requestedParallelism: 8 },
+    shapeEvidence: {
+      ...atomicEvidence, ambiguity: "material", toolWork: "material", contextIsolation: "required",
+    },
+    unitIds: ["singleton"],
+    invocationModel: "haiku", supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(first.executionShape, "isolated");
+  const retry = resolveRouting({}, {
+    role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
+    supportsModelSelector: true, supportsEffortSelector: false,
+    postAttempt: {
+      sufficient: false,
+      signals: ["repeated-failure"],
+      prior: {
+        role: first.role, attempt: first.attempt, executionShape: first.executionShape,
+        shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds, model: first.model, effort: first.effort,
+        basis: first.basis, escalationOrigin: first.escalationOrigin, actualModel: first.actualModel,
+      },
+    },
+  });
+  assert.equal(retry.status, "dispatch");
+  assert.equal(retry.disposition, "retry");
+  assert.equal(retry.executionShape, "isolated");
+  assert.deepEqual(retry.retry?.unitIds, ["singleton"]);
+  assert.equal(retry.model.value, "sonnet");
+  assert.equal(retry.retry?.priorTier, "haiku");
+  assert.equal(retry.retry?.nextTier, "sonnet");
+});
+
+test("fleet replacement retries only failed bounded units at the exact next tier", () => {
+  const first = resolveRouting({}, {
+    role: "shipper",
+    shapeEvidence: { ...atomicEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true, toolWork: "material", contextIsolation: "required", requestedParallelism: 2 },
+    unitIds: ["a", "b"],
+    invocationModel: "haiku", supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(first.status, "dispatch");
+  assert.equal(first.executionShape, "bounded-parallel");
+
+  const prior = {
+    role: first.role, attempt: first.attempt, executionShape: first.executionShape,
+    shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds, model: first.model, effort: first.effort,
+    basis: first.basis, escalationOrigin: first.escalationOrigin, actualModel: first.actualModel,
+  };
+  const missingUnits = resolveRouting({}, {
+    role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
+    supportsModelSelector: true, supportsEffortSelector: false,
+    postAttempt: {
+      sufficient: false, signals: ["repeated-failure"], prior,
+    },
+  });
+  assert.equal(missingUnits.status, "stop");
+  assert.equal(missingUnits.disposition, "invalid-stop");
+  assert.equal(missingUnits.retry, null);
+  assert.match(missingUnits.diagnostic ?? "", /bounded-parallel evaluation requires complete unit results/);
+
+  const retry = resolveRouting({}, {
+    role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
+    invocationModel: "haiku", supportsModelSelector: true, supportsEffortSelector: false,
+    postAttempt: {
+      sufficient: false, signals: [], prior,
+      units: [
+        { unitId: "a", sufficient: true, signals: [] },
+        { unitId: "b", sufficient: false, signals: ["repeated-failure"] },
+      ],
+    },
+  });
+  assert.equal(retry.status, "dispatch");
+  assert.equal(retry.disposition, "retry");
+  assert.deepEqual(retry.retainedUnitIds, ["a"]);
+  assert.deepEqual(retry.retry?.unitIds, ["b"]);
+  assert.equal(retry.executionShape, "isolated");
+  assert.equal(retry.model.value, "sonnet");
+  assert.equal(retry.retry?.priorTier, "haiku");
+  assert.equal(retry.retry?.nextTier, "sonnet");
+
+  const highest = resolveRouting({}, {
+    role: "shipper", shapeEvidence: atomicEvidence, unitIds: ["highest"],
+    invocationModel: "opus", supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  const exhausted = resolveRouting({}, {
+    role: "shipper", shapeEvidence: highest.normalizedEvidence, unitIds: highest.unitIds,
+    supportsModelSelector: true, supportsEffortSelector: false,
+    postAttempt: {
+      sufficient: false, signals: ["repeated-failure"],
+      prior: {
+        role: highest.role, attempt: highest.attempt, executionShape: highest.executionShape,
+        shapeEvidence: highest.normalizedEvidence, unitIds: highest.unitIds, model: highest.model, effort: highest.effort,
+        basis: highest.basis, escalationOrigin: highest.escalationOrigin, actualModel: highest.actualModel,
+      },
+    },
+  });
+  assert.equal(exhausted.status, "stop");
+  assert.equal(exhausted.disposition, "invalid-stop");
+  assert.match(exhausted.diagnostic ?? "", /highest stable tier/);
+  assert.equal(exhausted.retry, null);
+});
+
+test("bounded unit identities reject forged sets and normalize evaluation order", () => {
+  const evidence = {
+    ...atomicEvidence, atomicity: "composite" as const, unitCount: 3,
+    unitsIndependent: true, toolWork: "material" as const, contextIsolation: "required" as const,
+    requestedParallelism: 3,
+  };
+  const countMismatch = resolveRouting({}, {
+    role: "shipper", shapeEvidence: evidence, unitIds: ["a"],
+    supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(countMismatch.disposition, "invalid-stop");
+  assert.match(countMismatch.diagnostic ?? "", /unitIds must match shape evidence unitCount/);
+  const duplicateInitial = resolveRouting({}, {
+    role: "shipper", shapeEvidence: evidence, unitIds: ["a", "a", "c"],
+    supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(duplicateInitial.disposition, "invalid-stop");
+  assert.match(duplicateInitial.diagnostic ?? "", /unitIds must be unique/);
+  const oversizedInitialId = resolveRouting({}, {
+    role: "shipper", shapeEvidence: evidence, unitIds: ["a", "b", "x".repeat(129)],
+    supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(oversizedInitialId.disposition, "invalid-stop");
+  assert.match(oversizedInitialId.diagnostic ?? "", /unitIds must be at most 128 characters/);
+  const controlInitialId = resolveRouting({}, {
+    role: "shipper", shapeEvidence: evidence, unitIds: ["a", "b", "c" + String.fromCharCode(27)],
+    supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(controlInitialId.disposition, "invalid-stop");
+  assert.match(controlInitialId.diagnostic ?? "", /canonical printable identifier characters/);
+
+  const first = resolveRouting({}, {
+    role: "shipper", shapeEvidence: evidence, unitIds: ["a", "b", "c"], invocationModel: "haiku",
+    supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  const prior = {
+    role: first.role, attempt: first.attempt, executionShape: first.executionShape,
+    shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
+    model: first.model, effort: first.effort, basis: first.basis,
+    escalationOrigin: first.escalationOrigin, actualModel: first.actualModel,
+  };
+  const duplicatePostAttemptIds = resolveRouting({}, {
+    role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: ["a", "a", "a"],
+    supportsModelSelector: true, supportsEffortSelector: false,
+    postAttempt: { sufficient: false, signals: ["failed-validation"], prior },
+  });
+  assert.equal(duplicatePostAttemptIds.disposition, "invalid-stop");
+  assert.match(duplicatePostAttemptIds.diagnostic ?? "", /unitIds must be unique/);
+
+  const evaluate = (units: Array<{ unitId: string; sufficient: boolean; signals: Array<"failed-validation"> }>) =>
+    resolveRouting({}, {
+      role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
+      supportsModelSelector: true, supportsEffortSelector: false,
+      postAttempt: { sufficient: false, signals: [], prior, units },
+    });
+  for (const [units, pattern] of [
+    [[{ unitId: "a", sufficient: true, signals: [] }, { unitId: "b", sufficient: false, signals: ["failed-validation"] }], /cover every/],
+    [[{ unitId: "a", sufficient: true, signals: [] }, { unitId: "b", sufficient: false, signals: ["failed-validation"] }, { unitId: "c", sufficient: true, signals: [] }, { unitId: "d", sufficient: true, signals: [] }], /cover every/],
+    [[{ unitId: "a", sufficient: true, signals: [] }, { unitId: "b", sufficient: false, signals: ["failed-validation"] }, { unitId: "forged", sufficient: true, signals: [] }], /match the retained prior unitIds/],
+    [[{ unitId: "a", sufficient: true, signals: [] }, { unitId: "b", sufficient: false, signals: ["failed-validation"] }, { unitId: "x".repeat(129), sufficient: true, signals: [] }], /unitId must be at most 128 characters/],
+    [[{ unitId: "a", sufficient: true, signals: [] }, { unitId: "b", sufficient: false, signals: ["failed-validation"] }, { unitId: "c" + String.fromCharCode(27), sufficient: true, signals: [] }], /canonical printable identifier characters/],
+    [[{ unitId: "a", sufficient: true, signals: [] }, { unitId: "a", sufficient: false, signals: ["failed-validation"] }, { unitId: "c", sufficient: true, signals: [] }], /duplicated/],
+  ] as const) {
+    const decision = evaluate(units as never);
+    assert.equal(decision.disposition, "invalid-stop");
+    assert.match(decision.diagnostic ?? "", pattern);
+  }
+  const reordered = evaluate([
+    { unitId: "c", sufficient: true, signals: [] },
+    { unitId: "a", sufficient: true, signals: [] },
+    { unitId: "b", sufficient: false, signals: ["failed-validation"] },
+  ]);
+  assert.equal(reordered.disposition, "retry");
+  assert.deepEqual(reordered.retainedUnitIds, ["a", "c"]);
+  assert.deepEqual(reordered.retry?.unitIds, ["b"]);
+});
+
+test("bounded parallel work rejects oversized waves and keeps retained retry units", () => {
+  const oversized = resolveRouting({}, {
+    role: "shipper",
+    shapeEvidence: { ...atomicEvidence, atomicity: "composite", unitCount: 5, unitsIndependent: true, toolWork: "material", contextIsolation: "required", returnContract: "mechanically-judgeable", requestedParallelism: 8 },
+    unitIds: ["a", "b", "c", "d", "e"],
+    invocationModel: "sonnet", supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(oversized.disposition, "invalid-stop");
+  assert.match(oversized.diagnostic ?? "", /unitCount must be an integer from 1 to 4/);
+
+  const first = resolveRouting({}, {
+    role: "shipper",
+    shapeEvidence: { ...atomicEvidence, atomicity: "composite", unitCount: 4, unitsIndependent: true, toolWork: "material", contextIsolation: "required", returnContract: "mechanically-judgeable", requestedParallelism: 8 },
+    unitIds: ["a", "b", "c", "d"],
     invocationModel: "sonnet", supportsModelSelector: true, supportsEffortSelector: false,
   });
   assert.equal(first.executionShape, "bounded-parallel");
   assert.equal(first.effectiveParallelism, 4);
 
   const retry = resolveRouting({}, {
-    role: "shipper", shapeEvidence: first.normalizedEvidence,
+    role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
     supportsModelSelector: true, supportsEffortSelector: false,
     postAttempt: {
       sufficient: false, signals: [],
@@ -151,17 +370,15 @@ test("bounded parallel work keeps the effective bound and retained retry units",
         { unitId: "b", sufficient: false, signals: ["failed-validation"] },
         { unitId: "c", sufficient: true, signals: [] },
         { unitId: "d", sufficient: true, signals: [] },
-        { unitId: "e", sufficient: true, signals: [] },
-        { unitId: "f", sufficient: true, signals: [] },
       ],
       prior: {
         role: first.role, attempt: first.attempt, executionShape: first.executionShape,
-        shapeEvidence: first.normalizedEvidence, model: first.model, effort: first.effort,
+        shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds, model: first.model, effort: first.effort,
         basis: first.basis, escalationOrigin: first.escalationOrigin, actualModel: first.actualModel,
       },
     },
   });
-  assert.deepEqual(retry.retainedUnitIds, ["a", "c", "d", "e", "f"]);
+  assert.deepEqual(retry.retainedUnitIds, ["a", "c", "d"]);
   assert.deepEqual(retry.retry?.unitIds, ["b"]);
   assert.equal(retry.disposition, "retry");
 });

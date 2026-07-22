@@ -303,6 +303,7 @@ export interface RoutingPriorAttempt {
   attempt: number;
   executionShape: ExecutionShape;
   shapeEvidence: RoutingShapeEvidence;
+  unitIds: string[];
   model: RoutingChoice;
   effort: RoutingChoice;
   basis: string | null;
@@ -352,6 +353,7 @@ export interface NormalizedRoutingShapeEvidence extends RoutingShapeEvidence {
 export interface RoutingInputs {
   role: string;
   shapeEvidence: RoutingShapeEvidence;
+  unitIds?: string[];
   invocationModel?: string | null;
   invocationEffort?: string | null;
   requireModel?: boolean;
@@ -371,6 +373,7 @@ export interface RoutingDecision {
   role: string;
   executionShape: ExecutionShape;
   normalizedEvidence: NormalizedRoutingShapeEvidence;
+  unitIds: string[];
   shapeReason: RoutingShapeReason;
   effectiveParallelism: number;
   model: RoutingChoice;
@@ -396,6 +399,7 @@ export interface RoutingMeasurement {
   role: string;
   executionShape: ExecutionShape;
   shapeReason: RoutingShapeReason;
+  unitIds: string[];
   model: string | null;
   effort: string | null;
   source: RoutingSource;

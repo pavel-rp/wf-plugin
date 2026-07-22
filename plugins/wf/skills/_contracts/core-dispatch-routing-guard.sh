@@ -8,15 +8,20 @@ ROOT="$(cd "$DIR/../../../.." && pwd)"
 DEFAULT_INVENTORY="$DIR/core-dispatch-inventory.tsv"
 
 fail=0
-err() { printf 'core-dispatch-routing-guard: %s\n' "$*" >&2; fail=$((fail + 1)); }
+err() {
+  local safe
+  safe="$(printf '%s' "$*" | LC_ALL=C tr -c '[:print:]\t' '?')"
+  printf 'core-dispatch-routing-guard: %s\n' "$safe" >&2
+  fail=$((fail + 1))
+}
 
 is_prose_only_skill_line() {
   local line="$1"
   while case "$line" in [[:space:]\>\*-]*) true ;; *) false ;; esac; do
     line="${line:1}"
   done
-  case "$line" in Next:*|Example:*|example:*|Recommendation:*|recommendation:*|Suggestion:*|suggestion:*) return 0 ;; esac
-  case "$1" in *"may invoke"*|*"should never invoke"*|*"that invoked"*|*"If the Skill-tool invocation fails"*) return 0 ;; esac
+  case "$line" in Next:*|Example:*|example:*|Recommendation:*|recommendation:*|"Recommendation only:"*|"recommendation only:"*|Suggestion:*|suggestion:*|"2. The invoked skill runs"*) return 0 ;; esac
+  case "$line" in "A caller may invoke "*" manually."|"The caller may invoke "*" manually."|*"should never invoke"*|*"that invoked"*|*"If the Skill-tool invocation fails"*) return 0 ;; esac
   return 1
 }
 
@@ -25,7 +30,7 @@ permission_list_context() {
   awk -v stop="$line" '
     NR>stop{exit}
     /^## /{active=0; started=0}
-    /^\*\*Allowed:\*\*/ || /^\*\*Forbidden:\*\*/{active=1; started=0; next}
+    /^\*\*Allowed:\*\*/ || /^\*\*Forbidden:\*\*/ || /^### Allowed$/ || /^### Forbidden$/{active=1; started=0; next}
     active {
       if ($0 ~ /^[[:space:]]*$/) {
         if (started) active=0
@@ -39,18 +44,214 @@ permission_list_context() {
   ' "$file"
 }
 
+MAX_INVENTORY_FILE_BYTES=1048576
+MAX_SOURCE_DEPTH=16
+MAX_SOURCE_ENTRIES=8192
+MAX_SOURCE_TOTAL_BYTES=67108864
+MAX_DISCOVERY_HITS=16384
+
+read_inventory_file() {
+  local root="$1" relative="$2"
+  python3 - "$root" "$relative" "$MAX_INVENTORY_FILE_BYTES" <<'PY'
+import os, stat, sys
+root, relative, maximum = sys.argv[1], sys.argv[2], int(sys.argv[3])
+if (not relative or relative.startswith("/") or "\\" in relative or "//" in relative):
+    raise SystemExit(1)
+parts = relative.split("/")
+if any(part in ("", ".", "..") for part in parts):
+    raise SystemExit(1)
+flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+dir_flags = flags | getattr(os, "O_DIRECTORY", 0)
+fd = os.open(root, dir_flags)
+try:
+    for part in parts[:-1]:
+        next_fd = os.open(part, dir_flags, dir_fd=fd)
+        os.close(fd)
+        fd = next_fd
+    file_fd = os.open(parts[-1], flags, dir_fd=fd)
+    try:
+        info = os.fstat(file_fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size > maximum:
+            raise SystemExit(1)
+        chunks, total = [], 0
+        while True:
+            chunk = os.read(file_fd, min(65536, maximum + 1 - total))
+            if not chunk:
+                break
+            chunks.append(chunk); total += len(chunk)
+            if total > maximum:
+                raise SystemExit(1)
+        sys.stdout.buffer.write(b"".join(chunks))
+    finally:
+        os.close(file_fd)
+finally:
+    os.close(fd)
+PY
+}
+
+discover_dispatch_lines() {
+  local root="$1" mode="$2" snapshot_root="${3:-}"
+  python3 - "$root" "$mode" "$MAX_INVENTORY_FILE_BYTES" "$MAX_SOURCE_DEPTH" "$MAX_SOURCE_ENTRIES" "$MAX_SOURCE_TOTAL_BYTES" "$MAX_DISCOVERY_HITS" "$snapshot_root" <<'PY'
+import os, re, stat, sys, unicodedata
+root, mode = os.path.realpath(sys.argv[1]), sys.argv[2]
+maximum, max_depth, max_entries, max_total, max_hits = map(int, sys.argv[3:8])
+snapshot_root = sys.argv[8]
+patterns = {
+    "task": re.compile(r"subagent_type: (?:wf:[a-z0-9-]+|general-purpose)"),
+    "skill": re.compile(r"(?:[Ss]kill tool|Skill-tool).*/(?:wf:[a-z0-9-]+|<skill>|wf:<phase>)|/(?:wf:[a-z0-9-]+|<skill>|wf:<phase>).*?(?:[Ss]kill tool|Skill-tool)|(?:^|\s)(?:invoke|re-invoke|execute|call).*/wf:index"),
+    "signal": re.compile(r"(?:[Ss]kill tool|Skill-tool)"),
+}
+pattern = patterns[mode]
+base_flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+dir_flags = base_flags | getattr(os, "O_DIRECTORY", 0)
+
+def open_dir_at(fd, parts):
+    current = os.dup(fd)
+    try:
+        for part in parts:
+            nxt = os.open(part, dir_flags, dir_fd=current)
+            os.close(current); current = nxt
+        return current
+    except Exception:
+        os.close(current); raise
+
+budget = {"entries": 0, "bytes": 0, "hits": 0}
+def walk(start_fd, relative):
+    stack = [(os.dup(start_fd), relative, None)]
+    try:
+        while stack:
+            fd, current, iterator = stack[-1]
+            if iterator is None:
+                iterator = os.scandir(fd)
+                stack[-1] = (fd, current, iterator)
+            try:
+                entry = next(iterator)
+            except StopIteration:
+                iterator.close(); os.close(fd); stack.pop()
+                continue
+            budget["entries"] += 1
+            if budget["entries"] > max_entries:
+                raise RuntimeError("source path count exceeds limit")
+            name = entry.name
+            if ":" in name or any(unicodedata.category(ch).startswith("C") for ch in name):
+                raise RuntimeError("unsupported source path character")
+            info = entry.stat(follow_symlinks=False)
+            child = f"{current}/{name}"
+            if stat.S_ISLNK(info.st_mode):
+                raise RuntimeError(f"symlinked source path: {child}")
+            if stat.S_ISDIR(info.st_mode):
+                if len(stack) >= max_depth:
+                    raise RuntimeError(f"source depth exceeds limit: {child}")
+                child_fd = os.open(name, dir_flags, dir_fd=fd)
+                stack.append((child_fd, child, None))
+            elif name.endswith(".md"):
+                if not stat.S_ISREG(info.st_mode) or info.st_size > maximum:
+                    raise RuntimeError(f"unsafe source file: {child}")
+                file_fd = os.open(name, base_flags, dir_fd=fd)
+                try:
+                    opened = os.fstat(file_fd)
+                    if not stat.S_ISREG(opened.st_mode) or opened.st_size > maximum:
+                        raise RuntimeError(f"unsafe opened source file: {child}")
+                    data = b""
+                    while len(data) <= maximum:
+                        chunk = os.read(file_fd, min(65536, maximum + 1 - len(data)))
+                        if not chunk: break
+                        data += chunk
+                    if len(data) > maximum: raise RuntimeError(f"oversized source file: {child}")
+                    budget["bytes"] += len(data)
+                    if budget["bytes"] > max_total: raise RuntimeError("aggregate source bytes exceed limit")
+                finally: os.close(file_fd)
+                text = data.decode("utf-8")
+                if snapshot_root:
+                    destination = os.path.join(snapshot_root, *child.split("/"))
+                    os.makedirs(os.path.dirname(destination), mode=0o700, exist_ok=True)
+                    snapshot_fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0), 0o600)
+                    try:
+                        view = memoryview(data)
+                        while view:
+                            written = os.write(snapshot_fd, view)
+                            if written <= 0: raise RuntimeError(f"cannot snapshot source file: {child}")
+                            view = view[written:]
+                    finally: os.close(snapshot_fd)
+                    absolute = destination
+                else:
+                    absolute = f"{root}/{child}"
+                for number, line in enumerate(text.splitlines(), 1):
+                    if pattern.search(line):
+                        budget["hits"] += 1
+                        if budget["hits"] > max_hits: raise RuntimeError("dispatch hit count exceeds limit")
+                        print(f"{absolute}:{number}:{line}")
+    finally:
+        for fd, _, iterator in stack:
+            if iterator is not None: iterator.close()
+            try: os.close(fd)
+            except OSError: pass
+
+root_fd = os.open(root, dir_flags)
+try:
+    for parts in (("plugins","wf","skills"), ("plugins","wf","agents")):
+        subtree = open_dir_at(root_fd, parts)
+        try: walk(subtree, "/".join(parts))
+        finally: os.close(subtree)
+finally:
+    os.close(root_fd)
+PY
+}
+
 inventory_target_present() {
   local path="$1" raw="$2"
-  TARGET="$raw" perl -0777 -ne '
-    $raw=$ENV{TARGET};
-    if ($raw =~ m{/(?:wf:[a-z0-9-]+|<skill>|wf:<phase>)}) {
-      $token=$&; exit 0 if /\Q$token\E(?![a-z0-9-])/;
-    } elsif ($raw =~ /(?:^|[^a-z0-9-])((?:wf:[a-z0-9-]+|general-purpose))(?![a-z0-9-])/) {
-      $token=$1; exit 0 if /(?<![a-z0-9\/-])\Q$token\E(?![a-z0-9-])/;
-    } else {
-      exit 0 if index($_, $raw) >= 0;
+  awk -v raw="$raw" '
+    BEGIN {
+      if (match(raw, /\/(wf:[a-z0-9-]+|<skill>|wf:<phase>)/)) {
+        wanted=substr(raw,RSTART,RLENGTH); slash=1
+      } else if (match(raw, /(^|[^a-z0-9-])(wf:[a-z0-9-]+|general-purpose)([^a-z0-9-]|$)/)) {
+        token=substr(raw,RSTART,RLENGTH)
+        sub(/^[^a-z0-9-]/,"",token); sub(/[^a-z0-9-]$/,"",token)
+        wanted=token; slash=0
+      } else literal=1
     }
-    exit 1;
+    {
+      if (literal && index($0,raw)) found=1
+      line=$0
+      while (match(line, /\/(wf:[a-z0-9-]+|<skill>|wf:<phase>)|wf:[a-z0-9-]+|general-purpose/)) {
+        token=substr(line,RSTART,RLENGTH)
+        if ((slash && token==wanted) || (!slash && token==wanted)) found=1
+        line=substr(line,RSTART+RLENGTH)
+      }
+    }
+    END{exit !found}
+  ' "$path"
+}
+
+extract_routed_block() {
+  local path="$1" role="$2" target="$3" mode="$4"
+  awk -v role="$role" -v target="$target" -v mode="$mode" '
+    function reset(){buf=""; start=0; matched_role=0; role_ok=0; waiting_role=0; matched=0}
+    {
+      trigger=(mode=="agent" && index($0,"resolve_routing")) ||
+        (mode=="fixed" && match($0, /role:[[:space:]]*"[a-z0-9-]+"/))
+      if (trigger) {
+        if (start && matched) {print buf; exit}
+        start=NR; buf=""; matched_role=0; role_ok=0; waiting_role=0; matched=0
+      }
+      if (start) {
+        buf=buf $0 "\n"
+        if (!matched_role) {
+          candidate=""
+          if (match($0, /role:[[:space:]]*"[a-z0-9-]+"/)) {
+            candidate=substr($0,RSTART,RLENGTH); sub(/^role:[[:space:]]*"/,"",candidate); sub(/"$/,"",candidate)
+          } else if (waiting_role && match($0, /^[[:space:]]*"[a-z0-9-]+"/)) {
+            candidate=substr($0,RSTART,RLENGTH); gsub(/^[[:space:]]*"|"$/,"",candidate)
+          }
+          if (candidate != "") {matched_role=1; role_ok=(candidate==role)}
+          waiting_role=($0 ~ /role:[[:space:]]*$/)
+        }
+        if (!matched && matched_role && role_ok && index($0,target)) {matched=1; match_line=NR}
+        if (matched && NR-match_line>=30) {print buf; matched=0; exit}
+        if (!matched && NR-start>160) reset()
+      }
+    }
+    END{if (matched) print buf}
   ' "$path"
 }
 
@@ -84,6 +285,48 @@ inventory_has_task_target() {
     }
     END{exit !found}
   ' "$inventory"
+}
+
+inventory_task_roles() {
+  local inventory="$1" file="$2" target="$3"
+  awk -F '\t' -v f="$file" -v t="$target" '
+    $2=="included" && $3==f {
+      s=$4; matched=0
+      while (match(s, /\/?wf:[a-z0-9-]+|general-purpose/)) {
+        token=substr(s,RSTART,RLENGTH); sub(/^\//,"",token)
+        if (token==t) matched=1
+        s=substr(s,RSTART+RLENGTH)
+      }
+      if (matched && !seen[$5]++) ordered[++n]=$5
+    }
+    END{for(i=1;i<=n;i++) printf "%s%s", (i>1 ? "," : ""), ordered[i]}
+  ' "$inventory"
+}
+
+task_occurrence_routed() {
+  local file="$1" line="$2" target="$3" roles="$4"
+  [ -n "$roles" ] || return 1
+  awk -v stop="$line" -v target="$target" -v roles="$roles" '
+    BEGIN{n=split(roles,role,",")}
+    NR>stop{exit}
+    /^## /{active=0; matched_role=0; role_ok=0; waiting_role=0}
+    /resolve_routing/{active=1; matched_role=0; role_ok=0; waiting_role=0}
+    active && !matched_role {
+      candidate=""
+      if (match($0, /role:[[:space:]]*"[a-z0-9-]+"/)) {
+        candidate=substr($0,RSTART,RLENGTH); sub(/^role:[[:space:]]*"/,"",candidate); sub(/"$/,"",candidate)
+      } else if (waiting_role && match($0, /^[[:space:]]*"[a-z0-9-]+"/)) {
+        candidate=substr($0,RSTART,RLENGTH); gsub(/^[[:space:]]*"|"$/,"",candidate)
+      }
+      if (candidate != "") {
+        matched_role=1
+        for(i=1;i<=n;i++) if(candidate==role[i]) role_ok=1
+      }
+      waiting_role=($0 ~ /role:[[:space:]]*$/)
+    }
+    NR<stop && $0 ~ /subagent_type: (wf:[a-z0-9-]+|general-purpose)/ {active=0; matched_role=0; role_ok=0; waiting_role=0}
+    END{exit !(active && matched_role && role_ok)}
+  ' "$file"
 }
 
 inventory_has_index_wrapper_target() {
@@ -131,7 +374,48 @@ inventory_count_fixed_skill_target() {
 
 scan() {
   local root="$1" inventory="$2" id class file target role selectors evidence retry path body
-  [ -f "$inventory" ] || { err "inventory missing: $inventory"; return 1; }
+  command -v python3 >/dev/null 2>&1 || { err "python3 is required for race-safe file validation"; return 1; }
+  local safe_sources inventory_relative inventory_snapshot source_snapshot task_hits
+  safe_sources="$(mktemp -d)" || { err "cannot create validated-source directory"; return 1; }
+  case "$inventory" in
+    "$root"/*) inventory_relative="${inventory#"$root"/}" ;;
+    *) err "inventory must be contained under the scan root: $inventory"; rm -rf "$safe_sources"; return 1 ;;
+  esac
+  inventory_snapshot="$safe_sources/inventory.tsv"
+  if ! read_inventory_file "$root" "$inventory_relative" > "$inventory_snapshot"; then
+    err "inventory is unsafe, non-regular, or exceeds ${MAX_INVENTORY_FILE_BYTES} bytes: $inventory_relative"
+    rm -rf "$safe_sources"
+    return 1
+  fi
+  if ! python3 - "$inventory_snapshot" <<'PY'
+import sys, unicodedata
+try:
+    text = open(sys.argv[1], "r", encoding="utf-8").read()
+except (OSError, UnicodeError):
+    raise SystemExit(1)
+for char in text:
+    if char not in "\n\t" and unicodedata.category(char).startswith("C"):
+        raise SystemExit(1)
+PY
+  then
+    err "inventory contains invalid encoding or control characters"
+    rm -rf "$safe_sources"
+    return 1
+  fi
+  inventory="$inventory_snapshot"
+  source_snapshot="$safe_sources/tree"
+  task_hits="$safe_sources/task-hits"
+  mkdir -p "$source_snapshot" || { err "cannot create source snapshot directory"; rm -rf "$safe_sources"; return 1; }
+  if ! discover_dispatch_lines "$root" task "$source_snapshot" > "$task_hits"; then
+    err "Task/Agent source discovery failed"
+    rm -rf "$safe_sources"
+    return 1
+  fi
+  mkdir -p "$source_snapshot/plugins/wf/skills" "$source_snapshot/plugins/wf/agents" || {
+    err "cannot complete source snapshot structure"
+    rm -rf "$safe_sources"
+    return 1
+  }
   local seen=""
   while IFS=$'\t' read -r id class file target role selectors evidence retry; do
     [ -z "$id" ] && continue
@@ -143,11 +427,19 @@ scan() {
         [ -n "$role" ] && [ -n "$evidence" ] || err "$id: malformed exclusion"
         continue
         ;;
-      included) ;;
+      included)
+        case "$role" in [a-z]*) ;; *) err "$id: included role must match ^[a-z][a-z0-9-]{0,63}$: $role"; continue ;; esac
+        case "$role" in *[!a-z0-9-]*) err "$id: included role must match ^[a-z][a-z0-9-]{0,63}$: $role"; continue ;; esac
+        [ "${#role}" -le 64 ] || { err "$id: included role must match ^[a-z][a-z0-9-]{0,63}$: $role"; continue; }
+        ;;
       *) err "$id: classification must be included or excluded"; continue ;;
     esac
-    path="$root/$file"
-    [ -f "$path" ] || { err "$id: stale inventory path $file"; continue; }
+    case "$file" in /*|*\\*|..|../*|*/..|*/../*) err "$id: inventory path is unsafe: $file"; continue ;; esac
+    path="$source_snapshot/$file"
+    if [ ! -f "$path" ]; then
+      err "$id: inventory path is absent from the validated source snapshot: $file"
+      continue
+    fi
     body="$(<"$path")"
     local target_part old_ifs="$IFS"
     IFS=','
@@ -166,10 +458,7 @@ scan() {
         ;;
       fixed-skill-route)
         local skill_block
-        skill_block="$(ROLE="$role" TARGET="$target" perl -0777 -ne '
-          $r = quotemeta($ENV{ROLE}); $t = quotemeta($ENV{TARGET});
-          if (/role:\s*"$r"[\s\S]{0,2500}?$t/) { print $& }
-        ' "$path")"
+        skill_block="$(extract_routed_block "$path" "$role" "$target" fixed)"
         [ -n "$skill_block" ] || { err "$id: no nearby role $role decision precedes Skill target $target in $file"; continue; }
         case "$body" in *"resolve_routing"*) ;; *) err "$id: fixed Skill edge lacks resolve_routing in $file" ;; esac
         case "$body" in *"role: \"$role\""*) ;; *) err "$id: fixed Skill role is not stated in $file" ;; esac
@@ -193,15 +482,23 @@ scan() {
         continue
         ;;
       fleet-recovery-route)
-        case "$body" in *"resolve_routing"*"role: \"shipper\""*"postAttempt"*"$target"*) ;; *) err "$id: fleet recovery lacks a parent-owned routing decision in $file" ;; esac
+        case "$target" in
+          SendMessage)
+            case "$body" in *"Preserve the activation"*"SendMessage"*"retained routing decision"*"Do not "*"TaskStop"*"elapsed silence"*) ;; *) err "$id: fleet probe must preserve the activation without a fresh routing call or silence-based stop in $file" ;; esac
+            ;;
+          *"fresh"*"agent"*)
+            case "$body" in *"isolated"*"singleton"*"repeated-failure"*"omit "*"postAttempt.units"*) ;; *) err "$id: fleet replacement lacks shape-valid isolated-singleton postAttempt in $file" ;; esac
+            case "$body" in *"bounded-parallel"*"wave"*"complete retained launch wave"*"postAttempt.units"*"queued"*"not included"*"repeated-failure"*"retry.unitIds"*) ;; *) err "$id: fleet replacement lacks exact bounded parent-owned launch-wave evaluation in $file" ;; esac
+            case "$body" in *"dispatch a **fresh** agent"*) ;; *) err "$id: fleet replacement target is missing in $file" ;; esac
+            case "$body" in *"exact resolver-returned next-tier model/effort"*) ;; *) err "$id: fleet replacement model is not resolver-owned in $file" ;; esac
+            ;;
+          *) err "$id: unknown fleet recovery target $target" ;;
+        esac
         continue
         ;;
     esac
     local block
-    block="$(ROLE="$role" TARGET="$target" perl -0777 -ne '
-      $r = quotemeta($ENV{ROLE}); $t = quotemeta($ENV{TARGET});
-      if (/resolve_routing[\s\S]{0,1500}?role:\s*(?:"|`)?$r(?:"|`)?[\s\S]{0,8000}?subagent_type:\s*$t[\s\S]{0,1200}/) { print $& }
-    ' "$path")"
+    block="$(extract_routed_block "$path" "$role" "$target" agent)"
     [ -n "$block" ] || { err "$id: no routed block associates role $role with target $target in $file"; continue; }
     case "$block" in *"resolve_routing"*) ;; *) err "$id: missing resolve_routing in $file" ;; esac
     case "$block" in *"shapeEvidence"*) ;; *) err "$id: missing shapeEvidence in $file" ;; esac
@@ -260,25 +557,36 @@ scan() {
   # sections; command syntax, safety lists, examples, recommendations, Next blocks,
   # and Edge Cases are structurally excluded rather than hidden by favored phrases.
   local candidates
-  candidates="$(mktemp)" || { err "cannot create Task/Agent discovery file"; return 1; }
+  candidates="$(mktemp)" || { err "cannot create Task/Agent discovery file"; rm -rf "$safe_sources"; return 1; }
   while IFS=: read -r file line text; do
     [ -n "$file" ] || continue
     case "$file" in *"/_contracts/"*|*"/references/"*) continue ;; esac
-    local task_permission task_heading task_routed
+    local task_permission task_heading task_routed task_roles task_targets task_target_count
     task_permission="$(permission_list_context "$file" "$line")"
     task_heading="$(awk -v stop="$line" 'NR>stop{exit} /^## /{heading=$0} END{print heading}' "$file")"
     [ "$task_permission" -eq 1 ] && continue
     case "$task_heading" in ""|*" contract"*) continue ;; esac
-    case "$text" in *"may invoke"*|*"registered"*"provider"*|*"fragment"*"subagent"*|*"Next:"*) continue ;; esac
-    task_routed="$(awk -v stop="$line" 'NR>stop{exit} /^## /{routed=0} /resolve_routing/{routed=1} END{print routed+0}' "$file")"
+    is_prose_only_skill_line "$text" && continue
+    case "$text" in *"registered"*"provider"*|*"fragment"*"subagent"*) continue ;; esac
+    task_targets="$(printf '%s' "$text" | grep -oE 'subagent_type: (wf:[a-z0-9-]+|general-purpose)' || true)"
+    task_target_count="$(printf '%s\n' "$task_targets" | awk 'NF{n++} END{print n+0}')"
+    if [ "$task_target_count" -gt 1 ]; then
+      err "multiple Task/Agent dispatches share one operational line $file:$line"
+    fi
     while IFS= read -r target; do
       [ -n "$target" ] || continue
       target="${target#subagent_type: }"
-      printf '%s\t%s\t%s\t%s\n' "${file#$root/}" "$line" "$target" "$task_routed" >> "$candidates"
-    done < <(printf '%s' "$text" | grep -oE 'subagent_type: (wf:[a-z0-9-]+|general-purpose)' || true)
-  done < <(grep -RInE 'subagent_type: (wf:[a-z0-9-]+|general-purpose)' "$root/plugins/wf/skills" "$root/plugins/wf/agents" --include='*.md' 2>/dev/null || true)
+      task_roles="$(inventory_task_roles "$inventory" "${file#$source_snapshot/}" "$target")"
+      if [ "$task_target_count" -eq 1 ] && task_occurrence_routed "$file" "$line" "$target" "$task_roles"; then task_routed=1; else task_routed=0; fi
+      printf '%s\t%s\t%s\t%s\n' "${file#$source_snapshot/}" "$line" "$target" "$task_routed" >> "$candidates"
+    done <<< "$task_targets"
+  done < "$task_hits"
 
   while IFS=$'\t' read -r file line target routed; do
+    if [ "$routed" -ne 1 ]; then
+      err "unrouted live Task/Agent dispatch $file:$line ($target)"
+      continue
+    fi
     if ! inventory_has_task_target "$inventory" "$file" "$target"; then
       err "unlisted live Task/Agent dispatch $file:$line ($target)"
     fi
@@ -301,10 +609,17 @@ scan() {
     fi
   done < <(cut -f1,3 "$candidates" | sort -u)
 
-  local skill_candidates declared_skill_pairs skill_pairs
-  skill_candidates="$(mktemp)" || { err "cannot create Skill discovery file"; rm -f "$candidates"; return 1; }
-  declared_skill_pairs="$(mktemp)" || { err "cannot create declared-Skill file"; rm -f "$candidates" "$skill_candidates"; return 1; }
-  skill_pairs="$(mktemp)" || { err "cannot create Skill-pair file"; rm -f "$candidates" "$skill_candidates" "$declared_skill_pairs"; return 1; }
+  local skill_candidates declared_skill_pairs skill_pairs skill_hits signal_hits
+  skill_candidates="$(mktemp)" || { err "cannot create Skill discovery file"; rm -rf "$safe_sources"; rm -f "$candidates" "$task_hits"; return 1; }
+  declared_skill_pairs="$(mktemp)" || { err "cannot create declared-Skill file"; rm -rf "$safe_sources"; rm -f "$candidates" "$task_hits" "$skill_candidates"; return 1; }
+  skill_pairs="$(mktemp)" || { err "cannot create Skill-pair file"; rm -rf "$safe_sources"; rm -f "$candidates" "$task_hits" "$skill_candidates" "$declared_skill_pairs"; return 1; }
+  skill_hits="$(mktemp)" || { err "cannot create Skill hit file"; rm -rf "$safe_sources"; rm -f "$candidates" "$task_hits" "$skill_candidates" "$declared_skill_pairs" "$skill_pairs"; return 1; }
+  signal_hits="$(mktemp)" || { err "cannot create Skill signal file"; rm -rf "$safe_sources"; rm -f "$candidates" "$task_hits" "$skill_candidates" "$declared_skill_pairs" "$skill_pairs" "$skill_hits"; return 1; }
+  if ! discover_dispatch_lines "$source_snapshot" skill > "$skill_hits" || ! discover_dispatch_lines "$source_snapshot" signal > "$signal_hits"; then
+    err "Skill source discovery failed"
+    rm -rf "$safe_sources"; rm -f "$candidates" "$task_hits" "$skill_candidates" "$declared_skill_pairs" "$skill_pairs" "$skill_hits" "$signal_hits"
+    return 1
+  fi
   while IFS=: read -r file line text; do
     [ -n "$file" ] || continue
     case "$file" in *"/_contracts/"*|*"/references/"*) continue ;; esac
@@ -314,7 +629,7 @@ scan() {
     # as Edge Cases or Final Output receive no blanket exemption.
     [ "$permission" -eq 1 ] && continue
     is_prose_only_skill_line "$text" && continue
-    file="${file#$root/}"
+    file="${file#$source_snapshot/}"
     while IFS= read -r target; do
       [ -n "$target" ] || continue
       printf '%s\t%s\t%s\n' "$file" "$line" "$target" >> "$skill_candidates"
@@ -322,7 +637,7 @@ scan() {
         err "unlisted live Skill dispatch $file:$line ($target)"
       fi
     done < <(printf '%s' "$text" | grep -oE '/(wf:[a-z0-9-]+|<skill>|wf:<phase>)' || true)
-  done < <(grep -RInE '([Ss]kill tool|Skill-tool).*/(wf:[a-z0-9-]+|<skill>|wf:<phase>)|/(wf:[a-z0-9-]+|<skill>|wf:<phase>).*([Ss]kill tool|Skill-tool)|(^|[[:space:]])(invoke|re-invoke|execute|call).*/wf:index' "$root/plugins/wf/skills" "$root/plugins/wf/agents" --include='*.md' 2>/dev/null || true)
+  done < "$skill_hits"
 
   # A Skill-tool execution signal may be split from its concrete target by one
   # adjacent markdown line. Join that pair structurally; prose-only signals remain inert.
@@ -340,7 +655,7 @@ scan() {
     next_permission="$(permission_list_context "$file" "$next_line")"
     [ "$next_permission" -eq 1 ] && continue
     is_prose_only_skill_line "$next_text" && continue
-    file="${file#$root/}"
+    file="${file#$source_snapshot/}"
     while IFS= read -r target; do
       [ -n "$target" ] || continue
       printf '%s\t%s\t%s\n' "$file" "$next_line" "$target" >> "$skill_candidates"
@@ -348,7 +663,7 @@ scan() {
         err "unlisted adjacent-line Skill dispatch $file:$next_line ($target)"
       fi
     done < <(printf '%s' "$next_text" | grep -oE '/(wf:[a-z0-9-]+|<skill>|wf:<phase>)' || true)
-  done < <(grep -RInE '([Ss]kill tool|Skill-tool)' "$root/plugins/wf/skills" "$root/plugins/wf/agents" --include='*.md' 2>/dev/null || true)
+  done < "$signal_hits"
 
   # A fixed Skill target cannot disappear or be laundered by another occurrence in
   # the same file. Compare the union of declared and discovered file+target pairs;
@@ -361,7 +676,8 @@ scan() {
   done < "$inventory"
   if ! { cut -f1,3 "$skill_candidates"; cat "$declared_skill_pairs"; } | sort -u > "$skill_pairs"; then
     err "cannot compose declared/discovered Skill pairs"
-    rm -f "$candidates" "$skill_candidates" "$declared_skill_pairs" "$skill_pairs"
+    rm -rf "$safe_sources"
+    rm -f "$candidates" "$task_hits" "$skill_candidates" "$declared_skill_pairs" "$skill_pairs" "$skill_hits" "$signal_hits"
     return 1
   fi
   while IFS=$'\t' read -r file target; do
@@ -374,41 +690,39 @@ scan() {
     fi
   done < "$skill_pairs"
 
-  # Fixed sibling-Skill execution is represented one edge per included inventory row.
-  # The structural classes prove a local routing procedure or the routed index wrapper;
-  # prose-only and provider/pack execution remain explicit exclusions.
-  while IFS=$'\t' read -r id class file target role selectors evidence retry; do
-    [ "$class" = "included" ] || continue
-    case "$evidence" in fixed-skill-route|index-wrapper-mediated)
-      path="$root/$file"
-      case "$(<"$path")" in *"$target"*) ;; *) err "$id: executable Skill target missing from $file" ;; esac
-      ;;
-    esac
-  done < "$inventory"
-
   # Fleet's selected wave bound and parent-owned retries are behavior, not inventory
   # metadata: fail if either contract disappears from the executable skill body.
-  local fleet="$root/plugins/wf/skills/fleet/SKILL.md"
+  local fleet="$source_snapshot/plugins/wf/skills/fleet/SKILL.md"
   if awk -F '\t' '$2=="included" && $3=="plugins/wf/skills/fleet/SKILL.md"{found=1} END{exit !found}' "$inventory"; then
     local fleet_body="$(<"$fleet")"
     case "$fleet_body" in *"One-item wave"*"atomicity: \"atomic\""*"unitCount: 1"*"unitsIndependent: false"*"isolated"*) ;; *) err "fleet: singleton wave evidence must be atomic, dependent, and isolated" ;; esac
     case "$fleet_body" in *"Multi-item wave"*"atomicity: \"composite\""*"unitsIndependent: true"*"bounded-parallel"*) ;; *) err "fleet: multi-item wave evidence must remain composite and bounded" ;; esac
-    case "$fleet_body" in *"min(available slots, effectiveParallelism)"*"excess ready item"*"queued"*) ;; *) err "fleet: effectiveParallelism does not bound and defer the ready wave" ;; esac
+    case "$fleet_body" in *"candidate launch wave"*"ordered item ids as "*"unitIds"*"effectiveParallelism"*"exact launch wave"*"outside the decision"*"queued"*"fresh initial routing"*) ;; *) err "fleet: effectiveParallelism does not produce an identity-bound exact launch decision with queued excess excluded" ;; esac
     case "$fleet_body" in *"postAttempt"*"child never self"*|*"postAttempt"*"child never invokes"*) ;; *) err "fleet: retry owner is not mechanically the parent" ;; esac
+    case "$fleet_body" in *"Preserve the activation"*"SendMessage"*"retained routing decision"*"Do not "*"TaskStop"*"elapsed silence"*"explicit terminal/idle child response"*"awaiting-confirmation"*"re-arm supervision"*"never mark it "*"blocked"*"child may still run"*) ;; *) err "fleet: silence can terminally block, stop, or replace a live child without proof" ;; esac
+    case "$fleet_body" in *"Reconcile each persisted "*"dispatched"*"no recorded "*"agentId"*"queued"*"runtime confirms active"*"in-flight"*"without conclusive live-or-terminal state"*"awaiting-confirmation"*"Never leave a resumed row stranded"*) ;; *) err "fleet: resume can strand a persisted dispatched activation" ;; esac
+    case "$fleet_body" in *"awaiting-confirmation"*"occupies an in-flight pool slot"*"never satisfies a dependency blocker or closeout"*"re-arm supervision"*"after a successful spawn, immediately mark it "*"in-flight"*) ;; *) err "fleet: nonterminal activation state can escape capacity, dependency, supervision, or closeout accounting" ;; esac
+    case "$fleet_body" in *"bounded-parallel"*"do not submit "*"postAttempt"*"every launched sibling"*"still-running siblings remain "*"in-flight"*"unknown siblings remain "*"awaiting-confirmation"*"Only terminal/idle failed activations"*"TaskStop"*) ;; *) err "fleet: bounded recovery can stop or evaluate a partial live wave" ;; esac
+    case "$fleet_body" in *"complete retained launch-wave evaluation"*"successful siblings as "*"sufficient"*"limit only the fresh replacement Agent dispatch"*"retry.unitIds"*) ;; *) err "fleet: bounded recovery submits only failures instead of the complete retained evaluation" ;; esac
+    case "$fleet_body" in *"isolated"*"singleton"*"signals: [\"repeated-failure\"]"*"omit "*"postAttempt.units"*"retry.unitIds"*"retained decision order"*) ;; *) err "fleet: isolated singleton recovery is not shape-valid and identity-bound" ;; esac
+    case "$fleet_body" in *"bounded-parallel"*"wave"*"complete retained launch wave"*"postAttempt.units"*"queued"*"not included"*"successful launched siblings"*"sufficient"*"repeated-failure"*"retry.unitIds"*) ;; *) err "fleet: bounded replacement lacks exact selective-retry launch-wave evaluation" ;; esac
+    case "$fleet_body" in *"exact resolver-returned next-tier model/effort"*"never the original "*"invocationModel"*) ;; *) err "fleet: replacement model is not resolver-owned" ;; esac
   fi
 
-  rm -f "$candidates" "$skill_candidates" "$declared_skill_pairs" "$skill_pairs"
+  local included_count excluded_count
+  included_count="$(awk -F '\t' '$2=="included"{n++} END{print n+0}' "$inventory")"
+  excluded_count="$(awk -F '\t' '$2=="excluded"{n++} END{print n+0}' "$inventory")"
+  rm -rf "$safe_sources"
+  rm -f "$candidates" "$task_hits" "$skill_candidates" "$declared_skill_pairs" "$skill_pairs" "$skill_hits" "$signal_hits"
 
-  [ "$fail" -eq 0 ] && printf 'Core dispatch routing guard passed: %s included, %s explicit exclusions.\n' \
-    "$(awk -F '\t' '$2=="included"{n++} END{print n+0}' "$inventory")" \
-    "$(awk -F '\t' '$2=="excluded"{n++} END{print n+0}' "$inventory")"
+  [ "$fail" -eq 0 ] && printf 'Core dispatch routing guard passed: %s included, %s explicit exclusions.\n' "$included_count" "$excluded_count"
   [ "$fail" -eq 0 ]
 }
 
 selftest() {
   local tmp rc=0
   tmp="$(mktemp -d)"
-  mkdir -p "$tmp/plugins/wf/skills/demo"
+  mkdir -p "$tmp/plugins/wf/skills/demo" "$tmp/plugins/wf/agents"
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
 ## Procedure
 Call `resolve_routing` with `role: "demo"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null. Invoke the **Task** tool with `subagent_type: wf:demo`.
@@ -418,6 +732,123 @@ demo	included	plugins/wf/skills/demo/SKILL.md	wf:demo	demo	model=true;effort=fal
 provider	excluded	plugins/wf/skills/**	provider	WF-400	—	registry-derived provider dispatch	—
 EOF
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null || rc=1
+
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-routed.bak"
+  printf '\nYou may invoke the **Task** tool with `subagent_type: wf:demo`.\n' >> "$tmp/plugins/wf/skills/demo/SKILL.md"
+  cp "$tmp/pass.tsv" "$tmp/two-task-rows.tsv"
+  sed 's/^demo/inventory-second/' "$tmp/pass.tsv" >> "$tmp/two-task-rows.tsv"
+  # A same-heading sibling Task occurrence needs its own local routing decision.
+  fail=0; scan "$tmp" "$tmp/two-task-rows.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/demo-routed.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-wrong-role.bak"
+  cat >> "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+Call `resolve_routing` with top-level `role: "wrong"` and nested context `{ role: "demo" }`, complete evidence, and normal stop handling. Invoke the **Task** tool with `subagent_type: wf:demo`.
+EOF
+  # A target token after an unrelated decision cannot launder that decision's wrong role.
+  fail=0; scan "$tmp" "$tmp/two-task-rows.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/demo-wrong-role.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-single-line.bak"
+  sed 's/subagent_type: wf:demo/subagent_type: wf:demo and subagent_type: wf:demo/' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  # Even two inventory rows cannot authorize two Task dispatches from one routing decision.
+  fail=0; scan "$tmp" "$tmp/two-task-rows.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/demo-single-line.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
+
+  cat > "$tmp/exclusions-only.tsv" <<'EOF'
+prose	excluded	plugins/wf/skills/**	examples	prose	—	non-executable mention	—
+EOF
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-valid.bak"
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Execute
+You may invoke the **Task** tool with `subagent_type: wf:hidden`.
+EOF
+  fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Execute
+You may invoke `/wf:hidden` via the Skill tool.
+EOF
+  fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Execute
+You may invoke the **Task** tool manually with `subagent_type: wf:hidden`.
+EOF
+  fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Execute
+Invoke the **Task** tool manually with `subagent_type: wf:hidden`.
+EOF
+  fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Execute
+You may invoke `/wf:hidden` manually via the Skill tool.
+EOF
+  fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
+  cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
+## Execute
+Invoke `/wf:hidden` manually via the Skill tool.
+EOF
+  fail=0; scan "$tmp" "$tmp/exclusions-only.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/demo-valid.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
+
+  sed 's#plugins/wf/skills/demo/SKILL.md#../outside.md#' "$tmp/pass.tsv" > "$tmp/traversal.tsv"
+  fail=0; scan "$tmp" "$tmp/traversal.tsv" >/dev/null 2>&1 && rc=1
+  ln -s demo/SKILL.md "$tmp/plugins/wf/skills/demo-link.md"
+  sed 's#plugins/wf/skills/demo/SKILL.md#plugins/wf/skills/demo-link.md#' "$tmp/pass.tsv" > "$tmp/final-symlink.tsv"
+  fail=0; scan "$tmp" "$tmp/final-symlink.tsv" >/dev/null 2>&1 && rc=1
+  rm -f "$tmp/plugins/wf/skills/demo-link.md"
+  ln -s demo "$tmp/plugins/wf/skills/demo-dir-link"
+  sed 's#plugins/wf/skills/demo/SKILL.md#plugins/wf/skills/demo-dir-link/SKILL.md#' "$tmp/pass.tsv" > "$tmp/intermediate-symlink.tsv"
+  fail=0; scan "$tmp" "$tmp/intermediate-symlink.tsv" >/dev/null 2>&1 && rc=1
+  rm -f "$tmp/plugins/wf/skills/demo-dir-link"
+  mkfifo "$tmp/nonregular"
+  sed 's#plugins/wf/skills/demo/SKILL.md#nonregular#' "$tmp/pass.tsv" > "$tmp/nonregular.tsv"
+  fail=0; scan "$tmp" "$tmp/nonregular.tsv" >/dev/null 2>&1 && rc=1
+  truncate -s $((MAX_INVENTORY_FILE_BYTES + 1)) "$tmp/oversized"
+  sed 's#plugins/wf/skills/demo/SKILL.md#oversized#' "$tmp/pass.tsv" > "$tmp/oversized.tsv"
+  fail=0; scan "$tmp" "$tmp/oversized.tsv" >/dev/null 2>&1 && rc=1
+
+  ln -s pass.tsv "$tmp/inventory-link.tsv"
+  fail=0; scan "$tmp" "$tmp/inventory-link.tsv" >/dev/null 2>&1 && rc=1
+  rm -f "$tmp/inventory-link.tsv"
+  mkfifo "$tmp/inventory-fifo.tsv"
+  fail=0; scan "$tmp" "$tmp/inventory-fifo.tsv" >/dev/null 2>&1 && rc=1
+  rm -f "$tmp/inventory-fifo.tsv"
+  local outside_inventory
+  outside_inventory="$(mktemp)"; cp "$tmp/pass.tsv" "$outside_inventory"
+  fail=0; scan "$tmp" "$outside_inventory" >/dev/null 2>&1 && rc=1
+  rm -f "$outside_inventory"
+  sed 's/\tdemo\tmodel=/\tdemo.*\tmodel=/' "$tmp/pass.tsv" > "$tmp/bad-role.tsv"
+  fail=0; scan "$tmp" "$tmp/bad-role.tsv" >/dev/null 2>&1 && rc=1
+  sed 's/\tdemo\tmodel=/\t9demo\tmodel=/' "$tmp/pass.tsv" > "$tmp/digit-role.tsv"
+  fail=0; scan "$tmp" "$tmp/digit-role.tsv" >/dev/null 2>&1 && rc=1
+  sed 's/\tdemo\tmodel=/\t-demo\tmodel=/' "$tmp/pass.tsv" > "$tmp/hyphen-role.tsv"
+  fail=0; scan "$tmp" "$tmp/hyphen-role.tsv" >/dev/null 2>&1 && rc=1
+  local long_role="a$(printf '%064d' 0)"
+  sed "s/\tdemo\tmodel=/\t${long_role}\tmodel=/" "$tmp/pass.tsv" > "$tmp/long-role.tsv"
+  fail=0; scan "$tmp" "$tmp/long-role.tsv" >/dev/null 2>&1 && rc=1
+  cp "$tmp/pass.tsv" "$tmp/control-inventory.tsv"
+  printf '\033malicious\tincluded\tplugins/wf/skills/demo/SKILL.md\tgeneral-purpose\tdemo\tmodel=true;effort=false\tcaller-context,atomic,1,false,none,low,none,mechanical,none,false,mechanically-judgeable,1\tparent\n' >> "$tmp/control-inventory.tsv"
+  fail=0; scan "$tmp" "$tmp/control-inventory.tsv" >/dev/null 2>&1 && rc=1
+  printf 'subagent_type: wf:demo\n' > "$tmp/plugins/wf/skills/"$'control\033'".md"
+  discover_dispatch_lines "$tmp" task >/dev/null 2>&1 && rc=1
+  rm -f "$tmp/plugins/wf/skills/"$'control\033'".md"
+
+  local saved_depth="$MAX_SOURCE_DEPTH" saved_entries="$MAX_SOURCE_ENTRIES" saved_total="$MAX_SOURCE_TOTAL_BYTES" saved_hits="$MAX_DISCOVERY_HITS"
+  local resource="$tmp/resource"
+  mkdir -p "$resource/plugins/wf/skills/a/b" "$resource/plugins/wf/agents"
+  printf 'subagent_type: wf:demo\n' > "$resource/plugins/wf/skills/a/b/deep.md"
+  MAX_SOURCE_DEPTH=2
+  discover_dispatch_lines "$resource" task >/dev/null 2>&1 && rc=1
+  MAX_SOURCE_DEPTH="$saved_depth"
+  MAX_SOURCE_ENTRIES=2
+  discover_dispatch_lines "$resource" task >/dev/null 2>&1 && rc=1
+  MAX_SOURCE_ENTRIES="$saved_entries"
+  MAX_SOURCE_TOTAL_BYTES=8
+  discover_dispatch_lines "$resource" task >/dev/null 2>&1 && rc=1
+  MAX_SOURCE_TOTAL_BYTES="$saved_total"
+  MAX_DISCOVERY_HITS=0
+  discover_dispatch_lines "$resource" task >/dev/null 2>&1 && rc=1
+  MAX_DISCOVERY_HITS="$saved_hits"
+
   cat > "$tmp/mediation.tsv" <<'EOF'
 index-edge	included	plugins/wf/skills/demo/SKILL.md	/wf:demo	index	model=false;effort=false	index-wrapper-mediated	parent
 fixed-edge	included	plugins/wf/skills/demo/SKILL.md	/wf:fixed	child	model=false;effort=false	fixed-skill-route	parent
@@ -446,7 +877,8 @@ EOF
 Call `resolve_routing` with `role: "shipper"` and cardinality evidence.
 One-item wave: `workSurface: "external-context"`, `atomicity: "atomic"`, `unitCount: 1`, `unitsIndependent: false`, `requestedParallelism: 1`; select `isolated`.
 Multi-item wave: `workSurface: "external-context"`, `atomicity: "composite"`, `unitCount: <wave-size>`, `unitsIndependent: true`, `requestedParallelism: <configured-pool-bound>`; select `bounded-parallel`.
-Use `supportsModelSelector: true`, `supportsEffortSelector: false`, and `invocationModel`; emit the compact operational record. On `status: stop` or `diagnostic`, stop and obey `executionShape` and `effectiveParallelism`. Parent owns `postAttempt`; child never self-replaces. Dispatch `min(available slots, effectiveParallelism)` and leave every excess ready item queued. Invoke the Agent tool with `subagent_type: general-purpose`.
+Reconcile each persisted `dispatched` row: no recorded `agentId` returns to `queued`; runtime confirms active as `in-flight`; without conclusive live-or-terminal state use `awaiting-confirmation`. Never leave a resumed row stranded.
+Use `supportsModelSelector: true`, `supportsEffortSelector: false`, and `invocationModel`; emit the compact operational record. On `status: stop` or `diagnostic`, stop and obey `executionShape` and `effectiveParallelism`. Parent owns `postAttempt`; child never self-replaces. Select a candidate launch wave, pass its ordered item ids as `unitIds`, use `effectiveParallelism` to narrow it to the exact launch wave when smaller, retain only that decision, and leave excess outside the decision queued for fresh initial routing. Preserve the activation and use `SendMessage` under the retained routing decision. Do not `TaskStop` on elapsed silence; require an explicit terminal/idle child response or a conclusive documented runtime terminal state. Until then keep `awaiting-confirmation`, which occupies an in-flight pool slot, never satisfies a dependency blocker or closeout, and must re-arm supervision; after a successful spawn, immediately mark it `in-flight`; never mark it `blocked` while the child may still run. For `bounded-parallel`, do not submit `postAttempt` until every launched sibling is conclusive: still-running siblings remain `in-flight`, unknown siblings remain `awaiting-confirmation`, and Only terminal/idle failed activations may be `TaskStop`ped. Submit the complete retained launch-wave evaluation with successful siblings as `sufficient`; limit only the fresh replacement Agent dispatch to `retry.unitIds`. For an `isolated` singleton submit signals: ["repeated-failure"] and omit `postAttempt.units`; dispatch only the returned `retry.unitIds` in retained decision order. For a `bounded-parallel` wave evaluate the complete retained launch wave in `postAttempt.units`; queued excess is not included; mark successful launched siblings `sufficient`, failed units `repeated-failure`, and dispatch only `retry.unitIds` with the exact resolver-returned next-tier model/effort, never the original `invocationModel`. Invoke the Agent tool with `subagent_type: general-purpose`.
 EOF
   cat > "$tmp/fleet.tsv" <<'EOF'
 fleet	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	fleet-cardinality-route	fleet
@@ -457,6 +889,12 @@ EOF
   fail=0; scan "$tmp" "$tmp/fleet.tsv" >/dev/null 2>&1 && rc=1
   cp "$tmp/fleet-valid.bak" "$tmp/plugins/wf/skills/fleet/SKILL.md"
   sed 's/requestedParallelism: <configured-pool-bound>/requestedParallelism: 1/' "$tmp/plugins/wf/skills/fleet/SKILL.md" > "$tmp/plugins/wf/skills/fleet/tmp" && mv "$tmp/plugins/wf/skills/fleet/tmp" "$tmp/plugins/wf/skills/fleet/SKILL.md"
+  fail=0; scan "$tmp" "$tmp/fleet.tsv" >/dev/null 2>&1 && rc=1
+  cp "$tmp/fleet-valid.bak" "$tmp/plugins/wf/skills/fleet/SKILL.md"
+  sed 's/Do not `TaskStop` on elapsed silence/`TaskStop` after two silent ticks/' "$tmp/plugins/wf/skills/fleet/SKILL.md" > "$tmp/plugins/wf/skills/fleet/tmp" && mv "$tmp/plugins/wf/skills/fleet/tmp" "$tmp/plugins/wf/skills/fleet/SKILL.md"
+  fail=0; scan "$tmp" "$tmp/fleet.tsv" >/dev/null 2>&1 && rc=1
+  cp "$tmp/fleet-valid.bak" "$tmp/plugins/wf/skills/fleet/SKILL.md"
+  sed 's/postAttempt.units/partial units/' "$tmp/plugins/wf/skills/fleet/SKILL.md" > "$tmp/plugins/wf/skills/fleet/tmp" && mv "$tmp/plugins/wf/skills/fleet/tmp" "$tmp/plugins/wf/skills/fleet/SKILL.md"
   fail=0; scan "$tmp" "$tmp/fleet.tsv" >/dev/null 2>&1 && rc=1
   rm -rf "$tmp/plugins/wf/skills/fleet"
 

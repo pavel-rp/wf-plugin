@@ -17,8 +17,16 @@ const DEFAULTS: RoutingProjectConfig = {
 };
 
 const MODEL_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const UNIT_ID_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
+const UNSAFE_ROUTING_CHARACTER = /\p{C}/u;
 const EFFORTS = new Set(["low", "medium", "high", "max"]);
 const MAX_PARALLELISM = 4;
+const MAX_UNIT_ID_LENGTH = 128;
+const MAX_AVAILABLE_MODELS = 64;
+const MAX_MODEL_ID_LENGTH = 128;
+const MAX_EFFORT_LENGTH = 16;
+const MAX_ROUTING_METADATA_LENGTH = 256;
+const MAX_ROLE_LENGTH = 64;
 const MODEL_TIERS = ["haiku", "sonnet", "opus"] as const;
 const INSUFFICIENCY_SIGNALS = new Set<RoutingInsufficiencySignal>([
   "low-confidence",
@@ -70,8 +78,8 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
       ? `shape evidence ${invalidEnum[0]} must be one of: ${invalidEnum[2].join(", ")}`
       : invalidBoolean
         ? `shape evidence ${invalidBoolean} must be boolean`
-        : !Number.isInteger(evidence.unitCount) || (evidence.unitCount ?? 0) < 1
-          ? "shape evidence unitCount must be a positive integer"
+        : !Number.isInteger(evidence.unitCount) || (evidence.unitCount ?? 0) < 1 || (evidence.unitCount ?? 0) > MAX_PARALLELISM
+          ? `shape evidence unitCount must be an integer from 1 to ${MAX_PARALLELISM}`
           : !Number.isInteger(evidence.requestedParallelism) || (evidence.requestedParallelism ?? 0) < 1
             ? "shape evidence requestedParallelism must be a positive integer"
             : evidence.atomicity === "atomic" && evidence.unitCount !== 1
@@ -166,6 +174,19 @@ function choose(
         ? "shipped-default"
         : "inheritance";
 
+  const maximum = kind === "model" ? MAX_MODEL_ID_LENGTH : MAX_EFFORT_LENGTH;
+  if (host && UNSAFE_ROUTING_CHARACTER.test(host)) {
+    return {
+      choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: "malformed" },
+      stop: `${kind} host choice must not contain control or format characters`,
+    };
+  }
+  if (host && host.length > maximum) {
+    return {
+      choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: "malformed" },
+      stop: `${kind} host choice must be at most ${maximum} characters`,
+    };
+  }
   if (host) {
     return {
       choice: { value: host, source: "host", requested, requestedSource, masked: requested !== null && requested !== host, fallback: null },
@@ -174,6 +195,18 @@ function choose(
   }
   if (!requested) {
     return { choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: null }, stop: required ? `${kind} override is required but none was supplied` : null };
+  }
+  if (UNSAFE_ROUTING_CHARACTER.test(requested)) {
+    return {
+      choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: "malformed" },
+      stop: `${kind} choice must not contain control or format characters`,
+    };
+  }
+  if (requested.length > maximum) {
+    return {
+      choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: "malformed" },
+      stop: `${kind} choice must be at most ${maximum} characters`,
+    };
   }
   const valid = kind === "model" ? MODEL_TOKEN.test(requested) : EFFORTS.has(requested);
   if (!valid) {
@@ -205,6 +238,7 @@ function modelTier(value: string | null | undefined): ModelTier | null {
 
 function validSignals(signals: unknown): signals is RoutingInsufficiencySignal[] {
   return Array.isArray(signals) &&
+    signals.length <= INSUFFICIENCY_SIGNALS.size &&
     new Set(signals).size === signals.length &&
     signals.every((signal) => INSUFFICIENCY_SIGNALS.has(signal));
 }
@@ -218,11 +252,71 @@ function sameShapeEvidence(a: RoutingInputs["shapeEvidence"], b: RoutingInputs["
   return SHAPE_EVIDENCE_KEYS.every((key) => a[key] === b[key]);
 }
 
+function boundedOptionalString(value: unknown, field: string, maximum: number): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return `${field} must be a string or null`;
+  if (UNSAFE_ROUTING_CHARACTER.test(value)) return `${field} must not contain control or format characters`;
+  return value.length > maximum ? `${field} must be at most ${maximum} characters` : null;
+}
+
+function routingScalarProblem(inputs: RoutingInputs): string | null {
+  const checks: Array<[unknown, string, number]> = [
+    [inputs.invocationModel, "invocationModel", MAX_MODEL_ID_LENGTH],
+    [inputs.invocationEffort, "invocationEffort", MAX_EFFORT_LENGTH],
+    [inputs.hostModel, "hostModel", MAX_MODEL_ID_LENGTH],
+    [inputs.hostEffort, "hostEffort", MAX_EFFORT_LENGTH],
+    [inputs.basis, "basis", MAX_ROUTING_METADATA_LENGTH],
+    [inputs.escalationOrigin, "escalationOrigin", MAX_ROUTING_METADATA_LENGTH],
+    [inputs.actualModel, "actualModel", MAX_MODEL_ID_LENGTH],
+  ];
+  for (const [value, field, maximum] of checks) {
+    const problem = boundedOptionalString(value, field, maximum);
+    if (problem) return problem;
+  }
+  return null;
+}
+
+function routingChoiceProblem(choice: RoutingChoice | undefined, field: string, maximum: number): string | null {
+  if (!choice) return `post-attempt prior ${field} choice is required`;
+  return boundedOptionalString(choice.value, `post-attempt prior ${field}.value`, maximum) ??
+    boundedOptionalString(choice.requested, `post-attempt prior ${field}.requested`, maximum);
+}
+
+function availableModelsProblem(availableModels: unknown): string | null {
+  if (availableModels === undefined || availableModels === null) return null;
+  if (!Array.isArray(availableModels)) return "availableModels must be an array or null";
+  if (availableModels.length > MAX_AVAILABLE_MODELS) return `availableModels must contain at most ${MAX_AVAILABLE_MODELS} entries`;
+  if (availableModels.some((model) => typeof model !== "string" || !model.length)) return "availableModels entries must be non-empty strings";
+  if (availableModels.some((model) => UNSAFE_ROUTING_CHARACTER.test(model))) return "availableModels entries must not contain control or format characters";
+  if (availableModels.some((model) => model.length > MAX_MODEL_ID_LENGTH)) return `availableModels entries must be at most ${MAX_MODEL_ID_LENGTH} characters`;
+  return null;
+}
+
+function unitIdsProblem(unitIds: unknown, unitCount: number): string | null {
+  if (!Array.isArray(unitIds)) return "routing unitIds are required";
+  if (unitIds.length > MAX_PARALLELISM) return `routing unitIds must contain at most ${MAX_PARALLELISM} entries`;
+  if (unitIds.length !== unitCount) return "routing unitIds must match shape evidence unitCount";
+  if (unitIds.some((id) => typeof id !== "string" || !id.trim())) return "routing unitIds must be non-empty strings";
+  if (unitIds.some((id) => id.length > MAX_UNIT_ID_LENGTH)) return `routing unitIds must be at most ${MAX_UNIT_ID_LENGTH} characters`;
+  if (unitIds.some((id) => !UNIT_ID_TOKEN.test(id))) return "routing unitIds must use canonical printable identifier characters";
+  if (new Set(unitIds).size !== unitIds.length) return "routing unitIds must be unique";
+  return null;
+}
+
+function sameUnitIds(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const expected = new Set(b);
+  return expected.size === b.length && new Set(a).size === a.length && a.every((id) => expected.has(id));
+}
+
 function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: RoutingInputs): string | null {
+  const inputScalarProblem = routingScalarProblem(inputs) ?? availableModelsProblem(inputs.availableModels);
+  if (inputScalarProblem) return `post-attempt ${inputScalarProblem}`;
   const { prior } = evaluation;
   if (!prior || !Number.isInteger(prior.attempt) || prior.attempt < 1 || prior.attempt > 3) {
     return "post-attempt prior attempt must be an integer from 1 to 3";
   }
+  if (prior.role.length > MAX_ROLE_LENGTH) return `post-attempt prior role must be at most ${MAX_ROLE_LENGTH} characters`;
   if (prior.role !== inputs.role) {
     return "post-attempt prior role must match the routed role";
   }
@@ -238,6 +332,12 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
   if (!prior.model || !prior.effort || !prior.shapeEvidence || !prior.executionShape) {
     return "post-attempt prior routing context is incomplete";
   }
+  const priorStringProblem = routingChoiceProblem(prior.model, "model", MAX_MODEL_ID_LENGTH) ??
+    routingChoiceProblem(prior.effort, "effort", MAX_EFFORT_LENGTH) ??
+    boundedOptionalString(prior.basis, "post-attempt prior basis", MAX_ROUTING_METADATA_LENGTH) ??
+    boundedOptionalString(prior.escalationOrigin, "post-attempt prior escalationOrigin", MAX_ROUTING_METADATA_LENGTH) ??
+    boundedOptionalString(prior.actualModel, "post-attempt prior actualModel", MAX_MODEL_ID_LENGTH);
+  if (priorStringProblem) return priorStringProblem;
   if (prior.basis === undefined || prior.basis !== null && typeof prior.basis !== "string") {
     return "post-attempt prior basis must be a string or null";
   }
@@ -247,6 +347,21 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
       ? `post-attempt prior shape evidence is invalid: ${priorShape.stop}`
       : "post-attempt prior execution shape contradicts its shape evidence";
   }
+  if (!Array.isArray(prior.unitIds)) return "post-attempt prior unitIds are required";
+  const priorUnitProblem = prior.executionShape === "bounded-parallel" || prior.unitIds.length
+    ? unitIdsProblem(prior.unitIds, prior.shapeEvidence.unitCount)
+    : null;
+  if (priorUnitProblem) return `post-attempt prior ${priorUnitProblem}`;
+  const inputUnitProblem = prior.unitIds.length || inputs.unitIds !== undefined
+    ? unitIdsProblem(inputs.unitIds, prior.shapeEvidence.unitCount)
+    : null;
+  if (inputUnitProblem) return `post-attempt ${inputUnitProblem}`;
+  if (!sameUnitIds(inputs.unitIds ?? [], prior.unitIds)) {
+    return "post-attempt unitIds must match the retained prior decision";
+  }
+  if (!sameShapeEvidence(inputs.shapeEvidence, prior.shapeEvidence)) {
+    return "post-attempt shape evidence must match the retained prior decision; retry narrowing is resolver-derived";
+  }
   if (prior.attempt === 1 && prior.escalationOrigin) {
     return "post-attempt initial attempt must not carry escalationOrigin";
   }
@@ -255,11 +370,17 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
   }
   if (!validSignals(evaluation.signals)) return "post-attempt signals contain an unsupported insufficiency signal";
   const units = evaluation.units;
+  if (prior.executionShape === "bounded-parallel" && units === undefined) {
+    return "post-attempt bounded-parallel evaluation requires complete unit results";
+  }
   if (units !== undefined) {
     if (!Array.isArray(units) || units.length === 0) return "post-attempt units must be a non-empty array when supplied";
+    if (units.length > MAX_PARALLELISM) return `post-attempt units must contain at most ${MAX_PARALLELISM} entries`;
     const ids = new Set<string>();
     for (const unit of units) {
       if (!unit || typeof unit.unitId !== "string" || !unit.unitId.trim()) return "post-attempt unitId must be non-empty";
+      if (unit.unitId.length > MAX_UNIT_ID_LENGTH) return `post-attempt unitId must be at most ${MAX_UNIT_ID_LENGTH} characters`;
+      if (!UNIT_ID_TOKEN.test(unit.unitId)) return "post-attempt unitId must use canonical printable identifier characters";
       if (ids.has(unit.unitId)) return `post-attempt unitId \`${unit.unitId}\` is duplicated`;
       ids.add(unit.unitId);
       if (typeof unit.sufficient !== "boolean" || !validSignals(unit.signals)) return `post-attempt unit \`${unit.unitId}\` is incomplete`;
@@ -268,6 +389,9 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
     }
     if (prior.executionShape !== "bounded-parallel") return "post-attempt unit evaluations require a bounded-parallel prior attempt";
     if (units.length !== prior.shapeEvidence.unitCount) return "post-attempt unit evaluations must cover every prior bounded-parallel unit";
+    if (!sameUnitIds(units.map((unit) => unit.unitId), prior.unitIds)) {
+      return "post-attempt unit evaluations must match the retained prior unitIds";
+    }
   }
   const insufficientUnits = units?.filter((unit) => !unit.sufficient) ?? [];
   if (evaluation.sufficient && (evaluation.signals.length || insufficientUnits.length)) {
@@ -309,6 +433,7 @@ function priorTerminalDecision(
     role: prior.role,
     executionShape: prior.executionShape,
     normalizedEvidence: shape.normalizedEvidence,
+    unitIds: prior.unitIds,
     shapeReason: shape.shapeReason,
     effectiveParallelism: shape.effectiveParallelism,
     model: prior.model,
@@ -330,24 +455,41 @@ function priorTerminalDecision(
 
 function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): RoutingDecision {
   const shape = selectShape(inputs);
-  const model = choose("model", inputs, project);
-  const effort = choose("effort", inputs, project);
-  const stops = [shape.stop, model.stop, effort.stop].filter((v): v is string => v !== null);
+  const scalarStop = routingScalarProblem(inputs);
+  const boundedInputs = scalarStop ? {
+    ...inputs,
+    invocationModel: null,
+    invocationEffort: null,
+    hostModel: null,
+    hostEffort: null,
+    basis: null,
+    escalationOrigin: null,
+    actualModel: null,
+  } : inputs;
+  const availableStop = availableModelsProblem(inputs.availableModels);
+  const selectorInputs = availableStop ? { ...boundedInputs, availableModels: null } : boundedInputs;
+  const model = choose("model", selectorInputs, project);
+  const effort = choose("effort", selectorInputs, project);
+  const unitStop = inputs.unitIds !== undefined || shape.normalizedEvidence.unitCount > 1
+    ? unitIdsProblem(inputs.unitIds, shape.normalizedEvidence.unitCount)
+    : null;
+  const stops = [shape.stop, unitStop, scalarStop, availableStop, model.stop, effort.stop].filter((v): v is string => v !== null);
   return {
     role: inputs.role,
     executionShape: shape.executionShape,
     normalizedEvidence: shape.normalizedEvidence,
+    unitIds: inputs.unitIds ?? [],
     shapeReason: shape.shapeReason,
     effectiveParallelism: shape.effectiveParallelism,
     model: model.choice,
     effort: effort.choice,
     source: model.choice.source,
-    basis: inputs.basis ?? null,
-    attempt: Number.isInteger(inputs.attempt) && (inputs.attempt ?? 0) >= 1 && (inputs.attempt ?? 0) <= 3 ? inputs.attempt! : 1,
-    escalationOrigin: inputs.escalationOrigin ?? null,
+    basis: selectorInputs.basis ?? null,
+    attempt: Number.isInteger(selectorInputs.attempt) && (selectorInputs.attempt ?? 0) >= 1 && (selectorInputs.attempt ?? 0) <= 3 ? selectorInputs.attempt! : 1,
+    escalationOrigin: selectorInputs.escalationOrigin ?? null,
     fallback: model.choice.fallback ?? effort.choice.fallback,
     masked: model.choice.masked || effort.choice.masked,
-    ...(inputs.actualModel ? { actualModel: inputs.actualModel } : {}),
+    ...(selectorInputs.actualModel ? { actualModel: selectorInputs.actualModel } : {}),
     status: stops.length ? "stop" : "dispatch",
     disposition: stops.length ? "invalid-stop" : "dispatch",
     retry: null,
@@ -361,6 +503,7 @@ export function projectRoutingMeasurement(decision: RoutingDecision): RoutingMea
     role: decision.role,
     executionShape: decision.executionShape,
     shapeReason: decision.shapeReason,
+    unitIds: decision.unitIds,
     model: decision.model.value,
     effort: decision.effort.value,
     source: decision.source,
@@ -375,7 +518,7 @@ export function projectRoutingMeasurement(decision: RoutingDecision): RoutingMea
 }
 
 export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInputs): RoutingDecision {
-  if (!/^[a-z][a-z0-9-]*$/.test(inputs.role)) throw new Error(`invalid routing role \`${inputs.role}\``);
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(inputs.role)) throw new Error(`invalid routing role \`${inputs.role.slice(0, MAX_ROLE_LENGTH)}\``);
   if (!inputs.postAttempt) {
     const initial = baseDecision(project, inputs);
     if (inputs.attempt !== undefined && inputs.attempt !== 1) {
@@ -390,8 +533,17 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
   const evaluation = inputs.postAttempt;
   const problem = evaluationProblem(evaluation, inputs);
   const current = baseDecision(project, inputs);
-  if (problem) return stopDecision(current, "invalid-stop", problem);
-  const retainedUnitIds = evaluation.units?.filter((unit) => unit.sufficient).map((unit) => unit.unitId) ?? [];
+  if (problem) {
+    if (problem === "post-attempt shape evidence must match the retained prior decision; retry narrowing is resolver-derived") {
+      const priorShape = selectShape({ ...inputs, shapeEvidence: evaluation.prior.shapeEvidence, postAttempt: undefined });
+      return priorTerminalDecision(current, evaluation.prior, priorShape, "stop", "invalid-stop", problem, []);
+    }
+    return stopDecision(current, "invalid-stop", problem);
+  }
+  const sufficientUnitIds = new Set(evaluation.units
+    ? evaluation.units.filter((unit) => unit.sufficient).map((unit) => unit.unitId)
+    : evaluation.sufficient ? evaluation.prior.unitIds : []);
+  const retainedUnitIds = evaluation.prior.unitIds.filter((id) => sufficientUnitIds.has(id));
   const priorShape = selectShape({ ...inputs, shapeEvidence: evaluation.prior.shapeEvidence, postAttempt: undefined });
   if (evaluation.sufficient) {
     return priorTerminalDecision(current, evaluation.prior, priorShape, "retain", "retain", null, retainedUnitIds);
@@ -428,20 +580,24 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
 
   const attempt = evaluation.prior.attempt + 1;
   const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
-  const retryUnitIds = evaluation.units?.filter((unit) => !unit.sufficient).map((unit) => unit.unitId) ?? [];
+  const insufficientUnitIds = new Set(evaluation.units
+    ? evaluation.units.filter((unit) => !unit.sufficient).map((unit) => unit.unitId)
+    : evaluation.prior.unitIds);
+  const retryUnitIds = evaluation.prior.unitIds.filter((id) => insufficientUnitIds.has(id));
   const retryUnitCount = retryUnitIds.length;
   const retryShapeEvidence = evaluation.units
     ? {
-        ...inputs.shapeEvidence,
+        ...evaluation.prior.shapeEvidence,
         atomicity: retryUnitCount === 1 ? "atomic" as const : "composite" as const,
         unitCount: retryUnitCount,
-        unitsIndependent: retryUnitCount > 1 && inputs.shapeEvidence.unitsIndependent,
-        requestedParallelism: Math.min(inputs.shapeEvidence.requestedParallelism, retryUnitCount),
+        unitsIndependent: retryUnitCount > 1 && evaluation.prior.shapeEvidence.unitsIndependent,
+        requestedParallelism: Math.min(evaluation.prior.shapeEvidence.requestedParallelism, retryUnitCount),
       }
-    : inputs.shapeEvidence;
+    : evaluation.prior.shapeEvidence;
   const retryInputs: RoutingInputs = {
     ...inputs,
     shapeEvidence: retryShapeEvidence,
+    unitIds: retryUnitIds.length ? retryUnitIds : undefined,
     postAttempt: undefined,
     invocationModel: nextTier,
     invocationEffort: undefined,

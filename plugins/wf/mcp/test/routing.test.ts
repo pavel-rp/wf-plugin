@@ -66,6 +66,96 @@ test("unavailable required model stops and actual model is only included when su
   assert.equal(resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5" }).actualModel, "claude-haiku-4-5");
 });
 
+test("available model inventory is bounded before selector scanning", () => {
+  const tooMany = resolveRouting({}, { ...base, availableModels: Array.from({ length: 65 }, (_, index) => `model-${index}`) });
+  assert.equal(tooMany.disposition, "invalid-stop");
+  assert.match(tooMany.diagnostic ?? "", /availableModels must contain at most 64 entries/);
+
+  const tooLong = resolveRouting({}, { ...base, availableModels: ["x".repeat(129)] });
+  assert.equal(tooLong.disposition, "invalid-stop");
+  assert.match(tooLong.diagnostic ?? "", /availableModels entries must be at most 128 characters/);
+});
+
+test("routing scalar metadata is bounded and oversized values are never echoed", () => {
+  const cases: Array<[string, Record<string, unknown>, number]> = [
+    ["invocationModel", { invocationModel: "x".repeat(129) }, 128],
+    ["invocationEffort", { invocationEffort: "x".repeat(17) }, 16],
+    ["hostModel", { hostModel: "x".repeat(129) }, 128],
+    ["hostEffort", { hostEffort: "x".repeat(17) }, 16],
+    ["basis", { basis: "x".repeat(257) }, 256],
+    ["escalationOrigin", { escalationOrigin: "x".repeat(257) }, 256],
+    ["actualModel", { actualModel: "x".repeat(129) }, 128],
+  ];
+  for (const [field, overrides, maximum] of cases) {
+    const oversized = Object.values(overrides)[0] as string;
+    const decision = resolveRouting({}, { ...base, ...overrides } as Parameters<typeof resolveRouting>[1]);
+    assert.equal(decision.disposition, "invalid-stop", field);
+    assert.doesNotMatch(JSON.stringify(decision), new RegExp(oversized), field);
+    assert.match(decision.diagnostic ?? "", new RegExp(`${field}.*${maximum}|initial routing dispatch`), field);
+  }
+  for (const field of ["invocationModel", "invocationEffort", "hostModel", "hostEffort", "basis", "escalationOrigin", "actualModel"] as const) {
+    const controlled = `safe${String.fromCharCode(27)}unsafe`;
+    const decision = resolveRouting({}, { ...base, [field]: controlled } as Parameters<typeof resolveRouting>[1]);
+    assert.equal(decision.disposition, "invalid-stop", field);
+    assert.doesNotMatch(JSON.stringify(decision), new RegExp(controlled), field);
+  }
+});
+
+test("oversized retained prior metadata is rejected before terminal output", () => {
+  const first = resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5" });
+  const scalarCases: Array<[string, (candidate: RoutingPostAttemptEvaluation["prior"]) => void]> = [
+    ["model.value", (candidate) => { candidate.model = { ...candidate.model, value: "x".repeat(129) }; }],
+    ["model.requested", (candidate) => { candidate.model = { ...candidate.model, requested: "x".repeat(129) }; }],
+    ["effort.value", (candidate) => { candidate.effort = { ...candidate.effort, value: "x".repeat(17) }; }],
+    ["basis", (candidate) => { candidate.basis = "x".repeat(257); }],
+    ["escalationOrigin", (candidate) => { candidate.escalationOrigin = "x".repeat(257); }],
+    ["actualModel", (candidate) => { candidate.actualModel = "x".repeat(129); }],
+  ];
+  for (const [field, mutate] of scalarCases) {
+    const candidate = prior(first);
+    mutate(candidate);
+    const decision = resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5", postAttempt: { sufficient: false, signals: ["failed-validation"], prior: candidate } });
+    assert.equal(decision.disposition, "invalid-stop", field);
+    assert.match(decision.diagnostic ?? "", /at most/, field);
+  }
+  const controlled = `safe${String.fromCharCode(27)}unsafe`;
+  const controlCases: Array<[string, (candidate: RoutingPostAttemptEvaluation["prior"]) => void]> = [
+    ["model.value", (candidate) => { candidate.model = { ...candidate.model, value: controlled }; }],
+    ["model.requested", (candidate) => { candidate.model = { ...candidate.model, requested: controlled }; }],
+    ["effort.value", (candidate) => { candidate.effort = { ...candidate.effort, value: controlled }; }],
+    ["basis", (candidate) => { candidate.basis = controlled; }],
+    ["escalationOrigin", (candidate) => { candidate.escalationOrigin = controlled; }],
+    ["actualModel", (candidate) => { candidate.actualModel = controlled; }],
+  ];
+  for (const [field, mutate] of controlCases) {
+    const candidate = prior(first);
+    mutate(candidate);
+    const decision = resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5", postAttempt: { sufficient: false, signals: ["failed-validation"], prior: candidate } });
+    assert.equal(decision.disposition, "invalid-stop", field);
+    assert.doesNotMatch(JSON.stringify(decision), new RegExp(controlled), field);
+  }
+});
+
+test("post-attempt host selectors are validated before retry construction", () => {
+  const first = resolveRouting({}, base);
+  const cases = [
+    { hostEffort: "x".repeat(17) },
+    { hostEffort: `safe${String.fromCharCode(27)}unsafe` },
+    { hostModel: "x".repeat(129) },
+    { hostModel: `safe${String.fromCharCode(27)}unsafe` },
+  ];
+  for (const overrides of cases) {
+    const raw = Object.values(overrides)[0];
+    const decision = resolveRouting({}, {
+      ...base,
+      ...overrides,
+      postAttempt: { sufficient: false, signals: ["failed-validation"], prior: prior(first) },
+    });
+    assert.equal(decision.disposition, "invalid-stop");
+    assert.doesNotMatch(JSON.stringify(decision), new RegExp(raw));
+  }
+});
+
 test("selects execution shape deterministically from task evidence", () => {
   const cases = [
     { name: "atomic caller-context work", evidence: inlineEvidence, shape: "inline", reason: "atomic-caller-context", bound: 1 },
@@ -77,7 +167,7 @@ test("selects execution shape deterministically from task evidence", () => {
     },
     {
       name: "independent material units",
-      evidence: { ...inlineEvidence, atomicity: "composite", unitCount: 7, unitsIndependent: true, toolWork: "material", contextIsolation: "useful", requestedParallelism: 6 },
+      evidence: { ...inlineEvidence, atomicity: "composite", unitCount: 4, unitsIndependent: true, toolWork: "material", contextIsolation: "useful", requestedParallelism: 6 },
       shape: "bounded-parallel", reason: "independent-material-units", bound: 4,
     },
     {
@@ -171,6 +261,7 @@ function prior(decision: RoutingDecision, attempt = 1): RoutingPostAttemptEvalua
     attempt,
     executionShape: decision.executionShape,
     shapeEvidence: decision.normalizedEvidence,
+    unitIds: decision.unitIds,
     model: decision.model,
     effort: decision.effort,
     basis: decision.basis,
@@ -208,6 +299,20 @@ test("all six insufficiency signals independently produce one Haiku to Sonnet re
   }
 });
 
+test("post-attempt signal arrays are bounded before uniqueness allocation", () => {
+  const first = resolveRouting({}, base);
+  const sevenSignals = [
+    "low-confidence", "failed-validation", "conflicting-or-incomplete-evidence", "repeated-failure",
+    "increased-risk-or-scope", "high-severity-review-uncertainty", "low-confidence",
+  ] as RoutingInsufficiencySignal[];
+  const decision = resolveRouting({}, {
+    ...base,
+    postAttempt: { sufficient: false, signals: sevenSignals, prior: prior(first) },
+  });
+  assert.equal(decision.disposition, "invalid-stop");
+  assert.match(decision.diagnostic ?? "", /signals contain an unsupported insufficiency signal/);
+});
+
 test("sufficient attempts are terminal retains and never emit a retry", () => {
   const first = resolveRouting({}, base);
   const decision = resolveRouting({}, {
@@ -231,10 +336,12 @@ test("bounded-parallel evaluation retains successful units and retries only insu
     contextIsolation: "useful",
     requestedParallelism: 3,
   } as const;
-  const first = resolveRouting({}, { ...base, shapeEvidence: evidence, actualModel: "haiku" });
+  const unitIds = ["a", "b", "c"];
+  const first = resolveRouting({}, { ...base, shapeEvidence: evidence, unitIds, actualModel: "haiku" });
   const decision = resolveRouting({}, {
     ...base,
     shapeEvidence: evidence,
+    unitIds,
     postAttempt: {
       sufficient: false,
       signals: [],
@@ -424,7 +531,27 @@ test("role continuity prevents gaining the security-auditor attempt exception", 
   });
   assert.equal(decision.status, "stop");
   assert.equal(decision.disposition, "invalid-stop");
+  assert.equal(decision.role, "security-auditor");
+  assert.equal(decision.attempt, 2);
   assert.match(decision.diagnostic ?? "", /prior role must match/);
+});
+
+test("malformed prior attempts never leak into an invalid-stop decision", () => {
+  const first = resolveRouting({}, { ...base, invocationModel: "haiku" });
+  for (const badAttempt of [0, 4, 1.5]) {
+    const decision = resolveRouting({}, {
+      ...base,
+      postAttempt: evaluated("failed-validation", {
+        prior: { ...prior(first), attempt: badAttempt },
+      }),
+    });
+    assert.equal(decision.status, "stop");
+    assert.equal(decision.disposition, "invalid-stop");
+    assert.equal(decision.role, base.role);
+    assert.equal(decision.attempt, 1);
+    assert.equal(decision.retry, null);
+    assert.match(decision.diagnostic ?? "", /prior attempt must be an integer from 1 to 3/);
+  }
 });
 
 test("retry preserves prior explicit effort provenance unless host effort masks it", () => {
@@ -511,10 +638,12 @@ test("malformed or duplicate unit evaluations stop before retained ids are deriv
     ...inlineEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true,
     toolWork: "material", requestedParallelism: 2,
   } as const;
-  const first = resolveRouting({}, { ...base, shapeEvidence: evidence, actualModel: "haiku" });
+  const unitIds = ["same", "other"];
+  const first = resolveRouting({}, { ...base, shapeEvidence: evidence, unitIds, actualModel: "haiku" });
   const decision = resolveRouting({}, {
     ...base,
     shapeEvidence: evidence,
+    unitIds,
     postAttempt: {
       sufficient: false,
       signals: [],
@@ -585,7 +714,7 @@ test("retry stops on masked, unavailable, unsupported, unknown, and non-advancin
   }
 });
 
-test("retry accepts full model identifiers and recomputes shape only from supplied evidence", () => {
+test("retry accepts full model identifiers but rejects caller-supplied shape changes", () => {
   const first = resolveRouting({}, { ...base, invocationModel: "claude-haiku-4-5", actualModel: "claude-haiku-4-5" });
   const unchanged = resolveRouting({}, {
     ...base,
@@ -602,7 +731,9 @@ test("retry accepts full model identifiers and recomputes shape only from suppli
     shapeEvidence: changedEvidence,
     postAttempt: evaluated("increased-risk-or-scope", { prior: prior(first) }),
   });
-  assert.equal(changed.executionShape, "isolated");
-  assert.equal(changed.retry?.shapeChanged, true);
-  assert.deepEqual(changed.normalizedEvidence, changedEvidence);
+  assert.equal(changed.status, "stop");
+  assert.equal(changed.disposition, "invalid-stop");
+  assert.equal(changed.retry, null);
+  assert.match(changed.diagnostic ?? "", /shape evidence must match the retained prior decision/);
+  assert.deepEqual(changed.normalizedEvidence, inlineEvidence);
 });

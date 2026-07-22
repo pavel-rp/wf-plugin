@@ -172,6 +172,7 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
         attempt: 1,
         executionShape: routed.executionShape,
         shapeEvidence: routed.normalizedEvidence,
+        unitIds: routed.unitIds,
         model: routed.model,
         effort: routed.effort,
         basis: routed.basis,
