@@ -19,7 +19,7 @@ const inlineEvidence = {
   requestedParallelism: 1,
 } as const;
 
-const base = { role: "classify", shapeEvidence: inlineEvidence, supportsModelSelector: true, supportsEffortSelector: false } as const;
+const base = { role: "classify", shapeEvidence: inlineEvidence, unitIds: ["classify:single"], supportsModelSelector: true, supportsEffortSelector: false } as const;
 
 test("parses arbitrary routing roles with independent optional cells", () => {
   assert.deepEqual(parseRoutingConfig("## Routing\n\n| Role | Model | Effort |\n|---|---|---|\n| classify | sonnet | — |\n| custom-role | — | high |\n"), {
@@ -275,6 +275,28 @@ function evaluated(signal: RoutingInsufficiencySignal, overrides: Partial<Routin
   return { sufficient: false, signals: [signal], prior: prior(first), ...overrides };
 }
 
+test("post-attempt singleton recovery requires retained identity and returns the same id", () => {
+  const { unitIds: _unitIds, ...unidentifiedBase } = base;
+  const unidentified = resolveRouting({}, unidentifiedBase);
+  assert.equal(unidentified.status, "dispatch", "an identity-free singleton is explicitly non-retry");
+  const stopped = resolveRouting({}, {
+    ...unidentifiedBase,
+    postAttempt: { sufficient: false, signals: ["failed-validation"], prior: prior(unidentified) },
+  });
+  assert.equal(stopped.disposition, "invalid-stop");
+  assert.match(stopped.diagnostic ?? "", /requires one retained unitId/);
+  assert.equal(stopped.retry, null);
+
+  const first = resolveRouting({}, { ...base, actualModel: "haiku" });
+  const retried = resolveRouting({}, {
+    ...base,
+    postAttempt: { sufficient: false, signals: ["failed-validation"], prior: prior(first) },
+  });
+  assert.equal(retried.disposition, "retry");
+  assert.deepEqual(retried.unitIds, ["classify:single"]);
+  assert.deepEqual(retried.retry?.unitIds, ["classify:single"]);
+});
+
 test("all six insufficiency signals independently produce one Haiku to Sonnet retry", () => {
   const signals: RoutingInsufficiencySignal[] = [
     "low-confidence",
@@ -451,6 +473,7 @@ test("validated pre-retry stops preserve the exhausted or unmappable prior routi
   const exhausted = resolveRouting({}, {
     role: "classify",
     shapeEvidence: second.normalizedEvidence,
+    unitIds: exhaustedPrior.unitIds,
     supportsModelSelector: true,
     supportsEffortSelector: false,
     postAttempt: { sufficient: false, signals: ["repeated-failure"], prior: exhaustedPrior },
@@ -484,6 +507,7 @@ test("validated pre-retry stops preserve the exhausted or unmappable prior routi
     const stopped = resolveRouting({}, {
       role: "classify",
       shapeEvidence: routed.normalizedEvidence,
+      unitIds: terminalPrior.unitIds,
       supportsModelSelector: true,
       supportsEffortSelector: false,
       postAttempt: { sufficient: false, signals: ["low-confidence"], prior: terminalPrior },
@@ -657,6 +681,49 @@ test("malformed or duplicate unit evaluations stop before retained ids are deriv
   assert.equal(decision.disposition, "invalid-stop");
   assert.deepEqual(decision.retainedUnitIds, []);
   assert.match(decision.diagnostic ?? "", /duplicated/);
+});
+
+test("post-attempt rejects reordered retained identities and unit evaluations", () => {
+  const evidence = {
+    ...inlineEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true,
+    toolWork: "material", requestedParallelism: 2,
+  } as const;
+  const unitIds = ["first", "second"];
+  const first = resolveRouting({}, { ...base, shapeEvidence: evidence, unitIds, actualModel: "haiku" });
+
+  const reorderedInputs = resolveRouting({}, {
+    ...base,
+    shapeEvidence: evidence,
+    unitIds: ["second", "first"],
+    postAttempt: {
+      sufficient: false,
+      signals: [],
+      prior: prior(first),
+      units: [
+        { unitId: "first", sufficient: true, signals: [] },
+        { unitId: "second", sufficient: false, signals: ["failed-validation"] },
+      ],
+    },
+  });
+  assert.equal(reorderedInputs.disposition, "invalid-stop");
+  assert.match(reorderedInputs.diagnostic ?? "", /unitIds must match the retained prior decision/);
+
+  const reorderedEvaluations = resolveRouting({}, {
+    ...base,
+    shapeEvidence: evidence,
+    unitIds,
+    postAttempt: {
+      sufficient: false,
+      signals: [],
+      prior: prior(first),
+      units: [
+        { unitId: "second", sufficient: false, signals: ["failed-validation"] },
+        { unitId: "first", sufficient: true, signals: [] },
+      ],
+    },
+  });
+  assert.equal(reorderedEvaluations.disposition, "invalid-stop");
+  assert.match(reorderedEvaluations.diagnostic ?? "", /unit evaluations must match the retained prior unitIds/);
 });
 
 test("shape-change comparison ignores object property insertion order", () => {

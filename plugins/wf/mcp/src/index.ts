@@ -30,6 +30,8 @@ function createServer(): McpServer {
       workspaceRoot: {
         type: "string",
         minLength: 1,
+        maxLength: 4096,
+        pattern: "^[^\\u0000-\\u001F\\u007F-\\u009F]*$",
         description:
           "Absolute path admitted by the launch workspace: the same plain directory, or a main/linked worktree in the same Git family.",
       },

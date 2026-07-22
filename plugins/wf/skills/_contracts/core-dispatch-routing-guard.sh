@@ -450,10 +450,14 @@ PY
     case "$evidence" in
       shared-branch-gate)
         case "$body" in *"pipeline-conventions.md"*"Branch gate"*) ;; *) err "$id: shared routed branch convention missing in $file" ;; esac
+        local shared_branch_body="$(<"$source_snapshot/plugins/wf/skills/_shared/pipeline-conventions.md")"
+        case "$shared_branch_body" in *"unitIds"*) ;; *) err "$id: shared branch route omits stable singleton unitIds" ;; esac
         continue
         ;;
       index-wrapper-mediated)
         case "$body" in *"/wf:index"*) ;; *) err "$id: index wrapper invocation missing in $file" ;; esac
+        local index_wrapper_body="$(<"$source_snapshot/plugins/wf/skills/index/SKILL.md")"
+        case "$index_wrapper_body" in *"unitIds"*) ;; *) err "$id: index wrapper omits stable singleton unitIds" ;; esac
         continue
         ;;
       fixed-skill-route)
@@ -467,6 +471,8 @@ PY
         case "$body" in *"status: stop"*"diagnostic"*) ;; *) err "$id: fixed Skill stop/diagnostic behavior is absent in $file" ;; esac
         case "$body" in *"executionShape"*|*"inline"*"shape"*) ;; *) err "$id: fixed Skill shape obedience is absent in $file" ;; esac
         case "$body" in *"$target"*) ;; *) err "$id: fixed Skill target is absent in $file" ;; esac
+        case "$skill_block" in *"workspaceRoot"*) ;; *) err "$id: fixed Skill route omits explicit workspaceRoot in $file" ;; esac
+        case "$skill_block" in *"unitIds"*) ;; *) err "$id: fixed singleton Skill route omits stable unitIds in $file" ;; esac
         if [ "$retry" != "—" ]; then
           case "$body" in *"postAttempt"*"never self"*|*"postAttempt"*"never invokes its own replacement"*) ;; *) err "$id: parent retry ownership is not explicit in $file" ;; esac
         fi
@@ -505,6 +511,8 @@ PY
     case "$block" in *"status:"*"diagnostic"*) ;; *) err "$id: missing stop/diagnostic handling in $file" ;; esac
     case "$block" in *"executionShape"*) ;; *) err "$id: selected shape not obeyed in $file" ;; esac
     case "$block" in *"compact"*"record"*|*"compact"*"metadata"*) ;; *) err "$id: compact routing metadata dropped in $file" ;; esac
+    case "$block" in *"workspaceRoot"*) ;; *) err "$id: fixed route omits explicit workspaceRoot in $file" ;; esac
+    case "$block" in *"unitIds"*) ;; *) err "$id: fixed singleton route omits stable unitIds in $file" ;; esac
     case "$selectors" in
       model=true\;effort=false)
         case "$block" in *"supportsModelSelector: true"*) ;; *) err "$id: model selector-support fact does not match $file" ;; esac
@@ -697,12 +705,17 @@ PY
     local fleet_body="$(<"$fleet")"
     case "$fleet_body" in *"One-item wave"*"atomicity: \"atomic\""*"unitCount: 1"*"unitsIndependent: false"*"isolated"*) ;; *) err "fleet: singleton wave evidence must be atomic, dependent, and isolated" ;; esac
     case "$fleet_body" in *"Multi-item wave"*"atomicity: \"composite\""*"unitsIndependent: true"*"bounded-parallel"*) ;; *) err "fleet: multi-item wave evidence must remain composite and bounded" ;; esac
-    case "$fleet_body" in *"candidate launch wave"*"ordered item ids as "*"unitIds"*"effectiveParallelism"*"exact launch wave"*"outside the decision"*"queued"*"fresh initial routing"*) ;; *) err "fleet: effectiveParallelism does not produce an identity-bound exact launch decision with queued excess excluded" ;; esac
+    case "$fleet_body" in *"candidate launch wave"*"ordered canonical identity tokens"*"unitIds"*"token→item-id map"*"effectiveParallelism"*"exact launch wave"*"outside the decision"*"queued"*"fresh initial routing"*) ;; *) err "fleet: effectiveParallelism does not produce an identity-bound exact launch decision with queued excess excluded" ;; esac
     case "$fleet_body" in *"postAttempt"*"child never self"*|*"postAttempt"*"child never invokes"*) ;; *) err "fleet: retry owner is not mechanically the parent" ;; esac
     case "$fleet_body" in *"Preserve the activation"*"SendMessage"*"retained routing decision"*"Do not "*"TaskStop"*"elapsed silence"*"explicit terminal/idle child response"*"awaiting-confirmation"*"re-arm supervision"*"never mark it "*"blocked"*"child may still run"*) ;; *) err "fleet: silence can terminally block, stop, or replace a live child without proof" ;; esac
-    case "$fleet_body" in *"Reconcile each persisted "*"dispatched"*"no recorded "*"agentId"*"queued"*"runtime confirms active"*"in-flight"*"without conclusive live-or-terminal state"*"awaiting-confirmation"*"Never leave a resumed row stranded"*) ;; *) err "fleet: resume can strand a persisted dispatched activation" ;; esac
-    case "$fleet_body" in *"awaiting-confirmation"*"occupies an in-flight pool slot"*"never satisfies a dependency blocker or closeout"*"re-arm supervision"*"after a successful spawn, immediately mark it "*"in-flight"*) ;; *) err "fleet: nonterminal activation state can escape capacity, dependency, supervision, or closeout accounting" ;; esac
+    case "$fleet_body" in *"Reconcile each persisted activation intent deterministically"*"Never infer absence from a missing "*"agentId"*"never spawn the item again until absence or termination is conclusively proved"*) ;; *) err "fleet: resume can duplicate or strand a persisted activation intent" ;; esac
+    case "$fleet_body" in *"correlates that token to an active agent"*"awaiting-confirmation"*) ;; *) err "fleet: resume lacks authoritative activation-intent correlation" ;; esac
+    case "$fleet_body" in *"activationIntent | agentId | worktree | branch | PR"*"atomically persist that token with status "*"dispatched"*"crash between spawn and response persistence"*) ;; *) err "fleet: activation intent is not durable across spawn-before-persist interruption" ;; esac
+    case "$fleet_body" in *"written before spawn"*|*"before every spawn"*) ;; *) err "fleet: activation intent is not persisted before spawn" ;; esac
+    case "$fleet_body" in *"awaiting-confirmation"*"occupies an in-flight pool slot"*"never satisfies a dependency blocker or closeout"*"re-arm supervision"*"After a successful spawn response, persist "*"agentId"*"worktree, and branch"*) ;; *) err "fleet: nonterminal activation state can escape capacity, dependency, supervision, or closeout accounting" ;; esac
     case "$fleet_body" in *"bounded-parallel"*"do not submit "*"postAttempt"*"every launched sibling"*"still-running siblings remain "*"in-flight"*"unknown siblings remain "*"awaiting-confirmation"*"Only terminal/idle failed activations"*"TaskStop"*) ;; *) err "fleet: bounded recovery can stop or evaluate a partial live wave" ;; esac
+    case "$fleet_body" in *"unit-a1"*"maps to opaque item id"*"TASK@42"*"spawn "*"/wf:ship TASK@42"*"never "*"/wf:ship unit-a1"*) ;; *) err "fleet: canonical retry tokens can be dispatched as opaque task ids" ;; esac
+    case "$fleet_body" in *"missing, ambiguous, stale, or duplicate mapping hard-stops that dispatch"*) ;; *) err "fleet: invalid canonical-to-task mapping does not stop dispatch" ;; esac
     case "$fleet_body" in *"complete retained launch-wave evaluation"*"successful siblings as "*"sufficient"*"limit only the fresh replacement Agent dispatch"*"retry.unitIds"*) ;; *) err "fleet: bounded recovery submits only failures instead of the complete retained evaluation" ;; esac
     case "$fleet_body" in *"isolated"*"singleton"*"signals: [\"repeated-failure\"]"*"omit "*"postAttempt.units"*"retry.unitIds"*"retained decision order"*) ;; *) err "fleet: isolated singleton recovery is not shape-valid and identity-bound" ;; esac
     case "$fleet_body" in *"bounded-parallel"*"wave"*"complete retained launch wave"*"postAttempt.units"*"queued"*"not included"*"successful launched siblings"*"sufficient"*"repeated-failure"*"retry.unitIds"*) ;; *) err "fleet: bounded replacement lacks exact selective-retry launch-wave evaluation" ;; esac
@@ -725,13 +738,23 @@ selftest() {
   mkdir -p "$tmp/plugins/wf/skills/demo" "$tmp/plugins/wf/agents"
   cat > "$tmp/plugins/wf/skills/demo/SKILL.md" <<'EOF'
 ## Procedure
-Call `resolve_routing` with `role: "demo"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null. Invoke the **Task** tool with `subagent_type: wf:demo`.
+Call `resolve_routing` with `workspaceRoot: "/tmp/worktree"`, `role: "demo"`, `unitIds: ["demo:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`; emit compact metadata; on `status: stop` or non-null `diagnostic`, stop. Obey `executionShape`; pass the model selector only when non-null. Invoke the **Task** tool with `subagent_type: wf:demo`.
 EOF
   cat > "$tmp/pass.tsv" <<'EOF'
 demo	included	plugins/wf/skills/demo/SKILL.md	wf:demo	demo	model=true;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
 provider	excluded	plugins/wf/skills/**	provider	WF-400	—	registry-derived provider dispatch	—
 EOF
   fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null || rc=1
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-with-identity.bak"
+  sed 's/, `unitIds: \["demo:single"\]`//' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  # Every fixed singleton route must carry one stable initial identity.
+  fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/demo-with-identity.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-with-root.bak"
+  sed 's/`workspaceRoot: "\/tmp\/worktree"`, //' "$tmp/plugins/wf/skills/demo/SKILL.md" > "$tmp/plugins/wf/skills/demo/tmp" && mv "$tmp/plugins/wf/skills/demo/tmp" "$tmp/plugins/wf/skills/demo/SKILL.md"
+  # Every fixed route must explicitly pass its current workspace root.
+  fail=0; scan "$tmp" "$tmp/pass.tsv" >/dev/null 2>&1 && rc=1
+  mv "$tmp/demo-with-root.bak" "$tmp/plugins/wf/skills/demo/SKILL.md"
 
   cp "$tmp/plugins/wf/skills/demo/SKILL.md" "$tmp/demo-routed.bak"
   printf '\nYou may invoke the **Task** tool with `subagent_type: wf:demo`.\n' >> "$tmp/plugins/wf/skills/demo/SKILL.md"
@@ -877,8 +900,9 @@ EOF
 Call `resolve_routing` with `role: "shipper"` and cardinality evidence.
 One-item wave: `workSurface: "external-context"`, `atomicity: "atomic"`, `unitCount: 1`, `unitsIndependent: false`, `requestedParallelism: 1`; select `isolated`.
 Multi-item wave: `workSurface: "external-context"`, `atomicity: "composite"`, `unitCount: <wave-size>`, `unitsIndependent: true`, `requestedParallelism: <configured-pool-bound>`; select `bounded-parallel`.
-Reconcile each persisted `dispatched` row: no recorded `agentId` returns to `queued`; runtime confirms active as `in-flight`; without conclusive live-or-terminal state use `awaiting-confirmation`. Never leave a resumed row stranded.
-Use `supportsModelSelector: true`, `supportsEffortSelector: false`, and `invocationModel`; emit the compact operational record. On `status: stop` or `diagnostic`, stop and obey `executionShape` and `effectiveParallelism`. Parent owns `postAttempt`; child never self-replaces. Select a candidate launch wave, pass its ordered item ids as `unitIds`, use `effectiveParallelism` to narrow it to the exact launch wave when smaller, retain only that decision, and leave excess outside the decision queued for fresh initial routing. Preserve the activation and use `SendMessage` under the retained routing decision. Do not `TaskStop` on elapsed silence; require an explicit terminal/idle child response or a conclusive documented runtime terminal state. Until then keep `awaiting-confirmation`, which occupies an in-flight pool slot, never satisfies a dependency blocker or closeout, and must re-arm supervision; after a successful spawn, immediately mark it `in-flight`; never mark it `blocked` while the child may still run. For `bounded-parallel`, do not submit `postAttempt` until every launched sibling is conclusive: still-running siblings remain `in-flight`, unknown siblings remain `awaiting-confirmation`, and Only terminal/idle failed activations may be `TaskStop`ped. Submit the complete retained launch-wave evaluation with successful siblings as `sufficient`; limit only the fresh replacement Agent dispatch to `retry.unitIds`. For an `isolated` singleton submit signals: ["repeated-failure"] and omit `postAttempt.units`; dispatch only the returned `retry.unitIds` in retained decision order. For a `bounded-parallel` wave evaluate the complete retained launch wave in `postAttempt.units`; queued excess is not included; mark successful launched siblings `sufficient`, failed units `repeated-failure`, and dispatch only `retry.unitIds` with the exact resolver-returned next-tier model/effort, never the original `invocationModel`. Invoke the Agent tool with `subagent_type: general-purpose`.
+Reconcile each persisted activation intent deterministically: Never infer absence from a missing `agentId`; authoritative runtime state correlates that token to an active agent, otherwise use `awaiting-confirmation` and never spawn the item again until absence or termination is conclusively proved.
+Scoreboard columns include activationIntent | agentId | worktree | branch | PR. The token is written before spawn: atomically persist that token with status `dispatched`; a crash between spawn and response persistence remains correlatable.
+Use `supportsModelSelector: true`, `supportsEffortSelector: false`, and `invocationModel`; emit the compact operational record. On `status: stop` or `diagnostic`, stop and obey `executionShape` and `effectiveParallelism`. Parent owns `postAttempt`; child never self-replaces. Select a candidate launch wave, pass its ordered canonical identity tokens as `unitIds` with a retained token→item-id map. Token `unit-a1` maps to opaque item id `TASK@42`: spawn `/wf:ship TASK@42`, never `/wf:ship unit-a1`; a missing, ambiguous, stale, or duplicate mapping hard-stops that dispatch. Use `effectiveParallelism` to narrow it to the exact launch wave when smaller, retain only that decision, and leave excess outside the decision queued for fresh initial routing. Preserve the activation and use `SendMessage` under the retained routing decision. Do not `TaskStop` on elapsed silence; require an explicit terminal/idle child response or a conclusive documented runtime terminal state. Until then keep `awaiting-confirmation`, which occupies an in-flight pool slot, never satisfies a dependency blocker or closeout, and must re-arm supervision; After a successful spawn response, persist `agentId`, worktree, and branch; never mark it `blocked` while the child may still run. For `bounded-parallel`, do not submit `postAttempt` until every launched sibling is conclusive: still-running siblings remain `in-flight`, unknown siblings remain `awaiting-confirmation`, and Only terminal/idle failed activations may be `TaskStop`ped. Submit the complete retained launch-wave evaluation with successful siblings as `sufficient`; limit only the fresh replacement Agent dispatch to `retry.unitIds`. For an `isolated` singleton submit signals: ["repeated-failure"] and omit `postAttempt.units`; dispatch only the returned `retry.unitIds` in retained decision order. For a `bounded-parallel` wave evaluate the complete retained launch wave in `postAttempt.units`; queued excess is not included; mark successful launched siblings `sufficient`, failed units `repeated-failure`, and dispatch only `retry.unitIds` with the exact resolver-returned next-tier model/effort, never the original `invocationModel`. Invoke the Agent tool with `subagent_type: general-purpose`.
 EOF
   cat > "$tmp/fleet.tsv" <<'EOF'
 fleet	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	fleet-cardinality-route	fleet
@@ -901,7 +925,7 @@ EOF
   mkdir -p "$tmp/plugins/wf/skills/skill-edge"
   cat > "$tmp/plugins/wf/skills/skill-edge/SKILL.md" <<'EOF'
 ## Execute
-Immediately before execution call `resolve_routing` with `role: "child"`, complete `shapeEvidence`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it; emit the compact operational record. On `status: stop` or non-null `diagnostic`, stop. Obey `executionShape` inline. The parent evaluates the result and owns `postAttempt`; the child must never self-replace. Execute via the Skill tool `/wf:child`.
+Immediately before execution call `resolve_routing` with `workspaceRoot: "/tmp/worktree"`, `role: "child"`, `unitIds: ["child:single"]`, complete `shapeEvidence`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it; emit the compact operational record. On `status: stop` or non-null `diagnostic`, stop. Obey `executionShape` inline. The parent evaluates the result and owns `postAttempt`; the child must never self-replace. Execute via the Skill tool `/wf:child`.
 EOF
   cat > "$tmp/skill.tsv" <<'EOF'
 child-skill	included	plugins/wf/skills/skill-edge/SKILL.md	/wf:child	child	model=false;effort=false	fixed-skill-route	parent

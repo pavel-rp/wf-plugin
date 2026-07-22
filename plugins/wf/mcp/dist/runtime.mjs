@@ -19793,11 +19793,16 @@ function ok(payload) {
     structuredContent: payload
   };
 }
+var safeTerminalStringPattern = "^[^\\u0000-\\u001F\\u007F-\\u009F]*$";
+function terminalSafeDiagnostic(value) {
+  const message = value instanceof Error ? value.message : String(value);
+  return message.replace(new RegExp("\\p{C}", "gu"), "?").slice(0, 512);
+}
 function guard(fn) {
   try {
     return ok(fn());
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = terminalSafeDiagnostic(err);
     return {
       content: [{ type: "text", text: `resolver error: ${message}` }],
       isError: true
@@ -19807,6 +19812,8 @@ function guard(fn) {
 var workspaceRootProperty = {
   type: "string",
   minLength: 1,
+  maxLength: 4096,
+  pattern: safeTerminalStringPattern,
   description: "Absolute path to a directory in the launch repository's main/linked worktree family."
 };
 function withWorkspaceRoot(schema) {
@@ -19844,7 +19851,7 @@ var surfaceClassInput = fromJsonSchema2(withWorkspaceRoot({
   required: ["surface"],
   additionalProperties: false
 }));
-var safeRoutingStringPattern = "^[^\\u0000-\\u001F\\u007F-\\u009F]*$";
+var safeRoutingStringPattern = safeTerminalStringPattern;
 var unitIdPattern = "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$";
 var routingSignalValues = [
   "low-confidence",
@@ -22185,9 +22192,7 @@ function unitIdsProblem(unitIds, unitCount) {
   return null;
 }
 function sameUnitIds(a, b) {
-  if (a.length !== b.length) return false;
-  const expected = new Set(b);
-  return expected.size === b.length && new Set(a).size === a.length && a.every((id) => expected.has(id));
+  return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 function evaluationProblem(evaluation, inputs) {
   const inputScalarProblem = routingScalarProblem(inputs) ?? availableModelsProblem(inputs.availableModels);
@@ -22222,6 +22227,7 @@ function evaluationProblem(evaluation, inputs) {
     return priorShape.stop ? `post-attempt prior shape evidence is invalid: ${priorShape.stop}` : "post-attempt prior execution shape contradicts its shape evidence";
   }
   if (!Array.isArray(prior.unitIds)) return "post-attempt prior unitIds are required";
+  if (prior.unitIds.length === 0) return "post-attempt retry requires one retained unitId for atomic or isolated work";
   const priorUnitProblem = prior.executionShape === "bounded-parallel" || prior.unitIds.length ? unitIdsProblem(prior.unitIds, prior.shapeEvidence.unitCount) : null;
   if (priorUnitProblem) return `post-attempt prior ${priorUnitProblem}`;
   const inputUnitProblem = prior.unitIds.length || inputs.unitIds !== void 0 ? unitIdsProblem(inputs.unitIds, prior.shapeEvidence.unitCount) : null;
@@ -24618,6 +24624,8 @@ function createServer() {
       workspaceRoot: {
         type: "string",
         minLength: 1,
+        maxLength: 4096,
+        pattern: "^[^\\u0000-\\u001F\\u007F-\\u009F]*$",
         description: "Absolute path admitted by the launch workspace: the same plain directory, or a main/linked worktree in the same Git family."
       }
     },

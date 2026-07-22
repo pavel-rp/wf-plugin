@@ -40,9 +40,10 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 
 1. Resolve the current branch via `current-branch-query`. Its detached-HEAD signal (the literal `HEAD`) → return `COMMIT — Error` with reason "Detached HEAD; cannot commit task work from this state."
 2. If the branch name contains `/{numeric-id}-` (e.g. `feature/6396-…`, `fix/6396-…`), you are on the task branch — continue to Step 3.
-3. Otherwise call `resolve_routing` immediately before dispatch with `role: "branch"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit its compact metadata. If `status: stop` or `diagnostic` is non-null, return `COMMIT — Error` with the routing diagnostic and do not dispatch. Otherwise obey the returned `executionShape` per `invocation-runtime.ops.md` §"Resolver call root"; this evidence selects `isolated`, so invoke one **Task** with `subagent_type: wf:branch`, passing the task id `{task-id}` **and the forwarded `delivery` resolution record** from the Provider-resolution section above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"). Pass a non-null model selector and preserve inherited effort when null.
-   - On `BRANCH — created`/`switched`/`already-active`, continue to Step 3.
-   - On `BRANCH — Error`, return `COMMIT — Error` with the subagent's reason. (A dirty worktree blocks the switch — to commit into a task branch you must already be on it.)
+3. Otherwise call `resolve_routing` immediately before dispatch with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "branch"`, `unitIds: ["commit:branch"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit its compact metadata. If `status: stop` or `diagnostic` is non-null, return `COMMIT — Error` with the routing diagnostic and do not dispatch. Otherwise obey the returned `executionShape` per `invocation-runtime.ops.md` §"Resolver call root"; this evidence selects `isolated`, so invoke one **Task** with `subagent_type: wf:branch`, passing the task id `{task-id}` **and the forwarded `delivery` resolution record** from the Provider-resolution section above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"). Pass a non-null model selector and preserve inherited effort when null.
+   - On `BRANCH — created`/`switched`/`already-active` with `Carry: none` or `Carry: applied`, continue to Step 3.
+   - On a successful branch block whose `Carry:` names a preserved entry/manual follow-up, return `COMMIT — Error` with reason "Task branch is active, but preserved work still needs the stated manual carry follow-up before commit." Preserve the branch success; do not relabel it `BRANCH — Error`, and do not read or commit the incomplete working set.
+   - On `BRANCH — Error`, return `COMMIT — Error` with the subagent's reason. Ordinary dirty work never produces this result: the branch operation captures and reapplies it.
 
 ## Step 3 — First-commit detection
 
@@ -95,7 +96,8 @@ Run the push when `push` is true. When `push` is false, set `Push: not-pushed` a
 
 Run this only when a commit was actually made (Step 4 reached `committed`) and
 `<task-folder-abs>` exists. Immediately before index work, call `resolve_routing` with
-`role: "index"`, complete one-unit mechanical `shapeEvidence: { workSurface:
+`workspaceRoot: <absolute pwd -P workspace root>`,
+`role: "index"`, `unitIds: ["commit:index"]`, complete one-unit mechanical `shapeEvidence: { workSurface:
 "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
 ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical",
 contextIsolation: "useful", independentReview: false, returnContract:

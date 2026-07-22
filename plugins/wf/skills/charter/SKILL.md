@@ -121,8 +121,8 @@ De-vague the idea before anything is drafted:
 
 ### Phase 2 — Dispatch the writer
 
-Immediately before each writer execution, call `resolve_routing` with `role:
-"charter-writer"`, `shapeEvidence: { workSurface: "external-context", atomicity:
+Immediately before each writer execution, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role:
+"charter-writer"`, `unitIds: ["charter:writer"]`, `shapeEvidence: { workSurface: "external-context", atomicity:
 "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
 "elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
 independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`, and
@@ -141,8 +141,8 @@ Invoke the **Task** tool, `subagent_type: wf:charter-writer`, passing (fill the 
 
 ### Phase 3 — Dispatch the decomposer
 
-Immediately before each decomposer execution, call `resolve_routing` with `role:
-"charter-decomposer"`, `shapeEvidence: { workSurface: "external-context", atomicity:
+Immediately before each decomposer execution, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role:
+"charter-decomposer"`, `unitIds: ["charter:decomposer"]`, `shapeEvidence: { workSurface: "external-context", atomicity:
 "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
 "elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
 independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`,
@@ -159,8 +159,8 @@ Same shape — invoke the **Task** tool, `subagent_type: wf:charter-decomposer`:
 
 ### Phase 4 — Dispatch the reviewer
 
-Immediately before each reviewer execution, call `resolve_routing` with `role:
-"charter-reviewer"`, `shapeEvidence: { workSurface: "external-context", atomicity:
+Immediately before each reviewer execution, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role:
+"charter-reviewer"`, `unitIds: ["charter:reviewer"]`, `shapeEvidence: { workSurface: "external-context", atomicity:
 "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
 "elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
 independentReview: true, returnContract: "judgment", requestedParallelism: 1 }`,

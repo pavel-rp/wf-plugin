@@ -124,7 +124,7 @@ On success, `<state>` = `created` with the new PR's `<url>`.
 
 ## Step 5 — Update the index
 
-Immediately before index work, call `resolve_routing` with `role: "index"`,
+Immediately before index work, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "index"`, `unitIds: ["pr:index"]`,
 `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
 unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded",
 validation: "mechanical", contextIsolation: "useful", independentReview: false,

@@ -31,12 +31,19 @@ function ok(payload: unknown): ToolResult {
   };
 }
 
+const safeTerminalStringPattern = "^[^\\u0000-\\u001F\\u007F-\\u009F]*$";
+
+function terminalSafeDiagnostic(value: unknown): string {
+  const message = value instanceof Error ? value.message : String(value);
+  return message.replace(/\p{C}/gu, "?").slice(0, 512);
+}
+
 /** Run a service call, mapping any unexpected throw to an MCP error result. */
 function guard(fn: () => unknown): ToolResult {
   try {
     return ok(fn());
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = terminalSafeDiagnostic(err);
     return {
       content: [{ type: "text", text: `resolver error: ${message}` }],
       isError: true,
@@ -50,6 +57,8 @@ type ServiceSelector = (workspaceRoot: string) => ResolverService;
 const workspaceRootProperty = {
   type: "string",
   minLength: 1,
+  maxLength: 4096,
+  pattern: safeTerminalStringPattern,
   description: "Absolute path to a directory in the launch repository's main/linked worktree family.",
 };
 
@@ -104,7 +113,7 @@ const surfaceClassInput = fromJsonSchema(withWorkspaceRoot({
   additionalProperties: false,
 }));
 
-const safeRoutingStringPattern = "^[^\\u0000-\\u001F\\u007F-\\u009F]*$";
+const safeRoutingStringPattern = safeTerminalStringPattern;
 const unitIdPattern = "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$";
 const routingSignalValues = [
   "low-confidence",

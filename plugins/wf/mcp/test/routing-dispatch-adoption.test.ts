@@ -61,6 +61,28 @@ test("authoritative dispatch inventory is normalized and bidirectional", () => {
   assert.ok(included.some((row) => row.id === "ship-gated-phase"));
   assert.ok(included.some((row) => row.id === "fleet-run-resume"));
   assert.ok(included.some((row) => row.id === "phase-runner-skill"));
+  const init = readFileSync(join(repoRoot, "plugins/wf/skills/init/SKILL.md"), "utf8");
+  assert.match(init, /role: "constitution"`, `unitIds: \["init:constitution"\]/);
+});
+
+test("dirty-tree carry remains additive branch success across callers", () => {
+  const branch = readFileSync(join(repoRoot, "plugins/wf/skills/branch/SKILL.md"), "utf8");
+  const branchAgent = readFileSync(join(repoRoot, "plugins/wf/agents/branch.md"), "utf8");
+  const commitAgent = readFileSync(join(repoRoot, "plugins/wf/agents/commit.md"), "utf8");
+  const ship = readFileSync(join(repoRoot, "plugins/wf/skills/ship/SKILL.md"), "utf8");
+  assert.doesNotMatch(branch, /Dirty working tree.*`BRANCH — Error`/);
+  assert.match(branch, /conflicting reapply still returns branch success/);
+  assert.match(branch, /Carry: <none \| applied \| preserved entry — manual follow-up required>/);
+  assert.match(branchAgent, /always an additive line in the success block, never an error/);
+  assert.match(commitAgent, /Ordinary dirty work never produces this result/);
+  assert.match(commitAgent, /preserved entry\/manual follow-up/);
+  assert.match(ship, /preserved-entry\/manual-follow-up carry means the branch switch succeeded/);
+  assert.match(ship, /emit `SHIP — Blocked`/);
+  for (const skill of ["spec", "plan", "implement", "lite"]) {
+    const caller = readFileSync(join(repoRoot, `plugins/wf/skills/${skill}/SKILL.md`), "utf8");
+    assert.match(caller, /On success \(`BRANCH — created`\/`switched`\/`already-active`\), inspect `Carry:`/);
+    assert.match(caller, /preserved-entry\/manual-follow-up carry stops here/);
+  }
 });
 
 test("routing rejects contradictory evidence and preserves safe fallback metadata", () => {
@@ -95,8 +117,9 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /One-item wave:[\s\S]{0,500}atomicity: "atomic"[\s\S]{0,300}unitCount: 1[\s\S]{0,300}unitsIndependent: false/);
   assert.match(fleet, /valid singleton evidence selects one `isolated` shipper/);
   assert.match(fleet, /Multi-item wave:[\s\S]{0,500}atomicity: "composite"[\s\S]{0,300}unitsIndependent: true/);
-  assert.match(fleet, /candidate launch wave[\s\S]{0,500}effectiveParallelism[\s\S]{0,500}exact launch wave/);
+  assert.match(fleet, /candidate launch wave[\s\S]{0,1200}effectiveParallelism[\s\S]{0,500}exact launch wave/);
   assert.match(fleet, /excess ready items outside the decision[^\n]*`queued`[^\n]*fresh initial routing/);
+  assert.match(fleet, /`--max-parallel <N>`.*Positive integer.*core maximum of 4/);
   assert.match(fleet, /model-homogeneous groups/);
   assert.match(fleet, /initial[\s\S]{0,300}shared per-item choice as `invocationModel`/);
   assert.match(fleet, /same agent id once under the retained routing decision/);
@@ -106,8 +129,11 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /successful launched siblings[\s\S]{0,300}`sufficient`/);
   assert.match(fleet, /failed launched items carry `repeated-failure`/);
   assert.match(fleet, /resolver-authorized retry shape[\s\S]{0,200}composite-to-atomic/);
-  assert.match(fleet, /ordered item ids as `unitIds`/);
-  assert.match(fleet, /dispatch replacements solely for the resolver-returned `retry\.unitIds`, in retained decision order/);
+  assert.match(fleet, /ordered canonical identity tokens derived from the item ids as `unitIds`/);
+  assert.match(fleet, /bijective token→item-id map/);
+  assert.match(fleet, /token `unit-a1` maps to opaque item id `TASK@42`, spawn `\/wf:ship TASK@42`, never `\/wf:ship unit-a1`/);
+  assert.match(fleet, /missing, ambiguous, stale, or duplicate mapping hard-stops that dispatch/);
+  assert.match(fleet, /map the canonical resolver-returned `retry\.unitIds` through the retained token→item-id map and dispatch replacements solely for those mapped items/);
   assert.match(fleet, /exact resolver-returned next-tier model\/effort/);
   assert.doesNotMatch(fleet, /same `invocationModel` selected for that item/);
   assert.match(fleet, /fleet parent[^\n]*postAttempt|parent-owned `postAttempt`/);
@@ -115,19 +141,28 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /dependency\/input order/);
   assert.match(fleet, /Do not raw-query or infer a child's dirty state from silence/);
   assert.match(fleet, /absence of an explicit dirty working-state checkpoint/);
+  assert.doesNotMatch(fleet, /Uncommitted\/unpushed work is invisible to the orchestrator and gets you recycled/);
+  assert.match(fleet, /Uncommitted progress remains active work: report it with the activation-intent token/);
   assert.match(fleet, /Do not `TaskStop` on elapsed silence/);
   assert.match(fleet, /explicit terminal\/idle child response or a conclusive documented runtime terminal state/);
-  assert.match(fleet, /Reconcile each persisted `dispatched` row deterministically/);
-  assert.match(fleet, /no recorded `agentId`.*returns it to `queued`/);
-  assert.match(fleet, /runtime confirms active becomes `in-flight`/);
-  assert.match(fleet, /without conclusive live-or-terminal state becomes `awaiting-confirmation`/);
-  assert.match(fleet, /Never leave a resumed row stranded in `dispatched`/);
+  assert.match(fleet, /Reconcile each persisted activation intent deterministically/);
+  assert.match(fleet, /Never infer absence from a missing `agentId`/);
+  assert.match(fleet, /authoritative runtime state correlates that token to an active agent/);
+  assert.match(fleet, /mark it `awaiting-confirmation`, keep it occupying capacity/);
+  assert.match(fleet, /never spawn the item again until absence or termination is conclusively proved/);
   assert.match(fleet, /status \(queued\|dispatched\|in-flight\|awaiting-confirmation\|merged\|blocked\)/);
+  assert.match(fleet, /activationIntent \| agentId \| worktree \| branch \| PR/);
+  assert.match(fleet, /atomically persist that token with status `dispatched`, then include the same token in the spawn prompt/);
+  assert.match(fleet, /crash between spawn and response persistence/);
   assert.match(fleet, /awaiting-confirmation.*occupies an in-flight pool slot/);
   assert.match(fleet, /never satisfies a dependency blocker or closeout/);
-  assert.match(fleet, /counting every `in-flight` and `awaiting-confirmation` activation/);
-  assert.match(fleet, /after a successful spawn, immediately mark it `in-flight`/);
+  assert.match(fleet, /counting every `dispatched`, `in-flight`, and `awaiting-confirmation` activation/);
+  assert.match(fleet, /After a successful spawn response, persist `agentId`, worktree, and branch/);
+  assert.match(fleet, /Activation intent: \*\*`<ACTIVATION-INTENT>`\*\*/);
   assert.match(fleet, /nonterminal scoreboard state to `awaiting-confirmation`/);
+  assert.match(fleet, /`In flight:` is the lossless active-activation projection/);
+  assert.match(fleet, /include every `dispatched`, `in-flight`, and `awaiting-confirmation` scoreboard row/);
+  assert.match(fleet, /row without a persisted `agentId` is still listed by `activationIntent`/);
   assert.match(fleet, /re-arm supervision/);
   assert.match(fleet, /never mark it `blocked` or enter closeout while the child may still run/);
   assert.match(fleet, /do not submit `postAttempt` until \*\*every launched sibling\*\*/);
@@ -135,7 +170,7 @@ test("fleet consumes effective parallelism and owns selective recovery", () => {
   assert.match(fleet, /Only terminal\/idle failed activations may be `TaskStop`ped/);
   assert.match(fleet, /complete retained launch-wave evaluation/);
   assert.match(fleet, /including successful siblings as `sufficient`/);
-  assert.match(fleet, /limit only the fresh replacement Agent dispatch to the resolver-returned `retry\.unitIds`/);
+  assert.match(fleet, /limit only the fresh replacement Agent dispatch to the items obtained by validating and mapping the resolver-returned canonical `retry\.unitIds`/);
 });
 
 test("singleton shipper wave uses valid atomic isolated evidence", () => {
@@ -152,6 +187,7 @@ test("singleton shipper wave uses valid atomic isolated evidence", () => {
       requestedParallelism: 1,
     },
     invocationModel: "sonnet",
+    unitIds: ["shipper:singleton"],
     supportsModelSelector: true,
     supportsEffortSelector: false,
   });
@@ -264,7 +300,7 @@ test("fleet replacement retries only failed bounded units at the exact next tier
   assert.equal(exhausted.retry, null);
 });
 
-test("bounded unit identities reject forged sets and normalize evaluation order", () => {
+test("bounded unit identities reject forged sets and reordered evaluations", () => {
   const evidence = {
     ...atomicEvidence, atomicity: "composite" as const, unitCount: 3,
     unitsIndependent: true, toolWork: "material" as const, contextIsolation: "required" as const,
@@ -336,9 +372,10 @@ test("bounded unit identities reject forged sets and normalize evaluation order"
     { unitId: "a", sufficient: true, signals: [] },
     { unitId: "b", sufficient: false, signals: ["failed-validation"] },
   ]);
-  assert.equal(reordered.disposition, "retry");
-  assert.deepEqual(reordered.retainedUnitIds, ["a", "c"]);
-  assert.deepEqual(reordered.retry?.unitIds, ["b"]);
+  assert.equal(reordered.disposition, "invalid-stop");
+  assert.match(reordered.diagnostic ?? "", /unit evaluations must match the retained prior unitIds/);
+  assert.deepEqual(reordered.retainedUnitIds, []);
+  assert.equal(reordered.retry, null);
 });
 
 test("bounded parallel work rejects oversized waves and keeps retained retry units", () => {

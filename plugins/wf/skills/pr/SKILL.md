@@ -67,7 +67,7 @@ Only these two typed queries happen in the host; the diff and PR-body artifacts 
 ## Phase 2 — Commit and push (unless --no-commit)
 
 Unless `--no-commit` was passed, call `resolve_routing` immediately before commit work with
-`role: "commit"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
+`workspaceRoot: <absolute pwd -P workspace root>`, `role: "commit"`, `unitIds: ["pr:commit"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
 unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork:
 "material", validation: "mechanical", contextIsolation: "required", independentReview:
 false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
@@ -90,7 +90,7 @@ If `--no-commit` was passed, skip straight to Phase 3.
 
 ## Phase 3 — Compose the body and create the PR
 
-Call `resolve_routing` independently immediately before PR-agent work with `role: "pr"`,
+Call `resolve_routing` independently immediately before PR-agent work with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "pr"`, `unitIds: ["pr:author"]`,
 `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
 unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material",
 validation: "mechanical", contextIsolation: "required", independentReview: false,

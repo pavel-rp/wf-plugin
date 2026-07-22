@@ -210,8 +210,13 @@ try {
     if (!schema?.required?.includes("workspaceRoot")) {
       fail(`${tool.name} does not require workspaceRoot: ${JSON.stringify(schema)}`);
     }
-    if (schema.properties?.workspaceRoot?.type !== "string" || schema.properties.workspaceRoot.minLength !== 1) {
-      fail(`${tool.name} does not declare a nonempty workspaceRoot string: ${JSON.stringify(schema)}`);
+    if (
+      schema.properties?.workspaceRoot?.type !== "string" ||
+      schema.properties.workspaceRoot.minLength !== 1 ||
+      schema.properties.workspaceRoot.maxLength !== 4096 ||
+      schema.properties.workspaceRoot.pattern !== "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+    ) {
+      fail(`${tool.name} does not declare a bounded terminal-safe workspaceRoot string: ${JSON.stringify(schema)}`);
     }
   }
   const routingTool = tools.find((t) => t.name === "resolve_routing");
@@ -331,6 +336,7 @@ try {
     supportsModelSelector: true,
     supportsEffortSelector: false,
     availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
+    unitIds: ["classify:smoke"],
     basis: "smoke-basis",
   };
   send({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "resolve_routing", arguments: routingBase } });

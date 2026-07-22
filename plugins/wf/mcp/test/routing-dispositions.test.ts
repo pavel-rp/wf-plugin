@@ -262,6 +262,7 @@ test("matrix publishes the sole bounded three-attempt role policy", () => {
     },
     supportsModelSelector: true,
     supportsEffortSelector: true,
+    unitIds: ["security-auditor:single"],
   } as const;
   const initial = resolveRouting({}, { ...inputs, invocationModel: "haiku", actualModel: "haiku" });
   const first = resolveRouting({}, {
@@ -296,17 +297,17 @@ test("matrix publishes the sole bounded three-attempt role policy", () => {
     escalationOrigin: first.escalationOrigin,
   };
   assert.equal(resolveRouting({}, {
-    role: "security-auditor", shapeEvidence: first.normalizedEvidence,
+    role: "security-auditor", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
     supportsModelSelector: true, supportsEffortSelector: true, attempt: 2,
     postAttempt: { sufficient: false, signals: ["high-severity-review-uncertainty"], prior },
   }).disposition, "retry");
   assert.equal(resolveRouting({}, {
-    role: "security-auditor", shapeEvidence: first.normalizedEvidence,
+    role: "security-auditor", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
     supportsModelSelector: true, supportsEffortSelector: true, attempt: 2,
     postAttempt: { sufficient: false, signals: ["low-confidence"], prior },
   }).disposition, "exhausted");
   assert.equal(resolveRouting({}, {
-    role: "security-auditor", shapeEvidence: first.normalizedEvidence,
+    role: "security-auditor", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
     supportsModelSelector: true, supportsEffortSelector: true, attempt: 2,
     postAttempt: { sufficient: false, signals: ["high-severity-review-uncertainty", "failed-validation"], prior },
   }).disposition, "exhausted");

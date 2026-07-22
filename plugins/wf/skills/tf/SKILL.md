@@ -130,8 +130,9 @@ Move the task folder out of the active task root into the archive, so a finalize
 
 ## Phase 6: Update the index
 
-After archiving, call `resolve_routing` immediately before index work with `role:
-"index"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
+After archiving, call `resolve_routing` immediately before index work with `workspaceRoot:
+<absolute pwd -P workspace root>`, `role:
+"index"`, `unitIds: ["finalize:index"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
 unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork:
 "bounded", validation: "mechanical", contextIsolation: "useful", independentReview:
 false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,

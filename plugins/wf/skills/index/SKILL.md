@@ -84,7 +84,7 @@ The only delivery operation this file invokes — `current-branch-query` (the br
 ## Phase 2: Delegate to the subagent
 
 **Caller stops here.** Immediately before delegation, call `resolve_routing` with
-`role: "index"`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
+`workspaceRoot: <absolute pwd -P workspace root>`, `role: "index"`, `unitIds: ["index:single"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
 unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork:
 "bounded", validation: "mechanical", contextIsolation: "useful", independentReview:
 false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,

@@ -153,6 +153,7 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
     },
     supportsModelSelector: true,
     supportsEffortSelector: false,
+    unitIds: ["classify:service-cache"],
     basis: "service-cache-basis",
   });
   assert.equal(routed.executionShape, "isolated");
@@ -163,6 +164,7 @@ test("read queries share ONE discovery — no per-call rediscovery", () => {
     supportsModelSelector: true,
     supportsEffortSelector: false,
     availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
+    unitIds: routed.unitIds,
     basis: "service-cache-basis",
     postAttempt: {
       sufficient: false,

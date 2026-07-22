@@ -304,9 +304,7 @@ function unitIdsProblem(unitIds: unknown, unitCount: number): string | null {
 }
 
 function sameUnitIds(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const expected = new Set(b);
-  return expected.size === b.length && new Set(a).size === a.length && a.every((id) => expected.has(id));
+  return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
 function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: RoutingInputs): string | null {
@@ -348,6 +346,7 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
       : "post-attempt prior execution shape contradicts its shape evidence";
   }
   if (!Array.isArray(prior.unitIds)) return "post-attempt prior unitIds are required";
+  if (prior.unitIds.length === 0) return "post-attempt retry requires one retained unitId for atomic or isolated work";
   const priorUnitProblem = prior.executionShape === "bounded-parallel" || prior.unitIds.length
     ? unitIdsProblem(prior.unitIds, prior.shapeEvidence.unitCount)
     : null;

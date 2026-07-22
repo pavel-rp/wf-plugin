@@ -83,7 +83,7 @@ Derive `<branch-name>` from Step 2 (unchanged, tracker-side logic — out of sco
 ## Step 4 — Update the index
 
 After a successful path through Step 3 (`created`, `switched`, or `already-active`), call
-`resolve_routing` immediately before index work with `role: "index"`, `shapeEvidence: {
+`resolve_routing` immediately before index work with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "index"`, `unitIds: ["branch:index"]`, `shapeEvidence: {
 workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent:
 false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical",
 contextIsolation: "useful", independentReview: false, returnContract:

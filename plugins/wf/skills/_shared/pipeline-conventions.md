@@ -71,7 +71,7 @@ branch-name match.
    (bare-core mode)." and continue. **One matching row** — resolve the current branch via
    `current-branch-query` and apply step 2.
 2. **If the resolved branch name contains `/{numeric-id}-`** — proceed. **Otherwise** —
-   call `resolve_routing` immediately before dispatch with `role: "branch"`,
+   call `resolve_routing` immediately before dispatch with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "branch"`, `unitIds: ["pipeline:branch"]`,
    `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
    unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded",
    validation: "mechanical", contextIsolation: "useful", independentReview: false,
@@ -90,9 +90,11 @@ branch-name match.
    `/wf:branch` — that loads its `SKILL.md` into this skill's context. The subagent is
    self-sufficient.) The delivery provider's branch operation captures and reapplies dirty
    work across a switch. A dirty working state is therefore preserved carry and never an
-   error or stall by itself; only an actual reapply conflict or provider failure is an error.
-   On `BRANCH — created`/`switched`/`already-active`, continue. On `BRANCH — Error`, stop
-   and surface the subagent's reason.
+   error or stall by itself. On `BRANCH — created`/`switched`/`already-active`, inspect
+   `Carry:`: `none`/`applied` may continue; a preserved-entry/manual-follow-up value remains
+   branch success but the caller stops its source-mutating work and surfaces the required
+   follow-up through its own existing blocked/error outcome. On `BRANCH — Error`, stop and
+   surface the subagent's reason.
 
 Each skill keeps its own behavior for **Task-tool unavailability** (some skills skip the
 gate with a stated reason and proceed on the current branch; others treat it as a hard
