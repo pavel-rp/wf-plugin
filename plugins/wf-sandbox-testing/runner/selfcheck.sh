@@ -153,11 +153,61 @@ check_parseability() {
   [ "$fail" = "$before" ] && ok "parseability: asserts up front, fails loud on drift"
 }
 
+# ---------------------------------------------------------------------------
+# 6. Session block — real session id + isolated projects/transcript root (WF-401 outcome 5)
+# ---------------------------------------------------------------------------
+check_session_block() {
+  local before=$fail
+  local work; work="$(mktemp -d)"
+
+  # A transcript stamped with a session id → extract_session_id recovers it verbatim.
+  printf '{"type":"system","session_id":"sess-abc-123"}\n{"type":"assistant","session_id":"sess-abc-123"}\n' \
+    > "$work/with-session.jsonl"
+  local sid; sid="$(extract_session_id "$work/with-session.jsonl")"
+  if [ "$sid" = "sess-abc-123" ]; then ok "session: extract_session_id recovers the stamped session id"
+  else err "session: extract_session_id returned '$sid' (expected sess-abc-123)"; fi
+
+  # A transcript with no session id → empty (drives resolved:false), never a spurious value.
+  printf '{"type":"assistant","message":{"id":"m1"}}\n' > "$work/no-session.jsonl"
+  local none; none="$(extract_session_id "$work/no-session.jsonl")"
+  if [ -z "$none" ]; then ok "session: a transcript with no session id yields empty"
+  else err "session: extract_session_id fabricated '$none' from a session-less transcript"; fi
+
+  # discover_transcript_bundle finds the isolated bundle; absent tree → empty (no crash).
+  mkdir -p "$work/projects/slug"
+  printf '{}\n' > "$work/projects/slug/sess-abc-123.jsonl"
+  local bundle; bundle="$(discover_transcript_bundle "$work/projects")"
+  if [ "$bundle" = "$work/projects/slug/sess-abc-123.jsonl" ]; then ok "session: discover_transcript_bundle resolves the isolated bundle path"
+  else err "session: discover_transcript_bundle returned '$bundle'"; fi
+  local absent; absent="$(discover_transcript_bundle "$work/nope")"
+  if [ -z "$absent" ]; then ok "session: an absent projects tree yields empty (no crash)"
+  else err "session: discover_transcript_bundle invented '$absent' for an absent tree"; fi
+
+  # write_run_json emits a machine-readable session block carrying id + isolated root + resolved.
+  local out="$work/out"; mkdir -p "$out"
+  ( unset ANTHROPIC_API_KEY; CLAUDE_CODE_OAUTH_TOKEN="tok"; \
+    write_run_json "$out" "/wf:branch FAKE-1" "/wf:branch FAKE-1" "demo-fake" "current" \
+      "sha256:fixfp" "sha256:plugfp" "cli-1.2.3" 0 "fail" 0 true "ok" "" \
+      "sess-abc-123" "$work/projects" "$bundle" 1 )
+  if grep -q '"session_id": "sess-abc-123"' "$out/run.json" \
+     && grep -q '"projects_root": "'"$work"'/projects"' "$out/run.json" \
+     && grep -q '"resolved": true' "$out/run.json"; then
+    ok "session: run.json carries session_id + projects_root + resolved:true"
+  else
+    err "session: run.json session block missing or malformed"
+    cat "$out/run.json" >&2
+  fi
+
+  rm -rf "$work"
+  [ "$fail" = "$before" ] && ok "session: real session id + isolated projects/transcript root recorded"
+}
+
 echo "== wf-sandbox-testing runner self-checks (daemon-independent) =="
 check_guards_functionlevel
 check_guards_execlevel
 check_fingerprint_determinism
 check_parseability
+check_session_block
 
 if [ "$fail" -ne 0 ]; then
   echo "wf-sandbox-testing self-checks: FAIL" >&2

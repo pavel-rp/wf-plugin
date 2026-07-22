@@ -71,12 +71,28 @@ detect_quota() {
   fi
 }
 
+# extract_session_id <transcript> — the real session id the CLI stamped on every stream-json
+# event. Pure text scan (first "session_id":"<id>" match); prints empty when none is present.
+extract_session_id() {
+  grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[^"]+"' "$1" 2>/dev/null \
+    | head -n1 | sed -E 's/.*"([^"]+)"$/\1/'
+}
+
+# discover_transcript_bundle <projects-root> — the isolated bundle path the CLI wrote under the
+# throwaway CLAUDE_CONFIG_DIR/projects tree (the runner also captures a copy to transcript.jsonl).
+# Prints empty when the tree is absent. First match, stable-sorted.
+discover_transcript_bundle() {
+  [ -d "$1" ] || return 0
+  find "$1" -type f -name '*.jsonl' 2>/dev/null | LC_ALL=C sort | head -n1
+}
+
 # write_run_json — assemble the self-describing run record.
 write_run_json() {
   local out="$1" task="$2" skill="$3" fixture="$4" plugin_source="$5" \
         fp_fixture="$6" fp_plugin="$7" cli_version="$8" \
         allow_api_key="$9" on_quota="${10}" exit_code="${11}" \
-        parseable="${12}" verdict="${13}" reason="${14}"
+        parseable="${12}" verdict="${13}" reason="${14}" \
+        session_id="${15}" projects_root="${16}" transcript_bundle="${17}" session_resolved="${18}"
   local api_key_unset="true"; [ -n "${ANTHROPIC_API_KEY:-}" ] && api_key_unset="false"
   local token_present="true"; [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && token_present="false"
   if command -v jq >/dev/null 2>&1; then
@@ -88,6 +104,9 @@ write_run_json() {
       --argjson allow_api_key "$([ "$allow_api_key" = 1 ] && echo true || echo false)" \
       --arg on_quota "$on_quota" --argjson exit_code "$exit_code" \
       --argjson parseable "$parseable" --arg verdict "$verdict" --arg reason "$reason" \
+      --arg session_id "$session_id" --arg projects_root "$projects_root" \
+      --arg transcript_bundle "$transcript_bundle" \
+      --argjson session_resolved "$([ "$session_resolved" = 1 ] && echo true || echo false)" \
       '{
         task: $task, skill: $skill, fixture: $fixture, plugin_source: $plugin_source,
         cli_version: $cli_version,
@@ -96,6 +115,8 @@ write_run_json() {
                   allow_api_key: $allow_api_key, on_quota: $on_quota },
         run: { exit_code: $exit_code, transcript: "transcript.jsonl",
                transcript_parseable: $parseable, workspace_snapshot: "workspace-snapshot" },
+        session: { session_id: $session_id, projects_root: $projects_root,
+                   transcript_bundle: $transcript_bundle, resolved: $session_resolved },
         verdict: $verdict, reason: $reason
       }' > "$out/run.json"
   else
@@ -107,6 +128,8 @@ write_run_json() {
       printf '  "guards": { "anthropic_api_key_unset": %s, "oauth_token_present": %s, "allow_api_key": %s, "on_quota": "%s" },\n' \
         "$api_key_unset" "$token_present" "$([ "$allow_api_key" = 1 ] && echo true || echo false)" "$on_quota"
       printf '  "run": { "exit_code": %s, "transcript": "transcript.jsonl", "transcript_parseable": %s, "workspace_snapshot": "workspace-snapshot" },\n' "$exit_code" "$parseable"
+      printf '  "session": { "session_id": "%s", "projects_root": "%s", "transcript_bundle": "%s", "resolved": %s },\n' \
+        "$session_id" "$projects_root" "$transcript_bundle" "$([ "$session_resolved" = 1 ] && echo true || echo false)"
       printf '  "verdict": "%s", "reason": "%s"\n' "$verdict" "$reason"
       printf '}\n'
     } > "$out/run.json"
@@ -191,6 +214,17 @@ main() {
     claude -p "$skill" --output-format stream-json --dangerously-skip-permissions "${model_args[@]}"
   ) > "$transcript" 2> "$stderr_log" || rc=$?
 
+  # --- capture the real session id + isolated projects/transcript root (machine-readable) ---
+  # The run executed in the throwaway CLAUDE_CONFIG_DIR ($cfg), so its projects/transcript tree is
+  # fully isolated from any dev-machine ~/.claude. Record the session id the CLI stamped and where
+  # its transcript bundle landed, so a downstream accounting pass can resolve the run deterministically.
+  local session_id projects_root transcript_bundle session_resolved=0
+  session_id="$(extract_session_id "$transcript")"
+  projects_root="$cfg/projects"
+  transcript_bundle="$(discover_transcript_bundle "$projects_root")"
+  [ -n "$session_id" ] && session_resolved=1
+  echo "run-skill.sh: session — id='${session_id:-<none>}' projects_root=$projects_root resolved=$session_resolved" >&2
+
   # --- quota policy: never a silent API-billed continuation, never a half-run as a pass ---
   local verdict="ok" reason="" parseable=true
   if [ "$(detect_quota "$transcript" "$stderr_log")" = "1" ]; then
@@ -202,7 +236,8 @@ main() {
     fi
     write_run_json "$out" "$skill" "$skill" "$fixture" "$plugin_source" \
       "$fp_fixture" "$fp_plugin" "$cli_version" "$allow_api_key" "$on_quota" \
-      "$rc" false "$verdict" "$reason"
+      "$rc" false "$verdict" "$reason" \
+      "$session_id" "$projects_root" "$transcript_bundle" "$session_resolved"
     echo "FATAL [quota]: $reason" >&2
     return 8
   fi
@@ -213,7 +248,8 @@ main() {
     reason="transcript did not parse as stream-json — CLI --output-format contract drifted."
     write_run_json "$out" "$skill" "$skill" "$fixture" "$plugin_source" \
       "$fp_fixture" "$fp_plugin" "$cli_version" "$allow_api_key" "$on_quota" \
-      "$rc" "$parseable" "$verdict" "$reason"
+      "$rc" "$parseable" "$verdict" "$reason" \
+      "$session_id" "$projects_root" "$transcript_bundle" "$session_resolved"
     return 6
   fi
 
@@ -231,7 +267,8 @@ main() {
 
   write_run_json "$out" "$skill" "$skill" "$fixture" "$plugin_source" \
     "$fp_fixture" "$fp_plugin" "$cli_version" "$allow_api_key" "$on_quota" \
-    "$rc" "$parseable" "$verdict" "$reason"
+    "$rc" "$parseable" "$verdict" "$reason" \
+    "$session_id" "$projects_root" "$transcript_bundle" "$session_resolved"
 
   echo "run-skill.sh: done — verdict=$verdict, run output in $out" >&2
   [ "$verdict" = "ok" ] && return 0 || return 9
