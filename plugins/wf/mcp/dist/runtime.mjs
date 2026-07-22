@@ -19954,18 +19954,12 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
       additionalProperties: false
     }
   },
+  // NOTE: the "no postAttempt ⇒ attempt===1 and escalationOrigin===null" invariant is
+  // enforced in resolveRouting() (resolver/routing.ts), which returns an `invalid-stop`
+  // decision on violation. It is deliberately NOT expressed as a top-level `allOf`/`if`
+  // here: the Anthropic Messages API rejects a tool `input_schema` that uses top-level
+  // allOf/anyOf/oneOf, which makes Claude Code silently skip this tool at registration.
   required: ["role", "shapeEvidence", "supportsModelSelector", "supportsEffortSelector"],
-  allOf: [
-    {
-      if: { not: { required: ["postAttempt"] } },
-      then: {
-        properties: {
-          attempt: { const: 1 },
-          escalationOrigin: { type: "null" }
-        }
-      }
-    }
-  ],
   additionalProperties: false
 }));
 var routingOutput = fromJsonSchema2({
