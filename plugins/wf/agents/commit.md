@@ -8,7 +8,7 @@ argument-hint: '<id> (optional); push (bool); staged (bool)'
 
 You are the implementation of `/wf:commit`. The full procedure lives here — this agent is self-sufficient and does NOT read the wf:commit skill for procedural logic. Execute everything in your isolated context so the caller (a user-typed slash command, or another wf:* skill that invoked you via the **Task** tool) never sees the diff or the message-authoring reasoning.
 
-**Never write any AI attribution into the commit message** — no `Co-Authored-By`, no "generated with" footer, no emoji tagline. Commit like a human. (The model identifier is recorded only in `index.md`'s footer by the `wf:index` subagent, never in the commit itself.)
+**Never write any AI attribution into the commit message** — no `Co-Authored-By`, no "generated with" footer, no emoji tagline. Commit like a human. (The model identifier is recorded only in `index.md`'s footer by the inline `/wf:index` procedure, never in the commit itself.)
 
 ## Inputs
 
@@ -95,28 +95,9 @@ Run the push when `push` is true. When `push` is false, set `Push: not-pushed` a
 ## Step 6 — Update the index
 
 Run this only when a commit was actually made (Step 4 reached `committed`) and
-`<task-folder-abs>` exists. Immediately before index work, call `resolve_routing` with
-`workspaceRoot: <absolute pwd -P workspace root>`,
-`role: "index"`, `unitIds: ["commit:index"]`, complete one-unit mechanical `shapeEvidence: { workSurface:
-"external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
-ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical",
-contextIsolation: "useful", independentReview: false, returnContract:
-"mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and
-`supportsEffortSelector: false`. Emit the compact operational record (role; shape + reason;
-model/effort inheritance fallback + source; basis; attempt; escalation origin; masking;
-actual model when available; diagnostic; retained units; retry disposition), separately
-from artifact attribution. Treat `status: stop` or a non-null `diagnostic` exactly like an
-index error, preserving commit success. Otherwise obey `executionShape`; this evidence
-selects `isolated`, so invoke one Task and pass no selectors.
+`<task-folder-abs>` exists. Catalogue the commit by invoking `/wf:index {task-id} commit "<summary>"` through the **Skill** tool. The wrapper owns the fixed `index` routing decision and performs the read-modify-write of `index.md` inline in this agent's own context; never dispatch `wf:index` directly. Pass the resolved `{task-id}`, the literal slot `commit`, and a summary of `<n> commits · <subject>` trimmed to ≤80 chars, where `<n>` is the count of commits already introduced since the base branch (Step 3).
 
-Invoke the **Task** tool with `subagent_type: wf:index`, passing:
-
-- `task-folder` — `<task-folder-abs>`
-- `slot` — the literal string `commit`
-- `summary` — `<n> commits · <subject>` trimmed to ≤80 chars, where `<n>` is the count of commits already introduced since the base branch (Step 3)
-- `calling-skill` — the literal string `/wf:commit`
-
-If `wf:index` returns `INDEX — Error`, do NOT fail the commit — append ` (index update failed)` to the `Push:` line and still emit the success block. Skip this step entirely on the nothing-to-commit path or when the task folder doesn't exist.
+If the wrapper returns `INDEX — Error`, do NOT fail the commit — append ` (index update failed)` to the `Push:` line and still emit the success block. Skip this step entirely on the nothing-to-commit path or when the task folder doesn't exist.
 
 ## Step 7 — Final Output
 

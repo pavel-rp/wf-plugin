@@ -113,7 +113,7 @@ pattern: [Ss]ub[- ][Aa]gents?([^a-zA-Z-]|$)
 except: none
 applies-to: skill-body, reference, contract, capability, agent
 check: avoid-term
-evidence: plugins/wf/agents/commit.md — "recorded only in `index.md`'s footer by the `wf:index` subagent"; the closed spelling is used in every agent file and every skill that dispatches one, with no hyphenated occurrence in the tree
+evidence: plugins/wf/agents/branch.md — "the implementation lives entirely in the `wf:branch` subagent"; the closed spelling is used in every agent file, with no hyphenated occurrence in the tree
 
 ### term: subagent_type is plugin-qualified
 definition: A subagent_type value names the owning plugin and the agent, `<plugin>:<agent>`; a bare agent name resolves only by accident of install order.

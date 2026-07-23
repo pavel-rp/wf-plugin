@@ -116,8 +116,8 @@ function key(row: { role: string; path: string }): string {
 test("published dispositions exactly cover the production agent inventory", () => {
   const matrix = parseMatrix();
   const inventory = parseInventory();
-  assert.equal(inventory.length, 18, "bounded production inventory changed; disposition review is required");
-  assert.equal(matrix.length, 18, "matrix must contain exactly 18 role/path rows");
+  assert.equal(inventory.length, 17, "bounded production inventory changed; disposition review is required");
+  assert.equal(matrix.length, 17, "matrix must contain exactly 17 role/path rows");
 
   const invalid = matrix.filter((row) => !dispositions.has(row.disposition));
   const duplicateKeys = [...new Set(matrix.map(key).filter((value, index, all) => all.indexOf(value) !== index))];

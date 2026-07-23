@@ -71,7 +71,7 @@ Id inference and the Phase 1 branch gate both reach `current-branch-query` by ca
 
 - Read any file in the project (`Read`, `Glob`, `Grep`).
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference and branch gating. Diff-based changed-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
-- Invoke the **Task** tool for `wf:branch` (branch gate) and `/wf:index` (index update).
+- Invoke the **Task** tool for `wf:branch` (branch gate); invoke `/wf:index` through the **Skill** tool (index update — its wrapper writes `index.md` inline).
 - Write `06_qa.md` ONLY inside the resolved task folder (`{task-root}/{task-id}/`).
 
 **Forbidden:**

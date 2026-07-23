@@ -24,7 +24,6 @@ WF-399 completed fixed core-owned adoption; WF-400 completes live capability ado
 | `classify` | `plugins/wf/agents/classify.md` | core | `shipped-static` | `haiku` | `inherit` | `2` | WF-394 bounded the seven-bucket rubric to Haiku and pinned its routing contract. |
 | `commit` | `plugins/wf/agents/commit.md` | core | `evidence-gated` | `inherit` | `inherit` | `2` | [CAL-commit](agent-routing-calibration.md#cal-commit) retains inheritance pending delivery-contract comparisons. |
 | `context-distiller` | `plugins/wf/agents/context-distiller.md` | core | `adaptive` | `inherit` | `inherit` | `2` | Bulk CI and review inputs vary materially in size and complexity. |
-| `index` | `plugins/wf/agents/index.md` | core | `deferred` | `inherit` | `inherit` | `2` | [CAL-index](agent-routing-calibration.md#cal-index) defers to WF-379 removal/inlining ownership. |
 | `phase-runner` | `plugins/wf/agents/phase-runner.md` | core | `adaptive` | `inherit` | `inherit` | `2` | The delegated phase determines reasoning depth and tool use. |
 | `pr` | `plugins/wf/agents/pr.md` | core | `evidence-gated` | `inherit` | `inherit` | `2` | [CAL-pr](agent-routing-calibration.md#cal-pr) retains inheritance pending synthesis and terminal-contract comparisons. |
 | `audit-retrospective` | `plugins/wf-audit/agents/audit-retrospective.md` | audit | `evidence-gated` | `inherit` | `inherit` | `2` | [CAL-audit-retrospective](agent-routing-calibration.md#cal-audit-retrospective) retains inheritance pending finding-quality comparisons. |
@@ -37,3 +36,7 @@ WF-399 completed fixed core-owned adoption; WF-400 completes live capability ado
 | `qa-host` | `plugins/wf-angular/agents/qa-host.md` | Angular | `evidence-gated` | `inherit` | `inherit` | `2` | [CAL-qa-host](agent-routing-calibration.md#cal-qa-host) retains inheritance pending source-validity comparisons. |
 
 The two `shipped-static` rows are the complete static-default set. No role starts on static Opus, no Sonnet default is claimed without qualifying evidence, and all effort choices inherit. Adaptive, evidence-gated, and deferred rows add no hidden model or effort default.
+
+## Inlined roles (no agent)
+
+- `index` — WF-379 removed the `index` agent and inlined the single-row `index.md` write into the caller's own context. The `/wf:index` wrapper routes `inline` with both selectors unset — the role stays a map-key-only in `routing.ts` (no shipped static default, disposition equivalent to `adaptive`). It backs no production agent, so it holds no row in the agent matrix above; core and capability call sites reach it through the routed wrapper, never a dispatched subagent.

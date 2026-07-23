@@ -16,11 +16,10 @@ run-phase	included	plugins/wf/skills/run/SKILL.md	wf:phase-runner	phase-runner	m
 commit-wrapper	included	plugins/wf/skills/commit/SKILL.md	wf:commit	commit	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	parent
 pr-commit	included	plugins/wf/skills/pr/SKILL.md	wf:commit	commit	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	parent
 pr-agent	included	plugins/wf/skills/pr/SKILL.md	wf:pr	pr	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	parent
-index-wrapper	included	plugins/wf/skills/index/SKILL.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
-branch-index	included	plugins/wf/agents/branch.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
-commit-index	included	plugins/wf/agents/commit.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
-pr-index	included	plugins/wf/agents/pr.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
-tf-index	included	plugins/wf/skills/tf/SKILL.md	wf:index	index	model=false;effort=false	external-context,atomic,1,false,none,low,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
+branch-index	included	plugins/wf/agents/branch.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+commit-index	included	plugins/wf/agents/commit.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+pr-index	included	plugins/wf/agents/pr.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+tf-index	included	plugins/wf/skills/tf/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 qa-auto-branch	included	plugins/wf/skills/qa-auto/SKILL.md	wf:branch	branch	mixed	shared-branch-gate	parent
 qa-auto-index	included	plugins/wf/skills/qa-auto/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 qa-gen-branch	included	plugins/wf/skills/qa-gen/SKILL.md	wf:branch	branch	mixed	shared-branch-gate	parent

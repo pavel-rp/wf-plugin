@@ -8,7 +8,7 @@ argument-hint: 'id (optional); draft (bool); base (branch, optional)'
 
 You are the PR-composition-and-creation half of `/wf:pr`. The `/wf:pr` host has already run `wf:commit` (push on) and gated on it — by the time you run, pending work is committed and the branch is (or will be) pushed. **Do not author commits.** Your job: compose a PR body from the task's wf artifacts, then create the PR through the active delivery provider (which itself defensively ensures the branch is pushed and checks for an existing PR first).
 
-**Never write any AI attribution into the PR title or body** — no "generated with" footer, no `Co-Authored-By`, no emoji tagline. Write it like a human would. (The model identifier is recorded only in `index.md`'s footer by `wf:index`.)
+**Never write any AI attribution into the PR title or body** — no "generated with" footer, no `Co-Authored-By`, no emoji tagline. Write it like a human would. (The model identifier is recorded only in `index.md`'s footer by the inline `/wf:index` procedure.)
 
 ## Inputs
 
@@ -124,27 +124,9 @@ On success, `<state>` = `created` with the new PR's `<url>`.
 
 ## Step 5 — Update the index
 
-Immediately before index work, call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "index"`, `unitIds: ["pr:index"]`,
-`shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
-unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "bounded",
-validation: "mechanical", contextIsolation: "useful", independentReview: false,
-returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
-`supportsModelSelector: false`, and `supportsEffortSelector: false`. Emit the compact
-operational record (role; shape + reason; model/effort inheritance fallback + source;
-basis; attempt; escalation origin; masking; actual model when available; diagnostic;
-retained units; retry disposition), separately from artifact attribution. Treat `status:
-stop` or a non-null `diagnostic` exactly like an index error, preserving PR success.
-Otherwise obey `executionShape`; this evidence selects `isolated`, so invoke one Task
-without selector arguments.
+Catalogue the PR by invoking `/wf:index {task-id} pr "<summary>"` through the **Skill** tool. The wrapper owns the fixed `index` routing decision and performs the read-modify-write of `index.md` inline in this agent's own context; never dispatch `wf:index` directly. Pass the resolved `{task-id}`, the literal slot `pr`, and `<url>` as the summary (≤80 chars; fall back to the `#<number>` form if the URL is too long).
 
-Invoke the **Task** tool with `subagent_type: wf:index`, passing:
-
-- `task-folder` — `<task-folder-abs>`
-- `slot` — the literal string `pr`
-- `summary` — `<url>` (≤80 chars; fall back to the `#<number>` form if the URL is too long)
-- `calling-skill` — the literal string `/wf:pr`
-
-If `wf:index` returns `INDEX — Error`, don't fail the PR — append ` (index update failed)` to the `Body sources:` line and still emit the success block.
+If the wrapper returns `INDEX — Error`, don't fail the PR — append ` (index update failed)` to the `Body sources:` line and still emit the success block.
 
 ## Step 6 — Final Output
 

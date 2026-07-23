@@ -378,8 +378,8 @@ surface's unconfigured/unrecoverable outcome — down its spawn messages as an *
 backward-compatible** extension of the spawn contract. A boot that receives a record consumes
 it and forwards it onward; a boot invoked directly (top of its own chain) self-resolves and
 forwards. The record carries **no fragment body** — the dispatch read stays in the consumer's
-isolated context, so subagent isolation is unchanged. It is **never forwarded to `wf:index`**
-(zero provider operations), and it is **run-scoped** — never persisted; the next run
+isolated context, so subagent isolation is unchanged. It is **never forwarded to the inline
+`/wf:index` write** (zero provider operations), and it is **run-scoped** — never persisted; the next run
 re-resolves from the registry, so a registry swap is picked up immediately and core prose still
 names no concrete provider (the identity flows only as a run-scoped runtime value through the
 generic slots). The exact procedure — what the single resolution point reads, what a consumer

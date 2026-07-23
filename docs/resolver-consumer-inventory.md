@@ -199,8 +199,9 @@ paths / enums / small maps only, never a fragment or prompt body.**
 | 28 | `skills/index` (`/wf:index`) | CFG:task-root · PROV:delivery (`current-branch-query`, only in 2-arg id-inferred path) | R | bare-core / hardstop-init | 1 config read always; +1 delivery resolution only when inferring id | R1, R3(delivery) |
 | 29 | `agents/context-distiller` (`wf:context-distiller`) | PROV:delivery (**optional** CI-log read op only) | R (read-only, analysis-only) | bare-core (silent; caller hands bulk directly) | 0 reads on the common path; at most 1 optional delivery read-op resolution | R3(delivery) (optional) |
 
-> `agents/index` and `agents/classify` are **exclusions** (§6): the `/wf:index` and
-> `/wf:classify` **skills** are the consumers; the agents do no resolver discovery.
+> `agents/classify` is an **exclusion** (§6): the `/wf:classify` **skill** is the consumer;
+> the agent does no resolver discovery. (The `index` agent was removed by WF-379; its
+> single-row write now runs inline in the caller's context via the `/wf:index` **skill** #28.)
 
 ### 5.4 WF-274…277 — init flows
 
@@ -279,7 +280,6 @@ migration owner** by name and reason:
 
 | Component | Reason for exclusion |
 |---|---|
-| `plugins/wf/agents/index.md` (`wf:index`) | Pure path operator: reads/writes only the caller-supplied absolute `<task-folder>/index.md`. Zero config/registry/provider/plugin-root discovery. (The `/wf:index` **skill** #28 is the consumer.) |
 | `plugins/wf/agents/classify.md` (`wf:classify`) | Only reads its **own** rubric via `${CLAUDE_PLUGIN_ROOT}` (self-boot). No config/registry/provider. (The `/wf:classify` **skill** #23 does the discovery.) |
 | `plugins/wf-angular/agents/qa-host.md` | Thin provider-dispatch shim: reads its own skill via `${CLAUDE_PLUGIN_ROOT}`; all resolution inherited from the `qa-host` skill (#39). |
 | `plugins/wf-browser-qa/agents/qa-engine.md` | Thin provider-dispatch shim: reads its own skill via `${CLAUDE_PLUGIN_ROOT}`; resolution inherited from the `qa-engine` skill (#48). |

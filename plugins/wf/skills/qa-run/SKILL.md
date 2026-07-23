@@ -61,7 +61,7 @@ Id inference reaches `current-branch-query` by calling the bundled `wf-resolver`
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference.
 - Resolve the report's `Tester` field to the environment's configured user identity (Phase 2, Phase 4) — a documented contract-completeness gap, not a literal identity lookup: the delivery provider surface has no identity/user operation, so this never routes through a contract call.
 - Write `07_qa-report.md` ONLY inside the resolved task folder.
-- Invoke the **Task** tool for `/wf:index` to record the report after writing.
+- Invoke `/wf:index` through the **Skill** tool to record the report after writing (its wrapper writes `index.md` inline).
 
 **Forbidden:**
 

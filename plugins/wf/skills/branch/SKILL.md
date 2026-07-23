@@ -8,7 +8,7 @@ allowed-tools: [Task, Bash]
 
 User-facing slash command for creating and switching to a task branch. The implementation lives entirely in the `wf:branch` subagent (`agents/branch.md`); this skill body is a thin entry point that exists only for direct user invocation.
 
-**Other wf:* skills that need a branch gate MUST invoke the **Task** tool with `subagent_type: wf:branch` — never the `/wf:branch` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern is designed to avoid. The subagent is self-sufficient: it resolves config, derives the branch name, invokes the delivery provider to create or switch the branch, and updates `index.md` (via a nested **Task** call to `wf:index`) all in its own isolated context.
+**Other wf:* skills that need a branch gate MUST invoke the **Task** tool with `subagent_type: wf:branch` — never the `/wf:branch` slash command.** Going through the slash command would load this SKILL.md into the caller's context, which is exactly what the subagent pattern is designed to avoid. The subagent is self-sufficient: it resolves config, derives the branch name, invokes the delivery provider to create or switch the branch, and updates `index.md` (via an inline `wf:index` write) all in its own isolated context.
 
 ---
 
@@ -72,7 +72,7 @@ Carry: <none | applied | preserved entry — manual follow-up required>
 
 `<base-source>` variants (provider-supplied tokens, emitted verbatim): `<remote>/<base>` (created with the remote fetched), `<base>` (created locally, no remote), `already existed` (switched-to-existing or already-active).
 
-`<tracking>` variants (provider-supplied tokens, emitted verbatim): `<remote>/<branch-name>` (push succeeded, or upstream already configured), `local-only (push failed)`, `local-only (no remote)`, `local-only (no upstream)`. May carry an appended ` (index update failed)` when the nested wf:index call returned an error.
+`<tracking>` variants (provider-supplied tokens, emitted verbatim): `<remote>/<branch-name>` (push succeeded, or upstream already configured), `local-only (push failed)`, `local-only (no remote)`, `local-only (no upstream)`. May carry an appended ` (index update failed)` when the inline `/wf:index` write returned an error.
 
 `<carry>` is forwarded from the successful branch result: `none`, `applied`, or a sanitized conflict outcome naming a preserved entry and the manual follow-up required to finish reapplying and resolve it. A conflict carry remains `BRANCH — created`/`switched`, never `BRANCH — Error`; callers must inspect `Carry:` before continuing source-mutating work.
 

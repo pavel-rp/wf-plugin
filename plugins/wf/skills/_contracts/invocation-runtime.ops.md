@@ -99,7 +99,7 @@ Direct provider resolution above is **per boot** — each subagent that needs a 
 - A boot that receives **no** record (invoked directly — top of its own chain) **self-resolves** per direct provider resolution above, then forwards its result down.
 - Because the extension is optional, an unextended spawn is unchanged: the callee self-resolves exactly as before.
 
-**Never to `wf:index`** — it invokes zero provider operations, so no record flows to it and its spawn is untouched.
+**Never to the inline `/wf:index` write** — it invokes zero provider operations, so no record flows to it and its inline write is untouched.
 
 **Run-scoped only** — the record is one run's runtime value, never persisted or cached beyond the run. The next run re-resolves from the registry (a registry swap is picked up immediately), and core prose still names no concrete provider: the identity is a runtime value flowing through the generic slots.
 

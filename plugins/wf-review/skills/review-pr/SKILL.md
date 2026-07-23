@@ -1,7 +1,7 @@
 ---
 name: review-pr
 description: Reviews a pull request for correctness, security, and design, then posts verified findings as a PR-level summary plus file-level findings anchored by file and line. Every finding is confirmed against the real code before it is posted — no speculation, no vibes. Routes all host interaction through the active delivery provider and writes no AI attribution into anything it posts. Use to review a PR and leave actionable, grounded feedback.
-allowed-tools: [Read, Grep, Glob, Bash, Task]
+allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Task]
 ---
 
 # /wf-review:review-pr — Review a PR, post only verified findings
@@ -65,7 +65,7 @@ Zero-argument invocation reviews the PR for the current branch.
 - The write-side delivery operation `pr-comment-post`, strictly through the resolved
   provider, to post the review.
 - Invoke the **Task** tool with `subagent_type: wf:context-distiller` (distil existing
-  review threads or CI bulk) and `subagent_type: wf:index` (catalogue the run).
+  review threads or CI bulk); invoke `/wf:index` through the **Skill** tool (catalogue the run).
 
 **Forbidden:**
 
@@ -185,9 +185,9 @@ post through the resolved provider:
 
 ## Phase 6 — Index
 
-Invoke the **Task** tool with `subagent_type: wf:index` (when a resolvable task folder exists
-for this branch) to catalogue the run under the `review-pr` slot. A stale index loses nothing,
-so an `INDEX — Error` never fails the run.
+Invoke `/wf:index` through the **Skill** tool (when a resolvable task folder exists
+for this branch) to catalogue the run under the `review-pr` slot; its wrapper writes
+`index.md` inline. A stale index loses nothing, so an `INDEX — Error` never fails the run.
 
 ---
 
