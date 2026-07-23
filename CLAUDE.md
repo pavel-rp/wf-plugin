@@ -1,30 +1,16 @@
 # Authoring the `wf` plugin
 
-This is the engineering guide for building and editing the `wf` Claude Code plugin itself — its skills, agents, capabilities, and manifests. **It is not loaded at skill runtime.** It loads only when Claude Code is working *on this repository*. Runtime behaviour lives in each skill's `SKILL.md`; the user-facing catalogue lives in [`plugins/wf/README.md`](plugins/wf/README.md).
+Engineering guide for building and editing the `wf` Claude Code plugin itself — its skills, agents, capabilities, and manifests. **Not loaded at skill runtime** — only when Claude Code works *on this repository*. Runtime behaviour lives in each skill's `SKILL.md`; the user-facing catalogue in [`plugins/wf/README.md`](plugins/wf/README.md).
 
-Read this top-to-bottom once, then use it as a lookup. The two rules that govern everything else: **core names zero stack/domain/project nouns** (§2), and **every change ships a version bump** (§11).
+**The two rules that govern everything else:** **core names zero stack/domain/project nouns** (§1), and **every change ships a version bump** (§8).
 
----
-
-## 1. What `wf` is — and where the code is
-
-`wf` is a **domain-free Spec-Driven Development (SDD) harness**, shipped as a Claude Code plugin. The core provides a workflow spine and a composition mechanism; *all* stack, domain, and project knowledge enters through **capabilities** that attach to the spine at runtime.
-
-**The v2 model (what you are building toward):**
-
-- A fixed **SDD phase spine** — `spec → plan → tasks → implement → verify → qa` — each phase a gated, human-approved markdown artifact that feeds the next.
-- A **capability registry** in the downstream repo's `_local/config.md`. Core iterates it; it never names a capability or assumes how many exist.
-- Capabilities attach **prose fragments** to phases, typed by a fixed **contribution taxonomy** (§4). Core renders any capability's output uniformly.
-- A composed **constitution** of non-negotiable principles, established at setup and enforced at `verify`.
-- Composition is **runtime inline-prose injection — no codegen, no compile step.** Core re-reads the registry every run; edit a fragment once and every project picks it up next run.
-
-> **Status: v1 → v2 in flight.** The v2 composition mechanism has **shipped** — the frozen contracts in `plugins/wf/skills/_contracts/` (`capability-registry`/`invocation-runtime`), `validate-registry.sh` with its registry-fixtures, and several v2-wired skills (`verify-spec`, `qa-gen`, `qa-auto`, `tasks`, `constitution`, `run`); residual v1 skill bodies are still migrating toward it (e.g. the single `{domain}` assumption still baked into unextracted skill bodies). This guide describes the **v2 target**. When you add something new, build it to the v2 shape below. When you touch v1 code, generalise it toward v2 — **staged, never big-bang** (§10). Full rationale: `_local/research/capability-registry-v2-design-2026-06-25.md` (gitignored — may be absent on a fresh clone, so the essentials are carried here). Roadmap grounding: [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Deeper repo-specific detail (v1→v2 status, target-placement table, CI-guard mechanics, full versioning tiers) lives in [`docs/authoring-notes.md`](docs/authoring-notes.md) — read it on demand. General authoring detail is owned by the `wf-author-caps` skills, pointed to inline below rather than restated here.
 
 ---
 
-## 2. The one rule: core vs capability
+## 1. The one rule: core vs capability
 
-**Core ships zero stack, domain, or project knowledge.** Everything specific is a capability.
+**Core ships zero stack, domain, or project knowledge.** Everything specific is a capability that attaches to the spine at runtime.
 
 **Litmus test for every core change:** *would this still make sense for a totally different stack, domain, and project?* If a core skill names `AcmeLedger.Web`, `RiskSuite`, "LRP", "Angular", a C#→TS rule, or a 1:1-parity invariant, it's wrong — that knowledge belongs in a capability. After editing a core skill, grep it for stack/domain strings; **zero hits is part of "done".**
 
@@ -41,295 +27,139 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 
 ---
 
+## 2. What `wf` is
+
+`wf` is a **domain-free Spec-Driven Development (SDD) harness** shipped as a Claude Code plugin. Core provides the workflow spine and a composition mechanism; all stack/domain/project knowledge enters through **capabilities**.
+
+- A fixed **SDD phase spine** — `spec → plan → tasks → implement → verify → qa` — each phase a gated, human-approved markdown artifact feeding the next.
+- A **capability registry** (default `_local/config.md`). Core iterates it; it never names a capability or assumes how many exist. Empty registry = fully generic core.
+- Capabilities attach **prose fragments** to phases, typed by a fixed contribution taxonomy.
+- A composed **constitution** of non-negotiable principles, established at setup, enforced at `verify`.
+- Composition is **runtime inline-prose injection — no codegen, no compile step.** Core re-reads the registry every run.
+
+> v1→v2 is in flight — the v2 composition mechanism has shipped; residual v1 skill bodies are still migrating. Build new things to the v2 shape; generalise v1 code toward it **staged, never big-bang** (§7). Status, history, and the reference `migration` adapter example: [`docs/authoring-notes.md`](docs/authoring-notes.md) · [`docs/ROADMAP.md`](docs/ROADMAP.md).
+
+---
+
 ## 3. Repository map
 
 ```
 .                              # marketplace repo root
 ├── CLAUDE.md                  # this file
-├── .claude-plugin/
-│   └── marketplace.json       # marketplace manifest (ships wf core + the wf-browser-qa, wf-node-ts, wf-audit, wf-angular, wf-git, wf-ado, wf-linear, wf-review, wf-author-caps packs)
+├── .claude-plugin/marketplace.json   # marketplace manifest (wf core + capability packs)
+├── docs/                      # ROADMAP.md, authoring-notes.md (committed grounding)
 ├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
-│   ├── .claude-plugin/
-│   │   └── plugin.json        # plugin manifest
+│   ├── .claude-plugin/plugin.json
 │   ├── README.md              # user-facing skill catalogue
-│   ├── skills/                # one folder per skill (auto-discovered)
-│   │   ├── <name>/SKILL.md     # e.g. spec, plan, implement, qa-gen, qa-init (auto-discovered → /wf:*)
-│   │   └── _contracts/        # v1 frozen foundation — sibling of the skill folders
-│   └── agents/<name>.md       # subagent companions (auto-discovered)
-│                              # (the `migration` reference adapter capability — formerly plugins/wf-caps/ — now ships in the private wf-caps marketplace, moved out of this repo per WF-261; still the documented reference example in §4–§6)
-├── plugins/wf-browser-qa/     # BROWSER-QA FEATURE PACK — the browser-qa capability owning the qa-execution engine surface
-│   ├── skills/init/SKILL.md   # /wf-browser-qa:init — self-registration
-│   ├── skills/qa-engine/      # /wf-browser-qa:qa-engine — stack-agnostic browser-automation QA engine (+ references/preconditions.md)
-│   ├── agents/qa-engine.md    # wf-browser-qa:qa-engine — the engine's provider-dispatch subagent
-│   └── capabilities/browser-qa/ # manifest.md (qa-execution | provider | surface: engine; requires: git — tracker-agnostic)
-├── plugins/wf-node-ts/        # NODE/TS STACK PACK — the node-ts capability owning the implement-phase test-authoring guidance
-│   ├── skills/init/SKILL.md   # /wf-node-ts:init — self-registration
-│   ├── skills/test-node/      # /wf-node-ts:test-node — Node unit-test harness for pure TS helpers
-│   └── capabilities/node-ts/  # manifest.md + fragments/test-authoring.md (implement | guidance; requires: git — tracker-agnostic)
-├── plugins/wf-audit/          # AUDIT + SELF-REVIEW PACK — the audit capability (five verify-phase adversarial lenses + optional retrospective) co-located with sr (the pre-commit self-review lens)
-│   ├── skills/init/SKILL.md   # /wf-audit:init — self-registers both capabilities
-│   ├── agents/{consistency,convention,correctness,operational,security}-auditor.md # the five verify-phase lenses
-│   ├── agents/audit-retrospective.md # the optional composite retrospective/umbrella-verification agent
-│   ├── capabilities/audit/    # manifest.md + profile.template.json + fragments/{consistency,convention,correctness,finding-contract,operational,retrospective,security}.md (verify | finding, five rows; no requires)
-│   └── capabilities/sr/       # manifest.md + fragments/self-review.md (pre-commit | finding; reuses capabilities/audit/fragments/correctness.md intra-plugin; no requires)
-├── plugins/wf-angular/        # ANGULAR STACK PACK — the angular capability owning the qa-execution host surface (genericized: every scaffolded token is a profile slot)
-│   ├── skills/init/SKILL.md   # /wf-angular:init — self-registration + profile seed
-│   ├── skills/qa-host/        # /wf-angular:qa-host — routed Angular test-host scaffolder (+ references/backend-host.md; the host provider dispatch target)
-│   ├── skills/test-page/      # /wf-angular:test-page — browser-run black-box DI-level test harness (+ references/{backend-smoke,bootstrap,component-injection,harness}.md)
-│   ├── agents/qa-host.md      # wf-angular:qa-host — the host scaffolder's provider-dispatch subagent
-│   └── capabilities/angular/  # manifest.md + profile.template.json (qa-execution | provider | surface: host; requires: git — tracker-agnostic)
-├── plugins/wf-git/            # DELIVERY-PROVIDER PACK — the git capability owning the delivery surface
-│   ├── skills/init/SKILL.md   # /wf-git:init — self-registration
-│   └── capabilities/git/      # manifest.md + fragments/delivery.md (branch-create/commit/push-upstream/pr-create)
-├── plugins/wf-ado/            # TRACKER-PROVIDER PACK — the ado capability owning the tracker surface
-│   ├── skills/init/SKILL.md   # /wf-ado:init
-│   └── capabilities/ado/      # manifest.md + fragments/tracker.md (Azure DevOps work-item bindings)
-├── plugins/wf-linear/         # TRACKER-PROVIDER PACK — the linear capability (second, independent tracker binding)
-│   ├── skills/init/SKILL.md   # /wf-linear:init
-│   └── capabilities/linear/   # manifest.md + fragments/tracker.md (Linear MCP bindings)
-├── plugins/wf-review/         # PR-REVIEW FEATURE PACK — the pr-review feature capability (user-invoked, no core seam)
-│   ├── skills/address-pr/SKILL.md  # /wf-review:address-pr — verify review comments/CI, address the valid ones
-│   ├── skills/review-pr/SKILL.md   # /wf-review:review-pr — review a PR, post verified findings
-│   └── capabilities/pr-review/     # manifest.md (kind: feature; no fragment; routes through the delivery provider)
-├── plugins/wf-author-caps/    # AUTHORING TOOLKIT PACK — the author-caps capability (kind: both; ships skills + five inline fragment rows — guidance at spec/implement, two findings at verify, a scenario at qa-generation — plus constitution article: keys)
-│   ├── skills/init/SKILL.md   # /wf-author-caps:init — self-registration via the typed inspect_pack/register_pack resolver tools
-│   ├── skills/authoring-guide/     # /wf-author-caps:authoring-guide — the design half (+ references/subagents-and-vocabulary.md)
-│   ├── skills/authoring-taxonomy/  # /wf-author-caps:authoring-taxonomy — the schema half (taxonomy, manifest schema v2, phase/kind semantics)
-│   ├── skills/new-skill/           # /wf-author-caps:new-skill — the skill scaffolder (+ references/scaffolder-loop.md, the shared six-stage loop every new-* skill inherits)
-│   ├── skills/new-capability/      # /wf-author-caps:new-capability — the capability scaffolder (+ references/capability-emission.md, the shared manifest/fragment rule set)
-│   ├── skills/new-pack/            # /wf-author-caps:new-pack — the pack scaffolder (plugin.json + capability folder + init on the pack-onboarding spine); composes both seams, forks neither
-│   ├── skills/new-provider/        # /wf-author-caps:new-provider — the provider scaffolder (surface-scoped provider row + abstract-operation fragment + profile slots); composes both seams, forks neither
-│   └── capabilities/author-caps/   # manifest.md (kind: both; five fragment rows + article: keys) + fragments/{interface-first,authoring-conventions,structural-validation,reference-existence,authoring-scenarios}.md + references/fragment-rationale.md (no requires, no profile-template)
-├── plugins/wf-sandbox-testing/ # SKILL-EVAL HARNESS PACK — the sandbox-testing feature capability (hermetic runner + statistical assertion layer + behavioral-regression corpus; no provider surface, no phase fragment)
-│   ├── skills/init/SKILL.md   # /wf-sandbox-testing:init — self-registration
-│   ├── runner/ assert/ corpus/ fixtures/ # the WF-345 runner, WF-346 assertion layer, WF-347/348 corpus, fixture seeds
-│   ├── docs/retrofit-procedure.md # the findings-loop procedure (observation → assertion)
-│   └── capabilities/sandbox-testing/ # manifest.md (kind: feature; no fragment; wf-fake pairing per fixture, no requires:)
-├── docs/ROADMAP.md            # committed grounding doc
+│   ├── skills/<name>/SKILL.md # auto-discovered → /wf:*  (+ skills/_contracts/ frozen foundation)
+│   ├── agents/<name>.md       # subagent companions (auto-discovered)
+│   └── mcp/                   # the ONLY non-prose subtree — bundled Node/TS resolver runtime
+├── plugins/wf-browser-qa/     # browser-qa: qa-execution provider (engine surface)
+├── plugins/wf-node-ts/        # node-ts: implement-phase test-authoring guidance
+├── plugins/wf-audit/          # audit (5 verify lenses + retrospective) + sr (pre-commit lens)
+├── plugins/wf-angular/        # angular: qa-execution provider (host surface)
+├── plugins/wf-git/            # git: delivery provider
+├── plugins/wf-ado/            # ado: tracker provider (Azure DevOps)
+├── plugins/wf-linear/         # linear: tracker provider
+├── plugins/wf-review/         # pr-review: user-invoked review/address feature
+├── plugins/wf-author-caps/    # author-caps: authoring toolkit (guide, taxonomy, new-* scaffolders)
+├── plugins/wf-sandbox-testing/ # sandbox-testing: skill-eval harness
 └── _local/                    # gitignored: research notes, working tracking
 ```
 
-Component folders (`skills/`, `agents/`) live at the **plugin root**, never inside `.claude-plugin/` — Claude Code auto-discovers them on install. Only `plugin.json` (and, at repo root, `marketplace.json`) live in `.claude-plugin/`.
+Each pack ships an `init` skill that self-registers its capability; `capabilities/<name>/manifest.md` declares its fragments. Component folders (`skills/`, `agents/`) live at the **plugin root**, never inside `.claude-plugin/` — auto-discovered on install. Per-pack detail is in each pack's own README/manifest; the deeper annotated map is in [`docs/authoring-notes.md`](docs/authoring-notes.md).
 
 ---
 
-## 4. The SDD spine — phases, contributions, constitution
+## 4. The SDD spine & capabilities
 
 Phases are the **injection points**. A capability touches only the phases it has something to say about; a phase with no attached fragments runs exactly as if inert (no domain term surfaces).
 
-| Phase | Role | What a capability contributes | Contribution kind |
-|---|---|---|---|
-| `spec` (Specify — **authoring hub**) | conventions, constraints, acceptance criteria, invariants | authoring **guidance** | aggregate |
-| `plan` | correspondence/decomposition that can't live as spec prose | `artifact` | partition by ownership |
-| `tasks` | opinionated decomposition into small, independently testable units | **task-list** | aggregate |
-| `implement` (Implement — **authoring hub**) | stack idioms/scaffolds; apply the plan's mapping | authoring **guidance** | aggregate |
-| `verify` | assert conformance to the spec + spec-derived invariants | `finding` | aggregate (provenance-tagged) |
-| `qa-generation` | scenarios derived from acceptance criteria | `scenario` | aggregate |
-| `qa-execution` | the execution engine + environment (browser driver, test-host) | `provider` | partition by surface; subagent dispatch |
+| Phase | Contribution kind | Aggregation |
+|---|---|---|
+| `spec` (authoring hub) | authoring **guidance** | aggregate |
+| `plan` | `artifact` | partition by ownership *(reserved — no active instance)* |
+| `tasks` | **task-list** | aggregate |
+| `implement` (authoring hub) | authoring **guidance** | aggregate |
+| `verify` | `finding` | aggregate (provenance-tagged) |
+| `qa-generation` | `scenario` | aggregate |
+| `qa-execution` | `provider` | partition by surface; subagent dispatch |
 
-**Aggregation policy by kind** (how core combines multiple contributors):
+- **aggregate** — follow every contributor in **registry order** (general → specific; most-specific wins last on additive guidance).
+- **partition** — only the *owning* capability applies; overlapping ownership is a registry-validation error. `provider` partitions by a `surface` token; `artifact` by a `source→target` pair.
+- `finding`/`scenario`/`article` carry provenance, so order is cosmetic.
 
-- **aggregate** — follow every contributor, in **registry order** (general → specific, so the most-specific wins last on additive `guidance`).
-- **partition** — only the *owning* capability applies; overlapping ownership is a registry-validation error. `artifact` partitions by a `source→target` token pair (e.g. `csharp→ts`); `provider` partitions by a `surface` token (`engine`, `host`, …).
-- `finding`/`scenario`/`article` carry **provenance**, so order is cosmetic for them.
-- **Reserved — `artifact` at `plan` has no active instance.** It was modeled on the migration mapping, which is actually a `verify` `finding` (it audits *implemented* code). The slot is kept for a future **forward** `plan`-correspondence fragment — one authored from spec + source *before* code exists — **not** a post-implementation audit. Don't wire an audit skill here.
+**The registry** lives at `wf.config.js` `registryPath` (default `_local/config.md`), a `## Capabilities` table of `Capability | Path`. A `Path` is a repo-relative folder or a `plugin:<name>/<rel-path>` token resolved through a per-machine, gitignored `## Plugin Roots` map written by each pack's `init`. Table order = injection order.
 
-**The constitution** — non-negotiable principles, **composed not authored**:
+**Capability kinds:** `adapter` (fragments only, no skills), `feature` (own skills/agents, may also attach fragments), `both`. Features compose **natively** (plugin install); fragments compose **via the registry** at runtime.
 
-- **Established** by a `/wf:constitution` skill, **auto-invoked by `init`** (re-runnable to update). It records the project's own clauses and the active registry; it does **not** bake a composed file — articles compose at runtime.
-- **Consulted** as guidance at `spec`; **enforced** as `finding`s at `verify`.
-- Core contributes domain-free **process** articles (spec is source of truth; no phase skips its gate; never commit to `main`; nothing writes outside `_local/` except designated source-mutating skills; model attribution on every artifact; no AI attribution in commits; config in `_local/config.md`). Each capability contributes its own non-negotiables.
-- **Precedence: project clauses override capability clauses.** A contradiction between two *capabilities'* articles is a registry-validation error.
+**The constitution** is composed not authored: core process articles + each registered capability's non-negotiables + the project's own clauses, aggregated by `/wf:constitution` (auto-invoked by `init`). Consulted as guidance at `spec`, enforced as findings at `verify`. **Precedence: project clauses override capability clauses**; a contradiction between two capabilities' articles is a registry-validation error.
+
+**For the full taxonomy, manifest schema v2, aggregation semantics, and registry validation → invoke `/wf-author-caps:authoring-taxonomy`.**
 
 ---
 
-## 5. Capabilities — how knowledge attaches
+## 5. Authoring skills & subagents
 
-**The registry** lives at a configurable location — `wf.config.js` `registryPath`, **defaulting to the downstream `_local/config.md`** when unset (default-absent path byte-identical to before the key existed):
+**Full frontmatter rules, body templates, subagent patterns, and canonical vocabulary → invoke `/wf-author-caps:authoring-guide`. To scaffold a conforming skill/capability/pack/provider → `/wf-author-caps:new-skill` · `new-capability` · `new-pack` · `new-provider` (these *are* the checklists).**
 
-```markdown
-## Capabilities
+The traps that break silently — keep these resident:
 
-| Capability | Path                    |
-|------------|-------------------------|
-| audit      | plugins/wf-audit/capabilities/audit          |
-| browser-qa | plugin:wf-browser-qa/capabilities/browser-qa |
-```
+- **Bare `name`, no `wf`/`wf-` prefix** (the namespace comes from the plugin; prefixing yields `/wf:wf-spec`). `name` must match the folder exactly; invalid characters cause silent load failure.
+- **`description`** must stand alone (third-person what + when) — it's the only content preloaded for auto-selection. Avoid `<` `>` (break frontmatter parsing).
+- **`allowed-tools`** lists built-ins only — **omit MCP tools** (`sourcebot`, ADO, `mssql_*`); their names are brittle across configs. Read-only skills omit `Write`/`Edit`.
+- **H1 convention:** `# /wf:<name> — <tagline>`.
+- **Body budget:** keep under ~500 lines; split into `references/<topic>.md` **one level deep** (no chains). **Runtime-read docs split ops/reference** — the ops doc is ≤150 behavior-bearing lines, rationale in a paired reference never read at runtime; TOC past 100 lines. (Test per clause: *does removing it leave a plausible-but-wrong next action?*)
+- **Families:** group siblings sharing a concern as `<family>-<variant>` (`qa-gen`/`qa-run`/`qa-auto`); don't prefix a lone skill.
 
-Empty table = fully generic core. Name is decoupled from path so the binding survives a capability moving to a standalone plugin. Table order = deterministic injection order (general → specific).
+Subagents (`agents/<name>.md`, bare, auto-discovered) — the two CI-enforced gotchas:
 
-A `Path` is one of two shapes, **both runtime-resolved**: a repo-relative folder (for a vendored capability), or a **plugin-anchored** `plugin:<plugin-name>/<rel-path>` token (for a capability shipping inside an installed plugin). The plugin-anchored token resolves through a `## Plugin Roots` mapping (`| Plugin | Root |`) co-located with the registry — the `<plugin-name>→install-root` datum `${CLAUDE_PLUGIN_ROOT}` alone can't supply (it resolves only the *executing* plugin's root). That mapping is **per-machine, gitignored, and written by a pack's own init skill** — e.g. `/wf-git:init` records wf-git's install root and self-registers its capability as a plugin-anchored row, collapsing onboarding to one command (no hand-edited `_local/config.md`); core only reads the generic map. Full semantics: `capability-registry.contract.md` §"The `## Plugin Roots` mapping".
-
-**Capability kinds:**
-
-| Kind | Provides | Composes via | Example |
-|---|---|---|---|
-| `adapter` | phase fragments only; ships no skills | registry (runtime injection) | `migration` |
-| `feature` | its own skills/commands/agents; may also attach fragments | native plugin install **+** registry | `browser-qa` |
-| `both` | skills **and** fragments | both | a whole-project add-on |
-
-Two composition mechanisms, kept separate: **features compose natively** (install N plugins → their skills are all discoverable, no custom machinery); **phase fragments compose via the registry** at runtime.
-
-**Manifest schema v2** (`{path}/manifest.md`):
-
-- `kind:` `adapter` | `feature` | `both`.
-- **Fragments table** — one row per fragment: `phase | contribution-kind | dispatch | scope`. `dispatch` is `inline: <rel-path>` (read-and-follow) or `subagent: <agent>` (heavy work). `scope` is required only for partitioned kinds — `provider` → a `surface` enum token; `artifact` → a `source→target` token pair.
-- `skills:` — for `feature` kinds, where its skills live (documentation; native composition handles loading).
-- `requires:` / `conflicts:` — optional; resolved at registry validation.
-
-**Registry validation** (fail-fast script at `init`/`validate`, on top of the per-capability profile check):
-
-- capability names unique; every declared `path` exists and carries a `manifest.md`;
-- no overlapping ownership scopes (`artifact`/`provider`) across active capabilities — name both offenders;
-- no contradictory `article` clauses across capabilities (project clauses override; capability-vs-capability contradiction fails);
-- `requires:` satisfied, `conflicts:` not both active;
-- every fragment row names a phase **and** contribution kind that core actually defines.
-
-**Migration is the reference `adapter` capability.** Its v1 hooks map to v2 fragments: `rule-audit` → `finding` at `verify` (+ constitution `article`s); `parity-suite` → `scenario` at `qa-generation`; `mapping` (the migration-map 1:1 audit) → a second `finding` at `verify` — it audits an *implemented* migration against the legacy source (reads the migrated diff; stops if no target exists), so it is verify-time conformance, **not** a `plan` artifact; and it **gains** authoring `guidance` at `spec`/`implement` and a `task-list` at `tasks`.
+- **Omit `tools:`** for any agent that must reach MCP. The field is a *restricting allowlist that overrides* the inherited toolset — declaring a narrow built-in list **silently starves the agent of MCP/ADO/`sourcebot`/DB tools**. Omitting is also the config-agnostic choice.
+- **An agent never filesystem-reads a sibling skill body — it *invokes* it** via the Skill tool (`/wf:<skill>`). A `Read`/`Glob` of `${CLAUDE_PLUGIN_ROOT}/skills/*/SKILL.md` or `plugins/*/skills/*/SKILL.md` as a *load step* is a defect (trips the workspace-boundary prompt, breaks on the next version bump). A failed Skill invocation hard-stops into the agent's `— error` block; **never fall back to Reading the body.** Prose *references* to a skill path are fine — only a read/glob *instruction* is banned. Enforced by `out4-skill-read-guard.sh`.
 
 ---
 
-## 6. What is core vs what extracts (target placement)
+## 6. Shared conventions (every skill enforces)
 
-The current skills are v1-shaped. Their v2 homes:
-
-| Stays **core** (generic) | Extracts to a **capability** |
-|---|---|
-| `spec`, `plan`, `tasks` (new), `implement`, `run` | `migration-map` → `migration` (adapter): `verify` `finding` (1:1 audit of an *implemented* migration — not a `plan` artifact) |
-| `verify-spec`, `qa-init`, `qa-gen`, `qa-run`, `qa-followup`, `tt` (orchestration only — `tt` reads the change set via the `delivery` surface, aggregates `implement` `guidance`, and authors tests on a framework-agnostic discover-and-match default, baking no stack) | `rule-audit` parity logic → `migration`: `verify` `finding` + constitution `article`s |
-| `init`, `constitution` (new), `branch`, `commit`, `pr`, `tf` | parity-suite → `migration`: `qa-generation` `scenario` |
-| `classify`, `triage`, `index`, `lite`, `seed`, `standup` | `qa-auto` browser driving → `browser-qa` (feature): `qa-execution` `provider` |
-| | `qa-host`, `test-page` Angular scaffolding → an `angular` stack capability: `qa-execution` |
-
-QA splits cleanly: orchestration (`qa-gen` plan structure, the `qa-run`/`qa-followup` loop, baseline-health) stays core; the browser **engine** and the stack **test-host** are provider capabilities; parity is a migration fragment.
-
-**Delivery & tracker knowledge has fully extracted (WF-119 charter, closed at WF-137).** `init`, `branch`, `commit`, and `pr` stay **core** — they are no longer "core-with-git-inline". They now speak only the abstract delivery/tracker **contract operations** (`branch-create`, `commit`, `push-upstream`, `pr-create`, `current-branch-query`, `workspace-root-resolve`; `get`/`create_umbrella`/`create_child`/`update`/`list_children`/`post_comment`/`set_status`/`attach_link`), reached via **direct provider resolution**. The concrete git mechanics live in the `wf-git` **delivery `provider`** pack; the Azure-DevOps and Linear mechanics in the `wf-ado` and `wf-linear` **tracker `provider`** packs. With no delivery/tracker provider registered, core degrades to a **silent, local-only, `T<NNN>`-id, git-free bare-core mode**: every branch gate skips with a stated reason, id inference and workspace-root resolve via the plain-directory fallback, and no capability term surfaces.
+- **Config first.** Project values live in the downstream `_local/config.md`, never hardcoded; each tracker/delivery pack owns its own config section. Reading it is step one; if absent, stop and direct the user to `/wf:init`. To add a key, edit the default template in `skills/init/SKILL.md`, then reference it as `{placeholder}`.
+- **Useful zero-argument default.** Id-inferring skills infer the id from the current branch (first 3+-digit run) via the delivery contract's `current-branch-query`; require an explicit arg only when inference fails.
+- **Safety Rules** in prose (Allowed / Forbidden). **Never write outside `_local/`** — only exceptions: source-mutating skills (`implement`, `verify-fix`, `qa-followup`) and `qa-host`. `commit`/`pr` are the only delivery-writing skills; destructive VC operations stay forbidden everywhere.
+- **Final-output block.** Every skill ends with a fenced `NAME — status` block as the very last thing emitted (downstream skills grep it) — preserve the exact shape. User-invocable skills end it with a `Next:` line (or `Next: none — terminus`).
+- **`## Edge Cases`** — exact heading for the stop-conditions section.
+- **Model attribution.** Every artifact carries the runtime model id — a `**Model:** <id>` line (or verb-shaped variant: `**Fetched by:**`, `**Audited by:**`); write `unknown` rather than guessing.
+- **Tool preferences.** Prefer indexed MCP (`sourcebot` for code, `mssql_*` for DB); fall back to `Grep`/`Glob` only when none fits. ADO MCP tools are read-only.
+- **Per-task index.** After writing a per-task artifact, call `/wf:index <id> <slot> "<summary>"` (the sole writer of each task's `index.md`); agents holding the path invoke `subagent_type: wf:index` directly.
 
 ---
 
-## 7. Authoring a skill (`SKILL.md`)
+## 7. Working principles & anti-patterns
 
-Each skill folder (`skills/<name>/`) holds exactly one `SKILL.md`. Frontmatter is required.
+- **Stage, don't big-bang.** No compiler here — a one-shot refactor fails *silently*. One issue = one branch/PR with its own acceptance check.
+- **Eval between stages.** Baseline a skill's behaviour before migrating; "done" = eval no worse than baseline.
+- **Freeze the interface, not the gold-plating.** Pin the contract *shape* with only the slots the current step needs.
+- **Reference the contract by slot/kind name** — never read a profile or fragment "by heading". Change the contract and its validator together.
+- **Design for arbitrary capabilities** — never special-case one domain or assume a single active capability.
 
-```markdown
----
-name: <skill-slug>
-description: <Third-person sentence: what it does>. Use <the condition that triggers it>.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
----
-
-# /wf:<name> — <short, self-documenting tagline>
-
-<body>
-```
-
-**Frontmatter rules:**
-
-- **`name`** — must match the folder name exactly. Lowercase letters, digits, hyphens; ≤64 chars. **Bare name, no `wf`/`wf-` prefix** (the `wf:` namespace comes from the plugin name; prefixing yields `/wf:wf-spec`). Invalid characters cause silent load failure.
-- **`description`** — ≤1024 chars, **third person**, stating **what** the skill does **and when** to use it. It is the only content preloaded for auto-selection, so it must stand alone. Put the trigger early; avoid `<` `>` (they break frontmatter parsing).
-- **`allowed-tools`** — required in this library. List the built-in tools the skill needs, tailored to its Safety Rules (read-only skills omit `Write`/`Edit`). **Omit MCP tools** (`sourcebot`, ADO, `mssql_*`) — their names are brittle across configs.
-- **Optional invocation control:** `user-invocable: false` (auto-load only, no slash command); `disable-model-invocation: true` (slash command only, no auto-load). Don't introduce frontmatter fields outside this set — unrecognised fields pass through literally.
-
-**H1 convention:** `# /wf:<name> — <tagline>` (slash command, em-dash, short tagline).
-
-**Body budget & progressive disclosure:** keep the body under ~500 lines. When it grows, split into `references/<topic>.md` **one level deep** (no chains — partial reads miss deeply nested files). Link from `SKILL.md` explicitly. Give any reference file over ~100 lines a table of contents at the top.
-
-**Runtime-read docs split ops/reference.** Any doc a skill or agent opens at boot or mid-run (contracts, provider fragments, resolution procedures) ships as a bounded **ops doc** — ≤150 lines, only behavior-bearing steps/guards/outcome mappings (test per clause: *does removing it leave a plausible-but-wrong next action?*) — paired with a **reference file** (rationale, history, authoring detail) **never read at runtime**. Runtime read paths stay one level deep; every runtime-read doc over 100 lines carries a TOC. Pattern: `plugins/wf/skills/_contracts/*.ops.md`, CI-guarded by `check-ops-docs.sh`.
-
-**Canonical vocabulary.** The authoring vocabulary is `plugins/wf/skills/_contracts/GLOSSARY.md` — one entry per term, each carrying the ERE that makes it violation-testable. `plugins/wf/skills/_contracts/glossary-lint.sh` is its live consumer: it parses that file directly (no rule is transcribed into the script) and fails authored prose that drifts, naming the file, the offending term, and the canonical alternative. It takes an **explicit file set** (`glossary-lint.sh <file>...`) or `--selftest`; there is no whole-tree default, because the severity model is on-touch. GLOSSARY.md itself and every `*-fixtures/` folder under `_contracts/` are structurally off the surface. The `--selftest` is wired into the CI chain via `registry-fixtures/run.sh`.
-
-That explicit file set is supplied by `plugins/wf/skills/_contracts/glossary-on-touch.sh`, the **on-touch PR gate**: it diffs against the PR's base commit, filters the touched set to the lint surface (`plugins/*/skills/**/*.md`, `plugins/*/capabilities/**/*.md`, `plugins/*/agents/*.md`, minus the structural exclusions), and lints exactly that. **A violation hard-fails on a file your PR touched, and always on a file it added; an untouched pre-existing violator never fails the gate** — so no repo-wide cleanup blocks a change, but a file you touch you leave clean. When nothing touched is on the surface, the gate skips invocation and passes; when the touched set comes back empty it fails loudly rather than passing vacuously, which is what keeps a shallow checkout from silently disabling it. Unlike the other guards it runs as its own step in `.github/workflows/ci.yml` (it needs the base sha, which the guard chain cannot see); `registry-fixtures/run.sh` gates its scoping self-test instead.
-
-**Namespace & families.** Skills are invoked `/wf:<skill>`; agents are referenced `subagent_type: wf:<agent>`. When two or more skills share a concern, group them with a `<family>-<variant>` bare name (`qa-gen`/`qa-run`/`qa-auto`; `test-node`/`test-page`). Don't introduce a family prefix for a lone skill — when a second sibling appears, rename the solo to fit the family in the same change.
-
-**Body templates.** SDD-phase skills (`spec`, `plan`, `implement`) follow: (1) Prerequisites (read `_local/config.md`) → (2) Command Syntax + Arguments → (3) Safety Rules (Allowed/Forbidden in prose) → (4) Phases (numbered, self-contained) → (5) Templates → (6) `## Edge Cases` → (7) Final-output block. Auxiliary skills (`verify-spec`, `migration-map`, `test-*`) follow a dispatch-on-arguments shape: intro → when/when-not → a `###` block per subcommand (**include an empty-input default**) → shared conventions once → `## Edge Cases` → Final-output block. Copy from the closest existing skill rather than inventing structure.
+Anti-patterns: **no Windows-style paths** (forward slashes everywhere except regexes/real-escape fences); **don't offer multiple approaches without a default** (state the right tool; mention alternatives only as escape hatches); **don't punt to the model** ("the model will figure it out" is not a spec); **don't reference tools or frontmatter the runtime doesn't expose** (they pass through literally).
 
 ---
 
-## 8. Authoring a subagent (`agents/<name>.md`)
+## 8. Plugin mechanics & versioning
 
-A skill may ship a subagent companion for **delegation-with-isolation**: the host invokes it via the **Task** tool (`subagent_type: wf:<name>`), the subagent reasons in an isolated context, and only its final block reaches the caller. All agent files live in the plugin's `agents/` folder, named `<skill-name>.md` (bare), auto-discovered on install.
+**Every PR to `main` is a release.** Bump the touched plugin's two `version` fields — `plugins/<plugin>/.claude-plugin/plugin.json` **and** its `.claude-plugin/marketplace.json` `plugins[]` entry (kept equal) — **plus** the marketplace top-level `version` (bumps on any change). A change spanning N plugins bumps each plugin's pair + the top-level once. One bump per PR; on a mixed PR use the highest applicable tier:
 
-**Add one when** the skill does focused read-only reasoning that yields a small structured output, the reasoning is verbose enough to pollute the caller, or the same task is called from several skills. **Don't** when the skill is action-oriented and used in one place, or its output is already one short line.
+- **PATCH** — no invocation-contract change: bug fix, reworded description, `references/` edit, **any docs-only change** (README, this file).
+- **MINOR** — backward-compatible capability change: new skill/agent/family, new subcommand/argument, new config key or contribution kind. **Pre-1.0, breaking changes also bump MINOR** (renaming/removing a skill, changing an argument, changing a grepped final-output block shape).
+- **MAJOR** — reserved, to declare the contract stable.
 
-**Frontmatter:** `name` (matches the file) and `description` required; `model`, `color`, `argument-hint` optional. Set `user-invocable: false` to keep it Claude-only.
+The "breaking" contract = the invocation surface: slash-command names, skill arguments, final-output block shapes. Manifest field-lists and full tier nuance: [`docs/authoring-notes.md`](docs/authoring-notes.md). Run `claude plugin validate` before publishing.
 
-> **The `tools` field is a *restricting allowlist that overrides* the inherited toolset.** Omit it and the subagent inherits the full session — built-ins, the Task tool, **and every connected MCP server**. Declare a narrow built-in-only list and you **silently starve it of MCP/ADO/`sourcebot`/DB tools** (the bug that cut an earlier `phase-runner` off from ADO). So **omit `tools:`** for any agent that must reach MCP — which is why the converted agents here declare none. Omitting is also the config-agnostic choice (MCP server names vary per repo). Nested delegation works out of the box.
+**Commit workflow.** **Always commit to a feature branch, never `main`.** Check first (`git rev-parse --abbrev-ref HEAD`); if `main`/`master`, create `feat/…`/`fix/…`/`chore/…` (`git checkout -b` carries dirty changes over). Stage, commit, push; the user opens the PR. The repo is prose-only **except `plugins/wf/mcp/`** (the bundled resolver runtime with its own `package.json`/lockfile/`dist/`).
 
-> **An agent never filesystem-reads a sibling skill body — it *invokes* the skill.** To run a sibling skill, an agent (or a skill body it follows) invokes it through the **Skill tool** (`/wf:<skill>` with the same arguments) — never `Read`/`Glob`/`Search` its `SKILL.md`. A filesystem path to a skill body (`${CLAUDE_PLUGIN_ROOT}/skills/<x>/SKILL.md`, `plugins/*/skills/*/SKILL.md`) as a *load step* is a defect: the version-pinned path sits outside the workspace on a marketplace install, so every read trips the workspace-boundary permission prompt and breaks on the next `§11` version bump. The Skill tool loads the body by invocation (no filesystem read, no prompt, no version dependency) and runs it in the agent's existing context — no nested spawn. **A failed Skill-tool invocation hard-stops** into the agent's Final Output `— error` block naming the failed invocation; **never fall back to Reading the body** (that resurrects the exact defect). Prose *references* to a skill path (a README table, "the same call shape `.../skills/spec/SKILL.md` uses") are fine — only a read/glob *instruction* is banned. **This is enforced mechanically:** `plugins/wf/skills/_contracts/out4-skill-read-guard.sh` (wired into the CI chain via `registry-fixtures/run.sh`) fails any PR reintroducing such a read instruction; its instruction-vs-prose classifier and false-positive exclusions are documented in the script header.
-
-**Pick one of four patterns:**
-
-| Pattern | Source of truth | Use when | Example |
-|---|---|---|---|
-| **B** — skill-primary, thin agent | skill body (procedure under a "caller, skip this" heading); agent is ~20 lines pointing at it | read-only reasoning, called from a few places, caller can pay the SKILL.md read | `classify` |
-| **C** — agent-primary, thin skill | agent file (~100 lines, self-contained); SKILL.md (~50 lines) just spawns it and forwards the block | action-oriented skill that **gates** many others; callers invoke the subagent directly and pay zero caller-side cost | `branch`, `index` |
-| **D** — orchestrator + utility agent | skill owns an outer loop + accumulation; agent does one heavy unit per iteration | heavy work repeats N times and each iteration's context can die between iterations | `run --auto` + `phase-runner` |
-| **A** — duplicate-with-fallback | rubric mirrored in both files (expect drift) | rare — only when an inline fallback path is genuinely needed | — |
-
-Default to **B** for read-only reasoning, **C** for action-oriented gates, **D** for repeated heavy work. **Output contract:** the subagent emits the same Final-output block shape as the skill, with no narrative outside it — consumers parse that block.
+**NO AI ADS.** Commit messages, PR descriptions, and any artifact a skill writes must **never** include `Co-Authored-By: Claude` trailers, "Generated with Claude Code" footers, or any AI-attribution, emoji, or promotional tagline. Commit like a human. Remove any such trailer you find in a template.
 
 ---
 
-## 9. Shared conventions (every skill enforces)
+## 9. Editing rules
 
-- **Config.** Project values (`{task-root}`, `{verify-command}`, database names, paths, the capability registry) live in the downstream `_local/config.md`, not here — each registered tracker/delivery pack owns its own config section (e.g. `## Azure DevOps`, `## Linear`), not core. Reading that file is step one; if absent, stop and direct the user to `/wf:init`. To add a key, edit the default template in `skills/init/SKILL.md`, then reference it as `{placeholder}` — **never hardcode a project constant.**
-- **Default modes.** Zero-argument invocation must do something useful. For id-inferring skills, infer the id from the current branch via the delivery contract's `current-branch-query` (first 3+-digit run), resolved against `{task-root}`; require an explicit arg only when inference fails.
-- **Safety Rules.** Every skill declares explicit Allowed / Forbidden lists in prose. **Never write outside `_local/`** — the only exceptions are the source-mutating skills (`implement`, `verify-fix`, `qa-followup`) and `qa-host` (test scaffolding only). `commit`/`pr` are the only delivery-writing skills (beyond `branch`'s upstream push), and they act only through the delivery-provider contract; destructive version-control operations stay forbidden everywhere.
-- **Final-output block.** Every skill ends with a fenced status block (`SPEC — Complete`, `BRANCH — <state>`, …) as the **very last thing emitted** — downstream skills and users grep for it. Preserve the exact `NAME — status` shape when editing.
-- **Next-step suggestion.** Every user-invocable skill's final block ends with a `Next:` line naming the command(s) to run, or `Next: none — terminus`. Utility subagents consumed by callers (`classify`, `branch`, `index`) are exempt.
-- **`## Edge Cases`.** Every skill's stop-conditions section uses this exact heading.
-- **Tool preferences.** Prefer an indexed MCP tool (`sourcebot`) for code search, `mssql_*` for DB; fall back to `Grep`/`Glob` only when no indexed tool fits. ADO MCP tools are read-only for work-item fetches.
-- **Model attribution.** Every artifact a skill writes carries the current model id in its metadata — a `**Model:** <id>` line (or a verb-shaped variant: `**Fetched by:**`, `**Generated by:**`, `**Audited by:**`). Use the id from the runtime's system prompt (e.g. `claude-opus-4-8`); write `unknown` if unavailable rather than guessing.
-
-**Per-task index (`index.md`).** Each task folder under `{task-root}/{task-id}/` carries an `index.md` catalogue, maintained **exclusively by the `wf:index` subagent**. After writing any per-task artifact (or a string result like a branch name), a skill calls `/wf:index <id> <slot> "<summary ≤80 chars>"`; agents already holding the absolute path invoke the Task tool with `subagent_type: wf:index` directly. Slots are catalogued in `plugins/wf/agents/index.md`; unknown slots become custom rows. The underlying artifacts are the source of truth — a missed index call goes stale but loses nothing.
-
----
-
-## 10. Working principles (guardrails for the v1 → v2 build)
-
-- **Stage, don't big-bang.** This is prompt text with no compiler — a one-shot refactor fails *silently* (a worse QA plan, a false-positive verdict on the next real task). One issue = one branch/PR with its own acceptance check.
-- **Eval between stages.** Use the `skill-creator` eval harness to baseline behaviour before migrating a skill; a migration is "done" only when its eval is **no worse than baseline**.
-- **Freeze the interface, not the gold-plating.** Pin the contract *shape* with only the slots the current step needs; extend as later capabilities land.
-- **Reference the contract by slot/kind name** — never read a profile or fragment "by heading". If the shape must change, change the contract **and** its validator together.
-- **Design for arbitrary capabilities.** Never special-case "the migration domain" or assume one active capability — core composes whatever is registered (narrow, multiple, or a whole-project bundle).
-
-**Anti-patterns:**
-
-- **No Windows-style paths.** Forward slashes in all `SKILL.md` content, even on Windows — they work across PowerShell, Bash, Node, Git, and don't collide with markdown's escape character. Backslashes only inside regexes and real-escape code fences.
-- **Don't offer multiple approaches without a default.** Pick the right tool and state it; mention alternatives only as escape hatches ("Use X; for Y, use Z instead").
-- **Don't punt to the model.** If a step has an exact command, write it. If a decision has one right answer in context, make it. "The model will figure it out" is not a spec.
-- **Don't reference tools or fields the runtime doesn't expose.** Undocumented frontmatter and references to non-existent helpers pass through literally.
-
----
-
-## 11. Plugin mechanics
-
-**Manifests.** `plugins/wf/.claude-plugin/plugin.json` carries `name` (`wf`), `version`, `description`, `author`, `repository`, `license`, `keywords`. `.claude-plugin/marketplace.json` carries the marketplace metadata and a `plugins[]` entry (`name`, `source: ./plugins/wf`, `version`, …). Run `claude plugin validate` before publishing; unrecognised fields warn, type mismatches fail.
-
-**Versioning — multi-plugin marketplace.** The marketplace hosts more than one plugin (`wf` core + capability packs such as `wf-git`, `wf-ado`, `wf-audit`), each versioned independently. Two invariants:
-
-- **Per plugin:** `plugins/<plugin>/.claude-plugin/plugin.json` → `version` **equals** that plugin's `version` in the `.claude-plugin/marketplace.json` `plugins[]` entry. Bump both together when that plugin changes.
-- **Marketplace:** `.claude-plugin/marketplace.json` → top-level `version` bumps on **any** change (a bump to any plugin, an added/removed plugin).
-
-Plugins are consumed straight from the marketplace, so **every PR to `main` is a release — bump the touched plugin's two fields plus the marketplace top-level on every merged change** (a change spanning both plugins bumps each plugin's pair + the top-level). Pick the tier by what changed:
-
-- **PATCH** (`0.5.0 → 0.5.1`) — no change to the invocation contract: a bug fix, reworded description, fixed URL, internal refinement, a `references/` edit, or **any docs-only change** (README, this file).
-- **MINOR** (`0.5.0 → 0.6.0`) — a backward-compatible capability change: a new skill/agent, a whole new **family** (one bump for the batch), a new subcommand/argument, a new config key or contribution kind. **Pre-1.0, breaking changes also bump MINOR** — renaming/removing a skill, changing an argument, or changing a final-output block shape that downstream skills grep.
-- **MAJOR** (`→ 1.0.0`) — reserved, to declare the contract stable. After 1.0 the breaking changes above move up to MAJOR.
-
-One bump per PR; on a mixed PR use the **highest** applicable tier. The contract that defines "breaking" is the invocation surface: slash-command names, skill arguments, and final-output block shapes.
-
-**Commit workflow.** **Always commit to a feature branch, never to `main`.** Check the branch first (`git rev-parse --abbrev-ref HEAD`); if it's `main`/`master`, create `feat/…`, `fix/…`, or `chore/…` (matching the `branch` prefix taxonomy) — `git checkout -b` carries any dirty changes onto it. Stage, commit, push; the user opens the PR. The repo is prose-only **except** `plugins/wf/mcp/` — the core plugin's bundled Node/TypeScript MCP resolver runtime, which ships its own `package.json`, lockfile, and esbuild build (a committed self-contained `dist/` bundle). Everything else in this directory remains prose (no `package.json`, no lint configs).
-
-**NO AI ADS.** Commit messages, PR descriptions, and any artifact a skill writes must **never** include `Co-Authored-By: Claude` trailers, "Generated with Claude Code" footers, or any AI-attribution, emoji, or promotional tagline. Commit like a human. Remove any such trailer you find in an existing template.
-
----
-
-## 12. Adding things — checklists
-
-**New skill:** ① bare `<name>` slug (no `wf-`). ② `skills/<name>/SKILL.md` with frontmatter (`name` = folder; third-person `description` with what + when; tailored `allowed-tools`). ③ H1 `# /wf:<name> — <tagline>`. ④ body from the closest existing skill template. ⑤ define the zero-argument default. ⑥ `## Edge Cases`. ⑦ Final-output block ending in `Next:`. ⑧ if it reads config, point missing-file users to `/wf:init`. ⑨ if it warrants isolation, add `agents/<name>.md` (pick pattern B/C/D — §8). ⑩ if it produces a per-task artifact, call `/wf:index`. ⑪ update `plugins/wf/README.md`. ⑫ bump the version (§11). ⑬ keep every doc the skill reads at runtime to the ops/reference budget (§7): behavior-bearing ops ≤150 lines, one level deep, TOC past 100 lines.
-
-**New capability:** ① choose `kind` (adapter/feature/both). ② create `{path}/manifest.md` with the fragments table (`phase | contribution-kind | dispatch | scope`). ③ author each fragment as prose at the path its row names. ④ for partitioned kinds, declare a non-overlapping `scope` (`surface` token / `source→target` pair). ⑤ add constitution `article`s if it has non-negotiables. ⑥ for `feature` kinds, ship skills/agents as a normal plugin and document them under `skills:`. ⑦ if it fills contract slots with project values, ship an authoritative default template — the baseline shape (which may carry angle-bracketed placeholder slots) a project overrides — and declare it via `profile-template:` — `init` seeds a downstream override at `_local/profiles/<name>.profile.json` only on divergence (hybrid precedence: override > default). ⑧ register it in the `## Capabilities` registry (at the `registryPath`-resolved location, default `_local/config.md`). ⑨ ensure registry validation passes (§5). ⑩ author every runtime-read fragment to the ops/reference budget (§7): ops ≤150 lines, rationale in a paired reference file never read at boot, TOC past 100 lines.
-
-**Editing rules:** edit `SKILL.md` in place — renaming/moving breaks invocation and existing task artifacts. Never hardcode project constants (add a config key instead). Preserve final-output block shapes. After editing a core skill, grep it for stack/domain strings — zero hits.
+Edit `SKILL.md` in place — renaming/moving breaks invocation and existing task artifacts. Never hardcode project constants (add a config key). Preserve final-output block shapes. After editing a core skill, grep it for stack/domain strings — zero hits. Bump the version (§8).
