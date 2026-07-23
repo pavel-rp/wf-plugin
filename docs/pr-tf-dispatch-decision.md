@@ -13,7 +13,7 @@ figures are cited below.
 For a single `/wf:ship` shipper, the recoverable **caller-side** context on the pr/tf tail is
 narrow, and the one genuinely-inline step (`/wf:tf`) cannot be isolated without exceeding the
 proven `host → agent → agent` nesting depth. Both steps therefore **stay inline**. This is the
-spec's explicitly-complete "keep both inline, no source change" outcome (Success Criterion 3), and
+spec's explicitly-complete "keep both inline, no source change" outcome (Success Criterion 4), and
 it fixes the home `/wf:tf` is left in for the serialized downstream chain (WF-378 context ceiling,
 WF-379 index inlining).
 
@@ -87,7 +87,7 @@ right lever.
 - **Frozen blocks preserved verbatim.** `SHIP — <Merged | Blocked>`, `PR — <created | exists>`, and
   `TF — <finalized | already-finalized | partial>` are byte-for-byte unchanged; no downstream
   consumer of any of them is affected (grep-confirmed across `plugins/`).
-- **No fixture-confirming run required.** The `fleet-two-task` confirming run (Criterion 4) is
+- **No fixture-confirming run required.** The `fleet-two-task` confirming run (Criterion 3) is
   conditional on a shipped shape change; none shipped, so the grep confirmation alone closes the
   contract-guard step (Criterion 6).
 - **Scope.** Only `plugins/wf` version metadata + the marketplace top-level `version` row are
