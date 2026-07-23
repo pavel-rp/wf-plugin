@@ -13,7 +13,7 @@ keys, safety rules).
 
 ## Terminal block
 
-`SHIP — <Merged | Blocked>`
+`SHIP — <Merged | Blocked | Handed-off>`
 
 ## Slots
 

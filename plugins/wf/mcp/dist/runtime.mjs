@@ -20722,7 +20722,8 @@ function parseCoreConfig(markdown) {
     qaBaselineIgnore: normalizeValue(kv.get("qa baseline ignore")),
     seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
     seedBacklogPath: normalizeValue(kv.get("backlog path")),
-    standupStatuses: normalizeValue(kv.get("standup statuses"))
+    standupStatuses: normalizeValue(kv.get("standup statuses")),
+    contextCeiling: normalizeValue(kv.get("context ceiling"))
   };
 }
 

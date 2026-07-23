@@ -86,11 +86,13 @@ test("parseCoreConfig reads values and treats placeholders as unset", () => {
 | **Verify Command** | \`npm run typecheck\` |
 | **QA Rules** | \`<none>\` |
 | **Architecture Doc** | \`<ARCHITECTURE_DOC: path>\` |
+| **Context Ceiling** | \`150000\` |
 `);
   assert.equal(cfg.taskRoot, "_local");
   assert.equal(cfg.verifyCommand, "npm run typecheck");
   assert.equal(cfg.qaRules, null);
   assert.equal(cfg.seedArchitectureDoc, null);
+  assert.equal(cfg.contextCeiling, "150000");
 });
 
 test("parsePluginAnchor recognizes plugin-anchored tokens", () => {

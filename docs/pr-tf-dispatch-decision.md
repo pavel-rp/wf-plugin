@@ -84,9 +84,10 @@ right lever.
 - **No source change to dispatch shape.** `plugins/wf/agents/tf.md` is **not** created;
   `plugins/wf/skills/ship/SKILL.md` Phase 5 keeps its inline `/wf:tf` Skill-tool call;
   `plugins/wf/skills/tf/SKILL.md` is unchanged.
-- **Frozen blocks preserved verbatim.** `SHIP — <Merged | Blocked>`, `PR — <created | exists>`, and
-  `TF — <finalized | already-finalized | partial>` are byte-for-byte unchanged; no downstream
-  consumer of any of them is affected (grep-confirmed across `plugins/`).
+- **Frozen block shapes preserved.** `SHIP — <Merged | Blocked | Handed-off>`, `PR — <created | exists>`, and
+  `TF — <finalized | already-finalized | partial>` keep their grepped block shape unchanged; the `SHIP —`
+  status enum may widen (WF-378 added `Handed-off`) while its `Task/Built/PR/Checks/Merge/Next` fields stay
+  fixed. No downstream consumer of any of them is affected (grep-confirmed across `plugins/`).
 - **No fixture-confirming run required.** The `fleet-two-task` confirming run (Criterion 3) is
   conditional on a shipped shape change; none shipped, so the grep confirmation alone closes the
   contract-guard step (Criterion 6).
