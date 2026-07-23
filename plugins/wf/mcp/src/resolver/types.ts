@@ -212,7 +212,12 @@ export interface Diagnostic {
 /** Provider-surface ownership index (derived from active capabilities'
  *  `provider` fragments). Metadata only — no fragment body. */
 export interface ProviderOwnershipRecord {
-  /** `delivery` | `tracker` | `qa-execution:engine` | `qa-execution:host`. */
+  /** The bare scope token this record is keyed on: `delivery` | `tracker` |
+   *  `engine` | `host` (the `provider` fragment's `scope`). The
+   *  `qa-execution:`-prefixed composite form (`qa-execution:engine` /
+   *  `qa-execution:host`) appears only in the caller-supplied query token and
+   *  the echoed `ProviderResponse.surface` — never in this stored record, which
+   *  the query side normalizes down to the bare scope before lookup. */
   surface: string;
   owner: string;
   /** Normalized dispatch target path, or `null`. */
