@@ -34,7 +34,7 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 2. Take `{task-root}` from `coreConfig.taskRoot`. Never hardcode it.
 3. **Resolve `{task-id}`** (the opaque task id — used for the task folder and the `Task:` line). When `<id>` is passed, use it verbatim. When inferring from the current branch, extract the first 3+-digit run from the resolved branch name (via `current-branch-query`) as a token, then resolve it against `{task-root}` — apply the same first-3+-digit-run extraction to each existing folder's name and compare it to the token. **Exactly one match** — reuse that folder's full name as `{task-id}` verbatim (never reconstruct it from a prefix). **More than one match** — return `BRANCH — Error` with reason "Ambiguous id: the branch-inferred token `<token>` matches more than one task folder; pass the id explicitly." **Zero matches** — hold the bare token as `{task-id}`; this is not fatal (step 5 no longer treats a missing task folder as an error — Step 2 resolves a title without one). (No numeric token at all was already handled by the Inputs section's no-id error.) Also derive **`{numeric-id}`** — the first 3+-digit run of `{task-id}` — used **only** for the branch name in Step 2, never for the folder or the `Task:` line.
 4. Take the absolute workspace root from the `resolve_config({ workspaceRoot, ... })` `workspaceRoot` value (its already-normalized `workspace-root-resolve` result). With no delivery provider registered this is the plain-directory resolution (not an error). With a provider registered but no working tree to resolve, return `BRANCH — Error` with reason "Not inside a resolvable workspace."
-5. Compute task folder. If `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root: `<workspace-root>/{task-root}/{task-id}/`. Hold the result as `<task-folder-abs>` (always absolute — passed verbatim to wf:index in Step 4). **A missing task folder is not fatal** — this agent works from any state. Hold whether it exists as `<task-folder-exists>`; Step 2 resolves a title with or without it, and Step 4's index update already tolerates a nonexistent target non-fatally (its own established behavior, unchanged here).
+5. Compute task folder. If `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root: `<workspace-root>/{task-root}/{task-id}/`. Hold the result as `<task-folder-abs>` (always absolute — the task folder Step 4's inline index update resolves). **A missing task folder is not fatal** — this agent works from any state. Hold whether it exists as `<task-folder-exists>`; Step 2 resolves a title with or without it, and Step 4's index update already tolerates a nonexistent target non-fatally (its own established behavior, unchanged here).
 6. `{task-id}` is used in the `Task:` line of the final block.
 
 ## Step 2 — Resolve branch name
@@ -82,28 +82,9 @@ Derive `<branch-name>` from Step 2 (unchanged, tracker-side logic — out of sco
 
 ## Step 4 — Update the index
 
-After a successful path through Step 3 (`created`, `switched`, or `already-active`), call
-`resolve_routing` immediately before index work with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "index"`, `unitIds: ["branch:index"]`, `shapeEvidence: {
-workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent:
-false, ambiguity: "none", risk: "low", toolWork: "bounded", validation: "mechanical",
-contextIsolation: "useful", independentReview: false, returnContract:
-"mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and
-`supportsEffortSelector: false`. Emit the compact operational record (role; shape + reason;
-model/effort inheritance fallback + source; basis; attempt; escalation origin; masking;
-actual model when available; diagnostic; retained units; retry disposition), separately
-from artifact attribution. A `status: stop` or non-null `diagnostic` degrades exactly like
-an `INDEX — Error`: retain branch success and append the index failure to tracking. Otherwise
-obey `executionShape`; this evidence selects `isolated`, so invoke one Task with no selector
-arguments.
+After a successful path through Step 3 (`created`, `switched`, or `already-active`), catalogue the branch by invoking `/wf:index {task-id} branch "<branch-name>"` through the **Skill** tool. The wrapper owns the fixed `index` routing decision and performs the read-modify-write of `index.md` inline in this agent's own context; never dispatch `wf:index` directly. Pass the resolved `{task-id}` (Step 1), the literal slot `branch`, and the resolved `<branch-name>` as the summary.
 
-Invoke the **Task** tool with `subagent_type: wf:index`, passing:
-
-- `task-folder` — `<task-folder-abs>` (the absolute path computed in Step 1, step 5 — never the relative `{task-root}/...` form)
-- `slot` — the literal string `branch`
-- `summary` — the resolved `<branch-name>` (no quotes)
-- `calling-skill` — the literal string `/wf:branch`
-
-If the wf:index subagent returns `INDEX — Error`, do NOT fail the branch operation — the branch was created/switched successfully and that's the primary contract. Append the index failure as a parenthetical to `<tracking>` (e.g., `<remote>/<branch-name> (index update failed)`) but still emit the `BRANCH — <state>` success block.
+If the wrapper returns `INDEX — Error`, do NOT fail the branch operation — the branch was created/switched successfully and that's the primary contract. Append the index failure as a parenthetical to `<tracking>` (e.g., `<remote>/<branch-name> (index update failed)`) but still emit the `BRANCH — <state>` success block.
 
 ## Step 5 — Final Output
 

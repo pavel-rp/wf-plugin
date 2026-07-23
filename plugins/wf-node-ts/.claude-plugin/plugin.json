@@ -1,6 +1,6 @@
 {
   "name": "wf-node-ts",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "wf Node/TypeScript stack pack — the node-ts capability owning a dependency-free unit-test harness for pure TS helpers (parsers, formatters, coercion helpers) that need no Angular runtime. Composed with wf core via the capability registry; the implement phase aggregates its test-authoring guidance when registered. Tracker-agnostic (requires: git only). Ships /wf-node-ts:init for one-command self-registration.",
   "author": {
     "name": "Pavel Kalabin",

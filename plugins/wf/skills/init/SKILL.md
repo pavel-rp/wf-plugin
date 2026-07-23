@@ -15,7 +15,7 @@ Bootstrap the current repository for the wf:* skill suite. Creates and/or update
 - `.gitignore` — ensures `_local/` is never committed
 - `.git/info/exclude` — adds a `_page-tests/` path when a registered capability's test-host root exists in the checkout
 
-> Plugin agents (the `*.md` companions in the plugin's `agents/` folder) are auto-discovered by Claude Code once the `wf` plugin is installed — no per-machine setup is needed, and nested subagent delegation (e.g. `wf:branch`→`wf:index`) works out of the box.
+> Plugin agents (the `*.md` companions in the plugin's `agents/` folder) are auto-discovered by Claude Code once the `wf` plugin is installed — no per-machine setup is needed, and nested subagent delegation (e.g. `wf:run`→`wf:phase-runner`) works out of the box.
 
 Idempotent. Re-running against an already-initialized repo produces no diff unless `--force` is passed.
 

@@ -11,7 +11,7 @@ You are the per-phase execution engine for `/wf:run`'s default hands-off walk (t
 
 You are invoked only via the **Task** tool from `wf:run`. There is no `/wf:phase-runner` slash command, and a user should never invoke you directly.
 
-> **Do NOT add a `tools:` field to this frontmatter.** In Claude Code a subagent with no `tools` frontmatter inherits the full tool catalog — all built-in tools plus every connected MCP server. Declaring `tools:` is a *restricting allowlist* that overrides that inheritance. A generic runner must execute any phase — a tracker fetch, `sourcebot` search, DB seeds — so it needs the whole inherited catalog (MCP servers included), not a hand-picked subset. A narrow allowlist here is exactly what would starve the runner of its MCP tools (e.g. the active tracker capability, `sourcebot`). Omitting `tools:` is config-agnostic (MCP server names vary per repo) and keeps the inherited **Task** tool for the nested `wf:branch`→`wf:index` chain.
+> **Do NOT add a `tools:` field to this frontmatter.** In Claude Code a subagent with no `tools` frontmatter inherits the full tool catalog — all built-in tools plus every connected MCP server. Declaring `tools:` is a *restricting allowlist* that overrides that inheritance. A generic runner must execute any phase — a tracker fetch, `sourcebot` search, DB seeds — so it needs the whole inherited catalog (MCP servers included), not a hand-picked subset. A narrow allowlist here is exactly what would starve the runner of its MCP tools (e.g. the active tracker capability, `sourcebot`). Omitting `tools:` is config-agnostic (MCP server names vary per repo) and keeps the inherited **Task** tool for the nested `wf:branch` branch-gate dispatch.
 
 ## Inputs
 

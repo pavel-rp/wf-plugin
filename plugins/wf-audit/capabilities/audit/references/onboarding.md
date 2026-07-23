@@ -85,7 +85,7 @@ core surface — it is dispatched via the **Task** tool on request.
   Absent `04_verify.md` → the report stops and directs the requester to `/wf:verify-spec` rather
   than emit a hollow composite.
 - **Artifact:** `{task-root}/{task-id}/09_retrospective.md`, carrying model attribution and no
-  AI-attribution/promotional content; catalogued via `wf:index` under the `retrospective` slot.
+  AI-attribution/promotional content; catalogued via `/wf:index` under the `retrospective` slot.
 
 ## Dependencies
 

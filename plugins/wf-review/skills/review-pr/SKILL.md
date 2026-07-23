@@ -65,7 +65,7 @@ Zero-argument invocation reviews the PR for the current branch.
 - The write-side delivery operation `pr-comment-post`, strictly through the resolved
   provider, to post the review.
 - Invoke the **Task** tool with `subagent_type: wf:context-distiller` (distil existing
-  review threads or CI bulk) and `subagent_type: wf:index` (catalogue the run).
+  review threads or CI bulk); invoke `/wf:index` through the **Skill** tool (catalogue the run).
 
 **Forbidden:**
 
@@ -185,9 +185,9 @@ post through the resolved provider:
 
 ## Phase 6 — Index
 
-Invoke the **Task** tool with `subagent_type: wf:index` (when a resolvable task folder exists
-for this branch) to catalogue the run under the `review-pr` slot. A stale index loses nothing,
-so an `INDEX — Error` never fails the run.
+Invoke `/wf:index` through the **Skill** tool (when a resolvable task folder exists
+for this branch) to catalogue the run under the `review-pr` slot; its wrapper writes
+`index.md` inline. A stale index loses nothing, so an `INDEX — Error` never fails the run.
 
 ---
 

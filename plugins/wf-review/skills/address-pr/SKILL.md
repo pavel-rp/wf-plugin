@@ -69,8 +69,8 @@ Zero-argument invocation addresses the PR for the current branch.
   confirmed finding names.
 - Write-side delivery operations, strictly through the resolved provider: `pr-comment-post`
   (replies), `review-thread-resolve`, `commit`, `push-upstream`.
-- Invoke the **Task** tool with `subagent_type: wf:context-distiller` (bulk distillation) and
-  `subagent_type: wf:index` (catalogue the run).
+- Invoke the **Task** tool with `subagent_type: wf:context-distiller` (bulk distillation);
+  invoke `/wf:index` through the **Skill** tool (catalogue the run).
 
 **Forbidden:**
 
@@ -211,9 +211,9 @@ commit and push the addressed fixes through the delivery provider so a re-review
 3. `push-upstream(<branch>)` — updates the PR branch. A `failed (<reason>)` push is non-fatal
    to the commit; surface the reason on the `Push:` line.
 
-Then invoke the **Task** tool with `subagent_type: wf:index` (when a resolvable task folder
-exists for this branch) to catalogue the run under the `address-pr` slot — a stale index
-loses nothing, so an `INDEX — Error` never fails the run.
+Then invoke `/wf:index` through the **Skill** tool (when a resolvable task folder
+exists for this branch) to catalogue the run under the `address-pr` slot; its wrapper writes
+`index.md` inline — a stale index loses nothing, so an `INDEX — Error` never fails the run.
 
 ---
 

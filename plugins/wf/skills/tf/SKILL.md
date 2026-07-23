@@ -47,7 +47,7 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 - Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config({ workspaceRoot, ... })` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query).
 - Invoke `pr-merge` (delivery) once for the task's pull request, and `post_comment` / `set_status` (tracker) once each, all through the surface's `wf-resolver` `resolve_provider({ workspaceRoot, surface })` record (read the resolved fragment and follow it in-context).
 - Write/create `09_finalize.md` **only** inside the task folder, and **move** the task folder to `{task-root}/_archive/` — both are local operations inside `{task-root}` (the whole `_local/` tree is gitignored), never a version-control operation.
-- Invoke the **Task** tool with `subagent_type: wf:index` to update the per-task index.
+- Invoke `/wf:index` through the **Skill** tool to update the per-task index (the wrapper writes `index.md` inline).
 
 **Forbidden:**
 
@@ -73,7 +73,7 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 
 ## Phase 2: Resolve the providers once
 
-tf is a **direct invocation** — the top of its own chain — so it self-resolves each surface it needs **once** and forwards nothing (its only spawn is `wf:index`, which invokes no provider operation and receives no resolution record — `invocation-runtime.ops.md` §"Run-scoped provider forwarding").
+tf is a **direct invocation** — the top of its own chain — so it self-resolves each surface it needs **once** and forwards nothing (its sole child step, the `/wf:index` update, now runs inline in tf's own context and invokes no provider operation, so no resolution record flows to it — `invocation-runtime.ops.md` §"Run-scoped provider forwarding").
 
 Call the bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface })` once per required surface — `resolve_provider({ workspaceRoot, surface: "delivery" })` and `resolve_provider({ workspaceRoot, surface: "tracker" })`. Each returns the run-scoped resolution record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`; the resolver has already read the `## Capabilities` registry, each owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest self-heal, per `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest self-heal"), so core performs **no** registry / manifest / plugin-root read of its own. Hold each surface's record — its `owner` + fragment `ref`, or its `state: unconfigured`/`unrecoverable` outcome (with `diagnostics` for the hedged diagnosis) — to dispatch operations against in the phases below by obtaining each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`, keyed on the record's `owner` and fragment `ref`) and following it in this skill's own context — never a raw `Read` of the path (the metadata queries return only paths/metadata; the body comes from `resolve_content({ workspaceRoot, ... })`). No operation runs yet. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback (WF-272 diagnostics/recovery).
 
@@ -130,28 +130,13 @@ Move the task folder out of the active task root into the archive, so a finalize
 
 ## Phase 6: Update the index
 
-After archiving, call `resolve_routing` immediately before index work with `workspaceRoot:
-<absolute pwd -P workspace root>`, `role:
-"index"`, `unitIds: ["finalize:index"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic",
-unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork:
-"bounded", validation: "mechanical", contextIsolation: "useful", independentReview:
-false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`,
-`supportsModelSelector: false`, and `supportsEffortSelector: false`. Emit the compact
-operational record (role; shape + reason; model/effort inheritance fallback + source;
-basis; attempt; escalation origin; masking; actual model when available; diagnostic;
-retained units; retry disposition), separately from artifact attribution. Treat `status:
-stop` or a non-null `diagnostic` exactly like an index error so finalization remains
-successful. Otherwise obey `executionShape`; this evidence selects `isolated`, so invoke
-one Task without selector arguments.
+After archiving, catalogue the outcome by invoking `/wf:index {task-id} finalize "<summary>"` through the **Skill** tool. The wrapper owns the fixed `index` routing decision and performs the read-modify-write of `index.md` inline in tf's own context; never dispatch `wf:index` directly. Pass:
 
-Invoke the **Task** tool with `subagent_type: wf:index`, passing:
+- `{task-id}` — the archived task's id (its folder basename); the wrapper resolves the `index.md` that travelled into `{task-root}/_archive/{task-id}/`.
+- the literal slot `finalize`.
+- a ≤80-char summary reflecting the outcome, e.g. `merged <ref>; closed as <status>` (or `local-only finalize` in bare-core).
 
-- `task-folder` — the **archived** absolute path (`{task-root}/_archive/{task-id}/`); `wf:index` derives `{task-id}` from the folder basename.
-- `slot` — the literal string `finalize`.
-- `summary` — a ≤80-char line reflecting the outcome, e.g. `merged <ref>; closed as <status>` (or `local-only finalize` in bare-core).
-- `calling-skill` — the literal string `/wf:tf`.
-
-If `wf:index` returns `INDEX — Error`, do not fail the finalize — record the index outcome as failed and still emit the success block.
+If the wrapper returns `INDEX — Error`, do not fail the finalize — record the index outcome as failed and still emit the success block.
 
 ---
 
