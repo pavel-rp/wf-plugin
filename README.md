@@ -24,7 +24,7 @@ Then, in any git repo you want to work in:
 /wf:init
 ```
 
-`/wf:init` is per-repo: it scaffolds `_local/` for per-task artifacts, adds gitignore entries, and writes the Node test runner. No per-machine setup is needed — Claude Code auto-discovers the plugin's skills and agents on install, and nested subagent delegation (e.g. `wf:branch`→`wf:index`) works out of the box.
+`/wf:init` is per-repo: it scaffolds `_local/` for per-task artifacts, adds gitignore entries, and writes the Node test runner. No per-machine setup is needed — Claude Code auto-discovers the plugin's skills and agents on install, and nested subagent delegation (e.g. `wf:run`→`wf:phase-runner`) works out of the box.
 
 ## What's in the plugins
 

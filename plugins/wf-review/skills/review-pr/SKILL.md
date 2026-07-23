@@ -1,7 +1,7 @@
 ---
 name: review-pr
 description: Reviews a pull request for correctness, security, and design, then posts verified findings as a PR-level summary plus file-level findings anchored by file and line. Every finding is confirmed against the real code before it is posted — no speculation, no vibes. Routes all host interaction through the active delivery provider and writes no AI attribution into anything it posts. Use to review a PR and leave actionable, grounded feedback.
-allowed-tools: [Read, Grep, Glob, Bash, Task]
+allowed-tools: [Read, Write, Edit, Grep, Glob, Bash, Task]
 ---
 
 # /wf-review:review-pr — Review a PR, post only verified findings

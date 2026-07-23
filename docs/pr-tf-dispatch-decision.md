@@ -74,6 +74,13 @@ the over-nesting `/wf:pr`'s inline-in-shipper design deliberately avoids. Per sp
 isolation that nests deeper than `host → agent → agent` is rejected on that ground and the
 alternative (keep inline) is chosen.
 
+> **WF-379 update.** As of WF-379 the `/wf:index` update is an **inline** read-modify-write in the
+> caller's own context — it no longer dispatches a `wf:index` agent, so it adds **no** nesting level.
+> The depth arithmetic above (which counted `wf:index` as a dispatched level) is now counterfactual:
+> inline `/wf:tf`'s index update is `fleet → shipper` = host → agent, and an isolated `wf:tf` would be
+> `fleet → shipper → wf:tf` = host → agent → agent — within the cap. This satisfies reopen criterion
+> (b) below; criterion (a)'s measured-slice requirement still governs, so `/wf:tf` remains inline.
+
 **Conclusion.** An unquantified, not-shown-large recoverable win does not justify a new agent body, a
 split `tf` procedure, and a depth-4 `wf:index` nest. Keep `/wf:tf` inline. Isolating it belongs (if
 ever) to the context-ceiling work (WF-378), where a hand-off protocol — not a deeper nest — is the

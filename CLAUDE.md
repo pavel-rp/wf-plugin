@@ -128,7 +128,7 @@ Subagents (`agents/<name>.md`, bare, auto-discovered) — the two CI-enforced go
 - **`## Edge Cases`** — exact heading for the stop-conditions section.
 - **Model attribution.** Every artifact carries the runtime model id — a `**Model:** <id>` line (or verb-shaped variant: `**Fetched by:**`, `**Audited by:**`); write `unknown` rather than guessing.
 - **Tool preferences.** Prefer indexed MCP (`sourcebot` for code, `mssql_*` for DB); fall back to `Grep`/`Glob` only when none fits. ADO MCP tools are read-only.
-- **Per-task index.** After writing a per-task artifact, call `/wf:index <id> <slot> "<summary>"` (the sole writer of each task's `index.md`); agents holding the path invoke `subagent_type: wf:index` directly.
+- **Per-task index.** After writing a per-task artifact, call `/wf:index <id> <slot> "<summary>"` (the sole writer of each task's `index.md`); it performs the single-row read-modify-write inline in the caller's context via the Skill tool — no dispatched subagent.
 
 ---
 
