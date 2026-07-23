@@ -30,6 +30,14 @@ Project-specific values used by all `wf:*` skills. Skills MUST read this file at
 
 Must exit 0 when the project typechecks (including framework-level checks: templates, metadata, decorators) and non-zero on any error. `wf:init` infers this from your project's `package.json` scripts and framework signals — review the value after running and adjust if the detection picked the wrong script or directory. Used by `wf:plan`, `wf:lite`, and `wf:implement` before they hand off a diff.
 
+## Ship
+
+| Key | Value |
+|-----|-------|
+| **Context Ceiling** | `150000` |
+
+The stated context bound for a single `/wf:ship` run, in approximate accumulated tokens per shipper. `/wf:ship` checks it at each inter-phase boundary (after a phase's output is committed and pushed); when the run's estimated accumulated context would cross the ceiling, ship flushes and **hands off to a fresh `/wf:ship <id>`** that resumes detect-first — so a long ship stays bounded and still reaches a merged PR with no lost state. **Lower it to force an earlier hand-off** (useful for exercising the crossing); raise it to let a run grow further before handing off. An absent or `<none>` value falls back to the shipped default (`150000`), so a repo initialized before this key existed degrades gracefully. Consumed only by `/wf:ship`.
+
 ## QA
 
 | Key | Value |

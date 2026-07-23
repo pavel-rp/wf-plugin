@@ -68,6 +68,25 @@ Every executable sibling-Skill edge below is routed independently and immediatel
 
 ---
 
+## Context ceiling checkpoint
+
+`ship` drives each gated phase and the PR/finalize tail inline, reading back a block from every edge it dispatches, so its context grows monotonically across a long run — left unbounded a large task can grow past a usable size (a measured run reached 422K). To hold the run under a **stated ceiling**, `ship` checkpoints at each inter-phase boundary and, when the run would cross the ceiling, **hands off to a fresh `/wf:ship <id>`** that resumes detect-first: the run stays bounded and still reaches a merged PR with no lost state. The evidence for hand-off over compaction, the carried-state set, the resumption path, and the trigger-signal design live in `references/context-ceiling.md` — read on the ceiling path only, never restated here.
+
+**The ceiling.** Read it from the Phase-1 `resolve_config` record's `coreConfig.contextCeiling` (project config key `Context Ceiling`). Interpret `<none>`, absent, or an unparseable value as the shipped default of **150000** approximate accumulated tokens — the lean fallback, never a hardcoded project value (Core Article 8).
+
+**The in-run estimate (an observable trigger, never "the model decides").** At each boundary take `max(primary, proxy)`:
+- **primary** — a running approximate-token sum of every block `ship` has read back from its dispatched edges plus every artifact it has read this run (cumulative ingested-text characters ÷ 4), added to a fixed base for the skill body + resolved config + Phase-1 records. Directly observable: the text is in `ship`'s own context.
+- **proxy (floor)** — inter-phase boundaries crossed so far × a conservative per-phase increment, so the estimate never under-counts a large inline phase.
+
+**The checkpoint (flush-then-yield).** Apply it at each inter-phase boundary marked *[ceiling checkpoint]* in Phases 2–5. A boundary is crossed only after the just-completed phase's output is on the task branch and pushed (the **flush invariant**). If `estimate + one-phase margin ≥ ceiling`:
+
+1. **Flush.** Ensure the work produced so far is committed **and pushed** — the branch carries every commit on the remote — so the durable state (pushed branch, and the PR once Phase 3 has run) survives the boundary. Never yield with unpushed work; that is the only thing a hand-off could strand.
+2. **Yield.** Stop before the next edge and emit `SHIP — Handed-off` with `Next: /wf:ship <id>`. Only the task id crosses in-context; every other piece of state is durable (pushed branch, open PR, task folder) and re-derived detect-first by the receiving fresh `/wf:ship <id>` — which returns `BRANCH — already-active`, `/wf:run` advances from the artifacts, Phase 3 `pr-detect` opens the PR iff none exists (so the pushed-branch/unopened-PR gap is never stranded), and Phase 5 `/wf:tf` is detect-first (never a double-merge).
+
+Below the ceiling the checkpoint is invisible: `ship` proceeds to the next edge unchanged. When no push has happened yet (the earliest build boundaries) the flush still pushes the branch so the code state is durable; `references/context-ceiling.md` covers how a same-context resume and a fresh-worktree resume each recover.
+
+---
+
 ## Phase 1: Resolve the task and require a delivery provider
 
 1. **Resolve `{task-id}`** — use the `<id>` argument verbatim when passed; otherwise infer it per the zero-argument default above. Stop with a `SHIP — Blocked` block (ending in `Next: /wf:ship <id>`) if inference cannot yield exactly one task folder.
@@ -86,7 +105,7 @@ Every executable sibling-Skill edge below is routed independently and immediatel
 1. **Ensure the task branch.** Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "branch"` and `unitIds: ["ship:branch"]` under §"Fixed sibling-Skill routing", then invoke `/wf:branch <id>` through the Skill tool so all subsequent source lands on the task branch (idempotent — `BRANCH — already-active` when already on it). On `BRANCH — Error`, surface the reason and stop. On `BRANCH — created`/`switched`/`already-active`, inspect `Carry:`: `none` or `applied` continues; a preserved-entry/manual-follow-up carry means the branch switch succeeded but the intended working set is not safely reapplied, so emit `SHIP — Blocked`, name that manual follow-up, preserve all work, and stop before any run/phase/PR/finalize edge. Ordinary dirty work is carried progress, not by itself a branch error.
 
 2. **Loop the pipeline driver.** Route the initial edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke `/wf:run <id>` through the Skill tool and read its `RUN —` block:
-   - **Gated** (`RUN — gated`, whose `Run next:` field names a phase command) → route the exact dynamic phase edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:phase"]`, invoke that exact `/wf:<phase> <id>` command through the Skill tool, then route the resume edge independently with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:run-resume"]` and **re-invoke `/wf:run <id>`**. This is the unattended equivalent of a human clearing the gate.
+   - **Gated** (`RUN — gated`, whose `Run next:` field names a phase command) → route the exact dynamic phase edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:phase"]`, invoke that exact `/wf:<phase> <id>` command through the Skill tool, then route the resume edge independently with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:run-resume"]` and **re-invoke `/wf:run <id>`**. This is the unattended equivalent of a human clearing the gate. **[ceiling checkpoint]** After each gated phase clears and before the next loop iteration, apply the context-ceiling checkpoint (§"Context ceiling checkpoint").
    - **Complete** (`RUN — complete` / ready for review) → the SDD build chain is done; continue to Phase 3.
    - **Blocked / error** (`RUN — blocked` / `RUN — error`, or a driven phase returns its own `… — Error`, or a driven phase halts awaiting human input) → `SHIP — Blocked`, surface the phase's reason, stop. Do not attempt to complete a failed phase yourself.
 
@@ -95,6 +114,8 @@ Every executable sibling-Skill edge below is routed independently and immediatel
 ---
 
 ## Phase 3: Open the pull request
+
+**[ceiling checkpoint]** Before opening the PR, apply the context-ceiling checkpoint (§"Context ceiling checkpoint"); the build chain has just completed, its output is on the branch, and this is a clean flush-then-yield boundary.
 
 1. **Open it.** Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "pr"` and `unitIds: ["ship:pr"]` under §"Fixed sibling-Skill routing", then invoke `/wf:pr <id>` through the Skill tool — it commits and pushes any pending work and opens the pull request through the delivery provider. Read its `PR —` block; on its error state → `SHIP — Blocked`, surface the reason, stop.
 
@@ -129,6 +150,8 @@ No review step runs here. `ship` drives build → checks → merge only: at this
 
 ## Phase 5: Merge and finalize
 
+**[ceiling checkpoint]** Before finalizing, apply the context-ceiling checkpoint (§"Context ceiling checkpoint"). This is the safest hand-off boundary: the branch is pushed and the PR is open, so the entire durable state survives. A fresh `/wf:ship <id>` re-detects the open PR, re-reads the settled checks, and merges — no work is repeated and nothing is stranded.
+
 Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "finalize"` and `unitIds: ["ship:finalize"]` under §"Fixed sibling-Skill routing", then invoke `/wf:tf <id>` (forwarding `--status <name>` when passed) through the Skill tool. The finalizer merges the pull request through the delivery provider's `pr-merge` operation (detect-first — never a double-merge), posts the resolution comment and closes the work item through the tracker provider when one is registered, then archives the task folder and updates the index locally. Read its `TF —` block:
 
 - `TF — finalized` (merged, or already merged) → **`SHIP — Merged`**, naming the merged pull request.
@@ -149,13 +172,14 @@ Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "
 - **Checks never settle (cap hit):** Phase 4 stops (`SHIP — Blocked`) after the capped re-reads; re-run once the pipeline finishes rather than merging early.
 - **Merge blocked at finalize:** `/wf:tf` returns `partial` (failing required checks, unresolved conversations, conflicts) → `SHIP — Blocked` with its reason; re-running `ship` after the blocker clears retries the merge safely (`/wf:tf` is detect-first and idempotent).
 - **Already shipped:** `/wf:tf` returns `already-finalized` → `SHIP — Merged` (idempotent).
+- **Context ceiling crossed mid-run:** at an inter-phase boundary the estimated accumulated context would cross the stated ceiling (`coreConfig.contextCeiling`, default `150000`) → the §"Context ceiling checkpoint" flush-then-yield fires: `ship` ensures the work so far is committed and pushed, then stops with `SHIP — Handed-off` and `Next: /wf:ship <id>`. Not an error and not a partial merge — a fresh `/wf:ship <id>` resumes detect-first (branch already-active, `/wf:run` advances from the artifacts, `pr-detect` opens the PR only if none exists, `/wf:tf` is detect-first) and drives the same run to merge with no lost or repeated work.
 
 ---
 
 ## Final Output
 
 ```
-SHIP — <Merged | Blocked>
+SHIP — <Merged | Blocked | Handed-off>
 
 Task:     {task-id}
 Built:    <ready for review | stopped at <phase>>
@@ -165,6 +189,6 @@ Merge:    <merged (<url>) | not merged — <reason>>
 Next:     <none — terminus | the command that clears the block>
 ```
 
-`Merged` — the pull request is merged and the task finalized. `Blocked` — a required condition was not met (no delivery provider, a failed/halted build phase, no pull request, red or unsettled checks, or a blocked finalize); the `Next:` line names the existing `/wf:*` command that clears it (e.g. `/wf:run <id>` to resume the build, `/wf:init` for missing config, or `/wf:ship <id>` to retry once the blocker clears).
+`Merged` — the pull request is merged and the task finalized. `Blocked` — a required condition was not met (no delivery provider, a failed/halted build phase, no pull request, red or unsettled checks, or a blocked finalize); the `Next:` line names the existing `/wf:*` command that clears it (e.g. `/wf:run <id>` to resume the build, `/wf:init` for missing config, or `/wf:ship <id>` to retry once the blocker clears). `Handed-off` — the context-ceiling checkpoint fired: the run stayed under the ceiling by flushing (committing and pushing) the work so far and yielding for continuation, **not** an error and **not** a partial merge. `Built:` names the boundary reached, `Merge:` reads `not merged — context ceiling reached, handed off after <boundary>`, and `Next:` is `/wf:ship <id>` — re-invoking it in a fresh context resumes detect-first and drives the same run to merge. The block shape (the fenced `SHIP — …` with `Task/Built/PR/Checks/Merge/Next`) is unchanged; only the status token widens.
 
 **The final-output block must always be the very last thing output to chat.**

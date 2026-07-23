@@ -229,6 +229,10 @@ export interface CoreConfig {
   seedArchitectureDoc: string | null;
   seedBacklogPath: string | null;
   standupStatuses: string | null;
+  /** Stated per-run context bound for `/wf:ship` (approx accumulated tokens),
+   *  surfaced verbatim; `ship` interprets `<none>`/absent/unparseable as its
+   *  shipped default (~150K) and owns the numeric parse. Added WF-378. */
+  contextCeiling: string | null;
 }
 
 /** Active tracker's id shape (consumer inventory §7 field #10). Product-noun
