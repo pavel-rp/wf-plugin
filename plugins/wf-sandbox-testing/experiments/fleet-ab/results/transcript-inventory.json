@@ -1,0 +1,60 @@
+{
+  "scope": "WF-374/WF-375 raw-transcript inventory only; no experiment verdict",
+  "method": {
+    "wf374_gated_off_lens_boot": "task_started records for wf-audit:* whose surrounding record explicitly identifies the boot as gated-off",
+    "wf374_finding_contract_refetch": "raw occurrences of finding-contract/finding.contract or a resolver content request explicitly naming finding",
+    "wf375_pr_dispatch": "unique task_started records with subagent_type wf:pr",
+    "wf375_tf_dispatch": "separate task_started record with subagent_type wf:tf; inline Skill invocation is reported separately",
+    "bounded_context_signal": "TaskOutput retrieval timeout/success records keep the caller on a compact status path rather than embedding the child transcript"
+  },
+  "arms": {
+    "A": {
+      "wf374": {
+        "all_audit_lens_started": 10,
+        "gated_off_lens_boots": 0,
+        "finding_contract_refetches": 0,
+        "verdict": "GREEN: no raw gated-off or finding-contract-refetch signal",
+        "pointers": ["run-A/transcript.jsonl:1058", "run-A/transcript.jsonl:1262"]
+      },
+      "wf375": {
+        "pr_task_dispatches": 1,
+        "tf_task_dispatches": 0,
+        "tf_shape": "inline Skill/shipper finalize path",
+        "taskoutput_timeouts": 1,
+        "taskoutput_successes": 0,
+        "duplicate_pr_or_tf_dispatches": 0,
+        "caller_context_bounded": true,
+        "verdict": "MIXED: one explicit wf:pr task; TF inline; no duplicate dispatch",
+        "pointers": ["run-A/transcript.jsonl:1486", "run-A/transcript.jsonl:1518", "run-A/transcript.jsonl:1588"]
+      }
+    },
+    "B": {
+      "wf374": {
+        "all_audit_lens_started": 15,
+        "gated_off_lens_boots": 0,
+        "finding_contract_refetches": 0,
+        "verdict": "GREEN: no raw gated-off or finding-contract-refetch signal",
+        "pointers": ["run-B/transcript.jsonl:1053", "run-B/transcript.jsonl:1506"]
+      },
+      "wf375": {
+        "pr_task_dispatches": 2,
+        "tf_task_dispatches": 0,
+        "tf_shape": "inline Skill/shipper finalize path",
+        "taskoutput_timeouts": 6,
+        "taskoutput_successes": 1,
+        "duplicate_pr_or_tf_dispatches": 0,
+        "caller_context_bounded": true,
+        "verdict": "GREEN: one explicit wf:pr task per child; TF inline; no duplicate dispatch",
+        "pointers": ["run-B/transcript.jsonl:1909", "run-B/transcript.jsonl:1911", "run-B/transcript.jsonl:2162"]
+      }
+    }
+  },
+  "deltas_B_minus_A": {
+    "wf374_all_audit_lens_started": 5,
+    "wf374_gated_off_lens_boots": 0,
+    "wf374_finding_contract_refetches": 0,
+    "wf375_pr_task_dispatches": 1,
+    "wf375_tf_task_dispatches": 0,
+    "wf375_taskoutput_timeouts": 5
+  }
+}

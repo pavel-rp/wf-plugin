@@ -1,0 +1,13 @@
+WF-374/WF-375 raw-transcript inventory (no overall experiment verdict)
+
+| Signal | Arm A | Arm B | B-A | Evidence / reading |
+|---|---:|---:|---:|---|
+| WF-374 all audit-lens boots | 10 | 15 | +5 | A: 1058,1262; B: 1053,1506 |
+| WF-374 gated-off lens boots | 0 | 0 | 0 | No raw record identifies an audit boot as gated-off. |
+| WF-374 finding-contract refetches | 0 | 0 | 0 | No `finding-contract`/`finding.contract` or explicit finding-class resolver request. |
+| WF-375 explicit wf:pr task dispatches | 1 | 2 | +1 | A: 1486; B: 1909,1911. |
+| WF-375 separate wf:tf task dispatches | 0 | 0 | 0 | Both finalization paths are inline Skill/shipper paths, not wf:tf child dispatches. |
+| WF-375 duplicate/redundant PR/TF dispatches | 0 | 0 | 0 | No duplicate task id/phase dispatch evidence. |
+| WF-375 caller context bounded | yes (1 timeout) | yes (6 timeouts, 1 success) | n/a | TaskOutput status records preserve compact caller observation: A 1518; B 1837,2162. |
+
+Per-signal verdicts: WF-374 GREEN in both arms; WF-375 Arm A MIXED (one explicit PR child, TF inline), Arm B GREEN (one PR child per item, TF inline). These are inventory labels only, not an overall experiment verdict.
