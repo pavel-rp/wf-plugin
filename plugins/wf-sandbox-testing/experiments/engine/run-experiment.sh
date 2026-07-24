@@ -168,6 +168,15 @@ shuffle_arms() {
 
 CMD=()
 
+# manifest_is_default — 0 when the loaded manifest is the kit's own `experiment.json`.
+#
+# That file is what every consuming surface (the kit's build/analyze shims, and the container via
+# the image-baked experiment dir) already resolves with no selector at all. So the manifest
+# selector below is forwarded ONLY for a non-default manifest: a kit's manifest of record keeps a
+# command surface byte-identical to its pre-engine baseline, while any sibling manifest —
+# a rung-added variant, a second experiment in the same folder — actually reaches its consumers.
+manifest_is_default() { [ "$MANIFEST_PATH" = "$KIT_DIR/experiment.json" ]; }
+
 compose_build_cmd() {
   CMD=(bash "$KIT_DIR/build-arm.sh" --both)
   local i
@@ -175,14 +184,21 @@ compose_build_cmd() {
     CMD+=("$(manifest_arm_ref_flag "${ARM_LABELS[$i]}")" "${ARM_REFS[$i]}")
   done
   CMD+=(--cli-version "$CLI_VERSION")
+  # Appended LAST so it wins: build.sh's pre-scan takes the final --manifest, overriding the
+  # default the kit shim pins ahead of these arguments.
+  manifest_is_default || CMD+=(--manifest "$MANIFEST_PATH")
 }
 
 # compose_docker_cmd <arm> <out-subdir> <extra run-arm.sh args...>
 compose_docker_cmd() {
   local arm="$1" outsub="$2"; shift 2
   local out="$RESULTS_DIR/$outsub"
-  CMD=(docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN
-    -v "$out:/work/run-output" "$(manifest_image_tag "$arm")" --measured-fleet --arm "$arm"
+  CMD=(docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN)
+  # The manifest selector crosses into the container as a BARE NAME, resolved in-container against
+  # the image's baked experiment dir (run-arm.sh). A host path would be meaningless there, and this
+  # keeps the host from having to know the in-container layout.
+  manifest_is_default || CMD+=(-e "WF_EXPERIMENT_MANIFEST=$(basename "$MANIFEST_PATH")")
+  CMD+=(-v "$out:/work/run-output" "$(manifest_image_tag "$arm")" --measured-fleet --arm "$arm"
     --workload-ref "$WORKLOAD_REF" --fake-scripts "$FAKE")
   # Appended ONLY when non-empty: a present-but-empty flag is a different command.
   [ -n "$PACKS" ] && CMD+=(--packs "$PACKS")
@@ -195,6 +211,7 @@ compose_analyze_cmd() {
   for l in "${ARM_LABELS[@]}"; do
     CMD+=("$(manifest_run_flag "$l")" "$RESULTS_DIR/run-$l")
   done
+  manifest_is_default || CMD+=(--manifest "$MANIFEST_PATH")
 }
 
 print_cmd() { printf '    '; printf '%q ' "${CMD[@]}"; printf '\n'; }
@@ -261,10 +278,16 @@ do_pilot() {
 
 do_analyze() {
   if [ "$DRY_RUN" != 1 ]; then
-    local l
+    local l v
     for l in "${ARM_LABELS[@]}"; do
       [ -f "$RESULTS_DIR/run-$l/run.json" ] \
         || die "analyze needs results/run-$l/run.json for every declared arm — run the pilot first."
+      # Presence is not sufficiency: a quota-exhausted or errored arm still writes run.json, and
+      # analyze.sh reads only the session id, so a truncated arm would be reported as a clean
+      # dollar delta. Gate on each arm's own recorded verdict instead.
+      v="$(node -e 'const d=require("node:fs").readFileSync(process.argv[1],"utf8");process.stdout.write(String(JSON.parse(d).verdict??""))' "$RESULTS_DIR/run-$l/run.json" 2>/dev/null || true)"
+      [ "$v" = "ok" ] \
+        || die "arm $l's run.json records verdict '${v:-<unreadable>}', not 'ok' — refusing to report a dollar delta over an incomplete arm. Re-run that arm (an INFRA failure is discarded and re-run; an expensive-but-completed run is DATA)."
     done
   fi
   log "ANALYZE — offline, host-side, free"

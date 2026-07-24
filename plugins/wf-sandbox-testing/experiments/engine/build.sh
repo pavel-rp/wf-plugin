@@ -31,9 +31,13 @@ RUNNER_DIR="$REPO_ROOT/plugins/wf-sandbox-testing/runner"
 
 usage() {
   cat >&2 <<'EOF'
-usage: build.sh --manifest <experiment.json> --both [--cli-version <ver>]
+usage: build.sh --manifest <experiment.json> --all [--cli-version <ver>]
        build.sh --manifest <experiment.json> --arm <label> [--wf-ref-<label> <sha>]
                 [--cli-version <ver>] [--tag <image-tag>]
+
+  --all   build every arm the manifest declares, whatever N is. `--both` is the
+          back-compat spelling of the same flag, kept because emitted command
+          surfaces pin that token.
 EOF
 }
 
@@ -113,7 +117,7 @@ main() {
       --manifest=*) shift;;
       --arm) arm="${2:?}"; mode="single"; shift 2;;
       --arm=*) arm="${1#*=}"; mode="single"; shift;;
-      --both) mode="both"; shift;;
+      --all|--both) mode="all"; shift;;
       --cli-version) cli_version="${2:?}"; shift 2;;
       --cli-version=*) cli_version="${1#*=}"; shift;;
       --tag) tag_override="${2:?}"; shift 2;;
@@ -144,7 +148,7 @@ main() {
       manifest_require_arm "$arm" "build.sh" || exit 2
       to_build=("$arm")
       ;;
-    both)
+    all)
       to_build=("${ARM_LABELS[@]}")
       ;;
     *) usage; exit 2;;

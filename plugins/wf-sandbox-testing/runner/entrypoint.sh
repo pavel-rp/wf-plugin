@@ -100,8 +100,16 @@ main() {
   if [ "$measured_fleet" = "1" ]; then
     # The measured path is experiment-agnostic: WF_EXPERIMENT_DIR names the experiment folder
     # baked into this image (the folder holding its manifest), and the shared engine beside it
-    # runs the arm. WF_FLEET_AB_DIR is still honoured as the pre-engine name for the same seam.
-    local experiment_dir="${WF_EXPERIMENT_DIR:-${WF_FLEET_AB_DIR:-$RUNNER_DIR/../experiments/fleet-ab}}"
+    # runs the arm. WF_FLEET_AB_DIR is the pre-engine name for the same seam and is honoured FIRST
+    # when a caller sets it explicitly — the image bakes WF_EXPERIMENT_DIR, so checking it first
+    # would make the legacy override unreachable rather than deprecated.
+    local experiment_dir
+    if [ -n "${WF_FLEET_AB_DIR:-}" ]; then
+      echo "entrypoint.sh: WARNING — WF_FLEET_AB_DIR is deprecated; use WF_EXPERIMENT_DIR. Honouring '$WF_FLEET_AB_DIR' for this run." >&2
+      experiment_dir="$WF_FLEET_AB_DIR"
+    else
+      experiment_dir="${WF_EXPERIMENT_DIR:-$RUNNER_DIR/../experiments/fleet-ab}"
+    fi
     local engine_dir="${WF_EXPERIMENT_ENGINE_DIR:-$RUNNER_DIR/../experiments/engine}"
     export WF_EXPERIMENT_DIR="$experiment_dir"
     echo "auth-guard: passed (allow-api-key=$allow_api_key, on-quota=$on_quota) — measured-fleet path; run-arm.sh applies no-egress after the workload seed." >&2

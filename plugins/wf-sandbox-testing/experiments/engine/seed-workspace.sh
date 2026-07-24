@@ -32,8 +32,13 @@ RUNNER_DIR="$(cd "$ENGINE_DIR/../../runner" && pwd)"
 . "$RUNNER_DIR/fingerprint.sh"
 
 DEFAULT_REPO_URL="https://github.com/pavel-rp/wf-plugin.git"
-DEFAULT_PACKS="wf wf-audit wf-fake"
 DEFAULT_MARKETPLACE_NAME="wf-marketplace"
+
+# The seeded tree's git identity is a FIXED neutral constant, never derived from the manifest.
+# It lands in agent-visible `git log` output inside the measured workspace, which the blinding gate
+# does not scan — so anything experiment-named here would leak past a PASSED gate.
+SEED_IDENTITY_NAME="workload seed"
+SEED_IDENTITY_EMAIL="seed@fake.local"
 
 usage() {
   cat >&2 <<'EOF'
@@ -127,8 +132,8 @@ clone_and_strip() {
   # tree's content is a pure function of (repo_url, workload_ref) — never of wall-clock.
   find "$target" -type f -exec touch -d '2026-01-01T00:00:00Z' {} +
 
-  export GIT_AUTHOR_NAME="$MANIFEST_NAME seed" GIT_AUTHOR_EMAIL="seed@fake.local"
-  export GIT_COMMITTER_NAME="$MANIFEST_NAME seed" GIT_COMMITTER_EMAIL="seed@fake.local"
+  export GIT_AUTHOR_NAME="$SEED_IDENTITY_NAME" GIT_AUTHOR_EMAIL="$SEED_IDENTITY_EMAIL"
+  export GIT_COMMITTER_NAME="$SEED_IDENTITY_NAME" GIT_COMMITTER_EMAIL="$SEED_IDENTITY_EMAIL"
   export GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:00:00Z"
   git -C "$target" init -q
   git -C "$target" add -A
@@ -254,8 +259,7 @@ main() {
     esac
     i=$((i + 1))
   done
-  [ -n "$manifest" ] || manifest="${WF_EXPERIMENT_MANIFEST:-}"
-  [ -n "$manifest" ] || manifest="${WF_EXPERIMENT_DIR:-$ENGINE_DIR/..}/experiment.json"
+  [ -n "$manifest" ] || manifest="$(manifest_env_path "$ENGINE_DIR")"
   manifest_load "$manifest" || { echo "seed-workspace.sh: could not load the experiment manifest ($manifest)" >&2; exit 2; }
 
   if [ "${1:-}" = "--prove-blinding" ]; then
@@ -275,7 +279,7 @@ main() {
   local target="${1:?$(usage)}"; shift
   local workload_ref="" fake_scripts="" repo_url="$DEFAULT_REPO_URL" \
         config_dir="" marketplace_dir="${WF_MARKETPLACE_DIR:-/opt/wf-marketplace-src}" \
-        marketplace_name="$DEFAULT_MARKETPLACE_NAME" packs="$DEFAULT_PACKS" out=""
+        marketplace_name="$DEFAULT_MARKETPLACE_NAME" packs="$ENGINE_DEFAULT_PACKS" out=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -301,8 +305,10 @@ main() {
     esac
   done
 
+  # Direct invocation may fall back to the manifest's pinned workload ref; the container path never
+  # exercises that fallback, because run-arm.sh requires --workload-ref explicitly and forwards it.
   [ -n "$workload_ref" ] || workload_ref="$CONST_WORKLOAD_REF"
-  [ -n "$workload_ref" ] || { echo "seed-workspace.sh: --workload-ref is required (pinned ref W — never defaulted)" >&2; exit 2; }
+  [ -n "$workload_ref" ] || { echo "seed-workspace.sh: --workload-ref is required — the manifest declares no workload ref to fall back to" >&2; exit 2; }
   [ -n "$fake_scripts" ] || { echo "seed-workspace.sh: --fake-scripts <path> is required" >&2; exit 2; }
   [ -f "$fake_scripts" ] || { echo "seed-workspace.sh: --fake-scripts path not found: $fake_scripts" >&2; exit 2; }
   [ -n "$out" ] || out="$(dirname "$target")/setup-output"

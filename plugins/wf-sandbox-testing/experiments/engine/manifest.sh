@@ -33,6 +33,26 @@
 
 manifest_die() { echo "manifest.sh: ERROR — $*" >&2; return 2; }
 
+# The in-container default pack set: the value that applies when the host did NOT pass --packs,
+# which is exactly what an empty `constants.packs` means (the flag stays absent). Defined here,
+# once, because every engine script that needs it already sources this file.
+ENGINE_DEFAULT_PACKS="wf wf-audit wf-fake"
+
+# manifest_env_path <engine-dir> — the manifest an in-container script resolves when its caller
+# named none. $WF_EXPERIMENT_MANIFEST wins; it may be an absolute path, or a BARE NAME resolved
+# against the image's baked experiment dir (which is how the host forwards a manifest selector
+# across the container boundary without knowing the in-container layout). Otherwise: that dir's
+# own `experiment.json`.
+manifest_env_path() {
+  local engine_dir="${1:-.}"
+  local dir="${WF_EXPERIMENT_DIR:-$engine_dir/..}" sel="${WF_EXPERIMENT_MANIFEST:-}"
+  case "$sel" in
+    "") printf '%s' "$dir/experiment.json" ;;
+    /*) printf '%s' "$sel" ;;
+    *)  if [ -f "$sel" ]; then printf '%s' "$sel"; else printf '%s' "$dir/$sel"; fi ;;
+  esac
+}
+
 # manifest_load <path> — validate and populate. Returns 2 on any violation.
 manifest_load() {
   local path="${1:-}"
@@ -55,21 +75,42 @@ manifest_load() {
     catch (e) { bad("manifest is not parseable JSON (" + p + "): " + e.message); }
     if (doc === null || typeof doc !== "object" || Array.isArray(doc)) bad("manifest must be a JSON object");
 
+    // The v1 slot set is CLOSED: a key the schema does not name is rejected, never ignored. A
+    // silently-ignored key is the failure mode this guards — an author adding e.g. arms[].model
+    // would otherwise get a no-op that reads as a working per-arm axis.
+    const only = (obj, allowed, where) => {
+      for (const k of Object.keys(obj)) {
+        if (!allowed.includes(k)) {
+          bad(where + " carries unknown key " + JSON.stringify(k) +
+              " — the v1 slot set is closed (allowed: " + allowed.join(", ") + ")");
+        }
+      }
+    };
+    only(doc, ["name", "arms", "constants", "compares", "mechanism_signals", "blinding"], "the manifest");
+
     const name = doc.name;
     if (typeof name !== "string" || name === "") bad("`name` is required and must be a non-empty string");
 
     // --- arms ---------------------------------------------------------------------------------
     const arms = doc.arms;
     if (!Array.isArray(arms)) bad("`arms` is required and must be an array");
-    if (arms.length === 0) bad("`arms` must declare at least one arm");
-    const labels = [], refs = [], seen = new Set();
+    // Two, not one: every compare needs two distinct declared endpoints and `compares` must be
+    // non-empty, so a one-arm manifest can never validate. Reject it naming `arms`, which is the
+    // slot actually at fault, rather than letting it surface later as a confusing `compares` error.
+    if (arms.length < 2) bad("`arms` must declare at least two arms (an experiment compares arms, and every declared compare needs two distinct endpoints)");
+    const labels = [], refs = [], seen = new Set(), seenFolded = new Set();
     for (let i = 0; i < arms.length; i++) {
       const a = arms[i];
       if (a === null || typeof a !== "object" || Array.isArray(a)) bad("arms[" + i + "] must be an object");
+      only(a, ["label", "wf_ref"], "arms[" + i + "]");
       const l = a.label;
       if (typeof l !== "string" || l === "") bad("arms[" + i + "].label is required and must be a non-empty string");
       if (!/^[A-Za-z0-9]+$/.test(l)) bad("arms[" + i + "].label " + JSON.stringify(l) + " must contain only [A-Za-z0-9] (it composes an image tag and a directory name)");
-      if (seen.has(l)) bad("duplicate arm label " + JSON.stringify(l));
+      // Uniqueness is checked case-INSENSITIVELY because every consumer lowercases the label to
+      // compose its flags (--run-<l>, --wf-ref-<l>): labels "A" and "a" would validate as distinct
+      // and then silently collide, with the second occurrence winning.
+      if (seenFolded.has(l.toLowerCase())) bad("duplicate arm label " + JSON.stringify(l) + " — labels must be unique case-insensitively (they are lowercased to compose --run-<label> and --wf-ref-<label>)");
+      seenFolded.add(l.toLowerCase());
       seen.add(l);
       const r = a.wf_ref;
       if (typeof r !== "string" || r === "") bad("arms[" + i + "] (label " + JSON.stringify(l) + ") is missing a non-empty `wf_ref`");
@@ -80,9 +121,14 @@ manifest_load() {
     const c = doc.constants;
     if (c === null || typeof c !== "object" || Array.isArray(c)) bad("`constants` is required and must be an object");
     const required = ["image_repo", "workload_ref", "cli_version", "umbrella_id", "gate_skill", "fake_scripts", "measured_skill", "model"];
+    only(c, required.concat(["packs", "gap_seconds"]), "`constants`");
     for (const k of required) {
       if (typeof c[k] !== "string" || c[k] === "") bad("constants." + k + " is required and must be a non-empty string");
     }
+    // `fake_scripts` names a file that is copied into the seeded workspace and archived into the
+    // mounted results dir, so it is contained to the kit exactly like blinding.forbidden_paths[]:
+    // no absolute path, no `..` segment.
+    if (c.fake_scripts.startsWith("/") || c.fake_scripts.split("/").includes("..")) bad("constants.fake_scripts must be relative to the experiment folder and must not escape it");
     if (!("packs" in c)) bad("constants.packs is required (it may be an empty string — an empty value means the flag is ABSENT, never present-and-empty)");
     if (typeof c.packs !== "string") bad("constants.packs must be a string (possibly empty)");
     if (!("gap_seconds" in c)) bad("constants.gap_seconds is required");
@@ -97,6 +143,7 @@ manifest_load() {
     for (let i = 0; i < cmp.length; i++) {
       const e = cmp[i];
       if (e === null || typeof e !== "object" || Array.isArray(e)) bad("compares[" + i + "] must be an object");
+      only(e, ["base", "against"], "compares[" + i + "]");
       const b = e.base, g = e.against;
       if (typeof b !== "string" || b === "") bad("compares[" + i + "].base is required and must be a non-empty string");
       if (typeof g !== "string" || g === "") bad("compares[" + i + "].against is required and must be a non-empty string");
@@ -112,6 +159,7 @@ manifest_load() {
     // --- blinding vocabulary ------------------------------------------------------------------
     const bl = doc.blinding;
     if (bl === null || typeof bl !== "object" || Array.isArray(bl)) bad("`blinding` is required and must be an object");
+    only(bl, ["vocabulary", "forbidden_paths"], "`blinding`");
     const vocab = bl.vocabulary;
     if (!Array.isArray(vocab)) bad("`blinding.vocabulary` is required and must be an array");
     if (vocab.length === 0) bad("`blinding.vocabulary` is EMPTY — refusing to proceed. An empty vocabulary degenerates the blinding gate pattern; declare the words that must never leak.");

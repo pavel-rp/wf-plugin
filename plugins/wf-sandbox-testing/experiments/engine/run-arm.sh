@@ -32,10 +32,6 @@ RUNNER_DIR="$(cd "$ENGINE_DIR/../../runner" && pwd)"
 # shellcheck source=../../runner/fingerprint.sh
 . "$RUNNER_DIR/fingerprint.sh"
 
-# The in-container default pack set. This is the value that applies when the host did NOT pass
-# --packs — which is exactly what an empty `constants.packs` means (the flag stays absent).
-DEFAULT_PACKS="wf wf-audit wf-fake"
-
 usage() {
   cat >&2 <<'EOF'
 usage (in-container; dispatched by runner/entrypoint.sh on --measured-fleet):
@@ -46,8 +42,8 @@ usage (in-container; dispatched by runner/entrypoint.sh on --measured-fleet):
              [--build-json <build-<label>.json>] [--on-quota fail|wait] [--allow-api-key]
   --gate-skill runs the given cheap skill instead of the measured skill, over the SAME
   seed+seal path (the dry-run gate). --umbrella-id is then optional.
-  The manifest resolves from --manifest, else $WF_EXPERIMENT_MANIFEST, else
-  $WF_EXPERIMENT_DIR/experiment.json.
+  The manifest resolves from --manifest, else $WF_EXPERIMENT_MANIFEST (an absolute path, or a
+  bare name resolved against $WF_EXPERIMENT_DIR), else $WF_EXPERIMENT_DIR/experiment.json.
 EOF
 }
 
@@ -141,8 +137,7 @@ main() {
     esac
     i=$((i + 1))
   done
-  [ -n "$manifest" ] || manifest="${WF_EXPERIMENT_MANIFEST:-}"
-  [ -n "$manifest" ] || manifest="${WF_EXPERIMENT_DIR:-$ENGINE_DIR/..}/experiment.json"
+  [ -n "$manifest" ] || manifest="$(manifest_env_path "$ENGINE_DIR")"
   manifest_load "$manifest" || { echo "run-arm.sh: could not load the experiment manifest ($manifest)" >&2; return 2; }
 
   model="$CONST_MODEL"
@@ -183,8 +178,11 @@ main() {
   # The arm label must be one the manifest declares — no fixed arm set lives in this script.
   [ -n "$arm" ] || { echo "run-arm.sh: --arm <label> is required" >&2; usage; return 2; }
   manifest_require_arm "$arm" "run-arm.sh" || return 2
-  [ -n "$workload_ref" ] || { echo "run-arm.sh: --workload-ref <ref W> is required (never defaulted)" >&2; return 2; }
-  [ -n "$packs" ] || packs="$DEFAULT_PACKS"
+  # The workload ref is required on the container path and NEVER defaulted from the manifest: the
+  # host composes every measured line with an explicit --workload-ref, so a missing one here means
+  # the caller bypassed the orchestrator, and silently substituting a default would hide that.
+  [ -n "$workload_ref" ] || { echo "run-arm.sh: --workload-ref <ref W> is required on the container path (never defaulted here — the host always passes it explicitly)" >&2; return 2; }
+  [ -n "$packs" ] || packs="$ENGINE_DEFAULT_PACKS"
 
   # The measured skill: the manifest's measured skill applied to the umbrella, or a cheaper
   # --gate-skill over the same seed+seal path.
@@ -192,8 +190,11 @@ main() {
   if [ -n "$gate_skill" ]; then
     skill="$gate_skill"
   else
-    [ -n "$umbrella" ] || umbrella="$CONST_UMBRELLA_ID"
-    [ -n "$umbrella" ] || { echo "run-arm.sh: --umbrella-id <id> is required (or pass --gate-skill for the dry-run gate)" >&2; return 2; }
+    # SPEND GUARD (container-side): the billed measured run requires an EXPLICIT --umbrella-id.
+    # The manifest's umbrella is deliberately not a fall-through here — this is the last gate on
+    # the `docker run` path an operator drives by hand, where the host's --spend confirmation never
+    # ran, so naming neither --umbrella-id nor --gate-skill must refuse, not bill.
+    [ -n "$umbrella" ] || { echo "run-arm.sh: --umbrella-id <id> is required for the BILLED measured run (or pass --gate-skill to take the cheap dry-run gate over the same seed+seal path). The manifest's umbrella is never a silent default on the billed path." >&2; return 2; }
     skill="$CONST_MEASURED_SKILL $umbrella"
   fi
 
