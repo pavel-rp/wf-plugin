@@ -1,0 +1,12 @@
+run-experiment.sh: DRY RUN — printing commands only, nothing executes.
+run-experiment.sh: BUILD both arms (A=90cf319, B=c768673, CLI=2.1.218)
+run-experiment.sh: GATE arm A (skill '/wf:triage WF-406') → results/gate-A
+run-experiment.sh: GATE arm B (skill '/wf:triage WF-406') → results/gate-B
+run-experiment.sh: gates complete — eyeball fake-scripts.json call-ordering (its header), then run 'pilot --spend'.
+run-experiment.sh: PILOT — coin-flipped arm order: B A (330s gap between arms)
+run-experiment.sh: PILOT arm B (umbrella WF-405) → results/run-B
+run-experiment.sh: waiting 330s before the second arm (prompt-cache TTL)…
+run-experiment.sh: PILOT arm A (umbrella WF-405) → results/run-A
+run-experiment.sh: pilot complete — COMMIT results/run-*/projects-archive.tar.gz (the baseline died of pruned transcripts).
+run-experiment.sh: ANALYZE — offline, host-side, free
+run-experiment.sh: done — phases: build gate pilot analyze
