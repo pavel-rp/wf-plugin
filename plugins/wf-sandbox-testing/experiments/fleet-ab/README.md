@@ -27,17 +27,24 @@ blind quality comparison (§7.3) — never a number alone.
 
 ## Layout
 
+This experiment is **data plus two dispatch shims**. All behaviour — orchestration, build,
+seed, blinding gate, in-container per-arm run, analysis — lives in the shared, experiment-agnostic
+engine at [`../engine/`](../engine/), whose manifest contract is [`../engine/schema.md`](../engine/schema.md).
+Adding an arm here is a manifest edit, never a script edit.
+
 | Path | Role |
 |---|---|
-| `Dockerfile` | Arm-buildable image. `ARG WF_REF` selects the arm's marketplace ref; the workload snapshot is resolved at container-run time by `seed-workspace.sh --workload-ref` (a run-time param, **not** a build ARG), never baked in. |
-| `build-arm.sh` | Builds `fleet-ab:armA` / `fleet-ab:armB`; fingerprints build inputs into `results/build-<arm>.json`. |
-| `seed-workspace.sh` | Clones the workload snapshot at ref W, strips the remote, runs the arm's own unmeasured `/wf:init` + pack-init skills + fake config, then the blinding gate. Called by `run-arm.sh` inside the container (before no-egress). `--prove-blinding` self-checks the gate offline (no network/Docker needed). |
-| `run-arm.sh` | The in-container per-arm orchestrator (dispatched by `runner/entrypoint.sh` on `--measured-fleet`): **seed → seal (no-egress) → the one measured `claude -p "/wf:fleet <umbrella-id>"` → archive**. Collects the isolated `CLAUDE_CONFIG_DIR/projects` archive, the fake op-log, a workspace snapshot, and `run.json`. `--gate-skill` runs the cheap dry-run gate over the same path. **Never run directly in the WF-382 implement session** — authored/`bash -n`-checked only. |
+| `Dockerfile` | Arm-buildable image. `ARG WF_REF` selects the arm's marketplace ref; the workload snapshot is resolved at container-run time by the engine's `seed-workspace.sh --workload-ref` (a run-time param, **not** a build ARG), never baked in. Copies the engine alongside this folder and sets `WF_EXPERIMENT_DIR`, so the manifest reaches the container through the environment and no flag is added to the measured `docker run` line. |
+| `experiment.json` | **This experiment's manifest of record** — the two-arm declaration (`A` = `90cf319`, `B` = `c768673`), the constants held identical across arms, the declared pairwise compare, the reserved mechanism-signal slot, and the blinding vocabulary + forbidden-path guards. Every value the engine emits comes from here. |
+| `experiment.r1.json` | The rung-added variant: `experiment.json` plus exactly one arm row (`R1` = `ff2eb70`) and one compare. A data-only delta — no engine or shim file differs between the two. **Not** the parity target; parity runs against `experiment.json` only. |
+| `build-arm.sh` | 5-line dispatch shim → `../engine/build.sh --manifest experiment.json`. Builds `fleet-ab:arm<label>` per declared arm and fingerprints build inputs into `results/build-<label>.json`. |
+| `analyze.sh` | 5-line dispatch shim → `../engine/analyze.sh --manifest experiment.json`. Offline, host-side only: `fleet-cost.mjs measure` per run, plus each compare the manifest declares, in its declared direction. |
 | `fake-scripts.json` | Scripted tracker/delivery responses carrying the real WF-406/WF-409 texts (verbatim, checked against the blinding vocabulary list). |
-| `analyze.sh` | Offline, host-side only: `fleet-cost.mjs measure` per run, the arm B vs arm A dollar delta, and the §7.2 mechanism table. |
+| `runbooks/` | Machine-derived command documents (`run-experiment.sh --runbook`) — one per manifest that has one. `experiment.r1.md` is the R1 rung's spend-ready runbook: **derived, never executed.** Do not hand-edit; re-derive instead. |
+| `baseline/` | WF-419's committed pre-retrofit parity oracle: `capture.md` (the recorded capture invocation and every parameter value it used), `dry-run-baseline.stdout.txt` (the compared command surface), and `dry-run-baseline.stderr.txt`. Read-only evidence — the retrofit is proved equivalent against it with [`../parity/parity-check.sh`](../parity/parity-check.sh). |
 | `results/` | Everything committed: `build-*.json`, per-run `run.json` + transcript archives + workspace snapshots, `measure-*.json`, `totals-comparison.txt`, `mechanism-table.json`, and `deltas.md` (the spend-free per-sub-task fixture-relative delta collation, ships with the kit itself — see below). |
 
-Everything under `experiments/fleet-ab/` is git-tracked — kit, run records, transcript
+Everything under `experiments/fleet-ab/` is git-tracked — data, run records, transcript
 archives, and the verdict — **never** under `_local/` (spec Constraints; design doc §5:
 the historical baseline died of pruned transcripts, this one must not, and the kit
 graduates into a pack skill once proven useful).
@@ -52,20 +59,22 @@ proceed past it without the user's explicit go-ahead (each measured run is
 
 ### 1. Freeze
 
-Pin the four constants and record them:
+The constants are already frozen **in `experiment.json`** — arm refs, workload ref, CLI version,
+umbrella id, gate skill, measured skill, model pin, packs, and the inter-arm gap. Re-freezing means
+editing that file, not exporting shell variables. Each value is overridable per invocation
+(`--workload-ref`, `--cli-version`, `--wf-ref-<label>`, …) when you need a one-off.
+
+Build every declared arm:
 
 ```sh
-WF_REF_A=90cf319                 # arm A — never changes, the baseline's version identity
-WF_REF_B=<main-tip-sha-at-freeze>  # arm B — frozen explicitly, never re-resolved from "main"
-WORKLOAD_REF=<pinned main-tip predating docs/wf382-* and experiments/>
-CLI_VERSION=2.1.218              # or whatever is frozen; identical in both arms
+bash plugins/wf-sandbox-testing/experiments/fleet-ab/build-arm.sh --both
 ```
 
-Build both images:
+To see exactly what a phase would issue without issuing it — no build, no container, no spend:
 
 ```sh
-bash plugins/wf-sandbox-testing/experiments/fleet-ab/build-arm.sh --both \
-  --wf-ref-a "$WF_REF_A" --wf-ref-b "$WF_REF_B" --cli-version "$CLI_VERSION"
+bash plugins/wf-sandbox-testing/experiments/engine/run-experiment.sh \
+  --manifest plugins/wf-sandbox-testing/experiments/fleet-ab/experiment.json all --dry-run
 ```
 
 ### 2. Dry-run gate (cheap)
@@ -80,9 +89,13 @@ validates the real path (not a divergent one). Run once per arm image on your Do
 docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
   -v "$PWD/plugins/wf-sandbox-testing/experiments/fleet-ab/results/gate-A:/work/run-output" \
   fleet-ab:armA --measured-fleet --arm A --gate-skill "/wf:triage WF-406" \
-  --workload-ref "$WORKLOAD_REF" --fake-scripts fake-scripts.json
+  --workload-ref 9c99498 --fake-scripts fake-scripts.json
 # repeat for fleet-ab:armB (→ results/gate-B)
 ```
+
+Or let the engine issue both for you — `run-experiment.sh --manifest experiment.json gate`. The
+container-entry contract is unchanged either way; the manifest reaches the container through
+`WF_EXPERIMENT_DIR` (set in the image), never as a flag on this line.
 
 If either arm's dry run fails, fix the seeding/registration issue before proceeding — a
 failed dry run is infrastructure, never charged against the pilot.
@@ -100,23 +113,24 @@ Each run is a real, billed `claude -p` session.
 One run per arm, order **coin-flipped**, **more than 5 minutes apart** (prompt-cache TTL),
 same host, same day. Each arm runs in its **own** container (`fleet-ab:armA` vs
 `fleet-ab:armB`) with its **own** mounted output dir — the two arms share no workspace, no
-config, and no state; they differ only in the image's `WF_REF`. `run-arm.sh` seeds a fresh
-workspace + isolated config inside each container, applies no-egress, runs the measured
-`/wf:fleet WF-405`, and archives the transcripts + `run.json` into `/work/run-output`:
+config, and no state; they differ only in the image's `WF_REF`. The engine's `run-arm.sh` seeds a
+fresh workspace + isolated config inside each container, applies no-egress, runs the manifest's
+measured skill against its umbrella id, and archives the transcripts + `run.json` into
+`/work/run-output`:
 
 ```sh
 docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
   -v "$PWD/plugins/wf-sandbox-testing/experiments/fleet-ab/results/run-A:/work/run-output" \
   fleet-ab:armA --measured-fleet --arm A --umbrella-id WF-405 \
-  --workload-ref "$WORKLOAD_REF" --fake-scripts fake-scripts.json
+  --workload-ref 9c99498 --fake-scripts fake-scripts.json
 # wait > 5 minutes
 docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN \
   -v "$PWD/plugins/wf-sandbox-testing/experiments/fleet-ab/results/run-B:/work/run-output" \
   fleet-ab:armB --measured-fleet --arm B --umbrella-id WF-405 \
-  --workload-ref "$WORKLOAD_REF" --fake-scripts fake-scripts.json
+  --workload-ref 9c99498 --fake-scripts fake-scripts.json
 ```
 
-**Archive raw transcripts immediately** (`run-arm.sh` already tars the isolated
+**Archive raw transcripts immediately** (the engine's `run-arm.sh` already tars the isolated
 `projects/` tree into `results/run-<arm>/projects-archive.tar.gz` inside the mounted
 volume) — commit it. The historical $114.55 baseline died of pruned transcripts; this
 experiment must not repeat that mistake.
@@ -127,6 +141,10 @@ experiment must not repeat that mistake.
 bash plugins/wf-sandbox-testing/experiments/fleet-ab/analyze.sh \
   --run-a results/run-A --run-b results/run-B
 ```
+
+One `--run-<label>` per declared arm. Each compare the manifest declares is reported in its
+declared direction (**against minus base**), so the sign convention is pinned by data, not by the
+order files happen to be read in.
 
 - If the delta is large and the §7.2 mechanism table is clean → **stop, write the
   verdict.**
@@ -146,14 +164,23 @@ bash plugins/wf-sandbox-testing/experiments/fleet-ab/analyze.sh \
 
 ## Blinding — what must never leak
 
-Design doc §6 in full; the short version enforced mechanically by
-`seed-workspace.sh`'s gate (`--prove-blinding` proves this offline, no Docker needed):
+Design doc §6 in full; the short version enforced mechanically by the engine's
+`seed-workspace.sh` gate, which carries **no vocabulary of its own** — the banned words come from
+`experiment.json`'s `blinding.vocabulary[]` and the presence guards from its
+`blinding.forbidden_paths[]`. An empty vocabulary is rejected at manifest load, before any image
+build and before any spend. Prove the gate offline (no network, no Docker):
 
-1. No experiment vocabulary in anything **this kit injects** — not the umbrella/task
+```sh
+bash plugins/wf-sandbox-testing/experiments/engine/seed-workspace.sh --prove-blinding \
+  --manifest plugins/wf-sandbox-testing/experiments/fleet-ab/experiment.json
+```
+
+1. No experiment vocabulary in anything **this experiment injects** — not the umbrella/task
    texts, the seeded `_local/config.md`, the fake scripts, or branch names. The workload
    snapshot's own historical docs are exempt (equally visible in the baseline era).
 2. The workload ref **W** must predate `docs/wf382-*` and `experiments/` existing on
-   `main` — the gate fails loudly if either is present in the seeded tree.
+   `main` — both are declared in `blinding.forbidden_paths[]`, and the gate fails loudly if
+   either is present in the seeded tree.
 3. Measurement is offline — nothing in either container ever runs `analyze.sh` or
    references the harness.
 4. The quality judge is blind too (§7.3) — anonymize before comparing.
@@ -168,6 +195,25 @@ STEP-004), and does not require the pilot above to have run. Read it before writ
 umbrella verdict: a missing delta **blocks** the verdict per the spec's success criteria
 (WF-376's is the one stated indicative-only exception; WF-381 is a legitimate
 closed-unmet, not a blocker).
+
+---
+
+## The R1 rung — ready, not run
+
+`experiment.r1.json` adds one arm (`R1` = `ff2eb70`) and one compare (`R1` relative to `B`) to the
+manifest of record. Nothing else differs between the two files, and no engine or shim file differs
+at all — that data-only delta is the point: another rung on the ref ladder costs a manifest edit.
+
+`runbooks/experiment.r1.md` is its spend-ready command document, **derived** by
+`run-experiment.sh --runbook` and never executed. Re-derive it rather than editing it:
+
+```sh
+bash plugins/wf-sandbox-testing/experiments/engine/run-experiment.sh \
+  --manifest plugins/wf-sandbox-testing/experiments/fleet-ab/experiment.r1.json --runbook
+```
+
+Running it is a human decision under the same ask-first checkpoint as step 3 above. Parity against
+`baseline/` is proved for `experiment.json` only — the variant is never the parity target.
 
 ---
 

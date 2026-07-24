@@ -282,7 +282,18 @@ do_analyze() {
 # never document a command the engine would not actually issue. Deterministic: arms appear in
 # manifest declaration order, never shuffled, so re-deriving reproduces the file byte-for-byte.
 # Builds nothing, runs nothing, spends nothing, makes no network call.
-runbook_block() { printf '```sh\n'; printf '%q ' "${CMD[@]}"; printf '\n```\n\n'; }
+#
+# The checkout root is emitted as a `$ROOT` shell variable rather than a literal prefix, so a
+# committed runbook is byte-identical on every machine (an absolute prefix would bake one clone's
+# location into the document) while every path stays absolute at run time — which `docker run -v`
+# requires, since a relative source is read as a named volume, not a bind mount.
+RUNBOOK_ROOT=""
+runbook_block() {
+  local line
+  printf -v line '%q ' "${CMD[@]}"
+  [ -n "$RUNBOOK_ROOT" ] && line="${line//"$RUNBOOK_ROOT/"/\$ROOT/}"
+  printf '```sh\n%s\n```\n\n' "$line"
+}
 
 derive_runbook() {
   local out="$RUNBOOK_OUT"
@@ -291,6 +302,7 @@ derive_runbook() {
     out="$KIT_DIR/runbooks/${base%.*}.md"
   fi
   mkdir -p "$(dirname "$out")"
+  RUNBOOK_ROOT="$(git -C "$KIT_DIR" rev-parse --show-toplevel 2>/dev/null || true)"
   {
     printf '# %s — runbook\n\n' "$MANIFEST_NAME"
     printf '**Derived from:** `%s`\n' "$(basename "$MANIFEST_PATH")"
@@ -301,6 +313,10 @@ derive_runbook() {
     printf 'requirement and does not change any command below.\n\n'
     printf '**Running this is a human decision.** The measured phase is billed. Nothing here has been\n'
     printf 'executed: this document was derived offline, without Docker, without egress, without spend.\n\n'
+    if [ -n "$RUNBOOK_ROOT" ]; then
+      printf 'Every path below is anchored on `$ROOT`. Set it once, in the shell you run these from:\n\n'
+      printf '```sh\nROOT="$(git rev-parse --show-toplevel)"\n```\n\n'
+    fi
     printf 'Arms (%s), each identified by its own frozen ref:\n\n' "${#ARM_LABELS[@]}"
     printf '| Arm | `wf_ref` | Image |\n|---|---|---|\n'
     local i
