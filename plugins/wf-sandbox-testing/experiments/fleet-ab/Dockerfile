@@ -24,9 +24,10 @@
 #     docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v "$PWD/results/run-A:/work/run-output" \
 #       fleet-ab:armA --measured-fleet --arm A --umbrella-id WF-405 \
 #       --workload-ref "$WORKLOAD_REF" --fake-scripts fake-scripts.json
-#   The container ENTRYPOINT (auth-guard) dispatches --measured-fleet to run-arm.sh, which clones
-#   the workload BEFORE applying no-egress (the clone needs github; the measured run must not) —
-#   see run-arm.sh. The single-skill --skill path (run-skill.sh, canned suites) is unchanged.
+#   The container ENTRYPOINT (auth-guard) dispatches --measured-fleet to the shared engine's
+#   run-arm.sh, which clones the workload BEFORE applying no-egress (the clone needs github; the
+#   measured run must not) — see ../engine/run-arm.sh. The single-skill --skill path (run-skill.sh,
+#   canned suites) is unchanged.
 
 FROM node:20-bookworm-slim
 
@@ -58,15 +59,22 @@ RUN git clone --quiet "$REPO_URL" /opt/wf-marketplace-src \
 ENV WF_MARKETPLACE_DIR=/opt/wf-marketplace-src
 ENV WF_ARM_REF="${WF_REF}"
 
-# The experiment kit's own scripts (always used at HEAD, outside the arm — measurement code is
-# not treatment). WORKLOAD_REF is NOT resolved here: seed-workspace.sh clones the workload
-# snapshot at container-run time (its own step, not a build layer) so the same image serves any
-# workload pin without a rebuild.
-# Layout preserves the repo's experiments/fleet-ab → ../../runner relative path, so run-arm.sh and
-# seed-workspace.sh resolve the runner (fingerprint.sh, no-egress.sh) identically in-image and in-repo.
+# The shared engine plus this experiment's own data (always used at HEAD, outside the arm —
+# measurement code is not treatment). WORKLOAD_REF is NOT resolved here: seed-workspace.sh clones
+# the workload snapshot at container-run time (its own step, not a build layer) so the same image
+# serves any workload pin without a rebuild.
+# Layout preserves the repo's experiments/<experiment> → ../../runner and → ../engine relative
+# paths, so the engine resolves the runner (fingerprint.sh, no-egress.sh) and this experiment's
+# manifest identically in-image and in-repo.
 COPY plugins/wf-sandbox-testing/runner               /opt/wf-runner/runner
+COPY plugins/wf-sandbox-testing/experiments/engine   /opt/wf-runner/experiments/engine
 COPY plugins/wf-sandbox-testing/experiments/fleet-ab /opt/wf-runner/experiments/fleet-ab
-RUN chmod +x /opt/wf-runner/runner/*.sh /opt/wf-runner/experiments/fleet-ab/*.sh
+RUN chmod +x /opt/wf-runner/runner/*.sh /opt/wf-runner/experiments/engine/*.sh /opt/wf-runner/experiments/fleet-ab/*.sh
+
+# Which experiment this image is an arm of. The entrypoint's --measured-fleet seam reads this and
+# hands it to the engine, which loads the manifest from it — so no flag is ever added to the
+# measured `docker run` command line.
+ENV WF_EXPERIMENT_DIR=/opt/wf-runner/experiments/fleet-ab
 
 ENV WF_RUN_OUT=/work/run-output
 # No-egress on by default (named tracker/delivery hostnames blackholed via /etc/hosts — see
