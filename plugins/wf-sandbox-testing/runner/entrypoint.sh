@@ -81,22 +81,36 @@ main() {
     *) echo "FATAL [config]: --on-quota must be fail|wait (got '$on_quota')." >&2; exit 2;;
   esac
 
-  # No-egress at container start (default on): blackhole tracker/delivery hosts before any
-  # skill run, so an accidental egress fails fast. Applied here, not baked as a layer.
+  # Dispatch mode: --measured-fleet clones a workload snapshot (needs egress to the workload
+  # host) BEFORE the measured run, so run-arm.sh applies no-egress AFTER its seed — never here.
+  # The single-skill path (run-skill.sh, canned suites, the dry-run gate) clones nothing, so
+  # no-egress is applied up front as before.
+  local measured_fleet=0 a
+  for a in ${forward+"${forward[@]}"}; do
+    [ "$a" = "--measured-fleet" ] && { measured_fleet=1; break; }
+  done
+
+  guard_api_key "$allow_api_key"    || exit $?
+  guard_oauth_token "$allow_api_key" || exit $?
+
+  local -a runner_args=(--on-quota "$on_quota")
+  [ "$allow_api_key" = "1" ] && runner_args+=(--allow-api-key)
+  runner_args+=(${forward+"${forward[@]}"})
+
+  if [ "$measured_fleet" = "1" ]; then
+    local fleet_ab_dir="${WF_FLEET_AB_DIR:-$RUNNER_DIR/../experiments/fleet-ab}"
+    echo "auth-guard: passed (allow-api-key=$allow_api_key, on-quota=$on_quota) — measured-fleet path; run-arm.sh applies no-egress after the workload seed." >&2
+    exec "$fleet_ab_dir/run-arm.sh" "${runner_args[@]}"
+  fi
+
+  # No-egress at container start (single-skill path only): blackhole tracker/delivery hosts
+  # before the run, so an accidental egress fails fast. Applied here, not baked as a layer.
   if [ "${WF_NO_EGRESS:-0}" = "1" ]; then
     . "$RUNNER_DIR/no-egress.sh"
     apply_no_egress || echo "auth-guard: no-egress requested but not fully applied (see warning above)." >&2
   fi
 
-  guard_api_key "$allow_api_key"    || exit $?
-  guard_oauth_token "$allow_api_key" || exit $?
-
   echo "auth-guard: passed (allow-api-key=$allow_api_key, on-quota=$on_quota) — handing off to run-skill.sh" >&2
-
-  local -a runner_args=(--on-quota "$on_quota")
-  [ "$allow_api_key" = "1" ] && runner_args+=(--allow-api-key)
-  runner_args+=("${forward[@]}")
-
   exec "$RUNNER_DIR/run-skill.sh" "${runner_args[@]}"
 }
 
