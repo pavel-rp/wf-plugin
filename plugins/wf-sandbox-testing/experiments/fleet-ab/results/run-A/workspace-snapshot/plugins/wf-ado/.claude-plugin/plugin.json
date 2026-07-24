@@ -1,0 +1,19 @@
+{
+  "name": "wf-ado",
+  "version": "0.4.1",
+  "description": "wf tracker-provider pack: the ado capability owning the wf capability-registry's tracker surface (Azure DevOps work-item get/create/update/list-children/comment/status bindings and status/milestone/cycle queries, plus the AB#<id> PR-link autolink). Ships /wf-ado:init for one-command self-registration.",
+  "author": {
+    "name": "Pavel Kalabin",
+    "url": "https://github.com/pavel-rp"
+  },
+  "repository": "https://github.com/pavel-rp/wf-plugin",
+  "license": "UNLICENSED",
+  "keywords": [
+    "wf",
+    "ado",
+    "azure-devops",
+    "tracker",
+    "capabilities",
+    "agent-skills"
+  ]
+}

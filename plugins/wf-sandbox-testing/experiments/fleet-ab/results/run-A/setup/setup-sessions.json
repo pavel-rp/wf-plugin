@@ -1,0 +1,5 @@
+[
+  { "skill": "/wf:init", "session_id": "68bce804-c6d3-4679-a5aa-0f087955055a", "transcript": "/work/run-output/setup/setup/wf-.jsonl" },
+  { "skill": "/wf-audit:init", "session_id": "a420f5e6-a834-4e70-81a3-164bf0ad046a", "transcript": "/work/run-output/setup/setup/wf-audit-.jsonl" },
+  { "skill": "/wf-fake:init", "session_id": "86b84ea3-638d-4db6-879e-6c5de56c8f3d", "transcript": "/work/run-output/setup/setup/wf-fake-.jsonl" }
+]

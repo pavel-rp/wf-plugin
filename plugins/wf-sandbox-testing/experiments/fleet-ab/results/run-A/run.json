@@ -1,0 +1,48 @@
+{
+  "arm": "A",
+  "umbrella_id": "WF-405",
+  "measured_skill": "/wf:fleet WF-405",
+  "model": "claude-opus-4-8",
+  "wall_clock_seconds": 861,
+  "cli_version": "2.1.218 (Claude Code)",
+  "provenance": {
+    "host": "ee897e4e0cc1",
+    "run_started_at": "2026-07-24T11:06:18Z",
+    "workload_ref": "9c99498742e64994b1d1f0f9d78703a996193972"
+  },
+  "fingerprints": {
+    "workload": "d0bccbe945ba37f430a179564abc8e95ba32d2a16202ef7973d10c4f232a40ba",
+    "build": null
+  },
+  "setup_sessions": [
+    {
+      "skill": "/wf:init",
+      "session_id": "68bce804-c6d3-4679-a5aa-0f087955055a",
+      "transcript": "/work/run-output/setup/setup/wf-.jsonl"
+    },
+    {
+      "skill": "/wf-audit:init",
+      "session_id": "a420f5e6-a834-4e70-81a3-164bf0ad046a",
+      "transcript": "/work/run-output/setup/setup/wf-audit-.jsonl"
+    },
+    {
+      "skill": "/wf-fake:init",
+      "session_id": "86b84ea3-638d-4db6-879e-6c5de56c8f3d",
+      "transcript": "/work/run-output/setup/setup/wf-fake-.jsonl"
+    }
+  ],
+  "measured_session": {
+    "session_id": "81dca409-76df-4507-897d-3f6367cf3cf4",
+    "projects_root": "/tmp/tmp.h4shEDkN44/projects",
+    "transcript_bundle": "/tmp/tmp.h4shEDkN44/projects/-tmp-tmp-VcLmeTRoUU-workspace/68bce804-c6d3-4679-a5aa-0f087955055a.jsonl",
+    "resolved": true
+  },
+  "run": {
+    "exit_code": 0,
+    "transcript": "transcript.jsonl",
+    "transcript_parseable": true,
+    "workspace_snapshot": "workspace-snapshot"
+  },
+  "verdict": "ok",
+  "reason": ""
+}

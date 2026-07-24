@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"ms-seed-1","tools":["Read","Bash","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Model arm B, but behaviour drifted: the swapped model invented a model-specific reason to hold the merge even though checks are green and no reviewer is registered. It stopped short of the merge."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Blocked\n\nTask: FAKE-1\nBuilt: ready for review\nPR: https://fake.local/pr/4\nChecks: green\nMerge: not merged — model-specific hold (drift)\nNext: /wf:ship FAKE-1"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Blocked","usage":{"input_tokens":5300,"output_tokens":310},"total_cost_usd":0.0381}

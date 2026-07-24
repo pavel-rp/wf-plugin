@@ -1,0 +1,11 @@
+{
+  "task": "/wf:ship FAKE-1",
+  "skill": "/wf:ship FAKE-1",
+  "fixture": "ship-empty-slot",
+  "plugin_source": "/pinned/preslot-ship-build",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-ship-esr", "plugin_build": "fp-preslot-ship-a1b2c3", "cli_version": "claude 1.0.0", "run": "fp-esr-base-r2" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "pre-slot baseline arm: the ship.review slot did not exist on this pinned build"
+}
