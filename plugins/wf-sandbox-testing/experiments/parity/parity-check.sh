@@ -9,10 +9,18 @@
 #
 # Exit: 0 parity holds · 1 parity fails · 2 usage/input error.
 #
-# Requires bash 4+ (associative arrays). No Docker, no network, no writes — it reads two files.
+# Requires bash 4+ (associative arrays, mapfile). No Docker, no network, no writes — it reads two
+# files. The requirement is ENFORCED below, not merely documented: under bash 3.2 (still /bin/bash on
+# macOS) the missing builtins fail non-fatally, and since this script deliberately omits `set -e` the
+# run would otherwise limp to the "parity holds" line and exit 0 on a genuinely divergent pair.
 set -uo pipefail
 
 PROG="parity-check.sh"
+
+if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+  echo "parity-check.sh: ERROR — requires bash 4+ (found ${BASH_VERSION:-unknown}); refusing to run rather than risk a false pass." >&2
+  exit 2
+fi
 usage() {
   cat >&2 <<'EOF'
 usage: parity-check.sh <baseline-stdout> <candidate-stdout>
@@ -27,7 +35,7 @@ EOF
 }
 
 fail_count=0
-note() { echo "$PROG: $*"; }
+note() { echo "$PROG: $*" >&2; }
 fail() { echo "$PROG: FAIL — $*" >&2; fail_count=$((fail_count + 1)); }
 die()  { echo "$PROG: ERROR — $*" >&2; exit 2; }
 
@@ -47,9 +55,16 @@ split_tokens() {
     case "$state" in
       sq) if [ "$ch" = "'" ]; then state="bare"; else tok+="$ch"; fi ;;
       dq)
+        # Inside double quotes a backslash escapes ONLY $ ` " and itself; before anything else it
+        # is a literal backslash. Collapsing every \X would make `\9c99498` and `9c99498` normalize
+        # alike and silently pass a §3.3 divergence, so the next character is inspected first.
         case "$ch" in
           '"') state="bare" ;;
-          '\') esc=1 ;;
+          '\')
+            case "${line:i+1:1}" in
+              '$'|'`'|'"'|'\') esc=1 ;;
+              *) tok+="$ch" ;;
+            esac ;;
           *) tok+="$ch" ;;
         esac ;;
       *)
@@ -106,14 +121,22 @@ unit_key() {
     [ "$t" = "<kit>/build-arm.sh" ] && { printf 'build:both'; return 0; }
     [ "$t" = "<kit>/analyze.sh" ] && { printf 'analyze:both'; return 0; }
   done
+  # Every ':'-separated field is inspected, not just the first — normalization.md §2 N4 keys off
+  # "a path field", and the host half of a mount is not guaranteed to be the leading one.
+  local rest
   for t in ${toks+"${toks[@]}"}; do
-    field="${t%%:*}"
-    if [ "${field#<kit>/results/gate-}" != "$field" ]; then
-      printf 'gate:%s' "${field#<kit>/results/gate-}"; return 0
-    fi
-    if [ "${field#<kit>/results/run-}" != "$field" ]; then
-      printf 'pilot:%s' "${field#<kit>/results/run-}"; return 0
-    fi
+    rest="$t"
+    while : ; do
+      field="${rest%%:*}"
+      if [ "${field#<kit>/results/gate-}" != "$field" ]; then
+        printf 'gate:%s' "${field#<kit>/results/gate-}"; return 0
+      fi
+      if [ "${field#<kit>/results/run-}" != "$field" ]; then
+        printf 'pilot:%s' "${field#<kit>/results/run-}"; return 0
+      fi
+      [[ "$rest" == *:* ]] || break
+      rest="${rest#*:}"
+    done
   done
   printf ''
   return 0
@@ -133,6 +156,8 @@ load_side() {
   local -a raw_lines=()
   local line
   while IFS= read -r line || [ -n "$line" ]; do
+    # Blank / whitespace-only lines carry no command — an ignored class, enumerated at
+    # normalization.md §4.7 so this skip is declared rather than silent.
     [ -z "${line//[[:space:]]/}" ] && continue
     raw_lines+=("$line")
   done < "$file"
@@ -182,12 +207,38 @@ tok_array() { # $1 = newline-joined tokens -> global OUT_TOKENS
   while IFS= read -r l; do OUT_TOKENS+=("$l"); done <<< "${1%$'\n'}"
 }
 
-# --- Compare one unit's occurrence, token by token (normalization.md §3.1-3.8, §6) --------------
+# --- Compare a unit as an unordered multiset of its occurrences (normalization.md §4.1) ---------
+# A unit carrying more than one line on both sides must not fail on a pure reordering, since §4.1
+# ignores ordering unconditionally. Identical occurrences are paired off first; only the leftovers
+# are reported positionally, so the named divergence still points at a real difference.
+compare_unit() {
+  local key="$1" count="$2"
+  local -a cand_free=() base_left=()
+  local i j
+  for (( j = 1; j <= count; j++ )); do cand_free+=("$j"); done
+  for (( i = 1; i <= count; i++ )); do
+    local matched=0
+    for j in "${!cand_free[@]}"; do
+      if [ "${BASE_TOK["$key#$i"]}" = "${CAND_TOK["$key#${cand_free[$j]}"]}" ]; then
+        unset 'cand_free[j]'; cand_free=(${cand_free+"${cand_free[@]}"}); matched=1; break
+      fi
+    done
+    [ "$matched" = 0 ] && base_left+=("$i")
+  done
+  local n=0
+  for i in ${base_left+"${base_left[@]}"}; do
+    compare_occurrence "$key" "$i" "${cand_free[$n]}"
+    n=$((n + 1))
+  done
+  return 0
+}
+
+# --- Compare one unit occurrence pair, token by token (normalization.md §3.1-3.8, §6) -----------
 compare_occurrence() {
-  local key="$1" n="$2"
+  local key="$1" n="$2" m="$3"
   local -a b=() c=()
   tok_array "${BASE_TOK["$key#$n"]}"; b=("${OUT_TOKENS[@]}")
-  tok_array "${CAND_TOK["$key#$n"]}"; c=("${OUT_TOKENS[@]}")
+  tok_array "${CAND_TOK["$key#$m"]}"; c=("${OUT_TOKENS[@]}")
 
   local max=${#b[@]}; [ "${#c[@]}" -gt "$max" ] && max=${#c[@]}
   local i bt ct diverged=0
@@ -209,8 +260,10 @@ compare_occurrence() {
 }
 
 # --- main --------------------------------------------------------------------------------------
-[ $# -eq 2 ] || { usage; exit 2; }
+# Help is handled before the arity gate, so `--help` exits 0 like the sibling kit scripts
+# (run-experiment.sh:90, seed-workspace.sh:223) rather than falling through to the usage error.
 case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+[ $# -eq 2 ] || { usage; exit 2; }
 
 BASELINE="$1" CANDIDATE="$2"
 
@@ -227,9 +280,14 @@ declare -A BASE_ARMS=()
 for key in "${!BASE_UNITS[@]}"; do BASE_ARMS["${key#*:}"]=1; done
 
 # Every baseline unit must be matched, occurrence for occurrence (§3.9, §3.10).
+# The emptiness guards matter: `printf '%s\n' "${!EMPTY[@]}"` emits one BLANK line, which would
+# otherwise become a phantom unit '' and let the contractual verdict line go missing.
 compared=0
-mapfile -t sorted_base < <(printf '%s\n' "${!BASE_UNITS[@]}" | LC_ALL=C sort)
-for key in "${sorted_base[@]}"; do
+sorted_base=()
+if [ "${#BASE_UNITS[@]}" -gt 0 ]; then
+  mapfile -t sorted_base < <(printf '%s\n' "${!BASE_UNITS[@]}" | LC_ALL=C sort)
+fi
+for key in ${sorted_base+"${sorted_base[@]}"}; do
   bcount="${BASE_UNITS[$key]}"
   ccount="${CAND_UNITS[$key]:-0}"
   if [ "$ccount" = 0 ]; then
@@ -240,16 +298,17 @@ for key in "${sorted_base[@]}"; do
     fail "unit '$key': line count differs — baseline $bcount, candidate $ccount (normalization.md §3.9)."
     continue
   fi
-  for (( n = 1; n <= bcount; n++ )); do
-    compare_occurrence "$key" "$n"
-  done
+  compare_unit "$key" "$bcount"
   compared=$((compared + bcount))
 done
 
 # Candidate-only units: out of scope when the arm is unknown to the baseline, a divergence otherwise (§5).
 outofscope=0
-mapfile -t sorted_cand < <(printf '%s\n' "${!CAND_UNITS[@]}" | LC_ALL=C sort)
-for key in "${sorted_cand[@]}"; do
+sorted_cand=()
+if [ "${#CAND_UNITS[@]}" -gt 0 ]; then
+  mapfile -t sorted_cand < <(printf '%s\n' "${!CAND_UNITS[@]}" | LC_ALL=C sort)
+fi
+for key in ${sorted_cand+"${sorted_cand[@]}"}; do
   [ -n "${BASE_UNITS[$key]:-}" ] && continue
   arm="${key#*:}"
   if [ -z "${BASE_ARMS[$arm]:-}" ]; then
@@ -261,6 +320,13 @@ for key in "${sorted_cand[@]}"; do
 done
 
 note "compared $compared command line(s) across ${#sorted_base[@]} unit(s); $outofscope out of scope."
+
+# A run that compared nothing is not a pass. Without this, any path that leaves both sides empty
+# would reach the "parity holds" line and exit 0 — the loudest possible false negative.
+if [ "$compared" -le 0 ]; then
+  echo "$PROG: ERROR — compared 0 command lines; refusing to report parity over an empty surface." >&2
+  exit 2
+fi
 
 if [ "$fail_count" -gt 0 ]; then
   echo "$PROG: parity FAILED — $fail_count diverging finding(s)." >&2

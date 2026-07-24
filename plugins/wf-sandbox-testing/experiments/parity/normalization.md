@@ -94,8 +94,8 @@ A difference in any of these **fails** parity and is reported by name.
 
 The values recorded in
 [`../fleet-ab/baseline/capture.md`](../fleet-ab/baseline/capture.md) — `--workload-ref`, `--wf-ref-a`,
-`--wf-ref-b`, `--cli-version`, `--umbrella-id`, `--gate-skill` — are **compared** tokens under §3.3,
-never ignored. They are refs, ids, versions and skill strings: the very classes that carry the
+`--wf-ref-b`, `--cli-version`, `--umbrella-id`, `--gate-skill`, and `--fake-scripts` — are **compared**
+tokens under §3.3, never ignored. They are refs, ids, versions and skill strings: the very classes that carry the
 hardcoding being generalized, so ignoring them would hollow the check out entirely.
 
 They are compared honestly only if both sides were given the same inputs. Therefore:
@@ -121,11 +121,13 @@ Each of these is dissolved by §2 before comparison. They are listed exhaustivel
 ignored.
 
 - **4.1 — Line ordering.** *Why:* `coin_order()` (`run-experiment.sh:131`) randomizes arm order with
-  `$((RANDOM % 2))`, independently for gate (`:171`) and pilot (`:185`), so the captured baseline records
+  `$((RANDOM % 2))`, independently for gate (`:171`) and pilot (`:182`), so the captured baseline records
   one of four equally valid orderings — this capture happens to hold gate A,B and pilot B,A. *Mechanism:*
   N4 keys each line by its own `phase:arm`, so a line is compared against its counterpart regardless of
-  where either sits in its file. *Not weakened:* line count per unit (§3.9) and token order within a line
-  (§3.8) both remain compared, so "ordering is ignored" costs nothing but the shuffle.
+  where either sits in its file; where one unit legitimately carries several lines, identical
+  occurrences are paired off as an unordered multiset before any positional report. *Not weakened:*
+  line count per unit (§3.9) and token order within a line (§3.8) both remain compared, so "ordering is
+  ignored" costs nothing but the shuffle.
 - **4.2 — Token quoting form.** *Why:* `printf '%q'` escaping is bash-version dependent, and a retrofit
   engine need not emit its argv through `%q` at all; the baseline was produced by GNU bash 5.2.21.
   *Example:* the baseline's `--gate-skill /wf:triage\ WF-406` versus a single-quoted
@@ -153,6 +155,12 @@ ignored.
   carries genuinely uncomparable content (the coin-flip announcement, the gap countdown). *Example:*
   `run-experiment.sh: PILOT — coin-flipped arm order: B A (330s gap between arms)`. *Mechanism:* §1 — the
   comparator reads stdout captures only and never opens the stderr file.
+- **4.7 — Blank and whitespace-only lines.** *Why:* a line with no tokens carries no command, and a
+  capture may legitimately pick up a trailing newline or a separator. *Example:* the trailing newline
+  ending `dry-run-baseline.stdout.txt`. *Mechanism:* such lines are dropped before tokenizing.
+  *Bounded deliberately:* this is the *only* line a side may drop. A line with any non-whitespace
+  content is either classified (§2 N4) or fails (§6) — never skipped, which is what §6's
+  unclassifiable-line rule guarantees.
 
 **No other class is ignored.** In particular the comparator has no notion of "cosmetic" beyond this list:
 it does not normalize case, does not sort tokens within a line, does not treat any flag as optional, and

@@ -69,9 +69,9 @@ before its `mkdir`, so even the output directories were not created. `git status
 ## Recorded invocation parameter values
 
 These are the values WF-420's retrofit manifest must declare **verbatim** as its experiment constants
-and arm `wf_ref`s. `normalization.md` classifies every one of them (except `--gap-seconds`, see below)
-as a **compared** token — supplied identically to both sides of the parity comparison, never ignored.
-Both refs are frozen literal shas; the moving ref `main` appears nowhere.
+and arm `wf_ref`s. Their parity classification is stated once, authoritatively, at `normalization.md`
+§3.11 — compared, supplied identically to both sides, with `--gap-seconds` recorded-only. Both refs are
+frozen literal shas; the moving ref `main` appears nowhere.
 
 | Parameter | Value | Source | Reaches compared stdout? |
 |---|---|---|---|
@@ -85,14 +85,14 @@ Both refs are frozen literal shas; the moving ref `main` appears nowhere.
 | `--packs` | *(empty)* | **default** (`:62`) | no — the flag is **absent**, `:140` appends it only when non-empty |
 | `--gap-seconds` | `330` | **default** (`:24`) | no — stderr narration only (`:183`, `:187`) |
 
-Two entries need their classification stated rather than inferred:
+Two entries are worth flagging as *capture facts*, with their parity classification left to
+`normalization.md`, which owns it:
 
-- **`--packs` is empty, so the flag is absent from every printed `docker run` line.** That absence is
-  itself a compared fact — `normalization.md` compares flag *presence/absence*, so a retrofit engine
-  that emitted `--packs ''` would (correctly) fail parity.
-- **`--gap-seconds 330` never reaches the compared surface.** It is recorded here for completeness and
-  for WF-420's manifest, but `normalization.md` classifies it **recorded-only**: it appears only in
-  stderr narration, which is an ignored class.
+- **`--packs` is empty, so the flag is absent from every printed `docker run` line** (`:140` appends it
+  only when non-empty). Classified at `normalization.md` §3.7.
+- **`--gap-seconds 330` never reaches stdout.** It appears only in stderr narration (`:183`, `:187`) and
+  in a `sleep` that dry-run skips (`:188`). It is recorded here for WF-420's manifest; classified at
+  `normalization.md` §3.11.
 
 ### Ref selection
 
@@ -129,25 +129,25 @@ surface:
 | 6 | analyze | both | `analyze.sh --run-a … --run-b …` |
 
 Every line is self-identifying: its executable basename or its `results/{gate,run}-{A,B}` mount names
-both the phase and the arm. That is what makes stdout alone a sufficient parity surface — no positional
-or ordering assumption is needed to tell which line is which.
+both the phase and the arm — the property `normalization.md` §1 relies on.
 
 Each line is emitted as four leading spaces, then `printf '%q '` per token, then a newline
 (`:142`, `:160`, `:204`) — hence the trailing space on every line and the `\`-escaped space in
-`/wf:triage\ WF-406`. Both are quoting artefacts, and `normalization.md` ignores them.
+`/wf:triage\ WF-406`.
 
 ---
 
 ## One capture, not N — arm ordering is legitimately random
 
 `coin_order()` (`:131`) shuffles the arm order per phase with `$((RANDOM % 2))`, independently for gate
-(`:171`) and pilot (`:185`). **This capture happens to record gate order A,B and pilot order B,A.** A
+(`:171`) and pilot (`:182`). **This capture happens to record gate order A,B and pilot order B,A.** A
 re-capture may legitimately produce any of the four orderings; that is not a divergence and must never
 be read as one.
 
-This is why the baseline is a single capture rather than a set of N runs, and why `normalization.md`
-classifies line ordering as **ignored** and the comparator sorts normalized lines canonically before
-comparing. Phase-canonical order (build → gate → pilot → analyze) is enforced by the script's own
+This is why the baseline is a single capture rather than a set of N runs. How that randomness is
+absorbed is `normalization.md`'s call, not this file's — see its §4.1: line ordering is an ignored
+class, and the comparator keys each normalized line by its own `phase:arm` unit rather than by
+position. Phase-canonical order (build → gate → pilot → analyze) is enforced by the script's own
 control flow at `:217-220` and is not a parity concern.
 
 ---
@@ -161,9 +161,8 @@ The absolute path prefix embedded in every line is this capture host's checkout 
 ```
 
 `SCRIPT_DIR`/`RESULTS_DIR` (`:17-18`) resolve to wherever the kit sits, so this prefix differs on every
-host and every checkout. `normalization.md` classifies absolute root prefixes as **ignored**, reducing
-each path to its suffix below the kit root (`build-arm.sh`, `results/gate-A`, …), which is the part that
-actually carries meaning.
+host and every checkout. `printf '%q'` escaping is likewise bash-version dependent; it was produced here
+by bash 5.2.21.
 
-`printf '%q'` escaping is likewise bash-version dependent; it was produced here by bash 5.2.21 and is an
-ignored class for the same reason.
+Both are facts about *this capture*, which is what this file records. Their parity classification is
+`normalization.md`'s to state — see its §4.4 (absolute root prefixes) and §4.2 (quoting form).
