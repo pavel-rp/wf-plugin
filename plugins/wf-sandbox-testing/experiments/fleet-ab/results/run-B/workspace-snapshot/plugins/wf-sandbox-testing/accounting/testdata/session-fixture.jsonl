@@ -1,0 +1,3 @@
+{"type":"assistant","message":{"id":"orch-1","model":"claude-opus-4-8","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":2},"content":[{"type":"tool_use","id":"tool-1","name":"Task"}]}}
+{"type":"assistant","message":{"id":"orch-1","model":"claude-opus-4-8","usage":{"input_tokens":10,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":20},"content":[{"type":"tool_use","id":"tool-1","name":"Task"}]}}
+{"type":"assistant","message":{"id":"orch-2","model":"claude-opus-4-8","usage":{"input_tokens":5,"cache_creation_input_tokens":50,"cache_read_input_tokens":1500,"output_tokens":10},"content":[]}}

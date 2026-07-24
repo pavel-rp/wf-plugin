@@ -1,0 +1,11 @@
+{
+  "task": "/wf:ship FAKE-1",
+  "skill": "/wf:ship FAKE-1 (contribution-survival SEEDED — wf:slot marker dropped, fill orphaned)",
+  "fixture": "contribution-survival",
+  "plugin_source": "seeded",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-contrib-survival-4d2a", "plugin_build": "fp-seeded-marker-dropped-b7c9", "cli_version": "claude 1.0.0", "run": "fp-cs-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "seeded-breakage",
+  "reason": "the ship.review wf:slot marker was dropped so the registered fill orphaned; the slot resolved unfilled and no review op ran — the contribution did not survive"
+}

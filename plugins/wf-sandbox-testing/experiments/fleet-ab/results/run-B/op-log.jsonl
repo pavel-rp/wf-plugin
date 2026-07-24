@@ -1,0 +1,3 @@
+{"seq":1,"surface":"tracker","op":"list_children","args":{"parent-id":"WF-405"},"response":[{"id":"WF-406","title":"SUB-1 — Mirror the spec phase to the tracker via two slots"},{"id":"WF-409","title":"SUB-6 — Compose cleanup articles into the constitution and sweep scratch at finalize"}]}
+{"seq":2,"surface":"tracker","op":"list_blockers","args":{"id":"WF-406"},"response":[]}
+{"seq":3,"surface":"tracker","op":"list_blockers","args":{"id":"WF-409"},"response":[]}

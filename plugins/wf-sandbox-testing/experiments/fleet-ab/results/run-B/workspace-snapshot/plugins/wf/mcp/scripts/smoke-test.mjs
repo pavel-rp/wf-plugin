@@ -1,0 +1,418 @@
+// Clean-installed-copy smoke test for the wf resolver MCP runtime.
+//
+// Proves the production startup contract without the source repo or node_modules:
+//   1. Copy ONLY the shipped plugin payload (the committed dist/ bundle + the
+//      plugin-root .mcp.json) to a clean temp location — no src, no repo, no
+//      node_modules, no package.json.
+//   2. Parse the copied .mcp.json and launch EXACTLY the declared MCP process
+//      (command `node`, ${CLAUDE_PLUGIN_ROOT} substituted), from a scratch cwd
+//      that contains no package.json and no node_modules — so nothing could be
+//      installed even if startup tried.
+//   3. Drive the MCP stdio protocol handshake (initialize -> result, then
+//      tools/list) and assert the server answers from the bundle alone.
+//
+// Run with `npm run smoke`. In CI this runs on the DECLARED MINIMUM Node (the
+// `node` on PATH), so the handshake is proven against the floor, not just the
+// developer's interpreter.
+
+import { fileURLToPath } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { spawn, execFileSync } from "node:child_process";
+import {
+  mkdtemp,
+  mkdir,
+  copyFile,
+  readFile,
+  rm,
+  readdir,
+} from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { createInterface } from "node:readline";
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const pkgDir = join(scriptDir, ".."); // plugins/wf/mcp
+const pluginSrcRoot = join(pkgDir, ".."); // plugins/wf
+
+const HANDSHAKE_TIMEOUT_MS = 20_000;
+
+function fail(message) {
+  process.stderr.write(`SMOKE FAIL: ${message}\n`);
+  process.exit(1);
+}
+
+/** Recursively assert a directory tree contains no node_modules / package.json. */
+async function assertNoDependencyArtifacts(root) {
+  const entries = await readdir(root, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === "node_modules") {
+      fail(`clean payload unexpectedly contains node_modules at ${join(root, entry.name)}`);
+    }
+    if (entry.name === "package.json" || entry.name === "package-lock.json") {
+      fail(`clean payload unexpectedly contains ${entry.name} at ${join(root, entry.name)}`);
+    }
+    if (entry.isDirectory()) {
+      await assertNoDependencyArtifacts(join(root, entry.name));
+    }
+  }
+}
+
+const cleanRoot = await mkdtemp(join(tmpdir(), "wf-resolver-smoke-"));
+let child;
+try {
+  // (1) Copy ONLY the shipped payload.
+  const pluginRoot = join(cleanRoot, "plugin");
+  const distTarget = join(pluginRoot, "mcp", "dist");
+  await mkdir(distTarget, { recursive: true });
+
+  for (const name of ["server.mjs", "runtime.mjs"]) {
+    const from = join(pkgDir, "dist", name);
+    if (!existsSync(from)) {
+      fail(`committed bundle missing: dist/${name}. Run \`npm run build\` first.`);
+    }
+    await copyFile(from, join(distTarget, name));
+  }
+  await copyFile(join(pluginSrcRoot, ".mcp.json"), join(pluginRoot, ".mcp.json"));
+
+  // Scratch cwd with nothing in it — no package.json, no node_modules.
+  const scratchCwd = join(cleanRoot, "scratch");
+  await mkdir(scratchCwd, { recursive: true });
+  execFileSync("git", ["-C", scratchCwd, "init", "-b", "main"], { stdio: "ignore" });
+
+  await assertNoDependencyArtifacts(cleanRoot);
+
+  // (2) Parse the copied .mcp.json and reconstruct the DECLARED launch command.
+  const mcpDecl = JSON.parse(await readFile(join(pluginRoot, ".mcp.json"), "utf8"));
+  const servers = mcpDecl.mcpServers ?? {};
+  const serverKeys = Object.keys(servers);
+  if (serverKeys.length !== 1) {
+    fail(`.mcp.json must declare exactly one server; found ${serverKeys.length}`);
+  }
+  const decl = servers[serverKeys[0]];
+
+  if (decl.alwaysLoad !== true) {
+    fail(`.mcp.json server "${serverKeys[0]}" must set alwaysLoad: true`);
+  }
+  if (decl.command !== "node") {
+    fail(`.mcp.json command must be "node" (no npx / package manager); got "${decl.command}"`);
+  }
+  const rawArgs = Array.isArray(decl.args) ? decl.args : [];
+  const declText = JSON.stringify(decl);
+  for (const forbidden of ["npx", "npm ", "install", "pnpm", "yarn"]) {
+    if (declText.includes(forbidden)) {
+      fail(`.mcp.json must not reference a package manager / install step; found "${forbidden}"`);
+    }
+  }
+
+  const args = rawArgs.map((a) => a.replaceAll("${CLAUDE_PLUGIN_ROOT}", pluginRoot));
+  const bundleArg = args.find((a) => a.endsWith("server.mjs"));
+  if (!bundleArg || !existsSync(bundleArg)) {
+    fail(`declared launch target does not resolve to the copied bundle: ${bundleArg}`);
+  }
+
+  process.stdout.write(
+    `Launching declared MCP process on Node ${process.version}: ${decl.command} ${args.join(" ")}\n`,
+  );
+
+  // (3) Launch and drive the handshake.
+  child = spawn(decl.command, args, {
+    cwd: scratchCwd,
+    env: { ...process.env, CLAUDE_PLUGIN_ROOT: pluginRoot },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let stderrBuf = "";
+  child.stderr.on("data", (d) => {
+    stderrBuf += d.toString();
+  });
+
+  const responses = new Map();
+  const waiters = new Map();
+  const rl = createInterface({ input: child.stdout });
+  rl.on("line", (line) => {
+    const text = line.trim();
+    if (!text) return;
+    let msg;
+    try {
+      msg = JSON.parse(text);
+    } catch {
+      return; // ignore non-JSON diagnostic lines
+    }
+    if (msg.id !== undefined && msg.id !== null) {
+      responses.set(msg.id, msg);
+      const w = waiters.get(msg.id);
+      if (w) {
+        waiters.delete(msg.id);
+        w(msg);
+      }
+    }
+  });
+
+  const childExited = new Promise((_, reject) => {
+    child.on("exit", (code) => reject(new Error(`server exited early (code ${code})\n${stderrBuf}`)));
+    child.on("error", (err) => reject(new Error(`failed to spawn server: ${err.message}`)));
+  });
+
+  function send(obj) {
+    child.stdin.write(`${JSON.stringify(obj)}\n`);
+  }
+
+  function awaitResponse(id) {
+    return new Promise((resolveResp, reject) => {
+      if (responses.has(id)) return resolveResp(responses.get(id));
+      waiters.set(id, resolveResp);
+      setTimeout(() => reject(new Error(`timed out waiting for response id=${id}\n${stderrBuf}`)), HANDSHAKE_TIMEOUT_MS);
+    });
+  }
+
+  send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "wf-resolver-smoke", version: "0.0.0" },
+    },
+  });
+
+  const initResult = await Promise.race([awaitResponse(1), childExited]);
+  if (initResult.error) {
+    fail(`initialize returned an error: ${JSON.stringify(initResult.error)}`);
+  }
+  const result = initResult.result ?? {};
+  if (!result.protocolVersion) {
+    fail(`initialize result missing protocolVersion: ${JSON.stringify(initResult)}`);
+  }
+  if (result.serverInfo?.name !== "wf-resolver") {
+    fail(`unexpected serverInfo: ${JSON.stringify(result.serverInfo)}`);
+  }
+  process.stdout.write(
+    `Handshake OK: protocol ${result.protocolVersion}, server ${result.serverInfo.name} ${result.serverInfo.version}\n`,
+  );
+
+  // Complete the lifecycle and confirm the tool surface answers from the bundle.
+  send({ jsonrpc: "2.0", method: "notifications/initialized" });
+  send({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+  const toolsResult = await Promise.race([awaitResponse(2), childExited]);
+  const tools = toolsResult.result?.tools ?? [];
+  if (!tools.some((t) => t.name === "wf_resolver_status")) {
+    fail(`tools/list did not include wf_resolver_status: ${JSON.stringify(tools)}`);
+  }
+  // The typed resolver query tools (WF-270) must be advertised from the bundle.
+  for (const required of ["resolve_config", "inspect_pack", "register_pack", "resolve_inspect"]) {
+    if (!tools.some((t) => t.name === required)) {
+      fail(`tools/list did not include ${required}: ${JSON.stringify(tools.map((t) => t.name))}`);
+    }
+  }
+  for (const tool of tools) {
+    const schema = tool.inputSchema;
+    if (!schema?.required?.includes("workspaceRoot")) {
+      fail(`${tool.name} does not require workspaceRoot: ${JSON.stringify(schema)}`);
+    }
+    if (
+      schema.properties?.workspaceRoot?.type !== "string" ||
+      schema.properties.workspaceRoot.minLength !== 1 ||
+      schema.properties.workspaceRoot.maxLength !== 4096 ||
+      schema.properties.workspaceRoot.pattern !== "^[^\\u0000-\\u001F\\u007F-\\u009F]*$"
+    ) {
+      fail(`${tool.name} does not declare a bounded terminal-safe workspaceRoot string: ${JSON.stringify(schema)}`);
+    }
+  }
+  const routingTool = tools.find((t) => t.name === "resolve_routing");
+  const routingSchema = routingTool?.inputSchema;
+  if (
+    !routingSchema?.required?.includes("shapeEvidence") ||
+    "executionShape" in (routingSchema.properties ?? {}) ||
+    routingSchema.properties?.shapeEvidence?.required?.length ||
+    routingSchema.properties?.role?.pattern !== "^[a-z][a-z0-9-]{0,63}$" ||
+    routingSchema.properties?.unitIds?.items?.pattern !== "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$" ||
+    routingSchema.properties?.shapeEvidence?.properties?.unitCount?.maximum !== 4 ||
+    routingSchema.properties?.unitIds?.maxItems !== 4 ||
+    routingSchema.properties?.unitIds?.items?.maxLength !== 128 ||
+    routingSchema.properties?.availableModels?.maxItems !== 64 ||
+    routingSchema.properties?.availableModels?.items?.maxLength !== 128 ||
+    routingSchema.properties?.invocationModel?.maxLength !== 128 ||
+    routingSchema.properties?.invocationEffort?.maxLength !== 16 ||
+    routingSchema.properties?.hostModel?.maxLength !== 128 ||
+    routingSchema.properties?.hostEffort?.maxLength !== 16 ||
+    routingSchema.properties?.basis?.maxLength !== 256 ||
+    routingSchema.properties?.escalationOrigin?.maxLength !== 256 ||
+    routingSchema.properties?.actualModel?.maxLength !== 128 ||
+    routingSchema.properties?.postAttempt?.properties?.units?.maxItems !== 4 ||
+    routingSchema.properties?.postAttempt?.properties?.units?.items?.properties?.unitId?.maxLength !== 128 ||
+    routingSchema.properties?.postAttempt?.properties?.prior?.properties?.unitIds?.maxItems !== 4 ||
+    routingSchema.properties?.postAttempt?.properties?.prior?.properties?.unitIds?.items?.maxLength !== 128 ||
+    routingSchema.properties?.postAttempt?.properties?.signals?.maxItems !== 6 ||
+    routingSchema.properties?.postAttempt?.properties?.units?.items?.properties?.signals?.maxItems !== 6 ||
+    routingSchema.properties?.postAttempt?.properties?.prior?.properties?.effort?.properties?.value?.maxLength !== 16 ||
+    !routingSchema.properties?.postAttempt?.properties?.signals?.items?.enum?.includes("high-severity-review-uncertainty") ||
+    !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("role") ||
+    !routingSchema.properties?.postAttempt?.properties?.prior?.required?.includes("basis") ||
+    routingSchema.properties?.attempt?.maximum !== 3 ||
+    !routingTool?.outputSchema?.properties?.disposition?.enum?.includes("retry") ||
+    !routingTool?.outputSchema?.properties?.retry
+  ) {
+    fail(`resolve_routing schema does not expose the typed shape and escalation contract: ${JSON.stringify(routingTool)}`);
+  }
+  process.stdout.write(`tools/list OK: ${tools.map((t) => t.name).join(", ")}\n`);
+
+  // Schema validation must reject omitted and empty workspaceRoot values before any handler runs.
+  send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: { name: "wf_resolver_status", arguments: {} },
+  });
+  const missingRootResult = await Promise.race([awaitResponse(3), childExited]);
+  const missingRootText = JSON.stringify(missingRootResult);
+  if (
+    (!missingRootResult.error && !missingRootResult.result?.isError) ||
+    !missingRootText.toLowerCase().includes("validation")
+  ) {
+    fail(`wf_resolver_status did not schema-reject an omitted workspaceRoot: ${missingRootText}`);
+  }
+
+  send({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: { name: "wf_resolver_status", arguments: { workspaceRoot: "" } },
+  });
+  const emptyRootResult = await Promise.race([awaitResponse(4), childExited]);
+  const emptyRootText = JSON.stringify(emptyRootResult);
+  if (
+    (!emptyRootResult.error && !emptyRootResult.result?.isError) ||
+    !emptyRootText.toLowerCase().includes("validation")
+  ) {
+    fail(`wf_resolver_status did not schema-reject an empty workspaceRoot: ${emptyRootText}`);
+  }
+
+  send({
+    jsonrpc: "2.0",
+    id: 5,
+    method: "tools/call",
+    params: { name: "wf_resolver_status", arguments: { workspaceRoot: scratchCwd } },
+  });
+  const statusResult = await Promise.race([awaitResponse(5), childExited]);
+  if (statusResult.error || statusResult.result?.isError) {
+    fail(`wf_resolver_status rejected the launch repository: ${JSON.stringify(statusResult)}`);
+  }
+
+  // Call a typed tool end-to-end through the bundle. resolve_inspect is the safe
+  // choice: it reports lifecycle state from the (absent) cache under the scratch
+  // cwd without a rebuild or a `claude` CLI call — hermetic and deterministic.
+  send({
+    jsonrpc: "2.0",
+    id: 6,
+    method: "tools/call",
+    params: { name: "resolve_inspect", arguments: { workspaceRoot: scratchCwd } },
+  });
+  const callResult = await Promise.race([awaitResponse(6), childExited]);
+  if (callResult.error) {
+    fail(`resolve_inspect returned an error: ${JSON.stringify(callResult.error)}`);
+  }
+  const structured = callResult.result?.structuredContent;
+  const textPayload = callResult.result?.content?.find((c) => c.type === "text")?.text;
+  const parsed = structured ?? (textPayload ? JSON.parse(textPayload) : undefined);
+  if (!parsed || typeof parsed.valid !== "boolean" || !("counts" in parsed)) {
+    fail(`resolve_inspect did not return a lifecycle payload: ${JSON.stringify(callResult.result)}`);
+  }
+  process.stdout.write(
+    `tools/call resolve_inspect OK: valid=${parsed.valid}, cached=${parsed.cached}\n`,
+  );
+
+  const shapeEvidence = {
+    workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
+    ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical",
+    contextIsolation: "none", independentReview: false,
+    returnContract: "mechanically-judgeable", requestedParallelism: 1,
+  };
+  const routingBase = {
+    workspaceRoot: scratchCwd,
+    role: "classify",
+    shapeEvidence,
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
+    availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6"],
+    unitIds: ["classify:smoke"],
+    basis: "smoke-basis",
+  };
+  send({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "resolve_routing", arguments: routingBase } });
+  const initialResult = await Promise.race([awaitResponse(7), childExited]);
+  const initialText = initialResult.result?.content?.find((c) => c.type === "text")?.text;
+  const initial = initialResult.result?.structuredContent ?? (initialText ? JSON.parse(initialText) : undefined);
+  if (initialResult.error || initialResult.result?.isError || initial?.disposition !== "dispatch") {
+    fail(`resolve_routing initial dispatch failed: ${JSON.stringify(initialResult)}`);
+  }
+  const postAttempt = {
+    sufficient: false,
+    signals: ["low-confidence"],
+    prior: {
+      role: initial.role,
+      attempt: 1,
+      executionShape: initial.executionShape,
+      shapeEvidence: initial.normalizedEvidence,
+      unitIds: initial.unitIds,
+      model: initial.model,
+      effort: initial.effort,
+      basis: initial.basis,
+      escalationOrigin: null,
+      actualModel: "claude-haiku-4-5",
+    },
+  };
+  send({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "resolve_routing", arguments: { ...routingBase, postAttempt } } });
+  const retryResult = await Promise.race([awaitResponse(8), childExited]);
+  const retryText = retryResult.result?.content?.find((c) => c.type === "text")?.text;
+  const retry = retryResult.result?.structuredContent ?? (retryText ? JSON.parse(retryText) : undefined);
+  if (retryResult.error || retryResult.result?.isError || retry?.disposition !== "retry" || retry?.retry?.nextTier !== "sonnet" || retry?.basis !== "smoke-basis") {
+    fail(`resolve_routing escalation failed: ${JSON.stringify(retryResult)}`);
+  }
+  send({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "resolve_routing", arguments: { ...routingBase, postAttempt: { sufficient: true, signals: [], prior: postAttempt.prior } } } });
+  const retainResult = await Promise.race([awaitResponse(9), childExited]);
+  const retainText = retainResult.result?.content?.find((c) => c.type === "text")?.text;
+  const retained = retainResult.result?.structuredContent ?? (retainText ? JSON.parse(retainText) : undefined);
+  if (retainResult.error || retainResult.result?.isError || retained?.disposition !== "retain" || retained?.retry !== null) {
+    fail(`resolve_routing retain failed: ${JSON.stringify(retainResult)}`);
+  }
+  send({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "resolve_routing", arguments: { ...routingBase, attempt: 2 } } });
+  const bypassResult = await Promise.race([awaitResponse(10), childExited]);
+  const bypassText = bypassResult.result?.content?.find((c) => c.type === "text")?.text;
+  const bypass = bypassResult.result?.structuredContent ?? (bypassText ? JSON.parse(bypassText) : undefined);
+  // The "no postAttempt => attempt 1" invariant is enforced in resolveRouting() (an
+  // invalid-stop decision), not by a top-level schema allOf — the Anthropic API rejects a
+  // tool input_schema that uses top-level allOf, which makes the whole tool unregistrable.
+  if (bypassResult.error || bypassResult.result?.isError || bypass?.status !== "stop" || bypass?.disposition !== "invalid-stop") {
+    fail(`resolve_routing did not reject an initial attempt bypass: ${JSON.stringify(bypassResult)}`);
+  }
+  process.stdout.write("tools/call resolve_routing escalation OK: retain, bounded retry, and attempt guard\n");
+
+  process.stdout.write(
+    "SMOKE PASS: clean-copy MCP runtime started, completed the protocol handshake, enforced workspaceRoot schemas, and served a typed resolver query — with no source checkout, no node_modules, and no dependency install.\n",
+  );
+} finally {
+  if (child) {
+    try {
+      child.stdin.end();
+    } catch {
+      /* ignore */
+    }
+    if (child.exitCode === null) {
+      child.kill();
+      // Wait for the OS to release the child's cwd handle before removing the
+      // temp tree (Windows holds it briefly after kill).
+      await new Promise((r) => {
+        child.on("exit", r);
+        setTimeout(r, 3000);
+      });
+    }
+  }
+  try {
+    await rm(cleanRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    // Best-effort cleanup: a transient OS lock on the temp dir must not fail a
+    // handshake that already passed.
+  }
+}
+
+process.exit(0);

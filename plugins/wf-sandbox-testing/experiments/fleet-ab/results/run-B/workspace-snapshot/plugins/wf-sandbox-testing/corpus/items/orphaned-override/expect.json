@@ -1,0 +1,24 @@
+{
+  "_comment": "Orphaned overrides at upgrade (WF-348, C014-4, provenance WF-203 comment 2026-07-17 item 4 / C016 OUT-6). Structural over the op log + workspace + terminal block, never a transcript exact-match. runs-current holds the override-present scenario: a personal _local/slots/ship.review.md override wins under replace over the pack fill, its review ops fire, and its gate holds (SHIP — Blocked). files_touched requires the override file present; the seeded set removes it. See item.md.",
+  "scenario": "orphaned-override",
+  "skill": "/wf:ship FAKE-1 (personal _local/slots/ship.review.md override present; wins under replace)",
+  "families": {
+    "terminal_block": {
+      "name": "SHIP",
+      "status_ere": "^Blocked$",
+      "min_pass_rate": 1.0
+    },
+    "files_touched": {
+      "required_globs": ["_local/fake/op-log.jsonl", "_local/slots/ship.review.md"],
+      "forbidden_globs": ["src/*"],
+      "min_pass_rate": 1.0
+    },
+    "ops_invoked": {
+      "required_ops": [
+        "delivery:review-threads-read",
+        "delivery:review-thread-reply"
+      ],
+      "min_pass_rate": 1.0
+    }
+  }
+}

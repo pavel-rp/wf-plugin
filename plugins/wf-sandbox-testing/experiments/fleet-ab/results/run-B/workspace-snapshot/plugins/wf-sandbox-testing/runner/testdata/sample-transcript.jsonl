@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"demo","tools":["Read","Bash","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Resolving the fake delivery provider."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"BRANCH — created"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"BRANCH — created"}

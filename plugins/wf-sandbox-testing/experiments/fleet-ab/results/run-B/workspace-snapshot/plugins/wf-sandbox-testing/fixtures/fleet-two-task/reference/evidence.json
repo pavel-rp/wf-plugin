@@ -1,0 +1,432 @@
+{
+  "schemaVersion": 1,
+  "session": "fleet-two-task-synthetic",
+  "childCount": 2,
+  "children": [
+    "child-1",
+    "child-2"
+  ],
+  "roles": [
+    "audit lens",
+    "bookkeeping",
+    "fleet orchestrator",
+    "implement",
+    "qa",
+    "ship orchestrator",
+    "spec/plan/triage",
+    "verify-spec/fix"
+  ],
+  "phases": [
+    "bookkeeping",
+    "classify",
+    "finalize",
+    "fleet orchestration",
+    "implement",
+    "plan",
+    "pr",
+    "qa",
+    "ship orchestration",
+    "spec",
+    "triage",
+    "verify"
+  ],
+  "lenses": [
+    "consistency",
+    "convention",
+    "correctness",
+    "operational",
+    "security"
+  ],
+  "structure": [
+    "fleet-two-task-synthetic.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-00-ship.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-01-classify.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-02-branch.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-03-triage.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-04-spec.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-05-plan.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-06-tasks.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-07-implement.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-08-commit.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-09-index.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-10-verify-spec.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-11-audit-consistency.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-12-audit-convention.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-13-audit-correctness.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-14-audit-operational.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-15-audit-security.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-16-verify-fix.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-17-verify-recheck.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-18-qa.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-19-pr.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c1-20-finalize.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-00-ship.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-01-classify.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-02-branch.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-03-triage.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-04-spec.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-05-plan.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-06-tasks.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-07-implement.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-08-commit.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-09-index.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-10-verify-spec.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-11-audit-consistency.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-12-audit-convention.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-13-audit-correctness.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-14-audit-operational.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-15-audit-security.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-16-verify-fix.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-17-verify-recheck.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-18-qa.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-19-pr.jsonl",
+    "fleet-two-task-synthetic/subagents/agent-c2-20-finalize.jsonl"
+  ],
+  "events": [
+    {
+      "child": "",
+      "seq": 0,
+      "phase": "fleet orchestration",
+      "role": "fleet orchestrator",
+      "lens": null,
+      "agent": "orchestrator"
+    },
+    {
+      "child": "child-1",
+      "seq": 0,
+      "phase": "ship orchestration",
+      "role": "ship orchestrator",
+      "lens": null,
+      "agent": "agent-c1-00-ship"
+    },
+    {
+      "child": "child-1",
+      "seq": 1,
+      "phase": "classify",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c1-01-classify"
+    },
+    {
+      "child": "child-1",
+      "seq": 2,
+      "phase": "bookkeeping",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c1-02-branch"
+    },
+    {
+      "child": "child-1",
+      "seq": 3,
+      "phase": "triage",
+      "role": "spec/plan/triage",
+      "lens": null,
+      "agent": "agent-c1-03-triage"
+    },
+    {
+      "child": "child-1",
+      "seq": 4,
+      "phase": "spec",
+      "role": "spec/plan/triage",
+      "lens": null,
+      "agent": "agent-c1-04-spec"
+    },
+    {
+      "child": "child-1",
+      "seq": 5,
+      "phase": "plan",
+      "role": "spec/plan/triage",
+      "lens": null,
+      "agent": "agent-c1-05-plan"
+    },
+    {
+      "child": "child-1",
+      "seq": 6,
+      "phase": "plan",
+      "role": "spec/plan/triage",
+      "lens": null,
+      "agent": "agent-c1-06-tasks"
+    },
+    {
+      "child": "child-1",
+      "seq": 7,
+      "phase": "implement",
+      "role": "implement",
+      "lens": null,
+      "agent": "agent-c1-07-implement"
+    },
+    {
+      "child": "child-1",
+      "seq": 8,
+      "phase": "bookkeeping",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c1-08-commit"
+    },
+    {
+      "child": "child-1",
+      "seq": 9,
+      "phase": "bookkeeping",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c1-09-index"
+    },
+    {
+      "child": "child-1",
+      "seq": 10,
+      "phase": "verify",
+      "role": "verify-spec/fix",
+      "lens": null,
+      "agent": "agent-c1-10-verify-spec"
+    },
+    {
+      "child": "child-1",
+      "seq": 11,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "consistency",
+      "agent": "agent-c1-11-audit-consistency"
+    },
+    {
+      "child": "child-1",
+      "seq": 12,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "convention",
+      "agent": "agent-c1-12-audit-convention"
+    },
+    {
+      "child": "child-1",
+      "seq": 13,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "correctness",
+      "agent": "agent-c1-13-audit-correctness"
+    },
+    {
+      "child": "child-1",
+      "seq": 14,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "operational",
+      "agent": "agent-c1-14-audit-operational"
+    },
+    {
+      "child": "child-1",
+      "seq": 15,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "security",
+      "agent": "agent-c1-15-audit-security"
+    },
+    {
+      "child": "child-1",
+      "seq": 16,
+      "phase": "verify",
+      "role": "verify-spec/fix",
+      "lens": null,
+      "agent": "agent-c1-16-verify-fix"
+    },
+    {
+      "child": "child-1",
+      "seq": 17,
+      "phase": "verify",
+      "role": "verify-spec/fix",
+      "lens": null,
+      "agent": "agent-c1-17-verify-recheck"
+    },
+    {
+      "child": "child-1",
+      "seq": 18,
+      "phase": "qa",
+      "role": "qa",
+      "lens": null,
+      "agent": "agent-c1-18-qa"
+    },
+    {
+      "child": "child-1",
+      "seq": 19,
+      "phase": "pr",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c1-19-pr"
+    },
+    {
+      "child": "child-1",
+      "seq": 20,
+      "phase": "finalize",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c1-20-finalize"
+    },
+    {
+      "child": "child-2",
+      "seq": 0,
+      "phase": "ship orchestration",
+      "role": "ship orchestrator",
+      "lens": null,
+      "agent": "agent-c2-00-ship"
+    },
+    {
+      "child": "child-2",
+      "seq": 1,
+      "phase": "classify",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c2-01-classify"
+    },
+    {
+      "child": "child-2",
+      "seq": 2,
+      "phase": "bookkeeping",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c2-02-branch"
+    },
+    {
+      "child": "child-2",
+      "seq": 3,
+      "phase": "triage",
+      "role": "spec/plan/triage",
+      "lens": null,
+      "agent": "agent-c2-03-triage"
+    },
+    {
+      "child": "child-2",
+      "seq": 4,
+      "phase": "spec",
+      "role": "spec/plan/triage",
+      "lens": null,
+      "agent": "agent-c2-04-spec"
+    },
+    {
+      "child": "child-2",
+      "seq": 5,
+      "phase": "plan",
+      "role": "spec/plan/triage",
+      "lens": null,
+      "agent": "agent-c2-05-plan"
+    },
+    {
+      "child": "child-2",
+      "seq": 6,
+      "phase": "plan",
+      "role": "spec/plan/triage",
+      "lens": null,
+      "agent": "agent-c2-06-tasks"
+    },
+    {
+      "child": "child-2",
+      "seq": 7,
+      "phase": "implement",
+      "role": "implement",
+      "lens": null,
+      "agent": "agent-c2-07-implement"
+    },
+    {
+      "child": "child-2",
+      "seq": 8,
+      "phase": "bookkeeping",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c2-08-commit"
+    },
+    {
+      "child": "child-2",
+      "seq": 9,
+      "phase": "bookkeeping",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c2-09-index"
+    },
+    {
+      "child": "child-2",
+      "seq": 10,
+      "phase": "verify",
+      "role": "verify-spec/fix",
+      "lens": null,
+      "agent": "agent-c2-10-verify-spec"
+    },
+    {
+      "child": "child-2",
+      "seq": 11,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "consistency",
+      "agent": "agent-c2-11-audit-consistency"
+    },
+    {
+      "child": "child-2",
+      "seq": 12,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "convention",
+      "agent": "agent-c2-12-audit-convention"
+    },
+    {
+      "child": "child-2",
+      "seq": 13,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "correctness",
+      "agent": "agent-c2-13-audit-correctness"
+    },
+    {
+      "child": "child-2",
+      "seq": 14,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "operational",
+      "agent": "agent-c2-14-audit-operational"
+    },
+    {
+      "child": "child-2",
+      "seq": 15,
+      "phase": "verify",
+      "role": "audit lens",
+      "lens": "security",
+      "agent": "agent-c2-15-audit-security"
+    },
+    {
+      "child": "child-2",
+      "seq": 16,
+      "phase": "verify",
+      "role": "verify-spec/fix",
+      "lens": null,
+      "agent": "agent-c2-16-verify-fix"
+    },
+    {
+      "child": "child-2",
+      "seq": 17,
+      "phase": "verify",
+      "role": "verify-spec/fix",
+      "lens": null,
+      "agent": "agent-c2-17-verify-recheck"
+    },
+    {
+      "child": "child-2",
+      "seq": 18,
+      "phase": "qa",
+      "role": "qa",
+      "lens": null,
+      "agent": "agent-c2-18-qa"
+    },
+    {
+      "child": "child-2",
+      "seq": 19,
+      "phase": "pr",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c2-19-pr"
+    },
+    {
+      "child": "child-2",
+      "seq": 20,
+      "phase": "finalize",
+      "role": "bookkeeping",
+      "lens": null,
+      "agent": "agent-c2-20-finalize"
+    }
+  ],
+  "treeHash": null
+}
