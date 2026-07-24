@@ -14,14 +14,17 @@ retrofit that quietly changed an image ref — the exact failure mode this contr
 
 So both directions are exercised and transcribed verbatim below. Every command was run from the
 repository root; `$` lines are the commands as issued, and the block beneath each is the run's combined
-output copied verbatim, followed by its exit code. Exactly two placeholders are elided, both
-host-specific and neither load-bearing: **`<abs>`**, this host's checkout path in the derived
-`(kit root …)` parenthetical — an ignored class (`normalization.md` §4.4) that differs on every
-machine — and **`<version>`**, the running shell's `${BASH_VERSION}` in the Check 4a message. Nothing
-else is substituted. The file-path positions are **not** elided: they are exactly the arguments as
-typed, because the comparator echoes each argument as given.
+output copied verbatim, followed by its exit code. Exactly one placeholder is elided, host-specific and
+not load-bearing: **`<abs>`**, this host's checkout path in the derived `(kit root …)` parenthetical —
+an ignored class (`normalization.md` §4.4) that differs on every machine. Nothing else is substituted.
+The file-path positions are **not** elided: they are exactly the arguments as typed, because the
+comparator echoes each argument as given.
 
-`note()` output goes to stderr alongside the failure lines, matching the kit convention
+**One block below is not a transcript:** Check 4a's message is quoted from the code path, because this
+host runs bash 5 and the branch cannot be reached without a bash 3.2 to run under. It is labelled as
+such in place, and carries `${BASH_VERSION}` as written in the source rather than an elided capture.
+
+`log()` output goes to stderr alongside the failure lines, matching the kit convention
 (`run-experiment.sh:57`) of keeping stdout free for machine-consumed output.
 
 ---
@@ -122,8 +125,9 @@ part of the record: §4.5 (`/tmp` scratch paths) is exercised by `selfcheck.sh` 
 rather than a fixture, since no pre-retrofit capture contains a `/tmp` path; §4.6 (stderr narration) is
 structural — the comparator never opens a stderr file at all, so there is nothing to exercise; and §4.7
 (blank lines) is exercised by neither, because no committed capture contains a blank line. §4.7's skip
-is asserted from the code path alone (`parity-check.sh` `load_side`), which is the weakest evidence in
-this file and is flagged as such rather than counted with the rest.
+is asserted from the code path alone (`parity-check.sh` `load_side`) — one of exactly two code-path-only
+assertions in this file, the other being Check 4a's bash-4 guard. Both are flagged in place rather than
+counted with the executed checks.
 
 ```
 $ bash plugins/wf-sandbox-testing/experiments/parity/parity-check.sh \
@@ -159,10 +163,17 @@ macOS) they fail non-fatally, and since the script deliberately omits `set -e` t
 reach the pass line and exit 0 on a divergent pair. The version is asserted up front:
 
 ```
-parity-check.sh: ERROR — requires bash 4+ (found <version>); refusing to run rather than risk a false pass (normalization.md §6).
+parity-check.sh: ERROR — requires bash 4+ (found ${BASH_VERSION}); refusing to run rather than risk a false pass (normalization.md §6).
 ```
 
 **Exit code: 2** — a prerequisite error, distinct from both a pass and a parity failure.
+
+**Evidence class — code path, not a run.** Unlike every other block in this file, the two lines above are
+quoted from `parity-check.sh` rather than captured from a run: reaching the branch needs a bash 3.2
+interpreter this host does not have. The guard's *presence and shape* are asserted; its *behaviour under
+an old bash* is not, and `selfcheck.sh` cannot cover it either. This is one of the two code-path-only
+assertions in this file (the other is §4.7's blank-line skip, Check 3) and is deliberately not counted
+with the executed checks in the summary table.
 
 **4b — a backslash inside double quotes.** Collapsing every `\X` inside `"…"` would make the distinct
 argv values `\9c99498` and `9c99498` normalize alike, silently passing a §3.3 divergence. The escape set
@@ -171,8 +182,15 @@ carrying `--workload-ref "\9c99498"` (`selfcheck.sh` case 9):
 
 ```
 parity-check.sh: FAIL — unit 'pilot:A': diverging token at position 13 — baseline '9c99498', candidate '\9c99498'.
-parity-check.sh: parity FAILED — 1 diverging finding(s).
+parity-check.sh: FAIL — unit 'pilot:B': diverging token at position 13 — baseline '9c99498', candidate '\9c99498'.
+parity-check.sh: compared 6 command line(s) across 6 unit(s); 0 out of scope.
+parity-check.sh: parity FAILED — 2 diverging finding(s).
 ```
+
+Both pilot arms carry that ref, so the rewrite lands on both lines and the run reports two findings, not
+one. The self-check now asserts the finding **count** alongside the token text (`selfcheck.sh:120`) —
+matching on the token alone is exactly what let an earlier revision of this file record a one-finding
+verdict for a two-finding run.
 
 **Exit code: 1** — correctly rejected.
 
@@ -322,10 +340,10 @@ rather than merely observed to pass.
 | A rejection is actionable, not a diff dump | Check 2's `unit … position … baseline … candidate` line |
 | The enumerated ignored classes §4.1-§4.4 really are ignored | Check 3 — all four applied at once still passes |
 | §4.5 ignores the random directory *only*, not the staged basename | `selfcheck.sh` case 10 — both directions |
-| §4.7 is asserted from the code path alone | stated in Check 3, not claimed as fixture-backed |
+| §4.7 and the 4a bash-4 guard are asserted from the code path alone | stated in Check 3 and Check 4a, neither claimed as fixture-backed |
 | An extra arm is out of scope, not a failure and not silence | Check 3's explicit out-of-scope line |
 | All four phases are in the comparison | Checks 1 and 3 — 6 units: build, gate A/B, pilot A/B, analyze |
-| A degraded, empty, or hostile run refuses rather than passes | Check 4a-4f — each exits 1 or 2, never 0 |
+| A degraded, empty, or hostile run refuses rather than passes | Check 4b-4f — each *run* exits 1 or 2, never 0 (4a is code-path evidence only, see its block) |
 | A findings-bearing run exits 1 with a verdict, never 2 | Check 4c |
 | An empty token is a token | Check 5a |
 | A multi-line unit reaches a verdict, ordered or not | Checks 5b and 5c |

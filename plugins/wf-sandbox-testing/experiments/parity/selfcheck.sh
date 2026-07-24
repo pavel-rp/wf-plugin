@@ -17,6 +17,9 @@ TESTDATA="$PARITY/testdata"
 SCRATCH="$ROOT/_local/scratch/wf-419-parity"
 
 mkdir -p "$SCRATCH"
+# Cleared on the way out, like both sibling selfchecks (accounting/selfcheck.sh,
+# fixtures/fleet-two-task/selfcheck.sh) — a self-check should not leave its inputs behind.
+trap 'rm -rf "$SCRATCH"' EXIT
 
 LAST_OUT=""
 
@@ -110,7 +113,11 @@ DQ="$SCRATCH/dq-escape.stdout.txt"
 sed 's|--workload-ref 9c99498 --fake-scripts fake-scripts.json --umbrella-id WF-405|--workload-ref "\\9c99498" --fake-scripts fake-scripts.json --umbrella-id WF-405|' \
   "$BASELINE" > "$DQ"
 run_case 1 'restricted dq escapes' "$BASELINE" "$DQ"
-expect 'restricted dq escapes' "baseline '9c99498', candidate '\\9c99498'."
+expect 'restricted dq escapes' "unit 'pilot:A': diverging token at position 13 — baseline '9c99498', candidate '\\9c99498'."
+# The sed rewrites BOTH pilot lines, so this run emits two findings, not one. Pinned by count as
+# well as by substring: asserting only the token text is what let checks.md record the wrong verdict.
+expect 'restricted dq escapes' "unit 'pilot:B': diverging token at position 13 — baseline '9c99498', candidate '\\9c99498'."
+expect 'restricted dq escapes' 'parity FAILED — 2 diverging finding(s).'
 
 # --- 10. /tmp reduction keeps the staged basename compared (§2 N3, §4.5) --------------------------
 # Only the per-run random DIRECTORY is ignored; the basename can carry arm identity, which §3.6
@@ -160,8 +167,21 @@ CTRL_CAND="$SCRATCH/ctrl-cand.stdout.txt"
   printf '    docker run --rm -v %s/results/run-A:/work/run-output %s[2K%sX\n' "$KROOT" "$ESC" "$CR"
 } > "$CTRL_CAND"
 run_case 1 'control sequence rendered inert' "$CTRL_BASE" "$CTRL_CAND"
-expect 'control sequence rendered inert' "candidate '?[2K?X'."
+# Each control byte renders as its own \xNN, so two strings differing only in control bytes never
+# collapse to the same report — §6 requires a failure to name both values.
+expect 'control sequence rendered inert' "candidate '\\x1b[2K\\x0dX'."
 refute 'control sequence rendered inert' "$ESC"
+
+# The same sanitizer covers the kit root, which is taken straight from the candidate: an unreset
+# ESC[8m there would conceal every FAIL row printed after it.
+CTRL_ROOT="$SCRATCH/ctrl-root.stdout.txt"
+{
+  printf '    bash /opt/kit%s[8m/fleet-ab/build-arm.sh --both\n' "$ESC"
+  printf '    docker run --rm -v /opt/kit%s[8m/fleet-ab/results/run-A:/work/run-output Y\n' "$ESC"
+} > "$CTRL_ROOT"
+run_case 1 'control sequence in kit root' "$CTRL_BASE" "$CTRL_ROOT"
+expect 'control sequence in kit root' 'kit root /opt/kit\x1b[8m/fleet-ab'
+refute 'control sequence in kit root' "$ESC"
 
 # --- 13. the declared per-line bound is enforced as an input error (§6, §7) -----------------------
 LONG="$SCRATCH/over-long-line.stdout.txt"
@@ -185,5 +205,11 @@ expect 'unknown option' "unknown argument '--dry-run'"
 
 run_case 2 'unreadable input' "$BASELINE" "$SCRATCH/does-not-exist.stdout.txt"
 expect 'unreadable input' 'cannot read'
+
+# A directory is readable but not a file: `wc -c` succeeds on it and the read loop yields nothing,
+# so without the `-f` half of the guard this exited 1 on an unbound `line` rather than 2.
+run_case 2 'directory argument' "$BASELINE" "$SCRATCH"
+expect 'directory argument' 'cannot read'
+refute 'directory argument' 'unbound variable'
 
 printf '%s\n' 'parity selfcheck: PASS'

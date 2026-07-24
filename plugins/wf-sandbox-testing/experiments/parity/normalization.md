@@ -144,7 +144,8 @@ ignored.
 - **4.3 — Leading indent and inter-token whitespace.** *Why:* the orchestrator prints a fixed four-space
   indent and a trailing space (`printf '    '` then `printf '%q '` per token, `:142`). *Example:* the
   four leading spaces on every baseline line, and the trailing space before each newline. *Mechanism:*
-  N1 drops empty tokens, so runs of whitespace collapse and edge whitespace vanishes.
+  N1 drops whitespace-only gaps — never a quoted empty token, which §2 N1 and §4.2 both keep — so runs
+  of whitespace collapse and edge whitespace vanishes.
 - **4.4 — Absolute root prefixes.** *Why:* `SCRIPT_DIR`/`RESULTS_DIR` (`:17-18`) embed whatever absolute
   path the kit happens to sit at, which differs per host and per checkout. *Example:* the baseline's
   `/workspace/wf-plugin/.claude/worktrees/agent-ab49b270496cb1339/plugins/wf-sandbox-testing/experiments/fleet-ab`
@@ -220,13 +221,16 @@ The comparator is required to be able to reject; these are the conditions under 
 | Fewer than two input files, an unrecognised option, or an unreadable file | **usage error**, distinct from a parity failure |
 | The host shell is older than bash 4 | **prerequisite error** — the comparator refuses to run rather than limp to a false pass on missing builtins |
 | A line exceeds the declared per-line bound (§7) | **input error** — refused before tokenizing |
-| The run compared zero command lines and found nothing | **input error** — parity is never reported over an empty surface |
+| The run compared zero command lines and found nothing | **input error** — parity is never reported over an empty surface. An unreachable backstop in practice: any input that yields no comparable line has already produced an unclassifiable-line or absent-unit FAIL, which outranks it (below); it exists so a future surface change cannot make "nothing compared" report as a pass. |
 
 A failure names the diverging token rather than dumping a diff, so the reader learns *which* ref, flag,
-mount, or arm drifted. Every reported token is rendered with its control characters replaced by `?`, so
-a candidate capture cannot rewrite the terminal it is being reported on.
+mount, or arm drifted. Every reported token — and the kit root, which is taken from the capture too — is
+rendered with each control character replaced by a visible `\xNN`, so a candidate capture cannot rewrite
+the terminal it is being reported on. Per-byte rather than a single placeholder, so two tokens differing
+only in one control character never render alike.
 
-Exit codes: `0` parity holds · `1` parity fails · `2` usage, prerequisite, or input error.
+Exit codes: `0` parity holds (and `--help`, which prints usage and succeeds) · `1` parity fails · `2`
+usage, prerequisite, or input error.
 
 **Findings outrank the empty-surface refusal.** A run that produced any FAIL finding exits `1` with its
 `parity FAILED` verdict line even when those same findings left nothing comparable behind — otherwise the

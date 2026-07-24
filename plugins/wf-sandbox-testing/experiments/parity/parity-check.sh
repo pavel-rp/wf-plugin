@@ -35,21 +35,42 @@ EOF
 }
 
 fail_count=0
-note() { echo "$PROG: $*" >&2; }
+# Named log() to match the kit's established stderr helper (run-experiment.sh:57) — the same helper
+# capture.md refers to when it calls the ignored stderr class "the log() narration".
+log() { echo "$PROG: $*" >&2; }
 fail() { echo "$PROG: FAIL — $*" >&2; fail_count=$((fail_count + 1)); }
 die()  { echo "$PROG: ERROR — $*" >&2; exit 2; }
 
-# Every piece of CAPTURE CONTENT that reaches a report goes through this first. A candidate is an
-# untrusted file: a token carrying `ESC[2K CR` would otherwise be interpreted by the operator's
-# terminal and erase the very FAIL row that reports it, hiding the divergence on screen. Control
-# characters become a visible `?` rather than being dropped, so two tokens differing only in one
-# never render identically; the quotes make an empty token visible as ''.
-q() { local s="$1"; printf "'%s'" "${s//[[:cntrl:]]/?}"; }
+# Every piece of CAPTURE CONTENT that reaches a report goes through this first -- tokens, and equally
+# the kit roots, unit keys and arm names derived from a capture. A candidate is an untrusted file: a
+# string carrying `ESC[2K CR` would otherwise be interpreted by the operator's terminal and erase the
+# very FAIL row that reports it, and an unreset `ESC[8m` would conceal every row printed after it.
+# Each control byte is rendered as its own `\xNN`, not a flat placeholder, so two strings differing
+# only in control bytes never render identically -- §6 requires a failure to name BOTH values. The
+# quotes make an empty token visible as ''.
+# san() sanitizes; q() sanitizes AND quotes. Two helpers because half the report sinks already sit
+# inside their own quotes (`unit '$key'`) and would otherwise be double-quoted.
+san() {
+  local s="$1" out="" i ch
+  for (( i = 0; i < ${#s}; i++ )); do
+    ch="${s:i:1}"
+    case "$ch" in
+      [[:cntrl:]]) printf -v ch '\\x%02x' "'$ch" ;;
+    esac
+    out+="$ch"
+  done
+  printf '%s' "$out"
+}
+q() { printf "'%s'" "$(san "$1")"; }
 
-# Longest input line accepted. split_tokens re-indexes the line per character, so cost grows with
-# the square of the line length; the bound turns an unbounded stall into a declared input error
-# (normalization.md §6, §7). The baseline's longest line is well under 1 KiB.
+# Declared input bounds (normalization.md §6, §7). split_tokens re-indexes its line per character, so
+# cost grows with the square of the line length; and a per-line check alone bounds neither the file
+# nor the buffer a single huge line is read into. All three are checked, cheapest first: total bytes
+# before the file is opened, then line count and line length inside the read loop. The baseline is 6
+# lines and well under 1 KiB per line, so every bound has orders of magnitude of headroom.
 MAX_LINE_CHARS=8192
+MAX_LINES=10000
+MAX_FILE_BYTES=1048576
 
 # --- N1: tokenize on unquoted, unescaped whitespace (normalization.md §2 N1, §4.2, §4.3) --------
 # Whitespace separates tokens only outside quotes and only unescaped. A backslash escapes the next
@@ -168,12 +189,25 @@ KIT_ROOT=""
 
 load_side() {
   local file="$1" side="$2"
-  [ -r "$file" ] || die "cannot read '$file'."
+  # A directory passes `-r`, and redirecting from one makes `read` error on every call — which used
+  # to leave `line` unset and trip `set -u`, aborting with no verdict line and exit 1 (the code
+  # reserved for a real parity failure). Both halves matter: reject a non-regular file up front, and
+  # initialise `line` so no read failure can abort the loop instead of ending it.
+  { [ -f "$file" ] && [ -r "$file" ]; } || die "cannot read '$file'."
+
+  # Cheapest bound first, before a single byte is read into the shell.
+  local bytes
+  bytes="$(wc -c < "$file")"
+  bytes="${bytes//[[:space:]]/}"
+  [ "$bytes" -le "$MAX_FILE_BYTES" ] || \
+    die "'$file' is $bytes bytes, over the ${MAX_FILE_BYTES}-byte input bound (normalization.md §6)."
 
   local -a raw_lines=()
-  local line lineno=0
+  local line="" lineno=0
   while IFS= read -r line || [ -n "$line" ]; do
     lineno=$((lineno + 1))
+    [ "$lineno" -le "$MAX_LINES" ] || \
+      die "'$file' exceeds the ${MAX_LINES}-line input bound (normalization.md §6)."
     # Blank / whitespace-only lines carry no command — an ignored class, enumerated at
     # normalization.md §4.7 so this skip is declared rather than silent.
     [ -z "${line//[[:space:]]/}" ] && continue
@@ -259,7 +293,7 @@ compare_unit() {
     # Bounded rather than trusting the caller's count check: report the unpaired occurrence
     # instead of indexing past the end, so no input shape can abort without a verdict.
     if [ "$n" -ge "${#cand_free[@]}" ]; then
-      fail "unit '$key': baseline occurrence $i has no candidate occurrence left to compare against (normalization.md §3.9)."
+      fail "unit '$(san "$key")': baseline occurrence $i has no candidate occurrence left to compare against (normalization.md §3.9)."
       n=$((n + 1)); continue
     fi
     compare_occurrence "$key" "$i" "${cand_free[$n]}"
@@ -285,11 +319,11 @@ compare_occurrence() {
     # (The §3.7 `--packs ''` case survived only because its surplus run starts non-empty.)
     if [ "${b[i]+set}" != "${c[i]+set}" ] || [ "$bt" != "$ct" ]; then
       if [ -z "${c[i]+set}" ]; then
-        fail "unit '$key': candidate is missing the token at position $((i + 1)) — baseline has $(q "$bt")."
+        fail "unit '$(san "$key")': candidate is missing the token at position $((i + 1)) — baseline has $(q "$bt")."
       elif [ -z "${b[i]+set}" ]; then
-        fail "unit '$key': candidate has a surplus token at position $((i + 1)) — $(q "$ct")."
+        fail "unit '$(san "$key")': candidate has a surplus token at position $((i + 1)) — $(q "$ct")."
       else
-        fail "unit '$key': diverging token at position $((i + 1)) — baseline $(q "$bt"), candidate $(q "$ct")."
+        fail "unit '$(san "$key")': diverging token at position $((i + 1)) — baseline $(q "$bt"), candidate $(q "$ct")."
       fi
       diverged=1
       break
@@ -301,13 +335,16 @@ compare_occurrence() {
 # --- main --------------------------------------------------------------------------------------
 # Help is handled before the arity gate, so `--help` exits 0 like the sibling kit scripts
 # (run-experiment.sh:90, seed-workspace.sh:223) rather than falling through to the usage error.
-case "${1:-}" in -h|--help) usage; exit 0 ;; esac
-# Reject a mistyped flag by name, the way every sibling kit script ends its parse
-# (build-arm.sh:84, run-experiment.sh:91, analyze.sh:63). Without this a leading-dash argument is
-# consumed as a filename and reported as an unreadable capture, which points at the wrong problem.
+# `-h`/`--help` is matched INSIDE the loop, not only at position 1, so a trailing `--help` prints
+# usage and exits 0 like the sibling kit scripts do (run-experiment.sh:90) rather than being reported
+# as an unknown argument. A mistyped flag is then rejected by name, the way every sibling ends its
+# parse (build-arm.sh:84, run-experiment.sh:91, analyze.sh:63) — without which a leading-dash
+# argument is consumed as a filename and reported as an unreadable capture, pointing at the wrong
+# problem entirely.
 for arg in "$@"; do
   case "$arg" in
-    -?*) echo "$PROG: unknown argument '$arg'" >&2; usage; exit 2 ;;
+    -h|--help) usage; exit 0 ;;
+    -?*) echo "$PROG: unknown argument '$(san "$arg")'" >&2; usage; exit 2 ;;
   esac
 done
 [ $# -eq 2 ] || { usage; exit 2; }
@@ -319,8 +356,8 @@ BASE_ROOT="$KIT_ROOT"
 load_side "$CANDIDATE" CAND || { echo "$PROG: parity FAILED (candidate unreadable as a command surface)." >&2; exit 1; }
 CAND_ROOT="$KIT_ROOT"
 
-note "baseline:  $BASELINE  (kit root $BASE_ROOT)"
-note "candidate: $CANDIDATE  (kit root $CAND_ROOT)"
+log "baseline:  $BASELINE  (kit root $(san "$BASE_ROOT"))"
+log "candidate: $CANDIDATE  (kit root $(san "$CAND_ROOT"))"
 
 # The baseline's arm set scopes the comparison (normalization.md §5).
 declare -A BASE_ARMS=()
@@ -338,11 +375,11 @@ for key in ${sorted_base+"${sorted_base[@]}"}; do
   bcount="${BASE_UNITS[$key]}"
   ccount="${CAND_UNITS[$key]:-0}"
   if [ "$ccount" = 0 ]; then
-    fail "unit '$key' is present in the baseline and absent from the candidate (normalization.md §3.10)."
+    fail "unit '$(san "$key")' is present in the baseline and absent from the candidate (normalization.md §3.10)."
     continue
   fi
   if [ "$bcount" != "$ccount" ]; then
-    fail "unit '$key': line count differs — baseline $bcount, candidate $ccount (normalization.md §3.9)."
+    fail "unit '$(san "$key")': line count differs — baseline $bcount, candidate $ccount (normalization.md §3.9)."
     continue
   fi
   compare_unit "$key" "$bcount"
@@ -359,14 +396,14 @@ for key in ${sorted_cand+"${sorted_cand[@]}"}; do
   [ -n "${BASE_UNITS[$key]:-}" ] && continue
   arm="${key#*:}"
   if [ -z "${BASE_ARMS[$arm]:-}" ]; then
-    note "out of scope — unit '$key' has no baseline counterpart arm '$arm' (arm-scoping rule, normalization.md §5)."
+    log "out of scope — unit '$(san "$key")' has no baseline counterpart arm '$(san "$arm")' (arm-scoping rule, normalization.md §5)."
     outofscope=$((outofscope + 1))
   else
-    fail "unit '$key' is an extra command for in-scope arm '$arm' — arm-scoping does not excuse it (normalization.md §5)."
+    fail "unit '$(san "$key")' is an extra command for in-scope arm '$(san "$arm")' — arm-scoping does not excuse it (normalization.md §5)."
   fi
 done
 
-note "compared $compared command line(s) across ${#sorted_base[@]} unit(s); $outofscope out of scope."
+log "compared $compared command line(s) across ${#sorted_base[@]} unit(s); $outofscope out of scope."
 
 # Findings first. A run that produced FAIL findings has ALREADY rejected, so it must exit 1 with
 # its verdict line even if those same findings left nothing comparable behind (every candidate
@@ -385,5 +422,5 @@ if [ "$compared" -le 0 ]; then
   exit 2
 fi
 
-note "parity holds — every compared token is identical after normalization."
+log "parity holds — every compared token is identical after normalization."
 exit 0
