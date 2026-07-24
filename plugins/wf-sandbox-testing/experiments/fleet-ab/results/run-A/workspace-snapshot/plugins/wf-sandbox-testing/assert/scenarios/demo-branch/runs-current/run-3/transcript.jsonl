@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init","session_id":"demo-3","tools":["Read","Bash","Skill"]}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"The FAKE-1 branch already exists on this workspace; confirming it is active."}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"BRANCH — already-active\n\nTask: FAKE-1\nBranch: feature/FAKE-1-demo\nNext: /wf:spec FAKE-1"}]}}
-{"type":"result","subtype":"success","is_error":false,"result":"BRANCH — already-active","usage":{"input_tokens":1880,"output_tokens":210},"total_cost_usd":0.0125}

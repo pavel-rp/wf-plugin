@@ -1,8 +1,0 @@
-{"seq":1,"surface":"tracker","op":"list_children","args":{"parent-id":"WF-405"},"response":[{"id":"WF-406","title":"SUB-1 — Mirror the spec phase to the tracker via two slots"},{"id":"WF-409","title":"SUB-6 — Compose cleanup articles into the constitution and sweep scratch at finalize"}]}
-{"seq":2,"surface":"tracker","op":"list_blockers","args":{"id":"WF-406"},"response":[]}
-{"seq":3,"surface":"tracker","op":"list_blockers","args":{"id":"WF-409"},"response":[]}
-{"seq":4,"surface":"tracker","op":"get","args":{"id":"WF-406"},"response":{"id":"WF-406","title":"SUB-1 — Mirror the spec phase to the tracker via two slots","status":"Backlog","parent":"WF-405","labels":[]}}
-{"seq":5,"surface":"tracker","op":"get","args":{"id":"WF-409"},"response":{"id":"WF-409","title":"SUB-6 — Compose cleanup articles into the constitution and sweep scratch at finalize","status":"Backlog","parent":"WF-405","labels":[]}}
-{"seq":6,"surface":"tracker","op":"get","args":{"id":"WF-406"},"response":{"id":"WF-405","title":"C021 slice — tracker mirror + constitution cleanup","status":"In Progress","parent":null,"labels":[]}}
-{"seq":7,"surface":"delivery","op":"branch-create","args":{"branch-name":"feature/406-c021-slice-tracker-mirror-constitution"},"response":{"state":"created","base-source":"origin/main","tracking":"origin/feat/406-child","carry":"none"}}
-{"seq":8,"surface":"tracker","op":"get","args":{"id":"WF-406"},"response":{"id":"WF-405","title":"C021 slice — tracker mirror + constitution cleanup","status":"In Progress","parent":null,"labels":[]}}

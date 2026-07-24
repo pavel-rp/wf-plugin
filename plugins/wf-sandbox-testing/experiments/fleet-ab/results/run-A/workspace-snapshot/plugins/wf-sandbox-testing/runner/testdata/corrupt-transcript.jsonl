@@ -1,3 +1,0 @@
-{"type":"system","subtype":"init","session_id":"demo"}
-this line is not JSON — a stream-json format drift the parseability guard must catch
-{"type":"result","subtype":"success","is_error":false}

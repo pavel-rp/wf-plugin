@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init","session_id":"esr-base-3","tools":["Read","Bash","Skill"]}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Shipping FAKE-1 on the pinned pre-slot ship build: branch gate, build chain, green checks, then merge. This build predates the ship.review composition point — there is no Phase 4.5."}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Merged\n\nTask: FAKE-1\nPull request: https://fake.local/pr/1 (merged)\nNext: none — terminus"}]}}
-{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":4150,"output_tokens":362},"total_cost_usd":0.0311}

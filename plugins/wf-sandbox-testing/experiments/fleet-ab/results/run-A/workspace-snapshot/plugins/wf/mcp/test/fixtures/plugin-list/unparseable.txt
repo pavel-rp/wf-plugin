@@ -1,1 +1,0 @@
-Error: claude: command not found

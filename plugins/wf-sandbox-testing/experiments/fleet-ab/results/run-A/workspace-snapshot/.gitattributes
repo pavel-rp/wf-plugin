@@ -1,5 +1,0 @@
-# Normalize line endings on commit; keep markdown/JSON as LF in the repo
-* text=auto eol=lf
-*.png binary
-*.jpg binary
-*.gif binary

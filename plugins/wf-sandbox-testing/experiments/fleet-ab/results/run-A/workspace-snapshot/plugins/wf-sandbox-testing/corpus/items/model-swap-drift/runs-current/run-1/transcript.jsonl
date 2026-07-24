@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init","session_id":"ms-1","tools":["Read","Bash","Skill"]}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Model arm A. The ship.review slot is unfilled and the gate names only abstract delivery ops, baking no model id. Build chain is clear; checks are green. Proceeding to merge — no reviewer, no model-specific behaviour."}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Merged\n\nTask: FAKE-1\nBuilt: ready for review\nPR: https://fake.local/pr/4\nChecks: green\nMerge: merged (https://fake.local/pr/4)\nNext: none — terminus"}]}}
-{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":5200,"output_tokens":280},"total_cost_usd":0.0372}

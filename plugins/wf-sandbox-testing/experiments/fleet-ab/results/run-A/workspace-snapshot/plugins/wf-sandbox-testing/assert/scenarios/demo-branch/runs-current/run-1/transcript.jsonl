@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init","session_id":"demo-1","tools":["Read","Bash","Skill"]}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Resolving the fake delivery provider and creating the task branch for FAKE-1."}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"BRANCH — created\n\nTask: FAKE-1\nBranch: feature/FAKE-1-demo\nNext: /wf:spec FAKE-1"}]}}
-{"type":"result","subtype":"success","is_error":false,"result":"BRANCH — created","usage":{"input_tokens":1820,"output_tokens":240},"total_cost_usd":0.0121}

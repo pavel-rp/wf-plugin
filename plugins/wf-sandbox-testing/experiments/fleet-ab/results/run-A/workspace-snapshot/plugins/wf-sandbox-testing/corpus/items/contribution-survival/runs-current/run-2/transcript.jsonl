@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init","session_id":"cs-2","tools":["Read","Bash","Skill"]}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Same registered ship.review fill, but Phase 4.5's surrounding prose has been reworded from run-1. The fill still composes — it binds to the ## Slots declaration + the wf:slot marker, not the prose. Reading review threads at HEAD_SHA: one unresolved thread T1."}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Replied on T1 and resolved it. Threads addressed, checks green — merging.\n\nSHIP — Merged\n\nTask: FAKE-1\nBuilt: ready for review\nPR: https://fake.local/pr/3\nChecks: green\nMerge: merged (https://fake.local/pr/3)\nNext: none — terminus"}]}}
-{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":6080,"output_tokens":470},"total_cost_usd":0.0447}

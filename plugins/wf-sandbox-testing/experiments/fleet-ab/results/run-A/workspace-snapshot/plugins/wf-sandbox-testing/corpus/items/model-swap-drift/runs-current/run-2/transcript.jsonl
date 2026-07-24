@@ -1,4 +1,0 @@
-{"type":"system","subtype":"init","session_id":"ms-2","tools":["Read","Bash","Skill"]}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Model arm B (the swapped model). Same unfilled-slot scenario. The gate bakes no model id and names only abstract delivery ops, so behaviour matches arm A: build clear, checks green, merge — no reviewer."}]}}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Merged\n\nTask: FAKE-1\nBuilt: ready for review\nPR: https://fake.local/pr/4\nChecks: green\nMerge: merged (https://fake.local/pr/4)\nNext: none — terminus"}]}}
-{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":5180,"output_tokens":275},"total_cost_usd":0.0369}

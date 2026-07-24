@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "wf-resolver": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp/dist/server.mjs"],
-      "alwaysLoad": true
-    }
-  }
-}

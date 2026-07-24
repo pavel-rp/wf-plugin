@@ -1,9 +1,0 @@
-[
-  {
-    "id": "wf-git@wf-marketplace",
-    "version": "1.4.1",
-    "scope": "user",
-    "active": true,
-    "installPath": "/cache/wf-git"
-  }
-]
