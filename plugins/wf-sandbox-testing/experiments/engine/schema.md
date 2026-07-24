@@ -116,7 +116,7 @@ Illustrative only — the normative content is the table above, not these values
     "workload_ref": "2222222",
     "cli_version": "0.0.0",
     "umbrella_id": "EX-1",
-    "gate_skill": "/wf:triage EX-2",
+    "gate_skill": "/wf:example-gate EX-2",
     "fake_scripts": "fake-scripts.json",
     "measured_skill": "/wf:example",
     "model": "example-model",
