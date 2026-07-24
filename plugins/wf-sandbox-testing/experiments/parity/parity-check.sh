@@ -18,7 +18,7 @@ set -uo pipefail
 PROG="parity-check.sh"
 
 if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
-  echo "parity-check.sh: ERROR — requires bash 4+ (found ${BASH_VERSION:-unknown}); refusing to run rather than risk a false pass." >&2
+  echo "parity-check.sh: ERROR — requires bash 4+ (found ${BASH_VERSION:-unknown}); refusing to run rather than risk a false pass (normalization.md §6)." >&2
   exit 2
 fi
 usage() {
@@ -38,6 +38,18 @@ fail_count=0
 note() { echo "$PROG: $*" >&2; }
 fail() { echo "$PROG: FAIL — $*" >&2; fail_count=$((fail_count + 1)); }
 die()  { echo "$PROG: ERROR — $*" >&2; exit 2; }
+
+# Every piece of CAPTURE CONTENT that reaches a report goes through this first. A candidate is an
+# untrusted file: a token carrying `ESC[2K CR` would otherwise be interpreted by the operator's
+# terminal and erase the very FAIL row that reports it, hiding the divergence on screen. Control
+# characters become a visible `?` rather than being dropped, so two tokens differing only in one
+# never render identically; the quotes make an empty token visible as ''.
+q() { local s="$1"; printf "'%s'" "${s//[[:cntrl:]]/?}"; }
+
+# Longest input line accepted. split_tokens re-indexes the line per character, so cost grows with
+# the square of the line length; the bound turns an unbounded stall into a declared input error
+# (normalization.md §6, §7). The baseline's longest line is well under 1 KiB.
+MAX_LINE_CHARS=8192
 
 # --- N1: tokenize on unquoted, unescaped whitespace (normalization.md §2 N1, §4.2, §4.3) --------
 # Whitespace separates tokens only outside quotes and only unescaped. A backslash escapes the next
@@ -105,7 +117,12 @@ reduce_token() {
     elif [ -n "$root" ] && [ "${field#"$root"/}" != "$field" ]; then
       field="<kit>/${field#"$root"/}"
     elif [ "${field#/tmp/}" != "$field" ]; then
-      field="<tmp>"
+      # Only the per-run RANDOM DIRECTORY component is reduced (§2 N3, §4.5). Collapsing the
+      # whole field to <tmp> would also discard a staged file's basename, and with it any arm
+      # identity that basename carries -- which §3.6 declares compared. `/tmp/stage-1111/x.json`
+      # and `/tmp/stage-9999/y.json` must differ; only their random directory may not.
+      local tail="${field#/tmp/}"
+      if [[ "$tail" == */* ]]; then field="<tmp>/${tail#*/}"; else field="<tmp>"; fi
     fi
     if [ "$first" = 1 ]; then out="$field"; first=0; else out="$out:$field"; fi
   done
@@ -154,11 +171,15 @@ load_side() {
   [ -r "$file" ] || die "cannot read '$file'."
 
   local -a raw_lines=()
-  local line
+  local line lineno=0
   while IFS= read -r line || [ -n "$line" ]; do
+    lineno=$((lineno + 1))
     # Blank / whitespace-only lines carry no command — an ignored class, enumerated at
     # normalization.md §4.7 so this skip is declared rather than silent.
     [ -z "${line//[[:space:]]/}" ] && continue
+    # Declared bound, checked before tokenizing (normalization.md §6).
+    [ "${#line}" -le "$MAX_LINE_CHARS" ] || \
+      die "'$file' line $lineno is ${#line} characters, over the ${MAX_LINE_CHARS}-character per-line bound (normalization.md §6)."
     raw_lines+=("$line")
   done < "$file"
 
@@ -188,7 +209,9 @@ load_side() {
     done
     key="$(unit_key ${norm+"${norm[@]}"})"
     if [ -z "$key" ]; then
-      fail "$side capture holds an unclassifiable command line (normalization.md §6): ${norm[*]}"
+      local shown="" nt
+      for nt in ${norm+"${norm[@]}"}; do shown+="$(q "$nt") "; done
+      fail "$side capture holds an unclassifiable command line (normalization.md §6): ${shown% }"
       continue
     fi
     printf -v joined '%s\n' ${norm+"${norm[@]}"}
@@ -220,13 +243,25 @@ compare_unit() {
     local matched=0
     for j in "${!cand_free[@]}"; do
       if [ "${BASE_TOK["$key#$i"]}" = "${CAND_TOK["$key#${cand_free[$j]}"]}" ]; then
-        unset 'cand_free[j]'; cand_free=(${cand_free+"${cand_free[@]}"}); matched=1; break
+        unset 'cand_free[j]'
+        # Re-pack with the ARRAY-safe alternate expansion. `${cand_free+…}` tests element 0
+        # alone, so unsetting index 0 -- the common case, since the first candidate usually
+        # matches -- would expand to nothing and WIPE the array, leaving the leftover loop
+        # below to index an unset element under `set -u`: an abort with no verdict line at all.
+        cand_free=(${cand_free[@]+"${cand_free[@]}"})
+        matched=1; break
       fi
     done
     [ "$matched" = 0 ] && base_left+=("$i")
   done
   local n=0
   for i in ${base_left+"${base_left[@]}"}; do
+    # Bounded rather than trusting the caller's count check: report the unpaired occurrence
+    # instead of indexing past the end, so no input shape can abort without a verdict.
+    if [ "$n" -ge "${#cand_free[@]}" ]; then
+      fail "unit '$key': baseline occurrence $i has no candidate occurrence left to compare against (normalization.md §3.9)."
+      n=$((n + 1)); continue
+    fi
     compare_occurrence "$key" "$i" "${cand_free[$n]}"
     n=$((n + 1))
   done
@@ -244,13 +279,17 @@ compare_occurrence() {
   local i bt ct diverged=0
   for (( i = 0; i < max; i++ )); do
     bt="${b[i]-}"; ct="${c[i]-}"
-    if [ "$bt" != "$ct" ]; then
+    # Gate on PRESENCE as well as value. Comparing values alone lets a surplus or missing
+    # *empty* token compare "" against "" and pass — a false PASS on a genuinely different
+    # argv, and a direct contradiction of §6's "token count differs within a unit -> FAIL".
+    # (The §3.7 `--packs ''` case survived only because its surplus run starts non-empty.)
+    if [ "${b[i]+set}" != "${c[i]+set}" ] || [ "$bt" != "$ct" ]; then
       if [ -z "${c[i]+set}" ]; then
-        fail "unit '$key': candidate is missing the token at position $((i + 1)) — baseline has '$bt'."
+        fail "unit '$key': candidate is missing the token at position $((i + 1)) — baseline has $(q "$bt")."
       elif [ -z "${b[i]+set}" ]; then
-        fail "unit '$key': candidate has a surplus token at position $((i + 1)) — '$ct'."
+        fail "unit '$key': candidate has a surplus token at position $((i + 1)) — $(q "$ct")."
       else
-        fail "unit '$key': diverging token at position $((i + 1)) — baseline '$bt', candidate '$ct'."
+        fail "unit '$key': diverging token at position $((i + 1)) — baseline $(q "$bt"), candidate $(q "$ct")."
       fi
       diverged=1
       break
@@ -263,6 +302,14 @@ compare_occurrence() {
 # Help is handled before the arity gate, so `--help` exits 0 like the sibling kit scripts
 # (run-experiment.sh:90, seed-workspace.sh:223) rather than falling through to the usage error.
 case "${1:-}" in -h|--help) usage; exit 0 ;; esac
+# Reject a mistyped flag by name, the way every sibling kit script ends its parse
+# (build-arm.sh:84, run-experiment.sh:91, analyze.sh:63). Without this a leading-dash argument is
+# consumed as a filename and reported as an unreadable capture, which points at the wrong problem.
+for arg in "$@"; do
+  case "$arg" in
+    -?*) echo "$PROG: unknown argument '$arg'" >&2; usage; exit 2 ;;
+  esac
+done
 [ $# -eq 2 ] || { usage; exit 2; }
 
 BASELINE="$1" CANDIDATE="$2"
@@ -321,16 +368,22 @@ done
 
 note "compared $compared command line(s) across ${#sorted_base[@]} unit(s); $outofscope out of scope."
 
-# A run that compared nothing is not a pass. Without this, any path that leaves both sides empty
-# would reach the "parity holds" line and exit 0 — the loudest possible false negative.
-if [ "$compared" -le 0 ]; then
-  echo "$PROG: ERROR — compared 0 command lines; refusing to report parity over an empty surface." >&2
-  exit 2
-fi
-
+# Findings first. A run that produced FAIL findings has ALREADY rejected, so it must exit 1 with
+# its verdict line even if those same findings left nothing comparable behind (every candidate
+# line unclassifiable, say). Testing the empty surface first would report the loudest possible
+# divergence as exit 2 — "usage or input error" — and a caller routing on exit codes would file
+# a real parity failure as a tooling problem.
 if [ "$fail_count" -gt 0 ]; then
   echo "$PROG: parity FAILED — $fail_count diverging finding(s)." >&2
   exit 1
 fi
+
+# A run that compared nothing and found nothing is not a pass either. Without this, any path that
+# leaves both sides empty would reach the "parity holds" line and exit 0.
+if [ "$compared" -le 0 ]; then
+  echo "$PROG: ERROR — compared 0 command lines; refusing to report parity over an empty surface (normalization.md §6)." >&2
+  exit 2
+fi
+
 note "parity holds — every compared token is identical after normalization."
 exit 0

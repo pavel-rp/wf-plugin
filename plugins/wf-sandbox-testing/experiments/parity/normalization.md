@@ -2,6 +2,7 @@
 
 **Written:** 2026-07-24
 **Model:** claude-opus-5[1m]
+**Kit sha (every `run-experiment.sh:NN` citation below resolves at this commit):** `c768673`
 **Baseline it is written against:** [`../fleet-ab/baseline/dry-run-baseline.stdout.txt`](../fleet-ab/baseline/dry-run-baseline.stdout.txt)
 **Executable form:** [`parity-check.sh`](parity-check.sh) · **recorded verdicts:** [`checks.md`](checks.md)
 
@@ -42,9 +43,9 @@ Applied to every stdout line of **both** sides, in this order, before anything i
 
 | # | Step | Effect |
 |---|---|---|
-| N1 | **Tokenize.** Split the line on whitespace runs that are unquoted and unescaped. A backslash escapes the next character; a single-quoted run is literal to its closing quote; a double-quoted run honours the backslash. Whitespace outside any quote separates tokens; an *explicitly quoted* empty token (`''`) is kept as an empty token, while whitespace-only gaps are dropped. | Absorbs the 4-space indent, the trailing space, any inter-token whitespace, and the escaping/quoting *style* while keeping the *value*. `--gate-skill /wf:triage\ WF-406` and `--gate-skill '/wf:triage WF-406'` both yield the two tokens `--gate-skill` and `/wf:triage WF-406`. |
+| N1 | **Tokenize.** Split the line on whitespace runs that are unquoted and unescaped. Outside quotes a backslash escapes the next character; a single-quoted run is literal to its closing quote; inside a double-quoted run a backslash escapes **only** one of the four characters `$`, `` ` ``, `"` and `\` — before anything else it is a literal backslash, exactly as bash itself reads it. Whitespace outside any quote separates tokens; an *explicitly quoted* empty token (`''`) is kept as an empty token, while whitespace-only gaps are dropped. | Absorbs the 4-space indent, the trailing space, any inter-token whitespace, and the escaping/quoting *style* while keeping the *value*. `--gate-skill /wf:triage\ WF-406` and `--gate-skill '/wf:triage WF-406'` both yield the two tokens `--gate-skill` and `/wf:triage WF-406`. The restricted double-quote set is load-bearing, not pedantry: collapsing every `\X` would make `"\9c99498"` and `9c99498` normalize alike and silently pass a §3.3 divergence. |
 | N2 | **Derive the side's kit root.** The unique token ending in `/build-arm.sh` names it: the kit root is that token minus the `/build-arm.sh` suffix. A side with no such token is rejected (§6). | Each side declares its own root from its own output; no host path is ever hardcoded into the comparator. |
-| N3 | **Reduce path fields.** Within each token, split on `:` into fields. A field equal to the kit root becomes `<kit>`; a field beginning with the kit root plus `/` has that prefix replaced by `<kit>/`; a field beginning with `/tmp/` becomes `<tmp>`. All other fields are left byte-for-byte alone. Fields are rejoined with `:`. | `/abs/…/fleet-ab/results/gate-A:/work/run-output` becomes `<kit>/results/gate-A:/work/run-output`. `fleet-ab:armA` round-trips unchanged (neither field is a path). `/wf:triage WF-406` round-trips unchanged. |
+| N3 | **Reduce path fields.** Within each token, split on `:` into fields. A field equal to the kit root becomes `<kit>`; a field beginning with the kit root plus `/` has that prefix replaced by `<kit>/`; a field beginning with `/tmp/` has **only its first path component below `/tmp` replaced** — `/tmp/<random>/rest` becomes `<tmp>/rest`, and a bare `/tmp/<random>` becomes `<tmp>`. All other fields are left byte-for-byte alone. Fields are rejoined with `:`. | `/abs/…/fleet-ab/results/gate-A:/work/run-output` becomes `<kit>/results/gate-A:/work/run-output`. `fleet-ab:armA` round-trips unchanged (neither field is a path). `/wf:triage WF-406` round-trips unchanged. `/tmp/stage-1111/manifest-armA.json` becomes `<tmp>/manifest-armA.json` — the random directory dissolves, the basename does not, because a staged filename can carry arm identity (§3.6). |
 | N4 | **Key by unit.** Each normalized line is assigned a `phase:arm` unit key from its own content: a `<kit>/build-arm.sh` token gives `build:both`; a `<kit>/analyze.sh` token gives `analyze:both`; a path field `<kit>/results/gate-<ARM>` gives `gate:<ARM>`; `<kit>/results/run-<ARM>` gives `pilot:<ARM>`. A line matching none is unclassifiable and rejected (§6). | Comparison is unit-against-unit rather than line-N-against-line-N, which is the mechanism that makes ordering irrelevant without discarding any content. |
 
 The result of the pipeline is, per side, a map from unit key to an ordered token list (plus a count of
@@ -61,9 +62,14 @@ A difference in any of these **fails** parity and is reported by name.
   invoked. *Example:* `<kit>/build-arm.sh` (line 1), `<kit>/analyze.sh` (line 6). An engine invoking
   `<kit>/build.sh` diverges; an engine invoking the same script from a different absolute checkout does
   not (§4.4).
-- **3.2 — Every flag.** Each `--…` token, byte-for-byte. *Example:* `--both`, `--measured-fleet`,
-  `--workload-ref`, `--gate-skill`, `--umbrella-id`, `--run-a`, `--run-b`, and the `docker run` flags
-  `--rm`, `-e`, `-v`.
+- **3.1a — The invoking executable and its subcommand.** The leading tokens that name what is being
+  run, byte-for-byte. *Example:* `bash` on lines 1 and 6; `docker` and `run` on lines 2-5. They are
+  compared positionally like every other token; an engine that shells out through `sh`, or through
+  `docker container run`, diverges. Named as its own class because these tokens are neither a path
+  below the kit root (§3.1) nor a flag (§3.2), and §3 admits no unclassified token.
+- **3.2 — Every flag.** Each flag token — long (`--…`) or short (`-x`) — byte-for-byte. *Example:*
+  `--both`, `--measured-fleet`, `--workload-ref`, `--gate-skill`, `--umbrella-id`, `--run-a`,
+  `--run-b`, and the `docker run` flags `--rm`, `-e`, `-v`.
 - **3.3 — Every flag value.** The token following each flag. *Example:* `--wf-ref-a 90cf319`,
   `--wf-ref-b c768673`, `--workload-ref 9c99498`, `--cli-version 2.1.218`, `--umbrella-id WF-405`,
   `--fake-scripts fake-scripts.json`, `--gate-skill /wf:triage WF-406` (compared as one token, including
@@ -145,19 +151,25 @@ ignored.
   prefix. *Mechanism:* N2/N3 reduce it to `<kit>`, keeping the suffix below it, which is the part that
   carries meaning. *Not weakened:* only the side's own declared kit root is stripped — an unrelated
   absolute path such as the container-side `/work/run-output` is untouched and stays compared (§3.5).
-- **4.5 — `/tmp` scratch paths.** *Why:* a manifest-driven engine may stage a rendered manifest or a
-  scratch workspace through a temp directory whose name is per-run random. *Example:* none — the baseline
-  contains no `/tmp` path at all; this class is declared ahead of the engine so its use of scratch space
-  is not mistaken for a divergence. *Mechanism:* N3 reduces any path field under `/tmp/` to `<tmp>`.
-  *Bounded deliberately:* only fields **beginning** `/tmp/`; a `/tmp` substring elsewhere in a token is
-  not touched.
+- **4.5 — The random directory component of a `/tmp` scratch path.** *Why:* a manifest-driven engine
+  may stage a rendered manifest or a scratch workspace through a temp directory whose name is per-run
+  random. *Example:* none — the baseline contains no `/tmp` path at all; this class is declared ahead of
+  the engine so its use of scratch space is not mistaken for a divergence. *Mechanism:* N3 replaces the
+  first path component below `/tmp` with `<tmp>`. *Bounded deliberately, twice over:* only fields
+  **beginning** `/tmp/` (a `/tmp` substring elsewhere in a token is untouched), and only that one
+  component — everything below it stays compared, so `/tmp/stage-1111/manifest-armA.json` and
+  `/tmp/stage-9999/manifest-armB.json` still diverge. Ignoring the whole field would discard a staged
+  filename, and with it any arm identity §3.6 declares compared — the ignored set is not allowed to
+  swallow a compared class in the very case it was written for.
 - **4.6 — stderr narration.** *Why:* `log()` output is human progress commentary, not a command. It also
   carries genuinely uncomparable content (the coin-flip announcement, the gap countdown). *Example:*
   `run-experiment.sh: PILOT — coin-flipped arm order: B A (330s gap between arms)`. *Mechanism:* §1 — the
   comparator reads stdout captures only and never opens the stderr file.
 - **4.7 — Blank and whitespace-only lines.** *Why:* a line with no tokens carries no command, and a
-  capture may legitimately pick up a trailing newline or a separator. *Example:* the trailing newline
-  ending `dry-run-baseline.stdout.txt`. *Mechanism:* such lines are dropped before tokenizing.
+  capture may legitimately pick up a separator or a stray blank. *Example:* none — no committed capture
+  contains one (the file-terminating newline is not a line); like §4.5 this class is declared ahead of
+  the capture that will need it rather than drawn from one. *Mechanism:* such lines are dropped before
+  tokenizing.
   *Bounded deliberately:* this is the *only* line a side may drop. A line with any non-whitespace
   content is either classified (§2 N4) or fails (§6) — never skipped, which is what §6's
   unclassifiable-line rule guarantees.
@@ -205,16 +217,28 @@ The comparator is required to be able to reject; these are the conditions under 
 | A candidate unit is an extra unit for an in-scope arm | **FAIL**, naming the unit |
 | A side has no `build-arm.sh` token, so N2 cannot derive its kit root | **FAIL** — an underivable kit root means the build phase is missing, which is itself a divergence |
 | A line cannot be classified by N4 | **FAIL**, quoting the line — never skipped |
-| Fewer than two input files, or an unreadable file | **usage error**, distinct from a parity failure |
+| Fewer than two input files, an unrecognised option, or an unreadable file | **usage error**, distinct from a parity failure |
+| The host shell is older than bash 4 | **prerequisite error** — the comparator refuses to run rather than limp to a false pass on missing builtins |
+| A line exceeds the declared per-line bound (§7) | **input error** — refused before tokenizing |
+| The run compared zero command lines and found nothing | **input error** — parity is never reported over an empty surface |
 
 A failure names the diverging token rather than dumping a diff, so the reader learns *which* ref, flag,
-mount, or arm drifted.
+mount, or arm drifted. Every reported token is rendered with its control characters replaced by `?`, so
+a candidate capture cannot rewrite the terminal it is being reported on.
 
-Exit codes: `0` parity holds · `1` parity fails · `2` usage or input error.
+Exit codes: `0` parity holds · `1` parity fails · `2` usage, prerequisite, or input error.
 
-That the comparator genuinely rejects is not asserted here — it is demonstrated, and recorded verbatim,
-in [`checks.md`](checks.md): the normalization passes against the baseline compared with itself, and
-fails against a fixture differing from the baseline in exactly one compared-class token.
+**Findings outrank the empty-surface refusal.** A run that produced any FAIL finding exits `1` with its
+`parity FAILED` verdict line even when those same findings left nothing comparable behind — otherwise the
+loudest possible divergence (every candidate line unclassifiable) would be reported as exit `2` and a
+caller routing on exit codes would file a real parity failure as a tooling problem.
+
+That the comparator genuinely rejects is not asserted here — it is demonstrated twice over. Recorded
+verbatim for a reader in [`checks.md`](checks.md): the normalization passes against the baseline compared
+with itself, and fails against a fixture differing from it in exactly one compared-class token. Enforced
+mechanically by [`selfcheck.sh`](selfcheck.sh), which re-runs every one of those verdicts plus the
+rejection paths no prose transcript can keep honest, so the "changed together, never independently" rule
+above has something behind it besides good intentions.
 
 ---
 
@@ -232,3 +256,8 @@ fails against a fixture differing from the baseline in exactly one compared-clas
   reordered argv is not the same printed command.
 - **One capture, not N.** The baseline records one of four valid arm orderings (§4.1). Because ordering
   is ignored via unit keying, capturing more runs would add no information.
+- **A declared per-line bound: 8192 characters.** N1 re-indexes its line per character, so tokenization
+  cost grows with the square of the line length; an unbounded input would stall rather than answer. A
+  longer line is refused as an input error (§6) instead. The baseline's longest line is well under 1 KiB,
+  so the bound is roughly an order of magnitude of headroom — stated here because a silent quadratic is a
+  worse failure mode than a stated limit.
