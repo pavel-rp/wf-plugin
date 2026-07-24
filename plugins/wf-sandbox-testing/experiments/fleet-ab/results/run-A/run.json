@@ -3,46 +3,46 @@
   "umbrella_id": "WF-405",
   "measured_skill": "/wf:fleet WF-405",
   "model": "claude-opus-4-8",
-  "wall_clock_seconds": 4813,
+  "wall_clock_seconds": 3982,
   "cli_version": "2.1.218 (Claude Code)",
   "provenance": {
-    "host": "53f22ab2526a",
-    "run_started_at": "2026-07-24T13:25:37Z",
+    "host": "57591e728e34",
+    "run_started_at": "2026-07-24T17:11:33Z",
     "workload_ref": "9c99498742e64994b1d1f0f9d78703a996193972"
   },
   "fingerprints": {
-    "workload": "5309738e4812a5f2085510dddf7eb2427495137d040e73cfef36dc24d9a1fb13",
+    "workload": "adc870f51efc4b7302c34f52c0d7059022a391fc75b27d0125bb5bc68e8a18be",
     "build": null
   },
   "setup_sessions": [
     {
       "skill": "/wf:init",
-      "session_id": "1b15a22f-13da-4382-8c84-8da19c0ac290",
+      "session_id": "92000149-0f78-4ad5-82e3-65a424eb8b0f",
       "transcript": "/work/run-output/setup/setup/wf-.jsonl"
     },
     {
       "skill": "/wf-audit:init",
-      "session_id": "5bbc21eb-8f75-4bd7-bd1e-9430d2bda7ff",
+      "session_id": "ba579d3e-2d98-4539-af3b-4b5cc98ab593",
       "transcript": "/work/run-output/setup/setup/wf-audit-.jsonl"
     },
     {
       "skill": "/wf-fake:init",
-      "session_id": "b00bde4a-f507-4d9a-84c6-def58e17dc6e",
+      "session_id": "0b5ffc8b-5c7b-43a8-8dbe-1a3311d7f977",
       "transcript": "/work/run-output/setup/setup/wf-fake-.jsonl"
     }
   ],
   "measured_session": {
-    "session_id": "48267cd9-fafb-4fa4-936d-08ae43ffa18f",
-    "projects_root": "/tmp/tmp.7u3DAQ944c/projects",
-    "transcript_bundle": "/tmp/tmp.7u3DAQ944c/projects/-tmp-tmp-FKr2xqHJMq-workspace/1b15a22f-13da-4382-8c84-8da19c0ac290.jsonl",
+    "session_id": "2a0df883-2520-45e4-8074-16d1c38e01f6",
+    "projects_root": "/tmp/tmp.qqBakf34q8/projects",
+    "transcript_bundle": "/tmp/tmp.qqBakf34q8/projects/-tmp-tmp-DMvrxuCJhS-workspace/0b5ffc8b-5c7b-43a8-8dbe-1a3311d7f977.jsonl",
     "resolved": true
   },
   "run": {
     "exit_code": 0,
     "transcript": "transcript.jsonl",
-    "transcript_parseable": false,
+    "transcript_parseable": true,
     "workspace_snapshot": "workspace-snapshot"
   },
-  "verdict": "quota-exhausted",
-  "reason": "subscription quota exhausted; --on-quota=fail — terminated without an API-billed continuation."
+  "verdict": "ok",
+  "reason": ""
 }

@@ -1,0 +1,2 @@
+{"type":"assistant","message":{"id":"impl-1","model":"claude-sonnet-4-6","usage":{"input_tokens":2,"cache_creation_input_tokens":20,"cache_read_input_tokens":200,"output_tokens":25},"content":[]}}
+{"type":"assistant","message":{"id":"impl-2","model":"claude-sonnet-4-6","usage":{"input_tokens":2,"cache_creation_input_tokens":20,"cache_read_input_tokens":400,"output_tokens":25},"content":[]}}

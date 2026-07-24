@@ -1,0 +1,12 @@
+{
+  "task": "/wf:ship FAKE-1",
+  "skill": "/wf:ship FAKE-1 (model-swap-drift SEEDED — behaviour drifted under the swapped model)",
+  "fixture": "model-swap-drift",
+  "plugin_source": "seeded",
+  "cli_version": "claude 1.0.0",
+  "model_arm": "B-drifted",
+  "fingerprints": { "fixture": "fp-fixture-model-swap-3e1b", "plugin_build": "fp-current-ship-9f8e7d", "model": "fp-model-arm-B", "cli_version": "claude 1.0.0", "run": "fp-ms-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "seeded-breakage",
+  "reason": "under the swapped model the run skipped the merge (a model-specific block) — no pr-merge op, terminal SHIP — Blocked; the structural signature drifted"
+}

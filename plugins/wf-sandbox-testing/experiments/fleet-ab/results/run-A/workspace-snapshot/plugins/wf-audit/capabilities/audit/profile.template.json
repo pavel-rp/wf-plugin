@@ -1,0 +1,9 @@
+{
+  "lenses": [
+    "correctness",
+    "security",
+    "convention",
+    "consistency",
+    "operational"
+  ]
+}

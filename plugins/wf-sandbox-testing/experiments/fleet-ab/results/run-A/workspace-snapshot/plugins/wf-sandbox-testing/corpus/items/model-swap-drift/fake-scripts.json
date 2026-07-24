@@ -1,0 +1,20 @@
+{
+  "_comment": "wf-fake scripts for the model-swap-drift corpus scenario (WF-348 / C014-3). Synthetic host fake.local and FAKE- ids only — no external delivery host, no network. The unfilled-slot /wf:ship path: a green checks-read then a merge. The same scripts drive the run under either model arm — the gate names only abstract delivery ops and bakes no model id, so the op set is identical across the swap. See items/model-swap-drift/item.md.",
+  "delivery": {
+    "current-branch-query": "feature/FAKE-1-demo",
+    "default-base-query": "main",
+    "workspace-root-resolve": "/fixture/workspace",
+    "pr-detect": { "found": true, "url": "https://fake.local/pr/4", "state": "OPEN" },
+    "checks-read": [
+      [ { "name": "ci", "state": "SUCCESS", "link": "https://fake.local/checks/ci" } ]
+    ],
+    "pr-merge": { "state": "merged", "url": "https://fake.local/pr/4" }
+  },
+  "tracker": {
+    "resolve_config": "configured",
+    "get": { "id": "FAKE-1", "title": "Model-swap-drift demo", "description": "A scripted unfilled-slot ship scenario work item.", "status": "In Progress", "parent": null, "labels": [] },
+    "post_comment": { "state": "posted" },
+    "set_status": { "state": "status-changed" },
+    "attach_link": { "state": "attached" }
+  }
+}

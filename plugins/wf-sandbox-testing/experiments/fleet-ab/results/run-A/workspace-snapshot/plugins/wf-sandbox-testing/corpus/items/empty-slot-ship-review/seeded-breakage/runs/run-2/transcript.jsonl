@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esr-seed-2","tools":["Read","Bash","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SEEDED BREAKAGE: the ship.review slot is FILLED on this build — Phase 4.5 drives a reviewer (reads threads, replies) before the merge. An unfilled slot must NOT do this; recording it so the flagship comparison diverges."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SHIP — Merged\n\nTask: FAKE-1\nPull request: https://fake.local/pr/1 (merged, after driving the ship.review reviewer)\nNext: none — terminus"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SHIP — Merged","usage":{"input_tokens":5380,"output_tokens":455},"total_cost_usd":0.0399}

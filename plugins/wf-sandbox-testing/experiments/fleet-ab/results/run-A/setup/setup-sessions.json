@@ -1,5 +1,5 @@
 [
-  { "skill": "/wf:init", "session_id": "1b15a22f-13da-4382-8c84-8da19c0ac290", "transcript": "/work/run-output/setup/setup/wf-.jsonl" },
-  { "skill": "/wf-audit:init", "session_id": "5bbc21eb-8f75-4bd7-bd1e-9430d2bda7ff", "transcript": "/work/run-output/setup/setup/wf-audit-.jsonl" },
-  { "skill": "/wf-fake:init", "session_id": "b00bde4a-f507-4d9a-84c6-def58e17dc6e", "transcript": "/work/run-output/setup/setup/wf-fake-.jsonl" }
+  { "skill": "/wf:init", "session_id": "92000149-0f78-4ad5-82e3-65a424eb8b0f", "transcript": "/work/run-output/setup/setup/wf-.jsonl" },
+  { "skill": "/wf-audit:init", "session_id": "ba579d3e-2d98-4539-af3b-4b5cc98ab593", "transcript": "/work/run-output/setup/setup/wf-audit-.jsonl" },
+  { "skill": "/wf-fake:init", "session_id": "0b5ffc8b-5c7b-43a8-8dbe-1a3311d7f977", "transcript": "/work/run-output/setup/setup/wf-fake-.jsonl" }
 ]

@@ -1,0 +1,18 @@
+{
+  "name": "wf-core-authoring",
+  "version": "0.1.1",
+  "description": "wf core-authoring pack: the core-authoring capability, carrying the knowledge for authoring the wf core plugin itself — the domain-free skill spine, the frozen contracts under the core plugin's _contracts folder, and the repository authoring rules its CI gates enforce. Declared kind: both; it ships its own skills and is authored to attach phase fragments, and its Fragments table is deliberately empty until the first contribution lands. Ships /wf-core-authoring:init for one-command self-registration of the capability.",
+  "author": {
+    "name": "Pavel Kalabin",
+    "url": "https://github.com/pavel-rp"
+  },
+  "repository": "https://github.com/pavel-rp/wf-plugin",
+  "license": "UNLICENSED",
+  "keywords": [
+    "wf",
+    "core",
+    "authoring",
+    "contracts",
+    "agent-skills"
+  ]
+}

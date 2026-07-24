@@ -1,0 +1,21 @@
+{
+  "_comment": "Expectations for the demonstration scenario — a real /wf:branch FAKE-1 run against the scripted fake providers. Structural expectations only; the status_ere and required_ops are SHAPE checks, never a transcript prose exact-match. min_pass_rate is the per-assertion variance threshold: 1.0 requires every run to satisfy the family (a below-threshold pass rate is a REGRESSION; a family that varies but stays at/above threshold is DRIFT).",
+  "scenario": "demo-branch",
+  "skill": "/wf:branch FAKE-1",
+  "families": {
+    "terminal_block": {
+      "name": "BRANCH",
+      "status_ere": "^(created|already-active|switched)$",
+      "min_pass_rate": 1.0
+    },
+    "files_touched": {
+      "required_globs": ["_local/fake/op-log.jsonl", "_local/wf/FAKE-1/index.md"],
+      "forbidden_globs": ["src/*"],
+      "min_pass_rate": 1.0
+    },
+    "ops_invoked": {
+      "required_ops": ["delivery:current-branch-query", "delivery:branch-create"],
+      "min_pass_rate": 1.0
+    }
+  }
+}

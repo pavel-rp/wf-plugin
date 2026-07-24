@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "plugins": {
+    "healpkg@wf-marketplace": [
+      {
+        "scope": "user",
+        "installPath": "plugins/wf/skills/_contracts/registry-fixtures/healroot-stale",
+        "version": "0.0.1"
+      },
+      {
+        "scope": "user",
+        "installPath": "plugins\\wf\\skills\\_contracts\\registry-fixtures\\healroot",
+        "version": "0.0.2"
+      }
+    ],
+    "lostpkg@wf-marketplace": [
+      {
+        "scope": "user",
+        "installPath": "plugins/wf/skills/_contracts/registry-fixtures/gone-dir",
+        "version": "0.0.1"
+      }
+    ],
+    "testpkg@wf-marketplace": [
+      {
+        "scope": "user",
+        "installPath": "plugins/wf/skills/_contracts/registry-fixtures/decoy-gone",
+        "version": "0.0.1"
+      }
+    ]
+  }
+}
