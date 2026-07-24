@@ -114,6 +114,11 @@ check_prereqs() {
     [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] || die "CLAUDE_CODE_OAUTH_TOKEN not set — mint it with 'claude setup-token' and export it."
     [ -z "${ANTHROPIC_API_KEY:-}" ] || log "WARNING: ANTHROPIC_API_KEY is set — the container auth-guard refuses to start unless you pass API billing explicitly. Unset it for a Max-subscription run."
   fi
+  # The analyze phase runs host-side Node (analyze.sh drives node), so surface a missing Node up
+  # front rather than as a late, less actionable failure inside analyze.sh.
+  if want analyze; then
+    command -v node >/dev/null 2>&1 || die "node not found on PATH — the 'analyze' phase runs analyze.sh, which needs Node."
+  fi
 }
 
 require_image() {
@@ -154,7 +159,11 @@ do_build() {
   if [ "$DRY_RUN" = 1 ]; then
     printf '    '; printf '%q ' bash "$SCRIPT_DIR/build-arm.sh" --both --wf-ref-a "$WF_REF_A" --wf-ref-b "$WF_REF_B" --cli-version "$CLI_VERSION"; printf '\n'; return 0
   fi
-  bash "$SCRIPT_DIR/build-arm.sh" --both --wf-ref-a "$WF_REF_A" --wf-ref-b "$WF_REF_B" --cli-version "$CLI_VERSION"
+  # No `set -e` in this script, and require_image only checks image EXISTENCE (a failed rebuild can
+  # leave a stale image that slips through) — so a build failure must be fatal here, or gate/pilot
+  # would run against missing/stale images. do_gate/do_pilot already `|| die` for the same reason.
+  bash "$SCRIPT_DIR/build-arm.sh" --both --wf-ref-a "$WF_REF_A" --wf-ref-b "$WF_REF_B" --cli-version "$CLI_VERSION" \
+    || die "build-arm.sh failed — refusing to continue to gate/pilot with missing or stale images. Fix the build first."
 }
 
 do_gate() {
@@ -194,7 +203,10 @@ do_analyze() {
   if [ "$DRY_RUN" = 1 ]; then
     printf '    '; printf '%q ' bash "$SCRIPT_DIR/analyze.sh" --run-a "$RESULTS_DIR/run-A" --run-b "$RESULTS_DIR/run-B"; printf '\n'; return 0
   fi
-  bash "$SCRIPT_DIR/analyze.sh" --run-a "$RESULTS_DIR/run-A" --run-b "$RESULTS_DIR/run-B"
+  # Fail-fast (no `set -e`): a failed analyze.sh must not fall through to the "now fill the verdict"
+  # log and the final "done", which would read as a clean analysis over partial/missing outputs.
+  bash "$SCRIPT_DIR/analyze.sh" --run-a "$RESULTS_DIR/run-A" --run-b "$RESULTS_DIR/run-B" \
+    || die "analyze.sh failed — see its output; the analysis outputs are incomplete, do not fill the verdict yet."
   log "now fill $SCRIPT_DIR/results/verdict-template.md — resolve its §0 incomparability gate FIRST."
 }
 

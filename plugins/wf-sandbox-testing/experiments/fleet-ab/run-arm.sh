@@ -269,16 +269,33 @@ main() {
 
   # --- 4. archive raw transcripts immediately (design doc §5: the historical baseline died of
   #        pruned transcripts; this one must not) + snapshot the resulting workspace --------------
+  # Archiving is load-bearing evidence. This script has no `set -e`, so a silent tar/cp/snapshot
+  # failure would otherwise leave verdict=ok with missing artifacts — track failures and downgrade.
+  local archive_problems=0
   if [ -d "$projects_root" ]; then
-    tar -C "$(dirname "$projects_root")" -czf "$out/projects-archive.tar.gz" "$(basename "$projects_root")"
+    tar -C "$(dirname "$projects_root")" -czf "$out/projects-archive.tar.gz" "$(basename "$projects_root")" \
+      || { echo "run-arm.sh: WARNING — failed to archive projects tree to projects-archive.tar.gz" >&2; archive_problems=1; }
   fi
-  [ -f "$ws/_local/fake/op-log.jsonl" ] && cp "$ws/_local/fake/op-log.jsonl" "$out/op-log.jsonl"
+  if [ -f "$ws/_local/fake/op-log.jsonl" ]; then
+    cp "$ws/_local/fake/op-log.jsonl" "$out/op-log.jsonl" \
+      || { echo "run-arm.sh: WARNING — failed to copy op-log.jsonl" >&2; archive_problems=1; }
+  fi
 
   local snap="$out/workspace-snapshot"; mkdir -p "$snap"
-  ( cd "$ws" && find . -path ./.git -prune -o -type f -print0 \
+  if ! ( cd "$ws" && find . -path ./.git -prune -o -type f -print0 \
       | while IFS= read -r -d '' f; do
-          mkdir -p "$snap/$(dirname "$f")"; cp "$f" "$snap/$f"
-        done )
+          mkdir -p "$snap/$(dirname "$f")" && cp "$f" "$snap/$f" || exit 1
+        done ); then
+    echo "run-arm.sh: WARNING — workspace snapshot was incomplete" >&2
+    archive_problems=1
+  fi
+
+  # A completed-but-unarchived run is degraded evidence, not a clean pass: downgrade an otherwise-ok
+  # verdict so run.json never records verdict=ok while its evidence artifacts are missing/partial.
+  if [ "$archive_problems" -ne 0 ] && [ "$verdict" = "ok" ]; then
+    verdict="archive-incomplete"
+    reason="measured run completed but archiving/snapshotting evidence failed — see stderr; artifacts may be missing or partial."
+  fi
 
   write_run_json "$out" "$arm" "$umbrella" "$skill" "$model" "$wall_seconds" "$cli_version" "$fp_workload" \
     "$build_json" "$out/setup/setup-sessions.json" "$rc" "$parseable" "$verdict" "$reason" \

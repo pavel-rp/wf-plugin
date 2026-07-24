@@ -65,7 +65,7 @@ changed since the baseline version" — which is exactly what the umbrella verdi
 
 | dimension | value |
 |---|---|
-| Base image | one Dockerfile lineage: Ubuntu 24.04, Node 22.x pinned, Claude Code CLI **pinned to one exact version** (e.g. 2.1.218), auto-update disabled |
+| Base image | one Dockerfile lineage: `node:20-bookworm-slim` (Debian bookworm, Node 20), Claude Code CLI **pinned to one exact version** (e.g. 2.1.218), auto-update disabled |
 | Session model | `--model claude-opus-4-8` on the fleet invocation, both arms. Arm B's internal routing may downshift roles — that *is* treatment; the pin only fixes the top of the tree |
 | Permissions | `--dangerously-skip-permissions`, headless `claude -p`, `--output-format stream-json` — matching the existing `runner/run-skill.sh` pattern |
 | Hooks | **none in either arm** (decided 2026-07-23). Consequence: WF-377's blocked-call delta is invisible here and arm A runs slightly cheaper than the true baseline shape; WF-377 is judged on its own shipped evidence and the verdict says so |
