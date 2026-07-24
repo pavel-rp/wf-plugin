@@ -65,13 +65,21 @@ run_blinding_gate() {
     problems=1
   fi
 
-  local injected=() f
+  local injected=() f rc
   [ -f "$ws/_local/config.md" ] && injected+=("$ws/_local/config.md")
   [ -f "$ws/_local/fake/scripts.json" ] && injected+=("$ws/_local/fake/scripts.json")
   for f in "${injected[@]}"; do
-    if grep -iEn "$BANNED_WORDS_ERE" "$f" >/dev/null 2>&1; then
+    # grep exits 0=match, 1=no-match, 2=error. A fail-closed gate must treat an error (2+)
+    # as a violation, never silently pass it as a no-match — so capture the real exit code
+    # instead of folding 1 and 2 together in an `if grep` test.
+    rc=0
+    grep -iEn "$BANNED_WORDS_ERE" "$f" >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then
       echo "seed-workspace.sh: BLINDING FAIL — banned blinding vocabulary found in injected content '$f':" >&2
       grep -iEn "$BANNED_WORDS_ERE" "$f" >&2 || true
+      problems=1
+    elif [ "$rc" -ge 2 ]; then
+      echo "seed-workspace.sh: BLINDING FAIL — grep errored (exit $rc) scanning injected content '$f' — failing closed" >&2
       problems=1
     fi
   done

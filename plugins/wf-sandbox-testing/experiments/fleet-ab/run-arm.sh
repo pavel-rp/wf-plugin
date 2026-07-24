@@ -236,7 +236,14 @@ main() {
   local verdict="ok" reason="" parseable=true
   if [ "$(detect_quota "$transcript" "$stderr_log")" = "1" ]; then
     verdict="quota-exhausted"
-    reason="subscription quota exhausted; --on-quota=$on_quota"
+    # Mirror run-skill.sh's fail/wait wording so run.json reads consistently across gate and
+    # measured-fleet runs (analyze.sh diffs the two). Neither policy actually waits here; the
+    # distinction is the recorded reason.
+    if [ "$on_quota" = "wait" ]; then
+      reason="subscription quota exhausted; --on-quota=wait — re-run once the usage window resets."
+    else
+      reason="subscription quota exhausted; --on-quota=fail — terminated without an API-billed continuation."
+    fi
     write_run_json "$out" "$arm" "$umbrella" "$skill" "$model" "$wall_seconds" "$cli_version" "$fp_workload" \
       "$build_json" "$out/setup/setup-sessions.json" "$rc" false "$verdict" "$reason" \
       "$session_id" "$projects_root" "$transcript_bundle" "$session_resolved" \
