@@ -20,8 +20,11 @@
 #   COMPARE_BASES[]      compares[].base, in declaration order
 #   COMPARE_AGAINSTS[]   compares[].against, index-aligned with COMPARE_BASES
 #   BLINDING_VOCAB[]     the blinding vocabulary (guaranteed non-empty)
+#   FORBIDDEN_PATHS[]    glob patterns, relative to a seeded tree, that must not exist there
+#                        (may be empty)
 #   CONST_IMAGE_REPO CONST_WORKLOAD_REF CONST_CLI_VERSION CONST_UMBRELLA_ID
-#   CONST_GATE_SKILL CONST_FAKE_SCRIPTS CONST_PACKS CONST_GAP_SECONDS
+#   CONST_GATE_SKILL CONST_FAKE_SCRIPTS CONST_MEASURED_SKILL CONST_MODEL
+#   CONST_PACKS CONST_GAP_SECONDS
 #
 # Validation is loud and named, and it runs for every phase INCLUDING --dry-run: a manifest defect
 # is a defect whether or not anything is about to be spent. An empty blinding vocabulary is
@@ -76,7 +79,7 @@ manifest_load() {
     // --- constants ----------------------------------------------------------------------------
     const c = doc.constants;
     if (c === null || typeof c !== "object" || Array.isArray(c)) bad("`constants` is required and must be an object");
-    const required = ["image_repo", "workload_ref", "cli_version", "umbrella_id", "gate_skill", "fake_scripts"];
+    const required = ["image_repo", "workload_ref", "cli_version", "umbrella_id", "gate_skill", "fake_scripts", "measured_skill", "model"];
     for (const k of required) {
       if (typeof c[k] !== "string" || c[k] === "") bad("constants." + k + " is required and must be a non-empty string");
     }
@@ -115,6 +118,12 @@ manifest_load() {
     for (let i = 0; i < vocab.length; i++) {
       if (typeof vocab[i] !== "string" || vocab[i] === "") bad("blinding.vocabulary[" + i + "] must be a non-empty string");
     }
+    const forbidden = bl.forbidden_paths;
+    if (!Array.isArray(forbidden)) bad("`blinding.forbidden_paths` is required and must be an array (it may be empty)");
+    for (let i = 0; i < forbidden.length; i++) {
+      if (typeof forbidden[i] !== "string" || forbidden[i] === "") bad("blinding.forbidden_paths[" + i + "] must be a non-empty string");
+      if (forbidden[i].startsWith("/") || forbidden[i].split("/").includes("..")) bad("blinding.forbidden_paths[" + i + "] must be relative to the seeded tree and must not escape it");
+    }
 
     const out = [];
     out.push("MANIFEST_NAME=" + q(name));
@@ -123,12 +132,15 @@ manifest_load() {
     out.push("COMPARE_BASES=(" + bases.map(q).join(" ") + ")");
     out.push("COMPARE_AGAINSTS=(" + againsts.map(q).join(" ") + ")");
     out.push("BLINDING_VOCAB=(" + vocab.map(q).join(" ") + ")");
+    out.push("FORBIDDEN_PATHS=(" + forbidden.map(q).join(" ") + ")");
     out.push("CONST_IMAGE_REPO=" + q(c.image_repo));
     out.push("CONST_WORKLOAD_REF=" + q(c.workload_ref));
     out.push("CONST_CLI_VERSION=" + q(c.cli_version));
     out.push("CONST_UMBRELLA_ID=" + q(c.umbrella_id));
     out.push("CONST_GATE_SKILL=" + q(c.gate_skill));
     out.push("CONST_FAKE_SCRIPTS=" + q(c.fake_scripts));
+    out.push("CONST_MEASURED_SKILL=" + q(c.measured_skill));
+    out.push("CONST_MODEL=" + q(c.model));
     out.push("CONST_PACKS=" + q(c.packs));
     out.push("CONST_GAP_SECONDS=" + q(String(gap)));
     process.stdout.write(out.join("\n") + "\n");

@@ -38,6 +38,7 @@ key the schema does not name is rejected rather than ignored.
 | `compares[].against` | yes | validated, read | The arm the comparison is measured *to*. Must name a declared arm, and must differ from `base`. |
 | `mechanism_signals[]` | yes (may be empty) | **validated present, never read** | **Reserved.** The engine checks the key exists and is an array. It never reads an element, never interprets one, and never emits one. Evaluating these is a separate, later change. |
 | `blinding.vocabulary[]` | yes, **non-empty** | validated, read | The words the blinding gate refuses to find in anything the experiment injects. |
+| `blinding.forbidden_paths[]` | yes (may be empty) | validated, read | Glob patterns, relative to a seeded workload tree, that must **not** exist there — the presence half of the gate (e.g. the experiment's own design doc or kit folder, which must post-date the workload ref). Each entry is relative and may not escape the tree. |
 
 ### `constants{}`
 
@@ -49,7 +50,9 @@ key the schema does not name is rejected rather than ignored.
 | `umbrella_id` | yes | yes — the measured-run lines |
 | `gate_skill` | yes | yes — the gate lines |
 | `fake_scripts` | yes | yes — every measured `docker run` line |
-| `packs` | yes (may be empty) | **only when non-empty.** An empty value means the flag is *absent* from every emitted line, not present-and-empty. This distinction is load-bearing: a present-but-empty flag is a different command. |
+| `measured_skill` | yes | **no.** The skill the billed run invokes. Composed in-container as `<measured_skill> <umbrella_id>`; only the umbrella id reaches the host-emitted line. |
+| `model` | yes | **no.** The model pin the measured run uses, held identical across arms. In-container only. |
+| `packs` | yes (may be empty) | **only when non-empty.** An empty value means the flag is *absent* from every emitted line, not present-and-empty. This distinction is load-bearing: a present-but-empty flag is a different command, and when the flag is absent the in-container default applies. |
 | `gap_seconds` | yes | **no.** The inter-arm wait. It appears in narration and in a `sleep` the dry run skips, so it never reaches the emitted command surface. Declared here because it is a real protocol parameter, and recorded rather than compared. |
 
 ### Why arm declaration order is significant
@@ -85,6 +88,7 @@ than a bare string, and why `constants` is a map rather than a positional list.
 - a compare names an arm that is not declared, or compares an arm with itself;
 - `mechanism_signals` is absent or is not an array (its *contents* are never inspected);
 - **`blinding.vocabulary` is absent, is not an array, or is empty.**
+- `blinding.forbidden_paths` is absent, is not an array, or carries an absolute / tree-escaping entry.
 
 The blinding case is called out because its failure mode is the dangerous one. The pre-retrofit
 gate held its banned-word pattern as a hardcoded constant; an empty pattern would match every line
@@ -114,6 +118,8 @@ Illustrative only — the normative content is the table above, not these values
     "umbrella_id": "EX-1",
     "gate_skill": "/wf:triage EX-2",
     "fake_scripts": "fake-scripts.json",
+    "measured_skill": "/wf:example",
+    "model": "example-model",
     "packs": "",
     "gap_seconds": 330
   },
@@ -122,7 +128,8 @@ Illustrative only — the normative content is the table above, not these values
   ],
   "mechanism_signals": [],
   "blinding": {
-    "vocabulary": ["one", "two"]
+    "vocabulary": ["one", "two"],
+    "forbidden_paths": ["docs/example-*"]
   }
 }
 ```

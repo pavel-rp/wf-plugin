@@ -98,9 +98,14 @@ main() {
   runner_args+=(${forward+"${forward[@]}"})
 
   if [ "$measured_fleet" = "1" ]; then
-    local fleet_ab_dir="${WF_FLEET_AB_DIR:-$RUNNER_DIR/../experiments/fleet-ab}"
+    # The measured path is experiment-agnostic: WF_EXPERIMENT_DIR names the experiment folder
+    # baked into this image (the folder holding its manifest), and the shared engine beside it
+    # runs the arm. WF_FLEET_AB_DIR is still honoured as the pre-engine name for the same seam.
+    local experiment_dir="${WF_EXPERIMENT_DIR:-${WF_FLEET_AB_DIR:-$RUNNER_DIR/../experiments/fleet-ab}}"
+    local engine_dir="${WF_EXPERIMENT_ENGINE_DIR:-$RUNNER_DIR/../experiments/engine}"
+    export WF_EXPERIMENT_DIR="$experiment_dir"
     echo "auth-guard: passed (allow-api-key=$allow_api_key, on-quota=$on_quota) — measured-fleet path; run-arm.sh applies no-egress after the workload seed." >&2
-    exec "$fleet_ab_dir/run-arm.sh" "${runner_args[@]}"
+    exec "$engine_dir/run-arm.sh" "${runner_args[@]}"
   fi
 
   # No-egress at container start (single-skill path only): blackhole tracker/delivery hosts

@@ -1,51 +1,53 @@
 #!/usr/bin/env bash
 # run-arm.sh — the ONE measured invocation for a single arm, run INSIDE that arm's container.
 #
-# Design doc §5/§8: exactly one measured claude -p "/wf:fleet <umbrella-id>" per arm, spaced >5min
-# apart from its pair, same day, order coin-flipped. This script runs in-container (dispatched by
-# runner/entrypoint.sh on --measured-fleet, after the auth/billing guards) and owns the full
-# per-arm sequence so both arms are isolated by construction — a fresh container each, its own
-# CLAUDE_CONFIG_DIR and its own seeded workspace, differing ONLY in the image's WF_REF:
+# Exactly one measured `claude -p "<measured-skill> <umbrella-id>"` per arm, spaced apart from its
+# pair, same day, order shuffled. This script runs in-container (dispatched by runner/entrypoint.sh
+# on --measured-fleet, after the auth/billing guards) and owns the full per-arm sequence so every
+# arm is isolated by construction — a fresh container each, its own CLAUDE_CONFIG_DIR and its own
+# seeded workspace, differing ONLY in the image's WF_REF:
 #
 #   1. seed  — clone the workload snapshot at ref W, run the arm's UNMEASURED /wf:init + pack init
 #              skills + fake config, then the blinding gate (seed-workspace.sh). Needs egress to
-#              the workload host (github), so it runs BEFORE no-egress is applied.
-#   2. seal  — apply no-egress (blackhole tracker/delivery hosts) AFTER the seed, so the measured
-#              run cannot reach a real tracker/delivery host; the fake provider answers in-memory.
-#   3. measure — the ONE billed claude -p "/wf:fleet <umbrella-id>" (or --gate-skill for the cheap
-#              dry-run gate, which exercises this exact seed+seal path with a cheaper skill).
+#              the workload host, so it runs BEFORE no-egress is applied.
+#   2. seal  — apply no-egress AFTER the seed, so the measured run cannot reach a real
+#              tracker/delivery host; the fake provider answers in-memory.
+#   3. measure — the ONE billed measured skill (or --gate-skill for the cheap dry-run gate, which
+#              exercises this exact seed+seal path with a cheaper skill).
 #   4. archive — tar the isolated projects/ tree + op-log + workspace snapshot + run.json into the
 #              mounted --out (default $WF_RUN_OUT=/work/run-output). run.json records the
 #              measured session id AND the unmeasured setup sessions, so the split stays auditable.
 #
-# HOST INVOCATION (never run this script directly — it runs inside the arm container):
-#   docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v "$PWD/results/run-A:/work/run-output" \
-#     fleet-ab:armA --measured-fleet --arm A --umbrella-id WF-405 \
-#     --workload-ref "$WORKLOAD_REF" --fake-scripts fake-scripts.json
+# Experiment-agnostic: the arm labels this accepts, the measured skill, the umbrella id and the
+# model pin all come from the experiment manifest, resolved from the experiment directory the
+# container was pointed at ($WF_EXPERIMENT_DIR, exported by runner/entrypoint.sh).
 #
-# Authored and bash -n syntax-checked only in this session — no Docker host here (WF-382 plan
-# STEP-003). Spending a measured run requires the user's explicit go-ahead (spec Boundaries,
-# "ask first" — each run is ≈$85-115 API-equivalent). Prove the path first with --gate-skill.
+# Never run this script directly on a host — it runs inside an arm container.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RUNNER_DIR="$(cd "$SCRIPT_DIR/../../runner" && pwd)"
+ENGINE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNNER_DIR="$(cd "$ENGINE_DIR/../../runner" && pwd)"
+# shellcheck source=manifest.sh
+. "$ENGINE_DIR/manifest.sh"
 # shellcheck source=../../runner/fingerprint.sh
 . "$RUNNER_DIR/fingerprint.sh"
 
-DEFAULT_MODEL="claude-opus-4-8"
+# The in-container default pack set. This is the value that applies when the host did NOT pass
+# --packs — which is exactly what an empty `constants.packs` means (the flag stays absent).
 DEFAULT_PACKS="wf wf-audit wf-fake"
 
 usage() {
   cat >&2 <<'EOF'
 usage (in-container; dispatched by runner/entrypoint.sh on --measured-fleet):
-  run-arm.sh --measured-fleet --arm A|B --umbrella-id <id>
+  run-arm.sh --measured-fleet --arm <label> [--umbrella-id <id>]
              --workload-ref <ref> [--fake-scripts <path|name>]
-             [--gate-skill "/wf:triage <id>"] [--model claude-opus-4-8]
-             [--out <dir>] [--packs "wf wf-audit wf-fake"] [--repo-url <url>]
-             [--build-json <build-<arm>.json>] [--on-quota fail|wait] [--allow-api-key]
-  --gate-skill runs the given cheap skill instead of the measured /wf:fleet, over the SAME
+             [--gate-skill "<skill>"] [--model <model>] [--manifest <path>]
+             [--out <dir>] [--packs "<a b c>"] [--repo-url <url>]
+             [--build-json <build-<label>.json>] [--on-quota fail|wait] [--allow-api-key]
+  --gate-skill runs the given cheap skill instead of the measured skill, over the SAME
   seed+seal path (the dry-run gate). --umbrella-id is then optional.
+  The manifest resolves from --manifest, else $WF_EXPERIMENT_MANIFEST, else
+  $WF_EXPERIMENT_DIR/experiment.json.
 EOF
 }
 
@@ -126,12 +128,30 @@ write_run_json() {
 }
 
 main() {
-  local arm="" umbrella="" workload_ref="" fake_scripts="" gate_skill="" model="$DEFAULT_MODEL" \
-        out="" packs="$DEFAULT_PACKS" repo_url="" build_json="" on_quota="fail"
+  local arm="" umbrella="" workload_ref="" fake_scripts="" gate_skill="" model="" \
+        out="" packs="" repo_url="" build_json="" on_quota="fail" manifest=""
+
+  # --- resolve the manifest first: the arm set and the experiment constants come from it ---------
+  local -a argv=("$@")
+  local i=0
+  while [ "$i" -lt "${#argv[@]}" ]; do
+    case "${argv[$i]}" in
+      --manifest) i=$((i + 1)); manifest="${argv[$i]:-}";;
+      --manifest=*) manifest="${argv[$i]#*=}";;
+    esac
+    i=$((i + 1))
+  done
+  [ -n "$manifest" ] || manifest="${WF_EXPERIMENT_MANIFEST:-}"
+  [ -n "$manifest" ] || manifest="${WF_EXPERIMENT_DIR:-$ENGINE_DIR/..}/experiment.json"
+  manifest_load "$manifest" || { echo "run-arm.sh: could not load the experiment manifest ($manifest)" >&2; return 2; }
+
+  model="$CONST_MODEL"
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --measured-fleet) shift;;                       # dispatch sentinel (consumed by entrypoint too)
+      --manifest) shift 2;;
+      --manifest=*) shift;;
       --arm) arm="${2:?}"; shift 2;;
       --arm=*) arm="${1#*=}"; shift;;
       --umbrella-id) umbrella="${2:?}"; shift 2;;
@@ -160,22 +180,28 @@ main() {
     esac
   done
 
-  case "$arm" in A|B) ;; *) echo "run-arm.sh: --arm must be A or B (got '$arm')" >&2; exit 2;; esac
-  [ -n "$workload_ref" ] || { echo "run-arm.sh: --workload-ref <ref W> is required (never defaulted)" >&2; exit 2; }
+  # The arm label must be one the manifest declares — no fixed arm set lives in this script.
+  [ -n "$arm" ] || { echo "run-arm.sh: --arm <label> is required" >&2; usage; return 2; }
+  manifest_require_arm "$arm" "run-arm.sh" || return 2
+  [ -n "$workload_ref" ] || { echo "run-arm.sh: --workload-ref <ref W> is required (never defaulted)" >&2; return 2; }
+  [ -n "$packs" ] || packs="$DEFAULT_PACKS"
 
-  # The measured skill: the pilot's /wf:fleet, or a cheaper --gate-skill over the same seed+seal path.
+  # The measured skill: the manifest's measured skill applied to the umbrella, or a cheaper
+  # --gate-skill over the same seed+seal path.
   local skill=""
   if [ -n "$gate_skill" ]; then
     skill="$gate_skill"
   else
-    [ -n "$umbrella" ] || { echo "run-arm.sh: --umbrella-id <id> is required (or pass --gate-skill for the dry-run gate)" >&2; exit 2; }
-    skill="/wf:fleet $umbrella"
+    [ -n "$umbrella" ] || umbrella="$CONST_UMBRELLA_ID"
+    [ -n "$umbrella" ] || { echo "run-arm.sh: --umbrella-id <id> is required (or pass --gate-skill for the dry-run gate)" >&2; return 2; }
+    skill="$CONST_MEASURED_SKILL $umbrella"
   fi
 
-  # Resolve --fake-scripts: absolute/relative path as given, else the image-baked copy beside this script.
-  [ -n "$fake_scripts" ] || fake_scripts="$SCRIPT_DIR/fake-scripts.json"
-  [ -f "$fake_scripts" ] || fake_scripts="$SCRIPT_DIR/$fake_scripts"
-  [ -f "$fake_scripts" ] || { echo "run-arm.sh: --fake-scripts not found: $fake_scripts" >&2; exit 2; }
+  # Resolve --fake-scripts: absolute/relative path as given, else the experiment's declared name
+  # resolved against the image-baked experiment directory.
+  [ -n "$fake_scripts" ] || fake_scripts="$CONST_FAKE_SCRIPTS"
+  [ -f "$fake_scripts" ] || fake_scripts="$KIT_DIR/$fake_scripts"
+  [ -f "$fake_scripts" ] || { echo "run-arm.sh: --fake-scripts not found: $fake_scripts" >&2; return 2; }
 
   [ -n "$out" ] || out="${WF_RUN_OUT:-/work/run-output}"
   rm -rf "$out"; mkdir -p "$out"
@@ -184,15 +210,16 @@ main() {
   host_name="$(hostname 2>/dev/null || echo unknown)"
   started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-  # --- 1. seed (egress OPEN — the workload clone needs github) ------------------------------------
+  # --- 1. seed (egress OPEN — the workload clone needs the workload host) -------------------------
   local cfg ws; cfg="$(mktemp -d)"; ws="$(mktemp -d)/workspace"; mkdir -p "$ws"
   export CLAUDE_CONFIG_DIR="$cfg"
   echo "run-arm.sh: arm=$arm — seeding workload @ $workload_ref into $ws (config=$cfg)" >&2
-  local -a seed_args=("$ws" --workload-ref "$workload_ref" --fake-scripts "$fake_scripts"
-                      --config-dir "$cfg" --out "$out/setup" --packs "$packs")
+  local -a seed_args=("$ws" --manifest "$MANIFEST_PATH" --workload-ref "$workload_ref"
+                      --fake-scripts "$fake_scripts" --config-dir "$cfg" --out "$out/setup"
+                      --packs "$packs")
   [ -n "$repo_url" ] && seed_args+=(--repo-url "$repo_url")
   local seed_rc=0
-  bash "$SCRIPT_DIR/seed-workspace.sh" "${seed_args[@]}" >&2 || seed_rc=$?
+  bash "$ENGINE_DIR/seed-workspace.sh" "${seed_args[@]}" >&2 || seed_rc=$?
   if [ "$seed_rc" -ne 0 ]; then
     write_run_json "$out" "$arm" "$umbrella" "$skill" "$model" 0 "$(fingerprint_cli)" "" \
       "$build_json" "$out/setup/setup-sessions.json" "$seed_rc" false "seed-failed" \
@@ -237,7 +264,7 @@ main() {
   if [ "$(detect_quota "$transcript" "$stderr_log")" = "1" ]; then
     verdict="quota-exhausted"
     # Mirror run-skill.sh's fail/wait wording so run.json reads consistently across gate and
-    # measured-fleet runs (analyze.sh diffs the two). Neither policy actually waits here; the
+    # measured runs (the analysis diffs the two). Neither policy actually waits here; the
     # distinction is the recorded reason.
     if [ "$on_quota" = "wait" ]; then
       reason="subscription quota exhausted; --on-quota=wait — re-run once the usage window resets."
@@ -264,11 +291,11 @@ main() {
 
   if [ "$rc" -ne 0 ]; then
     verdict="skill-error"
-    reason="claude exited $rc — see stderr.log; transcript parsed but the fleet run did not complete cleanly."
+    reason="claude exited $rc — see stderr.log; transcript parsed but the run did not complete cleanly."
   fi
 
-  # --- 4. archive raw transcripts immediately (design doc §5: the historical baseline died of
-  #        pruned transcripts; this one must not) + snapshot the resulting workspace --------------
+  # --- 4. archive raw transcripts immediately (a measured run's transcripts are the evidence; a
+  #        pruned archive destroys it) + snapshot the resulting workspace ------------------------
   # Archiving is load-bearing evidence. This script has no `set -e`, so a silent tar/cp/snapshot
   # failure would otherwise leave verdict=ok with missing artifacts — track failures and downgrade.
   local archive_problems=0
