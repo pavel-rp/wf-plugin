@@ -1,0 +1,4 @@
+    bash /opt/kit/fleet-ab/build-arm.sh --both --wf-ref-a 90cf319 --wf-ref-b c768673 --cli-version 2.1.218
+    docker run --rm -v /opt/kit/fleet-ab/results/run-A:/work/run-output fleet-ab:armA --measured-fleet --arm A --shard 1
+    docker run --rm -v /opt/kit/fleet-ab/results/run-A:/work/run-output fleet-ab:armA --measured-fleet --arm A --shard 2
+    bash /opt/kit/fleet-ab/analyze.sh --run-a /opt/kit/fleet-ab/results/run-A
