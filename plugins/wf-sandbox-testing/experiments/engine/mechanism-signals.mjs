@@ -403,7 +403,10 @@ const main = (argv) => {
   const signals = validateSignals(doc);
 
   if (mode === "validate") {
-    process.stderr.write(`mechanism-signals.mjs: ${signals.length} declared signal(s) validate against the frozen vocabulary (${SIGNAL_KINDS.join(", ")})\n`);
+    // Success narrates on STDOUT, never stderr: manifest.sh loads a manifest for every phase
+    // including --dry-run, whose stderr is a captured, compared surface. Only a rejection speaks
+    // on stderr, where it is meant to be seen.
+    process.stdout.write(`mechanism-signals.mjs: ${signals.length} declared signal(s) validate against the frozen vocabulary (${SIGNAL_KINDS.join(", ")})\n`);
     return 0;
   }
 
