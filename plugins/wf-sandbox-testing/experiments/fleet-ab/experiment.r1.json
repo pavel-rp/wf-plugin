@@ -1,0 +1,43 @@
+{
+  "name": "fleet-ab",
+  "arms": [
+    { "label": "A", "wf_ref": "90cf319" },
+    { "label": "B", "wf_ref": "c768673" },
+    { "label": "R1", "wf_ref": "ff2eb70" }
+  ],
+  "constants": {
+    "image_repo": "fleet-ab",
+    "workload_ref": "9c99498",
+    "cli_version": "2.1.218",
+    "umbrella_id": "WF-405",
+    "gate_skill": "/wf:triage WF-406",
+    "fake_scripts": "fake-scripts.json",
+    "measured_skill": "/wf:fleet",
+    "model": "claude-opus-4-8",
+    "packs": "",
+    "gap_seconds": 330
+  },
+  "compares": [
+    { "base": "A", "against": "B" },
+    { "base": "B", "against": "R1" }
+  ],
+  "mechanism_signals": [],
+  "blinding": {
+    "vocabulary": [
+      "experiment",
+      "experiments",
+      "baseline",
+      "baselines",
+      "measurement",
+      "measurements",
+      "token-efficiency",
+      "arm",
+      "arms",
+      "A/B"
+    ],
+    "forbidden_paths": [
+      "docs/wf382-*",
+      "experiments"
+    ]
+  }
+}
