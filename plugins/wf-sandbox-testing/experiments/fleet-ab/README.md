@@ -35,14 +35,15 @@ Adding an arm here is a manifest edit, never a script edit.
 | Path | Role |
 |---|---|
 | `Dockerfile` | Arm-buildable image. `ARG WF_REF` selects the arm's marketplace ref; the workload snapshot is resolved at container-run time by the engine's `seed-workspace.sh --workload-ref` (a run-time param, **not** a build ARG), never baked in. Copies the engine alongside this folder and sets `WF_EXPERIMENT_DIR`, so the manifest of record reaches the container through the environment and no flag is added to the measured `docker run` line. (A *non-default* manifest travels as one extra `-e WF_EXPERIMENT_MANIFEST=<name>` — see [`../engine/schema.md`](../engine/schema.md).) |
-| `experiment.json` | **This experiment's manifest of record** — the two-arm declaration (`A` = `90cf319`, `B` = `c768673`), the constants held identical across arms, the declared pairwise compare, the reserved mechanism-signal slot, and the blinding vocabulary + forbidden-path guards. Every value the engine emits comes from here. |
+| `experiment.json` | **This experiment's manifest of record** — the two-arm declaration (`A` = `90cf319`, `B` = `c768673`), the constants held identical across arms, the declared pairwise compare, the declared mechanism-signal set (the C024 predicates, evaluated by the engine's analyze step), and the blinding vocabulary + forbidden-path guards. Every value the engine emits comes from here. |
 | `experiment.r1.json` | The rung-added variant: `experiment.json` plus exactly one arm row (`R1` = `ff2eb70`) and one compare. A data-only delta — no engine or shim file differs between the two. **Not** the parity target; parity runs against `experiment.json` only. |
 | `build-arm.sh` | 5-line dispatch shim → `../engine/build.sh --manifest experiment.json`. Builds `fleet-ab:arm<label>` per declared arm and fingerprints build inputs into `results/build-<label>.json`. |
 | `analyze.sh` | 5-line dispatch shim → `../engine/analyze.sh --manifest experiment.json`. Offline, host-side only: `fleet-cost.mjs measure` per run, plus each compare the manifest declares, in its declared direction. |
 | `fake-scripts.json` | Scripted tracker/delivery responses carrying the real WF-406/WF-409 texts (verbatim, checked against the blinding vocabulary list). |
 | `runbooks/` | Machine-derived command documents (`run-experiment.sh --runbook`) — one per manifest that has one. `experiment.r1.md` is the R1 rung's spend-ready runbook: **derived, never executed.** Do not hand-edit; re-derive instead. |
 | `baseline/` | WF-419's committed pre-retrofit parity oracle: `capture.md` (the recorded capture invocation and every parameter value it used), `dry-run-baseline.stdout.txt` (the compared command surface), and `dry-run-baseline.stderr.txt`. Read-only evidence — the retrofit is proved equivalent against it with [`../parity/parity-check.sh`](../parity/parity-check.sh). |
-| `results/` | Everything committed: `build-*.json`, per-run `run.json` + transcript archives + workspace snapshots, `measure-*.json`, `totals-comparison.txt`, and `deltas.md` (the spend-free per-sub-task fixture-relative delta collation, ships with the kit itself — see below). **No mechanism table** — mechanism-signal evaluation is a reserved manifest slot the engine validates and never reads (`experiment.json`'s `mechanism_signals[]`, [`../engine/schema.md`](../engine/schema.md)); nothing in this kit produces one today. |
+| `mechanism-check.sh` | Spend-free, **read-only** regression check: evaluates `experiment.json`'s declared mechanism signals over per-arm transcript archives and compares them against the committed `results/transcript-inventory.json`. Takes its evidence locations as arguments and refuses an `--out` inside `results/`. Its recorded evidence is [`mechanism-check/recorded-run.md`](mechanism-check/recorded-run.md). |
+| `results/` | Everything committed: `build-*.json`, per-run `run.json` + transcript archives + workspace snapshots, `measure-*.json`, `totals-comparison.txt`, and `deltas.md` (the spend-free per-sub-task fixture-relative delta collation, ships with the kit itself — see below). A full analyze run also emits `mechanism-signals.json` / `.txt` here — the declared mechanism signals evaluated per arm (`experiment.json`'s `mechanism_signals[]`, [`../engine/schema.md`](../engine/schema.md)), with a signal the run data cannot answer reported "not measured" rather than counted. |
 
 Everything under `experiments/fleet-ab/` is git-tracked — data, run records, transcript
 archives, and the verdict — **never** under `_local/` (spec Constraints; design doc §5:
@@ -156,10 +157,14 @@ order files happen to be read in.
 - If ambiguous → **ask first again** before spending one more interleaved pair
   (A, B, B, A overall), then stop regardless (design doc §8.4).
 
-The design doc's §7.2 mechanism table is **not** part of this gate: `mechanism_signals[]` is a
-reserved manifest slot the engine validates and never reads, and no script here produces a
-mechanism table. Judging the delta against per-mechanism assertions is a later, separate step —
-until it lands, a verdict rests on the dollar comparison plus the blind quality read (§7.3).
+The design doc's §7.2 mechanism table is **not** part of this gate. The engine now evaluates
+`mechanism_signals[]` and emits `mechanism-signals.json` / `.txt`, but that table carries counts,
+presence, and provenance only — the vocabulary has no expectation, threshold, or pass/fail slot, so
+it never *judges* a delta. Two §7.2 rows are deliberately left undeclared because no frozen predicate
+can express them; the reasoning is recorded in
+[`mechanism-check/recorded-run.md`](mechanism-check/recorded-run.md). A verdict still rests on the
+dollar comparison plus the blind quality read (§7.3), now with the mechanism counts as evidence
+beside it.
 
 ### 5. Retry / stall policy
 

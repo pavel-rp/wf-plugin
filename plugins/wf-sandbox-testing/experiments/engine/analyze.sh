@@ -171,7 +171,7 @@ main() {
   # declares none emits an empty table rather than a special case.
   local -a signal_args=()
   for n in "${!ARM_LABELS[@]}"; do
-    signal_args+=(--arm "${ARM_LABELS[$n]}=${run_dirs[$n]}")
+    signal_args+=("$(manifest_run_flag "${ARM_LABELS[$n]}")" "${run_dirs[$n]}")
   done
   node "$MECHANISM_SIGNALS" evaluate --manifest "$MANIFEST_PATH" "${signal_args[@]}" --out "$out" >/dev/null
 

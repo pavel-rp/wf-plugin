@@ -59,13 +59,45 @@ main() {
   [ -n "$out" ] || die "--out <scratch-dir> is required (route it under _local/scratch/)"
   [ -f "$EVALUATOR" ] || die "the engine's signal evaluator is missing: $EVALUATOR"
 
+  # A typo'd or unmaterialized run dir must be a USAGE error, not a regression verdict — the same
+  # guard analyze.sh applies to its own --run-<label> dirs. Without it, a missing directory reads as
+  # "every signal not measured" and the check reports FAIL, blaming the evidence for a typo.
+  local pair label dir
+  for pair in "${arm_args[@]}"; do
+    case "$pair" in --arm) continue;; esac
+    label="${pair%%=*}"; dir="${pair#*=}"
+    [ -n "$label" ] && [ "$label" != "$pair" ] || die "--arm expects <label>=<run-dir>, got '$pair'"
+    [ -d "$dir" ] || die "arm $label's run directory does not exist: $dir"
+  done
+
+  # results/ is simultaneously this check's oracle and untouchable output, and the evaluator writes
+  # the same two filenames analyze.sh puts there — so an --out pointing inside it would overwrite
+  # committed evidence. Refuse rather than trust the caller.
+  local kit_results manifest_dir resolved_out
+  manifest_dir="$(cd "$(dirname "$MANIFEST")" && pwd)"
+  kit_results="$manifest_dir/results"
   mkdir -p "$out"
-  node "$EVALUATOR" evaluate --manifest "$MANIFEST" "${arm_args[@]}" --out "$out" >/dev/null
+  resolved_out="$(cd "$out" && pwd)"
+  case "$resolved_out/" in
+    "$kit_results"/*) die "--out is inside the experiment's results/ ($resolved_out) — that directory is this check's oracle and must not be written; route --out under _local/scratch/";;
+  esac
+
+  node "$EVALUATOR" evaluate --manifest "$MANIFEST" "${arm_args[@]}" --out "$resolved_out" >/dev/null
 
   node -e '
     const fs = require("node:fs");
-    const observed = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-    const inv = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+    // An unreadable or malformed input is an IO/usage error (exit 2), never the mismatch code —
+    // and it must not be reported as a divergence, which would blame the evidence for a bad path.
+    const readJson = (p, what) => {
+      try {
+        return JSON.parse(fs.readFileSync(p, "utf8"));
+      } catch (e) {
+        process.stderr.write(`mechanism-check.sh: ERROR — ${what} is not readable/parseable JSON (${p}): ${e.message}\n`);
+        process.exit(2);
+      }
+    };
+    const observed = readJson(process.argv[1], "the evaluated signal output");
+    const inv = readJson(process.argv[2], "the committed inventory");
 
     // The oracle binding: which declared signal answers which committed inventory field. This is
     // experiment data (it names C024 signals), which is why it lives beside the experiment and
@@ -127,7 +159,13 @@ main() {
       const dupWant = inv.arms[arm]?.wf375?.duplicate_pr_or_tf_dispatches;
       const pr = obsArm.signals?.wf375_pr_dispatch, tf = obsArm.signals?.wf375_tf_dispatch;
       if (dupWant !== undefined && pr?.status === "measured" && tf?.status === "measured") {
-        check(`arm ${arm} duplicate PR/TF dispatches`, pr.duplicates + tf.duplicates, dupWant);
+        // `duplicates` is null when the id dimension is absent; summing that into a number would
+        // manufacture a 0 and check it against the oracle as if it had been measured.
+        if (pr.duplicates === null || tf.duplicates === null) {
+          rows.push(`SKIP   arm ${arm} duplicate PR/TF dispatches: duplicates not measured (${(pr.duplicates === null ? pr : tf).duplicates_reason})`);
+        } else {
+          check(`arm ${arm} duplicate PR/TF dispatches`, pr.duplicates + tf.duplicates, dupWant);
+        }
       }
       // The committed tf_shape prose says the finalize path is inline — mechanically, no separate
       // finalize dispatch record exists.
@@ -149,6 +187,15 @@ main() {
         continue;
       }
       check(`delta ${sig} (B - A)`, d.delta, want);
+    }
+
+    // A DECLARED signal with no entry in the oracle binding above would otherwise vanish from this
+    // report entirely — no MATCH, no SKIP, no narrowing row — which is exactly the silent-pass this
+    // check exists to prevent. Every declared signal is accounted for, one way or another.
+    const bound = new Set([...COUNTS.map(([s]) => s), ...DELTAS.map(([s]) => s)]);
+    for (const s of observed.signals ?? []) {
+      if (bound.has(s.id)) continue;
+      rows.push(`SKIP   ${s.id}: declared and evaluated, but the committed inventory carries no counterpart field — outside this check'"'"'s oracle`);
     }
 
     const lines = [];
@@ -176,9 +223,14 @@ main() {
     lines.push(failed === 0
       ? `RESULT: PASS — every checked value reproduces the committed inventory (${rows.filter((r) => r.startsWith("MATCH")).length} checks).`
       : `RESULT: FAIL — ${failed} value(s) diverge from the committed inventory.`);
-    console.log(lines.join("\n"));
+    // Written by the reporter itself rather than piped through `tee`: a mid-run failure would leave
+    // tee having already truncated the report to zero bytes, destroying the previous record of a
+    // run, for a reason that has nothing to do with the comparison.
+    const text = `${lines.join("\n")}\n`;
+    fs.writeFileSync(process.argv[3], text);
+    process.stdout.write(text);
     process.exit(failed === 0 ? 0 : 1);
-  ' "$out/mechanism-signals.json" "$inventory" | tee "$out/mechanism-check.txt"
+  ' "$resolved_out/mechanism-signals.json" "$inventory" "$resolved_out/mechanism-check.txt"
 }
 
 main "$@"

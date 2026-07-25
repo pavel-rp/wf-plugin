@@ -36,10 +36,19 @@ bash plugins/wf-sandbox-testing/experiments/fleet-ab/mechanism-check.sh \
 ## Result
 
 24 checks, all matching. One declared signal is reported **not measured**, with its reason — the
-honest-non-measurement path exercised on real data rather than asserted.
+honest-non-measurement path exercised on real data rather than asserted. Two declared signals are
+reported **SKIP**: they evaluate cleanly, but the committed inventory carries no counterpart field,
+so they are outside this check's oracle and it claims nothing about them.
+
+Reproduced verbatim below, with one substitution: the two provenance lines carry absolute paths, so
+the run-local prefixes are shown as `<scratch>` (the materialized archive root) and `<out>` (the
+`--out` directory). Every other line is byte-for-byte as emitted.
 
 ```
 === mechanism regression check — declared signals vs the committed transcript inventory ===
+
+oracle:   <scratch>/results/transcript-inventory.json
+observed: <out>/mechanism-signals.json
 
 MATCH  arm A wf374_audit_lens_boots: observed=10 committed=10
 MATCH  arm A wf374_gated_off_lens_boots: observed=0 committed=0
@@ -65,6 +74,8 @@ MATCH  delta wf374_finding_contract_refetches (B - A): observed=0 committed=0
 MATCH  delta wf375_pr_dispatch (B - A): observed=1 committed=1
 MATCH  delta wf375_tf_dispatch (B - A): observed=0 committed=0
 MATCH  delta wf375_taskoutput_timeouts (B - A): observed=5 committed=5
+SKIP   wf379_index_dispatch: declared and evaluated, but the committed inventory carries no counterpart field — outside this check's oracle
+SKIP   wf376_dispatch_model_tier: declared and evaluated, but the committed inventory carries no counterpart field — outside this check's oracle
 
 NARROWED — committed inventory content this vocabulary does not claim to reproduce:
   - arms.<arm>.wf374.verdict / arms.<arm>.wf375.verdict

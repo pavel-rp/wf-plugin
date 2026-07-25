@@ -83,8 +83,14 @@ for every phase including `--dry-run`, rather than guessed at:
 
 | Kind | Slots | Meaning |
 |---|---|---|
-| `record_match` | `record` (optional `{type, subtype}`), `match[]` (optional) | **Record-type + field-match counting.** Counts records of the declared type (every record when `record` is omitted) that satisfy **every** `match` clause. |
+| `record_match` | `record` (optional `{type, subtype}`), `match[]` (optional) — **at least one of the two is required** | **Record-type + field-match counting.** Counts records of the declared type (every record when `record` is omitted) that satisfy **every** `match` clause. |
 | `dispatch_shape` | `subagent_type` (required) | **Dispatch-shape presence.** Counts the stream's dispatch records naming that subagent type, and reports presence (`present`/`absent`) plus `duplicates` — dispatch records re-issued against a task id already dispatched. |
+
+`record` and `match` are individually optional but **not jointly omittable**: a `record_match`
+declaring neither would count every record in the stream, which is not a signal, and is rejected at
+load. `duplicates` is derived only from dispatch records that actually carry the id field — when
+none of the matching dispatches carries it, `duplicates` is reported as not measured (with its own
+reason) rather than as a count, while `count` and `presence` stay measurable.
 
 A `match` clause is `{ field, op, value }`. `field` is a dot path into the record, or `""` for the
 whole record serialized (the "raw occurrence" reading). `op` is one of `equals`, `prefix`,
@@ -98,21 +104,32 @@ a manifest.
 ### "Not measured" is a first-class result
 
 A declared signal the run data cannot answer is reported **`not measured`, with a stated reason** —
-never omitted from the table, never given an invented number. Exactly three conditions produce it,
-each drawing the honest line between *a real zero* and *absence of evidence*:
+never omitted from the table, never given an invented number. Five conditions produce it, each
+drawing the honest line between *a real zero* and *absence of evidence*:
 
 1. the arm has no record stream (`transcript.jsonl` absent or unreadable under its run dir);
-2. `record_match` declares a `record` type the stream carries **no instance of** — the record
-   dimension is absent, so `0` would read as evidence of absence;
+2. the candidate set is **empty** — either `record_match` declares a `record` type the stream
+   carries no instance of, or it declares no `record` at all and the stream carries no records at
+   all. Either way the record dimension is absent, so `0` would read as evidence of absence;
 3. `record_match` declares a `match` clause whose `field` is absent from **every** candidate
    record — the field dimension is absent, same reasoning. (`field: ""` never triggers this: the
    whole record is always present.)
+4. `dispatch_shape` over a stream carrying **no dispatch record at all** — the dispatch dimension is
+   absent, so neither presence nor a count would be evidence;
+5. `dispatch_shape`'s `duplicates` alone, when matching dispatches exist but **none carries the id
+   field** — the id dimension is absent. `count` and `presence` remain measured; only `duplicates`
+   degrades, carrying its own reason.
 
 A declared pairwise delta over a signal not measured in either endpoint is likewise reported as
 not measured, carrying the endpoint's reason.
 
-Unparseable lines in a stream are counted into the emitted provenance (`malformed_lines`) rather
-than silently shrinking a count.
+Unparseable lines in a stream are counted into the emitted provenance (`malformed_lines`) and
+carried onto **every** signal result taken from that stream (`stream_malformed_lines`), rather than
+silently shrinking a count or being visible only in the arm header.
+
+The reader accepts **both** parseable transcript shapes the run-output contract admits — a
+whole-file JSON array, or JSON-lines. Reading only one of them would report a contractually valid
+transcript as "the record dimension is absent", blaming the data for a limitation of the reader.
 
 **What is deliberately *not* expressible.** The vocabulary carries no expectation, threshold, or
 pass/fail slot: analyze emits counts, presence, and provenance, and the verdict writer reads them.
@@ -158,8 +175,10 @@ than a bare string, and why `constants` is a map rather than a positional list.
 - `compares` is absent, not an array, or empty;
 - a compare names an arm that is not declared, or compares an arm with itself;
 - `mechanism_signals` is absent or is not an array; an element is not an object, carries a key the
-  vocabulary does not name, is missing `id`/`kind`/`description`, duplicates an `id`, or names a
-  predicate `kind` or match `op` outside the frozen sets above;
+  vocabulary does not name, is missing `id`/`kind`/`description`, duplicates an `id`, names a
+  predicate `kind` or match `op` outside the frozen sets above, declares a `record_match` carrying
+  **neither** `record` nor `match`, declares a `dispatch_shape` missing `subagent_type`, or declares
+  a match `value` that is neither a non-empty literal nor a non-empty array of them;
 - **`blinding.vocabulary` is absent, is not an array, or is empty.**
 - `blinding.forbidden_paths` is absent, is not an array, or carries an absolute / tree-escaping entry.
 

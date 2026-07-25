@@ -14,8 +14,13 @@
 //
 // Usage:
 //   mechanism-signals.mjs validate --manifest <experiment.json>
-//   mechanism-signals.mjs evaluate --manifest <experiment.json> --arm <label>=<run-dir> [...]
+//   mechanism-signals.mjs evaluate --manifest <experiment.json> --run-<label> <run-dir> [...]
 //                                  [--out <results-dir>]
+//
+// `--run-<label> <dir>` is the engine's own per-arm flag convention (manifest.sh's
+// `manifest_run_flag`, analyze.sh's `--run-a`/`--run-b`); labels resolve case-insensitively against
+// the manifest's declared arms, exactly as analyze.sh's `index_of_label` does. `--arm <label>=<dir>`
+// is accepted as an equivalent alias for callers that prefer one token per arm.
 //
 // `evaluate` writes <out>/mechanism-signals.json and <out>/mechanism-signals.txt.
 
@@ -196,6 +201,18 @@ const readStream = (runDir) => {
   } catch (e) {
     return { file, records: null, malformed: 0, reason: e.message };
   }
+
+  // BOTH parseable shapes are accepted, matching the run-output contract the engine's own drift
+  // guard enforces (run-arm.sh's assert_stream_json) and the pack's established reader normalizes:
+  // a whole-file JSON array, or JSON-lines. Reading only one of them would silently report the
+  // other as "the record dimension is absent" — blaming the data for a limitation of the reader.
+  try {
+    const whole = JSON.parse(raw);
+    if (Array.isArray(whole)) return { file, records: whole, malformed: 0, shape: "json-array" };
+  } catch {
+    // Not a single JSON value — the JSON-lines path below is the expected shape.
+  }
+
   const records = [];
   let malformed = 0;
   for (const line of raw.split("\n")) {
@@ -208,7 +225,7 @@ const readStream = (runDir) => {
       malformed += 1;
     }
   }
-  return { file, records, malformed };
+  return { file, records, malformed, shape: "json-lines" };
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -219,15 +236,23 @@ const notMeasured = (reason) => ({ status: "not_measured", reason });
 
 const evalRecordMatch = (signal, records) => {
   const sel = signal.record;
-  let candidates = records;
-  if (sel) {
-    candidates = records.filter((r) => r?.type === sel.type && (sel.subtype === null || r?.subtype === sel.subtype));
-    if (candidates.length === 0) {
-      // A dimension the stream does not carry at all. Reporting 0 here would read as evidence of
-      // absence when it is only absence of evidence — so it is reported honestly as not measured.
-      const label = sel.subtype === null ? sel.type : `${sel.type}/${sel.subtype}`;
-      return notMeasured(`the record stream carries no ${label} record — the record dimension is absent, so a zero count would not be evidence of absence`);
-    }
+  const candidates = sel
+    ? records.filter((r) => r?.type === sel.type && (sel.subtype === null || r?.subtype === sel.subtype))
+    : records;
+
+  // A dimension the stream does not carry at all. Reporting 0 here would read as evidence of
+  // absence when it is only absence of evidence — so it is reported honestly as not measured.
+  // This guard is deliberately OUTSIDE the selector branch: a signal declaring no `record` selector
+  // has the whole stream as its candidate set, so an EMPTY stream is exactly the same absence, and
+  // nesting the guard under `if (sel)` would let a selector-less signal report a real zero over a
+  // stream that carries nothing at all.
+  if (candidates.length === 0) {
+    const label = sel ? (sel.subtype === null ? sel.type : `${sel.type}/${sel.subtype}`) : "";
+    return notMeasured(
+      sel
+        ? `the record stream carries no ${label} record — the record dimension is absent, so a zero count would not be evidence of absence`
+        : "the record stream carries no records at all — the record dimension is absent, so a zero count would not be evidence of absence",
+    );
   }
 
   for (const clause of signal.match) {
@@ -250,33 +275,54 @@ const evalDispatchShape = (signal, records) => {
     return notMeasured(`the record stream carries no ${DISPATCH_RECORD.type}/${DISPATCH_RECORD.subtype} record — the dispatch dimension is absent, so a zero count would not be evidence of absence`);
   }
   const mine = dispatches.filter((r) => r?.[DISPATCH_TYPE_FIELD] === signal.subagent_type);
-  const ids = new Set(mine.map((r) => r?.[DISPATCH_ID_FIELD]).filter((v) => v !== undefined && v !== null));
-  return {
+  const withId = mine.filter((r) => {
+    const v = r?.[DISPATCH_ID_FIELD];
+    return v !== undefined && v !== null;
+  });
+  const ids = new Set(withId.map((r) => r[DISPATCH_ID_FIELD]));
+
+  // A re-dispatch of the SAME task id — the "duplicate/redundant dispatch" reading. It is derived
+  // ONLY from records that actually carry the id field: counting an id-less dispatch as a duplicate
+  // would invent a number, the same defect the record_match field guard exists to prevent. When
+  // dispatches exist but none carries the id, the id dimension is absent and `duplicates` is
+  // reported as not measured rather than as a count — count and presence remain measurable.
+  const duplicates = mine.length > 0 && withId.length === 0 ? null : withId.length - ids.size;
+  const out = {
     status: "measured",
     count: mine.length,
     presence: mine.length > 0 ? "present" : "absent",
-    // A re-dispatch of the SAME task id — the "duplicate/redundant dispatch" reading.
-    duplicates: ids.size === 0 ? mine.length : mine.length - ids.size,
+    duplicates,
     dispatches: dispatches.length,
   };
+  if (duplicates === null) {
+    out.duplicates_reason = `field ${JSON.stringify(DISPATCH_ID_FIELD)} is absent from every matching dispatch record — the id dimension is absent, so a zero duplicate count would not be evidence of absence`;
+  } else if (mine.length > withId.length) {
+    out.duplicates_reason = `derived from the ${withId.length} of ${mine.length} matching dispatch record(s) that carry ${JSON.stringify(DISPATCH_ID_FIELD)}`;
+  }
+  return out;
 };
 
-const evaluateArm = (signals, runDir) => {
+const evaluateArm = (signals, runDir, rel = (p) => p) => {
   const stream = readStream(runDir);
   const arm = {
-    run_dir: runDir,
-    source: stream.file,
+    run_dir: rel(runDir),
+    source: rel(stream.file),
     records: stream.records === null ? null : stream.records.length,
     malformed_lines: stream.malformed,
     signals: {},
   };
   if (stream.records === null) {
-    const reason = `no record stream at ${stream.file}${stream.reason ? ` (${stream.reason})` : ""}`;
+    const reason = `no record stream at ${rel(stream.file)}${stream.reason ? ` (${stream.reason})` : ""}`;
     for (const s of signals) arm.signals[s.id] = notMeasured(reason);
     return arm;
   }
   for (const s of signals) {
-    arm.signals[s.id] = s.kind === "record_match" ? evalRecordMatch(s, stream.records) : evalDispatchShape(s, stream.records);
+    const res = s.kind === "record_match" ? evalRecordMatch(s, stream.records) : evalDispatchShape(s, stream.records);
+    // A partly unreadable stream degrades EVERY count taken from it, so the degradation travels on
+    // each result rather than only on the arm header — a consumer reading one result must be able
+    // to see that its number was computed over an incomplete stream.
+    if (stream.malformed > 0) res.stream_malformed_lines = stream.malformed;
+    arm.signals[s.id] = res;
   }
   return arm;
 };
@@ -297,7 +343,7 @@ const renderText = (doc) => {
   lines.push("");
   for (const l of labels) {
     const a = doc.arms[l];
-    lines.push(`arm ${l}: ${a.records === null ? "NO RECORD STREAM" : `${a.records} records`}${a.malformed_lines ? `, ${a.malformed_lines} unparseable line(s)` : ""} — ${a.source}`);
+    lines.push(`arm ${l}: ${a.records === null ? "NO RECORD STREAM" : `${a.records} records`}${a.malformed_lines ? `, ${a.malformed_lines} unparseable line(s) — EVERY count below for this arm is degraded by them` : ""} — ${a.source}`);
   }
   lines.push("");
   lines.push(`| Signal | Kind | ${labels.map((l) => `Arm ${l}`).join(" | ")} | Reading |`);
@@ -321,7 +367,9 @@ const renderText = (doc) => {
       for (const l of labels) {
         const r = doc.arms[l].signals[s.id];
         if (r.status !== "measured") continue;
-        lines.push(`  ${s.id} / arm ${l}: ${r.presence} (${r.count} dispatch record(s), ${r.duplicates} duplicate)`);
+        const dup = r.duplicates === null ? "duplicates not measured" : `${r.duplicates} duplicate`;
+        lines.push(`  ${s.id} / arm ${l}: ${r.presence} (${r.count} dispatch record(s), ${dup})`);
+        if (r.duplicates === null) lines.push(`    duplicates not measured — ${r.duplicates_reason}`);
       }
     }
   }
@@ -372,11 +420,15 @@ const loadManifest = (p) => {
   return doc;
 };
 
+const USAGE =
+  "usage: mechanism-signals.mjs validate|evaluate --manifest <experiment.json> [--run-<label> <run-dir> ...] [--arm <label>=<run-dir> ...] [--out <dir>]\n";
+
 const parseArgs = (argv) => {
-  const out = { manifest: "", out: "", arms: [] };
+  const out = { manifest: "", out: "", arms: [], help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--manifest") out.manifest = argv[++i] ?? "";
+    if (a === "-h" || a === "--help") out.help = true;
+    else if (a === "--manifest") out.manifest = argv[++i] ?? "";
     else if (a.startsWith("--manifest=")) out.manifest = a.slice("--manifest=".length);
     else if (a === "--out") out.out = argv[++i] ?? "";
     else if (a.startsWith("--out=")) out.out = a.slice("--out=".length);
@@ -385,6 +437,14 @@ const parseArgs = (argv) => {
       const eq = v.indexOf("=");
       if (eq <= 0) bad(`--arm expects <label>=<run-dir>, got ${JSON.stringify(v)}`);
       out.arms.push({ label: v.slice(0, eq), dir: v.slice(eq + 1) });
+    } else if (/^--run-[^=]+(=|$)/.test(a)) {
+      // The engine's own per-arm flag convention (manifest.sh's `manifest_run_flag`). The label is
+      // whatever follows `--run-`; it is resolved against the manifest's declared arms below.
+      const eq = a.indexOf("=");
+      const label = eq === -1 ? a.slice("--run-".length) : a.slice("--run-".length, eq);
+      const dir = eq === -1 ? (argv[++i] ?? "") : a.slice(eq + 1);
+      if (dir === "") bad(`--run-${label} expects a run directory`);
+      out.arms.push({ label, dir });
     } else bad(`unknown argument ${JSON.stringify(a)}`);
   }
   return out;
@@ -392,34 +452,62 @@ const parseArgs = (argv) => {
 
 const main = (argv) => {
   const mode = argv[0];
+  if (mode === "-h" || mode === "--help") {
+    process.stdout.write(USAGE);
+    return 0;
+  }
   if (mode !== "validate" && mode !== "evaluate") {
-    process.stderr.write("usage: mechanism-signals.mjs validate|evaluate --manifest <experiment.json> [--arm <label>=<run-dir> ...] [--out <dir>]\n");
+    process.stderr.write(USAGE);
     return 2;
   }
   const args = parseArgs(argv.slice(1));
+  if (args.help) {
+    process.stdout.write(USAGE);
+    return 0;
+  }
   if (!args.manifest) bad("--manifest <experiment.json> is required");
 
   const doc = loadManifest(args.manifest);
   const signals = validateSignals(doc);
 
   if (mode === "validate") {
-    // Success narrates on STDOUT, never stderr: manifest.sh loads a manifest for every phase
-    // including --dry-run, whose stderr is a captured, compared surface. Only a rejection speaks
-    // on stderr, where it is meant to be seen.
+    // The success line goes to STDOUT, which manifest.sh's only call site redirects to /dev/null
+    // (`node "$signal_validator" validate --manifest "$path" >/dev/null`). That redirect is what
+    // keeps it off every captured stream — and it matters, because manifest.sh loads a manifest for
+    // EVERY phase including --dry-run, and the dry-run parity oracle compares STDOUT (stderr is its
+    // ignored class, per experiments/parity/normalization.md). Moving this line to stderr, or
+    // dropping the redirect at the call site, would each break that oracle. Only a rejection speaks
+    // unredirected, on stderr, where it is meant to be seen.
     process.stdout.write(`mechanism-signals.mjs: ${signals.length} declared signal(s) validate against the frozen vocabulary (${SIGNAL_KINDS.join(", ")})\n`);
     return 0;
   }
 
+  // Arm labels resolve case-insensitively against the manifest's declared arms — the rule
+  // manifest.sh pins (uniqueness is checked case-insensitively because every consumer lowercases
+  // the label to compose its flags) and analyze.sh's `index_of_label` implements.
   const declared = Array.isArray(doc.arms) ? doc.arms.map((a) => a.label) : [];
-  for (const a of args.arms) {
-    if (!declared.includes(a.label)) bad(`--arm ${a.label}=... names an arm this manifest does not declare (declared: ${declared.join(", ")})`);
+  if (args.arms.length === 0) {
+    bad("evaluate needs at least one arm: --run-<label> <run-dir> (or --arm <label>=<run-dir>)");
   }
+  for (const a of args.arms) {
+    const hit = declared.find((d) => d.toLowerCase() === a.label.toLowerCase());
+    if (hit === undefined) {
+      bad(`arm ${JSON.stringify(a.label)} is not declared by this manifest (declared: ${declared.join(", ")})`);
+    }
+    a.label = hit; // normalize to the manifest's own casing so emitted keys match the declaration
+  }
+
+  // Emitted paths are relative to the manifest's own folder, never absolute: the same evidence
+  // analysed from a different checkout must produce byte-identical output, and an absolute host
+  // path would make the artifact differ per machine for no analytical reason.
+  const kitDir = path.dirname(path.resolve(args.manifest));
+  const rel = (p) => path.relative(kitDir, path.resolve(p));
 
   const result = {
     schemaVersion: 1,
     experiment: doc.name,
     provenance: {
-      manifest: path.resolve(args.manifest),
+      manifest: path.basename(path.resolve(args.manifest)),
       generated_by: "experiments/engine/mechanism-signals.mjs",
       vocabulary: SIGNAL_KINDS.slice(),
       record_stream: RECORD_STREAM,
@@ -428,7 +516,7 @@ const main = (argv) => {
     arms: {},
     deltas: [],
   };
-  for (const a of args.arms) result.arms[a.label] = evaluateArm(signals, a.dir);
+  for (const a of args.arms) result.arms[a.label] = evaluateArm(signals, a.dir, rel);
   const compares = Array.isArray(doc.compares) ? doc.compares : [];
   result.deltas = buildDeltas(result, signals, compares.filter((c) => result.arms[c.base] && result.arms[c.against]));
 
