@@ -8,8 +8,8 @@
     "image_repo": "scaffold-selftest",
     "workload_ref": "c768673",
     "cli_version": "2.1.218",
-    "umbrella_id": "WF-418",
-    "gate_skill": "/wf:triage WF-422",
+    "umbrella_id": "SELF-422",
+    "gate_skill": "/wf:triage SELF-423",
     "fake_scripts": "fake-scripts.json",
     "measured_skill": "/wf:fleet",
     "model": "claude-opus-4-8",
@@ -40,7 +40,7 @@
       "A/B"
     ],
     "forbidden_paths": [
-      "experiments"
+      "plugins/wf-sandbox-testing/experiments/scaffold-selftest"
     ]
   }
 }

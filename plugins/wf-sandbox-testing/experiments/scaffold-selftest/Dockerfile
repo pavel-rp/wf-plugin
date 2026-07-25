@@ -1,5 +1,7 @@
 # wf-sandbox-testing scaffold-selftest — one arm-buildable image, not a platform.
 #
+# **Model:** claude-opus-5[1m]
+#
 # Extends the hermetic-runner lineage (../../runner/Dockerfile): node + git + the claude CLI,
 # no token baked in, no-egress applied at container start. The ONE axis this kit varies is the
 # plugin SOURCE per build (ARG WF_REF selects which marketplace ref installs), crossed with a

@@ -37,13 +37,13 @@ bash $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/build-arm.sh
 ### Arm `A`
 
 ```sh
-docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/results/gate-A:/work/run-output scaffold-selftest:armA --measured-fleet --arm A --workload-ref c768673 --fake-scripts fake-scripts.json --gate-skill /wf:triage\ WF-422 
+docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/results/gate-A:/work/run-output scaffold-selftest:armA --measured-fleet --arm A --workload-ref c768673 --fake-scripts fake-scripts.json --gate-skill /wf:triage\ SELF-423 
 ```
 
 ### Arm `B`
 
 ```sh
-docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/results/gate-B:/work/run-output scaffold-selftest:armB --measured-fleet --arm B --workload-ref c768673 --fake-scripts fake-scripts.json --gate-skill /wf:triage\ WF-422 
+docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/results/gate-B:/work/run-output scaffold-selftest:armB --measured-fleet --arm B --workload-ref c768673 --fake-scripts fake-scripts.json --gate-skill /wf:triage\ SELF-423 
 ```
 
 ## 3. Measured run — BILLED, ask first
@@ -53,13 +53,13 @@ One run per arm, order shuffled, at least 330 seconds apart, same host, same day
 ### Arm `A`
 
 ```sh
-docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/results/run-A:/work/run-output scaffold-selftest:armA --measured-fleet --arm A --workload-ref c768673 --fake-scripts fake-scripts.json --umbrella-id WF-418 
+docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/results/run-A:/work/run-output scaffold-selftest:armA --measured-fleet --arm A --workload-ref c768673 --fake-scripts fake-scripts.json --umbrella-id SELF-422 
 ```
 
 ### Arm `B`
 
 ```sh
-docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/results/run-B:/work/run-output scaffold-selftest:armB --measured-fleet --arm B --workload-ref c768673 --fake-scripts fake-scripts.json --umbrella-id WF-418 
+docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN -v $ROOT/plugins/wf-sandbox-testing/experiments/scaffold-selftest/results/run-B:/work/run-output scaffold-selftest:armB --measured-fleet --arm B --workload-ref c768673 --fake-scripts fake-scripts.json --umbrella-id SELF-422 
 ```
 
 ## 4. Analyze (offline, host-side, free)

@@ -26,8 +26,6 @@ never runs a measured phase, and never spends.
 - `node` and `git` must be on `PATH`: the engine's manifest reader is Node, and the frozen-ref check
   is `git rev-parse`. If either is missing, stop before the interview rather than emitting an
   unchecked kit.
-- The bundled `wf-resolver` MCP service must be loaded — it supplies the typed interface validator
-  and resolves the `wf` plugin root the vocabulary lint lives under.
 
 ## Command Syntax
 
@@ -50,11 +48,13 @@ shortcut that pre-answers question 1 and nothing else.
 
 - Read and glob any file in the workspace, to detect the engine, an existing kit of the same name,
   and the worked example the kit-root files are shaped after.
-- Write files **only** under `plugins/wf-sandbox-testing/experiments/<name>/`.
+- Write files **only** under `plugins/wf-sandbox-testing/experiments/<name>/`, with exactly one
+  carve-out: the runbook-parity check (Phase 3, check 3) writes **one** scratch file under
+  `_local/scratch/` and deletes it as its last act. That is the repository's sanctioned scratch
+  location; nothing else is ever written there, and nothing written there survives the check.
 - Run `experiments/engine/run-experiment.sh` with **only** `--dry-run` or `--runbook`, and source
   `experiments/engine/manifest.sh` to call `manifest_load`.
 - Run `git rev-parse --verify --quiet` to check that an answered ref is a real, frozen commit.
-- Run the resolver's `validate_skill_interface` tool and the repository's `glossary-lint.sh`.
 
 **Forbidden:**
 
@@ -118,16 +118,27 @@ run reports `Stopped`, naming this question as the one left unanswered.
 
 A ref answered as `HEAD`, a branch name, `main`, a tag, or any other moving pointer is **rejected**.
 Explain why: a moving ref produces an image that does not match its declared treatment, so the
-comparison the experiment exists to make is void — and the engine's own build guard would refuse it
-later anyway, after the author had already committed the manifest.
+comparison the experiment exists to make is void, and the manifest records a treatment nobody can
+reproduce later.
 
 Demand the explicit sha the moving ref currently points at. **Substitute no default and resolve no
 ref on the author's behalf** — the frozen value is the author's declaration, not this skill's guess.
 
-A ref is accepted only when **both** hold:
+Apply the two rules **in order**, the first as a hard precondition on the second:
 
-1. it matches `^[0-9a-f]{7,40}$`; and
-2. `git rev-parse --verify --quiet "<ref>^{commit}"` resolves it in this checkout.
+1. **Shape gate, applied first.** The answer must match `^[0-9a-f]{7,40}$`. An answer that fails this
+   is rejected here and re-asked — it is **never** passed to the resolver below. This ordering is the
+   point of the gate: `main`, `HEAD`, and a tag all resolve perfectly well, so resolvability alone
+   would accept exactly the moving refs this refusal exists to reject.
+2. **Existence check, only on a shape-gate pass.** The gated value must resolve in this checkout:
+
+   ```bash
+   git rev-parse --verify --quiet -- '<ref>^{commit}'
+   ```
+
+   Single-quote the argument so the brace suffix reaches `git` unexpanded, and keep the `--` guard so
+   a value that survived the shape gate is never read as an option. Check **one** ref per invocation
+   — `--verify` accepts a single argument and silently misbehaves when given more.
 
 Applied uniformly to **every** declared arm, the baseline included, and to `constants.workload_ref`:
 a moving baseline voids a comparison exactly as thoroughly as a moving candidate.
@@ -144,7 +155,7 @@ Write the full set from the validated answers, into
 | `experiment.json` | The manifest — exactly the frozen slots, in the shapes the loader validates, with no invented key. |
 | `build-arm.sh` | The kit's build entry point: a short dispatch shim that resolves its own directory and `exec`s the engine's `build.sh` with `--manifest "$SCRIPT_DIR/experiment.json"` and the caller's arguments. |
 | `analyze.sh` | The same shim shape against the engine's `analyze.sh`. |
-| `Dockerfile` | The kit's arm-buildable image, shaped after the established kit-image lineage with only the kit path and image name substituted. It is required, not optional: the runbook's own build command resolves this path. |
+| `Dockerfile` | The kit's arm-buildable image, derived from the established kit-image lineage: the kit path and image name are substituted, the `cli_version` constant is carried into the CLI-version build argument, and any lineage comment block naming another kit's refs or commands is replaced by a pointer to this kit's derived runbook — a stale sha copied forward would document a build this kit never issues. It is required, not optional: the runbook's own build command resolves this path. |
 | `fake-scripts.json` | The starter scripted-response document — only when question 8 took the default answer. |
 | `runbooks/experiment.md` | **Obtained from the engine**, never authored here (see below). |
 
@@ -153,9 +164,13 @@ Write the full set from the validated answers, into
 validated answer or from a rule-derived default this body states explicitly. A value that is neither
 answered nor defaulted is a Phase 1 gap — go back and ask.
 
-Each emitted document that can carry prose carries a `**Model:** <current model id>` attribution
-line. No emitted file carries an AI-attribution trailer, a "generated with" footer, an emoji, or a
-promotional tagline.
+**Every skill-authored file that can carry prose carries a `**Model:** <current model id>`
+attribution line** — in the `Dockerfile` header comment, in the starter `fake-scripts.json`'s
+`_comment` field, and in any other emitted document with somewhere to put one. The single exemption
+is `runbooks/experiment.md`: the engine derives it and stamps its own `**Derived by:**` attribution,
+and this skill may not post-edit it (see below), so the rule is satisfied there by the engine's line,
+not by one added here. No emitted file carries an AI-attribution trailer, a "generated with" footer,
+an emoji, or a promotional tagline.
 
 ### The runbook is machine-derived, never authored
 
@@ -194,8 +209,8 @@ of a rule for a check's verdict, and never declare a file clean on a check you d
    The acknowledgement flag is required only because the engine refuses the billed phase without it;
    under `--dry-run` the interactive confirm, the prerequisite checks, the image checks, and the
    inter-arm wait are all skipped, so this command is offline, needs no container runtime, and costs
-   nothing. It must exit 0 and emit one build line, one gate line per declared arm, one measured
-   line per declared arm, and one analysis line.
+   nothing. It must exit 0 and emit one build line, one gate line per declared arm, one pilot line
+   per declared arm, and one analysis line.
 3. **The runbook is the engine's own.** Re-derive it to a scratch path under `_local/scratch/` with
    the runbook flag and an explicit output path, then `diff` that against the emitted
    `runbooks/experiment.md`. The diff must be **empty** — this is the check that proves the document
@@ -289,10 +304,15 @@ Manifest:   plugins/wf-sandbox-testing/experiments/<name>/experiment.json
 Runbook:    plugins/wf-sandbox-testing/experiments/<name>/runbooks/experiment.md
 Arms:       <n> (<label>=<ref>, ...)
 Signals:    <n> declared — validated present, never read by the current engine
-Checks:     manifest-load <pass | fail | not applicable> · dry-run <pass | fail | not applicable> · runbook-parity <pass | fail | not applicable>
+Checks:     manifest-load <verdict> · dry-run <verdict> · runbook-derivation <verdict> · runbook-parity <verdict> · no-placeholders <verdict> · paths-resolve <verdict>
 Fixes:      <n> finding(s) fixed across <n> pass(es)
 Next:       review the runbook, then run its build and gate phases on your own container host — the measured phase is billed and stays your decision
 ```
+
+The `Checks:` field carries **one token per Phase 3 check, in Phase 3's own order** — all six, always,
+so a check can never be silently omitted from the report. Each `<verdict>` is one of `pass`, `fail`,
+`error` (the check could not run — never collapsed into `pass`), or `not applicable` (the check had no
+target on this kit, per the scope-honesty rule).
 
 `Delivered` — every emitted file is on disk and every applicable check returned a clean verdict.
 `Stopped` — a required question yielded no valid answer, or a finding survived the fix cap; the
