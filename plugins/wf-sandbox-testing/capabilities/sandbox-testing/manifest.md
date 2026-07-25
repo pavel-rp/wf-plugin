@@ -3,15 +3,17 @@
 **Version:** 0.1.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** sandbox-testing (a native feature capability; **registration is required** — see references)
-**Kind:** feature (ships the skill-eval harness scripts and `/wf-sandbox-testing:init`; attaches **no** SDD phase fragment)
+**Kind:** feature (ships the skill-eval harness scripts, `/wf-sandbox-testing:init`, and `/wf-sandbox-testing:new-experiment`; attaches **no** SDD phase fragment)
 **Model:** claude-opus-4-8
 
 ---
 
 sandbox-testing ships the **skill-eval harness** — the hermetic container runner
 (`runner/`), the statistical assertion layer (`assert/`), the behavioral-regression corpus
-(`corpus/`), and the fixtures (`fixtures/`) — plus one **user-invoked** onboarding skill,
-`/wf-sandbox-testing:init`. Everything reaches its user by **native plugin composition**: the
+(`corpus/`), and the fixtures (`fixtures/`) — plus two **user-invoked** skills:
+`/wf-sandbox-testing:init` (onboarding) and `/wf-sandbox-testing:new-experiment` (which interviews an
+author and emits a runnable experiment kit for the shared experiment engine under `experiments/`).
+Everything reaches its user by **native plugin composition**: the
 harness is repo scripts in the `validate-registry.sh` / `registry-fixtures/run.sh` family, run
 directly, and the runner drives real headless `wf:*` invocations.
 

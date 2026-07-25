@@ -49,11 +49,15 @@ shortcut that pre-answers question 1 and nothing else.
 - Read and glob any file in the workspace, to detect the engine, an existing kit of the same name,
   and the worked example the kit-root files are shaped after.
 - Write files **only** under `plugins/wf-sandbox-testing/experiments/<name>/`, with exactly one
-  carve-out: the runbook-parity check (Phase 3, check 3) writes **one** scratch file under
-  `_local/scratch/` and deletes it as its last act. That is the repository's sanctioned scratch
-  location; nothing else is ever written there, and nothing written there survives the check.
-- Run `experiments/engine/run-experiment.sh` with **only** `--dry-run` or `--runbook`, and source
-  `experiments/engine/manifest.sh` to call `manifest_load`.
+  carve-out: the **runbook-derivation** check (Phase 3, check 3) writes **one** scratch file at
+  `_local/scratch/new-experiment-<name>-$$.md` and deletes exactly that path as its last act. The
+  process-unique suffix is required — it is what keeps two concurrent scaffolds from diffing each
+  other's runbook, and what keeps the delete from removing a file this skill did not create. That is
+  the repository's sanctioned scratch location; nothing else is ever written there.
+- Run `experiments/engine/run-experiment.sh` with **only** `--runbook`, or `--dry-run` — the latter
+  optionally with the `--spend` acknowledgement the engine requires before it will reach the billed
+  phase even in a dry run (Phase 3, check 2). Source `experiments/engine/manifest.sh` to call
+  `manifest_load`.
 - Run `git rev-parse --verify --quiet` to check that an answered ref is a real, frozen commit.
 
 **Forbidden:**
@@ -98,7 +102,7 @@ surfaced. That is a clean outcome, reported as `Stopped`.
 | 5 | **Mechanism signals** — the reserved declarations | Zero or more. Each names one of exactly **two** frozen predicate kinds — `record_match` or `dispatch_shape` — and no third kind is offered or accepted. Each also carries a short id and a one-line description. State plainly, here and in the final report, that the engine validates only that this slot is *present and an array*: it never reads an element, never interprets one, and never emits one. A declared signal is a declaration for a later analysis, not something this kit evaluates. |
 | 6 | **Blinding vocabulary** — the words that must never leak | **Required. At least one non-empty word.** See the refusal below. |
 | 7 | **Forbidden paths** — the presence half of the blinding gate | Zero or more glob patterns, each relative to a seeded workload tree: no leading `/`, no `..` segment. Empty is a valid answer and is accepted as given. |
-| 8 | **Scripted-response file** — how `constants.fake_scripts` is satisfied | Two answers. **Default:** the skill emits a starter `fake-scripts.json` into the kit — a real, valid, engine-shaped scripted-response document, not a placeholder — and `constants.fake_scripts` names it. **Alternative:** the author supplies the filename, and the skill validates that the named file already exists inside the kit folder before emitting anything else, re-asking when it does not. |
+| 8 | **Scripted-response file** — how `constants.fake_scripts` is satisfied | Two answers. **Default:** the skill emits a starter `fake-scripts.json` into the kit — a real, valid, engine-shaped scripted-response document, not a placeholder — and `constants.fake_scripts` names it. **Alternative:** the author supplies the filename, and the skill validates only its *shape* here — relative to the kit folder, no leading `/`, no `..` segment, exactly the loader's own rule — re-asking when the shape fails. Its existence is **not** checked at interview time: on a fresh kit the folder does not exist yet, so an existence check here could never pass. Phase 3 check 6 asserts the file resolves inside the kit folder, and the author is told plainly, when this branch is taken, that they must place it before that check runs. |
 
 ### Refusal 1 — the blinding vocabulary is required and cannot be skipped
 
@@ -133,12 +137,14 @@ Apply the two rules **in order**, the first as a hard precondition on the second
 2. **Existence check, only on a shape-gate pass.** The gated value must resolve in this checkout:
 
    ```bash
-   git rev-parse --verify --quiet -- '<ref>^{commit}'
+   git rev-parse --verify --quiet '<ref>^{commit}'
    ```
 
-   Single-quote the argument so the brace suffix reaches `git` unexpanded, and keep the `--` guard so
-   a value that survived the shape gate is never read as an option. Check **one** ref per invocation
-   — `--verify` accepts a single argument and silently misbehaves when given more.
+   This is the engine's own resolver form (`experiments/engine/build.sh`), verbatim. Single-quote the
+   argument so the brace suffix reaches `git` unexpanded. **Pass no `--` separator** — in
+   `git rev-parse` a `--` begins *pathspecs*, not end-of-options, so a `--`-guarded call fails for
+   every valid sha; the shape gate above already makes an option-shaped value unreachable. Check
+   **one** ref per invocation — `--verify` accepts a single argument and misbehaves when given more.
 
 Applied uniformly to **every** declared arm, the baseline included, and to `constants.workload_ref`:
 a moving baseline voids a comparison exactly as thoroughly as a moving candidate.
@@ -166,11 +172,18 @@ answered nor defaulted is a Phase 1 gap — go back and ask.
 
 **Every skill-authored file that can carry prose carries a `**Model:** <current model id>`
 attribution line** — in the `Dockerfile` header comment, in the starter `fake-scripts.json`'s
-`_comment` field, and in any other emitted document with somewhere to put one. The single exemption
-is `runbooks/experiment.md`: the engine derives it and stamps its own `**Derived by:**` attribution,
-and this skill may not post-edit it (see below), so the rule is satisfied there by the engine's line,
-not by one added here. No emitted file carries an AI-attribution trailer, a "generated with" footer,
-an emoji, or a promotional tagline.
+`_comment` field, and in any other authored document with somewhere to put one. Exactly two
+exemptions, both named:
+
+- `runbooks/experiment.md` — the engine derives it and stamps its own `**Derived by:**` attribution,
+  and this skill may not post-edit it (see below), so the rule is satisfied there by the engine's
+  line, not by one added here.
+- `build-arm.sh` and `analyze.sh` — byte-identical dispatch shims carried from the kit lineage, not
+  authored prose. Keeping them byte-identical is the point; an attribution line would fork them from
+  every other kit's shim for no behavioural gain.
+
+No emitted file carries an AI-attribution trailer, a "generated with" footer, an emoji, or a
+promotional tagline.
 
 ### The runbook is machine-derived, never authored
 
@@ -210,16 +223,19 @@ of a rule for a check's verdict, and never declare a file clean on a check you d
    under `--dry-run` the interactive confirm, the prerequisite checks, the image checks, and the
    inter-arm wait are all skipped, so this command is offline, needs no container runtime, and costs
    nothing. It must exit 0 and emit one build line, one gate line per declared arm, one pilot line
-   per declared arm, and one analysis line.
-3. **The runbook is the engine's own.** Re-derive it to a scratch path under `_local/scratch/` with
-   the runbook flag and an explicit output path, then `diff` that against the emitted
-   `runbooks/experiment.md`. The diff must be **empty** — this is the check that proves the document
-   came from the engine rather than from this skill. Delete the scratch file once the check has run.
-4. **Runbook and dry run agree.** Every fenced command in the runbook, with its `$ROOT` anchor
-   expanded to the repository root, must appear in the dry run's output, and every command the dry
-   run emits must appear in the runbook. Compare **per phase as a set, never as a sequence**: the
-   runbook lists arms in declaration order while the gate and measured phases shuffle arm order at
-   emit time. That shuffle is a protocol requirement, not a divergence.
+   per declared arm, and one analyze line.
+3. **The runbook is the engine's own.** Re-derive it to
+   `_local/scratch/new-experiment-<name>-$$.md` with the runbook flag and an explicit output path,
+   then `diff` that against the emitted `runbooks/experiment.md`. The diff must be **empty** — this
+   is the check that proves the document came from the engine rather than from this skill. Delete
+   that exact scratch path once the check has run.
+4. **Runbook and dry run agree.** Compare only the fenced blocks under the runbook's **numbered
+   phase headings** — the preamble's `$ROOT` setup fence is a shell anchor the engine always emits
+   and the dry run never does, so including it would make this check unpassable. Every command in
+   those blocks, with its `$ROOT` anchor expanded to the repository root, must appear in the dry
+   run's output, and every command the dry run emits must appear there. Compare **per phase as a
+   set, never as a sequence**: the runbook lists arms in declaration order while the gate and pilot
+   phases shuffle arm order at emit time. That shuffle is a protocol requirement, not a divergence.
 5. **No placeholders.** Grep every emitted file for `TODO`, `FIXME`, `XXX`, and any unsubstituted
    fill-me-in token. Zero hits.
 6. **Every declared path resolves.** `build-arm.sh`, `analyze.sh`, `Dockerfile`, and the file
