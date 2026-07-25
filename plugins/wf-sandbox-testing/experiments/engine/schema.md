@@ -7,8 +7,9 @@ other engine script in this folder.
 
 An **experiment manifest** is a single JSON file that declares every structural fact of one
 experiment: how many arms it has and what distinguishes them, the constants held identical across
-those arms, which pairwise comparisons its analysis computes, which mechanism signals it reserves
-for later evaluation, and the vocabulary its blinding gate refuses to let leak.
+those arms, which pairwise comparisons its analysis computes, which mechanism signals its analysis
+evaluates over the arms' transcript records, and the vocabulary its blinding gate refuses to let
+leak.
 
 The engine scripts beside this file carry **no** arm label, image tag, output directory, umbrella
 id, or mechanism literal. Everything experiment-specific enters through a manifest, so adding an
@@ -50,7 +51,7 @@ key the schema does not name is rejected rather than ignored.
 | `compares[]` | yes, ≥1 | validated, read | The pairwise comparisons the analysis computes. |
 | `compares[].base` | yes | validated, read | The arm the comparison is measured *from*. Must name a declared arm. |
 | `compares[].against` | yes | validated, read | The arm the comparison is measured *to*. Must name a declared arm, and must differ from `base`. |
-| `mechanism_signals[]` | yes (may be empty) | **validated present, never read** | **Reserved.** The engine checks the key exists and is an array. It never reads an element, never interprets one, and never emits one. Evaluating these is a separate, later change. |
+| `mechanism_signals[]` | yes (may be empty) | validated, read | The named predicates over transcript records the analysis evaluates. Frozen vocabulary — see below. An empty array is fully inert: analyze emits an empty mechanism table, never a special case. |
 | `blinding.vocabulary[]` | yes, **non-empty** | validated, read | The words the blinding gate refuses to find in anything the experiment injects. |
 | `blinding.forbidden_paths[]` | yes (may be empty) | validated, read | Glob patterns, relative to a seeded workload tree, that must **not** exist there — the presence half of the gate (e.g. the experiment's own design doc or kit folder, which must post-date the workload ref). Each entry is relative and may not escape the tree. |
 
@@ -68,6 +69,56 @@ key the schema does not name is rejected rather than ignored.
 | `model` | yes | **no.** The model pin the measured run uses, held identical across arms. In-container only. |
 | `packs` | yes (may be empty) | **only when non-empty.** An empty value means the flag is *absent* from every emitted line, not present-and-empty. This distinction is load-bearing: a present-but-empty flag is a different command, and when the flag is absent the in-container default applies. |
 | `gap_seconds` | yes | **no.** The inter-arm wait. It appears in narration and in a `sleep` the dry run skips, so it never reaches the emitted command surface. Declared here because it is a real protocol parameter, and recorded rather than compared. |
+
+### `mechanism_signals[]` — the frozen predicate vocabulary
+
+A **mechanism signal** is a named predicate over one arm's transcript records. Declaring one is a
+data edit; the engine carries no signal name, record literal, or assertion.
+
+Every element is an object with `id` (unique, `[A-Za-z0-9][A-Za-z0-9_.-]*`), `kind`, and a
+non-empty `description` (the emitted row's human reading — required, never decorative), plus the
+slots its kind names. **The kind set is frozen at exactly two** — the kinds one real experiment's
+committed evidence already uses. A manifest naming any other kind is rejected **by name** at load,
+for every phase including `--dry-run`, rather than guessed at:
+
+| Kind | Slots | Meaning |
+|---|---|---|
+| `record_match` | `record` (optional `{type, subtype}`), `match[]` (optional) | **Record-type + field-match counting.** Counts records of the declared type (every record when `record` is omitted) that satisfy **every** `match` clause. |
+| `dispatch_shape` | `subagent_type` (required) | **Dispatch-shape presence.** Counts the stream's dispatch records naming that subagent type, and reports presence (`present`/`absent`) plus `duplicates` — dispatch records re-issued against a task id already dispatched. |
+
+A `match` clause is `{ field, op, value }`. `field` is a dot path into the record, or `""` for the
+whole record serialized (the "raw occurrence" reading). `op` is one of `equals`, `prefix`,
+`contains` — the operator set is closed exactly like the kind set. `value` is one literal, or a
+non-empty array of literals meaning **any of**.
+
+The dispatch-record convention (`system`/`task_started` carrying `subagent_type` and `task_id`) is
+**engine** knowledge about the transcript format, not experiment knowledge, so it never appears in
+a manifest.
+
+### "Not measured" is a first-class result
+
+A declared signal the run data cannot answer is reported **`not measured`, with a stated reason** —
+never omitted from the table, never given an invented number. Exactly three conditions produce it,
+each drawing the honest line between *a real zero* and *absence of evidence*:
+
+1. the arm has no record stream (`transcript.jsonl` absent or unreadable under its run dir);
+2. `record_match` declares a `record` type the stream carries **no instance of** — the record
+   dimension is absent, so `0` would read as evidence of absence;
+3. `record_match` declares a `match` clause whose `field` is absent from **every** candidate
+   record — the field dimension is absent, same reasoning. (`field: ""` never triggers this: the
+   whole record is always present.)
+
+A declared pairwise delta over a signal not measured in either endpoint is likewise reported as
+not measured, carrying the endpoint's reason.
+
+Unparseable lines in a stream are counted into the emitted provenance (`malformed_lines`) rather
+than silently shrinking a count.
+
+**What is deliberately *not* expressible.** The vocabulary carries no expectation, threshold, or
+pass/fail slot: analyze emits counts, presence, and provenance, and the verdict writer reads them.
+A mechanism assertion that needs a different substrate — cost-model aggregation, a numeric ceiling
+— is **not** declared as a signal that would silently answer the wrong question; it stays out until
+a real consumer justifies the kind.
 
 ### Why arm declaration order is significant
 
@@ -106,7 +157,9 @@ than a bare string, and why `constants` is a map rather than a positional list.
 - `constants.fake_scripts` is absolute or carries a `..` segment;
 - `compares` is absent, not an array, or empty;
 - a compare names an arm that is not declared, or compares an arm with itself;
-- `mechanism_signals` is absent or is not an array (its *contents* are never inspected);
+- `mechanism_signals` is absent or is not an array; an element is not an object, carries a key the
+  vocabulary does not name, is missing `id`/`kind`/`description`, duplicates an `id`, or names a
+  predicate `kind` or match `op` outside the frozen sets above;
 - **`blinding.vocabulary` is absent, is not an array, or is empty.**
 - `blinding.forbidden_paths` is absent, is not an array, or carries an absolute / tree-escaping entry.
 
@@ -146,7 +199,21 @@ Illustrative only — the normative content is the table above, not these values
   "compares": [
     { "base": "A", "against": "B" }
   ],
-  "mechanism_signals": [],
+  "mechanism_signals": [
+    {
+      "id": "example_lens_boots",
+      "kind": "record_match",
+      "description": "example lens boots",
+      "record": { "type": "system", "subtype": "task_started" },
+      "match": [{ "field": "subagent_type", "op": "prefix", "value": "example:" }]
+    },
+    {
+      "id": "example_finalize_dispatch",
+      "kind": "dispatch_shape",
+      "description": "example finalize child dispatches",
+      "subagent_type": "example:finalize"
+    }
+  ],
   "blinding": {
     "vocabulary": ["one", "two"],
     "forbidden_paths": ["docs/example-*"]

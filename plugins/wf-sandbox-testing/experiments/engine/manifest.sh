@@ -153,8 +153,10 @@ manifest_load() {
       bases.push(b); againsts.push(g);
     }
 
-    // --- mechanism_signals: RESERVED. Presence and type are validated; contents are never read. -
-    if (!Array.isArray(doc.mechanism_signals)) bad("`mechanism_signals` is required and must be an array (reserved slot — its contents are never read)");
+    // --- mechanism_signals: presence and type here; the frozen predicate vocabulary its elements
+    //     must speak is owned by mechanism-signals.mjs and checked below, at load, so a manifest
+    //     naming an unsupported kind is refused BEFORE any phase runs and before any spend. ------
+    if (!Array.isArray(doc.mechanism_signals)) bad("`mechanism_signals` is required and must be an array");
 
     // --- blinding vocabulary ------------------------------------------------------------------
     const bl = doc.blinding;
@@ -194,6 +196,18 @@ manifest_load() {
     process.stdout.write(out.join("\n") + "\n");
   ' "$path")" || rc=$?
   [ "$rc" -eq 0 ] || return "$rc"
+
+  # The declared mechanism signals must speak the frozen predicate vocabulary. Checked at load —
+  # for every phase, --dry-run included — by the one file that owns those rules, so an unsupported
+  # predicate kind is named and refused rather than guessed at or discovered mid-analysis.
+  local signal_validator
+  signal_validator="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/mechanism-signals.mjs"
+  if [ -f "$signal_validator" ]; then
+    node "$signal_validator" validate --manifest "$path" >/dev/null || return 2
+  else
+    manifest_die "mechanism-signals.mjs is missing beside manifest.sh ($signal_validator) — refusing to load a manifest whose declared signals cannot be validated"
+    return 2
+  fi
 
   MANIFEST_PATH="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
   KIT_DIR="$(cd "$(dirname "$path")" && pwd)"
