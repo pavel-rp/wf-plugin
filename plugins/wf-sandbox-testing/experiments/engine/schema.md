@@ -83,7 +83,7 @@ for every phase including `--dry-run`, rather than guessed at:
 
 | Kind | Slots | Meaning |
 |---|---|---|
-| `record_match` | `record` (optional `{type, subtype}`), `match[]` (optional) — **at least one of the two is required** | **Record-type + field-match counting.** Counts records of the declared type (every record when `record` is omitted) that satisfy **every** `match` clause. |
+| `record_match` | `record` (optional; when present, `type` required and `subtype` optional), `match[]` (optional; each clause requires `field` and `op`) — **at least one of `record`/`match` is required** | **Record-type + field-match counting.** Counts records of the declared type (every record when `record` is omitted) that satisfy **every** `match` clause. |
 | `dispatch_shape` | `subagent_type` (required) | **Dispatch-shape presence.** Counts the stream's dispatch records naming that subagent type, and reports presence (`present`/`absent`) plus `duplicates` — dispatch records re-issued against a task id already dispatched. |
 
 `record` and `match` are individually optional but **not jointly omittable**: a `record_match`
@@ -104,7 +104,7 @@ a manifest.
 ### "Not measured" is a first-class result
 
 A declared signal the run data cannot answer is reported **`not measured`, with a stated reason** —
-never omitted from the table, never given an invented number. Five conditions produce it, each
+never omitted from the table, never given an invented number. Six conditions produce it, each
 drawing the honest line between *a real zero* and *absence of evidence*:
 
 1. the arm has no record stream (`transcript.jsonl` absent or unreadable under its run dir);
@@ -116,12 +116,19 @@ drawing the honest line between *a real zero* and *absence of evidence*:
    whole record is always present.)
 4. `dispatch_shape` over a stream carrying **no dispatch record at all** — the dispatch dimension is
    absent, so neither presence nor a count would be evidence;
-5. `dispatch_shape`'s `duplicates` alone, when matching dispatches exist but **none carries the id
+5. `dispatch_shape` over dispatch records **none of which carries `subagent_type`** — the
+   dispatch-*type* dimension is absent, exactly as in condition 3. Without this guard a stream that
+   was never asked the question would report `count: 0, presence: "absent"`, and a consumer asserting
+   on `presence` would read a green result out of an unanswered one;
+6. `dispatch_shape`'s `duplicates` alone, when matching dispatches exist but **none carries the id
    field** — the id dimension is absent. `count` and `presence` remain measured; only `duplicates`
-   degrades, carrying its own reason.
+   degrades, carrying its own reason. A *partially* derived `duplicates` (some matching dispatches
+   carry the id, some do not) stays a count but carries a reason stating the fraction it came from.
 
-A declared pairwise delta over a signal not measured in either endpoint is likewise reported as
-not measured, carrying the endpoint's reason.
+A declared pairwise delta is likewise reported as not measured rather than dropped, in two cases:
+the signal is not measured in either endpoint (the delta carries that endpoint's reason), or one of
+the compare's declared arms **was not supplied to this evaluation** at all. A declared comparison
+never disappears from the artifact without a stated reason.
 
 Unparseable lines in a stream are counted into the emitted provenance (`malformed_lines`) and
 carried onto **every** signal result taken from that stream (`stream_malformed_lines`), rather than
@@ -177,8 +184,9 @@ than a bare string, and why `constants` is a map rather than a positional list.
 - `mechanism_signals` is absent or is not an array; an element is not an object, carries a key the
   vocabulary does not name, is missing `id`/`kind`/`description`, duplicates an `id`, names a
   predicate `kind` or match `op` outside the frozen sets above, declares a `record_match` carrying
-  **neither** `record` nor `match`, declares a `dispatch_shape` missing `subagent_type`, or declares
-  a match `value` that is neither a non-empty literal nor a non-empty array of them;
+  **neither** `record` nor `match`, declares a `record` without a non-empty `type`, declares a
+  `match` clause missing `field` or `op`, declares a `dispatch_shape` missing `subagent_type`, or
+  declares a match `value` that is neither a non-empty literal nor a non-empty array of them;
 - **`blinding.vocabulary` is absent, is not an array, or is empty.**
 - `blinding.forbidden_paths` is absent, is not an array, or carries an absolute / tree-escaping entry.
 
@@ -189,6 +197,12 @@ Validation refuses an empty vocabulary at load time — before any image is buil
 spend — rather than letting a degenerate pattern reach the gate.
 
 Validation runs on the host, at load, for every phase including `--dry-run`.
+
+`mechanism-signals.test.sh` (beside the evaluator) is the hermetic regression suite for all of the
+above — every rejection listed here, every not-measured condition, the CLI entry gate, the arm-flag
+handling, and the emitted-path stability. It synthesizes its own fixtures under a temp dir, spends
+nothing, touches no experiment kit, and exits non-zero on any regression. Run it after any change to
+the vocabulary or the evaluator.
 
 ---
 

@@ -27,8 +27,8 @@ Materialize them into a scratch directory (`git archive` into `_local/scratch/`)
 
 ```
 bash plugins/wf-sandbox-testing/experiments/fleet-ab/mechanism-check.sh \
-  --arm A=<scratch>/results/run-A \
-  --arm B=<scratch>/results/run-B \
+  --run-a <scratch>/results/run-A \
+  --run-b <scratch>/results/run-B \
   --inventory <scratch>/results/transcript-inventory.json \
   --out _local/scratch/fleet-ab-mechanism-check
 ```
@@ -37,8 +37,10 @@ bash plugins/wf-sandbox-testing/experiments/fleet-ab/mechanism-check.sh \
 
 24 checks, all matching. One declared signal is reported **not measured**, with its reason — the
 honest-non-measurement path exercised on real data rather than asserted. Two declared signals are
-reported **SKIP**: they evaluate cleanly, but the committed inventory carries no counterpart field,
-so they are outside this check's oracle and it claims nothing about them.
+reported **SKIP** — the committed inventory carries no counterpart field for either, so they sit
+outside this check's oracle and it claims nothing about them. (One of the two,
+`wf376_dispatch_model_tier`, is also the not-measured signal above; SKIP is a statement about the
+*oracle*, not about whether the signal evaluated.)
 
 Reproduced verbatim below, with one substitution: the two provenance lines carry absolute paths, so
 the run-local prefixes are shown as `<scratch>` (the materialized archive root) and `<out>` (the
@@ -74,8 +76,8 @@ MATCH  delta wf374_finding_contract_refetches (B - A): observed=0 committed=0
 MATCH  delta wf375_pr_dispatch (B - A): observed=1 committed=1
 MATCH  delta wf375_tf_dispatch (B - A): observed=0 committed=0
 MATCH  delta wf375_taskoutput_timeouts (B - A): observed=5 committed=5
-SKIP   wf379_index_dispatch: declared and evaluated, but the committed inventory carries no counterpart field — outside this check's oracle
-SKIP   wf376_dispatch_model_tier: declared and evaluated, but the committed inventory carries no counterpart field — outside this check's oracle
+SKIP   wf379_index_dispatch: declared, but the committed inventory carries no counterpart field — outside this check's oracle
+SKIP   wf376_dispatch_model_tier: declared, but the committed inventory carries no counterpart field — outside this check's oracle
 
 NARROWED — committed inventory content this vocabulary does not claim to reproduce:
   - arms.<arm>.wf374.verdict / arms.<arm>.wf375.verdict

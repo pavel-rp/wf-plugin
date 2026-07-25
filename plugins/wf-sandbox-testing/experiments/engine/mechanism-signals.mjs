@@ -26,6 +26,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // The frozen kind set. Adding to this list is a schema change, not a manifest edit.
 export const SIGNAL_KINDS = ["record_match", "dispatch_shape"];
@@ -274,6 +275,17 @@ const evalDispatchShape = (signal, records) => {
   if (dispatches.length === 0) {
     return notMeasured(`the record stream carries no ${DISPATCH_RECORD.type}/${DISPATCH_RECORD.subtype} record — the dispatch dimension is absent, so a zero count would not be evidence of absence`);
   }
+  // The TYPE dimension, guarded exactly as record_match guards a clause field. A dispatch record
+  // that carries no `subagent_type` cannot answer "was <this> dispatched?" — so if NOT ONE dispatch
+  // in the stream carries the field, a count of 0 and a presence of "absent" would be absence of
+  // evidence dressed as evidence of absence. The regression check turns this very value into a
+  // positive assertion (`presence === "absent"`), so an unguarded zero here becomes a green verdict
+  // over a stream that was never asked the question.
+  const typed = dispatches.filter((r) => nonEmptyString(r?.[DISPATCH_TYPE_FIELD]));
+  if (typed.length === 0) {
+    return notMeasured(`field ${JSON.stringify(DISPATCH_TYPE_FIELD)} is absent from every ${DISPATCH_RECORD.type}/${DISPATCH_RECORD.subtype} record — the dispatch-type dimension is absent, so a zero count would not be evidence of absence`);
+  }
+
   const mine = dispatches.filter((r) => r?.[DISPATCH_TYPE_FIELD] === signal.subagent_type);
   const withId = mine.filter((r) => {
     const v = r?.[DISPATCH_ID_FIELD];
@@ -369,7 +381,10 @@ const renderText = (doc) => {
         if (r.status !== "measured") continue;
         const dup = r.duplicates === null ? "duplicates not measured" : `${r.duplicates} duplicate`;
         lines.push(`  ${s.id} / arm ${l}: ${r.presence} (${r.count} dispatch record(s), ${dup})`);
-        if (r.duplicates === null) lines.push(`    duplicates not measured — ${r.duplicates_reason}`);
+        // The caveat is rendered whenever it exists, not only on the null case: a PARTIALLY derived
+        // duplicate count is a real number computed over part of the evidence, and a reader who
+        // cannot see that qualification will read it as fully derived.
+        if (r.duplicates_reason) lines.push(`    duplicates — ${r.duplicates_reason}`);
       }
     }
   }
@@ -386,6 +401,23 @@ const renderText = (doc) => {
 const buildDeltas = (doc, signals, compares) => {
   const out = [];
   for (const c of compares) {
+    // A comparison the manifest DECLARES but this evaluation cannot compute — because one of its
+    // endpoint arms was not supplied — is reported not measured, never dropped. Filtering it out
+    // would make a declared comparison vanish from the artifact with nothing saying why, which is
+    // the omission path the honest-non-measurement rule forbids just as firmly as a fabricated zero.
+    const missing = [c.base, c.against].filter((l) => !doc.arms[l]);
+    if (missing.length > 0) {
+      for (const s of signals) {
+        out.push({
+          signal: s.id,
+          base: c.base,
+          against: c.against,
+          status: "not_measured",
+          reason: `arm ${missing.join(" and arm ")} ${missing.length > 1 ? "were" : "was"} not supplied to this evaluation — the comparison is declared but has no data`,
+        });
+      }
+      continue;
+    }
     for (const s of signals) {
       const base = doc.arms[c.base]?.signals?.[s.id];
       const against = doc.arms[c.against]?.signals?.[s.id];
@@ -453,7 +485,10 @@ const parseArgs = (argv) => {
 const main = (argv) => {
   const mode = argv[0];
   if (mode === "-h" || mode === "--help") {
-    process.stdout.write(USAGE);
+    // Usage goes to stderr, as every sibling entry point in this pack does (`usage() { cat >&2 … }`)
+    // — and here it is also load-bearing: `evaluate` writes its report to stdout, so usage on stdout
+    // would contaminate a captured stream.
+    process.stderr.write(USAGE);
     return 0;
   }
   if (mode !== "validate" && mode !== "evaluate") {
@@ -462,7 +497,10 @@ const main = (argv) => {
   }
   const args = parseArgs(argv.slice(1));
   if (args.help) {
-    process.stdout.write(USAGE);
+    // Usage goes to stderr, as every sibling entry point in this pack does (`usage() { cat >&2 … }`)
+    // — and here it is also load-bearing: `evaluate` writes its report to stdout, so usage on stdout
+    // would contaminate a captured stream.
+    process.stderr.write(USAGE);
     return 0;
   }
   if (!args.manifest) bad("--manifest <experiment.json> is required");
@@ -489,19 +527,40 @@ const main = (argv) => {
   if (args.arms.length === 0) {
     bad("evaluate needs at least one arm: --run-<label> <run-dir> (or --arm <label>=<run-dir>)");
   }
+  const bound = new Map();
   for (const a of args.arms) {
     const hit = declared.find((d) => d.toLowerCase() === a.label.toLowerCase());
     if (hit === undefined) {
       bad(`arm ${JSON.stringify(a.label)} is not declared by this manifest (declared: ${declared.join(", ")})`);
     }
+    // Two flags resolving to the SAME declared arm is a caller mistake, not a last-one-wins
+    // preference: the first arm's whole evaluation would be discarded silently. manifest.sh rejects
+    // the case-insensitively colliding label for the manifest's own arm list for the same reason.
+    if (bound.has(hit)) {
+      bad(`arm ${JSON.stringify(hit)} is bound twice (${bound.get(hit)} and ${a.dir}) — each declared arm takes exactly one run directory`);
+    }
+    // A run directory that does not exist is a usage error, exactly as analyze.sh treats the same
+    // flag. Letting it through would report "every signal not measured" — an evidentiary claim about
+    // the run — when the truth is a typo'd path. "Not measured" is reserved for a real run dir whose
+    // stream cannot answer the question.
+    if (!fs.existsSync(a.dir) || !fs.statSync(a.dir).isDirectory()) {
+      bad(`--run-${hit.toLowerCase()} directory does not exist: ${a.dir}`);
+    }
+    bound.set(hit, a.dir);
     a.label = hit; // normalize to the manifest's own casing so emitted keys match the declaration
   }
 
-  // Emitted paths are relative to the manifest's own folder, never absolute: the same evidence
-  // analysed from a different checkout must produce byte-identical output, and an absolute host
-  // path would make the artifact differ per machine for no analytical reason.
+  // Emitted paths are relative to the manifest's own folder, never absolute, and always
+  // forward-slashed (the pack's other evidence writer normalizes the same way): for a run directory
+  // INSIDE the kit, the same evidence analysed from a different checkout produces byte-identical
+  // output. The guarantee is deliberately scoped to in-kit run dirs — a run dir outside the kit
+  // still resolves to a `..` chain whose length encodes the kit's own depth, so it is marked as
+  // out-of-kit rather than pretending to a stability it cannot have.
   const kitDir = path.dirname(path.resolve(args.manifest));
-  const rel = (p) => path.relative(kitDir, path.resolve(p));
+  const rel = (p) => {
+    const r = path.relative(kitDir, path.resolve(p)).split(path.sep).join("/");
+    return r.startsWith("../") ? `<outside-kit>/${path.basename(path.resolve(p))}` : r;
+  };
 
   const result = {
     schemaVersion: 1,
@@ -518,7 +577,8 @@ const main = (argv) => {
   };
   for (const a of args.arms) result.arms[a.label] = evaluateArm(signals, a.dir, rel);
   const compares = Array.isArray(doc.compares) ? doc.compares : [];
-  result.deltas = buildDeltas(result, signals, compares.filter((c) => result.arms[c.base] && result.arms[c.against]));
+  result.compares = compares.map((c) => ({ base: c.base, against: c.against }));
+  result.deltas = buildDeltas(result, signals, compares);
 
   const text = renderText(result);
   if (args.out) {
@@ -531,7 +591,15 @@ const main = (argv) => {
 };
 
 // Run only as a CLI — importing the module (for `validateSignals`) must never execute anything.
-if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname)) {
+//
+// The comparison MUST go through `fileURLToPath`, never `new URL(import.meta.url).pathname`: a URL
+// pathname is PERCENT-ENCODED, so under any install path containing a space (or `#`, `?`, non-ASCII)
+// the two sides would never be equal, `main()` would never run, and node would exit 0 having done
+// nothing. Every caller treats exit 0 as success — manifest.sh would report that every declared
+// signal validates while validating none, and analyze.sh would report it wrote two files that are
+// not on disk. A silent no-op inside the tool whose whole purpose is honest measurement is the worst
+// failure this file can have, so the decoding is not optional.
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   try {
     process.exit(main(process.argv.slice(2)));
   } catch (e) {
