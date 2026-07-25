@@ -69,6 +69,7 @@ see [Scripting a provider with wf-fake](#scripting-a-provider-with-wf-fake).
 | `corpus/` | the behavioral-regression corpus — items mined retrofit-first from observed failures, each with a resolvable provenance link | [`corpus/README.md`](corpus/README.md) |
 | `fixtures/` | seed scripts that materialize a throwaway wf workspace for a run | (script headers) |
 | `skills/init/` | `/wf-sandbox-testing:init` — self-registration | this README |
+| `skills/new-experiment/` | `/wf-sandbox-testing:new-experiment` — interview in, runnable experiment kit out (manifest + kit files + an engine-derived runbook, self-linted) | [`experiments/engine/schema.md`](experiments/engine/schema.md) |
 
 ## Authoring a fixture
 
@@ -228,6 +229,8 @@ only the provenance of the run bytes changes. What ran canned and why is recorde
 | `.claude-plugin/plugin.json` | the plugin manifest |
 | `capabilities/sandbox-testing/manifest.md` | the feature-capability manifest (no fragments; the wf-fake pairing rationale) |
 | `skills/init/SKILL.md` | `/wf-sandbox-testing:init` — self-registration |
+| `skills/new-experiment/SKILL.md` | `/wf-sandbox-testing:new-experiment` — scaffolds an experiment kit from an interview and self-lints it |
+| `experiments/scaffold-selftest/` | the kit `/wf-sandbox-testing:new-experiment` emitted, kept as its acceptance evidence |
 | `accounting/` | fleet-session cost harness and derived-only references ([README](accounting/README.md)) |
 | `runner/` | the hermetic container runner |
 | `assert/` | the statistical assertion layer ([README](assert/README.md)) |
