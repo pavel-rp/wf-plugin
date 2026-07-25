@@ -1,0 +1,60 @@
+{
+  "_comment": "Scripted hermetic delivery/tracker responses for this kit's measured run. Per the wf-fake tracker contract (capabilities/fake/fragments/tracker.ops.md): a scripted value that is a JSON ARRAY is an ordered sequence indexed by the count of PRIOR calls to that same (surface, op) pair, blind to arguments; past the end the last element repeats. A scalar or object value is returned for every call. Every value below is a real response the harness returns as-is — verify the observed call order against this file during the cheap gate phase before any billed run, and reorder a sequence to match rather than inventing a new one.",
+  "delivery": {
+    "branch-create": { "state": "created", "base-source": "origin/main", "tracking": "origin/feat/423-child", "carry": "none" },
+    "branch-switch": { "state": "switched", "tracking": "origin/feat/423-child" },
+    "commit": { "state": "committed", "diffstat": "1 changed (+12 -0)" },
+    "push-upstream": { "state": "pushed (origin/feat/423-child)" },
+    "pr-create": { "state": "created", "url": "https://fake.local/pr/423" },
+    "pr-detect": { "found": true, "url": "https://fake.local/pr/423", "state": "OPEN" },
+    "pr-comment-post": { "state": "posted", "url": "https://fake.local/pr/423#comment-1" },
+    "pr-merge": { "state": "merged", "url": "https://fake.local/pr/423" },
+    "workspace-root-resolve": "/fixture/workspace",
+    "current-branch-query": "feat/423-child",
+    "default-base-query": "main",
+    "last-commit-timestamp-query": "2026-07-25T00:00:00Z",
+    "branch-changes-read": [ { "path": "plugins/wf/skills/spec/interface.md", "status": "A" } ],
+    "checks-read": [
+      [ { "name": "ci", "state": "PENDING", "link": "https://fake.local/checks/ci" } ],
+      [ { "name": "ci", "state": "SUCCESS", "link": "https://fake.local/checks/ci" } ]
+    ],
+    "activity-read": {
+      "commits": [ { "sha": "5e1f001", "when": "2026-07-25T00:00:00Z", "subject": "SELF-423: seed the harness fixture" } ],
+      "pull-requests": [ { "number": 423, "title": "SELF-423: seed the harness fixture", "state": "OPEN", "url": "https://fake.local/pr/423" } ]
+    }
+  },
+  "tracker": {
+    "resolve_config": "configured",
+    "create_umbrella": "SELF-422",
+    "create_child": [ "SELF-423" ],
+    "update": { "state": "updated" },
+    "get": [
+      {
+        "id": "SELF-422",
+        "title": "Harness fixture umbrella",
+        "description": "A one-child fixture slice the harness drives end to end. It exists so the scripted response sequence below has a real shape to answer, and carries no wording drawn from this kit's declared vocabulary.",
+        "status": "In Progress",
+        "parent": null,
+        "labels": []
+      },
+      {
+        "id": "SELF-423",
+        "title": "Harness fixture child",
+        "description": "Type: chore\n\nObjective\n\nAdd one declared interface file to a skill folder so the harness has a small, self-contained unit of work to drive through its phases.\n\nScope\n\nIn: add the interface file and its declaration. Out: any behavior change, any version bump.\n\nSuccess criteria\n\nGiven the interface file is added, when the repository's marker lint runs, then it passes.",
+        "status": "Backlog",
+        "parent": "SELF-422",
+        "labels": []
+      }
+    ],
+    "list_children": [
+      { "id": "SELF-423", "title": "Harness fixture child" }
+    ],
+    "post_comment": { "state": "posted" },
+    "set_status": { "state": "status-changed" },
+    "attach_link": { "state": "attached" },
+    "list_by_status": [
+      { "id": "SELF-423", "title": "Harness fixture child", "status": "In Progress" }
+    ],
+    "list_blockers": []
+  }
+}
