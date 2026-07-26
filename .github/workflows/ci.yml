@@ -83,6 +83,29 @@ jobs:
         # seeded "merged while claiming no review landed" turns red). Non-zero exit fails the job.
         run: bash plugins/wf-sandbox-testing/corpus/run.sh
 
+      - name: Ensure node is present
+        # The mechanism-signal suite below is the first thing in THIS job to need node — the job
+        # runs no setup-node (that lives in the separate resolver-runtime job). ubuntu-latest ships
+        # node, but confirm it rather than assume, exactly as the jq step above does: with node
+        # absent the suite's node-invoking cases degrade to empty output rather than a hard stop,
+        # so an environment gap would read as a green run instead of a failure.
+        run: node --version
+
+      - name: Sandbox-testing mechanism-signal suite
+        # The experiment engine's mechanism-signal validator/evaluator regression suite. Like the
+        # two above it is offline — every fixture is synthesized under a temp dir and nothing is
+        # written outside it, no container, no model, no token. It does READ the fleet-ab kit (the
+        # containment cases need a real protected directory to aim at) and asserts that kit's
+        # results/ byte-unchanged across the run — and it lives under
+        # experiments/engine/ rather than assert/ or corpus/, so neither of those runners and
+        # neither convention-discovery glob picks it up. It has to be named to run at all.
+        #
+        # It is named here because a suite that never executes is the same defect it exists to
+        # catch: a check whose success path is reachable without doing the work. Its cases cover
+        # the silent-no-op entry point, the measured-zero over an absent dimension, the results/
+        # containment guard, and the usage-vs-mismatch exit vocabulary. Non-zero exit fails the job.
+        run: bash plugins/wf-sandbox-testing/experiments/engine/selfcheck.sh
+
       - name: Each capability's fixture suite
         # Discover every capability fixtures suite by convention — never name a
         # specific capability, so any future capability that ships a fixtures

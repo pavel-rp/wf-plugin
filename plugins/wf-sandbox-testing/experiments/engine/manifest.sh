@@ -153,8 +153,10 @@ manifest_load() {
       bases.push(b); againsts.push(g);
     }
 
-    // --- mechanism_signals: RESERVED. Presence and type are validated; contents are never read. -
-    if (!Array.isArray(doc.mechanism_signals)) bad("`mechanism_signals` is required and must be an array (reserved slot — its contents are never read)");
+    // --- mechanism_signals: presence and type here; the frozen predicate vocabulary its elements
+    //     must speak is owned by mechanism-signals.mjs and checked below, at load, so a manifest
+    //     naming an unsupported kind is refused BEFORE any phase runs and before any spend. ------
+    if (!Array.isArray(doc.mechanism_signals)) bad("`mechanism_signals` is required and must be an array");
 
     // --- blinding vocabulary ------------------------------------------------------------------
     const bl = doc.blinding;
@@ -194,6 +196,44 @@ manifest_load() {
     process.stdout.write(out.join("\n") + "\n");
   ' "$path")" || rc=$?
   [ "$rc" -eq 0 ] || return "$rc"
+
+  # The declared mechanism signals must speak the frozen predicate vocabulary. Checked at load —
+  # for every phase, --dry-run included — by the one file that owns those rules, so an unsupported
+  # predicate kind is named and refused rather than guessed at or discovered mid-analysis.
+  local signal_validator signal_out signal_rc=0
+  signal_validator="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/mechanism-signals.cli.mjs"
+  if [ ! -f "$signal_validator" ]; then
+    manifest_die "mechanism-signals.cli.mjs is missing beside manifest.sh ($signal_validator) — refusing to load a manifest whose declared signals cannot be validated"
+    return 2
+  fi
+
+  # Exit 0 is NOT proof of validation. A process that did nothing at all also exits 0 — which is
+  # precisely what the validator's deleted entry-point guard produced under a symlinked checkout,
+  # making this call site report that every declared signal validated while validating none.
+  #
+  # So the validator must SAY it validated something, and the loader asserts that positive sentinel:
+  # `VALIDATED <n> signals`. Its PRESENCE is what is asserted, never its value: a manifest may
+  # legitimately declare zero signals (schema.md: "may be empty … fully inert"), and the sentinel
+  # proves the validator ran regardless of what it counted. The output is CAPTURED rather than sent to /dev/null —
+  # capturing is what makes the sentinel assertable, while keeping it off this function's stdout.
+  # That second property is load-bearing: manifest_load runs for every phase including --dry-run,
+  # and the dry-run parity oracle compares stdout byte-for-byte (experiments/parity/normalization.md).
+  # The old `>/dev/null` preserved the oracle and made the assertion impossible; capturing does both.
+  signal_out="$(node "$signal_validator" validate --manifest "$path")" || signal_rc=$?
+  [ "$signal_rc" -eq 0 ] || return 2
+
+  local signal_count
+  signal_count="$(printf '%s' "$signal_out" | sed -n 's/^VALIDATED \([0-9][0-9]*\) signals.*/\1/p' | head -1)"
+  if [ -z "$signal_count" ]; then
+    manifest_die "the signal validator exited 0 without emitting its 'VALIDATED <n> signals' sentinel — it cannot be distinguished from a validator that did nothing, so this manifest is refused"
+    return 2
+  fi
+  # No `-lt 1` clause. The sentinel's PRESENCE is the assertion — it proves the validator ran and
+  # reached its own success line, which is the whole defect being closed. Its VALUE is not: an
+  # experiment may legitimately declare zero signals, which `schema.md` ("may be empty … fully
+  # inert") and `analyze.sh` ("an experiment that declares none emits an empty table rather than a
+  # special case") both already promise. Refusing `VALIDATED 0 signals` would break that promise
+  # and hard-fail every manifest shipped without the slot — trading a false green for a false red.
 
   MANIFEST_PATH="$(cd "$(dirname "$path")" && pwd)/$(basename "$path")"
   KIT_DIR="$(cd "$(dirname "$path")" && pwd)"

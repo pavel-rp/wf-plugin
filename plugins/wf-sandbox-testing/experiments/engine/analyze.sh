@@ -13,14 +13,21 @@
 # Each <out-dir> is a run-arm.sh --out directory: it must contain run.json (with
 # measured_session.session_id) and either an already-extracted projects tree
 # (--projects-root-<label> override) or projects-archive.tar.gz (extracted here into a scratch dir).
+# Mechanism signals additionally read that directory's transcript.jsonl; an arm without one has
+# every signal reported "not measured" for that arm, with the missing stream stated as the reason.
 #
-# Mechanism-signal evaluation is deliberately NOT performed here. The manifest carries a reserved
-# slot for those signals; interpreting them is a separate concern that joins this step later. This
-# script computes the declared pairwise dollar comparisons and nothing else.
+# It then evaluates the manifest's declared mechanism signals — named predicates over each arm's
+# transcript records — and emits the mechanism tables the verdict writer needs. There is no
+# hardcoded assertion set either: which signals exist and what they select is manifest data, and a
+# signal the run data cannot answer is reported "not measured" rather than invented or skipped.
 set -euo pipefail
 
-ENGINE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 FLEET_COST="$ENGINE_DIR/../../accounting/fleet-cost.mjs"
+# The CLI entry, never the module: mechanism-signals.mjs is import-pure and self-executes nothing,
+# so invoking it directly would run no code and exit 0 having written none of the files this script
+# then reports it wrote.
+MECHANISM_SIGNALS="$ENGINE_DIR/mechanism-signals.cli.mjs"
 # shellcheck source=manifest.sh
 . "$ENGINE_DIR/manifest.sh"
 
@@ -89,7 +96,7 @@ main() {
     case "$1" in
       --manifest) shift 2;;
       --manifest=*) shift;;
-      --out) out="${2:?}"; shift 2;;
+      --out) [ $# -ge 2 ] || die "--out requires an operand"; out="$2"; shift 2;;
       --out=*) out="${1#*=}"; shift;;
       --projects-root-*=*)
         flag="${1%%=*}"; flag="${flag#--projects-root-}"
@@ -98,7 +105,7 @@ main() {
       --projects-root-*)
         flag="${1#--projects-root-}"
         idx="$(index_of_label "$flag")" || die "--projects-root-$flag names an arm this manifest does not declare (declared: ${ARM_LABELS[*]})"
-        proj_roots[$idx]="${2:?}"; shift 2;;
+        [ $# -ge 2 ] || die "--projects-root-$flag requires an operand"; proj_roots[$idx]="$2"; shift 2;;
       --run-*=*)
         flag="${1%%=*}"; flag="${flag#--run-}"
         idx="$(index_of_label "$flag")" || die "--run-$flag names an arm this manifest does not declare (declared: ${ARM_LABELS[*]})"
@@ -106,16 +113,20 @@ main() {
       --run-*)
         flag="${1#--run-}"
         idx="$(index_of_label "$flag")" || die "--run-$flag names an arm this manifest does not declare (declared: ${ARM_LABELS[*]})"
-        run_dirs[$idx]="${2:?}"; shift 2;;
+        [ $# -ge 2 ] || die "--run-$flag requires an operand"; run_dirs[$idx]="$2"; shift 2;;
       -h|--help) usage; exit 0;;
-      *) echo "analyze.sh: unknown argument '$1'" >&2; usage; exit 2;;
+      *) echo "analyze.sh: ERROR — unknown argument '$1'" >&2; usage; exit 2;;
     esac
   done
 
   # The output directory belongs to the EXPERIMENT, derived from the manifest — the engine no
   # longer sits beside results/.
   [ -n "$out" ] || out="$RESULTS_DIR"
-  mkdir -p "$out"
+  # `--` and an explicit failure branch, for the same reason mechanism-check.sh carries them: an
+  # --out beginning with a dash is otherwise read by mkdir as its own option, and a bare
+  # `mkdir -p "$out"` under `set -e` exits **1** — the MISMATCH code — with mkdir's own message and
+  # nothing naming this script. A path typo would read to the caller as a measured divergence.
+  mkdir -p -- "$out" || die "cannot create the --out directory: $out"
 
   local l
   for n in "${!ARM_LABELS[@]}"; do
@@ -161,7 +172,17 @@ main() {
     ' "$out/measure-$base.json" "$out/measure-$against.json" "$base" "$against" | tee -a "$out/totals-comparison.txt"
   done
 
-  echo "analyze.sh: wrote per-arm measure-<label>.json and totals-comparison.txt under $out" >&2
+  # --- declared mechanism signals ---------------------------------------------------------------
+  # Named predicates over each arm's transcript records, declared in the manifest and evaluated
+  # here. The engine names no signal, no record literal, and no assertion: an experiment that
+  # declares none emits an empty table rather than a special case.
+  local -a signal_args=()
+  for n in "${!ARM_LABELS[@]}"; do
+    signal_args+=("$(manifest_run_flag "${ARM_LABELS[$n]}")" "${run_dirs[$n]}")
+  done
+  node "$MECHANISM_SIGNALS" evaluate --manifest "$MANIFEST_PATH" "${signal_args[@]}" --out "$out" >/dev/null
+
+  echo "analyze.sh: wrote per-arm measure-<label>.json, totals-comparison.txt, and mechanism-signals.json/.txt under $out" >&2
 
   # --- verdict gate reminder: the aggregate-vs-reference claim is valid ONLY if the control arm's
   #     shape validates against the reference. This harness does not auto-decide that — it forces
