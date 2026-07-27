@@ -128,6 +128,14 @@ main() {
   # nothing naming this script. A path typo would read to the caller as a measured divergence.
   mkdir -p -- "$out" || die "cannot create the --out directory: $out"
 
+  # The two node helpers this script drives, checked BEFORE any measurement runs. `node <missing>`
+  # exits **1** — the MISMATCH code — carrying node's own module-resolution message, so an engine
+  # that was moved, half-installed, or renamed would read to the caller as a measured divergence
+  # instead of a broken tool. This is the same 1-vs-2 collision the --out branch above closes,
+  # through the other door; both helpers are guarded, never just the one that was noticed.
+  [ -r "$FLEET_COST" ] || die "the cost harness is missing or unreadable: $FLEET_COST"
+  [ -r "$MECHANISM_SIGNALS" ] || die "the mechanism-signal CLI entry is missing or unreadable: $MECHANISM_SIGNALS"
+
   local l
   for n in "${!ARM_LABELS[@]}"; do
     l="${ARM_LABELS[$n]}"
@@ -145,7 +153,8 @@ main() {
       proj_roots[$n]="$(extract_projects_root "${run_dirs[$n]}" "$scratch")"
     fi
     echo "analyze.sh: measuring arm $l (session=$sid, root=${proj_roots[$n]})" >&2
-    node "$FLEET_COST" measure --session "$sid" --root "${proj_roots[$n]}" --output "$out/measure-$l.json"
+    node "$FLEET_COST" measure --session "$sid" --root "${proj_roots[$n]}" --output "$out/measure-$l.json" \
+      || die "the cost harness failed measuring arm $l (its own error is above)"
   done
 
   # --- declared pairwise dollar comparisons -----------------------------------------------------
@@ -180,7 +189,11 @@ main() {
   for n in "${!ARM_LABELS[@]}"; do
     signal_args+=("$(manifest_run_flag "${ARM_LABELS[$n]}")" "${run_dirs[$n]}")
   done
-  node "$MECHANISM_SIGNALS" evaluate --manifest "$MANIFEST_PATH" "${signal_args[@]}" --out "$out" >/dev/null
+  # The CLI entry exits 2 on every failure it can name (see its own header); anything else reaching
+  # here is node itself failing, which exits 1. Converting the whole invocation to `die` keeps exit
+  # 1 meaning MISMATCH and nothing else on this path.
+  node "$MECHANISM_SIGNALS" evaluate --manifest "$MANIFEST_PATH" "${signal_args[@]}" --out "$out" >/dev/null \
+    || die "the mechanism-signal evaluator failed (its own error is above)"
 
   echo "analyze.sh: wrote per-arm measure-<label>.json, totals-comparison.txt, and mechanism-signals.json/.txt under $out" >&2
 

@@ -2,7 +2,7 @@
 # selfcheck.sh — regression suite for the mechanism-signal validator/evaluator.
 #
 # Offline and spend-free: every synthesized fixture lives under a temp dir and is removed on exit.
-# It WRITES nothing outside that temp dir. It does not read nothing, though — the containment cases
+# It WRITES nothing outside that temp dir. It DOES read outside it, though — the containment cases
 # need a real protected directory to aim at, so the suite reads the fleet-ab kit: its
 # mechanism-check.sh (the script under test), its experiment.json, and a fingerprint of its
 # results/ taken before and after. Those reads are read-only and the fingerprint is asserted
@@ -880,6 +880,31 @@ if [ -f "$ANALYZE" ] && [ -f "$ANALYZE_MANIFEST" ]; then
   fi
   assert_grep "$TMP/an-unwritable.out" '^analyze\.sh: ERROR — cannot create the --out directory' \
     "and it names itself rather than leaking mkdir's own message"
+
+  # A node helper that is missing is the same 1-vs-2 collision through the other door: `node
+  # <missing>` exits 1 — the MISMATCH code — carrying node's own module-resolution message. The
+  # mechanism-signal CLI has a load-time guard in manifest.sh; the COST HARNESS had none, and it is
+  # reached by path with no check at all, so a moved or half-installed engine reported a broken
+  # tool as a measured divergence. The engine is copied to a temp tree with accounting/ left empty:
+  # copying is what lets a helper be absent without touching the real kit.
+  #
+  # This asserts the MESSAGE, not just the code: without the guard analyze.sh still exits 2 here,
+  # only later and from the missing --run-<label> branch. Driving it all the way to the invocation
+  # needs a full arm fixture, which §14 states is out of this suite's scope — so the guard is placed
+  # before the arm loop precisely so it is reachable and assertable without one.
+  an_eng="$TMP/eng-copy/experiments/engine"
+  mkdir -p "$an_eng" "$TMP/eng-copy/accounting"
+  cp "$ENGINE_DIR"/*.sh "$ENGINE_DIR"/*.mjs "$an_eng/"
+  an_rc=0
+  bash "$an_eng/analyze.sh" --manifest "$ANALYZE_MANIFEST" --out "$TMP/an-nohelper" \
+    >"$TMP/an-nohelper.out" 2>&1 || an_rc=$?
+  if [ "$an_rc" -eq 2 ]; then
+    ok "analyze.sh exits 2 when a node helper is missing, never the mismatch code"
+  else
+    no "analyze.sh exited $an_rc with the cost harness missing — a broken tool impersonating a divergence"
+  fi
+  assert_grep "$TMP/an-nohelper.out" '^analyze\.sh: ERROR — the cost harness is missing or unreadable' \
+    "and it names the missing helper rather than leaking node's module-resolution message"
 else
   no "analyze.sh or the kit manifest was not found — its exit-vocabulary cases were skipped, which is a suite failure, not a pass"
 fi
