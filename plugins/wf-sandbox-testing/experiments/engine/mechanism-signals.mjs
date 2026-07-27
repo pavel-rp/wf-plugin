@@ -328,10 +328,20 @@ const evalRecordMatch = (signal, records) => {
     ? `field ${absent.map((f) => JSON.stringify(f)).join(", ")} is absent, null or empty on every candidate record — the field dimension is absent, so a zero count would not be evidence of absence`
     : `no candidate record carries all of ${fields.map((f) => JSON.stringify(f)).join(", ")} at once — there is no record that could answer this signal, so a zero count would not be evidence of absence`;
 
-  return measured(basis, reason, () => ({
+  const out = measured(basis, reason, () => ({
     count: candidates.filter((r) => signal.match.every((c) => clauseMatches(r, c))).length,
     candidates: candidates.length,
   }));
+  // A PARTIAL basis, caveated exactly as a partially-derived duplicate count is. `basis > 0` is
+  // sufficient for a POSITIVE count — a count is a valid lower bound however many records were mute.
+  // It is not sufficient for a NEGATIVE one: `count: 0` says "this did not happen" only when every
+  // excluded record is one that could have been the thing claimed absent, i.e. `basis === candidates`.
+  // The evaluator cannot know why a record is mute, so it states the narrowing and leaves the
+  // negative-assertion decision to the consumer rather than silently asserting over the gap.
+  if (out.status === "measured" && basis < candidates.length) {
+    out.basis_reason = `derived from the ${basis} of ${candidates.length} candidate record(s) carrying ${fields.map((f) => JSON.stringify(f)).join(", ")} — the other ${candidates.length - basis} could not answer this signal, so a zero count is not evidence of absence`;
+  }
+  return out;
 };
 
 const evalDispatchShape = (signal, records) => {
@@ -383,6 +393,13 @@ const evalDispatchShape = (signal, records) => {
     out.duplicates_reason = `field ${JSON.stringify(DISPATCH_ID_FIELD)} is absent, null or empty on every matching dispatch record — the id dimension is absent, so a zero duplicate count would not be evidence of absence`;
   } else if (mine.length > withId.length) {
     out.duplicates_reason = `derived from the ${withId.length} of ${mine.length} matching dispatch record(s) that carry ${JSON.stringify(DISPATCH_ID_FIELD)}`;
+  }
+  // The same partial-basis caveat record_match carries, on the dimension that makes it sharpest:
+  // `presence: "absent"` IS the negative assertion, and the regression check turns it into a
+  // positive verdict. A basis narrower than the dispatch set means some dispatch records were mute
+  // on the type dimension, and nothing here knows whether a mute record could have been this one.
+  if (typed.length < dispatches.length) {
+    out.basis_reason = `derived from the ${typed.length} of ${dispatches.length} ${DISPATCH_RECORD.type}/${DISPATCH_RECORD.subtype} record(s) carrying ${JSON.stringify(DISPATCH_TYPE_FIELD)} — the other ${dispatches.length - typed.length} could not answer this signal, so "absent" is not evidence of absence`;
   }
   return out;
 };
@@ -442,6 +459,10 @@ const renderText = (doc) => {
     for (const l of labels) {
       const r = doc.arms[l].signals[s.id];
       if (r.status !== "measured") lines.push(`not measured — ${s.id} / arm ${l}: ${r.reason}`);
+      // A measured result over a NARROWED basis is rendered here for the same reason a partially
+      // derived duplicate count is: the number is real, but a reader who cannot see that it was
+      // taken over part of the evidence will read a zero as evidence of absence.
+      else if (r.basis_reason) lines.push(`partial basis — ${s.id} / arm ${l}: ${r.basis_reason}`);
     }
   }
   if (doc.signals.some((s) => s.kind === "dispatch_shape")) {
@@ -466,6 +487,7 @@ const renderText = (doc) => {
     lines.push("declared pairwise deltas (against minus base):");
     for (const d of doc.deltas) {
       lines.push(`  ${d.signal} (${d.against} - ${d.base}): ${d.status === "measured" ? d.delta : `not measured — ${d.reason}`}`);
+      if (d.basis_reason) lines.push(`    partial basis — ${d.basis_reason}`);
     }
   }
   return `${lines.join("\n")}\n`;
@@ -505,7 +527,20 @@ const buildDeltas = (doc, signals, compares) => {
         });
         continue;
       }
-      out.push({ signal: s.id, base: c.base, against: c.against, status: "measured", delta: against.count - base.count });
+      // A delta inherits the WEAKER of its two endpoints, and inherits it harder than either one
+      // carries it alone. A count over a narrowed basis is still a valid LOWER BOUND, so a positive
+      // one stays interpretable — but a difference of two lower bounds is bounded in neither
+      // direction: the true delta can sit anywhere, whatever sign the observed one has. So the
+      // caveat travels to every delta with a narrowed endpoint, not only to a zero one.
+      const partial = [
+        base.basis_reason ? `arm ${c.base}: ${base.basis_reason}` : null,
+        against.basis_reason ? `arm ${c.against}: ${against.basis_reason}` : null,
+        base.stream_malformed_lines ? `arm ${c.base}: ${base.stream_malformed_lines} unparseable line(s) in the record stream` : null,
+        against.stream_malformed_lines ? `arm ${c.against}: ${against.stream_malformed_lines} unparseable line(s) in the record stream` : null,
+      ].filter(Boolean);
+      const d = { signal: s.id, base: c.base, against: c.against, status: "measured", delta: against.count - base.count };
+      if (partial.length) d.basis_reason = `a difference of two lower bounds is not itself a bound — ${partial.join("; ")}`;
+      out.push(d);
     }
   }
   return out;

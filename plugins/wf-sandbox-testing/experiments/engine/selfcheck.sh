@@ -32,7 +32,19 @@ SIGNALS_CLI="$ENGINE_DIR/mechanism-signals.cli.mjs"
 MANIFEST_SH="$ENGINE_DIR/manifest.sh"
 CHECK="$ENGINE_DIR/../fleet-ab/mechanism-check.sh"
 
-TMP="$(mktemp -d)"
+# Scratch lives under `_local/scratch/`, not a system temp directory — constitution article 9 names
+# a system temp directory explicitly as the thing not to use, and the closest sibling suite
+# (`experiments/parity/selfcheck.sh`) already routes here. Precedent in the pack is genuinely mixed
+# (`assert/run.sh` and `corpus/run.sh` use `mktemp`), but the article and the neighbour agree, and
+# `mechanism-check.sh`'s own `--out` error text tells callers to route under `_local/scratch/`.
+# Falls back to `mktemp -d` only where `_local/` cannot be created — a checkout this suite does not
+# own, which is a legitimate way to run it and not worth failing over.
+REPO_ROOT="$(cd "$ENGINE_DIR/../../../.." && pwd)"
+if mkdir -p "$REPO_ROOT/_local/scratch" 2>/dev/null; then
+  TMP="$(mktemp -d "$REPO_ROOT/_local/scratch/mechanism-selfcheck.XXXXXX")"
+else
+  TMP="$(mktemp -d)"
+fi
 trap 'rm -rf "$TMP"' EXIT
 
 pass=0
@@ -816,6 +828,143 @@ if [ -f "$CHECK" ]; then
     'a duplicate count derived from only part of the evidence is a SKIP, not a MATCH'
   assert_no_grep "$TMP/mc-partdup.out" '^MATCH +arm A duplicate PR/TF dispatches' \
     'and a partially-derived count is never compared to the oracle as if complete'
+
+  # ------------------------------------------------------------------------------------------
+  # 13b. A NEGATIVE assertion over incomplete evidence is a SKIP, not a MATCH.
+  #
+  # The same class one rung further in. `basis > 0` makes a POSITIVE count sound — a count is a
+  # valid lower bound however many records were mute. It does not make a NEGATIVE one sound:
+  # `count: 0` / `presence: "absent"` say "this did not happen" only when every dropped record is
+  # one that could have been the thing claimed absent. The duplicates dimension already caveated
+  # and SKIPped its partial derivation (the two cases above); the type dimension got neither, so
+  # a 1-of-40 basis reported "absent" and mechanism-check.sh turned it straight into MATCH/PASS.
+  # ------------------------------------------------------------------------------------------
+  echo "-- a negative observation over incomplete evidence never becomes a MATCH"
+
+  # 39 dispatch records mute on the type dimension + 1 typed but unrelated: basis 1 of 40.
+  mkdir -p "$KIT/run-partbasis"
+  : > "$KIT/run-partbasis/transcript.jsonl"
+  for _i in $(seq 1 39); do
+    printf '%s\n' '{"type":"system","subtype":"task_started","task_type":"local_bash"}' \
+      >> "$KIT/run-partbasis/transcript.jsonl"
+  done
+  printf '%s\n' '{"type":"system","subtype":"task_started","subagent_type":"wf:other"}' \
+    >> "$KIT/run-partbasis/transcript.jsonl"
+  printf '%s\n' '{ "arms": { "A": { "wf375": { "tf_task_dispatches": 0, "tf_shape": "inline" } } } }' \
+    > "$TMP/inv-partbasis.json"
+  bash "$CHECK" --manifest "$KIT/m-dup.json" --run-a "$KIT/run-partbasis" \
+    --inventory "$TMP/inv-partbasis.json" --out "$TMP/mc-partbasis" >"$TMP/mc-partbasis.out" 2>&1 || true
+  assert_grep "$TMP/mc-partbasis.out" '^SKIP +arm A wf375_tf_dispatch: observed 0 over incomplete evidence' \
+    'a zero observed over a partial basis is a SKIP, never checked against the oracle'
+  assert_no_grep "$TMP/mc-partbasis.out" '^MATCH +arm A wf375_tf_dispatch' \
+    'and the committed 0 is never reported as reproduced by it'
+  assert_grep "$TMP/mc-partbasis.out" '^SKIP +arm A finalize dispatch presence: observed "absent" over incomplete evidence' \
+    'and "absent" over a partial basis is a SKIP too — it is the negative assertion itself'
+  assert_no_grep "$TMP/mc-partbasis.out" '^MATCH +arm A finalize dispatch presence' \
+    'so a 1-of-40 basis can never render as a reproduced absence'
+
+  # A POSITIVE count over the same partial basis is still checked: the guard is on the negative
+  # reading only, and over-applying it would silently stop asserting things the evidence supports.
+  mkdir -p "$KIT/run-partbasis-pos"
+  : > "$KIT/run-partbasis-pos/transcript.jsonl"
+  for _i in $(seq 1 39); do
+    printf '%s\n' '{"type":"system","subtype":"task_started","task_type":"local_bash"}' \
+      >> "$KIT/run-partbasis-pos/transcript.jsonl"
+  done
+  printf '%s\n' '{"type":"system","subtype":"task_started","subagent_type":"wf:tf"}' \
+    >> "$KIT/run-partbasis-pos/transcript.jsonl"
+  printf '%s\n' '{ "arms": { "A": { "wf375": { "tf_task_dispatches": 1 } } } }' \
+    > "$TMP/inv-partbasis-pos.json"
+  bash "$CHECK" --manifest "$KIT/m-dup.json" --run-a "$KIT/run-partbasis-pos" \
+    --inventory "$TMP/inv-partbasis-pos.json" --out "$TMP/mc-pbpos" >"$TMP/mc-pbpos.out" 2>&1 || true
+  assert_grep "$TMP/mc-pbpos.out" '^MATCH +arm A wf375_tf_dispatch' \
+    'a positive count over the same partial basis is still checked — a count is a valid lower bound'
+
+  # The DELTA inherits it, and inherits it harder. A count over a narrowed basis is a lower bound,
+  # so a positive one still reads; a DIFFERENCE of two lower bounds is bounded in neither direction.
+  # Left unguarded, the two SKIPped zeros above still combined into a confident `observed=0
+  # committed=0` — the same false green one derivation further out, which is exactly how the
+  # symmetric half of a fix keeps surviving the fix.
+  mkdir -p "$KIT/run-partbasis-b"
+  cp "$KIT/run-partbasis/transcript.jsonl" "$KIT/run-partbasis-b/transcript.jsonl"
+  printf '%s\n' '{ "arms": { "A": { "wf375": { "tf_task_dispatches": 0 } }, "B": { "wf375": { "tf_task_dispatches": 0 } } }, "deltas_B_minus_A": { "wf375_tf_task_dispatches": 0 } }' \
+    > "$TMP/inv-partbasis-delta.json"
+  bash "$CHECK" --manifest "$KIT/m-dup.json" --run-a "$KIT/run-partbasis" --run-b "$KIT/run-partbasis-b" \
+    --inventory "$TMP/inv-partbasis-delta.json" --out "$TMP/mc-pbdelta" >"$TMP/mc-pbdelta.out" 2>&1 || true
+  assert_grep "$TMP/mc-pbdelta.out" '^SKIP +delta wf375_tf_dispatch: computed over incomplete evidence' \
+    'a delta with a narrowed endpoint is a SKIP — a difference of two lower bounds is not a bound'
+  assert_no_grep "$TMP/mc-pbdelta.out" '^MATCH +delta wf375_tf_dispatch' \
+    'so two unsound zeros never combine into a confident no-difference verdict'
+
+  # ------------------------------------------------------------------------------------------
+  # 13c. An unparseable stream is visible in the report and never asserts a zero.
+  #
+  # evaluateArm stamps `stream_malformed_lines` on every result "so a consumer reading one result
+  # can see that its number was computed over an incomplete stream". The one consumer read neither
+  # that field nor the arm-level `malformed_lines`: a stream with 50 of 51 lines unparseable still
+  # printed MATCH and RESULT: PASS with the degradation mentioned nowhere in the report.
+  # ------------------------------------------------------------------------------------------
+  echo "-- an incomplete record stream is stated, and never asserts an absence"
+
+  mkdir -p "$KIT/run-malformed"
+  printf '%s\n' '{"type":"system","subtype":"task_started","subagent_type":"wf:pr"}' \
+    > "$KIT/run-malformed/transcript.jsonl"
+  for _i in $(seq 1 50); do
+    printf '%s\n' 'this is not json' >> "$KIT/run-malformed/transcript.jsonl"
+  done
+  printf '%s\n' '{ "arms": { "A": { "wf375": { "pr_task_dispatches": 1, "tf_task_dispatches": 0, "tf_shape": "inline" } } } }' \
+    > "$TMP/inv-malformed.json"
+  bash "$CHECK" --manifest "$KIT/m-dup.json" --run-a "$KIT/run-malformed" \
+    --inventory "$TMP/inv-malformed.json" --out "$TMP/mc-malformed" >"$TMP/mc-malformed.out" 2>&1 || true
+  assert_grep "$TMP/mc-malformed.out" '^DEGRADED INPUT \(counts below were taken over an incomplete stream\):' \
+    'a partly unparseable stream is stated in the report rather than passing silently'
+  assert_grep "$TMP/mc-malformed.out" '^ +- arm A: 50 unparseable line\(s\)' \
+    'and the report names the arm and how many lines never parsed'
+  assert_grep "$TMP/mc-malformed.out" '^SKIP +arm A wf375_tf_dispatch: observed 0 over incomplete evidence' \
+    'a zero taken from an incomplete stream is a SKIP, never a reproduced absence'
+  assert_no_grep "$TMP/mc-malformed.out" '^MATCH +arm A wf375_tf_dispatch' \
+    'so 50 of 51 lines unparseable can never render as agreement with the oracle'
+  # The clean-stream counterpart, so the block is proven to be a real reading of the input rather
+  # than a line that always prints: a fully parsed run must say so.
+  assert_grep "$TMP/mc-partdup.out" '^DEGRADED INPUT: none — every record stream parsed in full\.' \
+    'and a fully parsed stream says so, rather than the block being unconditional prose'
+
+  # ------------------------------------------------------------------------------------------
+  # 13d. The report survives a pipe.
+  #
+  # `process.stdout.write()` followed by `process.exit()` tears the process down with the queue
+  # unflushed: on a pipe, output is cut at the buffer (65536 bytes). The `RESULT:` line is the LAST
+  # line of the report and the only line a caller greps, so it is the first thing lost — while the
+  # exit code still reads as a clean verdict. The on-disk artifact was never affected (writeReport
+  # is synchronous and runs first), which is exactly why this stayed invisible.
+  # ------------------------------------------------------------------------------------------
+  echo "-- a report larger than the pipe buffer is not truncated"
+
+  # Enough declared signals to push the report past 65536 bytes. They evaluate over the same tiny
+  # stream; the volume is the point, not what any one of them reads.
+  big_signals="$(node -e '
+    const sigs = [];
+    for (let i = 0; i < 700; i++) {
+      sigs.push({ id: `bulk_signal_number_${String(i).padStart(4, "0")}`, kind: "record_match",
+                  description: `bulk padding signal ${i} — present only to grow the report past the pipe buffer`,
+                  record: { type: "system", subtype: "task_started" },
+                  match: [{ field: "subagent_type", op: "equals", value: "wf:pr" }] });
+    }
+    process.stdout.write(JSON.stringify(sigs));
+  ')"
+  manifest "$KIT/m-big.json" "$big_signals"
+  printf '%s\n' '{ "arms": { "A": { "wf375": { "pr_task_dispatches": 1 } } } }' > "$TMP/inv-big.json"
+  # Piped through `cat` — a pipe, not a file: the truncation only reproduces on a pipe.
+  bash "$CHECK" --manifest "$KIT/m-big.json" --run-a "$KIT/run-nodup" \
+    --inventory "$TMP/inv-big.json" --out "$TMP/mc-big" 2>/dev/null | cat >"$TMP/mc-big.out" || true
+  big_bytes="$(wc -c <"$TMP/mc-big.out")"
+  if [ "$big_bytes" -gt 65536 ]; then
+    ok "the piped report exceeds the pipe buffer ($big_bytes bytes), so this case exercises the hazard"
+  else
+    no "the piped report is only $big_bytes bytes — under the 65536-byte buffer, so this case proves nothing"
+  fi
+  assert_grep "$TMP/mc-big.out" '^RESULT: ' \
+    'and its RESULT line — the last line, and the only one a caller greps — survives the pipe'
 else
   no "mechanism-check.sh not found at $CHECK — the WF-423 check sections were skipped, which is a suite failure, not a pass"
 fi

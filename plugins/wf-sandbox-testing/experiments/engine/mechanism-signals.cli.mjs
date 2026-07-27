@@ -25,14 +25,20 @@ import { main, SignalError } from "./mechanism-signals.mjs";
 //
 // The stack still reaches stderr for a genuine defect; only the exit code and the prefix are
 // asserted here, because those are what a caller branches on.
+// `process.exitCode`, never `process.exit()`. Node's stdout is ASYNC on a pipe, so `process.exit()`
+// tears the process down with whatever is still queued unwritten — output is cut at the pipe buffer
+// (65536 bytes) and the trailing lines a caller greps are simply gone, while the exit code still
+// says success. Setting the code and letting the process end on its own drains the queue first.
+// The exit code is the only thing these branches need to control; stopping the process is not.
 try {
-  process.exit(main(process.argv.slice(2)));
+  process.exitCode = main(process.argv.slice(2));
 } catch (e) {
   if (e instanceof SignalError) {
     process.stderr.write(`mechanism-signals: ERROR — ${e.message}\n`);
-    process.exit(2);
+    process.exitCode = 2;
+  } else {
+    process.stderr.write(`mechanism-signals: ERROR — ${e && e.message ? e.message : e}\n`);
+    if (e && e.stack) process.stderr.write(`${e.stack}\n`);
+    process.exitCode = 2;
   }
-  process.stderr.write(`mechanism-signals: ERROR — ${e && e.message ? e.message : e}\n`);
-  if (e && e.stack) process.stderr.write(`${e.stack}\n`);
-  process.exit(2);
 }

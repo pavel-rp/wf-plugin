@@ -305,7 +305,7 @@ main() {
       ["arms.<arm>.wf375.caller_context_bounded",
        "editorial roll-up boolean inferred from the retrieval records; the vocabulary emits the counts, not the inference"],
       ["arms.<arm>.wf375.tf_shape",
-       "prose naming the finalize path; its mechanical content (no separate finalize dispatch record) IS checked, as dispatch presence"],
+       "prose naming the finalize path; its mechanical content (no separate finalize dispatch record) is checked as dispatch presence WHEN the evidence can carry that assertion — read the finalize dispatch presence row, which states MATCH or SKIP for every arm"],
       ["arms.<arm>.*.pointers",
        "line pointers into the stream; the vocabulary counts records, it does not emit line numbers"],
     ];
@@ -353,6 +353,21 @@ main() {
           rows.push(`NOT-MEASURED  arm ${arm} ${sig}: ${res.reason} — the inventory commits ${JSON.stringify(want)}, which this run cannot confirm or refute`);
           continue;
         }
+        // A NEGATIVE observation over incomplete evidence is not a finding. `basis > 0` makes a
+        // POSITIVE count sound — a count is a valid lower bound however many records were mute — but
+        // an observed 0 says "this did not happen" only when every record that was dropped could
+        // have been the thing being claimed absent. `basis_reason` (the evaluator narrowed the
+        // basis) and `stream_malformed_lines` (part of the stream never parsed) are the two ways
+        // that stops holding, and both are stamped on the result precisely so this consumer can see
+        // them. Reading neither is what let a stream with 50 of 51 lines unparseable still report
+        // MATCH and PASS. Only the zero is skipped: a positive count is still checked either way.
+        const partial = res.basis_reason ?? (res.stream_malformed_lines
+          ? `${res.stream_malformed_lines} unparseable line(s) in the record stream — the count was taken over an incomplete stream`
+          : null);
+        if (res.count === 0 && partial) {
+          rows.push(`SKIP   arm ${arm} ${sig}: observed 0 over incomplete evidence (${partial}) — absence of evidence, not evidence of absence`);
+          continue;
+        }
         check(`arm ${arm} ${sig}`, res.count, want);
       }
       // Dispatch-shape labels: the committed "no duplicate PR/TF dispatch" reading.
@@ -360,8 +375,8 @@ main() {
       const pr = obsArm.signals?.wf375_pr_dispatch, tf = obsArm.signals?.wf375_tf_dispatch;
       // Both derived checks below account for EVERY state, including the not-measured one. An
       // unmeasured input must produce a visible SKIP row, never silence: the NARROWED block prints
-      // unconditionally and asserts that the mechanical content of tf_shape "IS checked, as dispatch
-      // presence", so a silently absent row would make that standing claim false.
+      // unconditionally and points at the finalize dispatch presence row for the mechanical content
+      // of tf_shape, so a silently absent row would make that standing claim false.
       if (dupWant === undefined) {
         rows.push(`SKIP   arm ${arm} duplicate PR/TF dispatches: no committed counterpart`);
       } else if (pr?.status !== "measured" || tf?.status !== "measured") {
@@ -384,6 +399,11 @@ main() {
         rows.push(`SKIP   arm ${arm} finalize dispatch presence: no committed counterpart`);
       } else if (tf?.status !== "measured") {
         rows.push(`SKIP   arm ${arm} finalize dispatch presence: wf375_tf_dispatch is not measured (${tf?.reason ?? "not evaluated"})`);
+      } else if (tf.presence === "absent" && (tf.basis_reason || tf.stream_malformed_lines)) {
+        // `presence: "absent"` IS the negative assertion, so it takes the same partial-evidence rule
+        // the counts above take — and it takes it harder, because there is no positive reading of
+        // "absent" to fall back on. A "present" verdict needs no guard: one matching record proves it.
+        rows.push(`SKIP   arm ${arm} finalize dispatch presence: observed "absent" over incomplete evidence (${tf.basis_reason ?? `${tf.stream_malformed_lines} unparseable line(s) in the record stream`}) — absence of evidence, not evidence of absence`);
       } else {
         check(`arm ${arm} finalize dispatch presence`, tf.presence, "absent");
       }
@@ -412,6 +432,15 @@ main() {
       // a number that disagrees with the oracle — it is no number at all.
       if (d.status !== "measured") {
         rows.push(`NOT-MEASURED  delta ${sig}: ${d.reason} — the inventory commits ${JSON.stringify(want)}, which this run cannot confirm or refute`);
+        continue;
+      }
+      // The same partial-evidence rule as the counts, applied to EVERY delta rather than only a zero
+      // one. The counts guard the negative reading because a count over a narrowed basis is still a
+      // lower bound; a DIFFERENCE of two lower bounds is bounded in neither direction, so no reading
+      // of it survives. Without this, two unsound zeros still combined into a confident
+      // `observed=0 committed=0` — the same false green, one derivation further out.
+      if (d.basis_reason) {
+        rows.push(`SKIP   delta ${sig}: computed over incomplete evidence (${d.basis_reason})`);
         continue;
       }
       check(`delta ${sig} (B - A)`, d.delta, want);
@@ -448,26 +477,47 @@ main() {
     lines.push(notMeasured.length ? "NOT MEASURED in this run (reported, never invented):" : "NOT MEASURED in this run: none.");
     lines.push(...notMeasured);
     lines.push("");
+    // The evaluator stamps every arm with the count of lines it could not parse, and stamps the same
+    // degradation onto each result taken from that arm, with the stated intent that "a consumer
+    // reading one result must be able to see that its number was computed over an incomplete
+    // stream". This is the consumer, and until now it read neither field — a stream with 50 of 51
+    // lines unparseable still printed MATCH and PASS with the degradation mentioned nowhere. The
+    // SKIP rule above stops an incomplete stream ASSERTING a zero; this block is what stops it being
+    // invisible on the checks that legitimately still ran.
+    const degraded = [];
+    for (const arm of Object.keys(observed.arms ?? {})) {
+      const n = observed.arms[arm].malformed_lines;
+      if (n) degraded.push(`  - arm ${arm}: ${n} unparseable line(s) — every count taken from this arm is a lower bound, not a total`);
+    }
+    lines.push(degraded.length ? "DEGRADED INPUT (counts below were taken over an incomplete stream):" : "DEGRADED INPUT: none — every record stream parsed in full.");
+    lines.push(...degraded);
+    lines.push("");
     // A run that compared nothing is not a pass. Reaching here with zero MATCH rows means every
     // binding fell through to SKIP, so the oracle asserted nothing about this evidence — an input
     // error, reported as such rather than dressed up as agreement.
     const matched = rows.filter((r) => r.startsWith("MATCH")).length;
-    if (failed === 0 && matched === 0) {
-      const text = `${lines.join("\n")}\nRESULT: ERROR — zero values were compared; every binding fell through to SKIP, so this run asserts nothing.\n`;
-      writeReport(text);
-      process.stdout.write(text);
-      process.exit(2);
-    }
-    lines.push(failed === 0
-      ? `RESULT: PASS — every checked value reproduces the committed inventory (${matched} checks).`
-      : `RESULT: FAIL — ${failed} value(s) diverge from the committed inventory.`);
+    const nothingCompared = failed === 0 && matched === 0;
+    lines.push(nothingCompared
+      ? "RESULT: ERROR — zero values were compared; every binding fell through to SKIP, so this run asserts nothing."
+      : failed === 0
+        ? `RESULT: PASS — every checked value reproduces the committed inventory (${matched} checks).`
+        : `RESULT: FAIL — ${failed} value(s) diverge from the committed inventory.`);
     // Written by the reporter itself rather than piped through `tee`: a mid-run failure would leave
     // tee having already truncated the report to zero bytes, destroying the previous record of a
     // run, for a reason that has nothing to do with the comparison.
     const text = `${lines.join("\n")}\n`;
     writeReport(text);
     process.stdout.write(text);
-    process.exit(failed === 0 ? 0 : 1);
+    // `process.exitCode`, never `process.exit()`. Node stdout is ASYNC on a pipe: `process.exit()`
+    // tears the process down with the queue unflushed, cutting output at the pipe buffer (65536
+    // bytes) — and the `RESULT:` line, the one line a caller greps, is at the END of the report, so
+    // it is the first thing lost while the exit code still reads as a clean verdict. Setting the
+    // code and letting the process end on its own drains the queue first. The on-disk report was
+    // never affected (writeReport is synchronous and runs first); only the piped copy was.
+    //
+    // The ERROR path is folded into the same single write for the same reason — it was a second
+    // write-then-exit with the identical hazard, and splitting the two paths is what left it there.
+    process.exitCode = nothingCompared ? 2 : failed === 0 ? 0 : 1;
   ' "$resolved_out/mechanism-signals.json" "$inventory" "$resolved_out/mechanism-check.txt"
 }
 
