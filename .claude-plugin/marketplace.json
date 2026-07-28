@@ -51,7 +51,7 @@
     {
       "name": "wf-angular",
       "source": "./plugins/wf-angular",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "description": "wf Angular stack pack: the angular capability owning the wf capability-registry's qa-execution host surface. Ships /wf-angular:qa-host (routed Angular test-host scaffolder + ephemeral backend-controller analog) and /wf-angular:test-page (browser-run black-box DI-level test harness). Every project-specific token in the scaffolded output is profile-slot-driven, so scaffolding a differently-named app emits no borrowed identifiers; surface: host composes with browser-qa's surface: engine with no partition collision. Tracker-agnostic (requires: git only). Ships /wf-angular:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
@@ -111,7 +111,7 @@
     {
       "name": "wf-author-caps",
       "source": "./plugins/wf-author-caps",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "description": "wf authoring toolkit: the author-caps capability, teaching how to author capabilities, skills, and plugins for this marketplace. Ships two model-invoked reference skills — /wf-author-caps:authoring-guide (core-versus-capability sorting, plugin anatomy, interface-first skill design, skill-versus-subagent, native and registry composition, the registration flow, canonical vocabulary) and /wf-author-caps:authoring-taxonomy (the SDD phase spine, the contribution kinds, aggregate-versus-partition policy, manifest schema v2, the registry row, constitution composition, registry validation) — that load by description auto-selection when an authoring question comes up, no slash command required. Declared kind: both; attaches five inline phase fragments — guidance at spec and implement, two findings at verify (structural validation and reference existence), a scenario at qa-generation — plus constitution article keys, all inert until registered. Ships four scaffolders that emit real, already-linted files — /wf-author-caps:new-skill, /wf-author-caps:new-capability, /wf-author-caps:new-pack (a complete registerable pack skeleton: plugin manifest, capability folder, and an init skill on the pack-onboarding spine) and /wf-author-caps:new-provider (a capability bound to one contract surface, speaking only the abstract operations with binding values in profile slots) — plus /wf-author-caps:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"

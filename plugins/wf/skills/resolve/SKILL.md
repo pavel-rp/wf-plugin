@@ -1,7 +1,7 @@
 ---
 name: resolve
 description: Inspects and manages the wf resolution snapshot through the bundled typed resolver MCP service — the same typed tools normal skills and isolated subagents use to obtain config, capability, provider, path, and diagnostic facts. Dispatches inspect (show state + diagnostics), refresh (rebuild the resolved view), and invalidate (mark it stale). Use to check what wf resolved, force a rebuild after changing the registry or installed packs, or debug a capability that is not resolving.
-allowed-tools: [Read, Bash]
+allowed-tools: [Read, Bash, ToolSearch]
 ---
 
 # /wf:resolve — Inspect and manage the resolution snapshot

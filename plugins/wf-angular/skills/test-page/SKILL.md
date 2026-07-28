@@ -1,7 +1,7 @@
 ---
 name: test-page
 description: Scaffolds black-box TypeScript tests for Angular-runtime targets — behavioral (services, components, pipes, guards, interceptors, directives) and wiring/registration (state models, app initializers, modules, routes, DI configs) — and injects them into the stack's configured sandbox module-test page (a profile slot). The user loads the page in a browser and pastes the console output back for verdict. Tests derive from the spec, not the implementation. Use when a target needs the Angular runtime (DI, zone.js, HttpClient) and can't be exercised by /wf-node-ts:test-node.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, ToolSearch]
 ---
 
 # /wf-angular:test-page — Browser-run black-box tests for Angular targets
@@ -24,7 +24,7 @@ into chat; the model verifies pass/fail against the spec.
 
 ## Stack profile (read first)
 
-This skill carries no project token. The Angular stack values come from the `angular` capability's **profile** — obtained by calling the bundled `wf-resolver` MCP tool `resolve_profile({ capability: "angular", workspaceRoot })`. It returns the override-merged profile **values** directly (`_local/profiles/angular.profile.json` override merged over the capability's `profile.template.json` default, precedence: **override > capability default**) — this skill performs no direct profile-file read and no capability-registry-path walk of its own. If the response reports `present: false`, stop and direct the user to `/wf:init` (which seeds the override on divergence). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-read the profile files as a fallback. The slots this skill uses, referenced as placeholders below:
+This skill carries no project token. The Angular stack values come from the `angular` capability's **profile** — obtained by calling the bundled `wf-resolver` MCP tool `resolve_profile({ capability: "angular", workspaceRoot })`. It returns the override-merged profile **values** directly (`_local/profiles/angular.profile.json` override merged over the capability's `profile.template.json` default, precedence: **override > capability default**) — this skill performs no direct profile-file read and no capability-registry-path walk of its own. If the response reports `present: false`, stop and direct the user to `/wf:init` (which seeds the override on divergence). `resolve_profile` is **deferred**: its schema loads on demand, so a "no such tool" on first reach means *not yet fetched*, not *not installed*. Fetch it through the host's tool-search surface and retry once. Only if the retry still fails, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-read the profile files as a fallback. The slots this skill uses, referenced as placeholders below:
 
 - `{test-host-root}` — root under which the sandbox module-test component and its `_page-tests/` folder live. The sandbox component folder is `{test-host-root}/{sandbox-host-folder}/`.
 - `{sandbox-host-folder}` — the folder name of the sandbox module-test host that page-tests inject into.

@@ -1,7 +1,7 @@
 ---
 name: new-pack
 description: Scaffolds a complete registerable plugin pack by interviewing the author for the pack's name, purpose, and its one capability, emitting the plugin manifest, the capability folder, and an init skill on the pack-onboarding spine, then self-linting the whole set and fixing its own findings before handing anything back. Use when the user wants to create, scaffold, or generate a new wf plugin pack, a pack skeleton, or a pack that registers itself, rather than an explanation of the pack anatomy.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, ToolSearch]
 ---
 
 # /wf-author-caps:new-pack — interview in, registerable pack out
@@ -35,9 +35,14 @@ one skill alone use `/wf-author-caps:new-skill`; for a capability that binds a p
 ## Prerequisites
 
 The bundled `wf-resolver` MCP service must be loaded — it supplies the typed validators this skill
-self-lints with, the rule-set bodies it emits from, and the plugin roots it resolves paths from. If
-it is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code); do
-not hand-roll the checks.
+self-lints with, the rule-set bodies it emits from, and the plugin roots it resolves paths from.
+Apart from `resolve_content`, `resolve_config`, and `resolve_registry`, every tool this skill reaches
+(`validate_manifest`, `validate_registry`, `validate_references`, `validate_skill_interface`,
+`resolve_plugin_root`, `resolve_gate`, `preview_composition`, `inspect_pack`, `register_pack`) is
+**deferred**: their schemas load on demand, so a "no such tool" on first reach means *not yet
+fetched*, not *not installed*. Fetch them through the host's tool-search surface and retry once. Only
+if the retry still fails, stop and report that the resolver runtime is not loaded (restart Claude
+Code); do not hand-roll the checks.
 
 ## Command Syntax
 

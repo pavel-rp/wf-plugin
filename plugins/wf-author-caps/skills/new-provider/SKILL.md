@@ -1,7 +1,7 @@
 ---
 name: new-provider
 description: Scaffolds a provider capability bound to one contract surface by interviewing the author for the target plugin, the capability name, and the surface (tracker, delivery, engine, or host), warning at interview time when a capability already owns that surface, then emitting a schema-v2 manifest whose provider row carries the surface scope plus a fragment speaking only the abstract contract operations, self-linting the set and fixing its own findings before handing anything back. Use when the user wants to create, scaffold, or generate a provider capability, a tracker or delivery binding, or a QA engine or host binding, rather than an explanation of the provider surfaces.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, ToolSearch]
 ---
 
 # /wf-author-caps:new-provider — interview in, surface-bound provider out
@@ -37,8 +37,13 @@ this capability use `/wf-author-caps:new-pack`. For *why* the surfaces partition
 
 The bundled `wf-resolver` MCP service must be loaded — it supplies the typed validators this skill
 self-lints with, the rule-set body it emits from, the active registry it checks the surface against,
-and the plugin roots it resolves paths from. If it is unavailable, stop and report that the resolver
-runtime is not loaded (restart Claude Code); do not hand-roll the checks.
+and the plugin roots it resolves paths from. Apart from `resolve_content` and `resolve_registry`,
+every tool this skill reaches (`validate_manifest`, `validate_registry`, `validate_references`,
+`validate_skill_interface`, `resolve_plugin_root`, `preview_composition`, `inspect_pack`,
+`register_pack`) is **deferred**: their schemas load on demand, so a "no such tool" on first reach
+means *not yet fetched*, not *not installed*. Fetch them through the host's tool-search surface and
+retry once. Only if the retry still fails, stop and report that the resolver runtime is not loaded
+(restart Claude Code); do not hand-roll the checks.
 
 ## Command Syntax
 

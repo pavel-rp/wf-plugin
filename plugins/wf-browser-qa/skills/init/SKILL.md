@@ -1,7 +1,7 @@
 ---
 name: init
 description: Onboards the wf-browser-qa pack into a wf-initialized repo in one command — self-registers the browser-qa capability with core via the typed resolver MCP tools (inspect_pack/register_pack), keyed by the pack's stable plugin id. Use once (after /wf:init) to activate the browser-automation QA engine without probing $CLAUDE_PLUGIN_ROOT or hand-editing _local/config.md or the plugin-roots map; upgrades self-heal, so re-run only if resolution reports the pack unrecoverable or after relocating the pack.
-allowed-tools: [Read, Write, Edit, Bash]
+allowed-tools: [Read, Write, Edit, Bash, ToolSearch]
 ---
 
 # /wf-browser-qa:init — Onboard the wf-browser-qa pack (self-register via the resolver)

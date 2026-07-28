@@ -1,7 +1,7 @@
 ---
 name: init
 description: Onboards the wf-audit pack into a wf-initialized repo in one command — self-registers both the audit and sr capabilities with core via the typed resolver MCP tools (inspect_pack/register_pack), keyed by the pack's stable plugin id, then seeds the audit profile. Use once (after /wf:init) to activate the five verify-phase adversarial lenses plus the pre-commit self-review lens without probing $CLAUDE_PLUGIN_ROOT or hand-editing _local/config.md or the plugin-roots map; upgrades self-heal, so re-run only if resolution reports a capability unrecoverable or after relocating the pack.
-allowed-tools: [Read, Write, Edit, Bash]
+allowed-tools: [Read, Write, Edit, Bash, ToolSearch]
 ---
 
 # /wf-audit:init — Onboard the wf-audit pack (self-register via the resolver)
