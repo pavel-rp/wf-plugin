@@ -21,7 +21,68 @@
     { "base": "A", "against": "B" },
     { "base": "B", "against": "R1" }
   ],
-  "mechanism_signals": [],
+  "mechanism_signals": [
+    {
+      "id": "wf374_audit_lens_boots",
+      "kind": "record_match",
+      "description": "all audit-lens boots — dispatch records naming an audit lens",
+      "record": { "type": "system", "subtype": "task_started" },
+      "match": [{ "field": "subagent_type", "op": "prefix", "value": "wf-audit:" }]
+    },
+    {
+      "id": "wf374_gated_off_lens_boots",
+      "kind": "record_match",
+      "description": "audit-lens boots whose own record identifies the boot as gated off",
+      "record": { "type": "system", "subtype": "task_started" },
+      "match": [
+        { "field": "subagent_type", "op": "prefix", "value": "wf-audit:" },
+        { "field": "", "op": "contains", "value": ["gated-off", "gated off"] }
+      ]
+    },
+    {
+      "id": "wf374_finding_contract_refetches",
+      "kind": "record_match",
+      "description": "raw occurrences of a finding-contract refetch anywhere in the stream",
+      "match": [{ "field": "", "op": "contains", "value": ["finding-contract", "finding.contract"] }]
+    },
+    {
+      "id": "wf375_pr_dispatch",
+      "kind": "dispatch_shape",
+      "description": "explicit PR-phase child dispatches",
+      "subagent_type": "wf:pr"
+    },
+    {
+      "id": "wf375_tf_dispatch",
+      "kind": "dispatch_shape",
+      "description": "separate finalize-phase child dispatches (absent means the finalize path is inline)",
+      "subagent_type": "wf:tf"
+    },
+    {
+      "id": "wf375_taskoutput_timeouts",
+      "kind": "record_match",
+      "description": "child-retrieval timeout records — the compact caller-side status path",
+      "match": [{ "field": "", "op": "contains", "value": "<retrieval_status>timeout</retrieval_status>" }]
+    },
+    {
+      "id": "wf375_taskoutput_successes",
+      "kind": "record_match",
+      "description": "child-retrieval success records — the compact caller-side status path",
+      "match": [{ "field": "", "op": "contains", "value": "<retrieval_status>success</retrieval_status>" }]
+    },
+    {
+      "id": "wf379_index_dispatch",
+      "kind": "dispatch_shape",
+      "description": "per-task index child dispatches (absent means the index write is inline)",
+      "subagent_type": "wf:index"
+    },
+    {
+      "id": "wf376_dispatch_model_tier",
+      "kind": "record_match",
+      "description": "dispatch records pinning a top-tier model — the routing tier assertion",
+      "record": { "type": "system", "subtype": "task_started" },
+      "match": [{ "field": "model", "op": "contains", "value": "opus" }]
+    }
+  ],
   "blinding": {
     "vocabulary": [
       "experiment",
