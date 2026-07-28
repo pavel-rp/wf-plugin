@@ -1,7 +1,7 @@
 ---
 name: new-skill
 description: Scaffolds a new, conforming SKILL.md by interviewing the author for the skill's name, purpose, invocation shape, and zero-argument default, emitting the real file against the live authoring contracts, then self-linting it and fixing its own findings before handing anything back. Use when the user wants to create, scaffold, generate, or start a new skill for a wf plugin, or asks for a conforming SKILL.md rather than an explanation of the conventions.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, ToolSearch]
 ---
 
 # /wf-author-caps:new-skill — interview in, clean SKILL.md out
@@ -22,8 +22,11 @@ build half: it applies them.
 ## Prerequisites
 
 The bundled `wf-resolver` MCP service must be loaded — it supplies the typed validator this skill
-self-lints with and the plugin roots it resolves paths from. If it is unavailable, stop and report
-that the resolver runtime is not loaded (restart Claude Code); do not hand-roll the checks.
+self-lints with and the plugin roots it resolves paths from. Those tools (`validate_skill_interface`,
+`resolve_plugin_root`) are **deferred**: their schemas load on demand, so a "no such tool" on first
+reach means *not yet fetched*, not *not installed*. Fetch them through the host's tool-search surface
+and retry once. Only if the retry still fails, stop and report that the resolver runtime is not
+loaded (restart Claude Code); do not hand-roll the checks.
 
 ## Command Syntax
 

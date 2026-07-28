@@ -1,7 +1,7 @@
 ---
 name: init
 description: Initializes the current repository for the wf:* skill suite by creating the _local/ task folder, writing a default _local/config.md, gitignoring _local/, scaffolding the _testkit test runner, and optionally adding project-specific git excludes. Use once per new repository before running /wf:spec — idempotent on subsequent runs.
-allowed-tools: [Read, Write, Edit, Glob, Bash]
+allowed-tools: [Read, Write, Edit, Glob, Bash, ToolSearch]
 ---
 
 # /wf:init — Bootstrap a repo for the wf:* skill suite
@@ -176,7 +176,8 @@ Phase 2 and Phase 2.5 are the writes that mutate the resolution substrate the `w
 
 1. **Call `resolve_refresh({ workspaceRoot: resolverWorkspaceRoot, reasons: ["/wf:init wrote _local/config.md, the capability registry, and profile seeds"] })`.** It rebuilds the snapshot from the now-current files and returns the fresh lifecycle state — `{ valid, counts{ capabilities, packs, providers }, diagnostics[] }`.
 2. **On success**, note the returned `counts.capabilities` for the chat summary.
-3. **On failure, or when the service is unavailable, do not stop `init`** — the writes already landed on disk, and the resolver's own fingerprint-driven freshness rebuilds on the next natural query even without this call. Flag in the chat summary that the explicit refresh didn't confirm and suggest `/wf:resolve refresh` (WF-272 diagnostics/recovery) — never fall back to re-deriving the registry by hand to "confirm" it.
+3. **On a "no such tool", fetch and retry once before degrading.** `resolve_refresh` is **deferred**: its schema loads on demand, so that error on first reach means *not yet fetched*, not *not installed*. Fetch it through the host's tool-search surface and repeat step 1 once; only a second failure degrades to step 4.
+4. **On failure, or when the service is unavailable, do not stop `init`** — the writes already landed on disk, and the resolver's own fingerprint-driven freshness rebuilds on the next natural query even without this call. Flag in the chat summary that the explicit refresh didn't confirm and suggest `/wf:resolve refresh` (WF-272 diagnostics/recovery) — never fall back to re-deriving the registry by hand to "confirm" it.
 
 This is `init`'s only resolver **write-adjacent** call. It never calls `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })`: that call registers one pack's own capability under a stable plugin id, whereas `init` establishes the substrate those calls attach to — the empty (or project-clause-only) registry a pack's own init later registers into.
 

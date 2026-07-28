@@ -394,8 +394,18 @@ noting what is and is not machine-checkable in this repo:
    runner and the phases/providers/subagents it drives (including the wf-audit verify
    lenses converted in this slice) reach every bundled doc through `resolve_content`, so
    the pass raises **no plugin-cache-path permission prompt** — the prompt class C011 set
-   out to eliminate. The `wf-resolver` server is `alwaysLoad: true`, so its single tool-use
-   grant is in force for the whole pass.
+   out to eliminate. `resolve_content` is one of the five tools marked resident per tool
+   (`_meta["anthropic/alwaysLoad"]`, see `mcp/src/tools.ts`), so it is reachable without a
+   tool-search round trip and its single tool-use grant is in force for the whole pass.
+
+   > **Superseded detail (kept for provenance).** This point originally read "the
+   > `wf-resolver` server is `alwaysLoad: true`". That blanket server-level flag was
+   > replaced by per-tool residency to stop all 20 schemas (~8.1K tokens) loading into every
+   > resolver-booting context. The claim above is unchanged **for `resolve_content`**, which
+   > stays resident. Note the grant itself is keyed to the tool name, not to schema
+   > residency, so a deferred tool is granted identically once reached — but the pass no
+   > longer benefits from the server-level flag's *blocking* startup connect. See D8 in
+   > [wf-token-leak-inventory.md](./wf-token-leak-inventory.md).
 3. **The grant survives a version bump (OUT-3, reinforcing OUT-1).** The grant is keyed to
    the MCP tool, not to a version-pinned cache path, so a plugin version bump that relocates
    the cache does not re-prompt — no new per-path grant is needed (exercised hermetically by

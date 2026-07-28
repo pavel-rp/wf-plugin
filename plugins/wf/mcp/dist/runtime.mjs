@@ -20151,6 +20151,7 @@ var reasonsInput = fromJsonSchema2(withWorkspaceRoot({
 function toReasons(reasons, code) {
   return (reasons ?? []).filter((r) => typeof r === "string" && r.trim().length > 0).map((message) => ({ code, message: message.trim() }));
 }
+var RESIDENT = { "anthropic/alwaysLoad": true };
 function registerResolverTools(server, selectService) {
   const selected = (args, fn) => guard(() => fn(selectService(args.workspaceRoot)));
   server.registerTool(
@@ -20158,7 +20159,8 @@ function registerResolverTools(server, selectService) {
     {
       title: "resolve config",
       inputSchema: workspaceOnlyInput,
-      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies."
+      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
+      _meta: RESIDENT
     },
     async (args) => selected(args, (service) => service.resolveConfig())
   );
@@ -20167,7 +20169,8 @@ function registerResolverTools(server, selectService) {
     {
       title: "resolve registry",
       inputSchema: workspaceOnlyInput,
-      description: "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body."
+      description: "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body.",
+      _meta: RESIDENT
     },
     async (args) => selected(args, (service) => service.resolveRegistry())
   );
@@ -20176,7 +20179,8 @@ function registerResolverTools(server, selectService) {
     {
       title: "resolve provider",
       description: "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
-      inputSchema: surfaceInput
+      inputSchema: surfaceInput,
+      _meta: RESIDENT
     },
     async (args) => selected(args, (service) => service.resolveProvider(args.surface))
   );
@@ -20204,7 +20208,8 @@ function registerResolverTools(server, selectService) {
       title: "resolve routing",
       description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. Body-free.",
       inputSchema: routingInput,
-      outputSchema: routingOutput
+      outputSchema: routingOutput,
+      _meta: RESIDENT
     },
     async (args) => {
       const { workspaceRoot, ...inputs } = args;
@@ -20225,7 +20230,8 @@ function registerResolverTools(server, selectService) {
     {
       title: "resolve content",
       description: "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path \u2014 the metadata queries stay body-free.",
-      inputSchema: contentInput
+      inputSchema: contentInput,
+      _meta: RESIDENT
     },
     async (args) => {
       const { workspaceRoot, ...ref } = args;

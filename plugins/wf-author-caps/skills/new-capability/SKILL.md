@@ -1,7 +1,7 @@
 ---
 name: new-capability
 description: Scaffolds a new, conforming capability by interviewing the author for its name, kind, and each phase contribution, emitting a schema-v2 manifest plus every declared fragment file at exactly the path its row names, then self-linting the set against registry validation and the vocabulary lint and fixing its own findings before handing anything back. Use when the user wants to create, scaffold, or generate a new capability, a capability manifest, or its phase fragments, rather than an explanation of the schema.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, ToolSearch]
 ---
 
 # /wf-author-caps:new-capability — interview in, clean capability out
@@ -23,9 +23,13 @@ half: it applies it. For a skill rather than a capability, use `/wf-author-caps:
 ## Prerequisites
 
 The bundled `wf-resolver` MCP service must be loaded — it supplies the typed validators this skill
-self-lints with, the reference bodies it emits from, and the plugin roots it resolves paths from. If
-it is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code); do
-not hand-roll the checks.
+self-lints with, the reference bodies it emits from, and the plugin roots it resolves paths from.
+Apart from `resolve_content`, every tool this skill reaches (`validate_manifest`, `validate_registry`,
+`validate_skill_interface`, `resolve_plugin_root`, `inspect_pack`, `register_pack`) is **deferred**:
+their schemas load on demand, so a "no such tool" on first reach means *not yet fetched*, not *not
+installed*. Fetch them through the host's tool-search surface and retry once. Only if the retry still
+fails, stop and report that the resolver runtime is not loaded (restart Claude Code); do not
+hand-roll the checks.
 
 ## Command Syntax
 

@@ -1,7 +1,7 @@
 ---
 name: init
 description: Onboards the wf-browser-qa pack into a wf-initialized repo in one command — self-registers the browser-qa capability with core via the typed resolver MCP tools (inspect_pack/register_pack), keyed by the pack's stable plugin id. Use once (after /wf:init) to activate the browser-automation QA engine without probing $CLAUDE_PLUGIN_ROOT or hand-editing _local/config.md or the plugin-roots map; upgrades self-heal, so re-run only if resolution reports the pack unrecoverable or after relocating the pack.
-allowed-tools: [Read, Write, Edit, Bash]
+allowed-tools: [Read, Write, Edit, Bash, ToolSearch]
 ---
 
 # /wf-browser-qa:init — Onboard the wf-browser-qa pack (self-register via the resolver)
@@ -177,9 +177,10 @@ validated the registered capability there.
 - **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
   `/wf:init` (Phase 0). This skill augments a registry; it never bootstraps one.
 - **Resolver MCP unavailable** (`inspect_pack`/`register_pack`/`resolve_gate` unreachable):
-  the tools are unreachable (wf core's `.mcp.json` sets `alwaysLoad: true` for the bundled
-  `wf-resolver` server, so this is unusual). Stop and report that the resolver runtime is
-  not loaded; suggest restarting Claude Code. Do **not** fall back to a hand-rolled
+  these tools are **deferred** — their schemas load on demand, so a "no such tool" on first
+  reach means *not yet fetched*, not *not installed*. Fetch them through the host's
+  tool-search surface and retry once. Only if the retry still fails, stop and report that
+  the resolver runtime is not loaded; suggest restarting Claude Code. Do **not** fall back to a hand-rolled
   `${CLAUDE_PLUGIN_ROOT}` probe or a manual registry edit — that is exactly the discovery
   this service replaces.
 - **`browser-qa` already registered** (Phase 2 step 1 found a matching row):

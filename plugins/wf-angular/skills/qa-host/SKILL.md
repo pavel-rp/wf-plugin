@@ -1,7 +1,7 @@
 ---
 name: qa-host
 description: Scaffolds a routed Angular test-host page for a component that lacks one — creates a host folder under the stack's configured web root with a real-DI component plus status-panel template, and makes the standard routing-module edits (import, child route with the configured guards, static-components array). Every project-specific token — web/test-host paths, routing-module class, route prefix, sandbox host, and route guards — comes from the angular capability profile. Also augments an existing host with type-driven input controls and output observation, and can temporarily wire a backend method to a controller so a QA scenario can exercise it over HTTP. Idempotent — re-invoking on an existing host returns its route URL. Use when /wf:qa-auto or /wf:qa-followup needs a runnable URL or endpoint for a component or service still in development.
-allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Skill]
+allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Skill, ToolSearch]
 ---
 
 # /wf-angular:qa-host — Routed Angular test-host scaffolder
@@ -20,7 +20,7 @@ For DI-level black-box tests (component method behavior verified via `injector.g
 
 ## Stack profile (read first)
 
-This skill carries no project token. Every project-specific value comes from the `angular` capability's **profile** — obtained by calling the bundled `wf-resolver` MCP tool `resolve_profile({ capability: "angular", workspaceRoot })`. It returns the override-merged profile **values** directly (`_local/profiles/angular.profile.json` override merged over the capability's `profile.template.json` default, precedence: **override > capability default**) — this skill performs no direct profile-file read and no capability-registry-path walk of its own. If the response reports `present: false`, stop and direct the user to `/wf:init` (which seeds the override on divergence). If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-read the profile files as a fallback. The slots, referenced as placeholders below:
+This skill carries no project token. Every project-specific value comes from the `angular` capability's **profile** — obtained by calling the bundled `wf-resolver` MCP tool `resolve_profile({ capability: "angular", workspaceRoot })`. It returns the override-merged profile **values** directly (`_local/profiles/angular.profile.json` override merged over the capability's `profile.template.json` default, precedence: **override > capability default**) — this skill performs no direct profile-file read and no capability-registry-path walk of its own. If the response reports `present: false`, stop and direct the user to `/wf:init` (which seeds the override on divergence). `resolve_profile` is **deferred**: its schema loads on demand, so a "no such tool" on first reach means *not yet fetched*, not *not installed*. Fetch it through the host's tool-search surface and retry once. Only if the retry still fails, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-read the profile files as a fallback. The slots, referenced as placeholders below:
 
 - `{web-root}` — repo-relative root of the Angular web project.
 - `{routing-module}` — the routing module the test-host route is added to.
