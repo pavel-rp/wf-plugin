@@ -23,12 +23,20 @@
     {
       "id": "routing-record-present",
       "kind": "record_match",
-      "description": "A routing decision record is emitted for each fixed child execution."
+      "description": "A routing decision record is emitted for each fixed child execution.",
+      "match": [
+        {
+          "field": "",
+          "op": "contains",
+          "value": ["resolve_routing", "executionShape"]
+        }
+      ]
     },
     {
       "id": "child-shape-inline",
       "kind": "dispatch_shape",
-      "description": "The selected execution shape for an atomic caller-context unit is inline."
+      "description": "The selected execution shape for an atomic caller-context unit is inline.",
+      "subagent_type": "wf:index"
     }
   ],
   "blinding": {
