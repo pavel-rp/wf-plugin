@@ -23,6 +23,9 @@
 set -euo pipefail
 
 ENGINE_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# engine → experiments → <pack> → plugins → repo root. Used only to route scratch under
+# `_local/scratch/` (constitution article 9); resolved here so the traversal is stated once.
+REPO_ROOT="$(cd "$ENGINE_DIR/../../../.." && pwd)"
 FLEET_COST="$ENGINE_DIR/../../accounting/fleet-cost.mjs"
 # The CLI entry, never the module: mechanism-signals.mjs is import-pure and self-executes nothing,
 # so invoking it directly would run no code and exit 0 having written none of the files this script
@@ -146,10 +149,24 @@ main() {
   # --- per-arm measurement ----------------------------------------------------------------------
   for n in "${!ARM_LABELS[@]}"; do
     l="${ARM_LABELS[$n]}"
-    local sid; sid="$(session_id_of "${run_dirs[$n]}/run.json")"
+    # The `|| die` is not decoration. Under `set -e` an uncaught throw inside the inline reader
+    # (a missing run.json, malformed JSON) kills the script at the assignment with node's raw stack
+    # and **exit 1** — the MISMATCH code — before the emptiness guard below is ever reached. That is
+    # the same IO-failure-impersonating-a-verdict this file guards the two node HELPER invocations
+    # against; the inline readers were the unnoticed half of it.
+    local sid; sid="$(session_id_of "${run_dirs[$n]}/run.json")" \
+      || die "could not read arm $l's run.json at ${run_dirs[$n]}/run.json (its own error is above)"
     [ -n "$sid" ] || die "could not resolve arm $l's measured session id from ${run_dirs[$n]}/run.json"
     if [ -z "${proj_roots[$n]}" ]; then
-      local scratch; scratch="$(mktemp -d)"
+      # Constitution article 9: scratch lives under `_local/scratch/`, never a system temp dir.
+      # Same fallback shape as the engine selfcheck — if the repo scratch area is unavailable
+      # (running the engine outside a checkout) a system temp dir is better than not running.
+      local scratch
+      if mkdir -p "$REPO_ROOT/_local/scratch" 2>/dev/null; then
+        scratch="$(mktemp -d "$REPO_ROOT/_local/scratch/analyze-projects.XXXXXX")"
+      else
+        scratch="$(mktemp -d)"
+      fi
       proj_roots[$n]="$(extract_projects_root "${run_dirs[$n]}" "$scratch")"
     fi
     echo "analyze.sh: measuring arm $l (session=$sid, root=${proj_roots[$n]})" >&2
@@ -178,7 +195,8 @@ main() {
       console.log(`arm ${againstLabel} total: $${cb.toFixed(2)}  (${b.provenance.agents} agents, ${b.totals.messages} messages)`);
       console.log(`delta (${againstLabel} - ${baseLabel}): $${delta.toFixed(2)}${pct == null ? "" : ` (${pct.toFixed(1)}%)`}`);
       console.log(delta < 0 ? `=> arm ${againstLabel} is CHEAPER than arm ${baseLabel}` : delta > 0 ? `=> arm ${againstLabel} is MORE EXPENSIVE than arm ${baseLabel} (state plainly — never reframe)` : "=> no change");
-    ' "$out/measure-$base.json" "$out/measure-$against.json" "$base" "$against" | tee -a "$out/totals-comparison.txt"
+    ' "$out/measure-$base.json" "$out/measure-$against.json" "$base" "$against" | tee -a "$out/totals-comparison.txt" \
+      || die "the totals comparison for arm $against vs arm $base failed (its own error is above)"
   done
 
   # --- declared mechanism signals ---------------------------------------------------------------

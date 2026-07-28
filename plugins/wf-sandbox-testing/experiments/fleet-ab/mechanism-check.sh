@@ -347,8 +347,10 @@ main() {
         //
         // No claim is made here about WHY any particular committed value is what it is. An earlier
         // draft of this comment asserted that two committed wf374_* counts were themselves
-        // artifacts of the presence defect; the real run disproves it (both measure over a basis of
-        // 29/38 and 38/40 — genuine zeros), and mechanism-check/recorded-run.md records that.
+        // artifacts of the presence defect; the real run disproves it, but not in the way a second
+        // draft then claimed either. wf374_audit_lens_boots was never zero at all (10 and 15, both
+        // MATCH), and wf374_gated_off_lens_boots IS zero but over a narrowed basis, so it is now a
+        // SKIP rather than a confirmed zero. mechanism-check/recorded-run.md records both.
         if (res.status !== "measured") {
           rows.push(`NOT-MEASURED  arm ${arm} ${sig}: ${res.reason} — the inventory commits ${JSON.stringify(want)}, which this run cannot confirm or refute`);
           continue;
@@ -373,6 +375,14 @@ main() {
       // Dispatch-shape labels: the committed "no duplicate PR/TF dispatch" reading.
       const dupWant = inv.arms[arm]?.wf375?.duplicate_pr_or_tf_dispatches;
       const pr = obsArm.signals?.wf375_pr_dispatch, tf = obsArm.signals?.wf375_tf_dispatch;
+      // The same two narrowings the counts and the presence verdict read, over BOTH inputs — the
+      // summed duplicate count is only as sound as the weaker of the two results it is summed from.
+      const dupPartial = [
+        pr?.basis_reason ? `wf375_pr_dispatch: ${pr.basis_reason}` : null,
+        tf?.basis_reason ? `wf375_tf_dispatch: ${tf.basis_reason}` : null,
+        pr?.stream_malformed_lines ? `wf375_pr_dispatch: ${pr.stream_malformed_lines} unparseable line(s) in the record stream` : null,
+        tf?.stream_malformed_lines ? `wf375_tf_dispatch: ${tf.stream_malformed_lines} unparseable line(s) in the record stream` : null,
+      ].filter(Boolean).join("; ") || null;
       // Both derived checks below account for EVERY state, including the not-measured one. An
       // unmeasured input must produce a visible SKIP row, never silence: the NARROWED block prints
       // unconditionally and points at the finalize dispatch presence row for the mechanical content
@@ -390,6 +400,21 @@ main() {
         // A PARTIALLY derived duplicate count is a number over part of the evidence; comparing it to
         // the oracle as if fully derived would report a MATCH the evidence does not support.
         rows.push(`SKIP   arm ${arm} duplicate PR/TF dispatches: partially derived (${pr.duplicates_reason ?? tf.duplicates_reason})`);
+      } else if (pr.duplicates + tf.duplicates === 0 && dupPartial) {
+        // The guard above narrows on the ID dimension only — whether the MATCHING dispatches carried
+        // an id. It says nothing about whether the set of matching dispatches is itself complete.
+        // `duplicates` is derived from the records that survived the basis, so a narrowed basis (or
+        // an unparseable stream) means a record that never answered could have been the duplicate.
+        // `observed=0` is a negative assertion and takes the same rule the counts and the presence
+        // verdict take: an unsound zero is a SKIP, not a MATCH.
+        //
+        // This branch is the residual half of the same defect the other two closed. Both of them
+        // read `basis_reason`; this one read only `duplicates_reason`, and the two dimensions narrow
+        // independently — so on the real fleet-ab run (9 of 38 records mute on the dispatch type)
+        // the tf_dispatch count and the finalize presence both SKIPped for incomplete evidence while
+        // this row, derived from those very same records, still printed `MATCH observed=0
+        // committed=0`. Fixing only the halves that were noticed is what this check exists to stop.
+        rows.push(`SKIP   arm ${arm} duplicate PR/TF dispatches: observed 0 over incomplete evidence (${dupPartial}) — absence of evidence, not evidence of absence`);
       } else {
         check(`arm ${arm} duplicate PR/TF dispatches`, pr.duplicates + tf.duplicates, dupWant);
       }

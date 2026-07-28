@@ -2,7 +2,11 @@
 # selfcheck.sh — regression suite for the mechanism-signal validator/evaluator.
 #
 # Offline and spend-free: every synthesized fixture lives under a temp dir and is removed on exit.
-# It WRITES nothing outside that temp dir. It DOES read outside it, though — the containment cases
+# It writes nothing outside that temp dir EXCEPT one directory: §14 hands analyze.sh the relative
+# path `-L/escaped` to prove a dash-prefixed --out is never read as an option, and analyze.sh
+# correctly creates it relative to the launching cwd. §14 removes it immediately. Stating the flat
+# "writes nothing outside the temp dir" would be the same over-claim this suite exists to catch.
+# It DOES read outside it too — the containment cases
 # need a real protected directory to aim at, so the suite reads the fleet-ab kit: its
 # mechanism-check.sh (the script under test), its experiment.json, and a fingerprint of its
 # results/ taken before and after. Those reads are read-only and the fingerprint is asserted
@@ -154,7 +158,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------------
-# 2. Honest non-measurement — every absent dimension.
+# 2. Honest non-measurement — the absent dimensions a consumer asserts on.
+#
+# Not every not-measured condition schema.md enumerates: an arm with no record stream at all, a
+# declared record type the stream carries no instance of, and dispatch_shape over a stream with no
+# dispatch record are covered by the validator cases rather than here. Naming the scope is the
+# point — "every absent dimension" is the kind of over-claim these cases exist to catch.
 # ---------------------------------------------------------------------------------------------
 echo "-- honest non-measurement"
 KIT="$TMP/kit"
@@ -850,7 +859,7 @@ if [ -f "$CHECK" ]; then
   done
   printf '%s\n' '{"type":"system","subtype":"task_started","subagent_type":"wf:other"}' \
     >> "$KIT/run-partbasis/transcript.jsonl"
-  printf '%s\n' '{ "arms": { "A": { "wf375": { "tf_task_dispatches": 0, "tf_shape": "inline" } } } }' \
+  printf '%s\n' '{ "arms": { "A": { "wf375": { "tf_task_dispatches": 0, "tf_shape": "inline", "duplicate_pr_or_tf_dispatches": 0 } } } }' \
     > "$TMP/inv-partbasis.json"
   bash "$CHECK" --manifest "$KIT/m-dup.json" --run-a "$KIT/run-partbasis" \
     --inventory "$TMP/inv-partbasis.json" --out "$TMP/mc-partbasis" >"$TMP/mc-partbasis.out" 2>&1 || true
@@ -862,6 +871,15 @@ if [ -f "$CHECK" ]; then
     'and "absent" over a partial basis is a SKIP too — it is the negative assertion itself'
   assert_no_grep "$TMP/mc-partbasis.out" '^MATCH +arm A finalize dispatch presence' \
     'so a 1-of-40 basis can never render as a reproduced absence'
+  # The DUPLICATES row is the third negative assertion derived from these same two results, and it
+  # is the one that kept passing. Its guard chain read `duplicates_reason` — the ID dimension —
+  # and nothing else, so a basis narrowed on the TYPE dimension sailed through it: the two rows
+  # above SKIPped while this one printed `MATCH observed=0 committed=0` off the identical records.
+  # Both narrowings have to be read, because they narrow independently.
+  assert_grep "$TMP/mc-partbasis.out" '^SKIP +arm A duplicate PR/TF dispatches: observed 0 over incomplete evidence' \
+    'a summed duplicate count of 0 over a partial basis is a SKIP — the mute records could have been the duplicate'
+  assert_no_grep "$TMP/mc-partbasis.out" '^MATCH +arm A duplicate PR/TF dispatches' \
+    'so the committed 0 is never reported as reproduced by evidence that could not carry it'
 
   # A POSITIVE count over the same partial basis is still checked: the guard is on the negative
   # reading only, and over-applying it would silently stop asserting things the evidence supports.

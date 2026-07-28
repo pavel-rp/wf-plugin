@@ -116,6 +116,7 @@ Every signal result is **tri-state and carries its own evidence base**:
 | `presence` | `dispatch_shape` | `present` or `absent` — whether any dispatch names the declared `subagent_type`. |
 | `duplicates` | `dispatch_shape` | Dispatch records re-issued against an id already dispatched, or `null` when the id dimension is absent. |
 | `duplicates_reason` | `dispatch_shape` | Present when `duplicates` is `null` or only partially derived; states which. |
+| `basis_reason` | both | Present on a `measured` result whose `basis` is **smaller than its candidate pool** — some records could not answer this signal at all. States how many of how many answered, and that a zero over that basis is therefore not evidence of absence. Also stamped on a **delta** whose either endpoint carries one. |
 | `stream_malformed_lines` | both | Unparseable lines in the source stream, carried onto every result taken from it. |
 
 `basis` is what makes `count` interpretable: a `0` over a basis of 40 is a real zero, while a `0`
@@ -150,6 +151,25 @@ Consumers must render a `not_measured` row as **its own kind** — never a match
 divergence. `mechanism-check.sh` emits `MATCH` only from a `measured` row and gives a not-measured
 one a `NOT-MEASURED` line stating what the inventory commits and that this run can neither confirm
 nor refute it.
+
+**A `measured` result is not automatically assertable, and this is the part consumers get wrong.**
+`basis > 0` makes a **positive** reading sound — a count over a narrowed basis is a valid lower
+bound, however many records were mute. It does **not** make a **negative** one sound. `count: 0`,
+`presence: "absent"`, and a summed `duplicates` of `0` all say *this did not happen*, which holds
+only when every record that dropped out of the basis was one that could have been the thing claimed
+absent. `basis_reason` and `stream_malformed_lines` are the two ways that stops holding, and they
+are stamped on the result precisely so a consumer can see it. A consumer that asserts a negative
+without reading both is reporting a green it did not measure.
+
+A **delta** takes the rule harder: a difference of two lower bounds is bounded in **neither**
+direction, so a `basis_reason` on either endpoint disqualifies the delta whatever its sign — there
+is no positive reading to fall back on.
+
+`mechanism-check.sh` is the reference consumer. It renders every unsound negative as a `SKIP` line
+carrying the reason, and it applies the rule at all four sites that make one: the per-arm counts,
+the dispatch-presence verdict, the summed duplicate count, and the deltas. Those four narrow
+**independently** — a basis narrowed on the record-type dimension and an id dimension that is
+absent are different failures — so reading one is not reading the others.
 
 ### "Not measured" is a first-class result
 

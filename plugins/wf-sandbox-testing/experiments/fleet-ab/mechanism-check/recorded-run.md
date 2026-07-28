@@ -1,6 +1,6 @@
 # fleet-ab mechanism regression check — recorded run
 
-**Recorded:** 2026-07-27
+**Recorded:** 2026-07-28
 **Model:** claude-opus-5[1m]
 **Checked by:** [`../mechanism-check.sh`](../mechanism-check.sh) over
 [`../../engine/mechanism-signals.cli.mjs`](../../engine/mechanism-signals.cli.mjs)
@@ -9,9 +9,11 @@ self-executes nothing)
 
 **Re-recorded (WF-423)** against the corrected evaluator — one presence predicate, tri-state
 `{status, count, basis}` results, whole-path `--out` canonicalization, and a `NOT-MEASURED` row that
-cannot render as a `MATCH`. **Re-recorded again on review**, once a negative observation over a
-partial basis stopped being asserted as a match: that is what moves this run from 24 checks to 14
-without a single observed value changing.
+cannot render as a `MATCH`. **Re-recorded twice more on review**, as each remaining site that
+asserted a negative observation over a partial basis stopped doing so: first the per-arm counts, the
+dispatch-presence verdict and the deltas (24 checks → 14), then the summed duplicate count, which
+read only the id dimension and so sailed through a basis narrowed on the record-type dimension
+(14 → 12). No observed value changed at any point.
 
 The declared C024 mechanism signals in [`../experiment.json`](../experiment.json), evaluated over the
 committed per-arm run archives and compared against the committed transcript inventory. **Read-only
@@ -49,18 +51,19 @@ bash plugins/wf-sandbox-testing/experiments/fleet-ab/mechanism-check.sh \
 
 ## Result
 
-**14 checks, all matching — 0 mismatches.** Twelve bindings are reported **SKIP**, and the change
-from the previous recording of 24/24 is the point of this run rather than a regression: ten of those
-twelve were previously asserted over evidence that could not carry the assertion.
+**12 checks, all matching — 0 mismatches.** Fourteen bindings are reported **SKIP**, and the change
+from the original recording of 24/24 is the point of this run rather than a regression: twelve of
+those fourteen were previously asserted over evidence that could not carry the assertion.
 
 Three kinds of SKIP appear:
 
-- **Six negative observations over a partial basis.** `count: 0` and `presence: "absent"` say "this
-  did not happen" only when every record excluded from the basis is one that *could* have been the
-  thing claimed absent. On this data the basis is 29 of 38 dispatch records in arm A and 38 of 40 in
-  arm B. **The verdicts were in fact sound** — the mute records are `task_type: "local_bash"` task
-  starts, which structurally never carry `subagent_type` — but nothing in the evaluator knows that;
-  it just drops them. So the honest report is a stated narrowing, not a green check.
+- **Eight negative observations over a partial basis.** `count: 0`, `presence: "absent"` and a
+  summed duplicate count of `0` all say "this did not happen", which holds only when every record
+  excluded from the basis is one that *could* have been the thing claimed absent. On this data the
+  basis is 29 of 38 dispatch records in arm A and 38 of 40 in arm B. **The verdicts were in fact
+  sound** — the mute records are `task_type: "local_bash"` task starts, which structurally never
+  carry `subagent_type` — but nothing in the evaluator knows that; it just drops them. So the honest
+  report is a stated narrowing, not a green check.
 - **Four deltas with a narrowed endpoint.** A count over a partial basis is still a valid *lower
   bound*, so a positive one stays interpretable — but a *difference* of two lower bounds is bounded
   in neither direction, whatever its sign. These are skipped whether or not the delta is zero.
@@ -70,12 +73,12 @@ Three kinds of SKIP appear:
   evaluated.) These two are unchanged from the previous recording.
 
 **No observed value moved, and nothing diverged from the committed inventory.** Every value that is
-still checked reproduces its committed counterpart exactly, and the ten now-skipped bindings had the
-same observed values as before — they were right, they were simply not *established* by this
+still checked reproduces its committed counterpart exactly, and the twelve now-skipped bindings had
+the same observed values as before — they were right, they were simply not *established* by this
 evidence. That distinction is the whole subject of this task: a number can be correct and still be a
 false green if the check that blessed it never looked at whether the evidence supported it.
 
-**What would restore the ten checks** is making the basis genuinely complete rather than relaxing
+**What would restore the twelve checks** is making the basis genuinely complete rather than relaxing
 the rule — letting a manifest declare which record shapes are structurally exempt from a dimension,
 so `local_bash` task starts stop counting as records that were "asked and did not answer". That is a
 schema change to the frozen predicate vocabulary and is deliberately not made here.
@@ -105,7 +108,7 @@ MATCH  arm A wf375_pr_dispatch: observed=1 committed=1
 SKIP   arm A wf375_tf_dispatch: observed 0 over incomplete evidence (derived from the 29 of 38 system/task_started record(s) carrying "subagent_type" — the other 9 could not answer this signal, so "absent" is not evidence of absence) — absence of evidence, not evidence of absence
 MATCH  arm A wf375_taskoutput_timeouts: observed=1 committed=1
 MATCH  arm A wf375_taskoutput_successes: observed=0 committed=0
-MATCH  arm A duplicate PR/TF dispatches: observed=0 committed=0
+SKIP   arm A duplicate PR/TF dispatches: observed 0 over incomplete evidence (wf375_pr_dispatch: derived from the 29 of 38 system/task_started record(s) carrying "subagent_type" — the other 9 could not answer this signal, so "absent" is not evidence of absence; wf375_tf_dispatch: derived from the 29 of 38 system/task_started record(s) carrying "subagent_type" — the other 9 could not answer this signal, so "absent" is not evidence of absence) — absence of evidence, not evidence of absence
 SKIP   arm A finalize dispatch presence: observed "absent" over incomplete evidence (derived from the 29 of 38 system/task_started record(s) carrying "subagent_type" — the other 9 could not answer this signal, so "absent" is not evidence of absence) — absence of evidence, not evidence of absence
 MATCH  arm B wf374_audit_lens_boots: observed=15 committed=15
 SKIP   arm B wf374_gated_off_lens_boots: observed 0 over incomplete evidence (derived from the 38 of 40 candidate record(s) carrying "subagent_type" — the other 2 could not answer this signal, so a zero count is not evidence of absence) — absence of evidence, not evidence of absence
@@ -114,7 +117,7 @@ MATCH  arm B wf375_pr_dispatch: observed=2 committed=2
 SKIP   arm B wf375_tf_dispatch: observed 0 over incomplete evidence (derived from the 38 of 40 system/task_started record(s) carrying "subagent_type" — the other 2 could not answer this signal, so "absent" is not evidence of absence) — absence of evidence, not evidence of absence
 MATCH  arm B wf375_taskoutput_timeouts: observed=6 committed=6
 MATCH  arm B wf375_taskoutput_successes: observed=1 committed=1
-MATCH  arm B duplicate PR/TF dispatches: observed=0 committed=0
+SKIP   arm B duplicate PR/TF dispatches: observed 0 over incomplete evidence (wf375_pr_dispatch: derived from the 38 of 40 system/task_started record(s) carrying "subagent_type" — the other 2 could not answer this signal, so "absent" is not evidence of absence; wf375_tf_dispatch: derived from the 38 of 40 system/task_started record(s) carrying "subagent_type" — the other 2 could not answer this signal, so "absent" is not evidence of absence) — absence of evidence, not evidence of absence
 SKIP   arm B finalize dispatch presence: observed "absent" over incomplete evidence (derived from the 38 of 40 system/task_started record(s) carrying "subagent_type" — the other 2 could not answer this signal, so "absent" is not evidence of absence) — absence of evidence, not evidence of absence
 SKIP   delta wf374_audit_lens_boots: computed over incomplete evidence (a difference of two lower bounds is not itself a bound — arm A: derived from the 29 of 38 candidate record(s) carrying "subagent_type" — the other 9 could not answer this signal, so a zero count is not evidence of absence; arm B: derived from the 38 of 40 candidate record(s) carrying "subagent_type" — the other 2 could not answer this signal, so a zero count is not evidence of absence)
 SKIP   delta wf374_gated_off_lens_boots: computed over incomplete evidence (a difference of two lower bounds is not itself a bound — arm A: derived from the 29 of 38 candidate record(s) carrying "subagent_type" — the other 9 could not answer this signal, so a zero count is not evidence of absence; arm B: derived from the 38 of 40 candidate record(s) carrying "subagent_type" — the other 2 could not answer this signal, so a zero count is not evidence of absence)
@@ -141,7 +144,7 @@ NOT MEASURED in this run (reported, never invented):
 
 DEGRADED INPUT: none — every record stream parsed in full.
 
-RESULT: PASS — every checked value reproduces the committed inventory (14 checks).
+RESULT: PASS — every checked value reproduces the committed inventory (12 checks).
 ```
 
 ## The stated narrowing
@@ -155,8 +158,8 @@ Of the counts, deltas, and dispatch-shape labels the committed inventory carries
 WF-375 signal set, the check reproduces **every one the evidence establishes** — and states, per
 binding, each one it does not. It no longer claims the whole set: an earlier wording here said it
 reproduced *every* count, delta, and label, which was true of what the check *printed* and false of
-what the evidence *supported*, because ten of those bindings rested on a zero taken over a partial
-basis. The per-binding SKIP rows are that claim narrowed to its evidence, in the same
+what the evidence *supported*, because twelve of those bindings rested on a zero taken over a
+partial basis. The per-binding SKIP rows are that claim narrowed to its evidence, in the same
 narrow-and-report form this section already applies to the editorial content.
 
 ## Old §7.2 rows deliberately left undeclared
