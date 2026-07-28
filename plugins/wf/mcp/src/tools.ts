@@ -441,6 +441,22 @@ function toReasons(reasons: string[] | undefined, code: string): Array<{ code: s
     .map((message) => ({ code, message: message.trim() }));
 }
 
+/**
+ * Keeps a tool's schema resident in the host's context instead of deferring it
+ * behind the host's tool-search surface.
+ *
+ * The host defers EVERY MCP tool by default; a tool is resident only if its
+ * server config sets `alwaysLoad` or the tool itself carries this `_meta` key.
+ * Marking the whole server resident costs ~8.1K tokens of schema in every
+ * context that boots the resolver — including each isolated subagent. Only the
+ * ops a skill body names as a mandatory step are marked here; the rest defer
+ * and cost one tool-search round trip on the rare paths that reach them.
+ *
+ * Attach to a tool ONLY when a skill or agent body names it as a step that runs
+ * before the work it gates — not merely because it is called often.
+ */
+const RESIDENT = { "anthropic/alwaysLoad": true } as const;
+
 /** Register every typed resolver tool with request-scoped service selection. */
 export function registerResolverTools(server: McpServer, selectService: ServiceSelector): void {
   const selected = <T>(args: WorkspaceArgs, fn: (service: ResolverService) => T): ToolResult =>
@@ -453,6 +469,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       inputSchema: workspaceOnlyInput,
       description:
         "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
+      _meta: RESIDENT,
     },
     async (args: WorkspaceArgs) => selected(args, (service) => service.resolveConfig()),
   );
@@ -464,6 +481,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       inputSchema: workspaceOnlyInput,
       description:
         "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body.",
+      _meta: RESIDENT,
     },
     async (args: WorkspaceArgs) => selected(args, (service) => service.resolveRegistry()),
   );
@@ -475,6 +493,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       description:
         "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
       inputSchema: surfaceInput,
+      _meta: RESIDENT,
     },
     async (args: WorkspaceArgs & { surface: string }) => selected(args, (service) => service.resolveProvider(args.surface)),
   );
@@ -509,6 +528,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. Body-free.",
       inputSchema: routingInput,
       outputSchema: routingOutput,
+      _meta: RESIDENT,
     },
     async (args: WorkspaceArgs & RoutingInputs) => {
       const { workspaceRoot, ...inputs } = args;
@@ -534,6 +554,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       description:
         "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path — the metadata queries stay body-free.",
       inputSchema: contentInput,
+      _meta: RESIDENT,
     },
     async (args: WorkspaceArgs & ContentRef) => {
       const { workspaceRoot, ...ref } = args;

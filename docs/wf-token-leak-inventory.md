@@ -49,6 +49,7 @@ Ranked by **recoverable dollars**, not token counts or turn counts.
 | [D4](#d4--every-lens-re-fetches-the-shared-contract) | inline the finding contract | <$0.5 | high |
 | [D7](#d7--intra-agent-repeat-reads) | intra-agent re-reads | <$0.5 | medium |
 | [D3](#d3--the-lens-gate-is-applied-after-the-agent-has-booted) | pre-dispatch lens gate | $0 now | latent |
+| [D8](#d8--the-resolver-loads-every-tool-schema-into-every-context) | per-tool resolver residency | see note | high on tokens; unmeasured on $ |
 
 **Ceiling if all applied: roughly $30 of $114.55**, without touching implement or verify
 quality. D1 and D2 overlap on the lens agents — doing both is ~$13, not $11 + $7.
@@ -198,7 +199,55 @@ round trip to produce a no-op. All five auditor agents share this ordering.
 
 ---
 
-## 4. Refuted theories
+### D8 — the resolver loads every tool schema into every context
+
+**A different axis from D0–D7: fixed per-context boot overhead, not per-run agent spend.**
+Every context that boots the resolver — the main session and *each* of the 51 subagents in
+the measured run — carried all 20 resolver tool schemas.
+
+**Evidence — measured directly from the server, not inferred.** Driving the shipped bundle
+through an MCP `initialize` + `tools/list` handshake and summing `JSON.stringify(tool)` per
+advertised tool:
+
+| | tools | chars | est. tokens |
+|---|---|---|---|
+| before (blanket `alwaysLoad: true`) | 20 | 32,330 | ~8,083 |
+| after (per-tool residency) | 5 | 18,011 | ~4,503 |
+| **deferred** | **15** | **14,509** | **~3,627 (45%)** |
+
+`resolve_routing` alone is 12,924 chars (~3,231 tokens) — 40% of the pre-change total.
+
+**Mechanism.** The host defers every MCP tool by default; a tool is resident only if the
+server config sets `alwaysLoad` **or** the tool carries `_meta["anthropic/alwaysLoad"]`.
+`plugins/wf/.mcp.json` set the blanket server-level flag, so nothing deferred.
+
+**Which 15 defer — chosen on skill-body references, not call frequency.** Counting files
+under `plugins/*/skills` and `plugins/*/agents` that name each op gives a clean cliff:
+`resolve_content` 57, `resolve_config` 46, `resolve_provider` 36, `resolve_routing` 26,
+`resolve_registry` 25 — then `resolve_gate` 18 (but **zero** calls in a 50-transcript
+window: a failure-path gate), `register_pack`/`inspect_pack` 18 (one-time pack onboarding),
+`resolve_profile` 9, and the rest ≤5. The top five stay resident; the other 15 cost one
+tool-search round trip on the rare paths that reach them.
+
+**Two risks this change does NOT retire — both need a live install to settle.**
+
+1. **Blocking vs non-blocking connect.** The server-level flag also placed the server on the
+   host's *blocking* startup-connect path. Per-tool `_meta` recovers schema residency but
+   **not** connect ordering, so the resolver now connects non-blocking. Skills call
+   `resolve_config` as their first step, so a slow cold start could in principle be reached
+   before the server is ready.
+2. **The C011 prompt-free claim.** [content-read-call-site-inventory.md
+   §OUT-1](./content-read-call-site-inventory.md) argued an unattended `run --auto` pass is
+   prompt-free partly *because* the server was `alwaysLoad`. The tool-use grant is keyed to
+   the tool name rather than to schema residency, and `resolve_content` stays resident
+   either way — but that doc itself notes CI cannot drive a real `run --auto`, so this is
+   reasoned, not measured.
+
+**Recoverable dollars: not estimated.** The saving is per-context boot tokens, which land in
+`cache_creation`/`cache_read` rather than in the per-agent output spend D0–D7 are ranked by.
+Converting 3,627 tokens × N contexts into dollars requires a re-measured fleet run under
+[§2's method](./fleet-run-token-accounting.md#2-method--and-the-trap); until then this row
+states tokens only, per §5.
 
 Recorded so they are not re-investigated.
 

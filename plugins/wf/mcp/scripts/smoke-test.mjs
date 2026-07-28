@@ -90,8 +90,15 @@ try {
   }
   const decl = servers[serverKeys[0]];
 
-  if (decl.alwaysLoad !== true) {
-    fail(`.mcp.json server "${serverKeys[0]}" must set alwaysLoad: true`);
+  // Residency is now declared PER TOOL (`_meta["anthropic/alwaysLoad"]`), not
+  // blanket per server: a server-level `alwaysLoad` would keep all 20 tool
+  // schemas (~8.1K tokens) resident in every context that boots the resolver.
+  // The per-tool set is asserted against the live handshake in (4) below.
+  if ("alwaysLoad" in decl) {
+    fail(
+      `.mcp.json server "${serverKeys[0]}" must NOT set a blanket alwaysLoad; ` +
+        `residency is declared per tool via _meta["anthropic/alwaysLoad"] in src/tools.ts`,
+    );
   }
   if (decl.command !== "node") {
     fail(`.mcp.json command must be "node" (no npx / package manager); got "${decl.command}"`);
@@ -219,6 +226,29 @@ try {
       fail(`${tool.name} does not declare a bounded terminal-safe workspaceRoot string: ${JSON.stringify(schema)}`);
     }
   }
+  // Per-tool residency (replaces the former blanket server-level alwaysLoad).
+  // Exactly the ops a skill/agent body names as a mandatory pre-work step stay
+  // resident; every other tool defers behind the host's tool-search surface.
+  // Adding a name here puts its whole schema in every resolver-booting context
+  // — justify it against skill-body references, not call frequency.
+  const RESIDENT_TOOLS = [
+    "resolve_config",
+    "resolve_content",
+    "resolve_provider",
+    "resolve_registry",
+    "resolve_routing",
+  ];
+  const residentSeen = tools
+    .filter((t) => t._meta?.["anthropic/alwaysLoad"] === true)
+    .map((t) => t.name)
+    .sort();
+  if (JSON.stringify(residentSeen) !== JSON.stringify([...RESIDENT_TOOLS].sort())) {
+    fail(
+      `resident tool set drifted. expected ${JSON.stringify([...RESIDENT_TOOLS].sort())}, ` +
+        `got ${JSON.stringify(residentSeen)}`,
+    );
+  }
+
   const routingTool = tools.find((t) => t.name === "resolve_routing");
   const routingSchema = routingTool?.inputSchema;
   if (

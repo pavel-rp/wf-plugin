@@ -85,7 +85,7 @@ If `valid` is false and `cached` is false, report that nothing has been resolved
 ## Edge Cases
 
 - **Unknown action token** — stop: "Usage: `/wf:resolve [inspect | refresh | invalidate]`."
-- **`wf-resolver` MCP server not available** — the tools are unreachable (the plugin's `.mcp.json` sets `alwaysLoad: true`, so this is unusual). Stop and report that the resolver runtime is not loaded; suggest restarting Claude Code. Do **not** fall back to hand-parsing the registry — that is exactly the discovery this service replaces.
+- **`wf-resolver` MCP server not available** — this skill's tools (`resolve_inspect`, `resolve_refresh`, `resolve_invalidate`) are **deferred**: their schemas load on demand, so a "no such tool" on first reach means *not yet fetched*, not *not installed*. Fetch them through the host's tool-search surface and retry once. Only if the retry still fails, stop and report that the resolver runtime is not loaded; suggest restarting Claude Code. Do **not** fall back to hand-parsing the registry — that is exactly the discovery this service replaces.
 - **A tool returns `isError`** — surface the error message as-is; do not retry with a hand-rolled discovery path.
 - **Diagnostics present but `valid: true`** — the resolved view is usable; print the diagnostics as warnings (e.g. a registered-but-unrecoverable pack) so the user can act.
 
