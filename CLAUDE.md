@@ -43,29 +43,7 @@ Never push behaviour into data, and never let core name a concrete stack/domain/
 
 ## 3. Repository map
 
-```
-.                              # marketplace repo root
-├── CLAUDE.md                  # this file
-├── .claude-plugin/marketplace.json   # marketplace manifest (wf core + capability packs)
-├── docs/                      # ROADMAP.md, authoring-notes.md (committed grounding)
-├── plugins/wf/                # CORE PLUGIN — domain-free SDD spine
-│   ├── .claude-plugin/plugin.json
-│   ├── README.md              # user-facing skill catalogue
-│   ├── skills/<name>/SKILL.md # auto-discovered → /wf:*  (+ skills/_contracts/ frozen foundation)
-│   ├── agents/<name>.md       # subagent companions (auto-discovered)
-│   └── mcp/                   # the ONLY non-prose subtree — bundled Node/TS resolver runtime
-├── plugins/wf-browser-qa/     # browser-qa: qa-execution provider (engine surface)
-├── plugins/wf-node-ts/        # node-ts: implement-phase test-authoring guidance
-├── plugins/wf-audit/          # audit (5 verify lenses + retrospective) + sr (pre-commit lens)
-├── plugins/wf-angular/        # angular: qa-execution provider (host surface)
-├── plugins/wf-git/            # git: delivery provider
-├── plugins/wf-ado/            # ado: tracker provider (Azure DevOps)
-├── plugins/wf-linear/         # linear: tracker provider
-├── plugins/wf-review/         # pr-review: user-invoked review/address feature
-├── plugins/wf-author-caps/    # author-caps: authoring toolkit (guide, taxonomy, new-* scaffolders)
-├── plugins/wf-sandbox-testing/ # sandbox-testing: skill-eval harness
-└── _local/                    # gitignored: research notes, working tracking
-```
+`ls plugins/` is the current pack list; each pack's own README states what it provides. The core plugin is `plugins/wf/`, and `plugins/wf/mcp/` is the only non-prose subtree — the bundled Node/TS resolver runtime.
 
 Each pack ships an `init` skill that self-registers its capability; `capabilities/<name>/manifest.md` declares its fragments. Component folders (`skills/`, `agents/`) live at the **plugin root**, never inside `.claude-plugin/` — auto-discovered on install. Per-pack detail is in each pack's own README/manifest; the deeper annotated map is in [`docs/authoring-notes.md`](docs/authoring-notes.md).
 
