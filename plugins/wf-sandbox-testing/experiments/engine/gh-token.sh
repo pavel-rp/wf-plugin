@@ -37,7 +37,15 @@ resolve_gh_token() {
   # gh < 2.9 has no `auth token` subcommand; read its stored credential directly.
   local hosts="${GH_CONFIG_DIR:-$HOME/.config/gh}/hosts.yml"
   if [ -r "$hosts" ]; then
-    t="$(sed -n 's/^[[:space:]]*oauth_token:[[:space:]]*//p' "$hosts" | head -n1 | tr -d '"'\''')"
+    # Single-pass, NO pipe — the same SIGPIPE class fixed in the transcript scanners. A
+    # multi-host hosts.yml yields more matches than `head -n1` reads, so `sed | head` leaves
+    # sed writing into a closed pipe: exit 141, promoted to fatal by the `set -euo pipefail`
+    # in the scripts that source this file. awk stops itself on the first match.
+    t="$(awk '/^[[:space:]]*oauth_token:[[:space:]]*/ {
+                sub(/^[[:space:]]*oauth_token:[[:space:]]*/, "")
+                gsub(/["\047]/, "")
+                print; exit
+              }' "$hosts" 2>/dev/null || true)"
     if looks_like_token "$t"; then printf '%s' "$t"; return 0; fi
   fi
   return 0
