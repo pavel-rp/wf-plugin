@@ -194,6 +194,10 @@ compose_docker_cmd() {
   local arm="$1" outsub="$2"; shift 2
   local out="$RESULTS_DIR/$outsub"
   CMD=(docker run --rm -e CLAUDE_CODE_OAUTH_TOKEN)
+  # The workload seed clones a possibly-private source repo INSIDE the container, before
+  # no-egress is applied. Its credential crosses only when one was actually resolved, and
+  # run-arm.sh unsets it the moment the seed returns — the agent never sees it.
+  if [ -n "${WF_SEED_GH_TOKEN:-}" ]; then CMD+=(-e WF_SEED_GH_TOKEN); fi
   # The manifest selector crosses into the container as a BARE NAME, resolved in-container against
   # the image's baked experiment dir (run-arm.sh). A host path would be meaningless there, and this
   # keeps the host from having to know the in-container layout.

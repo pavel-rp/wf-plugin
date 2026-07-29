@@ -51,7 +51,8 @@ assert_stream_json() {
   fi
   # jq absent — minimal structural check.
   local first
-  first="$(tr -d '[:space:]' < "$f" | head -c1)"
+  # No pipe: `tr < big-file | head -c1` SIGPIPEs tr under pipefail. awk stops at the first char.
+  first="$(awk '{ gsub(/[[:space:]]/,""); if (length($0)) { printf "%s", substr($0,1,1); exit } }' "$f" 2>/dev/null || true)"
   case "$first" in
     '{'|'[') return 0;;
     *) echo "FATAL [cli-drift]: transcript '$f' does not begin with a JSON object/array." >&2; return 6;;
@@ -74,8 +75,14 @@ detect_quota() {
 # extract_session_id <transcript> — the real session id the CLI stamped on every stream-json
 # event. Pure text scan (first "session_id":"<id>" match); prints empty when none is present.
 extract_session_id() {
-  grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[^"]+"' "$1" 2>/dev/null \
-    | head -n1 | sed -E 's/.*"([^"]+)"$/\1/'
+  # Single-pass, NO pipe — grep|head under `set -o pipefail` becomes a fatal 141 (SIGPIPE) on a
+  # large transcript. awk stops itself on the first match, so nothing writes into a closed pipe.
+  awk 'match($0, /"session_id"[[:space:]]*:[[:space:]]*"[^"]+"/) {
+         s = substr($0, RSTART, RLENGTH)
+         sub(/^"session_id"[[:space:]]*:[[:space:]]*"/, "", s)
+         sub(/"$/, "", s)
+         print s; exit
+       }' "$1" 2>/dev/null || true
 }
 
 # discover_transcript_bundle <projects-root> — the isolated bundle path the CLI wrote under the
@@ -211,7 +218,7 @@ main() {
   local rc=0
   (
     cd "$ws" && \
-    claude -p "$skill" --output-format stream-json --dangerously-skip-permissions "${model_args[@]}"
+    claude -p "$skill" --output-format stream-json --verbose --dangerously-skip-permissions "${model_args[@]}"
   ) > "$transcript" 2> "$stderr_log" || rc=$?
 
   # --- capture the real session id + isolated projects/transcript root (machine-readable) ---

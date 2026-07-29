@@ -161,7 +161,7 @@ manifest_load() {
     // --- blinding vocabulary ------------------------------------------------------------------
     const bl = doc.blinding;
     if (bl === null || typeof bl !== "object" || Array.isArray(bl)) bad("`blinding` is required and must be an object");
-    only(bl, ["vocabulary", "forbidden_paths"], "`blinding`");
+    only(bl, ["vocabulary", "forbidden_paths", "exempt_literals"], "`blinding`");
     const vocab = bl.vocabulary;
     if (!Array.isArray(vocab)) bad("`blinding.vocabulary` is required and must be an array");
     if (vocab.length === 0) bad("`blinding.vocabulary` is EMPTY — refusing to proceed. An empty vocabulary degenerates the blinding gate pattern; declare the words that must never leak.");
@@ -175,6 +175,23 @@ manifest_load() {
       if (forbidden[i].startsWith("/") || forbidden[i].split("/").includes("..")) bad("blinding.forbidden_paths[" + i + "] must be relative to the seeded tree and must not escape it");
     }
 
+    // --- exempt literals (OPTIONAL) -------------------------------------------------------------
+    // Exact strings removed from injected content BEFORE the banned-word scan, for the case where
+    // the system under test emits a vocabulary word as part of its own normal output (e.g. a config
+    // key whose name happens to contain one). Deliberately narrow: exact literals only, never
+    // patterns, and each must itself CONTAIN a vocabulary word — an exemption that matches nothing
+    // banned is a typo silently weakening the gate, so it is refused rather than ignored.
+    const exempt = bl.exempt_literals === undefined ? [] : bl.exempt_literals;
+    if (!Array.isArray(exempt)) bad("`blinding.exempt_literals` must be an array when present");
+    for (let i = 0; i < exempt.length; i++) {
+      const e = exempt[i];
+      if (typeof e !== "string" || e === "") bad("blinding.exempt_literals[" + i + "] must be a non-empty string");
+      const lower = e.toLowerCase();
+      if (!vocab.some((w) => lower.includes(String(w).toLowerCase()))) {
+        bad("blinding.exempt_literals[" + i + "] (" + JSON.stringify(e) + ") contains no word from blinding.vocabulary — it would exempt nothing. Fix the literal rather than leaving a no-op exemption in the gate.");
+      }
+    }
+
     const out = [];
     out.push("MANIFEST_NAME=" + q(name));
     out.push("ARM_LABELS=(" + labels.map(q).join(" ") + ")");
@@ -183,6 +200,7 @@ manifest_load() {
     out.push("COMPARE_AGAINSTS=(" + againsts.map(q).join(" ") + ")");
     out.push("BLINDING_VOCAB=(" + vocab.map(q).join(" ") + ")");
     out.push("FORBIDDEN_PATHS=(" + forbidden.map(q).join(" ") + ")");
+    out.push("BLINDING_EXEMPT=(" + exempt.map(q).join(" ") + ")");
     out.push("CONST_IMAGE_REPO=" + q(c.image_repo));
     out.push("CONST_WORKLOAD_REF=" + q(c.workload_ref));
     out.push("CONST_CLI_VERSION=" + q(c.cli_version));

@@ -30,6 +30,8 @@ RUNNER_DIR="$(cd "$ENGINE_DIR/../../runner" && pwd)"
 . "$ENGINE_DIR/manifest.sh"
 # shellcheck source=../../runner/fingerprint.sh
 . "$RUNNER_DIR/fingerprint.sh"
+# shellcheck source=gh-token.sh
+. "$ENGINE_DIR/gh-token.sh"
 
 DEFAULT_REPO_URL="https://github.com/pavel-rp/wf-plugin.git"
 DEFAULT_MARKETPLACE_NAME="wf-marketplace"
@@ -92,19 +94,35 @@ run_blinding_gate() {
   [ -f "$ws/_local/config.md" ] && injected+=("$ws/_local/config.md")
   [ -f "$ws/_local/fake/scripts.json" ] && injected+=("$ws/_local/fake/scripts.json")
   for f in ${injected+"${injected[@]}"}; do
+    # Exempt literals are blanked out (not deleted) before matching, so the file keeps its line
+    # structure and column offsets and a reported violation still points at the real line. Only
+    # the exact declared strings are removed; every other occurrence of a banned word on the same
+    # line — including a second, genuine one — still matches. Case-insensitive, matching the scan.
+    local scan_src="$f" lit
+    local -a _exempt=(${BLINDING_EXEMPT+"${BLINDING_EXEMPT[@]}"})
+    if [ "${#_exempt[@]}" -gt 0 ]; then
+      scan_src="$(mktemp)"
+      cp "$f" "$scan_src"
+      for lit in "${_exempt[@]}"; do
+        # sed with a control-char delimiter: the literal may contain / and other punctuation.
+        sed -i "s$(printf '\001')$(escape_ere "$lit")$(printf '\001')$(printf '\001')Ig" "$scan_src"
+      done
+    fi
+
     # grep exits 0=match, 1=no-match, 2=error. A fail-closed gate must treat an error (2+)
     # as a violation, never silently pass it as a no-match — so capture the real exit code
     # instead of folding 1 and 2 together in an `if grep` test.
     rc=0
-    grep -iEn "$ere" "$f" >/dev/null 2>&1 || rc=$?
+    grep -iEn "$ere" "$scan_src" >/dev/null 2>&1 || rc=$?
     if [ "$rc" -eq 0 ]; then
       echo "seed-workspace.sh: BLINDING FAIL — banned blinding vocabulary found in injected content '$f':" >&2
-      grep -iEn "$ere" "$f" >&2 || true
+      grep -iEn "$ere" "$scan_src" >&2 || true
       problems=1
     elif [ "$rc" -ge 2 ]; then
       echo "seed-workspace.sh: BLINDING FAIL — grep errored (exit $rc) scanning injected content '$f' — failing closed" >&2
       problems=1
     fi
+    [ "$scan_src" = "$f" ] || rm -f "$scan_src"
   done
 
   if [ "$problems" -ne 0 ]; then
@@ -124,7 +142,11 @@ clone_and_strip() {
   rm -rf "$target"
   mkdir -p "$target"
   echo "seed-workspace.sh: cloning $repo_url @ $workload_ref into $target" >&2
-  git clone --quiet "$repo_url" "$target"
+  # A private source repository needs a credential here. It arrives as WF_SEED_GH_TOKEN and is
+  # consumed ONLY by this clone: git_clone_maybe_authenticated keeps it out of argv, the remote
+  # URL, and .git/config, the .git directory is deleted three lines down, and run-arm.sh unsets
+  # the variable before the agent boots. An empty value is fine — a public repo needs none.
+  git_clone_maybe_authenticated "$repo_url" "$target" "$(resolve_gh_token)"
   git -C "$target" checkout --quiet "$workload_ref"
   rm -rf "$target/.git"
 
@@ -160,10 +182,19 @@ run_unmeasured_setup() {
     esac
     transcript="$out/setup/$(echo "$pack" | tr -c 'A-Za-z0-9' '-').jsonl"
     echo "seed-workspace.sh: unmeasured setup — invoking '$skill'" >&2
+    # --verbose is REQUIRED alongside -p --output-format stream-json (the CLI refuses the
+    # combination without it and emits a plain-text error where stream-json is expected).
     ( cd "$ws" && CLAUDE_CONFIG_DIR="$cfg" claude -p "$skill" \
-        --output-format stream-json --dangerously-skip-permissions ) > "$transcript" 2>&1
-    sid="$(grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[^"]+"' "$transcript" 2>/dev/null \
-      | head -n1 | sed -E 's/.*"([^"]+)"$/\1/')"
+        --output-format stream-json --verbose --dangerously-skip-permissions ) > "$transcript" 2>&1
+    # Single-pass, NO pipe: `grep … | head -n1` over a large transcript makes grep die of SIGPIPE
+    # the moment head closes the pipe, and `set -o pipefail` turns that into a fatal exit 141 —
+    # a seed that already succeeded then reports as a failed run. awk stops itself instead.
+    sid="$(awk 'match($0, /"session_id"[[:space:]]*:[[:space:]]*"[^"]+"/) {
+                  s = substr($0, RSTART, RLENGTH)
+                  sub(/^"session_id"[[:space:]]*:[[:space:]]*"/, "", s)
+                  sub(/"$/, "", s)
+                  print s; exit
+                }' "$transcript" 2>/dev/null || true)"
     [ "$first" = 1 ] || printf ',\n' >> "$sessions_json"
     first=0
     printf '  { "skill": "%s", "session_id": "%s", "transcript": "%s" }' \

@@ -16,6 +16,12 @@
 #
 # This script only builds images — it never runs a container and never spends a measured run.
 #
+# CLONE AUTH: when the experiment's Dockerfile clones a private repository, the build needs a
+# GitHub token. It is taken from GH_TOKEN, else GITHUB_TOKEN, else `gh auth token`, and handed to
+# docker as a BuildKit secret (id=gh_token) — never a --build-arg, never an ENV, never recorded in
+# build-<label>.json. When no token is found the build proceeds unauthenticated, which is correct
+# for a public repository and fails at the clone for a private one.
+#
 # REF GUARD: before ANY image is built, every arm to be built has its ref resolved against the local
 # checkout. An unresolvable ref exits non-zero with a named reason before a single build starts — a
 # failed guard is infrastructure, never charged against a measured run.
@@ -28,6 +34,8 @@ RUNNER_DIR="$REPO_ROOT/plugins/wf-sandbox-testing/runner"
 . "$ENGINE_DIR/manifest.sh"
 # shellcheck source=../../runner/fingerprint.sh
 . "$RUNNER_DIR/fingerprint.sh"
+# shellcheck source=gh-token.sh
+. "$ENGINE_DIR/gh-token.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -64,15 +72,37 @@ guard_refs() {
   fi
 }
 
+# resolve_gh_token — echo a GitHub token for the build's clone, or nothing when none is available.
+# Order: an explicit GH_TOKEN/GITHUB_TOKEN in the environment, then the gh CLI's stored token.
+# A private REPO_URL needs one; a public one does not, so an empty result is not an error here —
+# the Dockerfile falls back to an unauthenticated clone and fails on its own terms if that is wrong.
+# Credential lookup and its shape check are shared with the run path — see engine/gh-token.sh.
+
 build_one() {
   local arm="$1" wf_ref="$2" cli_version="$3" tag="$4"
   echo "build.sh: building $tag (WF_REF=$wf_ref, CLI_VERSION=$cli_version)" >&2
-  docker build \
+
+  # The token reaches docker only as a BuildKit secret, never as a --build-arg (which would land
+  # in image metadata). It is exported into this function's subshell environment solely so
+  # `--secret env=` can read it; it is never echoed and never written to build-<arm>.json.
+  local -a secret_args=()
+  local gh_token; gh_token="$(resolve_gh_token)"
+  if [ -n "$gh_token" ]; then
+    export WF_BUILD_GH_TOKEN="$gh_token"
+    secret_args=(--secret "id=gh_token,env=WF_BUILD_GH_TOKEN")
+    echo "build.sh: authenticating the in-image clone with a gh_token build secret" >&2
+  else
+    echo "build.sh: no GitHub token found (GH_TOKEN/GITHUB_TOKEN/gh auth token) — the in-image clone will be unauthenticated, which fails against a private REPO_URL" >&2
+  fi
+
+  DOCKER_BUILDKIT=1 docker build \
     -f "$KIT_DIR/Dockerfile" \
     --build-arg "WF_REF=$wf_ref" \
     --build-arg "CLI_VERSION=$cli_version" \
+    ${secret_args+"${secret_args[@]}"} \
     -t "$tag" \
     "$REPO_ROOT"
+  unset WF_BUILD_GH_TOKEN
 
   local out_dir="$RESULTS_DIR"
   mkdir -p "$out_dir"
