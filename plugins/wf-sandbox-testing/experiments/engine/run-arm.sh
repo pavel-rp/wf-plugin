@@ -67,13 +67,21 @@ assert_stream_json() {
     [ "$bad" -ne 0 ] && { echo "FATAL [cli-drift]: transcript '$f' has $bad non-JSON line(s)." >&2; return 6; }
     return 0
   fi
-  local first; first="$(tr -d '[:space:]' < "$f" | head -c1)"
+  # No pipe: `tr < big-file | head -c1` SIGPIPEs tr under pipefail. awk stops at the first char.
+  local first; first="$(awk '{ gsub(/[[:space:]]/,""); if (length($0)) { printf "%s", substr($0,1,1); exit } }' "$f" 2>/dev/null || true)"
   case "$first" in '{'|'[') return 0;; *) echo "FATAL [cli-drift]: '$f' not JSON." >&2; return 6;; esac
 }
 
 extract_session_id() {
-  grep -oE '"session_id"[[:space:]]*:[[:space:]]*"[^"]+"' "$1" 2>/dev/null \
-    | head -n1 | sed -E 's/.*"([^"]+)"$/\1/'
+  # Single-pass, NO pipe. `grep … | head -n1` dies of SIGPIPE the instant head closes the pipe,
+  # and `set -o pipefail` promotes that to a fatal 141 — on a MEASURED transcript that would
+  # discard a run that actually succeeded. awk terminates itself on the first match instead.
+  awk 'match($0, /"session_id"[[:space:]]*:[[:space:]]*"[^"]+"/) {
+         s = substr($0, RSTART, RLENGTH)
+         sub(/^"session_id"[[:space:]]*:[[:space:]]*"/, "", s)
+         sub(/"$/, "", s)
+         print s; exit
+       }' "$1" 2>/dev/null || true
 }
 
 discover_transcript_bundle() {
@@ -221,6 +229,12 @@ main() {
   [ -n "$repo_url" ] && seed_args+=(--repo-url "$repo_url")
   local seed_rc=0
   bash "$ENGINE_DIR/seed-workspace.sh" "${seed_args[@]}" >&2 || seed_rc=$?
+
+  # The seed is the ONLY step entitled to the source-repo credential. Drop it here — before the
+  # seal, before the agent, and on the failure path too, so no branch reaches the agent with it
+  # still set. Unsetting in seed-workspace.sh would not help: that runs in a child process.
+  unset WF_SEED_GH_TOKEN GH_TOKEN GITHUB_TOKEN
+
   if [ "$seed_rc" -ne 0 ]; then
     write_run_json "$out" "$arm" "$umbrella" "$skill" "$model" 0 "$(fingerprint_cli)" "" \
       "$build_json" "$out/setup/setup-sessions.json" "$seed_rc" false "seed-failed" \
@@ -248,7 +262,7 @@ main() {
   start_ts="$(date -u +%s)"
   (
     cd "$ws" && \
-    claude -p "$skill" --output-format stream-json \
+    claude -p "$skill" --output-format stream-json --verbose \
       --dangerously-skip-permissions --model "$model"
   ) > "$transcript" 2> "$stderr_log" || rc=$?
   end_ts="$(date -u +%s)"

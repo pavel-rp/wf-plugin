@@ -1,0 +1,146 @@
+{
+  "name": "cost-program-ab",
+  "arms": [
+    {
+      "label": "A",
+      "wf_ref": "554f7c4"
+    },
+    {
+      "label": "B",
+      "wf_ref": "ff2eb70"
+    },
+    {
+      "label": "C",
+      "wf_ref": "3b9f00b"
+    }
+  ],
+  "constants": {
+    "image_repo": "cost-program-ab",
+    "workload_ref": "c768673",
+    "cli_version": "2.1.218",
+    "umbrella_id": "FLEET-1",
+    "gate_skill": "/wf:triage FLEET-2",
+    "fake_scripts": "fake-scripts.json",
+    "measured_skill": "/wf:fleet",
+    "model": "claude-opus-5",
+    "packs": "",
+    "gap_seconds": 330
+  },
+  "compares": [
+    {
+      "base": "A",
+      "against": "B"
+    },
+    {
+      "base": "B",
+      "against": "C"
+    },
+    {
+      "base": "A",
+      "against": "C"
+    }
+  ],
+  "mechanism_signals": [
+    {
+      "id": "routing_record_present",
+      "kind": "record_match",
+      "description": "routing decision records anywhere in the stream \u2014 the routing mechanism is live",
+      "match": [
+        {
+          "field": "",
+          "op": "contains",
+          "value": [
+            "resolve_routing",
+            "executionShape"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "audit_lens_boots",
+      "kind": "record_match",
+      "description": "all audit-lens boots \u2014 dispatch records naming an audit lens",
+      "record": {
+        "type": "system",
+        "subtype": "task_started"
+      },
+      "match": [
+        {
+          "field": "subagent_type",
+          "op": "prefix",
+          "value": "wf-audit:"
+        }
+      ]
+    },
+    {
+      "id": "gated_off_lens_boots",
+      "kind": "record_match",
+      "description": "audit-lens boots whose own record identifies the boot as gated off",
+      "record": {
+        "type": "system",
+        "subtype": "task_started"
+      },
+      "match": [
+        {
+          "field": "subagent_type",
+          "op": "prefix",
+          "value": "wf-audit:"
+        },
+        {
+          "field": "",
+          "op": "contains",
+          "value": [
+            "gated-off",
+            "gated off"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "index_dispatch",
+      "kind": "dispatch_shape",
+      "description": "per-task index child dispatches (absent means the index write is inline)",
+      "subagent_type": "wf:index"
+    },
+    {
+      "id": "dispatch_model_tier",
+      "kind": "record_match",
+      "description": "dispatch records pinning a top-tier model \u2014 the routing tier assertion",
+      "record": {
+        "type": "system",
+        "subtype": "task_started"
+      },
+      "match": [
+        {
+          "field": "model",
+          "op": "contains",
+          "value": "opus"
+        }
+      ]
+    }
+  ],
+  "blinding": {
+    "vocabulary": [
+      "experiment",
+      "experiments",
+      "baseline",
+      "baselines",
+      "measurement",
+      "measurements",
+      "arm",
+      "arms",
+      "A/B",
+      "treatment",
+      "control",
+      "cost-program"
+    ],
+    "forbidden_paths": [
+      "experiments"
+    ],
+    "exempt_literals": [
+      "QA Baseline Ignore",
+      "Baseline health",
+      "baseline check"
+    ]
+  }
+}
