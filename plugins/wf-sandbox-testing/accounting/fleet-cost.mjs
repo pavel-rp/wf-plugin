@@ -4,10 +4,18 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 
+// USD per million tokens. cacheCreation = 1.25x input (5-minute TTL), cacheRead = 0.1x input.
+// Sonnet 5 is carried at its standard $3/$15 list rate, not the promotional $2/$10 running
+// through 2026-08-31 — a rate that expires mid-measurement would silently reprice a later
+// re-run against an earlier one.
 const DEFAULT_PRICES = {
+  'claude-opus-5': { input: 5, cacheCreation: 6.25, cacheRead: 0.5, output: 25 },
+  'claude-sonnet-5': { input: 3, cacheCreation: 3.75, cacheRead: 0.3, output: 15 },
   'claude-opus-4-8': { input: 5, cacheCreation: 6.25, cacheRead: 0.5, output: 25 },
   'claude-sonnet-4-6': { input: 3, cacheCreation: 3.75, cacheRead: 0.3, output: 15 },
   'claude-haiku-4-5': { input: 1, cacheCreation: 1.25, cacheRead: 0.1, output: 5 },
+  // Transcripts stamp Haiku's dated full id rather than the alias; same model, same rate.
+  'claude-haiku-4-5-20251001': { input: 1, cacheCreation: 1.25, cacheRead: 0.1, output: 5 },
 };
 const FIELDS = ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens'];
 

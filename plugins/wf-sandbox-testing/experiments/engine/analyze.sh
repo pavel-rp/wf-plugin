@@ -53,14 +53,28 @@ session_id_of() {
   ' "$1"
 }
 
-# extract_projects_root <run-dir> <scratch-dir> — untar projects-archive.tar.gz if present and no
-# explicit --projects-root-<label> override was given; prints the resolved projects root.
+# extract_projects_root <run-dir> <scratch-dir> [<session-id>] — untar projects-archive.tar.gz if
+# present and no explicit --projects-root-<label> override was given; prints the resolved projects
+# root.
+#
+# The archived tree is `projects/<per-workspace-dir>/<session>.jsonl`, but the cost harness resolves
+# its inputs as `<root>/<session>.jsonl` and `<root>/<session>/subagents/`. So the root it needs is
+# the PER-WORKSPACE directory, one level below `projects/` — returning `projects/` itself made every
+# arm fail with "missing transcript path". When a session id is supplied, locate the directory that
+# actually holds that session's orchestrator transcript; otherwise keep the previous shape.
 extract_projects_root() {
-  local run_dir="$1" scratch="$2"
+  local run_dir="$1" scratch="$2" sid="${3:-}"
   local archive="$run_dir/projects-archive.tar.gz"
   [ -f "$archive" ] || { echo "analyze.sh: no projects-archive.tar.gz under $run_dir (pass --projects-root-<label> explicitly)" >&2; return 2; }
   mkdir -p "$scratch"
   tar -C "$scratch" -xzf "$archive"
+  if [ -n "$sid" ]; then
+    local hit
+    hit="$(find "$scratch" -type f -name "${sid}.jsonl" -print -quit 2>/dev/null || true)"
+    if [ -n "$hit" ]; then dirname "$hit"; return 0; fi
+    echo "analyze.sh: no ${sid}.jsonl anywhere under the extracted archive from $run_dir" >&2
+    return 2
+  fi
   find "$scratch" -mindepth 1 -maxdepth 1 -type d | head -n1
 }
 
@@ -167,7 +181,7 @@ main() {
       else
         scratch="$(mktemp -d)"
       fi
-      proj_roots[$n]="$(extract_projects_root "${run_dirs[$n]}" "$scratch")"
+      proj_roots[$n]="$(extract_projects_root "${run_dirs[$n]}" "$scratch" "$sid")"
     fi
     echo "analyze.sh: measuring arm $l (session=$sid, root=${proj_roots[$n]})" >&2
     node "$FLEET_COST" measure --session "$sid" --root "${proj_roots[$n]}" --output "$out/measure-$l.json" \

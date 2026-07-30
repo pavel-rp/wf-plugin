@@ -89,9 +89,22 @@ discover_transcript_bundle() {
   find "$1" -type f -name '*.jsonl' 2>/dev/null | LC_ALL=C sort | head -n1
 }
 
+# Mirrors runner/run-skill.sh's detect_quota — see the rationale there. A bare `rate.?limit`
+# substring is not a signal: the CLI stamps a benign `rate_limit_event` ("status":"allowed") on
+# every run, so matching it reported quota-exhausted on every clean run.
 detect_quota() {
-  grep -Eqi 'usage limit|quota (exceeded|exhausted)|rate.?limit|overloaded|status.{0,3}429|insufficient_quota' \
-    "$1" "$2" 2>/dev/null && echo 1 || echo 0
+  if grep -Eqi 'usage limit|quota (exceeded|exhausted)|rate.?limit(_| )(error|exceeded)|overloaded|status.{0,3}429|insufficient_quota' \
+      "$1" "$2" 2>/dev/null; then
+    echo 1
+    return 0
+  fi
+  if awk '/"type"[[:space:]]*:[[:space:]]*"rate_limit_event"/ &&
+          !/"status"[[:space:]]*:[[:space:]]*"allowed"/ { found = 1; exit }
+          END { exit !found }' "$1" 2>/dev/null; then
+    echo 1
+    return 0
+  fi
+  echo 0
 }
 
 write_run_json() {
