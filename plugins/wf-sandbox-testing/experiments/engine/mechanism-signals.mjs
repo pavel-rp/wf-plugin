@@ -68,6 +68,18 @@ const DISPATCH_ID_FIELD = "task_id";
 // The per-arm record stream an experiment's signals are evaluated over.
 const RECORD_STREAM = "transcript.jsonl";
 
+// The per-arm DRIVE RECORD — what the drive actually did, written beside the transcripts.
+//
+// These are RUN METADATA, not record predicates: nothing here is derived by scanning
+// `transcript.jsonl`, so they are surfaced as their own per-arm section rather than by widening
+// `SIGNAL_KINDS`. That vocabulary stays frozen at two, every existing manifest keeps validating
+// byte-identically, and declaring a drive quantity requires no manifest edit at all.
+const DRIVE_RECORD = "drive.json";
+
+// The drive quantities surfaced per arm. Adding one here is an engine change, exactly as adding a
+// predicate kind would be — it is not manifest data, because the drive record is engine-written.
+const DRIVE_QUANTITIES = ["gate_stops", "open_questions_total"];
+
 export class SignalError extends Error {}
 
 const bad = (msg) => {
@@ -404,6 +416,64 @@ const evalDispatchShape = (signal, records) => {
   return out;
 };
 
+// ---------------------------------------------------------------------------------------------
+// The per-arm drive record — run metadata, read from its own file, tri-state exactly as a signal
+// result is. It carries no `basis`: basis counts the RECORDS that could answer a question, and a
+// drive quantity is not derived from records at all, so borrowing the field would imply an
+// evidence base that does not exist.
+// ---------------------------------------------------------------------------------------------
+
+const driveNotMeasured = (reason) => ({ status: "not_measured", reason });
+
+const readDrive = (runDir) => {
+  const file = path.join(runDir, DRIVE_RECORD);
+  // A MISSING drive record is not a usage error, and this is the distinction that matters: a
+  // single-shot arm legitimately never wrote one. A nonexistent run DIRECTORY is a typo and aborts
+  // the evaluation (the CLI rejects it up front); a run directory without a drive record is a real
+  // arm whose drive quantities simply cannot be answered, so it degrades the cell and runs on.
+  if (!fs.existsSync(file)) {
+    return { file, doc: null, reason: `no ${DRIVE_RECORD} under this run directory — a single-shot arm legitimately has none, so this is a degraded cell, not a usage error` };
+  }
+  let doc;
+  try {
+    doc = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (e) {
+    return { file, doc: null, reason: `${DRIVE_RECORD} is not readable/parseable JSON (${e.message})` };
+  }
+  // Parseable is not usable — `null`, `3`, `"text"` and `[]` all parse, and the first property
+  // access on any of them is where an unguarded reader throws. Same shape check, same reason, as
+  // the manifest and inventory inputs elsewhere in this kit.
+  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
+    return { file, doc: null, reason: `${DRIVE_RECORD} parsed but is not a JSON object` };
+  }
+  return { file, doc, reason: null };
+};
+
+const evaluateDrive = (runDir, rel = (p) => p) => {
+  const { file, doc, reason } = readDrive(runDir);
+  const out = { source: rel(file), quantities: {} };
+  for (const q of DRIVE_QUANTITIES) {
+    if (doc === null) {
+      out.quantities[q] = driveNotMeasured(reason);
+      continue;
+    }
+    const v = doc[q];
+    // A drive record written before these fields existed is the same absence as no record at all:
+    // reporting `0` would say "this drive stopped at no gate" on evidence that never carried the
+    // question. Absence and null are one answer, exactly as `isPresent` defines it above.
+    if (!isPresent(v)) {
+      out.quantities[q] = driveNotMeasured(`${DRIVE_RECORD} carries no ${JSON.stringify(q)} field — this drive record predates the gate-resolution fields, so a zero would not be evidence of absence`);
+      continue;
+    }
+    if (typeof v !== "number" || !Number.isFinite(v)) {
+      out.quantities[q] = driveNotMeasured(`${DRIVE_RECORD} field ${JSON.stringify(q)} is ${JSON.stringify(v)}, which is not a finite number — a value that cannot be read is not measured, never coerced`);
+      continue;
+    }
+    out.quantities[q] = { status: "measured", value: v };
+  }
+  return out;
+};
+
 const evaluateArm = (signals, runDir, rel = (p) => p) => {
   const stream = readStream(runDir);
   const arm = {
@@ -411,6 +481,10 @@ const evaluateArm = (signals, runDir, rel = (p) => p) => {
     source: rel(stream.file),
     records: stream.records === null ? null : stream.records.length,
     malformed_lines: stream.malformed,
+    // Read from a DIFFERENT file than the record stream and independent of it — an arm with no
+    // transcript may still have driven, and an arm that drove may carry no drive record. Assigned
+    // before the no-stream early return below so neither absence can hide the other.
+    drive: evaluateDrive(runDir, rel),
     signals: {},
   };
   if (stream.records === null) {
@@ -434,6 +508,11 @@ const evaluateArm = (signals, runDir, rel = (p) => p) => {
 // ---------------------------------------------------------------------------------------------
 
 const cell = (res) => (res.status === "measured" ? String(res.count) : "not measured");
+
+// The drive section's own cell renderer. A separate function from `cell` because a drive quantity
+// carries `value`, not `count` — sharing one renderer would silently print `undefined` for every
+// measured drive row the moment either shape moved.
+const driveCell = (res) => (res.status === "measured" ? String(res.value) : "not measured");
 
 const renderText = (doc) => {
   const labels = Object.keys(doc.arms);
@@ -482,6 +561,25 @@ const renderText = (doc) => {
       }
     }
   }
+  // The per-arm drive block. Deliberately its OWN section, labelled as run metadata: a reader must
+  // not take these for declared predicates, because nothing in the manifest declares them and the
+  // frozen signal vocabulary is unchanged by their presence.
+  lines.push("");
+  lines.push(`per-arm drive (run metadata read from each arm's ${doc.provenance.drive_record} — run`);
+  lines.push("quantities, NOT record predicates: the declared-signal vocabulary above is unchanged):");
+  lines.push(`| Quantity | ${labels.map((l) => `Arm ${l}`).join(" | ")} |`);
+  lines.push(`|---|${labels.map(() => "---:|").join("")}`);
+  for (const q of DRIVE_QUANTITIES) {
+    const cells = labels.map((l) => driveCell(doc.arms[l].drive.quantities[q]));
+    lines.push(`| ${q} | ${cells.join(" | ")} |`);
+  }
+  for (const q of DRIVE_QUANTITIES) {
+    for (const l of labels) {
+      const r = doc.arms[l].drive.quantities[q];
+      if (r.status !== "measured") lines.push(`not measured — drive ${q} / arm ${l}: ${r.reason}`);
+    }
+  }
+
   if (doc.deltas.length > 0) {
     lines.push("");
     lines.push("declared pairwise deltas (against minus base):");
@@ -688,6 +786,8 @@ const main = (argv) => {
       generated_by: "experiments/engine/mechanism-signals.cli.mjs",
       vocabulary: SIGNAL_KINDS.slice(),
       record_stream: RECORD_STREAM,
+      drive_record: DRIVE_RECORD,
+      drive_quantities: DRIVE_QUANTITIES.slice(),
     },
     signals,
     arms: {},

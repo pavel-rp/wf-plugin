@@ -215,6 +215,70 @@ A mechanism assertion that needs a different substrate — cost-model aggregatio
 — is **not** declared as a signal that would silently answer the wrong question; it stays out until
 a real consumer justifies the kind.
 
+---
+
+## `drive.json` — the per-arm drive record
+
+`drive.json` is written beside `run.json` by `run-arm.sh`, once per arm, on **every** path —
+single-shot, driven, and gate-resolving alike. It is not a manifest slot: it is *run output*,
+recording what the drive actually did, so a cost comparison can see that two arms did unequal work
+rather than silently comparing unlike runs.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `ticks` | integer | How many measured invocations the drive made. `1` on the single-shot path. |
+| `terminal` | string | The terminal state the drive ended on, or `""` when it ended without one (the tick cap, a non-zero tick exit, a quota wall). Values: any state matched by `--terminal-states` (by default `Complete`, `Blocked`, `Merged`), plus `gate-cap` — see below — plus `""`. |
+| `resume_mode` | string | `same` (resume ticks repeat the full opening prompt) or `bare` (the skill name alone). |
+| `max_ticks` | integer | The configured tick cap. |
+| `drive_to_terminal` | bool | Whether `--drive-to-terminal` was passed. `false` is the single-shot path. |
+| `resolve_gates` | bool | Whether `--resolve-gates` was passed. `false` on every path that predates or declines gate resolution. |
+| `max_gate_resolutions` | integer | The configured operator-session cap (default `5`). Recorded whether or not any gate was hit. |
+| `gate_stops` | integer | How many times the drive stopped at a human-decision gate. |
+| `open_questions_total` | integer | The summed `<n>` across every `## Awaiting user (<n>)` heading found at those stops. |
+| `operator_sessions` | integer | How many operator sessions were dispatched. Never larger than `max_gate_resolutions`. |
+| `operator_session_ids` | array of string | Those sessions' own ids, in dispatch order. Each is a distinct `claude -p` session, so the conveyor's `measure --session <opening-tick-id>` figure excludes them by construction. |
+| `operator_cost_usd` | number | Their summed `total_cost_usd`, read from each operator transcript's own terminating `result` record. |
+| `operator_policy_sha256` | string | The SHA-256 of the operator policy file this drive carried, or `""` when none was resolvable. |
+
+### The first five keys are frozen
+
+`ticks`, `terminal`, `resume_mode`, `max_ticks`, and `drive_to_terminal` keep their exact names and
+shapes. Result directories on disk were written against them; a rename is a breaking change to
+committed evidence, not a refactor.
+
+### `gate-cap` is an ending, not a failure
+
+A drive that would dispatch an operator session past `max_gate_resolutions` ends with
+`terminal: "gate-cap"`. The run's `verdict` is untouched — the cap is a **bound the protocol
+chose**, so it records where the drive stopped rather than claiming something went wrong. An arm
+that hit it did less work than one that did not, which is exactly what `gate_stops` and
+`open_questions_total` exist to make visible.
+
+Treatment isolation is the one genuinely failing outcome on this path: an operator session that
+changes the installed plugin tree under `$CLAUDE_CONFIG_DIR` ends the run with
+`verdict: "treatment-touched"` in `run.json`, naming the guard and the two fingerprints. `drive.json`
+is still written first — the drive's record of what happened is evidence regardless of the verdict.
+
+### Every field is defined on every path
+
+There is **no absent-vs-zero ambiguity**. A single-shot run and a run with `--resolve-gates` off
+both emit every gate field with a defined zero/empty value (`false`, `0`, `[]`, `0`), so a reader
+never has to know which invocation wrote the file in order to read it. In particular
+`operator_policy_sha256` is recorded on a drive that hit **no** gate at all: the invariance check
+compares arms, so an arm that happened not to stop must still prove which policy it carried.
+
+### The honest-non-measurement rule applies here too
+
+A quantity a run could not answer is reported as **not measured, with a stated reason** — never as a
+confident zero. That is the same discipline `mechanism_signals[]` carries above, and it lands on
+`drive.json`'s consumers rather than on the writer: `run-arm.sh` always knows its own counts, so it
+always writes real ones, but a **reader** facing a `drive.json` that is absent (a legitimate state —
+an arm may never have driven) or that predates these fields must render each affected quantity as
+not measured with the reason stated, never as `0`. A missing `drive.json` is not a usage error and
+must not abort an evaluation.
+
+---
+
 ### Why arm declaration order is significant
 
 Two engine behaviours read it directly:

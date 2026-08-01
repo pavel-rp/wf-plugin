@@ -10,3 +10,9 @@ Thumbs.db
 wf.config.js
 .tmp/
 docs/wf-plans/
+
+# wf-sandbox-testing: raw per-run experiment output — transcripts, workspace snapshots,
+# and measure artifacts, hundreds of MB per experiment. Only the per-run SUBDIRECTORIES are
+# ignored, so curated result markdown written directly into results/ (deltas.md,
+# verdict-template.md) stays tracked.
+plugins/wf-sandbox-testing/experiments/*/results/*/

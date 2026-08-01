@@ -53,6 +53,36 @@ session_id_of() {
   ' "$1"
 }
 
+# drive_field_of <drive-json> <field> — print one field of an arm's drive record, or NOTHING when
+# the file is absent/unreadable/unparseable or the field is missing or null.
+#
+# A missing drive.json is deliberately NOT an error: a single-shot arm legitimately has none. Every
+# caller below must therefore treat an empty result as "not measured, with a reason" rather than as
+# a zero — the same honest-non-measurement rule the mechanism evaluator applies to the same file.
+drive_field_of() {
+  [ -f "$1" ] || return 0
+  node -e '
+    const fs = require("node:fs");
+    let doc;
+    try { doc = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch { process.exit(0); }
+    // Parseable is not usable: null/3/"text"/[] all parse, and the property access below is where
+    // an unguarded reader throws — which would exit 1, the MISMATCH code, for a malformed file.
+    if (doc === null || typeof doc !== "object" || Array.isArray(doc)) process.exit(0);
+    const v = doc[process.argv[2]];
+    if (v === undefined || v === null) process.exit(0);
+    process.stdout.write(String(v));
+  ' "$1" "$2"
+}
+
+# measured_total_of <measure-json> — the arm's measured conveyor total, as the cost harness wrote it.
+measured_total_of() {
+  node -e '
+    const fs = require("node:fs");
+    const doc = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    process.stdout.write(String(doc.totals.cost));
+  ' "$1"
+}
+
 # extract_projects_root <run-dir> <scratch-dir> [<session-id>] — untar projects-archive.tar.gz if
 # present and no explicit --projects-root-<label> override was given; prints the resolved projects
 # root.
@@ -160,6 +190,37 @@ main() {
     [ -d "${run_dirs[$n]}" ] || die "$(manifest_run_flag "$l") directory does not exist: ${run_dirs[$n]}"
   done
 
+  # --- operator-policy invariance ---------------------------------------------------------------
+  # The scripted operator that resolves human-decision gates is a HELD-CONSTANT actor: if two arms
+  # ran under different decision policies, every delta below is confounded by that difference and no
+  # amount of care in the cost harness recovers it. So this fails loudly, before any measurement, and
+  # names both the arms and their hashes.
+  #
+  # An arm that recorded NO hash is reported as such, never folded into "matching": treating a
+  # missing value as agreement is precisely how an arm that predates the field would silently pass
+  # for invariant. It is a stated gap, not a pass and not a hard failure — a run legitimately has no
+  # hash when it drove no gates under a build that predates the policy file.
+  local -a policy_hashes=() policy_missing=()
+  local ph
+  for n in "${!ARM_LABELS[@]}"; do
+    ph="$(drive_field_of "${run_dirs[$n]}/drive.json" operator_policy_sha256)"
+    policy_hashes[$n]="$ph"
+    [ -n "$ph" ] || policy_missing+=("${ARM_LABELS[$n]}")
+  done
+  local distinct_policies
+  distinct_policies="$(printf '%s\n' ${policy_hashes[@]+"${policy_hashes[@]}"} \
+    | { grep -v '^$' || true; } | LC_ALL=C sort -u | wc -l | tr -d ' ')"
+  if [ "$distinct_policies" -gt 1 ]; then
+    local policy_detail=""
+    for n in "${!ARM_LABELS[@]}"; do
+      policy_detail="$policy_detail arm ${ARM_LABELS[$n]}=${policy_hashes[$n]:-<none recorded>}"
+    done
+    die "the arms did not all carry the same operator policy, so their comparison would be between different decision policies:$policy_detail"
+  fi
+  if [ "${#policy_missing[@]}" -gt 0 ]; then
+    echo "analyze.sh: NOTE — no operator_policy_sha256 recorded for arm(s): ${policy_missing[*]} — policy invariance is NOT established for them; reported here rather than counted as matching." >&2
+  fi
+
   # --- per-arm measurement ----------------------------------------------------------------------
   for n in "${!ARM_LABELS[@]}"; do
     l="${ARM_LABELS[$n]}"
@@ -212,6 +273,70 @@ main() {
     ' "$out/measure-$base.json" "$out/measure-$against.json" "$base" "$against" | tee -a "$out/totals-comparison.txt" \
       || die "the totals comparison for arm $against vs arm $base failed (its own error is above)"
   done
+
+  # --- conveyor cost excluding vs including the scripted operator -------------------------------
+  # The figures above EXCLUDE every operator session by construction, not by filtering: each operator
+  # is its own `claude -p` session and `measure --session` resolves exactly one session tree. So the
+  # including-operator figure is produced by ADDING the recorded operator cost to the measured total.
+  #
+  # This APPENDS. The comparison block above is left exactly as it was — it is the measured number,
+  # and restating it under a second heading would invite reading one of the two as a correction.
+  local -a arm_excl=() arm_incl=() arm_opcost=() arm_opsess=() arm_drive=()
+  local excl opc ops
+  for n in "${!ARM_LABELS[@]}"; do
+    l="${ARM_LABELS[$n]}"
+    excl="$(measured_total_of "$out/measure-$l.json")" \
+      || die "could not read arm $l's measured total from $out/measure-$l.json (its own error is above)"
+    opc="$(drive_field_of "${run_dirs[$n]}/drive.json" operator_cost_usd)"
+    ops="$(drive_field_of "${run_dirs[$n]}/drive.json" operator_sessions)"
+    arm_excl[$n]="$excl"
+    if [ -n "$opc" ] && [ -n "$ops" ]; then
+      arm_drive[$n]=1; arm_opcost[$n]="$opc"; arm_opsess[$n]="$ops"
+      arm_incl[$n]="$(awk -v a="$excl" -v b="$opc" 'BEGIN { printf "%.10g", a + b }')"
+    else
+      # Not measured, with a reason — never an assumed operator cost of zero. An arm whose drive
+      # record is absent or predates these fields did not report "no operator ran"; it reported
+      # nothing, and the two read identically only if this branch invents a number.
+      arm_drive[$n]=0; arm_opcost[$n]=""; arm_opsess[$n]=""; arm_incl[$n]=""
+    fi
+  done
+
+  {
+    echo ""
+    echo "=== conveyor cost excluding vs including the scripted operator ==="
+    echo "Excluding is the measured figure above, unchanged. Including adds drive.json's recorded"
+    echo "operator_cost_usd — the operator runs as its own session, so it is never inside the measured"
+    echo "total. An arm with no drive record reports the operator side as not measured, never as \$0."
+    for n in "${!ARM_LABELS[@]}"; do
+      l="${ARM_LABELS[$n]}"
+      if [ "${arm_drive[$n]}" = 1 ]; then
+        printf 'arm %s: excluding operator $%s | including operator $%s  (%s operator session(s), $%s)\n' \
+          "$l" "$(awk -v v="${arm_excl[$n]}" 'BEGIN { printf "%.2f", v }')" \
+          "$(awk -v v="${arm_incl[$n]}" 'BEGIN { printf "%.2f", v }')" \
+          "${arm_opsess[$n]}" "$(awk -v v="${arm_opcost[$n]}" 'BEGIN { printf "%.2f", v }')"
+      else
+        printf 'arm %s: excluding operator $%s | including operator NOT MEASURED — no operator cost in drive.json under %s (the record is absent, unreadable, or predates these fields), so the operator cost is unknown rather than zero\n' \
+          "$l" "$(awk -v v="${arm_excl[$n]}" 'BEGIN { printf "%.2f", v }')" "${run_dirs[$n]}"
+      fi
+    done
+    local bi ai
+    for k in "${!COMPARE_BASES[@]}"; do
+      base="${COMPARE_BASES[$k]}"; against="${COMPARE_AGAINSTS[$k]}"
+      bi="$(index_of_label "$base")"; ai="$(index_of_label "$against")"
+      if [ "${arm_drive[$bi]}" = 1 ] && [ "${arm_drive[$ai]}" = 1 ]; then
+        awk -v ca="${arm_incl[$bi]}" -v cb="${arm_incl[$ai]}" -v bl="$base" -v al="$against" \
+            -v sa="${arm_opsess[$bi]}" -v sb="${arm_opsess[$ai]}" 'BEGIN {
+              d = cb - ca
+              printf "delta including operator (%s - %s): $%.2f", al, bl, d
+              if (ca != 0) printf " (%.1f%%)", (d / ca) * 100
+              printf "  [%s: %s operator session(s), %s: %s]\n", bl, sa, al, sb
+            }'
+      else
+        printf 'delta including operator (%s - %s): NOT MEASURED — %s\n' "$against" "$base" \
+          "at least one endpoint arm recorded no operator cost, and a delta over an unknown addend is not a bound"
+      fi
+    done
+  } | tee -a "$out/totals-comparison.txt"
 
   # --- declared mechanism signals ---------------------------------------------------------------
   # Named predicates over each arm's transcript records, declared in the manifest and evaluated

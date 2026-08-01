@@ -1076,6 +1076,170 @@ else
   no "analyze.sh or the kit manifest was not found — its exit-vocabulary cases were skipped, which is a suite failure, not a pass"
 fi
 
+# ---------------------------------------------------------------------------------------------
+# 15. The per-arm DRIVE section — run metadata, held to the same honest-non-measurement rule.
+#
+# `drive.json` is run metadata, not a record predicate, so it is surfaced as its own per-arm section
+# rather than by widening the frozen signal vocabulary. Three properties have to hold at once, and
+# each fails quietly in its own way:
+#
+#   - a present record must actually be read (otherwise the section is decorative);
+#   - an ABSENT record must degrade the cell WITHOUT aborting. A single-shot arm legitimately has
+#     none, so treating it the way a nonexistent run DIRECTORY is treated would turn an ordinary arm
+#     into a usage error — the honest-non-measurement rule pointed at the wrong target;
+#   - a record PREDATING these fields must report not-measured, never the confident `0` that a
+#     `field ?? 0` read would manufacture. That is the same measured-zero-over-no-evidence defect
+#     §9 covers on the record side, one file over.
+# ---------------------------------------------------------------------------------------------
+echo "-- the per-arm drive section"
+mkdir -p "$KIT/run-drive" "$KIT/run-nodrive" "$KIT/run-olddrive"
+for _d in run-drive run-nodrive run-olddrive; do
+  cp "$KIT/run-A/transcript.jsonl" "$KIT/$_d/transcript.jsonl"
+done
+printf '%s\n' '{"ticks":4,"terminal":"Complete","resume_mode":"same","max_ticks":12,"drive_to_terminal":true,"resolve_gates":true,"max_gate_resolutions":5,"gate_stops":2,"open_questions_total":9,"operator_sessions":2,"operator_session_ids":["o1","o2"],"operator_cost_usd":3.5,"operator_policy_sha256":"cafe"}' \
+  > "$KIT/run-drive/drive.json"
+# The pre-fields shape: the five original keys and nothing else. `run-nodrive` gets no file at all.
+printf '%s\n' '{"ticks":1,"terminal":"","resume_mode":"same","max_ticks":12,"drive_to_terminal":false}' \
+  > "$KIT/run-olddrive/drive.json"
+
+manifest "$KIT/m-drive.json" "[$DISPATCH]"
+drive_rc=0
+node "$SIGNALS_CLI" evaluate --manifest "$KIT/m-drive.json" \
+  --run-a "$KIT/run-drive" --run-b "$KIT/run-nodrive" --out "$TMP/o-drive" \
+  >/dev/null 2>"$TMP/.err" || drive_rc=$?
+if [ "$drive_rc" -eq 0 ]; then
+  ok "an arm with no drive.json does not abort the evaluation — it is a degraded cell, not a usage error"
+else
+  no "an arm with no drive.json aborted the evaluation (exit $drive_rc) — a single-shot arm legitimately has none"
+  sed 's/^/         /' "$TMP/.err" | head -3
+fi
+assert_json 'doc.arms.A.drive.quantities.gate_stops.value' '2' \
+  'a present drive record has its gate_stops read' "$TMP/o-drive/mechanism-signals.json"
+assert_json 'doc.arms.A.drive.quantities.open_questions_total.value' '9' \
+  'and its summed open-question count' "$TMP/o-drive/mechanism-signals.json"
+assert_json 'doc.arms.B.drive.quantities.gate_stops.status' 'not_measured' \
+  'a MISSING drive record reports not measured, never 0' "$TMP/o-drive/mechanism-signals.json"
+# The value key must be ABSENT, not zero: a consumer reading `?? 0` off a not-measured cell would
+# reintroduce exactly the confident zero the status is there to prevent.
+assert_json '"value" in doc.arms.B.drive.quantities.gate_stops' 'false' \
+  'and it carries no value key at all for a reader to coerce' "$TMP/o-drive/mechanism-signals.json"
+assert_json 'doc.arms.B.drive.quantities.gate_stops.reason.length > 0' 'true' \
+  'and it states a reason' "$TMP/o-drive/mechanism-signals.json"
+assert_grep "$TMP/o-drive/mechanism-signals.txt" '^\| gate_stops \| 2 \| not measured \|$' \
+  'the text artifact renders the drive row, with the absent arm as "not measured"'
+# The whole point of a separate section: the frozen predicate vocabulary is untouched by it.
+assert_json 'doc.provenance.vocabulary.join(",")' 'record_match,dispatch_shape' \
+  'the drive section does not widen the frozen predicate vocabulary' "$TMP/o-drive/mechanism-signals.json"
+
+node "$SIGNALS_CLI" evaluate --manifest "$KIT/m-drive.json" \
+  --run-a "$KIT/run-olddrive" --run-b "$KIT/run-drive" --out "$TMP/o-olddrive" \
+  >/dev/null 2>"$TMP/.err"
+assert_json 'doc.arms.A.drive.quantities.gate_stops.status' 'not_measured' \
+  'a drive record predating these fields reports not measured, never a confident 0' \
+  "$TMP/o-olddrive/mechanism-signals.json"
+assert_json 'doc.arms.A.drive.quantities.gate_stops.reason.includes("predates")' 'true' \
+  'and names the pre-dating record as the reason' "$TMP/o-olddrive/mechanism-signals.json"
+
+# ---------------------------------------------------------------------------------------------
+# 16. analyze.sh — operator-policy invariance, and the with/without-operator cost split.
+#
+# The scripted gate operator is a HELD-CONSTANT actor. If two arms ran under different decision
+# policies, every delta the analysis reports is confounded by that difference and nothing downstream
+# recovers it — so a divergence must be loud, and a MISSING hash must never be quietly folded into
+# "they matched", which is how an arm predating the field would pass for invariant.
+#
+# Unlike §14 these cases drive analyze.sh's measurement body, which needs a real arm fixture — so
+# one is synthesized here: an orchestrator transcript plus one subagent transcript carrying priced
+# usage records, with the projects root passed explicitly so no archive is needed. Offline and
+# spend-free like every other case; the fleet-ab manifest is used for the same reason §14 uses it
+# (analyze.sh runs the FULL manifest load), and it declares exactly the two arms bound below.
+# ---------------------------------------------------------------------------------------------
+if [ -f "$ANALYZE" ] && [ -f "$ANALYZE_MANIFEST" ]; then
+  echo "-- analyze.sh: operator-policy invariance and the operator cost split"
+
+  mk_arm_fixture() { # mk_arm_fixture <dir> <session-id> <output-tokens> <policy-sha|"">
+    local d="$1" sid="$2" tok="$3" sha="$4"
+    mkdir -p "$d/proj/$sid/subagents"
+    printf '{"type":"assistant","message":{"id":"m1","model":"claude-opus-5","usage":{"input_tokens":1000,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":%s}}}\n' \
+      "$tok" > "$d/proj/$sid.jsonl"
+    printf '%s\n' '{"type":"assistant","message":{"id":"m2","model":"claude-opus-5","usage":{"input_tokens":500,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":100}}}' \
+      > "$d/proj/$sid/subagents/agent-1.jsonl"
+    printf '{"measured_session":{"session_id":"%s"}}\n' "$sid" > "$d/run.json"
+    printf '%s\n' '{"type":"system","subtype":"task_started","subagent_type":"x:y","task_id":"t1"}' \
+      > "$d/transcript.jsonl"
+    if [ -n "$sha" ]; then
+      printf '{"ticks":3,"terminal":"Complete","resume_mode":"same","max_ticks":12,"drive_to_terminal":true,"resolve_gates":true,"max_gate_resolutions":5,"gate_stops":1,"open_questions_total":5,"operator_sessions":1,"operator_session_ids":["op-1"],"operator_cost_usd":2.5,"operator_policy_sha256":"%s"}\n' \
+        "$sha" > "$d/drive.json"
+    else
+      # A record predating the operator fields — present, parseable, and silent on the policy.
+      printf '%s\n' '{"ticks":1,"terminal":"","resume_mode":"same","max_ticks":12,"drive_to_terminal":false}' \
+        > "$d/drive.json"
+    fi
+  }
+
+  run_analyze() { # run_analyze <out-subdir> <a-sha|""> <b-sha|"">; sets an_rc
+    rm -rf "$TMP/anfx"
+    mk_arm_fixture "$TMP/anfx/run-A" sid-a 20000 "$2"
+    mk_arm_fixture "$TMP/anfx/run-B" sid-b 40000 "$3"
+    an_rc=0
+    bash "$ANALYZE" --manifest "$ANALYZE_MANIFEST" \
+      --run-a "$TMP/anfx/run-A" --projects-root-a "$TMP/anfx/run-A/proj" \
+      --run-b "$TMP/anfx/run-B" --projects-root-b "$TMP/anfx/run-B/proj" \
+      --out "$TMP/$1" >"$TMP/$1.out" 2>"$TMP/$1.err" || an_rc=$?
+  }
+
+  # Divergent hashes — loud, named, and on the script's own die path so it never collides with the
+  # MISMATCH code that a real measured divergence uses.
+  run_analyze an-divergent cafe01 beef02
+  if [ "$an_rc" -eq 2 ]; then
+    ok "analyze.sh refuses arms carrying different operator policies, with the usage code"
+  else
+    no "analyze.sh exited $an_rc on divergent operator policies — a confounded comparison ran anyway"
+    sed 's/^/         /' "$TMP/an-divergent.err" | head -3
+  fi
+  assert_grep "$TMP/an-divergent.err" '^analyze\.sh: ERROR — the arms did not all carry the same operator policy' \
+    "and it names itself with the same ERROR prefix every other refusal carries"
+  assert_grep "$TMP/an-divergent.err" 'arm A=cafe01' "and it names the first arm and its hash"
+  assert_grep "$TMP/an-divergent.err" 'arm B=beef02' "and the second arm and its hash"
+
+  # Matching hashes — the positive control. Without it the case above proves only that analyze.sh
+  # can fail, not that it fails for this reason.
+  run_analyze an-matching cafe01 cafe01
+  if [ "$an_rc" -eq 0 ]; then
+    ok "matching operator policies pass the invariance gate and the analysis completes"
+  else
+    no "matching operator policies still failed (exit $an_rc) — the divergence case above proves nothing"
+    sed 's/^/         /' "$TMP/an-matching.err" | head -5
+  fi
+  assert_grep "$TMP/an-matching/totals-comparison.txt" 'arm A total: \$[0-9]' \
+    'the existing measured comparison is left intact — the operator split appends, never replaces'
+  assert_grep "$TMP/an-matching/totals-comparison.txt" '^arm A: excluding operator \$[0-9.]+ \| including operator \$[0-9.]+' \
+    'and each arm carries both the excluding- and including-operator totals'
+  assert_grep "$TMP/an-matching/totals-comparison.txt" '^arm A: .*\(1 operator session\(s\), \$2\.50\)' \
+    'with the operator session count and cost stated beside them'
+  assert_grep "$TMP/an-matching/totals-comparison.txt" '^delta including operator \(B - A\): \$[0-9.-]+' \
+    'and the declared comparison is reported on the including-operator figures too'
+
+  # A missing hash is REPORTED, never counted as agreement — and the cost it cannot see is reported
+  # as not measured rather than as an operator that cost nothing.
+  run_analyze an-nohash cafe01 ""
+  if [ "$an_rc" -eq 0 ]; then
+    ok "an arm that recorded no policy hash is not a hard failure"
+  else
+    no "an arm with no recorded policy hash failed the run (exit $an_rc) — it is a stated gap, not a divergence"
+  fi
+  assert_grep "$TMP/an-nohash.err" '^analyze\.sh: NOTE — no operator_policy_sha256 recorded for arm\(s\): B' \
+    'and it is stated by name rather than folded into "the policies matched"'
+  assert_grep "$TMP/an-nohash/totals-comparison.txt" '^arm B: .*including operator NOT MEASURED' \
+    'an arm whose drive record carries no operator cost reports it not measured, never as $0'
+  assert_no_grep "$TMP/an-nohash/totals-comparison.txt" '^arm B: .*including operator \$' \
+    'so an unknown operator cost never renders as a confident dollar figure'
+  assert_grep "$TMP/an-nohash/totals-comparison.txt" '^delta including operator \(B - A\): NOT MEASURED' \
+    'and the delta over that unknown addend is not reported as a number either'
+else
+  no "analyze.sh or the kit manifest was not found — the operator-policy cases were skipped, which is a suite failure, not a pass"
+fi
+
 echo ""
 echo "=== $pass passed, $fail failed ==="
 if [ "$fail" -ne 0 ]; then
