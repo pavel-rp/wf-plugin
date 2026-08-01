@@ -349,8 +349,26 @@ main() {
   export CLAUDE_CONFIG_DIR="$config_dir"
   echo "seed-workspace.sh: clean install of {${packs}} from '$marketplace_dir' into isolated CLAUDE_CONFIG_DIR=$config_dir" >&2
   claude plugin marketplace add "$marketplace_dir" >&2
-  # shellcheck disable=SC2086
-  claude plugin install $(for p in $packs; do printf '%s@%s ' "$p" "$marketplace_name"; done) >&2
+  # `claude plugin install` takes exactly ONE <plugin> argument. Passing the whole set installed
+  # only the FIRST pack and silently ignored the rest, exiting 0 — so every arm came up with an
+  # empty capability registry, no provider surfaces owned, and no op log. Install one at a time,
+  # then ASSERT the full set is present: a silently-partial install must never reach a measured run.
+  local _p
+  for _p in $packs; do
+    claude plugin install "${_p}@${marketplace_name}" >&2 || {
+      echo "seed-workspace.sh: installing pack '${_p}@${marketplace_name}' failed — refusing to seed a partial plugin set." >&2
+      exit 1
+    }
+  done
+  local _installed
+  _installed="$(claude plugin list 2>/dev/null || true)"
+  for _p in $packs; do
+    case "$_installed" in
+      *"$_p"*) ;;
+      *) echo "seed-workspace.sh: pack '$_p' is absent after install — the seeded workspace would come up with an incomplete plugin set (empty capability registry, unowned provider surfaces, no op log). Refusing to continue." >&2
+         exit 1 ;;
+    esac
+  done
 
   read -r -a pack_arr <<< "$packs"
   run_unmeasured_setup "$target" "$config_dir" "$out" "${pack_arr[@]}"

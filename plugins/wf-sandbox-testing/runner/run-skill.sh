@@ -62,14 +62,28 @@ assert_stream_json() {
 # detect_quota <transcript> <stderr-log> — best-effort subscription-quota signal.
 # Prints "1" when the run hit a usage/quota/rate limit, "0" otherwise. Kept a pure
 # text scan so it never itself bills anything.
+#
+# A bare `rate.?limit` substring is NOT a signal: the CLI stamps a benign `rate_limit_event`
+# telemetry record on EVERY run (`"status":"allowed"`, plus an `overageStatus` that reads
+# `rejected` whenever overage billing is simply switched off — the posture a subscription run
+# WANTS). Matching the substring therefore reported quota-exhausted on every clean run and made
+# the gate unpassable. Only an explicit limit ERROR, or a rate_limit_event whose own status is
+# not `allowed`, counts.
 detect_quota() {
   local transcript="$1" stderr_log="$2"
-  if grep -Eqi 'usage limit|quota (exceeded|exhausted)|rate.?limit|overloaded|status.{0,3}429|insufficient_quota' \
+  if grep -Eqi 'usage limit|quota (exceeded|exhausted)|rate.?limit(_| )(error|exceeded)|overloaded|status.{0,3}429|insufficient_quota' \
       "$transcript" "$stderr_log" 2>/dev/null; then
     echo 1
-  else
-    echo 0
+    return 0
   fi
+  # Per-line (JSONL) check: a rate_limit_event that does not carry "status":"allowed".
+  if awk '/"type"[[:space:]]*:[[:space:]]*"rate_limit_event"/ &&
+          !/"status"[[:space:]]*:[[:space:]]*"allowed"/ { found = 1; exit }
+          END { exit !found }' "$transcript" 2>/dev/null; then
+    echo 1
+    return 0
+  fi
+  echo 0
 }
 
 # extract_session_id <transcript> — the real session id the CLI stamped on every stream-json
