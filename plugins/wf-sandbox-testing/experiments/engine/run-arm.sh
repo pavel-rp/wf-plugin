@@ -118,9 +118,21 @@ detect_quota() {
 
 # skill_block_prefix <skill> — the final-output block's leading token for a `/wf:<name>` skill
 # (`/wf:ship FLEET-2` -> SHIP). Every wf skill ends with `<PREFIX> — <state>`.
+#
+# Hyphens are PRESERVED, never folded to underscores: the real blocks are `VERIFY-FIX`, `QA-GEN`,
+# `QA-RUN`, `QA-AUTO`, `QA-INIT`, `QA-FOLLOWUP`. A prefix of `VERIFY_FIX` matches no block ever
+# emitted, and the failure is silent in the worst way — the drive never sees a terminal state and
+# burns every one of `--max-ticks` billed invocations before stopping at the cap.
+#
+# A few skills' block prefixes are NOT derivable from their names at all (`/wf:verify-spec` ends on
+# `VERIFY — …`). Derivation cannot reach those, so they are listed; a name absent from the list
+# derives. Add a row here rather than "fixing" the derivation when a new divergence appears.
 skill_block_prefix() {
   local s="${1##*:}"; s="${s%% *}"
-  printf '%s' "$s" | tr '[:lower:]-' '[:upper:]_'
+  case "$s" in
+    verify-spec) printf 'VERIFY'; return;;
+  esac
+  printf '%s' "$s" | tr '[:lower:]' '[:upper:]'
 }
 
 # skill_terminal_state <transcript> <prefix> <states-regex> — print the skill's terminal state when
@@ -492,6 +504,20 @@ main() {
       fp_cfg_after="$(fingerprint_tree "$cfg" "$CONFIG_VOLATILE_ERE")"
       config_manifest "$cfg" "$out/operator/config-manifest-$op_n.after.txt"
 
+      # Account for the session BEFORE any branch that can leave this loop. The operator ran and was
+      # billed the moment `run_operator` returned — that is true of the isolation-breach path too, so
+      # recording it only after the guard passes would write a drive record saying "a gate was hit,
+      # no operator ran" about a run where one ran and cost money. Absent evidence is reported as
+      # absent everywhere in this kit; an under-count that reads as a confident zero is the one
+      # failure this file exists to prevent, and the breach path is exactly where it would land.
+      operator_sessions="$op_n"
+      local op_sid op_cost
+      op_sid="$(extract_session_id "$op_out")"
+      op_cost="$(extract_result_cost "$op_out")"
+      [ -n "$op_sid" ] && operator_session_ids="$operator_session_ids $op_sid"
+      operator_cost_usd="$(awk -v a="$operator_cost_usd" -v b="$op_cost" 'BEGIN { printf "%.10g", a + b }')"
+      echo "run-arm.sh: arm=$arm operator session $op_n — id='${op_sid:-<none>}' cost=\$$op_cost exit=$orc" >&2
+
       # THE hard constraint: the operator may edit the seeded workload, never the installed plugin
       # tree under $CLAUDE_CONFIG_DIR. A difference ends the run with its own verdict — never a
       # warning, never a silent pass — because every arm's treatment IS that tree.
@@ -503,14 +529,6 @@ main() {
              "$out/operator/config-manifest-$op_n.after.txt" >&2 || true
         break
       fi
-
-      operator_sessions="$op_n"
-      local op_sid op_cost
-      op_sid="$(extract_session_id "$op_out")"
-      op_cost="$(extract_result_cost "$op_out")"
-      [ -n "$op_sid" ] && operator_session_ids="$operator_session_ids $op_sid"
-      operator_cost_usd="$(awk -v a="$operator_cost_usd" -v b="$op_cost" 'BEGIN { printf "%.10g", a + b }')"
-      echo "run-arm.sh: arm=$arm operator session $op_n — id='${op_sid:-<none>}' cost=\$$op_cost exit=$orc" >&2
 
       if [ "$orc" -ne 0 ]; then
         echo "run-arm.sh: arm=$arm operator session $op_n exited $orc — ending the drive at the gate." >&2
@@ -556,9 +574,11 @@ main() {
   # Every gate-resolution field is emitted with a DEFINED zero/empty value on the single-shot and
   # resolve-gates-off paths: a reader must never have to guess which run wrote the file in order to
   # tell "absent" from "zero". The five original keys keep their exact names and shapes.
-  # Deliberately unquoted: the accumulated ids are a space-separated list being split into elements.
-  # shellcheck disable=SC2086
   local operator_ids_json="[]"
+  # Deliberately unquoted: the accumulated ids are a space-separated list being split into elements.
+  # The directive sits on the statement that actually carries the expansion — one line lower and it
+  # suppresses nothing while reading as though it does.
+  # shellcheck disable=SC2086
   [ -n "${operator_session_ids// /}" ] && operator_ids_json="$(printf '%s\n' $operator_session_ids \
     | awk 'BEGIN { printf "[" } { printf "%s\"%s\"", (NR > 1 ? "," : ""), $0 } END { printf "]" }')"
   printf '{"ticks":%d,"terminal":"%s","resume_mode":"%s","max_ticks":%d,"drive_to_terminal":%s,"resolve_gates":%s,"max_gate_resolutions":%d,"gate_stops":%d,"open_questions_total":%d,"operator_sessions":%d,"operator_session_ids":%s,"operator_cost_usd":%s,"operator_policy_sha256":"%s"}\n' \

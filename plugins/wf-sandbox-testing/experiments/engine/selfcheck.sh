@@ -1084,9 +1084,10 @@ fi
 # each fails quietly in its own way:
 #
 #   - a present record must actually be read (otherwise the section is decorative);
-#   - an ABSENT record must degrade the cell WITHOUT aborting. A single-shot arm legitimately has
-#     none, so treating it the way a nonexistent run DIRECTORY is treated would turn an ordinary arm
-#     into a usage error — the honest-non-measurement rule pointed at the wrong target;
+#   - an ABSENT record must degrade the cell WITHOUT aborting. run-arm.sh writes the record on every
+#     path, so absence means an older or incomplete run — not "this arm didn't drive" — and treating
+#     it the way a nonexistent run DIRECTORY is treated would turn a readable older run into a usage
+#     error, the honest-non-measurement rule pointed at the wrong target;
 #   - a record PREDATING these fields must report not-measured, never the confident `0` that a
 #     `field ?? 0` read would manufacture. That is the same measured-zero-over-no-evidence defect
 #     §9 covers on the record side, one file over.
@@ -1110,7 +1111,7 @@ node "$SIGNALS_CLI" evaluate --manifest "$KIT/m-drive.json" \
 if [ "$drive_rc" -eq 0 ]; then
   ok "an arm with no drive.json does not abort the evaluation — it is a degraded cell, not a usage error"
 else
-  no "an arm with no drive.json aborted the evaluation (exit $drive_rc) — a single-shot arm legitimately has none"
+  no "an arm with no drive.json aborted the evaluation (exit $drive_rc) — an older run is readable, not a usage error"
   sed 's/^/         /' "$TMP/.err" | head -3
 fi
 assert_json 'doc.arms.A.drive.quantities.gate_stops.value' '2' \

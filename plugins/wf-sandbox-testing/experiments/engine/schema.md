@@ -272,10 +272,15 @@ compares arms, so an arm that happened not to stop must still prove which policy
 A quantity a run could not answer is reported as **not measured, with a stated reason** — never as a
 confident zero. That is the same discipline `mechanism_signals[]` carries above, and it lands on
 `drive.json`'s consumers rather than on the writer: `run-arm.sh` always knows its own counts, so it
-always writes real ones, but a **reader** facing a `drive.json` that is absent (a legitimate state —
-an arm may never have driven) or that predates these fields must render each affected quantity as
-not measured with the reason stated, never as `0`. A missing `drive.json` is not a usage error and
-must not abort an evaluation.
+always writes real ones, but a **reader** facing a `drive.json` that is absent or that predates these
+fields must render each affected quantity as not measured with the reason stated, never as `0`.
+
+Absence is **backward compatibility, not a normal outcome** — and the distinction matters because it
+decides what a reader may infer. This engine writes `drive.json` on every path, single-shot included
+(the section above), so a run directory produced by *this* engine always has one. A missing record
+therefore means the directory came from an older engine, or the run did not survive to its write —
+never "this arm simply didn't drive". Neither case licenses a `0`, and neither is a usage error: a
+missing `drive.json` must not abort an evaluation.
 
 ---
 

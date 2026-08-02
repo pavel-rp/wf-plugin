@@ -56,9 +56,10 @@ session_id_of() {
 # drive_field_of <drive-json> <field> — print one field of an arm's drive record, or NOTHING when
 # the file is absent/unreadable/unparseable or the field is missing or null.
 #
-# A missing drive.json is deliberately NOT an error: a single-shot arm legitimately has none. Every
-# caller below must therefore treat an empty result as "not measured, with a reason" rather than as
-# a zero — the same honest-non-measurement rule the mechanism evaluator applies to the same file.
+# A missing drive.json is deliberately NOT an error: run-arm.sh writes it on every path, so absence
+# means an older or incomplete run rather than "this arm didn't drive" — still readable, still worth
+# analysing. Every caller below must therefore treat an empty result as "not measured, with a
+# reason" rather than as a zero — the same honest-non-measurement rule the evaluator applies here.
 drive_field_of() {
   [ -f "$1" ] || return 0
   node -e '

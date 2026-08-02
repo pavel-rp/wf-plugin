@@ -428,11 +428,16 @@ const driveNotMeasured = (reason) => ({ status: "not_measured", reason });
 const readDrive = (runDir) => {
   const file = path.join(runDir, DRIVE_RECORD);
   // A MISSING drive record is not a usage error, and this is the distinction that matters: a
-  // single-shot arm legitimately never wrote one. A nonexistent run DIRECTORY is a typo and aborts
-  // the evaluation (the CLI rejects it up front); a run directory without a drive record is a real
-  // arm whose drive quantities simply cannot be answered, so it degrades the cell and runs on.
+  // nonexistent run DIRECTORY is a typo and aborts the evaluation (the CLI rejects it up front),
+  // whereas a real run directory without a drive record is an arm whose drive quantities simply
+  // cannot be answered — it degrades the cell and runs on.
+  //
+  // The reason says "older or incomplete", NOT "a single-shot arm has none": run-arm.sh writes this
+  // record on every path, single-shot included, so absence never means "this arm didn't drive". A
+  // reason that names the wrong cause is its own defect — it reads as an explanation and quietly
+  // stops anyone from looking for the real one.
   if (!fs.existsSync(file)) {
-    return { file, doc: null, reason: `no ${DRIVE_RECORD} under this run directory — a single-shot arm legitimately has none, so this is a degraded cell, not a usage error` };
+    return { file, doc: null, reason: `no ${DRIVE_RECORD} under this run directory — the run predates the record or did not survive to its write, so the drive quantities are unknown; a degraded cell, not a usage error` };
   }
   let doc;
   try {
