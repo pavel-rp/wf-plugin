@@ -228,6 +228,8 @@ rather than silently comparing unlike runs.
 |---|---|---|
 | `ticks` | integer | How many measured invocations the drive made. `1` on the single-shot path. |
 | `terminal` | string | The terminal state the drive ended on, or `""` when it ended without one (the tick cap, a non-zero tick exit, a quota wall). Values: any state matched by `--terminal-states` (by default `Complete`, `Blocked`, `Merged`), plus `gate-cap` — see below — plus `""`. |
+| `tick_mode` | string | `fresh` (every tick is a new CLI session — the default) or `resume` (one session id, pinned on tick 1 and continued on every later tick). **A `resume` drive is not comparable to a `fresh` one**: the skill continues from conversation context instead of re-deriving from its durable record, and the token profile shifts toward cache reads. Recorded so an analysis can refuse to compare across modes rather than average them. |
+| `tick_session_id` | string | The pinned session id under `tick_mode: "resume"`, else `""`. Every tick's subagent transcripts live under this one id — which is what makes a supervising skill able to correlate activations it dispatched on an earlier tick. |
 | `resume_mode` | string | `same` (resume ticks repeat the full opening prompt) or `bare` (the skill name alone). |
 | `max_ticks` | integer | The configured tick cap. |
 | `drive_to_terminal` | bool | Whether `--drive-to-terminal` was passed. `false` is the single-shot path. |

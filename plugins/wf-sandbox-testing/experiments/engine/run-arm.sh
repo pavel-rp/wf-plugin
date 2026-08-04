@@ -41,11 +41,17 @@ usage (in-container; dispatched by runner/entrypoint.sh on --measured-fleet):
              [--out <dir>] [--packs "<a b c>"] [--repo-url <url>]
              [--build-json <build-<label>.json>] [--on-quota fail|wait] [--allow-api-key]
              [--drive-to-terminal [--max-ticks <n>] [--resume-mode same|bare]
+                                  [--tick-mode fresh|resume]
                                   [--terminal-states <ere>]
                                   [--resolve-gates [--max-gate-resolutions <n>]
                                                    [--operator-policy <path>]]]
   --gate-skill runs the given cheap skill instead of the measured skill, over the SAME
   seed+seal path (the dry-run gate). --umbrella-id is then optional.
+  --tick-mode (default fresh) chooses each tick's CLI session. `fresh` starts a new session per
+  tick. `resume` pins one session id and continues it, so every tick's subagent transcripts share
+  one directory — required by a skill that supervises subagents ACROSS ticks, which otherwise
+  cannot correlate what it dispatched and stalls without a real outcome. `resume` also carries the
+  prior conversation, so it is a DIFFERENT measurement, not a strictly better one.
   --resolve-gates (OFF by default, and only meaningful with --drive-to-terminal) resumes a drive
   that stopped at a human-decision gate: it dispatches a bounded, separately-attributed operator
   session carrying a fixed policy prompt, then ticks again. --max-gate-resolutions caps those
@@ -282,7 +288,7 @@ write_run_json() {
 main() {
   local arm="" umbrella="" workload_ref="" fake_scripts="" gate_skill="" model="" \
         out="" packs="" repo_url="" build_json="" on_quota="fail" manifest=""
-  local drive_to_terminal=0 max_ticks=12 resume_mode="same" terminal_states="Complete|Blocked|Merged"
+  local drive_to_terminal=0 max_ticks=12 resume_mode="same" terminal_states="Complete|Blocked|Merged" tick_mode="fresh"
   # Gate resolution, OFF by default: an absent flag leaves every existing path — single-shot and
   # the committed --drive-to-terminal drive alike — running exactly as before.
   local resolve_gates=0 max_gate_resolutions=5 operator_policy=""
@@ -330,6 +336,8 @@ main() {
       --on-quota) on_quota="${2:?}"; shift 2;;
       --on-quota=*) on_quota="${1#*=}"; shift;;
       --drive-to-terminal) drive_to_terminal=1; shift;;
+      --tick-mode) tick_mode="${2:?}"; shift 2;;
+      --tick-mode=*) tick_mode="${1#*=}"; shift;;
       --resume-mode) resume_mode="${2:?}"; shift 2;;
       --resume-mode=*) resume_mode="${1#*=}"; shift;;
       --terminal-states) terminal_states="${2:?}"; shift 2;;
@@ -346,6 +354,20 @@ main() {
       *) echo "run-arm.sh: unknown argument '$1'" >&2; usage; exit 2;;
     esac
   done
+
+  # Reject an unknown --tick-mode HERE, before the seed and before any billed invocation. Defaulting
+  # a typo to `fresh` would run the measured arm in the wrong session mode and report a clean verdict
+  # for it — a silently-wrong measurement, which is worse than a loud failure.
+  case "$tick_mode" in
+    fresh|resume) ;;
+    *) echo "run-arm.sh: --tick-mode must be 'fresh' or 'resume' (got '$tick_mode')" >&2; return 2;;
+  esac
+  # `resume` only means anything inside the drive loop; silently accepting it on the single-shot path
+  # would imply a cross-tick session pin that never happens.
+  if [ "$tick_mode" = "resume" ] && [ "$drive_to_terminal" != 1 ]; then
+    echo "run-arm.sh: --tick-mode resume requires --drive-to-terminal (it pins the session ACROSS ticks; a single-shot run has none)" >&2
+    return 2
+  fi
 
   # The arm label must be one the manifest declares — no fixed arm set lives in this script.
   [ -n "$arm" ] || { echo "run-arm.sh: --arm <label> is required" >&2; usage; return 2; }
@@ -452,6 +474,31 @@ main() {
   [ "$resume_mode" = "bare" ] && resume_skill="${skill%% *}"
   local block_prefix; block_prefix="$(skill_block_prefix "$skill")"
   mkdir -p "$out/ticks"
+
+  # --- tick session identity (--tick-mode) -------------------------------------------------------
+  # `fresh` (default): every tick is a NEW `claude -p` session. This is the original contract, and
+  # for a skill whose resume is detect-first (re-deriving from durable artifacts) it is correct.
+  #
+  # `resume`: pin one session id and continue it on every later tick. Required for a skill that
+  # supervises subagents across ticks. A fresh session writes its subagent transcripts under its own
+  # `projects/<session-id>/subagents/`, so the NEXT tick — a different session — searches an empty
+  # directory and cannot correlate the activations it dispatched, reporting an inability to confirm
+  # rather than a real outcome. Pinning the id keeps every tick's subagents under one directory.
+  #
+  # This is not free: a resumed tick also carries the prior conversation, so the skill continues from
+  # context instead of re-deriving from its durable record, and the token profile shifts toward cache
+  # reads. That is a different measurement, not a strictly better one — hence opt-in, never default.
+  local tick_session_id=""
+  if [ "$tick_mode" = "resume" ]; then
+    if [ -r /proc/sys/kernel/random/uuid ]; then
+      tick_session_id="$(cat /proc/sys/kernel/random/uuid)"
+    else
+      echo "run-arm.sh: --tick-mode resume needs a uuid source (/proc/sys/kernel/random/uuid) — unavailable." >&2
+      return 2
+    fi
+    echo "run-arm.sh: arm=$arm tick-mode=resume pinned session id=$tick_session_id" >&2
+  fi
+
   start_ts="$(date -u +%s)"
 
   while :; do
@@ -459,10 +506,21 @@ main() {
     local tick_out="$out/ticks/tick-$ticks.jsonl" tick_prompt="$skill" trc=0
     [ "$ticks" -gt 1 ] && tick_prompt="$resume_skill"
     [ "$ticks" -gt 1 ] && echo "run-arm.sh: arm=$arm resume tick $ticks — '$tick_prompt'" >&2
+
+    # Session-identity flags, empty on the default `fresh` path so its command is byte-identical
+    # to the pre-existing one.
+    local -a tick_session_args=()
+    if [ "$tick_mode" = "resume" ]; then
+      if [ "$ticks" -eq 1 ]; then tick_session_args=(--session-id "$tick_session_id")
+      else                        tick_session_args=(--resume "$tick_session_id")
+      fi
+    fi
+
     (
       cd "$ws" && \
       claude -p "$tick_prompt" --output-format stream-json --verbose \
-        --dangerously-skip-permissions --model "$model"
+        --dangerously-skip-permissions --model "$model" \
+        ${tick_session_args+"${tick_session_args[@]}"}
     ) > "$tick_out" 2>> "$stderr_log" || trc=$?
     # The first tick owns the run's exit code; a failing resume ends the drive without
     # relabelling an opening invocation that already succeeded.
@@ -581,8 +639,8 @@ main() {
   # shellcheck disable=SC2086
   [ -n "${operator_session_ids// /}" ] && operator_ids_json="$(printf '%s\n' $operator_session_ids \
     | awk 'BEGIN { printf "[" } { printf "%s\"%s\"", (NR > 1 ? "," : ""), $0 } END { printf "]" }')"
-  printf '{"ticks":%d,"terminal":"%s","resume_mode":"%s","max_ticks":%d,"drive_to_terminal":%s,"resolve_gates":%s,"max_gate_resolutions":%d,"gate_stops":%d,"open_questions_total":%d,"operator_sessions":%d,"operator_session_ids":%s,"operator_cost_usd":%s,"operator_policy_sha256":"%s"}\n' \
-    "$ticks" "${terminal:-}" "$resume_mode" "$max_ticks" \
+  printf '{"ticks":%d,"terminal":"%s","tick_mode":"%s","tick_session_id":"%s","resume_mode":"%s","max_ticks":%d,"drive_to_terminal":%s,"resolve_gates":%s,"max_gate_resolutions":%d,"gate_stops":%d,"open_questions_total":%d,"operator_sessions":%d,"operator_session_ids":%s,"operator_cost_usd":%s,"operator_policy_sha256":"%s"}\n' \
+    "$ticks" "${terminal:-}" "$tick_mode" "$tick_session_id" "$resume_mode" "$max_ticks" \
     "$([ "$drive_to_terminal" = 1 ] && echo true || echo false)" \
     "$([ "$resolve_gates" = 1 ] && echo true || echo false)" \
     "$max_gate_resolutions" "$gate_stops" "$open_questions_total" "$operator_sessions" \
