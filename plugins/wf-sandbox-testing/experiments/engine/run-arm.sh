@@ -99,8 +99,21 @@ extract_session_id() {
        }' "$1" 2>/dev/null || true
 }
 
+# discover_transcript_bundle <projects-root> [<session-id>] — the measured session's transcript
+# file under the isolated projects tree. The projects tree also holds the UNMEASURED setup
+# sessions and any operator sessions, so "first .jsonl in sort order" picks a wrong (non-measured)
+# file whenever one of those sorts earlier — which in practice was most runs. With a session id,
+# only a file carrying that id in its name qualifies; the sorted-first fallback survives solely
+# for the id-less path (an unresolved session), where run.json's `resolved: false` already marks
+# the bundle as untrusted.
 discover_transcript_bundle() {
   [ -d "$1" ] || return 0
+  if [ -n "${2:-}" ]; then
+    local hit
+    hit="$(find "$1" -type f -name "*${2}*.jsonl" 2>/dev/null | LC_ALL=C sort | head -n1)"
+    if [ -n "$hit" ]; then printf '%s\n' "$hit"; return 0; fi
+    return 0
+  fi
   find "$1" -type f -name '*.jsonl' 2>/dev/null | LC_ALL=C sort | head -n1
 }
 
@@ -499,6 +512,18 @@ main() {
     echo "run-arm.sh: arm=$arm tick-mode=resume pinned session id=$tick_session_id" >&2
   fi
 
+  # Since CLI v2.1.182, headless `claude -p` kills still-running background subagents after
+  # CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS (default 600000 = 10 min) and prints
+  # "Background tasks still running after Ns; terminating". A measured skill that supervises
+  # long-lived subagent shippers exceeds that on every tick, so the default ceiling silently
+  # truncates the very work being measured — every arm's subagents die mid-flight and the arm's
+  # cost/terminal state reflect the kill, not the treatment. 0 disables the ceiling. Overridable
+  # from the environment for an experiment that wants the ceiling ON, and recorded in drive.json
+  # either way: the ceiling is part of the run's reproducibility surface.
+  local bg_wait_ceiling_ms="${CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS:-0}"
+  export CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS="$bg_wait_ceiling_ms"
+  echo "run-arm.sh: arm=$arm CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=$bg_wait_ceiling_ms" >&2
+
   start_ts="$(date -u +%s)"
 
   while :; do
@@ -639,8 +664,8 @@ main() {
   # shellcheck disable=SC2086
   [ -n "${operator_session_ids// /}" ] && operator_ids_json="$(printf '%s\n' $operator_session_ids \
     | awk 'BEGIN { printf "[" } { printf "%s\"%s\"", (NR > 1 ? "," : ""), $0 } END { printf "]" }')"
-  printf '{"ticks":%d,"terminal":"%s","tick_mode":"%s","tick_session_id":"%s","resume_mode":"%s","max_ticks":%d,"drive_to_terminal":%s,"resolve_gates":%s,"max_gate_resolutions":%d,"gate_stops":%d,"open_questions_total":%d,"operator_sessions":%d,"operator_session_ids":%s,"operator_cost_usd":%s,"operator_policy_sha256":"%s"}\n' \
-    "$ticks" "${terminal:-}" "$tick_mode" "$tick_session_id" "$resume_mode" "$max_ticks" \
+  printf '{"ticks":%d,"terminal":"%s","tick_mode":"%s","tick_session_id":"%s","resume_mode":"%s","max_ticks":%d,"bg_wait_ceiling_ms":%s,"drive_to_terminal":%s,"resolve_gates":%s,"max_gate_resolutions":%d,"gate_stops":%d,"open_questions_total":%d,"operator_sessions":%d,"operator_session_ids":%s,"operator_cost_usd":%s,"operator_policy_sha256":"%s"}\n' \
+    "$ticks" "${terminal:-}" "$tick_mode" "$tick_session_id" "$resume_mode" "$max_ticks" "$bg_wait_ceiling_ms" \
     "$([ "$drive_to_terminal" = 1 ] && echo true || echo false)" \
     "$([ "$resolve_gates" = 1 ] && echo true || echo false)" \
     "$max_gate_resolutions" "$gate_stops" "$open_questions_total" "$operator_sessions" \
@@ -649,7 +674,7 @@ main() {
   local session_id projects_root transcript_bundle session_resolved=0
   session_id="$(extract_session_id "$transcript")"
   projects_root="$cfg/projects"
-  transcript_bundle="$(discover_transcript_bundle "$projects_root")"
+  transcript_bundle="$(discover_transcript_bundle "$projects_root" "$session_id")"
   [ -n "$session_id" ] && session_resolved=1
   echo "run-arm.sh: measured session id='${session_id:-<none>}' wall=${wall_seconds}s resolved=$session_resolved" >&2
 

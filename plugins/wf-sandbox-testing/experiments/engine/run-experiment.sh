@@ -71,6 +71,11 @@ WORKLOAD_REF="$CONST_WORKLOAD_REF" CLI_VERSION="$CONST_CLI_VERSION"
 UMBRELLA="$CONST_UMBRELLA_ID" GATE_SKILL="$CONST_GATE_SKILL" FAKE="$CONST_FAKE_SCRIPTS"
 PACKS="$CONST_PACKS" GAP="$CONST_GAP_SECONDS"
 SPEND=0 FORCE=0 DRY_RUN=0 RUNBOOK=0 RUNBOOK_OUT="" _flag=""
+# Drive flags are collected verbatim and forwarded to the MEASURED phase only. They are
+# run-arm.sh's vocabulary, not this script's: it stays experiment-agnostic and never
+# interprets them, so a new run-arm.sh flag needs no change here. The cheap gate is
+# deliberately excluded — it exists to exercise seed+seal, not to drive a conveyor.
+DRIVE_ARGS=()
 PHASES=()
 
 # set_arm_ref <label-or-lowercased-label> <sha> — override one declared arm's ref.
@@ -109,6 +114,11 @@ while [ $# -gt 0 ]; do
     --runbook=*) RUNBOOK=1; RUNBOOK_OUT="${1#*=}"; shift;;
     --spend) SPEND=1; shift;;
     --force) FORCE=1; shift;;
+    --drive-to-terminal|--resolve-gates) DRIVE_ARGS+=("$1"); shift;;
+    --max-ticks|--tick-mode|--resume-mode|--terminal-states|--max-gate-resolutions|--operator-policy)
+      DRIVE_ARGS+=("$1" "${2:?}"); shift 2;;
+    --max-ticks=*|--tick-mode=*|--resume-mode=*|--terminal-states=*|--max-gate-resolutions=*|--operator-policy=*)
+      DRIVE_ARGS+=("$1"); shift;;
     --dry-run) DRY_RUN=1; shift;;
     -h|--help) usage; exit 0;;
     *) echo "run-experiment.sh: unknown argument '$1'" >&2; usage; exit 2;;
@@ -274,7 +284,7 @@ do_pilot() {
     first=0
     log "PILOT arm $arm (umbrella $UMBRELLA) → results/run-$arm"
     require_image "$arm"
-    run_docker "$arm" "run-$arm" --umbrella-id "$UMBRELLA" \
+    run_docker "$arm" "run-$arm" --umbrella-id "$UMBRELLA" ${DRIVE_ARGS+"${DRIVE_ARGS[@]}"} \
       || die "pilot arm $arm did not exit clean — an INFRA failure (container death/auth/fake gap) is discarded + re-run; an expensive-but-completed run is DATA, never discarded. Inspect results/run-$arm/run.json."
   done
   log "pilot complete — COMMIT results/run-*/projects-archive.tar.gz."
@@ -293,6 +303,54 @@ do_analyze() {
       [ "$v" = "ok" ] \
         || die "arm $l's run.json records verdict '${v:-<unreadable>}', not 'ok' — refusing to report a dollar delta over an incomplete arm. Re-run that arm (an INFRA failure is discarded and re-run; an expensive-but-completed run is DATA)."
     done
+    # COMPARABILITY GATE. verdict=ok says the arm's run completed cleanly; it says nothing about
+    # whether the arms did LIKE work. drive.json records the drive shape and the terminal state
+    # each arm actually reached — arms that ended in different terminal states (one Complete, one
+    # Blocked) did unequal work, and a raw cost delta over unlike runs rewards the arm that failed
+    # earliest. A success terminal must also be corroborated by the op-log: a run whose skill
+    # reported Complete/Merged while the fake provider recorded zero delivery writes claimed an
+    # outcome that never happened (observed: a "Complete" arm with no branch-create/commit/push/
+    # pr-create/pr-merge op at all), and its cost is the cost of a hallucinated success.
+    local run_dirs=()
+    for l in "${ARM_LABELS[@]}"; do run_dirs+=("$RESULTS_DIR/run-$l"); done
+    node - "${run_dirs[@]}" <<'NODE_GATE' \
+      || die "comparability gate failed (see above) — cost deltas over these runs are invalid; do not fill the verdict from them."
+const fs = require('node:fs');
+const dirs = process.argv.slice(2);
+const fail = (m) => { console.error('comparability gate: ' + m); process.exit(1); };
+const drives = dirs.map((dir) => {
+  const p = dir + '/drive.json';
+  if (!fs.existsSync(p)) return { dir, absent: true };
+  try { return { dir, ...JSON.parse(fs.readFileSync(p, 'utf8')) }; }
+  catch { return { dir, unreadable: true }; }
+});
+const gapped = drives.filter((d) => d.absent || d.unreadable);
+if (gapped.length === drives.length) {
+  // Every arm predates drive.json (legacy single-shot runs) — the gate has nothing to compare.
+  console.error('comparability gate: no arm has a readable drive.json — legacy runs; gate skipped.');
+  process.exit(0);
+}
+if (gapped.length)
+  fail('mixed run shapes — drive.json is ' + gapped.map((d) => d.dir + (d.absent ? ' (absent)' : ' (unreadable)')).join(', ') + ' while other arms have one.');
+const shape = (d) => [d.drive_to_terminal, d.tick_mode, d.resume_mode, d.resolve_gates].join('|');
+if (new Set(drives.map(shape)).size > 1)
+  fail('arms ran with different drive shapes: ' + drives.map((d) => `${d.dir}=${shape(d)}`).join('  '));
+const terms = drives.map((d) => d.terminal || '<none>');
+if (new Set(terms).size > 1)
+  fail('arms reached DIFFERENT terminal states: ' + drives.map((d) => `${d.dir}='${d.terminal || ''}'`).join('  ') + ' — they did unequal work. Re-run the divergent arm(s) before comparing cost.');
+if (drives[0].drive_to_terminal && !drives[0].terminal)
+  fail('no arm reached a terminal state (tick cap / drive ended early) — the totals measure the cap, not the treatment.');
+const WRITES = ['branch-create', 'commit', 'push-upstream', 'pr-create', 'pr-merge'];
+for (const d of drives) {
+  if (!/^(Complete|Merged)$/.test(d.terminal || '')) continue;
+  const lp = d.dir + '/op-log.jsonl';
+  if (!fs.existsSync(lp))
+    fail(`${d.dir}: terminal '${d.terminal}' but no op-log.jsonl — the claimed success cannot be corroborated.`);
+  const ops = fs.readFileSync(lp, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  if (!ops.some((o) => o.surface === 'delivery' && WRITES.includes(o.op)))
+    fail(`${d.dir}: terminal '${d.terminal}' with ZERO delivery write ops in its op-log (none of: ${WRITES.join(', ')}) — a claimed outcome the provider never performed (false-complete).`);
+}
+NODE_GATE
   fi
   log "ANALYZE — offline, host-side, free"
   compose_analyze_cmd

@@ -1,6 +1,6 @@
 # fake tracker provider — runtime ops
 
-**Version:** 0.1.0 (WF-344 — hermetic in-memory tracker binding: every tracker op returns a scripted response and records its invocation to the op log; no network/tracker-MCP reach.)
+**Version:** 0.2.0 (WF-344 — hermetic in-memory tracker binding: every tracker op returns a scripted response and records its invocation to the op log; no network/tracker-MCP reach. 0.2.0 adds the argument-keyed `{by, map, default?}` response form for ops whose concurrent callers make call-order sequences answer the wrong argument.)
 **Role:** the runtime-read half of the fake tracker provider — the uniform scripted-response protocol every tracker operation follows, plus the authoritative tracker op list. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (rationale, scripts/op-log format, edge-case matrix — never read at boot):** `tracker.md`; scripts/op-log format legend `../references/scripts-format.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -21,8 +21,9 @@ Identical to the delivery surface's protocol — one shared shape across both su
 3. **Compute `<seq>` and the per-op call index.** `<seq>` = (count of existing op-log lines) + 1 (op log absent → `<seq>` = 1, create it). `<call-index>` = the number of op-log lines already recording this same `(surface=tracker, op=<op>)` pair (0 for the first call).
 4. **Resolve the scripted response** from `scripts.tracker.<op>`:
    - **Absent key → UNSCRIPTED.** Append the invocation line (step 5) with `"response":"__UNSCRIPTED__"`, then **fail loudly** and stop: `wf-fake: unscripted tracker op '<op>' — no scripted response in <scripts-path>. Add scripts.tracker.<op> or the scenario is invalid.` Never a silent skip, never a fabricated value.
-   - **A single JSON value** → that is the response.
-   - **A JSON array** (an ordered response sequence) → the element at `<call-index>`; past the end, the **last** element repeats.
+   - **A keyed map** — an object carrying exactly the keys `by` and `map` (plus an optional `default`) → an argument-keyed response: read the arg named by `by` from `<args>`, and the response is `map.<that value>`. When `map` has no such key: the response is `default` when one is declared, else treat the call as UNSCRIPTED (append the line, fail loudly naming the op **and** the missed key). Use this whenever concurrent or reordered callers make a call-order sequence answer the wrong argument (e.g. `get` keyed `by: "id"`).
+   - **Any other single JSON value** → that is the response.
+   - **A JSON array** (an ordered response sequence) → the element at `<call-index>`; past the end, the **last** element repeats. A sequence is indexed by call count, blind to arguments — never script one for an op whose calls interleave across concurrent callers with different arguments; use a keyed map there.
 5. **Append the invocation, in order, then return.** Append exactly one line to the op log: `{"seq":<seq>,"surface":"tracker","op":"<op>","args":<args-as-json>,"response":<resolved-response-or-"__UNSCRIPTED__">}`. Append **before** returning (and before the loud stop in step 4). Return the resolved response.
 
 ## Tracker operations (arg keys recorded in `<args>`)

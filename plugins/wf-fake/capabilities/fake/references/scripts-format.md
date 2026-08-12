@@ -36,13 +36,27 @@ response:
 
 **Response value forms:**
 
-- **A single value** (object / string / number / bool) — returned on every call to that op.
+- **A keyed map** — an object carrying exactly the keys `by` and `map` (plus an optional
+  `default`): an **argument-keyed response**. The fake reads the arg named by `by` from the call's
+  args and returns `map.<that value>`; a value absent from `map` returns `default` when declared,
+  else fails loudly as unscripted (naming the op and the missed key). Example:
+
+  ```json
+  "get": { "by": "id", "map": { "FAKE-1": { "id": "FAKE-1", "title": "Demo" },
+                                 "FAKE-2": { "id": "FAKE-2", "title": "Child" } } }
+  ```
+
+  Use this instead of a sequence whenever callers run concurrently or in a nondeterministic order:
+  a sequence is indexed by call count and blind to arguments, so two parallel callers asking for
+  different ids would each get whatever happens to sit at their call index.
+- **Any other single value** (object / string / number / bool) — returned on every call to that op.
 - **An array** — an **ordered response sequence**: call N returns element N (0-indexed by the op's
   prior call count in the op log); once calls exceed the array length the **last** element repeats.
   This is how a fixture scripts a poll that starts `PENDING` and settles `SUCCESS`, or a review
   thread that flips `unresolved` → `resolved` across reads. (Note the nesting in the `checks-read`
   example: each *element* is itself the op's normal list-shaped response, so the array-of-arrays is
-  a two-call sequence, not one four-item list.)
+  a two-call sequence, not one four-item list.) Never script a sequence for an op whose calls
+  interleave across concurrent callers with different arguments — use a keyed map there.
 
 An op with **no** key is **unscripted** — the fake records the invocation and fails loudly naming
 the op (except tracker `resolve_config`, which returns `"unconfigured"`).
