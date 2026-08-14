@@ -22655,7 +22655,10 @@ function trimCell2(s) {
   return s.trim().replace(/^`/, "").replace(/`$/, "").trim();
 }
 function join3(...parts) {
-  return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(/\/{2,}/g, "/");
+  return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(
+    /\/{2,}/g,
+    "/"
+  );
 }
 function tableRowsWithLines(content, heading) {
   const rows = [];
@@ -22686,12 +22689,19 @@ function tableRowsWithLines(content, heading) {
   });
   return rows;
 }
-var CANONICAL_HEADINGS = ["## Capabilities", "## Plugin Roots", "## Fragments"];
+var CANONICAL_HEADINGS = [
+  "## Capabilities",
+  "## Plugin Roots",
+  "## Fragments"
+];
 function checkHeadingTypos(file, content, label) {
   const out = [];
   const canonicalNorms = /* @__PURE__ */ new Map();
   for (const h of CANONICAL_HEADINGS) {
-    canonicalNorms.set(h.replace(/^#+\s*/, "").toLowerCase().replace(/[^a-z0-9]/g, ""), h);
+    canonicalNorms.set(
+      h.replace(/^#+\s*/, "").toLowerCase().replace(/[^a-z0-9]/g, ""),
+      h
+    );
   }
   const lines = content.split(/\r?\n/);
   lines.forEach((raw, i) => {
@@ -22712,6 +22722,55 @@ function checkHeadingTypos(file, content, label) {
     }
   });
   return out;
+}
+function owningPluginName(fs, root) {
+  if (root === null) return null;
+  const raw = fs.readFile(join3(root, ".claude-plugin", "plugin.json"));
+  if (raw === null) return null;
+  try {
+    const name = JSON.parse(raw).name;
+    return typeof name === "string" && /^[a-z][a-z0-9-]*$/.test(name) ? name : null;
+  } catch {
+    return null;
+  }
+}
+function owningPluginRoot(manifestPath) {
+  const normalized = toPosix(manifestPath);
+  const suffix = "/capabilities/";
+  const capAt = normalized.lastIndexOf(suffix);
+  if (capAt >= 0) return normalized.slice(0, capAt);
+  const marker = "/plugins/";
+  const at = normalized.lastIndexOf(marker);
+  if (at >= 0) {
+    const plugin = normalized.slice(at + marker.length).split("/")[0];
+    if (plugin) return `${normalized.slice(0, at)}${marker}${plugin}`;
+  }
+  return null;
+}
+function siblingWorkspacePluginRoot(fs, owningRoot, plugin) {
+  const marker = "/plugins/";
+  const at = owningRoot.lastIndexOf(marker);
+  if (at < 0) return null;
+  const candidate = join3(owningRoot.slice(0, at + marker.length), plugin);
+  return fs.isDirectory(candidate) ? candidate : null;
+}
+function checkSubagentTarget(fs, discovery, dispatch) {
+  const target = dispatch.slice("subagent:".length).trim();
+  const colon = target.indexOf(":");
+  let plugin = null;
+  let agent = target;
+  if (colon >= 0) {
+    plugin = target.slice(0, colon);
+    agent = target.slice(colon + 1);
+    if (target.indexOf(":", colon + 1) >= 0)
+      return { valid: false, expected: null };
+  }
+  if (!/^[a-z][a-z0-9-]*$/.test(agent) || plugin !== null && !/^[a-z][a-z0-9-]*$/.test(plugin)) {
+    return { valid: false, expected: null };
+  }
+  const root = plugin === null ? discovery.owningRoot : plugin === discovery.owningPlugin ? discovery.owningRoot : discovery.pluginRoot(plugin);
+  const expected = root === null ? null : join3(root, "agents", `${agent}.md`);
+  return { valid: expected !== null && fs.isFile(expected), expected };
 }
 function readManifest(content) {
   const lines = content.split(/\r?\n/).map(stripCr2);
@@ -22789,11 +22848,15 @@ function readManifest(content) {
 function normScope(scope) {
   return scope === "\u2014" || scope === "-" ? "" : scope;
 }
-function checkManifest(capability, manifestPath, content, rules) {
+function checkManifest(capability, manifestPath, content, rules, fs, discovery) {
   const findings = [];
   const claims = [];
   findings.push(
-    ...checkHeadingTypos(manifestPath, content, `capability \`${capability}\` manifest`)
+    ...checkHeadingTypos(
+      manifestPath,
+      content,
+      `capability \`${capability}\` manifest`
+    )
   );
   const parsed = readManifest(content);
   for (const bad of parsed.malformedRows) {
@@ -22860,6 +22923,18 @@ function checkManifest(capability, manifestPath, content, rules) {
           `capability \`${capability}\` fragment at \`${row.phase} | ${row.kind}\` has an \`${prefix}:\` dispatch with no target (dispatch: \`${row.dispatch}\`).`
         )
       );
+    } else if (prefix === "subagent") {
+      const target = checkSubagentTarget(fs, discovery, d);
+      if (!target.valid) {
+        findings.push(
+          finding(
+            "CHECK-6b",
+            manifestPath,
+            row.line,
+            target.expected === null ? `capability \`${capability}\` fragment at \`${row.phase} | ${row.kind}\` names an undiscoverable subagent target \`${d}\` \u2014 expected a lowercase agent name, optionally qualified as \`<plugin>:<agent>\`, in the owning plugin/workspace agent tree.` : `capability \`${capability}\` fragment at \`${row.phase} | ${row.kind}\` names undiscoverable subagent target \`${d}\` \u2014 no agent file at \`${target.expected}\`.`
+          )
+        );
+      }
     }
     const scope = normScope(row.scope);
     if (isPointTargeted) {
@@ -22933,13 +23008,18 @@ function checkManifest(capability, manifestPath, content, rules) {
     articles: parsed.articles
   };
 }
-function validateManifest(fs, target, opsDocPath) {
+function validateManifest(fs, target, opsDocPath, options = {}) {
   const manifestPath = /manifest\.md$/i.test(target) ? toPosix(target) : join3(target, "manifest.md");
   let rules;
   try {
     rules = loadRules(fs, opsDocPath);
   } catch (err) {
-    return ruleSourceErrorVerdict("validate_manifest", manifestPath, err, opsDocPath);
+    return ruleSourceErrorVerdict(
+      "validate_manifest",
+      manifestPath,
+      err,
+      opsDocPath
+    );
   }
   const content = fs.readFile(manifestPath);
   if (content === null) {
@@ -22960,7 +23040,13 @@ function validateManifest(fs, target, opsDocPath) {
     );
   }
   const capability = deriveCapabilityName(manifestPath);
-  const { findings } = checkManifest(capability, manifestPath, content, rules);
+  const owningRoot = owningPluginRoot(manifestPath);
+  const owningPlugin = owningPluginName(fs, owningRoot);
+  const { findings } = checkManifest(capability, manifestPath, content, rules, fs, {
+    owningRoot,
+    owningPlugin,
+    pluginRoot: (plugin) => options.pluginRoots?.[plugin] ?? (owningRoot === null ? null : siblingWorkspacePluginRoot(fs, owningRoot, plugin))
+  });
   const unparseable = findings.some((f) => f.rule === "input-unparseable");
   return verdict(
     "validate_manifest",
@@ -22982,7 +23068,12 @@ function validateRegistry(fs, opts) {
   try {
     rules = loadRules(fs, opts.opsDocPath);
   } catch (err) {
-    return ruleSourceErrorVerdict("validate_registry", registryFile, err, opts.opsDocPath);
+    return ruleSourceErrorVerdict(
+      "validate_registry",
+      registryFile,
+      err,
+      opts.opsDocPath
+    );
   }
   const content = fs.readFile(registryFile);
   if (content === null) {
@@ -23019,13 +23110,22 @@ function validateRegistry(fs, opts) {
       );
     }
   }
-  const capRows = tableRowsWithLines(content, "## Capabilities").map((r) => ({ name: r.cells[0] ?? "", path: r.cells[1] ?? "", line: r.line })).filter((r) => r.name !== "" && r.name !== "Capability");
-  const rootRows = tableRowsWithLines(content, "## Plugin Roots").map((r) => ({ plugin: r.cells[0] ?? "", root: r.cells[1] ?? "", line: r.line })).filter((r) => r.plugin !== "" && r.plugin !== "Plugin");
+  const capRows = tableRowsWithLines(content, "## Capabilities").map((r) => ({
+    name: r.cells[0] ?? "",
+    path: r.cells[1] ?? "",
+    line: r.line
+  })).filter((r) => r.name !== "" && r.name !== "Capability");
+  const rootRows = tableRowsWithLines(content, "## Plugin Roots").map((r) => ({
+    plugin: r.cells[0] ?? "",
+    root: r.cells[1] ?? "",
+    line: r.line
+  })).filter((r) => r.plugin !== "" && r.plugin !== "Plugin");
   const parsed = { capabilities: capRows, pluginRoots: rootRows };
   parsed.pluginRoots.forEach((pr, i) => {
     const line = pr.line;
     let bad = "";
-    if (pr.root.includes("\\")) bad = "contains a backslash (must use forward slashes)";
+    if (pr.root.includes("\\"))
+      bad = "contains a backslash (must use forward slashes)";
     else if (`/${pr.root}/`.includes("/../")) bad = "contains a '..' segment";
     if (!pr.root || pr.root === "\u2014") {
       findings.push(
@@ -23129,7 +23229,12 @@ function validateRegistry(fs, opts) {
     const p = cap.path;
     if (!p || p === "\u2014") {
       findings.push(
-        finding("CHECK-4", registryFile, line, `capability \`${cap.name}\` has no Path in the registry.`)
+        finding(
+          "CHECK-4",
+          registryFile,
+          line,
+          `capability \`${cap.name}\` has no Path in the registry.`
+        )
       );
       continue;
     }
@@ -23178,7 +23283,12 @@ function validateRegistry(fs, opts) {
           );
         }
       }
-      if (resolved) resolvedManifests.push({ capability: cap.name, path: join3(resolved, "manifest.md") });
+      if (resolved)
+        resolvedManifests.push({
+          capability: cap.name,
+          path: join3(resolved, "manifest.md"),
+          owningRoot: resolved.slice(0, -plRel.length).replace(/\/$/, "")
+        });
       continue;
     }
     const folder = join3(repoRoot, p);
@@ -23201,7 +23311,11 @@ function validateRegistry(fs, opts) {
         )
       );
     } else {
-      resolvedManifests.push({ capability: cap.name, path: join3(folder, "manifest.md") });
+      resolvedManifests.push({
+        capability: cap.name,
+        path: join3(folder, "manifest.md"),
+        owningRoot: owningPluginRoot(join3(folder, "manifest.md"))
+      });
     }
   }
   const claims = [];
@@ -23212,13 +23326,29 @@ function validateRegistry(fs, opts) {
     const mContent = fs.readFile(rm.path);
     if (mContent === null) continue;
     sources.push(rm.path);
-    const res = checkManifest(rm.capability, rm.path, mContent, rules);
+    const owningPlugin = owningPluginName(fs, rm.owningRoot);
+    const res = checkManifest(rm.capability, rm.path, mContent, rules, fs, {
+      owningRoot: rm.owningRoot,
+      owningPlugin,
+      pluginRoot: (plugin) => {
+        const recordedOrHealed = resolvePluginRoot(plugin) ?? healFromInstallManifest(plugin);
+        return recordedOrHealed ?? (fs.isDirectory(join3(repoRoot, "plugins", plugin)) ? join3(repoRoot, "plugins", plugin) : null);
+      }
+    });
     findings.push(...res.findings);
     claims.push(...res.claims);
-    for (const n of res.requires) requires.push({ capability: rm.capability, needed: n, file: rm.path });
-    for (const f of res.conflicts) conflicts.push({ capability: rm.capability, foe: f, file: rm.path });
+    for (const n of res.requires)
+      requires.push({ capability: rm.capability, needed: n, file: rm.path });
+    for (const f of res.conflicts)
+      conflicts.push({ capability: rm.capability, foe: f, file: rm.path });
     for (const a of res.articles)
-      articles.push({ capability: rm.capability, key: a.key, value: a.value, file: rm.path, line: a.line });
+      articles.push({
+        capability: rm.capability,
+        key: a.key,
+        value: a.value,
+        file: rm.path,
+        line: a.line
+      });
   }
   for (let i = 0; i < claims.length; i++) {
     for (let j = i + 1; j < claims.length; j++) {
@@ -24459,7 +24589,13 @@ var ResolverService = class {
     const fs = this.validatorFs();
     const ops = this.opsDocPath();
     if (path && path.trim()) {
-      return validateManifest(fs, this.absolutize(path.trim()), ops);
+      const pluginRoots = {};
+      for (const root of this.safeEnsure().snapshot?.pluginRoots ?? []) {
+        if (root.resolvedRoot !== null) pluginRoots[root.plugin] = root.resolvedRoot;
+      }
+      return validateManifest(fs, this.absolutize(path.trim()), ops, {
+        pluginRoots
+      });
     }
     const full = this.validateRegistry();
     const manifestFindings = full.findings.filter((f) => /manifest\.md$/.test(f.file));

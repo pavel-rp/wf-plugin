@@ -43,7 +43,7 @@ if raw is not None:
             fail(f"unsafe path for {ident}: {file}")
         rows[ident] = fields
 
-scan_roots = [root / "plugins/wf/skills", root / "plugins/wf-audit", root / "plugins/wf-browser-qa", root / "plugins/wf-angular"]
+scan_roots = [root / "plugins/wf/skills", root / "plugins/wf-audit", root / "plugins/wf-browser-qa", root / "plugins/wf-angular", root / "plugins/wf-host"]
 markers = {}
 texts = {}
 for base in scan_roots:
@@ -61,7 +61,7 @@ for base in scan_roots:
                 "plugins/wf/skills/qa-followup/SKILL.md",
             }
             or (
-                relative.startswith(("plugins/wf-audit/", "plugins/wf-browser-qa/", "plugins/wf-angular/"))
+                relative.startswith(("plugins/wf-audit/", "plugins/wf-browser-qa/", "plugins/wf-angular/", "plugins/wf-host/"))
                 and "/references/" not in relative
                 and not relative.endswith("/manifest.md")
             )
@@ -70,7 +70,7 @@ for base in scan_roots:
             if not discovery_enabled: continue
             executable = (
                 re.search(r"subagent_type: wf-[a-z0-9-]+:[a-z0-9-]+", line)
-                or re.search(r"(?:invoke|re-invoke).*?/wf-(?:audit|browser-qa|angular):[a-z0-9-]+.*?Skill", line, re.I)
+                or re.search(r"(?:invoke|re-invoke).*?/wf-(?:audit|browser-qa|angular|host):[a-z0-9-]+.*?Skill", line, re.I)
                 or re.search(r"(?:invoke|dispatch).*?Task.*?subagent_type: <[^>]+>", line, re.I)
             )
             prose = re.search(r"normally invoked|caller hands|dispatch target of|fragment.*names|user-facing entry|to compose a process-retrospective", line, re.I)

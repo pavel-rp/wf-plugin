@@ -34,8 +34,9 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 3 | contribution survival across base-skill rewording | assertion (`expect.json` vs scripted threads) | SMOKE | `contribution-survival` — a registered `ship.review` fill driven against differently-reworded Phase 4.5 prose | **WF-203 comment 2026-07-17** (C016 watch-list item **2**: "the fill binds to `ship`'s `interface.md` `## Slots` declaration + the `<!-- wf:slot ship.review -->` body marker, not to Phase 4.5's prose … the fill survives it"); **C014 (WF-322)** watch-list; **C016 (WF-343) OUT-6**. |
 | 4 | drift on model swap | assertion (`expect.json` vs scripted responses) | SMOKE | `model-swap-drift` — the same unfilled-slot `/wf:ship` run under two model arms | **WF-203 comment 2026-07-17** (C016 watch-list item **3**: "the gate fragment bakes no model id and names only abstract delivery ops … a model swap should not drift its behaviour"); **C014 (WF-322)** watch-list; **C016 (WF-343) OUT-6**. |
 | 5 | orphaned overrides at upgrade | assertion (`expect.json` vs scripted responses) | SMOKE | `orphaned-override` — a personal `_local/slots/ship.review.md` override present, winning under `replace` | **WF-203 comment 2026-07-17** (C016 watch-list item **4**: "a personal `_local/slots/ship.review.md` override (tier rank 30) supersedes the pack contribution (rank 10) wholesale under `replace` … an orphaned override silently keeps the old gate"); **C014 (WF-322)** watch-list; **C016 (WF-343) OUT-6**. |
+| 6 | host availability and reversible teardown | deterministic fixture assertion | SMOKE | qa-auto contract/model signatures plus an executed registered-host 14-operation-scenario lifecycle | **WF-432** — “Make host-dependent QA executable or fail fast”, STEP-006. |
 
-All five items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+All six items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
@@ -130,5 +131,7 @@ spec-time decision) and the baseline-arm provenance.
 | `items/contribution-survival/` | item 3 (C014-2): `item.md` + `expect.json` + `fake-scripts.json`; `runs-current/` (original + reworded Phase 4.5 prose) green; `seeded-breakage/` (marker dropped) red |
 | `items/model-swap-drift/` | item 4 (C014-3): `item.md` + `expect.json` + `fake-scripts.json`; `runs-current/` (two model arms) green; `seeded-breakage/` (drift skips merge) red |
 | `items/orphaned-override/` | item 5 (C014-4): `item.md` + `expect.json` + `fake-scripts.json`; `runs-current/` (override present, wins under `replace`) green; `seeded-breakage/` (override removed) red |
+| `fixtures/host-lifecycle/` | item 6 (WF-432): deterministic no-egress host availability signatures and a 14-scenario `expose`/`augment`/`seed`/`fixture` lifecycle; byte-tree restoration is checked after success and failure |
+| `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, and the coverage-ledger audit (CI entrypoint) |
 | `README.md` | authoring reference (never read at runtime) |

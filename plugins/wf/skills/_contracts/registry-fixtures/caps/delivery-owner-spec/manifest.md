@@ -12,4 +12,4 @@ so this still overlaps `delivery-owner` — the fixture that proves it
 
 | phase | contribution-kind | dispatch                | scope    |
 |-------|--------------------|--------------------------|----------|
-| spec  | provider           | `subagent: wf-delivery` | delivery |
+| spec  | provider           | `subagent: wf:phase-runner` | delivery |

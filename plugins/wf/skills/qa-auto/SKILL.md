@@ -1,12 +1,12 @@
 ---
 name: qa-auto
-description: Orchestrates an autonomous QA run over 06_qa.md — resolves the task and plan, enforces the branch gate, manages run lifecycle (resume / --batch / --only), and dispatches the per-scenario browser drive to the qa-execution provider registered in the capability registry, then assembles 07_qa-report.md with the Summary, traceability matrix, and a full-run console/network baseline rollup. Domain-free — it names no stack and drives no browser itself; the execution engine is supplied by a registered capability. Use when you want a hands-off run; pair with /wf:qa-run for human-in-the-loop runs.
+description: Orchestrates an autonomous QA run over 06_qa.md — resolves the task and plan, enforces the branch gate, coordinates any registered host provider around engine execution, manages run lifecycle (resume / --batch / --only), and assembles 07_qa-report.md from provider verdicts. Domain-free — it names no stack and drives no browser or host itself. Use when you want a hands-off run; pair with /wf:qa-run for human-in-the-loop runs.
 allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task, Skill]
 ---
 
 # /wf:qa-auto — Agentic QA run orchestrator
 
-Orchestration shim for an autonomous run of `06_qa.md`. It owns the run **lifecycle** — resolving the task and plan, the branch gate, resume / `--batch` / `--only`, incremental report assembly, and the full-run console/network baseline rollup — and **dispatches the per-scenario drive** to the `qa-execution` engine registered in the capability registry. It does not drive a browser, touch a database, or scaffold a host itself; that execution surface is supplied by a capability. Verdicts are recorded into `07_qa-report.md` incrementally so a context-overflow or a crash doesn't lose progress.
+Orchestration shim for an autonomous run of `06_qa.md`. It owns the run **lifecycle** — resolving the task and plan, the branch gate, resume / `--batch` / `--only`, optional host-provider prepare/teardown, incremental report assembly, and the full-run console/network baseline rollup — and dispatches execution to the providers registered for the `qa-execution` surfaces. It does not drive a browser, touch persistence, or scaffold a host itself. Verdicts are recorded into `07_qa-report.md` incrementally so a context overflow or engine crash does not lose completed work; host teardown remains a parent-owned finally-equivalent action on every exit after prepare.
 
 Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
 
@@ -16,7 +16,7 @@ For a human-in-the-loop run, use `/wf:qa-run` — the same plan, the same report
 
 ## How execution is supplied (the provider dispatch)
 
-`qa-auto` is **domain-free orchestration**. The actual scenario execution — driving the app, reaching preconditions, capturing console/network, screenshots — is a `qa-execution` **provider** that a capability registers. Core resolves it through two typed `wf-resolver` MCP queries, performing **no** registry / manifest read of its own: (1) `resolve_provider({ workspaceRoot, surface: "qa-execution:engine" })` returns the run-scoped record `{ surface, owner, fragmentPath, state, degradation, diagnostics }` — its `state` is the **registration gate** (`ok` = an engine provider owns the surface; `unconfigured` = none owns it); (2) `resolve_registry({ workspaceRoot, ... })` supplies the engine fragment's **`dispatch` metadata** — the `subagent: <agent>` Task-tool target — since the provider record's `fragmentPath` is `null` for a subagent-dispatched provider (it carries the owner capability, not the agent name). Core dispatches the per-scenario drive to that `subagent:` target via the **Task** tool, hands the engine the scenario set + report context, and merges the per-scenario verdict blocks the engine returns. Core names no capability and assumes none in particular — it resolves whatever owns the `engine` surface.
+`qa-auto` is **domain-free orchestration**. Scenario execution is partitioned between two registry-owned provider surfaces. The required `engine` provider drives scenarios and returns verdict blocks. The optional `host` provider establishes and reverses temporary execution surfaces or fixtures for scenarios whose preconditions require them. Core resolves each surface with `resolve_provider({ workspaceRoot, surface: "qa-execution:<surface>" })`, then obtains the owning fragment's `subagent: <agent>` Task target from `resolve_registry({ workspaceRoot, ... })`; it never reads a registry or manifest body itself. For host-dependent work, core sends the selected scenario blocks and a deterministic run id to the resolved host subagent in a provider-neutral prepare request, forwards its safe readiness result to the engine, and sends a teardown request in a parent-owned finally-equivalent path after every engine return, error, abort, or routing stop. Provider-native agents choose their own operations; core neither names a capability nor executes host commands.
 
 If **no** `qa-execution` engine provider is registered, core stops:
 
@@ -39,8 +39,9 @@ Obtain project config from the bundled `wf-resolver` MCP service via `resolve_co
 This skill depends on two runtime capabilities:
 
 1. **A registered `qa-execution` engine provider** — its ownership gated by the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "qa-execution:engine" })` record and its subagent dispatch target sourced from `resolve_registry({ workspaceRoot, ... })` (see "How execution is supplied"). If none is registered (record `state: unconfigured`), stop with the message above.
-2. **The Task tool** — used for the `wf:branch` branch gate and engine provider dispatch. If Task invocation is unavailable, stop and direct the user to a manual `/wf:qa-run`.
-3. **The Skill tool** — invokes the routed `/wf:index` wrapper after report assembly.
+2. **An optional `qa-execution` host provider** — resolve it once per run through `resolve_provider({ workspaceRoot, surface: "qa-execution:host" })` before engine dispatch. It is not a global gate: host-independent scenarios continue without one. Host-dependent scenarios are withheld with one capability gap when ownership is absent, or are wrapped in the resolved provider's prepare → engine → teardown lifecycle when ownership is present.
+3. **The Task tool** — used for the `wf:branch` branch gate plus host and engine provider dispatch. If Task invocation is unavailable, stop and direct the user to a manual `/wf:qa-run`.
+4. **The Skill tool** — invokes the routed `/wf:index` wrapper after report assembly.
 
 ---
 
@@ -77,12 +78,13 @@ Id inference and the Phase 2 branch gate both reach `current-branch-query` by ca
 
 - Read any file in the project.
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for id inference and branch gating.
-- Write `07_qa-report.md` ONLY inside the resolved task folder (assembling the run-level header / Summary / matrix from the engine's per-scenario blocks).
-- Invoke the **Task** tool for `subagent_type: wf:branch` (branch gate) and the registered engine provider; invoke `/wf:index` only through the **Skill** tool so its wrapper owns routing.
+- Write `07_qa-report.md` ONLY inside the resolved task folder, plus one mode-`0600` lifecycle state file under `_local/scratch/wf/qa-auto/` while host teardown is pending.
+- Invoke the **Task** tool for `subagent_type: wf:branch` (branch gate) and for the registered host/engine providers; invoke `/wf:index` only through the **Skill** tool so its wrapper owns routing.
 
 **Forbidden:**
 
-- Drive a browser, write a database, or scaffold a host directly. That is the engine provider's job — this skill orchestrates, it does not execute.
+- Drive a browser, write persistence, or scaffold a host directly. Registered providers own execution; this skill only resolves, dispatches, hands off safe readiness metadata, and guarantees teardown dispatch.
+- Expose a host lifecycle token in chat, the report, engine input, or provider evidence. It is passed only to the host provider and kept in the private orchestration state file.
 - Modify source, spec, plan, or QA-plan files. The plan is read-only.
 - Run builds, tests, installs, or destructive version-control operations.
 - Name a specific capability or assume how many are active. Core walks the registry and dispatches whatever owns `surface: engine`.
@@ -110,27 +112,33 @@ Gate on the task branch per the shared pipeline conventions doc (`resolve_conten
 
 ---
 
-## Phase 3: Resolve the execution provider
+## Phase 3: Resolve execution providers
 
-Resolve the engine provider through two `wf-resolver` queries — the resolver has already walked the `## Capabilities` registry and every `manifest.md`, so core reads only these records:
+Resolve provider records before dispatch; the resolver has already walked the registry and manifests, so core reads only typed metadata:
 
-1. **Registration gate** — call `resolve_provider({ workspaceRoot, surface: "qa-execution:engine" })`. It returns `{ surface, owner, fragmentPath, state, degradation, diagnostics }` for the engine surface; branch on its `state`. (The composite `qa-execution:engine` token resolves to the identical ownership record as the bare `engine` token — both are recognized surface forms; an unrecognized surface token is a distinct invalid-argument error, never `state: "unconfigured"`, so a typo cannot masquerade as a genuinely unregistered engine.)
-   - **`state: unconfigured`** (no engine provider owns the surface) → stop with the "No qa-execution engine registered" message (see "How execution is supplied"). Do not attempt to drive scenarios. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry (WF-272 diagnostics/recovery).
-   - **`state: ok`** → continue.
-2. **Dispatch target** — call `resolve_registry({ workspaceRoot, ... })` and locate the fragment whose `phase` is `qa-execution`, `contributionKind` is `provider`, and `scope` is `engine`; read its `dispatch` metadata (a `subagent: <agent>` token). That `<agent>` is the run's engine dispatch target (the provider record's `owner` is the capability name, and its `fragmentPath` is `null` for a subagent-dispatched provider — the agent name lives only in the fragment `dispatch`). Core never reads the engine's internals; it only dispatches to that subagent and consumes its returned verdict blocks.
+1. **Engine registration gate** — call `resolve_provider({ workspaceRoot, surface: "qa-execution:engine" })`. `state: unconfigured` stops with the message in "How execution is supplied"; `state: ok` continues. The composite and bare engine aliases must identify the same owner. Resolver unavailability is a hard stop; never hand-parse the registry.
+2. **Host registration record** — call `resolve_provider({ workspaceRoot, surface: "qa-execution:host" })` exactly once and retain the whole record for Phase 4. The composite and bare host aliases must identify the same owner. `unconfigured` is not a global stop because host-independent scenarios remain executable.
+3. **Dispatch targets** — call `resolve_registry({ workspaceRoot, ... })` once. Locate the `qa-execution | provider | engine` fragment owned by the engine record and validate its `subagent: <agent>` dispatch. When the retained host record is `state: ok`, also locate the `qa-execution | provider | host` fragment owned by that record and validate its `subagent: <agent>` dispatch. A missing, mismatched, or malformed target is runtime-inapplicable and stops before provider work. Core never reads either provider's implementation; it dispatches to the resolved agents and consumes their returned contracts.
 
 ---
 
-## Phase 4: Dispatch the run to the engine
+## Phase 4: Partition and dispatch the run to the engine
 
-The engine owns credential handling, the browser drive, precondition reaching, console/network capture, and per-scenario verdict blocks. Core hands it the work and manages the loop boundary.
+The engine owns scenario driving, credential handling, observation capture, and per-scenario verdict blocks. A registered host provider owns only temporary preparation and reversal. Core coordinates both without interpreting provider internals.
 
-1. **Compute the scenario set** for this run — the full plan, the `--suite` subset, the `--resume` tail (first un-verdicted onward), or the `--only` list — in execution order (P0 → P1 → P2, file order within a tier), capped by the `--batch N` ceiling (default 25).
-2. <!-- capability-route:qa-engine --> **Route and dispatch.** Validate the resolved `subagent: <agent>` token as a registered Task target and derive its stable routing `role` from the final colon-delimited slug; core never hardcodes the provider or target. Immediately before each attempt call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role`, `unitIds: ["qa-auto:engine"]`, `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`. Include `actualModel` only when exposed and emit the compact operational record separately from report attribution. A `status: stop`, diagnostic, malformed derived role, or non-`isolated` shape stops before work as runtime-inapplicable. Otherwise invoke one **Task** (`subagent_type: <engine dispatch target>`), passing the scenario set, resolved task id + task-folder path, `07_qa-report.md` location, `{qa-baseline-ignore}` (or empty), and forwarded `--reset-creds`; pass `model.value` only when non-null and no effort selector. The parent validates the returned `Driver model: <actual engine model>` metadata and per-scenario blocks and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the engine never self-replaces.
-3. **Merge** the returned verdict blocks into `07_qa-report.md` incrementally (the engine may also append directly; core is the owner of the run-level rollup either way). For `--only`, **merge** into the existing report: replace just the listed scenarios' blocks, preserve every other scenario's recorded verdict verbatim.
-4. **Batch / early-stop signals from the engine.** If the engine reports a batch ceiling reached or a first-scenario auth/unreachable failure, stop the loop, mark remaining scenarios `Not run`, and proceed to assembly with `Status: INCOMPLETE`.
+1. **Compute the selected scenario set** for this run — the full plan, the `--suite` subset, the `--resume` tail, or the `--only` list — in execution order (P0 → P1 → P2, file order within a tier), capped by `--batch N` (default 25).
+2. **Classify host demand against the retained host record.** Before partitioning, securely inspect any existing private lifecycle state for this task. The sole non-resume consumable form is `state: "ready"` with `handoff: "qa-followup"`, a matching opaque `taskId`, and `affectedScenarioIds` exactly equal to the current `--only` selection; require retained host state `ok`, atomically mark it consumed, and retain its private token plus safe readiness metadata for Steps 4–5. Reject every mismatch or second consumer before engine work. A selected scenario is host-dependent when its Preconditions contain `Backend host required:` or `Host required:`, when it carries exact `Host operations:` or `Host operation target:` metadata, or when its ID belongs to that consumed handoff. Core recognizes these markers but does not interpret their values. Partition into `{host-unavailable}`, `{host-ready}`, and `{host-independent}`:
+   - A scenario carrying `**Host availability:** unavailable` stays in `{host-unavailable}`. If the retained host state is now `ok`, report `ok — plan stale` and require regeneration rather than silently running a plan authored against different ownership.
+   - An unmarked host-dependent scenario enters `{host-ready}` only when the retained host state is `ok`; otherwise it enters `{host-unavailable}`. This catches a provider removed after plan generation.
+   - Every other unmarked scenario enters `{host-independent}`.
+   Build exactly one aggregate capability-gap result for `{host-unavailable}`, listing affected IDs once. It is not an engine verdict and forces `Status: INCOMPLETE`. If both runnable partitions are empty, write the aggregate with zero provider/engine dispatches and skip to Phase 5.
+3. <!-- capability-route:qa-auto-host --> **Prepare registered host work once.** The routed edge invokes `subagent_type: <host dispatch target>` only after `resolve_routing` with `unitIds: ["qa-auto:host-prepare"]`, `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence` for external-context atomic work (`unitsIndependent: false`, `independentReview: false`), bounded ambiguity, elevated risk, material tool work, and a `mechanically-judgeable` return; include `actualModel` when exposed, stop on `status: stop` or diagnostic, pass `model.value` only when non-null, and the parent validates the result and owns any `postAttempt`. When `{host-ready}` is non-empty and Step 2 did not consume a handoff, use the resolved `workspaceRoot` and generate a fresh run id `qa-auto-{numeric-id}-<128-bit CSPRNG hex>` plus an independent lifecycle token encoded as exactly 64 lowercase hexadecimal characters from 32 bytes produced by the host runtime's cryptographic random source; fail closed if secure randomness is unavailable. Before Task dispatch, set `umask 077`, verify `_local/scratch/wf/qa-auto/` is a real current-user-owned directory (never a symlink), and atomically persist `{runId, lifecycleToken, taskId, state: "preparing"}` in mode `0600` at `_local/scratch/wf/qa-auto/<sha256-of-opaque-task-id>.json` (the task id is content, never a path segment). For a fresh prepare, a non-resume invocation that finds any existing state file stops rather than reusing or replacing it; an explicit `--resume` may reuse it only to finish that recorded lifecycle before new preparation. When Step 2 consumed a valid qa-followup handoff, do not generate or persist another lifecycle: skip duplicate prepare, use its safe readiness metadata in Step 4, retain its private token for Step 5, and proceed directly to Step 4; the remainder of this step applies only to a fresh prepare. Never print or copy the token to the report. The provider-neutral Task prompt contains `Intent: prepare`, run id, lifecycle token, task/report paths, and the complete `{host-ready}` scenario blocks; it requires provider-native operations, a ready/error block, safe readiness outputs, and a teardown token. Immediately before dispatch, call `resolve_routing` using the host target's final colon-delimited slug as `role`, `unitIds: ["qa-auto:host-prepare"]`, `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material", validation: "mechanical", contextIsolation: "required", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`; include `actualModel` only when exposed. A `status: stop`, diagnostic, malformed role, or non-`isolated` shape stops before host work. Otherwise invoke exactly one Task with `subagent_type: <host dispatch target>`, passing `model.value` only when non-null and no effort selector. The parent validates the result and exclusively owns any `postAttempt`, retaining the same unit id/evidence; the provider never self-replaces. It retains the private lifecycle token independently of every provider result, so an error after partial setup is always teardown-authenticated. A routing stop before Task invocation deletes the unused private state and withholds `{host-ready}`. A non-ready result goes directly to Step 5 before any engine dispatch; continue with `{host-independent}` only after teardown passes.
+4. <!-- capability-route:qa-engine --> **Dispatch runnable work to the engine.** `{runnable}` is `{host-independent}` plus `{host-ready}` only after a ready result. Validate the engine dispatch target and derive `role` from its final colon-delimited slug. Immediately before the Task call, invoke `resolve_routing` with `workspaceRoot`, `role`, `unitIds: ["qa-auto:engine"]`, `supportsModelSelector: true`, `supportsEffortSelector: false`, and `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`; include `actualModel` only when exposed. A `status: stop`, diagnostic, malformed role, or non-`isolated` shape stops engine work. Otherwise invoke exactly one Task with `subagent_type: <engine dispatch target>`, passing `model.value` only when non-null and no effort selector, plus `{runnable}`, task/report context, baseline ignore values, forwarded flags, and only the host provider's validated safe readiness outputs (or `none`). The parent retains every teardown token; never forward lifecycle ownership, captured command output, payload values, or ledger contents to the engine. The parent validates returned model metadata/verdict blocks and exclusively owns any `postAttempt`, retaining the same unit id/evidence; the engine never self-replaces. If `{runnable}` is empty after host preparation, make zero engine dispatches.
+5. **Always tear down prepared/attempted host work.** In a parent-owned finally-equivalent path after every engine return, routing stop, provider error, batch stop, abort, or report-merge error, dispatch the same host target with `Intent: teardown`, the private run id and lifecycle token, prior readiness token when present, and no scenario payload. Route it with the same evidence under `unitIds: ["qa-auto:host-teardown"]`. Validate a torn-down result. Attempt teardown exactly once per prepare Task attempt; never let a missing/error prepare result or engine error bypass it. On PASS, atomically delete the private orchestration state. On teardown failure, retain that state at mode `0600` for explicit `--resume` recovery, make the run `INCOMPLETE`, record one redacted run-level teardown anomaly, and do not start another batch or emit PASS.
+6. **Merge** runnable verdict blocks and aggregate gap/anomaly sections into `07_qa-report.md`. For `--only`, replace only selected runnable blocks, preserve all others, and union affected IDs into any existing aggregate gap rather than dropping it.
+7. **Handle engine batch/early-stop signals.** Mark remaining runnable scenarios `Not run` and assemble `Status: INCOMPLETE`.
 
-Core does not interpret scenario internals; it forwards the set and consumes verdicts. The full-run baseline check (below) is the one cross-scenario rollup core owns.
+Core forwards scenario blocks and consumes provider contracts; it never performs host or engine work itself. The full-run baseline check below is the one cross-scenario rollup core owns.
 
 ---
 
@@ -145,13 +153,36 @@ After the run completes (or stops at batch / abort):
 - Header per `qa-gen`'s `report-format.md` (same `resolve_content({ workspaceRoot, ... })` reference as above):
   - `Mode: agentic`
   - `Tester: wf:qa-auto`
-  - `Driver model:` — actual current model identifier from the engine's returned `Driver model:` metadata; never substitute the selected or parent model when they differ.
-  - `App:` — base URL the engine authenticated against (reported back).
-  - `Status:` — deterministic from the PASS/FAIL/INCOMPLETE rule.
+  - `Driver model:` — actual current model identifier from the engine's returned `Driver model:` metadata; never substitute the selected or parent model when they differ. If zero engine dispatches occurred, write `Driver model: n/a — no engine dispatch`.
+  - `App:` — base URL the engine authenticated against (reported back). If zero engine dispatches occurred, write `App: n/a — no engine dispatch`.
+  - `Status:` — deterministic from the PASS/FAIL/INCOMPLETE rule; any aggregate capability gap is `INCOMPLETE`.
 - Summary table.
-- Traceability matrix rolled up from per-scenario `Validates: SC-N` references and verdicts.
-- Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table (from the engine's verdict blocks).
-- Notes & Observations — any anomalies the engine surfaced (entity substitutions, retries, teardown failures).
+- When `{host-unavailable}` is non-empty, add one `## Capability gaps` section before Results by Suite:
+
+  ```markdown
+  ## Capability gaps
+
+  **Host availability:** unavailable
+  **Affected scenarios:** TC-NNN, TC-NNN
+  **Host resolution:** <unconfigured | unrecoverable | ok — plan stale> <owner when present>
+  **Reason:** <no host provider is available for required temporary host work | the plan was generated before a host provider was registered; regenerate the plan before running these scenarios>. No engine dispatch was attempted for these scenarios.
+  ```
+
+  This aggregate represents the entire unavailable partition once; it is neither a per-scenario `BLOCKED` result nor a Defects-table row. On an all-unavailable selection, it is the only scenario-result content and `Status: INCOMPLETE`.
+- When host ownership is `ok` but prepare/routing returns non-ready, add one separate stable entry in the same section:
+
+  ```markdown
+  **Host preparation:** failed
+  **Affected scenarios:** TC-NNN, TC-NNN
+  **Host resolution:** ok — <owner>
+  **Teardown:** <PASS | FAIL — recovery required>
+  **Reason:** The registered host provider did not reach ready state. No engine dispatch was attempted for these scenarios.
+  ```
+
+  This is one run-level preparation condition regardless of affected count. It forces `INCOMPLETE`; never serialize one `BLOCKED` verdict per scenario or expose the lifecycle token/provider output.
+- Traceability matrix rolled up from per-scenario `Validates: SC-N` references and runnable verdicts; criteria represented only by an aggregate are `GAP — host unavailable` or `GAP — host preparation failed`.
+- Per-suite results — PASS scenarios get one line, FAIL/BLOCKED get the full step table (from the engine's verdict blocks). Do not render host-unavailable scenarios here as `BLOCKED` results.
+- Notes & Observations — any anomalies the engine surfaced (entity substitutions, retries, teardown failures), plus the capability-gap summary when present.
 - Defects table — one row per FAIL, severity resolved per the rubric in `qa-gen`'s `report-format.md` (same `resolve_content({ workspaceRoot, ... })` reference as above; §Defects Found — `{qa-rules}` if set, else the P0→High / P1→Medium / P2→Low default), description from observed value.
 
 If subagent invocation is available, invoke the routed `/wf:index` wrapper with slot `qa-report` and summary: `07_qa-report.md · agentic · <status> · <P>/<T> passed`. The wrapper owns the fixed `index` routing decision; do not inline or bypass it.
@@ -167,9 +198,13 @@ If subagent invocation is available, invoke the routed `/wf:index` wrapper with 
 - **Single scenario.** Run normally — same flow with N=1.
 - **`--only` with no existing report, or an unknown `TC-NNN`.** Phase 1 stops with the targeted-re-run message or lists the valid IDs — never start a partial run that would orphan the other scenarios' verdicts.
 - **Scenario needs an execution surface the active engine doesn't provide** (e.g. a non-browser precondition with only a browser engine registered). The engine returns BLOCKED for that scenario with its scope reason; core records it and continues. A different/additional capability owning that surface is the fix, registered in `## Capabilities`.
+- **Host ownership changed after generation.** Phase 4 compares both the exact plan marker and current host record. Marked + now-owned is stale and requires regeneration; unmarked + now-unowned is withheld immediately. Either produces one aggregate gap and never repeated `BLOCKED` verdicts.
+- **Host preparation fails.** Dispatch no host-dependent scenario to the engine. Attempt teardown, report the affected IDs once as a host-preparation gap, and continue only with host-independent work.
+- **Host teardown fails or is unsettled.** Record one run-level teardown anomaly, force `Status: INCOMPLETE`, retain only redacted recovery evidence, and do not start another batch or emit PASS.
+- **Concurrent or stale host lifecycle state.** A fresh invocation never overwrites an existing private state file, and the provider's global token-digest lock refuses a different owner. Use explicit `--resume` to finish the recorded lifecycle; teardown must settle before any new host prepare.
 - **No runnable scenarios of any kind** — `06_qa.md` has only Build/static / Automated rows and a baseline marked `[N/A: no runnable surface]`. Core skips dispatch and writes a stub PASS noting nothing to run.
 - **Engine reaches a batch ceiling.** Core writes the partial report `Status: INCOMPLETE`, remaining scenarios `Not run`, and tells the user to resume.
-- **Tester aborts mid-run.** Incremental save (Phase 4) preserves whatever completed. Resume with `--resume`.
+- **Tester aborts mid-run.** Dispatch pending host teardown before returning; incremental report saves preserve completed verdicts. Resume with `--resume` only after teardown is settled.
 
 ---
 

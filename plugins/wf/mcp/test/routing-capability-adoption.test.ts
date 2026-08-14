@@ -31,7 +31,7 @@ test("capability dispatch inventory is normalized and marker-bidirectional", () 
   const inventory = rows();
   assert.equal(new Set(inventory.map((row) => row.id)).size, inventory.length);
   const included = inventory.filter((row) => row.classification === "included");
-  assert.equal(included.length, 11, "capability dispatch surface changed; adjudicate inventory and guard");
+  assert.equal(included.length, 13, "capability dispatch surface changed; adjudicate inventory and guard");
   assert.equal(inventory.filter((row) => row.classification === "excluded").length, 5);
   for (const row of included) {
     const source = readFileSync(join(repoRoot, row.file), "utf8");
@@ -49,7 +49,7 @@ test("capability routing guard catches stale or bypassed adoption", () => {
   assert.match(selftest.stdout, /self-test passed/);
   const live = spawnSync("bash", [guard], { cwd: repoRoot, encoding: "utf8" });
   assert.equal(live.status, 0, `${live.stdout}\n${live.stderr}`);
-  assert.match(live.stdout, /11 included edges, 5 exclusions/);
+  assert.match(live.stdout, /13 included edges, 5 exclusions/);
 });
 
 test("evidence-gated and deferred capability roles retain inherited selectors", () => {

@@ -25,6 +25,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACK_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$PACK_DIR/../.." && pwd)"
 SCEN="$SCRIPT_DIR/scenarios"
 README="$SCRIPT_DIR/README.md"
 
@@ -34,7 +36,8 @@ ok()  { printf 'ok:   %s\n' "$1"; }
 
 command -v jq >/dev/null 2>&1 || { echo "run.sh: jq is required for the assertion suite" >&2; exit 2; }
 
-TMP="$(mktemp -d)"
+TMP="$REPO_ROOT/_local/scratch/assert-selfcheck-$$"
+mkdir -p "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
 # ---------------------------------------------------------------------------

@@ -38,6 +38,16 @@ export interface ValidatorFs {
   isFile(absPath: string): boolean;
 }
 
+export interface ManifestValidationOptions {
+  /**
+   * Effective plugin roots already resolved from bounded provenance (for
+   * example, a registry's recorded/self-healed roots). This lets focused
+   * manifest validation discover a qualified agent in another installed pack
+   * without inferring arbitrary sibling paths.
+   */
+  pluginRoots?: Readonly<Record<string, string | null>>;
+}
+
 export interface RegistryValidationOptions {
   /** Absolute path of the registry document to validate. */
   registryFile: string;
@@ -67,7 +77,10 @@ function trimCell(s: string): string {
 }
 
 function join(...parts: string[]): string {
-  return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(/\/{2,}/g, "/");
+  return toPosix(parts.filter((p) => p.length > 0).join("/")).replace(
+    /\/{2,}/g,
+    "/",
+  );
 }
 
 /**
@@ -118,7 +131,11 @@ function tableRowsWithLines(
 }
 
 /** Canonical block headings whose near-misses parse to zero rows (CHECK-HEADING). */
-const CANONICAL_HEADINGS = ["## Capabilities", "## Plugin Roots", "## Fragments"];
+const CANONICAL_HEADINGS = [
+  "## Capabilities",
+  "## Plugin Roots",
+  "## Fragments",
+];
 
 /**
  * CHECK-HEADING — the heading-typo guard (`validate-registry.sh`'s
@@ -127,11 +144,21 @@ const CANONICAL_HEADINGS = ["## Capabilities", "## Plugin Roots", "## Fragments"
  * any heading whose alphanumerics-only lowercased form equals a canonical
  * keyword but whose raw text is not the exact heading.
  */
-function checkHeadingTypos(file: string, content: string, label: string): Finding[] {
+function checkHeadingTypos(
+  file: string,
+  content: string,
+  label: string,
+): Finding[] {
   const out: Finding[] = [];
   const canonicalNorms = new Map<string, string>();
   for (const h of CANONICAL_HEADINGS) {
-    canonicalNorms.set(h.replace(/^#+\s*/, "").toLowerCase().replace(/[^a-z0-9]/g, ""), h);
+    canonicalNorms.set(
+      h
+        .replace(/^#+\s*/, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, ""),
+      h,
+    );
   }
   const lines = content.split(/\r?\n/);
   lines.forEach((raw, i) => {
@@ -167,6 +194,91 @@ interface FragmentRow {
   dispatch: string;
   scope: string;
   line: number;
+}
+
+/** Resolves the agent tree whose named targets are discoverable. A bare target
+ * belongs to the capability's owning plugin; a `<plugin>:<agent>` target names
+ * that plugin's recorded or healed root. */
+interface AgentDiscovery {
+  owningRoot: string | null;
+  owningPlugin: string | null;
+  pluginRoot(plugin: string): string | null;
+}
+
+function owningPluginName(fs: ValidatorFs, root: string | null): string | null {
+  if (root === null) return null;
+  const raw = fs.readFile(join(root, ".claude-plugin", "plugin.json"));
+  if (raw === null) return null;
+  try {
+    const name = (JSON.parse(raw) as { name?: unknown }).name;
+    return typeof name === "string" && /^[a-z][a-z0-9-]*$/.test(name)
+      ? name
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function owningPluginRoot(manifestPath: string): string | null {
+  const normalized = toPosix(manifestPath);
+  // Both workspace and installed manifests use the capability layout. Prefer
+  // that structural boundary: an installed cache path can itself contain a
+  // `/plugins/` segment, whose next directory is not necessarily the pack.
+  const suffix = "/capabilities/";
+  const capAt = normalized.lastIndexOf(suffix);
+  if (capAt >= 0) return normalized.slice(0, capAt);
+
+  // Retain the workspace convention as a fallback for a non-standard target.
+  const marker = "/plugins/";
+  const at = normalized.lastIndexOf(marker);
+  if (at >= 0) {
+    const plugin = normalized.slice(at + marker.length).split("/")[0];
+    if (plugin) return `${normalized.slice(0, at)}${marker}${plugin}`;
+  }
+  return null;
+}
+
+function siblingWorkspacePluginRoot(
+  fs: ValidatorFs,
+  owningRoot: string,
+  plugin: string,
+): string | null {
+  const marker = "/plugins/";
+  const at = owningRoot.lastIndexOf(marker);
+  if (at < 0) return null;
+  const candidate = join(owningRoot.slice(0, at + marker.length), plugin);
+  return fs.isDirectory(candidate) ? candidate : null;
+}
+
+function checkSubagentTarget(
+  fs: ValidatorFs,
+  discovery: AgentDiscovery,
+  dispatch: string,
+): { valid: boolean; expected: string | null } {
+  const target = dispatch.slice("subagent:".length).trim();
+  const colon = target.indexOf(":");
+  let plugin: string | null = null;
+  let agent = target;
+  if (colon >= 0) {
+    plugin = target.slice(0, colon);
+    agent = target.slice(colon + 1);
+    if (target.indexOf(":", colon + 1) >= 0)
+      return { valid: false, expected: null };
+  }
+  if (
+    !/^[a-z][a-z0-9-]*$/.test(agent) ||
+    (plugin !== null && !/^[a-z][a-z0-9-]*$/.test(plugin))
+  ) {
+    return { valid: false, expected: null };
+  }
+  const root =
+    plugin === null
+      ? discovery.owningRoot
+      : plugin === discovery.owningPlugin
+        ? discovery.owningRoot
+        : discovery.pluginRoot(plugin);
+  const expected = root === null ? null : join(root, "agents", `${agent}.md`);
+  return { valid: expected !== null && fs.isFile(expected), expected };
 }
 
 /**
@@ -299,6 +411,8 @@ function checkManifest(
   manifestPath: string,
   content: string,
   rules: ContractRules,
+  fs: ValidatorFs,
+  discovery: AgentDiscovery,
 ): {
   findings: Finding[];
   claims: OwnershipClaim[];
@@ -310,7 +424,11 @@ function checkManifest(
   const claims: OwnershipClaim[] = [];
 
   findings.push(
-    ...checkHeadingTypos(manifestPath, content, `capability \`${capability}\` manifest`),
+    ...checkHeadingTypos(
+      manifestPath,
+      content,
+      `capability \`${capability}\` manifest`,
+    ),
   );
 
   const parsed = readManifest(content);
@@ -366,7 +484,9 @@ function checkManifest(
     // --- CHECK-6b: dispatch column well-formed ---------------------------
     const d = row.dispatch;
     const prefix = rules.dispatchPrefixes.find((p) => d.startsWith(`${p}:`));
-    const expected = rules.dispatchPrefixes.map((p) => `\`${p}: <…>\``).join(" or ");
+    const expected = rules.dispatchPrefixes
+      .map((p) => `\`${p}: <…>\``)
+      .join(" or ");
     if (!prefix) {
       findings.push(
         finding(
@@ -385,6 +505,20 @@ function checkManifest(
           `capability \`${capability}\` fragment at \`${row.phase} | ${row.kind}\` has an \`${prefix}:\` dispatch with no target (dispatch: \`${row.dispatch}\`).`,
         ),
       );
+    } else if (prefix === "subagent") {
+      const target = checkSubagentTarget(fs, discovery, d);
+      if (!target.valid) {
+        findings.push(
+          finding(
+            "CHECK-6b",
+            manifestPath,
+            row.line,
+            target.expected === null
+              ? `capability \`${capability}\` fragment at \`${row.phase} | ${row.kind}\` names an undiscoverable subagent target \`${d}\` — expected a lowercase agent name, optionally qualified as \`<plugin>:<agent>\`, in the owning plugin/workspace agent tree.`
+              : `capability \`${capability}\` fragment at \`${row.phase} | ${row.kind}\` names undiscoverable subagent target \`${d}\` — no agent file at \`${target.expected}\`.`,
+          ),
+        );
+      }
     }
 
     // --- CHECK-6c / CHECK-5 accumulation: scope --------------------------
@@ -476,14 +610,22 @@ export function validateManifest(
   fs: ValidatorFs,
   target: string,
   opsDocPath: string,
+  options: ManifestValidationOptions = {},
 ): ValidationVerdict {
-  const manifestPath = /manifest\.md$/i.test(target) ? toPosix(target) : join(target, "manifest.md");
+  const manifestPath = /manifest\.md$/i.test(target)
+    ? toPosix(target)
+    : join(target, "manifest.md");
 
   let rules: ContractRules;
   try {
     rules = loadRules(fs, opsDocPath);
   } catch (err) {
-    return ruleSourceErrorVerdict("validate_manifest", manifestPath, err, opsDocPath);
+    return ruleSourceErrorVerdict(
+      "validate_manifest",
+      manifestPath,
+      err,
+      opsDocPath,
+    );
   }
 
   const content = fs.readFile(manifestPath);
@@ -506,7 +648,17 @@ export function validateManifest(
   }
 
   const capability = deriveCapabilityName(manifestPath);
-  const { findings } = checkManifest(capability, manifestPath, content, rules);
+  const owningRoot = owningPluginRoot(manifestPath);
+  const owningPlugin = owningPluginName(fs, owningRoot);
+  const { findings } = checkManifest(capability, manifestPath, content, rules, fs, {
+    owningRoot,
+    owningPlugin,
+    pluginRoot: (plugin) =>
+      options.pluginRoots?.[plugin] ??
+      (owningRoot === null
+        ? null
+        : siblingWorkspacePluginRoot(fs, owningRoot, plugin)),
+  });
   const unparseable = findings.some((f) => f.rule === "input-unparseable");
 
   return verdict(
@@ -545,7 +697,12 @@ export function validateRegistry(
   try {
     rules = loadRules(fs, opts.opsDocPath);
   } catch (err) {
-    return ruleSourceErrorVerdict("validate_registry", registryFile, err, opts.opsDocPath);
+    return ruleSourceErrorVerdict(
+      "validate_registry",
+      registryFile,
+      err,
+      opts.opsDocPath,
+    );
   }
 
   const content = fs.readFile(registryFile);
@@ -589,10 +746,18 @@ export function validateRegistry(
   }
 
   const capRows = tableRowsWithLines(content, "## Capabilities")
-    .map((r) => ({ name: r.cells[0] ?? "", path: r.cells[1] ?? "", line: r.line }))
+    .map((r) => ({
+      name: r.cells[0] ?? "",
+      path: r.cells[1] ?? "",
+      line: r.line,
+    }))
     .filter((r) => r.name !== "" && r.name !== "Capability");
   const rootRows = tableRowsWithLines(content, "## Plugin Roots")
-    .map((r) => ({ plugin: r.cells[0] ?? "", root: r.cells[1] ?? "", line: r.line }))
+    .map((r) => ({
+      plugin: r.cells[0] ?? "",
+      root: r.cells[1] ?? "",
+      line: r.line,
+    }))
     .filter((r) => r.plugin !== "" && r.plugin !== "Plugin");
   const parsed = { capabilities: capRows, pluginRoots: rootRows };
 
@@ -600,7 +765,8 @@ export function validateRegistry(
   parsed.pluginRoots.forEach((pr, i) => {
     const line = pr.line;
     let bad = "";
-    if (pr.root.includes("\\")) bad = "contains a backslash (must use forward slashes)";
+    if (pr.root.includes("\\"))
+      bad = "contains a backslash (must use forward slashes)";
     else if (`/${pr.root}/`.includes("/../")) bad = "contains a '..' segment";
     if (!pr.root || pr.root === "—") {
       findings.push(
@@ -675,7 +841,9 @@ export function validateRegistry(
   const resolvePluginRoot = (name: string): string | null => {
     const row = parsed.pluginRoots.find((p) => p.plugin === name);
     if (!row) return null;
-    return /^(\/|[A-Za-z]:)/.test(row.root) ? row.root : join(repoRoot, row.root);
+    return /^(\/|[A-Za-z]:)/.test(row.root)
+      ? row.root
+      : join(repoRoot, row.root);
   };
 
   const healFromInstallManifest = (name: string): string | null => {
@@ -704,7 +872,11 @@ export function validateRegistry(
     return null;
   };
 
-  const resolvedManifests: Array<{ capability: string; path: string }> = [];
+  const resolvedManifests: Array<{
+    capability: string;
+    path: string;
+    owningRoot: string | null;
+  }> = [];
 
   for (const cap of parsed.capabilities) {
     const line = cap.line;
@@ -712,7 +884,12 @@ export function validateRegistry(
 
     if (!p || p === "—") {
       findings.push(
-        finding("CHECK-4", registryFile, line, `capability \`${cap.name}\` has no Path in the registry.`),
+        finding(
+          "CHECK-4",
+          registryFile,
+          line,
+          `capability \`${cap.name}\` has no Path in the registry.`,
+        ),
       );
       continue;
     }
@@ -764,7 +941,12 @@ export function validateRegistry(
           );
         }
       }
-      if (resolved) resolvedManifests.push({ capability: cap.name, path: join(resolved, "manifest.md") });
+      if (resolved)
+        resolvedManifests.push({
+          capability: cap.name,
+          path: join(resolved, "manifest.md"),
+          owningRoot: resolved.slice(0, -plRel.length).replace(/\/$/, ""),
+        });
       continue;
     }
 
@@ -788,27 +970,61 @@ export function validateRegistry(
         ),
       );
     } else {
-      resolvedManifests.push({ capability: cap.name, path: join(folder, "manifest.md") });
+      resolvedManifests.push({
+        capability: cap.name,
+        path: join(folder, "manifest.md"),
+        owningRoot: owningPluginRoot(join(folder, "manifest.md")),
+      });
     }
   }
 
   // --- per-manifest checks + cross-manifest accumulation -----------------
   const claims: OwnershipClaim[] = [];
-  const requires: Array<{ capability: string; needed: string; file: string }> = [];
-  const conflicts: Array<{ capability: string; foe: string; file: string }> = [];
-  const articles: Array<{ capability: string; key: string; value: string; file: string; line: number }> = [];
+  const requires: Array<{ capability: string; needed: string; file: string }> =
+    [];
+  const conflicts: Array<{ capability: string; foe: string; file: string }> =
+    [];
+  const articles: Array<{
+    capability: string;
+    key: string;
+    value: string;
+    file: string;
+    line: number;
+  }> = [];
 
   for (const rm of resolvedManifests) {
     const mContent = fs.readFile(rm.path);
     if (mContent === null) continue;
     sources.push(rm.path);
-    const res = checkManifest(rm.capability, rm.path, mContent, rules);
+    const owningPlugin = owningPluginName(fs, rm.owningRoot);
+    const res = checkManifest(rm.capability, rm.path, mContent, rules, fs, {
+      owningRoot: rm.owningRoot,
+      owningPlugin,
+      pluginRoot: (plugin) => {
+        const recordedOrHealed =
+          resolvePluginRoot(plugin) ?? healFromInstallManifest(plugin);
+        return (
+          recordedOrHealed ??
+          (fs.isDirectory(join(repoRoot, "plugins", plugin))
+            ? join(repoRoot, "plugins", plugin)
+            : null)
+        );
+      },
+    });
     findings.push(...res.findings);
     claims.push(...res.claims);
-    for (const n of res.requires) requires.push({ capability: rm.capability, needed: n, file: rm.path });
-    for (const f of res.conflicts) conflicts.push({ capability: rm.capability, foe: f, file: rm.path });
+    for (const n of res.requires)
+      requires.push({ capability: rm.capability, needed: n, file: rm.path });
+    for (const f of res.conflicts)
+      conflicts.push({ capability: rm.capability, foe: f, file: rm.path });
     for (const a of res.articles)
-      articles.push({ capability: rm.capability, key: a.key, value: a.value, file: rm.path, line: a.line });
+      articles.push({
+        capability: rm.capability,
+        key: a.key,
+        value: a.value,
+        file: rm.path,
+        line: a.line,
+      });
   }
 
   // --- CHECK-5: no overlapping ownership scopes -------------------------
@@ -816,7 +1032,11 @@ export function validateRegistry(
     for (let j = i + 1; j < claims.length; j++) {
       const a = claims[i];
       const b = claims[j];
-      if (a.scope === b.scope && a.kind === b.kind && a.capability !== b.capability) {
+      if (
+        a.scope === b.scope &&
+        a.kind === b.kind &&
+        a.capability !== b.capability
+      ) {
         findings.push(
           finding(
             "CHECK-5",
@@ -829,7 +1049,8 @@ export function validateRegistry(
     }
   }
 
-  const isActive = (name: string): boolean => parsed.capabilities.some((c) => c.name === name);
+  const isActive = (name: string): boolean =>
+    parsed.capabilities.some((c) => c.name === name);
 
   // --- CHECK-7: requires satisfied --------------------------------------
   for (const r of requires) {
@@ -864,7 +1085,11 @@ export function validateRegistry(
     for (let j = i + 1; j < articles.length; j++) {
       const a = articles[i];
       const b = articles[j];
-      if (a.capability !== b.capability && a.key === b.key && a.value !== b.value) {
+      if (
+        a.capability !== b.capability &&
+        a.key === b.key &&
+        a.value !== b.value
+      ) {
         findings.push(
           finding(
             "CHECK-9",

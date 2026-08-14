@@ -1,0 +1,3 @@
+# Host lifecycle fixture baseline
+
+This file represents durable source/fixture content that must be identical after both the successful and failed host lifecycles.

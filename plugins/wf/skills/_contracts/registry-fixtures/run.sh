@@ -93,6 +93,8 @@ assert() {
 
 # --- Passing cases -----------------------------------------------------------
 assert "single-row registry passes"   pass-single.md - 0 "Validation passed"
+assert "discoverable subagent passes" pass-subagent-discoverable.md - 0 "Validation passed"
+assert "final capabilities segment resolves owning subagent" pass-subagent-final-capabilities-segment.md - 0 "Validation passed"
 assert "multi-row non-overlap passes" pass-multi.md  - 0 "Validation passed"
 # WF-26: angular (provider surface: host) + node-ts (implement-guidance fragment, WF-177)
 # compose with browser-qa (provider surface: engine) — different surfaces, no partition collision.
@@ -144,6 +146,8 @@ assert "bad registryPath (backslash)" pass-single.md "a\\b/registry.md"  1 "regi
 assert "missing path named"           fail-missing-path.md  - 1 "ghost" "does not exist"
 assert "missing manifest named"       fail-no-manifest.md   - 1 "no-manifest" "manifest.md"
 assert "provider overlap named"       fail-provider-overlap.md - 1 "engine-owner" "engine-owner-2" "provider surface" "must not overlap"
+# WF-432: host is likewise a partitioned qa-execution provider surface; two host owners are rejected.
+assert "host provider overlap named"  fail-host-overlap.md - 1 "host-owner" "host-owner-2" "host" "must not overlap"
 assert "artifact overlap named"       fail-artifact-overlap.md - 1 "artifact-owner" "artifact-owner-2" "csharp→ts"
 # WF-120: two capabilities both claiming the delivery provider surface, both named.
 assert "delivery overlap named"       fail-delivery-overlap.md - 1 "delivery-owner" "delivery-owner-2" "delivery" "must not overlap"
@@ -172,6 +176,9 @@ assert "article as fragment kind rejected" fail-article-kind.md - 1 "article-kin
 # WF-239: dispatch-column validation — a bare path with no `inline:`/`subagent:` prefix
 # is rejected (previously f_dispatch was extracted but never checked).
 assert "malformed dispatch rejected"  fail-bad-dispatch.md  - 1 "bad-dispatch" "malformed dispatch"
+# WF-432: syntactically valid `subagent:` dispatches must resolve to an agent file in
+# the owning/workspace plugin tree; a missing target is a named CHECK-6b failure.
+assert "missing subagent target rejected" fail-subagent-missing.md - 1 "subagent-missing" "undiscoverable subagent target" "absent-agent"
 # WF-239: heading-typo guard — a miscased `## Fragments` heading (which would parse zero
 # rows and pass silently) is rejected, naming the offender.
 assert "heading typo rejected"        fail-heading-typo.md  - 1 "heading-typo" "looks like a typo" "## Fragments"

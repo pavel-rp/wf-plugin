@@ -155,6 +155,83 @@ test("a bad phase yields a CHECK-6 finding naming the manifest file (the spec's 
   assert.ok(typeof f!.line === "number" && f!.line > 0, "the finding is anchored at the offending row");
 });
 
+test("CHECK-6b accepts discoverable and rejects missing subagent targets", () => {
+  const present = toolVerdict("pass-subagent-discoverable.md");
+  assert.equal(present.status, "pass", present.findings.map((f) => f.message).join(" | "));
+
+  const missing = toolVerdict("fail-subagent-missing.md");
+  assert.equal(missing.status, "fail");
+  const finding = missing.findings.find((f) => f.rule === "CHECK-6b");
+  assert.ok(finding, `expected CHECK-6b, got ${missing.findings.map((f) => f.rule).join(", ")}`);
+  assert.match(finding!.message, /undiscoverable subagent target/);
+  assert.match(finding!.message, /absent-agent/);
+  assert.ok(typeof finding!.line === "number" && finding!.line > 0);
+});
+
+test("validate_manifest discovers a qualified target in a sibling workspace plugin", () => {
+  const manifest = "/virtual/plugins/provider/capabilities/example/manifest.md";
+  const siblingRoot = "/virtual/plugins/wf";
+  const siblingAgent = `${siblingRoot}/agents/phase-runner.md`;
+  const source = readFileSync(
+    join(REGISTRY_FIXTURES, "caps", "subagent-present", "manifest.md"),
+    "utf8",
+  );
+  const virtualFs: ValidatorFs = {
+    readFile: (p) => (p === manifest ? source : realFs.readFile(p)),
+    isFile: (p) => p === siblingAgent || realFs.isFile(p),
+    isDirectory: (p) => p === siblingRoot || realFs.isDirectory(p),
+  };
+
+  const verdict = validateManifest(virtualFs, manifest, OPS_DOC);
+  assert.equal(verdict.status, "pass", verdict.findings.map((f) => f.message).join(" | "));
+});
+
+test("validate_manifest discovers a qualified target in its versioned installed root", () => {
+  const root = "/virtual/plugins/cache/wf/1.2.3";
+  const manifest = `${root}/capabilities/example/manifest.md`;
+  const agent = `${root}/agents/phase-runner.md`;
+  const source = readFileSync(
+    join(REGISTRY_FIXTURES, "caps", "subagent-present", "manifest.md"),
+    "utf8",
+  );
+  const virtualFs: ValidatorFs = {
+    readFile: (p) => {
+      if (p === manifest) return source;
+      if (p === `${root}/.claude-plugin/plugin.json`) return '{"name":"wf"}';
+      return realFs.readFile(p);
+    },
+    isFile: (p) => p === agent || realFs.isFile(p),
+    isDirectory: (p) => p === root || realFs.isDirectory(p),
+  };
+
+  const verdict = validateManifest(virtualFs, manifest, OPS_DOC);
+  assert.equal(verdict.status, "pass", verdict.findings.map((f) => f.message).join(" | "));
+});
+
+test("validate_manifest discovers a cross-pack target only through supplied root provenance", () => {
+  const manifest = "/virtual/installed/provider/1.0.0/capabilities/example/manifest.md";
+  const targetRoot = "/virtual/installed/wf/2.3.4";
+  const targetAgent = `${targetRoot}/agents/phase-runner.md`;
+  const source = readFileSync(
+    join(REGISTRY_FIXTURES, "caps", "subagent-present", "manifest.md"),
+    "utf8",
+  );
+  const virtualFs: ValidatorFs = {
+    readFile: (p) => (p === manifest ? source : realFs.readFile(p)),
+    isFile: (p) => p === targetAgent || realFs.isFile(p),
+    isDirectory: (p) => p === targetRoot || realFs.isDirectory(p),
+  };
+
+  const withoutProvenance = validateManifest(virtualFs, manifest, OPS_DOC);
+  assert.equal(withoutProvenance.status, "fail");
+  assert.ok(withoutProvenance.findings.some((f) => f.rule === "CHECK-6b"));
+
+  const verdict = validateManifest(virtualFs, manifest, OPS_DOC, {
+    pluginRoots: { wf: targetRoot },
+  });
+  assert.equal(verdict.status, "pass", verdict.findings.map((f) => f.message).join(" | "));
+});
+
 test("every verdict records the rule sources it parsed", () => {
   const v = toolVerdict("pass-multi.md");
   assert.ok(v.ruleSources.length > 0);

@@ -6,4 +6,4 @@
 
 | phase        | contribution-kind | dispatch                | scope  |
 |--------------|-------------------|-------------------------|--------|
-| qa-execution | provider          | `subagent: qa-engine`   | engine |
+| qa-execution | provider          | `subagent: wf:phase-runner`   | engine |

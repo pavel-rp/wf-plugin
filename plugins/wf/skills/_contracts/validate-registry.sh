@@ -423,6 +423,68 @@ resolve_from_install_manifest() {
   return 1
 }
 
+# Read the installed plugin's declared name rather than inferring it from its root
+# path: installed roots commonly end in a version directory.
+plugin_name_at_root() {
+  local root="$1"
+  [ -f "$root/.claude-plugin/plugin.json" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  jq -er '.name | select(type == "string" and test("^[a-z][a-z0-9-]*$"))' \
+    "$root/.claude-plugin/plugin.json" 2>/dev/null
+}
+
+# Resolve a `subagent:` target to its discoverable agent file. A bare name belongs
+# to the owning plugin inferred from the manifest path; a `<plugin>:<agent>` name
+# resolves through that plugin's recorded or self-healed root. Echoes the expected
+# file path and returns success only when that file exists.
+resolve_subagent_target() {
+  local manifest="$1" target="$2"
+  local plugin="" agent="$target" root="" owning_root="" owning_plugin=""
+  # Both workspace and installed manifests use the conventional
+  # <plugin-root>/capabilities/... layout. Prefer it over `/plugins/`: an
+  # installed cache path can contain that segment before the actual pack root.
+  case "$manifest" in
+    */capabilities/*)
+      # Strip from the final conventional segment so cache/workspace ancestors
+      # that themselves contain a `capabilities` directory do not truncate the root.
+      owning_root="${manifest%/capabilities/*}"
+      ;;
+    */plugins/*)
+      local prefix="${manifest%%/plugins/*}" rest owning_plugin_path
+      rest="${manifest#"$prefix/plugins/"}"
+      owning_plugin_path="${rest%%/*}"
+      [ -n "$owning_plugin_path" ] && owning_root="$prefix/plugins/$owning_plugin_path"
+      ;;
+  esac
+  owning_plugin="$(plugin_name_at_root "$owning_root" 2>/dev/null || true)"
+  case "$target" in
+    *:*)
+      plugin="${target%%:*}"
+      agent="${target#*:}"
+      case "$agent" in *:*) return 1 ;; esac
+      ;;
+    *) root="$owning_root" ;;
+  esac
+  printf '%s' "$agent" | grep -qE '^[a-z][a-z0-9-]*$' || return 1
+  if [ -n "$plugin" ]; then
+    printf '%s' "$plugin" | grep -qE '^[a-z][a-z0-9-]*$' || return 1
+    if [ "$plugin" = "$owning_plugin" ]; then
+      root="$owning_root"
+    else
+      root="$(resolve_plugin_root "$plugin" 2>/dev/null || true)"
+      if [ -z "$root" ]; then
+        root="$(resolve_from_install_manifest "$plugin" 2>/dev/null || true)"
+      fi
+      if [ -z "$root" ] && [ -d "$REPO_ROOT/plugins/$plugin" ]; then
+        root="$REPO_ROOT/plugins/$plugin"
+      fi
+    fi
+  fi
+  [ -n "$root" ] || return 1
+  printf '%s' "$root/agents/$agent.md"
+  [ -f "$root/agents/$agent.md" ]
+}
+
 # ===========================================================================
 # CHECK 2 — capability names unique.
 # ===========================================================================
@@ -686,8 +748,22 @@ while [ "$ci" -lt "${#checkable_idx[@]}" ]; do
         [ -z "$(trim "${d#inline:}")" ] && \
           err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` has an \`inline:\` dispatch with no path (dispatch: \`$f_dispatch\`)." ;;
       subagent:*)
-        [ -z "$(trim "${d#subagent:}")" ] && \
-          err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` has a \`subagent:\` dispatch with no agent name (dispatch: \`$f_dispatch\`)." ;;
+        subagent_target="$(trim "${d#subagent:}")"
+        if [ -z "$subagent_target" ]; then
+          err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` has a \`subagent:\` dispatch with no agent name (dispatch: \`$f_dispatch\`)."
+        elif expected_agent="$(resolve_subagent_target "$mf" "$subagent_target")"; then
+          :
+        else
+          # Call once more for the deterministic expected-path diagnostic when
+          # grammar/root resolution succeeded but the agent file is missing.
+          expected_agent="$(resolve_subagent_target "$mf" "$subagent_target" 2>/dev/null || true)"
+          if [ -n "$expected_agent" ]; then
+            err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` names undiscoverable subagent target \`$d\` — no agent file at \`$expected_agent\`."
+          else
+            err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` names an undiscoverable subagent target \`$d\` — expected a lowercase agent name, optionally qualified as \`<plugin>:<agent>\`, in the owning plugin/workspace agent tree."
+          fi
+        fi
+        ;;
       *)
         err "capability \`$cap\` fragment at \`$f_phase | $f_kind\` has a malformed dispatch \`$f_dispatch\` — expected \`inline: <rel-path>\` or \`subagent: <agent>\`." ;;
     esac

@@ -40,7 +40,8 @@ ok()  { printf 'ok:   %s\n' "$1"; }
 
 command -v jq >/dev/null 2>&1 || { echo "corpus/run.sh: jq is required" >&2; exit 2; }
 
-TMP="$(mktemp -d)"
+TMP="$REPO_ROOT/_local/scratch/corpus-selfcheck-$$"
+mkdir -p "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 
 # ---------------------------------------------------------------------------
@@ -253,7 +254,20 @@ check_ledger() {
   [ "$fail" = "$before" ] && ok "ledger: all named C014/C015 items + WF-203 comments accounted for (covered/subsumed/deferred), each provenance-linked — zero silently dropped"
 }
 
-echo "== wf-sandbox-testing CORPUS self-checks (canned run outputs) =="
+# ---------------------------------------------------------------------------
+# 8. HOST AVAILABILITY — deterministic contract/model coverage for generation/run/follow-up,
+#    plus an executed registered-host fixture lifecycle over 14 scenarios.
+# ---------------------------------------------------------------------------
+check_host_availability() {
+  local before=$fail host_fixture="$PACK_DIR/fixtures/host-lifecycle/selfcheck.sh"
+  if bash "$host_fixture" >/dev/null 2>&1; then
+    ok "host-availability: generation/run/follow-up contract-model coverage, qa-auto ordering model, alias/overlap, symlink-negative assertion, and executed 14-scenario teardown paths pass"
+  else
+    err "host-availability: host contract/model or fixture lifecycle coverage failed"
+  fi
+  [ "$fail" = "$before" ] || true
+}
+
 check_provenance
 check_slot_enum
 check_flagship
@@ -261,6 +275,7 @@ check_arm_record
 check_review_gate
 check_assertion_items
 check_ledger
+check_host_availability
 
 if [ "$fail" -ne 0 ]; then
   echo "wf-sandbox-testing corpus self-checks: FAIL" >&2
