@@ -80,7 +80,8 @@ This is one plan-level condition, not one gap per scenario. List the affected `T
 
 **Validates:** SC-<N> — <criterion text, abbreviated>
 **Priority:** P0 | P1 | P2
-**Host availability:** unavailable   <!-- ONLY when `Host required:` is present and generation preflight found no host owner -->
+**Host availability:** unavailable
+<!-- Include the line above ONLY when `Host required:` is present and generation preflight found no host owner. -->
 
 **Preconditions:**
 

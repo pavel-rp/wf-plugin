@@ -69,7 +69,8 @@ Same outer shape as a browser scenario (`Validates` / `Priority` / `Precondition
 **Validates:** SC-<N> — <criterion, abbreviated>
 **Priority:** P0 | P1 | P2
 **Type:** API
-**Host availability:** unavailable   <!-- ONLY when `Backend host required:` is present and generation preflight found no host owner -->
+**Host availability:** unavailable
+<!-- Include the line above ONLY when `Backend host required:` is present and generation preflight found no host owner. -->
 
 **Preconditions:**
 
