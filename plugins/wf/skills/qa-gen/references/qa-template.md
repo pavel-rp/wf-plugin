@@ -23,13 +23,14 @@ This plan is executed manually in a browser against the running app. Each scenar
 
 ## Coverage Matrix
 
-### Runnable scenarios (browser + API)
+### Scenarios
 
-| Criterion (SC-N) | Wording (abbreviated) | Scenarios | Type | Priority |
-|---|---|---|---|---|
-| SC-1 | <abbreviated criterion> | TC-001, TC-002 | browser | P0 |
-| SC-3 | <abbreviated criterion> | TC-003 | browser | P1 |
-| SC-6 | <abbreviated criterion> | TC-004 | API | P0 |
+| Criterion (SC-N) | Wording (abbreviated) | Scenarios | Type | Priority | Availability |
+|---|---|---|---|---|---|
+| SC-1 | <abbreviated criterion> | TC-001, TC-002 | browser | P0 | runnable |
+| SC-3 | <abbreviated criterion> | TC-003 | browser | P1 | runnable |
+| SC-6 | <abbreviated criterion> | TC-004 | API | P0 | runnable |
+| SC-7 | <abbreviated criterion> | TC-005 | API | P1 | unavailable — host required |
 
 ### Verified by build / automation
 
@@ -61,6 +62,12 @@ Scenarios aggregated from registered capabilities at the `qa-generation` phase, 
 
 <List any criterion with no coverage — neither manual nor automated. Should be empty. If non-empty, flag prominently and explain why the gap exists.>
 
+**Capability gap — host unavailable** (present only when one or more scenarios carry `**Host availability:** unavailable`; omit otherwise):
+
+> The listed scenarios require temporary host work, but no `qa-execution:host` provider is available. They are unavailable for this run; all other scenarios remain runnable. Register a host provider, then regenerate the plan before rerunning them.
+
+This is one plan-level condition, not one gap per scenario. List the affected `TC-NNN` IDs once.
+
 **Capability blockers** (present only when a capability scenario can't pass yet — omit otherwise):
 
 <List any aggregated capability scenario a contributor marked as blocked (e.g. a `[BLOCKED BY ...]` scenario whose precondition the capability flagged as unmet). These are a distinct category from the uncovered-SC-N gaps above: a capability blocker is a scenario that exists but can't pass until its blocker is reconciled, not a criterion with no scenario. Carry the provenance tag.>
@@ -73,10 +80,11 @@ Scenarios aggregated from registered capabilities at the `qa-generation` phase, 
 
 **Validates:** SC-<N> — <criterion text, abbreviated>
 **Priority:** P0 | P1 | P2
+**Host availability:** unavailable   <!-- ONLY when `Host required:` is present and generation preflight found no host owner -->
 
 **Preconditions:**
 
-- <Browser / app state — e.g., "Logged in as `admin@example.com`. Entity `Acme Corp` selected. On `/dashboard`.">
+- <Browser / app state — e.g., "Logged in as `admin@example.com`. Entity `Example Organization` selected. On `/dashboard`.">
 - <Data state — e.g., "At least one active widget exists in the current entity.">
 - <Environment — e.g., "API server running. Network throttling off.">
 - <Host requirement, only when target was flagged host-missing in Phase 2 step 4 — e.g., "Host required: `<path to the un-routed component>`. `/wf:qa-auto` will scaffold or look up the route via the registered `qa-execution` host provider.">
@@ -101,7 +109,7 @@ Scenarios aggregated from registered capabilities at the `qa-generation` phase, 
 
 ---
 
-> **API scenarios** use the same outer block (`Validates` / `Priority` / `Preconditions` / `Teardown`) but carry a `**Type:** API` line and replace the **Steps** table with a **Request** block + an **Assertions** table. Service-only criteria add a `Backend host required: <Service>.<method>` precondition. Copy the exact shape from [`api-scenarios.md` § API scenario template](api-scenarios.md#api-scenario-template) — don't improvise it, the runners parse it. Browser scenarios need no `**Type:**` line (absence means browser).
+> **API scenarios** use the same outer block (`Validates` / `Priority` / `Preconditions` / `Teardown`) but carry a `**Type:** API` line and replace the **Steps** table with a **Request** block + an **Assertions** table. Service-only criteria add a `Backend host required: <Service>.<method>` precondition. When the generation preflight found no `qa-execution:host` provider, every host-dependent API or browser scenario carries `**Host availability:** unavailable` (`Type` then availability for API; `Priority` then availability for browser); scenarios without a host requirement remain runnable. Copy the exact API shape from [`api-scenarios.md` § API scenario template](api-scenarios.md#api-scenario-template) — don't improvise it, the runners parse it. Browser scenarios need no `**Type:**` line (absence means browser).
 
 > **Capability scenarios** (Phase 3.6) use the same outer `scenario` shape (`Validates` / `Priority` / `Preconditions` / `Steps` / `Teardown`, a `TC-NNN` id numbered in the global sequence). A contributing capability may add its own marker lines and preconditions; core follows the fragment's inline reference doc (or the subagent's returned block) verbatim and does not improvise their shape. Each aggregated suite sits after the spec suites and before Baseline health, tagged with its source-capability provenance. The dispatch and aggregation procedure is the invocation runtime fired in Phase 3.6.
 

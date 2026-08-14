@@ -1114,7 +1114,13 @@ export class ResolverService {
     const fs = this.validatorFs();
     const ops = this.opsDocPath();
     if (path && path.trim()) {
-      return validateManifest(fs, this.absolutize(path.trim()), ops);
+      const pluginRoots: Record<string, string> = {};
+      for (const root of this.safeEnsure().snapshot?.pluginRoots ?? []) {
+        if (root.resolvedRoot !== null) pluginRoots[root.plugin] = root.resolvedRoot;
+      }
+      return validateManifest(fs, this.absolutize(path.trim()), ops, {
+        pluginRoots,
+      });
     }
     // Default scope: every active capability's manifest. The registry validator
     // already visits exactly that set, so reuse its pass and re-scope the

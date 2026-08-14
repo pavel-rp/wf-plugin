@@ -8,6 +8,7 @@ The point: a backend task is not "verified by build." A type that compiles is no
 
 - [When a criterion is API vs Build/static](#when-a-criterion-is-api-vs-buildstatic)
 - [Endpoint vs service-only — the backend host](#endpoint-vs-service-only--the-backend-host)
+- [Host-unavailable annotation](#host-unavailable-annotation)
 - [API scenario template](#api-scenario-template)
 - [API baseline health](#api-baseline-health)
 - [Backend-diff signals (Phase 2)](#backend-diff-signals-phase-2)
@@ -40,9 +41,21 @@ For each API criterion, decide how the behavior is reachable:
    Backend host required: <Service-or-Repository>.<method>
    ```
 
-   This is the backend analog of `Host required:` for an un-routed frontend component. `/wf:qa-auto` resolves it via the registered `qa-execution` host provider's `api-probe` operation (scaffold-or-locate); the temporary endpoint is an ephemeral run fixture, reverted in teardown. Set the scenario's `Route:` to `via backend host` — the runner substitutes the real route after `api-probe` returns it.
+   This is the backend analog of `Host required:` for an un-routed frontend component. Generation resolves the `qa-execution:host` provider once. When it is available, `/wf:qa-auto` sends the scenario block to that provider in a prepare request, forwards its safe resolved route/readiness metadata to the engine, and guarantees a provider-native teardown request afterward. When it is unavailable, generation retains the scenario but adds the stable unavailable-host annotation below. Set the scenario's `Route:` to `via backend host` — the engine substitutes the safe route returned by host preparation.
 
-Determining which: grep the branch diff and the project's endpoint/route-handler root (`{api-controllers-root}` from config, or the stack's endpoint files as the active capability's backend material names them) for a handler that calls the target service method. If one is found, it's case 1; otherwise case 2. The concrete file-name patterns and route-declaration syntax are stack-specific — they live in the active backend capability's material, not here.
+Determining which: inspect the endpoint/route-handler signatures already identified by the branch-diff read, plus any endpoint roots named by the active capability's backend material, for a handler that calls the target service method. If one is found, it's case 1; otherwise case 2. The concrete file-name patterns and route-declaration syntax are stack-specific — they live in the active backend capability's material, not here.
+
+---
+
+## Host-unavailable annotation
+
+Generation resolves `qa-execution:host` once before scenario authoring. If that record is not `state: ok`, add this exact line to every scenario carrying either a browser `Host required:` or API `Backend host required:` precondition:
+
+```markdown
+**Host availability:** unavailable
+```
+
+For API scenarios place it immediately after `**Type:** API`; for browser scenarios place it immediately after `**Priority:**`. This is a plan-state annotation, not a result marker: retain the scenario and its steps/request/assertions unchanged. Do not add it to scenarios without a host requirement. The plan renders the corresponding single capability gap once; runners use this exact annotation to exclude unavailable host work while preserving all other runnable scenarios.
 
 ---
 
@@ -56,6 +69,7 @@ Same outer shape as a browser scenario (`Validates` / `Priority` / `Precondition
 **Validates:** SC-<N> — <criterion, abbreviated>
 **Priority:** P0 | P1 | P2
 **Type:** API
+**Host availability:** unavailable   <!-- ONLY when `Backend host required:` is present and generation preflight found no host owner -->
 
 **Preconditions:**
 
@@ -87,7 +101,7 @@ Writing rules specific to API scenarios:
 - **One assertion per row.** Status is its own row; each shape/value check is its own row. A partial pass is then legible.
 - **Assert the contract, not the data.** Status code, array-ness vs object, presence and type of spec-named fields, and spec-stated edge behavior ("empty array when none match — use an id unlikely to have data, e.g. `0` or `-1`"). **Never assert exact row counts or specific values** — those depend on the database, exactly as the stack's backend-smoke page-test already cautions.
 - **Negative/error cases at `full` scope.** Bad input → 400, missing/forbidden → 401/403, not-found → 404 — when the spec defines them. These are first-class API scenarios, not afterthoughts.
-- **Route is real.** Use the actual route template from the endpoint's route/verb declaration (signature read — the stack's route-declaration syntax, whatever the active backend capability names it). Placeholder `via backend host` is allowed *only* for the service-only case, where the route doesn't exist until `api-probe` makes it.
+- **Route is real.** Use the actual route template from the endpoint's route/verb declaration (signature read — the stack's route-declaration syntax, whatever the active backend capability names it). Placeholder `via backend host` is allowed *only* for the service-only case, where the route does not exist until the registered host provider's prepare result supplies it.
 
 ---
 

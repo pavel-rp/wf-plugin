@@ -6,4 +6,4 @@
 
 | phase     | contribution-kind | dispatch                  | scope    |
 |-----------|--------------------|----------------------------|----------|
-| implement | provider           | `subagent: wf-delivery`   | delivery |
+| implement | provider           | `subagent: wf:phase-runner`   | delivery |

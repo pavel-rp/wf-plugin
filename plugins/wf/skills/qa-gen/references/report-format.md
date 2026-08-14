@@ -9,6 +9,7 @@ This file is the single source of truth for the format. Update here, then both r
 - [Filename and location](#filename-and-location)
 - [Template](#template)
 - [Writing rules](#writing-rules)
+- [Capability gaps](#capability-gaps)
 - [Stable IDs for the run-assistant contract](#stable-ids-for-the-run-assistant-contract)
 
 ---
@@ -53,7 +54,7 @@ Run status rules:
 
 - **PASS** — every executed scenario passed; zero failed; zero blocked.
 - **FAIL** — at least one scenario failed.
-- **INCOMPLETE** — run was aborted, scenarios remain `Not run` (e.g., crash mid-loop in agentic mode), OR any scenario's fixture teardown failed (test environment is not in a known state — agentic mode only).
+- **INCOMPLETE** — run was aborted, scenarios remain `Not run` (e.g., crash mid-loop in agentic mode), any scenario's fixture teardown failed (test environment is not in a known state — agentic mode only), **OR one aggregate capability gap was reported**.
 
 ---
 
@@ -176,6 +177,41 @@ Omit the section entirely when the run is PASS — no defects, no header.
 - **Defects section omitted on PASS runs.** Don't write "Defects: none" — just don't render the section.
 - **Status rule is mechanical.** Don't editorialize — the rules above determine PASS/FAIL/INCOMPLETE deterministically.
 - **Manual and agentic reports are interchangeable.** A reviewer should not be able to tell which mode produced the report from the format alone — only the `Mode` field reveals it. This keeps the run-assistant pivot transparent.
+
+---
+
+## Capability gaps
+
+When a selected plan scenario carries the exact generation annotation:
+
+```markdown
+**Host availability:** unavailable
+```
+
+`/wf:qa-auto` must not dispatch it to the execution engine. Instead, report every selected marked scenario once as a single run-level section before `## Results by Suite`:
+
+```markdown
+## Capability gaps
+
+**Host availability:** unavailable
+**Affected scenarios:** TC-NNN, TC-NNN
+**Host resolution:** <unconfigured | unrecoverable | ok — plan stale> <owner when present>
+**Reason:** <no host provider is available for required temporary host work | the plan was generated before a host provider was registered; regenerate the plan before running these scenarios>. No engine dispatch was attempted for these scenarios.
+```
+
+This is not a per-scenario `BLOCKED` verdict, a Defects-table row, or a PASS. It is one capability-level condition; an all-unavailable selection has `Status: INCOMPLETE`, while a mixed selection also has `Status: INCOMPLETE` and reports this section alongside verdicts for its dispatched runnable scenarios. The host-resolution provenance distinguishes a genuinely unavailable provider from a stale plan that must be regenerated. In the traceability matrix, criteria represented only by this section are `GAP — host unavailable`. `/wf:qa-followup` reads this marker and section as one remediation, not one escalation per affected scenario.
+
+When host ownership resolves `ok` but prepare does not reach ready, append one different run-level condition in the same section:
+
+```markdown
+**Host preparation:** failed
+**Affected scenarios:** TC-NNN, TC-NNN
+**Host resolution:** ok — <owner>
+**Teardown:** <PASS | FAIL — recovery required>
+**Reason:** The registered host provider did not reach ready state. No engine dispatch was attempted for these scenarios.
+```
+
+This also forces `INCOMPLETE` and maps affected criteria to `GAP — host preparation failed`. It contains no lifecycle token, payload, child output, or per-scenario `BLOCKED` rows. `/wf:qa-followup` treats it as one environment/provider escalation; when teardown failed, recovery must complete before a retry.
 
 ---
 

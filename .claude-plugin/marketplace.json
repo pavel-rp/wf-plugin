@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.121.0",
-  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature, wf-author-caps authoring toolkit).",
+  "version": "0.122.0",
+  "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-host generic QA host, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature, wf-author-caps authoring toolkit).",
   "owner": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
@@ -11,7 +11,7 @@
     {
       "name": "wf",
       "source": "./plugins/wf",
-      "version": "0.87.0",
+      "version": "0.88.0",
       "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (browser-qa, angular test-host, node-ts) each ship in their own plugin.",
       "author": {
         "name": "Pavel Kalabin"
@@ -23,6 +23,16 @@
       "source": "./plugins/wf-browser-qa",
       "version": "0.2.1",
       "description": "wf browser-QA feature pack: the browser-qa capability owning the wf capability-registry's qa-execution engine surface. Ships /wf-browser-qa:qa-engine, a stack-agnostic in-thread browser-automation QA engine that drives any web app, reaches browser-level preconditions, captures console/network, screenshots on FAIL, and emits per-scenario verdict blocks; core's /wf:qa-auto dispatches the per-scenario browser drive to it. Tracker-agnostic (requires: git only). Ships /wf-browser-qa:init for one-command self-registration.",
+      "author": {
+        "name": "Pavel Kalabin"
+      },
+      "category": "development"
+    },
+    {
+      "name": "wf-host",
+      "source": "./plugins/wf-host",
+      "version": "0.1.0",
+      "description": "wf generic host-provider pack: the host capability owns only the wf capability-registry's qa-execution host surface. Ships /wf-host:qa-host for profile-driven, temporary API exposure, host augmentation, transactional persistence seed, synthetic fixtures, health verification, and durable reverse-order teardown recovery backed by a run-scoped ledger. Stack- and tracker-agnostic. Ships /wf-host:init for resolver-owned one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
       },
@@ -121,7 +131,7 @@
     {
       "name": "wf-sandbox-testing",
       "source": "./plugins/wf-sandbox-testing",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "description": "wf skill-eval harness pack: the sandbox-testing feature capability. Runs real headless wf:* skill invocations hermetically in a fingerprinted container (runner/), judges the runner's structural outputs — terminal block, workspace file set, invoked contract-op set — statistically over N runs and emits a variance-aware report separating drift from regression (assert/), ships the SMOKE/STATISTICAL tier commands and the baseline-comparison primitive, the behavioral-regression corpus mined retrofit-first from observed failures (corpus/), and the findings-loop procedure that turns a new observed failure into an assertion. Owns no provider surface and attaches no phase fragment; downstream fixtures that script a provider pair with the wf-fake pack (enforced loudly at run time, not via requires:). Ships /wf-sandbox-testing:new-experiment, an interview-driven scaffolder that emits a runnable experiment kit — manifest, kit-root files, and an engine-derived runbook — for the shared experiment engine, plus /wf-sandbox-testing:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"

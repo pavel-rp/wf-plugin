@@ -1,0 +1,12 @@
+{
+  "expose-command": "<EXPOSE_COMMAND: shell command that establishes the requested temporary API execution surface; leave empty when not supported>",
+  "expose-teardown-command": "<EXPOSE_TEARDOWN_COMMAND: shell command that reverses the temporary exposure; leave empty only when expose-command is empty>",
+  "augment-command": "<AUGMENT_COMMAND: shell command that applies a requested reversible host augmentation; leave empty when not supported>",
+  "augment-teardown-command": "<AUGMENT_TEARDOWN_COMMAND: shell command that reverses the host augmentation; leave empty only when augment-command is empty>",
+  "seed-command": "<SEED_COMMAND: shell command that transactionally seeds requested temporary persistence state; leave empty when not supported>",
+  "seed-teardown-command": "<SEED_TEARDOWN_COMMAND: shell command that removes or rolls back the seed; leave empty only when seed-command is empty>",
+  "fixture-command": "<FIXTURE_COMMAND: shell command that creates requested synthetic fixture data or files; leave empty when not supported>",
+  "fixture-teardown-command": "<FIXTURE_TEARDOWN_COMMAND: shell command that removes the synthetic fixture; leave empty only when fixture-command is empty>",
+  "health-command": "<HEALTH_COMMAND: shell command that verifies the prepared host before execution; leave empty to skip>",
+  "command-timeout-seconds": 120
+}

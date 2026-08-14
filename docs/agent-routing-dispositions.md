@@ -34,6 +34,7 @@ WF-399 completed fixed core-owned adoption; WF-400 completes live capability ado
 | `security-auditor` | `plugins/wf-audit/agents/security-auditor.md` | audit | `deferred` | `inherit` | `inherit` | `3` | [CAL-security-auditor](agent-routing-calibration.md#cal-security-auditor) preserves bounded escalation and defers to WF-380/WF-381 ownership. |
 | `qa-engine` | `plugins/wf-browser-qa/agents/qa-engine.md` | browser-QA | `evidence-gated` | `inherit` | `inherit` | `2` | [CAL-qa-engine](agent-routing-calibration.md#cal-qa-engine) retains inheritance pending matched browser-scenario evidence. |
 | `qa-host` | `plugins/wf-angular/agents/qa-host.md` | Angular | `evidence-gated` | `inherit` | `inherit` | `2` | [CAL-qa-host](agent-routing-calibration.md#cal-qa-host) retains inheritance pending source-validity comparisons. |
+| `qa-host` | `plugins/wf-host/agents/qa-host.md` | generic host | `adaptive` | `inherit` | `inherit` | `2` | Profile-bound lifecycle scope varies by requested operations; selectors inherit through the mandatory routing gate. |
 
 The two `shipped-static` rows are the complete static-default set. No role starts on static Opus, no Sonnet default is claimed without qualifying evidence, and all effort choices inherit. Adaptive, evidence-gated, and deferred rows add no hidden model or effort default.
 

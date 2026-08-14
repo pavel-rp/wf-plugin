@@ -6,4 +6,4 @@
 
 | phase | contribution-kind | dispatch                | scope   |
 |-------|--------------------|--------------------------|---------|
-| spec  | provider           | `subagent: wf-tracker`  | tracker |
+| spec  | provider           | `subagent: wf:phase-runner`  | tracker |
