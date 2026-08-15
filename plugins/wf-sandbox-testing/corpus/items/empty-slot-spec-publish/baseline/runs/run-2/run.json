@@ -1,0 +1,11 @@
+{
+  "task": "/wf:spec FAKE-3",
+  "skill": "/wf:spec FAKE-3",
+  "fixture": "spec-empty-slot-publish",
+  "plugin_source": "/pinned/preslot-spec-build",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-spec-esp", "plugin_build": "fp-preslot-spec-b4d7e1", "cli_version": "claude 1.0.0", "run": "fp-esp-base-r2" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "pre-slot baseline arm: the spec.publish slot did not exist on this pinned build"
+}

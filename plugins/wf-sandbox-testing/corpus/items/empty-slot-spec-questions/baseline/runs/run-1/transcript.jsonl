@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esq-base-1","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-2 on the pinned pre-slot spec build: fetch the work item, explore, resolve the open questions, then write 01_spec.md. This build predates the spec.questions composition point — Phase 2 carries the questions straight into the interactive prompt with nothing published anywhere."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-2\nSpec: _local/wf/FAKE-2/01_spec.md\nNext: /wf:plan FAKE-2"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5210,"output_tokens":430},"total_cost_usd":0.0361}

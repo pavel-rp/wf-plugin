@@ -1,0 +1,15 @@
+{
+  "_comment": "The recorded pinned-build baseline arm for the spec.publish empty-slot invariant. Produced via WF-345's pinned-build install option: the pre-slot spec build installed as the run source. Carries the pinned build's fingerprint and the run fingerprints of the baseline set. CANNED per item.md's disclosure — Docker + CLAUDE_CODE_OAUTH_TOKEN are unavailable in this environment; the run bytes are shaped exactly like the WF-345 runner's output tree, and runner/run-skill.sh regenerates them from the real pinned build when a container and token are available.",
+  "slot": "spec.publish",
+  "skill": "/wf:spec FAKE-3",
+  "fixture": "spec-empty-slot-publish",
+  "pinned_build": {
+    "source": "/pinned/preslot-spec-build",
+    "description": "the spec skill immediately before the spec.publish composition point was introduced",
+    "fingerprint": "fp-preslot-spec-b4d7e1"
+  },
+  "runs": [
+    { "dir": "runs/run-1", "fingerprint": "fp-esp-base-r1" },
+    { "dir": "runs/run-2", "fingerprint": "fp-esp-base-r2" }
+  ]
+}

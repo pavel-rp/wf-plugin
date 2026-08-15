@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esp-base-2","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-3 on the pinned pre-slot spec build. 01_spec.md and the index row are the run's only outputs; this build has no publish phase, so nothing external is opened, updated or annotated."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-3\nSpec: _local/wf/FAKE-3/01_spec.md\nNext: /wf:plan FAKE-3"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5163,"output_tokens":418},"total_cost_usd":0.0355}

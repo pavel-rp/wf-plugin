@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esp-base-1","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-3 on the pinned pre-slot spec build: fetch the work item, explore, write 01_spec.md, record the index row. This build predates the spec.publish composition point — the phase ends at the Final Output block with no Phase 4."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-3\nSpec: _local/wf/FAKE-3/01_spec.md\nNext: /wf:plan FAKE-3"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5194,"output_tokens":427},"total_cost_usd":0.0359}

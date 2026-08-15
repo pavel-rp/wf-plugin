@@ -1,0 +1,11 @@
+{
+  "task": "/wf:spec FAKE-3",
+  "skill": "/wf:spec FAKE-3",
+  "fixture": "spec-empty-slot-publish",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-spec-esp", "plugin_build": "fp-current-spec-7c5a20", "cli_version": "claude 1.0.0", "run": "fp-esp-cur-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "current build, spec.publish resolved {status: unfilled} — no capability contributes the slot"
+}

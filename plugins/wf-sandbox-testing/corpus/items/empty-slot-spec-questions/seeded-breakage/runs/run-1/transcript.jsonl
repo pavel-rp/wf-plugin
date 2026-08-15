@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esq-seed-1","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-2 with a seeded spec.questions fill registered. The slot resolves composed under a replace policy, so the fill supersedes the inline default: it confirms the umbrella and posts one comment carrying the run's open questions before the prompt."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-2\nSpec: _local/wf/FAKE-2/01_spec.md\nNext: /wf:plan FAKE-2"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5610,"output_tokens":502},"total_cost_usd":0.0401}
