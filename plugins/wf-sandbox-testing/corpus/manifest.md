@@ -39,15 +39,19 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 8 | empty-slot invariant — `spec.publish` | comparison (per declared slot) | SMOKE | `spec.publish` (`plugins/wf/skills/spec/interface.md` → `## Slots`; marker in `spec/SKILL.md` Phase 4) | **WF-406** — "SUB-1: mirror the spec phase to the tracker via two slots"; the highest-consequence of the three declared slots (its fill performs creating writes), so its unfilled case is asserted silent; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 | 9 | empty-slot invariant — `plan.publish` | comparison (per declared slot) | SMOKE | `plan.publish` (`plugins/wf/skills/plan/interface.md` → `## Slots`; marker in `plan/SKILL.md` Phase 3) | **WF-407** — "SUB-2: mirror the plan and tasks phases via two publish slots"; the per-declared-slot arm `run.sh`'s enumeration requires the moment a slot is declared; its fill performs creating writes, so the unfilled case is asserted silent; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 | 10 | empty-slot invariant — `tasks.publish` | comparison (per declared slot) | SMOKE | `tasks.publish` (`plugins/wf/skills/tasks/interface.md` → `## Slots`; marker in `tasks/SKILL.md` Phase 5) | **WF-407** — "SUB-2: mirror the plan and tasks phases via two publish slots"; the decomposition it publishes is a list, so the unfilled case is asserted to emit **zero** records rather than "one fewer than the fill would"; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
+| 11 | empty-slot invariant — `implement.start` | comparison (per declared slot) | SMOKE | `implement.start` (`plugins/wf/skills/implement/interface.md` → `## Slots`; marker in `implement/SKILL.md` Phase 1.5) | **WF-408** — "SUB-3: mirror the implement phase via three lifecycle slots"; the first lifecycle point to fire and the one whose fill *creates* an external record, so the unfilled case asserts the record never comes into being; **C021 (WF-405)**; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
+| 12 | empty-slot invariant — `implement.milestone` (the first `append` point) | comparison (per declared slot) | SMOKE | `implement.milestone` (`plugins/wf/skills/implement/interface.md` → `## Slots`; marker in `implement/SKILL.md` Phase 2.5) | **WF-408** — "SUB-3: mirror the implement phase via three lifecycle slots"; the **only `append`-policy composition point** in the charter, so its seeded arm asserts registry-ordered concatenation of two contributions rather than the single-author `replace` shape; **C021 (WF-405)**; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
+| 13 | empty-slot invariant — `implement.finish` | comparison (per declared slot) | SMOKE | `implement.finish` (`plugins/wf/skills/implement/interface.md` → `## Slots`; marker in `implement/SKILL.md` Phase 5.5) | **WF-408** — "SUB-3: mirror the implement phase via three lifecycle slots"; it fires mid-conveyor, so its fill moves an external record to a **non-terminal** state and the unfilled case is the clean control for that; **C021 (WF-405)**; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 
-All ten items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+All thirteen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
 decision 1). Items 3–5 are the C014 watch-list items retrofit by **WF-348**; items 1–2 are
 the WF-347 corpus core; items 7–8 are the per-slot arms **WF-406** owes for the two `spec`
 slots it declares; items 9–10 are the per-slot arms **WF-407** owes for the `plan` and
-`tasks` publish slots it declares.
+`tasks` publish slots it declares; items 11–13 are the per-slot arms **WF-408** owes for the
+three `implement` lifecycle slots it declares.
 
 ## Subsumption record
 
@@ -109,21 +113,29 @@ Item 1 is asserted **per declared slot**, not once globally. The declared-slot s
 mechanically from the resolver's per-slot surface — a skill declares its slots in its
 `interface.md` `## Slots` table and marks them with a `<!-- wf:slot <skill>.<point> -->`
 body-marker pair (WF-329). At WF-347 implementation time the entire marketplace tree declared
-exactly one slot (`ship.review`); **WF-406** declares two more and **WF-407** two more again,
-so the set is now:
+exactly one slot (`ship.review`); **WF-406** declares two more, **WF-407** two more again, and
+**WF-408** three more, so the set is now:
 
 ```
-ship.review      (plugins/wf/skills/ship/interface.md  → ## Slots; marker in ship/SKILL.md  Phase 4.5)
-spec.questions   (plugins/wf/skills/spec/interface.md  → ## Slots; marker in spec/SKILL.md  Phase 2 step 2)
-spec.publish     (plugins/wf/skills/spec/interface.md  → ## Slots; marker in spec/SKILL.md  Phase 4)
-plan.publish     (plugins/wf/skills/plan/interface.md  → ## Slots; marker in plan/SKILL.md  Phase 3)
-tasks.publish    (plugins/wf/skills/tasks/interface.md → ## Slots; marker in tasks/SKILL.md Phase 5)
+ship.review          (plugins/wf/skills/ship/interface.md      → ## Slots; marker in ship/SKILL.md      Phase 4.5)
+spec.questions       (plugins/wf/skills/spec/interface.md      → ## Slots; marker in spec/SKILL.md      Phase 2 step 2)
+spec.publish         (plugins/wf/skills/spec/interface.md      → ## Slots; marker in spec/SKILL.md      Phase 4)
+plan.publish         (plugins/wf/skills/plan/interface.md      → ## Slots; marker in plan/SKILL.md      Phase 3)
+tasks.publish        (plugins/wf/skills/tasks/interface.md     → ## Slots; marker in tasks/SKILL.md     Phase 5)
+implement.start      (plugins/wf/skills/implement/interface.md → ## Slots; marker in implement/SKILL.md Phase 1.5)
+implement.milestone  (plugins/wf/skills/implement/interface.md → ## Slots; marker in implement/SKILL.md Phase 2.5)
+implement.finish     (plugins/wf/skills/implement/interface.md → ## Slots; marker in implement/SKILL.md Phase 5.5)
 ```
+
+`implement.milestone` is the first declared point whose merge policy is **`append`** rather than
+`replace`; its arm (item 12) is therefore the only one asserting registry-ordered concatenation of
+multiple contributions. The enumeration itself is policy-blind — it asserts one arm per declared
+slot regardless of merge policy — so the distinction lives in the item, not in `run.sh`.
 
 `run.sh`'s enumeration step re-derives this set from the source at run time and asserts one
 baseline-comparison item per declared slot, so a newly-declared slot with no empty-slot arm
-fails the suite loudly rather than going silently unchecked — which is exactly how items 7–8
-and then items 9–10 came to be owed. Each item's `item.md` carries the per-family variance thresholds and its own
+fails the suite loudly rather than going silently unchecked — which is exactly how items 7–8,
+then items 9–10, then items 11–13 came to be owed. Each item's `item.md` carries the per-family variance thresholds and its own
 baseline-arm provenance; `items/empty-slot-ship-review/item.md` holds the original named
 spec-time threshold decision the later arms inherit unchanged.
 
@@ -147,6 +159,9 @@ spec-time threshold decision the later arms inherit unchanged.
 | `items/empty-slot-spec-publish/` | item 8 (WF-406): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the spec as a child record) |
 | `items/empty-slot-plan-publish/` | item 9 (WF-407): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the plan as a child record) |
 | `items/empty-slot-tasks-publish/` | item 10 (WF-407): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the decomposition as one child record) |
+| `items/empty-slot-implement-start/` | item 11 (WF-408): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that opens an execution child record and moves it and its umbrella into progress) |
+| `items/empty-slot-implement-milestone/` | item 12 (WF-408): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (**two** contributions to the same `append` point, both running in registry order at every checkpoint) |
+| `items/empty-slot-implement-finish/` | item 13 (WF-408): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that consolidates the execution record and moves it to a non-terminal review state) |
 | `fixtures/host-lifecycle/` | item 6 (WF-432): deterministic no-egress host availability signatures and a 14-scenario `expose`/`augment`/`seed`/`fixture` lifecycle; byte-tree restoration is checked after success and failure |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, and the coverage-ledger audit (CI entrypoint) |
