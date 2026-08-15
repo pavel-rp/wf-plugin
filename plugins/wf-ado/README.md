@@ -14,9 +14,26 @@ dispatch to.
 
 | Item | What it is |
 |---|---|
-| `capabilities/ado/manifest.md` | the `ado` capability's manifest — one `provider` fragment row scoped `tracker` |
+| `capabilities/ado/manifest.md` | the `ado` capability's manifest — one `provider` fragment row scoped `tracker`, plus seven `slot` fill rows |
 | `capabilities/ado/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Azure DevOps mechanics, with a completeness coverage table |
+| seven `capabilities/ado/fragments/*-*.md` slot fills | the conveyor tracker mirror — `spec.questions`, `spec.publish`, `plan.publish`, `tasks.publish`, `implement.start`, `implement.milestone`, `implement.finish` |
 | `/wf-ado:init` | one-command self-registration — records this pack's install root, registers the `ado` capability, and interviews for (or carries forward) ADO organization/project, mirroring `/wf-git:init` (WF-122) |
+
+## The conveyor tracker mirror (seven slot fills)
+
+With `ado` registered, the conveyor's four bookkeeping skills publish to Azure DevOps from
+their declared composition points: open questions land as one comment on the task's umbrella;
+the finished spec, plan and decomposition land as `Spec:` / `Plan:` / `Tasks:` child work
+items beneath it; and the implement phase opens an `Impl:` child, appends one log entry per
+checkpoint to its comment thread, then closes it and moves the umbrella to the awaiting-review
+state. Every fill binds only operations the tracker contract already defines — no contract
+extension.
+
+> **⚠ Authored to parity, not live-tested.** The seven fills mirror the `wf-linear` fills
+> structurally and are verified by fragment/contract review plus registry validation only —
+> **no live Azure DevOps run has exercised them.** Confirm the child-creation response shape,
+> the tag patch, and each state name against your project's process template before relying on
+> them. Details and the residual-risk statement: `capabilities/ado/references/onboarding.md`.
 
 ## Registering wf-ado downstream
 
