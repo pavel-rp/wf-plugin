@@ -147,11 +147,25 @@ Plus these additional core articles (provenance `core`), recorded **verbatim**:
 8. **Core never requires a capability.** Every core extension point ships a lean default and
    runs inert when no capability is registered; core never names or hard-depends on a
    specific capability.
-9. **Temp and scratch files live under `_local/`.** Working, temporary, and scratch files
-   route to a dedicated scratch area under `_local/` (`_local/scratch/`) — never the repo
-   root, a system temp directory, or anywhere alongside tracked files. This *complements* the
-   write-scope article above: that one bounds where writes may land; this one routes every
-   throwaway to a single gitignored home inside that boundary.
+9. **Temp and scratch files live under `_local/`, and nothing is left behind.** Working,
+   temporary, and scratch files route to a dedicated scratch area under `_local/`
+   (`_local/scratch/`) — never the repo root, a system temp directory, or anywhere alongside
+   tracked files. This *complements* the write-scope article above: that one bounds where
+   writes may land; this one routes every throwaway to a single gitignored home inside that
+   boundary. Placement alone does not discharge the article: every scratch file also carries a
+   lifecycle, and the two deletion obligations below are **separate, and both mandatory**.
+   - **(a) Per-consumer immediate deletion.** Each scratch file is deleted the moment its
+     consumer has run — deletion is that consumer's own last act on the file, performed in the
+     same run that consumed it. It is never deferred to a later sweep, never postponed to the
+     end of the chain, and never left for another skill to notice.
+   - **(b) Breadcrumb deletion by the run-ending skill.** Every run-scoped breadcrumb — the
+     state, handoff, ledger, lock, and marker files a multi-step run writes to coordinate
+     itself — is deleted by the skill that ends the run, as part of ending it, whether the run
+     ended in success or in failure.
+
+   The finalize-time scratch sweep is a **backstop, not a substitute**: it exists only to remove
+   residue that obligation (a) or (b) failed to remove, and neither obligation may be skipped,
+   deferred, or weakened on the grounds that the sweep will catch it.
 
 ### 2. Capability articles — composed from the registry (provenance-tagged)
 
