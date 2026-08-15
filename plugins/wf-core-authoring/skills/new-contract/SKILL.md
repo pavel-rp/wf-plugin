@@ -50,6 +50,8 @@ clean pair.
 - Read any file in the repository (`Read`, `Glob`, `Grep`).
 - Write the two halves of exactly one contract pair into the resolved contracts folder.
 - Run the contract-shape guard, located by role, as a read-only check.
+- Obtain this skill's own emission templates through the resolver's content surface
+  (`resolve_content`, `class: references-template`) — never by raw-reading the template path.
 - Call the typed resolver validators (`validate_references`, `validate_manifest`,
   `validate_registry`) — the in-session surfaces that already own those checks.
 
@@ -98,8 +100,13 @@ content is worse than pausing for one more answer.
 
 ## Phase 3: Emit both halves
 
-Read the emission rule set and the two half-templates from `references/contract-emission.md` — the
-single source for both. Do not restate a template here and do not compose one from memory.
+Obtain the emission rule set and the two half-templates from the bundled `wf-resolver` MCP service
+via `resolve_content({ workspaceRoot, class: "references-template", plugin: "wf-core-authoring",
+skill: "new-contract", ref: "contract-emission.md" })`, and follow the served body in this skill's
+own context. `workspaceRoot` is the absolute path `pwd -P` returns in this session — pass it on
+every resolver call; it has no default. That served body is the single source for both halves: never
+a raw filesystem read of the template path, never a template restated here, and never one composed
+from memory.
 
 Fill the templates from the interview answers and write **both** files in the same run:
 `<name>.ops.md` and `<name>.contract.md`, into the folder resolved in Phase 1. Carry the runtime
@@ -151,8 +158,12 @@ the two paths. A red pair reported honestly is a usable result; a green claim ov
   answer.
 - **A write fails partway:** delete the half that landed and stop — never hand back one half.
 - **Still red after the bounded retries:** stop with the findings and both paths, as Phase 5 states.
-- **The resolver runtime is unavailable** (no typed validator reachable): run the guard anyway,
-  report the validators as unrun, and say so — do not hand-roll a validator's check as a substitute.
+- **The resolver runtime is unavailable:** stop before emitting and report that the runtime is not
+  loaded (restart Claude Code). The templates come from the resolver's content surface, so there is
+  nothing to emit from — do not raw-read the template path and do not compose a template from
+  memory as a substitute.
+- **The resolver serves the templates but a typed validator errors:** emit and run the guard as
+  normal, then report the affected validator as unrun and say why — do not hand-roll its check.
 
 ---
 

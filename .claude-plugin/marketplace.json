@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.128.1",
+  "version": "0.129.0",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-host generic QA host, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature, wf-author-caps authoring toolkit).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -141,8 +141,8 @@
     {
       "name": "wf-core-authoring",
       "source": "./plugins/wf-core-authoring",
-      "version": "0.1.2",
-      "description": "wf core-authoring pack: the core-authoring capability, carrying the knowledge for authoring the wf core plugin itself — the domain-free skill spine, the frozen contracts under the core plugin's _contracts folder, and the repository authoring rules its CI gates enforce. Declared kind: both; it ships its own skills and is authored to attach phase fragments, and its Fragments table is deliberately empty until the first contribution lands. Ships /wf-core-authoring:init for one-command self-registration of the capability.",
+      "version": "0.2.0",
+      "description": "wf core-authoring pack: the core-authoring capability, carrying the knowledge for authoring the wf core plugin itself — the domain-free skill spine, the frozen contracts under the core plugin's _contracts folder, and the repository authoring rules its CI gates enforce. Declared kind: both; it ships its own skills and is authored to attach phase fragments, and its Fragments table is deliberately empty until the first contribution lands. Ships /wf-core-authoring:init for one-command self-registration of the capability, and /wf-core-authoring:new-contract to scaffold a core contract pair that is green under the repository's contract-shape guard on its first run.",
       "author": {
         "name": "Pavel Kalabin"
       },
