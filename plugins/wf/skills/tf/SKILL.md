@@ -1,12 +1,12 @@
 ---
 name: tf
-description: Finalizes a completed task through the active providers — merges the task's pull request through the delivery provider, posts a resolution comment and closes the work item through the tracker provider, then archives the task folder and updates the per-task index locally. Names only abstract provider operations. Degrades to local-only when a provider is unconfigured or fails mid-run — the local archive and index always complete, and the local artifacts are the source of truth. Use as the terminus step once a task's pull request is approved. Reads _local/config.md first; run /wf:init if it is absent.
+description: Finalizes a completed task through the active providers — merges the task's pull request through the delivery provider, posts a resolution comment and closes the work item through the tracker provider, then sweeps any residual scratch, archives the task folder, and updates the per-task index locally. Names only abstract provider operations. Degrades to local-only when a provider is unconfigured or fails mid-run — the local archive and index always complete, and the local artifacts are the source of truth. Use as the terminus step once a task's pull request is approved. Reads _local/config.md first; run /wf:init if it is absent.
 allowed-tools: [Read, Write, Edit, Glob, Bash]
 ---
 
 # /wf:tf — Finalize a completed task through the providers
 
-Finalizes a task that has been implemented, verified, and whose pull request is approved. In one run it: **merges** the task's pull request through the active **delivery** provider, posts a **resolution comment** and moves the work item to its terminal status through the active **tracker** provider, **archives** the task folder locally, and **updates** the per-task index. It is the terminus of the chain — nothing runs after it.
+Finalizes a task that has been implemented, verified, and whose pull request is approved. In one run it: **merges** the task's pull request through the active **delivery** provider, posts a **resolution comment** and moves the work item to its terminal status through the active **tracker** provider, **sweeps** any residual scratch as the backstop to the constitution's per-consumer and breadcrumb deletion obligations, **archives** the task folder locally, and **updates** the per-task index. It is the terminus of the chain — nothing runs after it.
 
 Core reaches merge/comment/close only through the abstract **delivery** and **tracker** provider operations; it never knows or names which concrete tool implements them. With **no** delivery or tracker provider registered, tf degrades to a **local-only** finalize: the archive and index still complete, no provider operation is attempted, and no capability term surfaces. The **local artifacts are always the source of truth**; a provider step is a publish layered on top, never the primary write.
 
@@ -47,11 +47,12 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 - Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config({ workspaceRoot, ... })` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query).
 - Invoke `pr-merge` (delivery) once for the task's pull request, and `post_comment` / `set_status` (tracker) once each, all through the surface's `wf-resolver` `resolve_provider({ workspaceRoot, surface })` record (read the resolved fragment and follow it in-context).
 - Write/create `09_finalize.md` **only** inside the task folder, and **move** the task folder to `{task-root}/_archive/` — both are local operations inside `{task-root}` (the whole `_local/` tree is gitignored), never a version-control operation.
+- **Delete residual scratch** under `_local/scratch/` (Phase 5) — a local delete inside the gitignored `_local/` tree, never a version-control operation, and never a delete of a task folder, an archive, or the scratch root itself.
 - Invoke `/wf:index` through the **Skill** tool to update the per-task index (the wrapper writes `index.md` inline).
 
 **Forbidden:**
 
-- Modify any source file outside `{task-root}`.
+- Modify any source file outside `{task-root}`. This binds the Phase 5 sweep too: it deletes only paths that resolve to a strict descendant of `_local/scratch/`, and skips any candidate that escapes it (an absolute path, a dot-segment traversal, or a symlink pointing outside).
 - Run any destructive version-control operation. The only delivery write tf performs is `pr-merge`, through the provider contract; `pr-merge` is detect-first and never re-merges an already-merged pull request.
 - Write the current model id, any AI-attribution trailer, a "generated with" footer, an emoji, or any promotional tagline into the resolution comment. Model attribution belongs **only** in the local `09_finalize.md` artifact.
 - Name any concrete tracker, version-control tool, or command string anywhere in this skill's behaviour — only the abstract operation names above.
@@ -118,19 +119,33 @@ Compose the resolution comment from local artifacts, then publish it and close t
 
 ---
 
-## Phase 5: Archive the task folder locally
+## Phase 5: Sweep residual scratch (the backstop)
+
+The constitution's scratch article places two deletion obligations on every run — each scratch file deleted the moment its consumer has run, and every run-scoped breadcrumb deleted by the skill that ends **that** run. tf ends the *chain*, not each run, so it discharges **neither** obligation on another run's behalf: both stay with the runs that wrote the files. tf only removes what those runs left behind. **This sweep is the backstop, not a substitute:** it never licenses a consumer to defer its own delete or a run to skip its breadcrumb delete, and residue it finds is a defect in the run that wrote it, not a normal outcome.
+
+This phase runs **before** the Phase 6 archive so it writes its idempotency line to the same active-folder location as Phases 3 and 4, and so a re-run that has not yet archived still reaches it.
+
+1. **Resolve the scratch area** as the literal `_local/scratch/`, against the same `workspaceRoot` Phase 1 resolved — the fixed location the scratch article names and every scratch producer writes to. It is **not** `{task-root}`-relative: `{task-root}` is a configurable key, and anchoring the sweep to it would look where nothing is written and could resolve outside `_local/`. If the area is absent, there is nothing to sweep — record `**Scratch swept:** clean (no scratch area)` and continue to Phase 6.
+2. **Enumerate residue** — the files and empty directories under the scratch area. Each candidate must resolve to a **strict descendant** of `_local/scratch/`; **skip** any candidate that escapes it via an absolute path, a dot-segment traversal, or a symlink whose target lies outside, and count it as skipped. A skipped candidate is a refusal to leave the area, **not** a failure. Never follow a symlink out of the scratch area, and never delete the scratch area itself.
+3. **Delete the residue.** This is a plain local delete inside the gitignored `_local/` tree — never a version-control operation, and because every candidate is anchored to `_local/scratch/`, it touches nothing outside `_local/` whatever `{task-root}` is set to.
+4. **Record the outcome** on the `**Scratch swept:**` line of `{task-root}/{task-id}/09_finalize.md`: `clean` when nothing was found, `clean (no scratch area)` when the area is absent, `<n> removed` when residue was swept, or `failed (<reason>)` when the delete errored. Append ` (<m> skipped)` when step 2 skipped any candidate.
+5. **Idempotent and non-fatal.** Read the line back before sweeping; skip only when it already records a **success** outcome (`clean`, `clean (no scratch area)`, or `<n> removed`) — a recorded `failed (…)` is retried, exactly as the `**Merged PR:**` handle retries a failed merge. A sweep failure **never** blocks the finalize: warn once naming the reason, record it, and continue to Phase 6. A re-run sweeps again safely (an already-clean area is a no-op).
+
+---
+
+## Phase 6: Archive the task folder locally
 
 Move the task folder out of the active task root into the archive, so a finalized task no longer appears among in-flight tasks. This is a plain local move inside `{task-root}` (gitignored), never a version-control operation.
 
 1. Ensure `{task-root}/_archive/` exists (create it if missing).
-2. Move `{task-root}/{task-id}/` → `{task-root}/_archive/{task-id}/`, carrying every artifact (including `09_finalize.md` and `index.md`) with it. Record the archived absolute path for Phase 6.
+2. Move `{task-root}/{task-id}/` → `{task-root}/_archive/{task-id}/`, carrying every artifact (including `09_finalize.md` and `index.md`) with it. Record the archived absolute path for Phase 7.
 3. **Already archived** (the target already exists — a partial prior run): leave the existing archive untouched and record the archive as already present; do not overwrite.
 
 ---
 
-## Phase 6: Update the index
+## Phase 7: Update the index
 
-After archiving, catalogue the outcome by invoking `/wf:index {task-id} finalize "<summary>"` through the **Skill** tool. The wrapper owns the fixed `index` routing decision and performs the read-modify-write of `index.md` inline in tf's own context; never dispatch `wf:index` directly. Pass:
+After archiving and sweeping, catalogue the outcome by invoking `/wf:index {task-id} finalize "<summary>"` through the **Skill** tool. The wrapper owns the fixed `index` routing decision and performs the read-modify-write of `index.md` inline in tf's own context; never dispatch `wf:index` directly. Pass:
 
 - `{task-id}` — the archived task's id (its folder basename); the wrapper resolves the `index.md` that travelled into `{task-root}/_archive/{task-id}/`.
 - the literal slot `finalize`.
@@ -153,9 +168,10 @@ If the wrapper returns `INDEX — Error`, do not fail the finalize — record th
 **Merged PR:** <placeholder until pr-merge runs>
 **Resolution comment:** <placeholder until post_comment runs>
 **Closed:** <placeholder until set_status runs>
+**Scratch swept:** <placeholder until the Phase 5 sweep runs>
 ```
 
-The three `**Merged PR:** / **Resolution comment:** / **Closed:**` lines are the single-shot-publish idempotency handles: each provider operation records its outcome on its line, and tf reads the line back before re-invoking so a re-run never double-publishes.
+The three `**Merged PR:** / **Resolution comment:** / **Closed:**` lines are the single-shot-publish idempotency handles: each provider operation records its outcome on its line, and tf reads the line back before re-invoking so a re-run never double-publishes. The `**Scratch swept:**` line is the local sweep's own idempotency handle, read back the same way — skipped on a recorded success, retried on a recorded `failed (…)`.
 
 ### Resolution comment (published to the tracker — never carries a model id or AI attribution)
 
@@ -180,6 +196,10 @@ When Phase 3 recorded no merge, drop the "Resolved via …" reference and state 
 - **Not on the task branch / detached HEAD:** merge is skipped with a one-time warning; the local finalize completes. Checkout the task branch and re-run to merge.
 - **Mid-run tracker failure:** warn once, record the reason, continue local-only; the archive and index are never blocked.
 - **Partial prior run** (merge succeeded but archive/index did not): the `**Merged PR:**` read-back skips the re-merge; the archive move is skip-if-present; the index is re-updated — the run completes idempotently.
+- **Scratch residue found at finalize:** the Phase 5 backstop removes it and reports `<n> removed`. Residue is a defect in whichever run skipped its own per-consumer delete or its breadcrumb delete — the sweep catching it never excuses either obligation, and tf discharges neither on another run's behalf.
+- **No scratch area / already-clean scratch:** the sweep is a no-op reporting `clean` (or `clean (no scratch area)`); re-running tf before the archive sweeps again safely.
+- **A scratch candidate resolves outside the scratch area** (absolute path, dot-segment traversal, outward symlink): it is **skipped, not deleted and not a failure** — reported as `<m> skipped` alongside the sweep outcome.
+- **Scratch sweep fails** (e.g. permissions): non-fatal — warn once, record `failed (<reason>)` on the `**Scratch swept:**` line, and complete the finalize. Because a recorded failure is retried rather than skipped, re-running tf before the archive retries the sweep.
 - **Index update fails:** non-fatal — the finalize still succeeds; the index outcome is reported as failed.
 
 ---
@@ -194,6 +214,7 @@ Merged PR: <url | already merged (url) | skipped (no delivery provider) | failed
 Resolution comment: <posted | skipped (no tracker) | failed (reason)>
 Status: <closed as <status> | skipped (no tracker) | failed (reason)>
 Archive: {task-root}/_archive/{task-id}/
+Scratch: <clean | <n> removed | clean (no scratch area) | failed (reason)><, <m> skipped>
 Index: <updated | update failed (reason)>
 Next: none — terminus
 ```

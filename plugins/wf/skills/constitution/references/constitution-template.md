@@ -31,7 +31,8 @@ other tasks). Re-run `/wf:constitution` to refresh after a registry or project-c
 ## Core articles (provenance: core)
 
 <the seven domain-free process articles verbatim, then the "Core never requires a
-capability" and "Temp and scratch files live under `_local/`" articles verbatim —
+capability" and "Temp and scratch files live under `_local/`, and nothing is left
+behind" articles verbatim —
 numbered 1–9>
 
 ## Capability articles (provenance: each capability)
