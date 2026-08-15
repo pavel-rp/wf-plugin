@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"epp-cur-r1","cwd":"/workspace","tools":["Read","Write","Edit","Glob","Grep","Bash","Skill"],"model":"fake-model-a"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Read `_local/wf/FAKE-4/01_spec.md` and explored the two files it names. Approach is sound — writing the plan now."}]},"session_id":"epp-cur-r1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"PLAN — Complete\n\nTask: FAKE-4 — Demo work item\nType: feat  (source: spec)\nComplexity: S  (source: spec)\nSteps: 2\nFolder: _local/wf/FAKE-4/\nSpec: _local/wf/FAKE-4/01_spec.md\nPlan: _local/wf/FAKE-4/02_plan.md\nNext: /wf:tasks FAKE-4"}]},"session_id":"epp-cur-r1"}
+{"type":"result","subtype":"success","is_error":false,"session_id":"epp-cur-r1","num_turns":2,"duration_ms":23705}

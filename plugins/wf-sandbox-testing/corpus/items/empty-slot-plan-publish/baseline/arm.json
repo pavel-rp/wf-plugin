@@ -1,0 +1,15 @@
+{
+  "_comment": "The recorded pinned-build baseline arm for the plan.publish empty-slot invariant. Produced via WF-345's pinned-build install option: the pre-slot plan build installed as the run source. Carries the pinned build's fingerprint and the run fingerprints of the baseline set. CANNED per item.md's disclosure — Docker + CLAUDE_CODE_OAUTH_TOKEN are unavailable in this environment; the run bytes are shaped exactly like the WF-345 runner's output tree, and runner/run-skill.sh regenerates them from the real pinned build when a container and token are available.",
+  "slot": "plan.publish",
+  "skill": "/wf:plan FAKE-4",
+  "fixture": "plan-empty-slot-publish",
+  "pinned_build": {
+    "source": "/pinned/preslot-plan-build",
+    "description": "the plan skill immediately before the plan.publish composition point was introduced",
+    "fingerprint": "fp-preslot-plan-a91c33"
+  },
+  "runs": [
+    { "dir": "runs/run-1", "fingerprint": "fp-epp-base-r1" },
+    { "dir": "runs/run-2", "fingerprint": "fp-epp-base-r2" }
+  ]
+}

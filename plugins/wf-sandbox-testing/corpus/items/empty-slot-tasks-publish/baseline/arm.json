@@ -1,0 +1,15 @@
+{
+  "_comment": "The recorded pinned-build baseline arm for the tasks.publish empty-slot invariant. Produced via WF-345's pinned-build install option: the pre-slot tasks build installed as the run source. Carries the pinned build's fingerprint and the run fingerprints of the baseline set. CANNED per item.md's disclosure — Docker + CLAUDE_CODE_OAUTH_TOKEN are unavailable in this environment; the run bytes are shaped exactly like the WF-345 runner's output tree, and runner/run-skill.sh regenerates them from the real pinned build when a container and token are available.",
+  "slot": "tasks.publish",
+  "skill": "/wf:tasks FAKE-5",
+  "fixture": "tasks-empty-slot-publish",
+  "pinned_build": {
+    "source": "/pinned/preslot-tasks-build",
+    "description": "the tasks skill immediately before the tasks.publish composition point was introduced",
+    "fingerprint": "fp-preslot-tasks-c72e08"
+  },
+  "runs": [
+    { "dir": "runs/run-1", "fingerprint": "fp-etp-base-r1" },
+    { "dir": "runs/run-2", "fingerprint": "fp-etp-base-r2" }
+  ]
+}

@@ -138,6 +138,33 @@ already defines — `get`, `create_umbrella`, `create_child`, `update`, `post_co
 `set_status`. C021 expects zero contract extensions; a genuinely missing operation must be
 flagged on the charter umbrella, never slipped in.
 
+## The `plan` and `tasks` slot fills (WF-407, charter C021)
+
+WF-407 extends the mirror down the conveyor: `fragments/plan-publish.md` fills `/wf:plan`'s
+declared `plan.publish` point and `fragments/tasks-publish.md` fills `/wf:tasks`'s
+`tasks.publish` point, `replace` each. Both reuse every convention above unchanged — the same
+umbrella resolution order, the same read-back guard discipline, the same best-effort label, the
+same `set_status("Done")` reasoning, and the same zero-contract-extension rule.
+
+**Why the decomposition is a child issue, not a comment.** The intake left the shape to spec;
+WF-407 settled it as a child issue. `03_tasks.md` is a durable conveyor artifact of the same
+class as the spec and the plan, so it is published the same way — as a titled, re-readable
+record carrying the `Tasks:` prefix that makes its artifact class legible beside `Spec:` and
+`Plan:`. A comment is a chronological remark that later comments push out of view, and because
+`tasks` gates decomposition separately from strategy, regenerating a task list is expected — a
+comment fill would append a second full copy every time, whereas a child issue is guarded by its
+recorded id. The extra child costs nothing: like the other artifact children it is set Done, so
+it never inflates the umbrella's open-child count. The decomposition is published as **one**
+record; a fill must never mint one tracker child per `T-NNN` unit.
+
+**Where each guard line lives.** Same rule as above — in the local artifact that triggers the
+fill. `plan.publish` records `**Tracker umbrella:**` and `**Tracker plan item:**` in
+`02_plan.md`; `tasks.publish` records `**Tracker umbrella:**` and `**Tracker tasks item:**` in
+`03_tasks.md`. Each also reads the umbrella back from the *earlier* artifacts when its own file
+carries none, which is what keeps all of a task's artifacts under one umbrella instead of
+minting a second. The distinct per-artifact keys are what make three fills coexist without ever
+touching the same field of the same item.
+
 ## Version history
 
 - **WF-136** — second, independent tracker-provider capability, binding the contract's
@@ -156,3 +183,9 @@ flagged on the charter umbrella, never slipped in.
   before the interactive prompt; `fragments/spec-publish.md` mirrors the finished `01_spec.md`
   as a `Spec:` child issue beneath that umbrella and marks it done. No tracker-contract
   extension; the umbrella convention and guard-line placement are documented above.
+- **WF-407** (charter C021) — two further `slot` fills added, targeting `/wf:plan`'s declared
+  `plan.publish` and `/wf:tasks`'s `tasks.publish` composition points (`replace` each):
+  `fragments/plan-publish.md` mirrors the finished `02_plan.md` as a `Plan:` child issue beneath
+  the umbrella and marks it done; `fragments/tasks-publish.md` does the same for `03_tasks.md` as
+  a `Tasks:` child. No tracker-contract extension; the comment-vs-child decision and the
+  per-artifact guard keys are documented above.

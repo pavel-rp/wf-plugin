@@ -57,12 +57,14 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 - Read any file in the project (`Read`, `Glob`, `Grep`); prefer sourcebot MCP for cross-file lookups when available.
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query).
 - Write/create files ONLY inside the task folder (`{task-root}/{task-id}/`) — its single artifact is `03_tasks.md`, plus the index row.
+- Resolve the declared `tasks.publish` (Phase 5) slot via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: tasks`) — **one call per marker** — and, only on a `composed` outcome, follow the served body as prose in this skill's own context. A followed body may perform **exactly** the operations it names — including writes to the task folder's artifacts and any contract-bound provider operation it invokes, which may be a write. That authorization is scoped to the served body: nothing at a marker is ever improvised, and an unfilled, unresolved, or refused slot authorizes no operation at all.
 
 **Forbidden:**
 
-- Modify any source file, the spec, the plan, or any other artifact. This skill is read-mostly — its only write is `03_tasks.md` and the index row.
+- Modify any source file, the spec, the plan, or any other artifact. This skill is read-mostly — its own body writes only `03_tasks.md` and the index row; operations a *composed slot body* performs are governed by the slot bullet above, not by this one.
 - Run builds, tests, linters, installs, or any destructive version-control operation.
 - Skip the plan: the plan is the authoritative input. Decompose what the plan settled; do not re-strategize, re-scope, or introduce work the plan didn't call for.
+- Improvise a publish, a comment, or any other operation at a slot marker whose slot is `unfilled`, `unresolved`, or `refused` — the inline-default region is executed **exactly** (the no-improvisation rule), and each marker is resolved at most once per run.
 
 ---
 
@@ -122,6 +124,20 @@ Then **update the index.** Invoke `/wf:index {id} tasks "<n> tasks; derived from
 
 ---
 
+## Phase 5: Publish the Task Decomposition
+
+This is the declared `tasks.publish` composition point — reached **after** `03_tasks.md` is written and the index row recorded, so the artifact being published is the finished one. Resolve it lazily with **one** call: `resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: tasks`, `point: publish`. Act on the typed outcome — never improvise a publish at this marker:
+
+- **`{status: unfilled}`** (no slot contribution registered and no personal `_local/slots/tasks.publish.md` override) → execute **exactly** the inline-default region below, then emit the Final Output block.
+- **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content` as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale), then emit the Final Output block.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not improvise: run the inline-default region below and state the resolver's reason. Follow the content surface's degradation discipline — never a wrong-path body, never a raw-read fall-through. A failure here never invalidates the decomposition: `03_tasks.md` is already written and is the source of truth.
+
+<!-- wf:slot tasks.publish -->
+Nothing is published anywhere. `03_tasks.md` and the per-task index row are the run's only outputs — no external record is opened, updated, or annotated, and no operation of any kind is emitted at this point. Proceed to the Final Output block.
+<!-- wf:slot-end tasks.publish -->
+
+---
+
 ## Template: `03_tasks.md`
 
 ```markdown
@@ -172,6 +188,8 @@ This is the ordered, independently-testable decomposition of the approved plan. 
 - **Plan is a single atomic step:** A valid decomposition can be a single task. Don't pad the list to look thorough — one well-formed task is correct when the plan is genuinely atomic.
 - **Complexity L plan:** Note at the top of the task list that the decomposition is large; favor more, smaller tasks so each increment stays independently testable.
 - **Plan and spec disagree:** The plan is authoritative for *what to do*; the spec is authoritative for *acceptance*. If a plan step has no acceptance grounding in the spec, decompose it anyway but flag it with a `<!-- NO SPEC GROUNDING: <task> -->` comment for the reviewer.
+- **The `tasks.publish` slot is unfilled:** the default state when nothing is registered against the point. Execute the marker's inline-default region exactly — the default publishes nothing — and continue. Not an error, not a warning: the run is byte-for-byte what it would be with no composition point at all.
+- **The `tasks.publish` slot resolves `unresolved` or `refused`:** run the same inline-default region and state the resolver's reason once. Never fall back to reading a fragment path directly and never improvise the publish. This is never fatal — `03_tasks.md` is already written and is the source of truth; the Final Output block is still emitted.
 
 ---
 

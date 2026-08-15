@@ -1,0 +1,11 @@
+{
+  "task": "/wf:plan FAKE-4",
+  "skill": "/wf:plan FAKE-4",
+  "fixture": "plan-empty-slot-publish",
+  "plugin_source": "current+seeded-fill",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-plan-epp", "plugin_build": "fp-seeded-plan-publish-fill-6b7c", "cli_version": "claude 1.0.0", "run": "fp-epp-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "SEEDED BREAKAGE: plan.publish resolved {status: composed} and published the artifact as a child record — the empty-slot invariant must diverge against the pre-slot baseline"
+}
