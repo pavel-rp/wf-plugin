@@ -36,9 +36,10 @@ description backfill; read-only resolution via `current-branch-query`; write or
 create files only inside the task folder `{task-root}/{task-id}/`; resolve the
 `spec.questions` and `spec.publish` slots via `resolve_content({ workspaceRoot, ... })`
 (`class: slot`, `skill: spec`) — one call per marker — and, only on a `composed`
-outcome, follow the served body as prose in this skill's own context; invoke the
-**Task** tool with `subagent_type: wf:branch` (Phase 0.5 branch gate) and
-`subagent_type: wf:classify` (Phase 0.7 type resolution).
+outcome, follow the served body as prose in this skill's own context; dispatch
+the **Task** tool to the `wf:branch` subagent for the Phase 0.5 branch gate and
+to the `wf:classify` subagent for Phase 0.7 type resolution, each behind its own
+routing decision made in the body.
 
 **Forbidden:** modify any source file outside the task folder; run builds, tests,
 linters, or installs; run any destructive version-control operation directly;
