@@ -26,8 +26,13 @@ Its **first content** is the distilled authoring-vocabulary article below — th
 the admitted term rules of `plugins/wf/skills/_contracts/GLOSSARY.md`, condensed to ten clauses so a
 session in this repository starts with them already in context rather than meeting them at review. Contract
 authoring has since landed alongside it, as the `new-contract` scaffolder declared under `## Skills` below.
-The remaining core-authoring content — a scaffolder for a core skill, and ownership of a repository lint —
-arrives as its own change, each landing a fragments row in the same change as the file that row names.
+
+It also owns its **first repository lint**: the craft-C4 frontmatter and body-length checks in
+`fixtures/`, gated in CI by `fixtures/run.sh` (discovered by convention, so no workflow names this
+capability). Those are pack-carried scripts, not a phase contribution — they assert authoring rules
+over this repository's own files and reach no core phase. The remaining core-authoring content — a
+scaffolder for a core skill — arrives as its own change, each landing a fragments row in the same
+change as the file that row names.
 
 ## Constitution articles
 

@@ -9,18 +9,22 @@ how to author a *pack*; this pack is about the *core*. Neither is about a downst
 ## What ships today
 
 The registration path landed first, on purpose, before the content that depends on it. Contract
-authoring is the first piece of content on top of it.
+authoring and the repository's craft-C4 authoring lint are the content on top of it.
 
 | Path | What it is |
 |---|---|
 | `skills/init/SKILL.md` | `/wf-core-authoring:init` — one-command self-registration of the `core-authoring` capability. |
 | `skills/new-contract/SKILL.md` | `/wf-core-authoring:new-contract` — scaffolds a matched core contract pair (a bounded runtime-ops half plus its paired reference half) and proves it green under the repository's contract-shape guard before handing it back. |
 | `capabilities/core-authoring/manifest.md` | The schema-v2 manifest. `kind: both`, a documentation-only `skills:` block, zero-row Fragments table, no `requires:`, no `conflicts:`, no `profile-template:`. |
+| `capabilities/core-authoring/fixtures/run.sh` | The capability's fixture suite. CI discovers it by the `plugins/*/capabilities/*/fixtures/run.sh` convention — adding a check needs no workflow edit. |
+| `capabilities/core-authoring/fixtures/check-skill-*.sh` | The craft-C4 checks over every `SKILL.md`: `name` (≤64 chars, matches its directory), `description` (≤1024 chars, third-person "what", `Use ...` "when"), and body length (under 500 lines). Each ships a `--selftest` that drives seeded fixtures, so a green live run means the tree is clean rather than the check being inert. |
+| `capabilities/core-authoring/fixtures/craft-fixtures/` | The seeded pass/fail fixtures those selftests drive. Excluded from the live target set by shape, not by path. |
 | `.claude-plugin/plugin.json` | The plugin manifest. |
 
-No scaffolder for a core skill and no ownership of a repository lint yet. Each arrives as its own
-change; a change that attaches a phase fragment lands its fragments row alongside the file that row
-names.
+The lint is **pack-carried scripts, not a phase contribution** — it asserts authoring rules over this
+repository's own files and reaches no core phase, which is why the Fragments table stays zero-row.
+Still to come: a scaffolder for a core skill. It arrives as its own change; a change that attaches a
+phase fragment lands its fragments row alongside the file that row names.
 
 ## Install and register
 
