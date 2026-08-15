@@ -1,6 +1,6 @@
 ---
 name: tf
-description: Finalizes a completed task through the active providers — merges the task's pull request through the delivery provider, posts a resolution comment and closes the work item through the tracker provider, then archives the task folder and updates the per-task index locally. Names only abstract provider operations. Degrades to local-only when a provider is unconfigured or fails mid-run — the local archive and index always complete, and the local artifacts are the source of truth. Use as the terminus step once a task's pull request is approved. Reads _local/config.md first; run /wf:init if it is absent.
+description: Finalizes a completed task through the active providers — merges the task's pull request through the delivery provider, posts a resolution comment and closes the work item through the tracker provider, then archives the task folder, sweeps any residual scratch, and updates the per-task index locally. Names only abstract provider operations. Degrades to local-only when a provider is unconfigured or fails mid-run — the local archive and index always complete, and the local artifacts are the source of truth. Use as the terminus step once a task's pull request is approved. Reads _local/config.md first; run /wf:init if it is absent.
 allowed-tools: [Read, Write, Edit, Glob, Bash]
 ---
 
@@ -47,12 +47,12 @@ Invoked with no id, tf infers the task from the current branch (the same first-3
 - Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config({ workspaceRoot, ... })` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query).
 - Invoke `pr-merge` (delivery) once for the task's pull request, and `post_comment` / `set_status` (tracker) once each, all through the surface's `wf-resolver` `resolve_provider({ workspaceRoot, surface })` record (read the resolved fragment and follow it in-context).
 - Write/create `09_finalize.md` **only** inside the task folder, and **move** the task folder to `{task-root}/_archive/` — both are local operations inside `{task-root}` (the whole `_local/` tree is gitignored), never a version-control operation.
-- **Delete residual scratch** under the scratch area inside `{task-root}` (Phase 6) — a local delete inside `{task-root}`, never a version-control operation, and never a delete of a task folder, an archive, or the scratch root itself.
+- **Delete residual scratch** under `_local/scratch/` (Phase 6) — a local delete inside the gitignored `_local/` tree, never a version-control operation, and never a delete of a task folder, an archive, or the scratch root itself.
 - Invoke `/wf:index` through the **Skill** tool to update the per-task index (the wrapper writes `index.md` inline).
 
 **Forbidden:**
 
-- Modify any source file outside `{task-root}`. This binds the Phase 6 sweep too: it deletes only paths that resolve to a strict descendant of the scratch area inside `{task-root}`, and skips any candidate that escapes it (an absolute path, a dot-segment traversal, or a symlink pointing outside).
+- Modify any source file outside `{task-root}`. This binds the Phase 6 sweep too: it deletes only paths that resolve to a strict descendant of `_local/scratch/`, and skips any candidate that escapes it (an absolute path, a dot-segment traversal, or a symlink pointing outside).
 - Run any destructive version-control operation. The only delivery write tf performs is `pr-merge`, through the provider contract; `pr-merge` is detect-first and never re-merges an already-merged pull request.
 - Write the current model id, any AI-attribution trailer, a "generated with" footer, an emoji, or any promotional tagline into the resolution comment. Model attribution belongs **only** in the local `09_finalize.md` artifact.
 - Name any concrete tracker, version-control tool, or command string anywhere in this skill's behaviour — only the abstract operation names above.
@@ -133,10 +133,10 @@ Move the task folder out of the active task root into the archive, so a finalize
 
 The constitution's scratch article places two deletion obligations on every run — each scratch file deleted the moment its consumer has run, and every run-scoped breadcrumb deleted by the skill that ends the run. tf is the skill that ends the chain, so it discharges the second obligation and then sweeps whatever the two obligations left behind. **This sweep is the backstop, not a substitute:** it never licenses a consumer to defer its own delete, and residue it finds is a defect in the run that wrote it, not a normal outcome.
 
-1. **Resolve the scratch area** as `{task-root}/scratch/`, against the same `workspaceRoot` Phase 1 resolved. If it is absent, there is nothing to sweep — record `**Scratch swept:** clean (no scratch area)` and continue to Phase 7.
-2. **Enumerate residue** — the files and empty directories under the scratch area. Each candidate must resolve to a **strict descendant** of the scratch area; skip (and count as skipped) any candidate that escapes it via an absolute path, a dot-segment traversal, or a symlink whose target lies outside. Never follow a symlink out of the scratch area, and never delete the scratch area itself.
-3. **Delete the residue.** This is a plain local delete inside the gitignored `{task-root}` tree — never a version-control operation, and it touches nothing outside `_local/`.
-4. **Record the outcome** on the `**Scratch swept:**` line of `09_finalize.md`: `clean` when nothing was found, `<n> removed` when residue was swept, or `failed (<reason>)` when the delete errored.
+1. **Resolve the scratch area** as the literal `_local/scratch/`, against the same `workspaceRoot` Phase 1 resolved — the fixed location the scratch article names and every scratch producer writes to. It is **not** `{task-root}`-relative: `{task-root}` is a configurable key, and anchoring the sweep to it would look where nothing is written and could resolve outside `_local/`. If the area is absent, there is nothing to sweep — record `**Scratch swept:** clean (no scratch area)` and continue to Phase 7.
+2. **Enumerate residue** — the files and empty directories under the scratch area. Each candidate must resolve to a **strict descendant** of `_local/scratch/`; skip (and count as skipped) any candidate that escapes it via an absolute path, a dot-segment traversal, or a symlink whose target lies outside. Never follow a symlink out of the scratch area, and never delete the scratch area itself.
+3. **Delete the residue.** This is a plain local delete inside the gitignored `_local/` tree — never a version-control operation, and because every candidate is anchored to `_local/scratch/`, it touches nothing outside `_local/` whatever `{task-root}` is set to.
+4. **Record the outcome** on the `**Scratch swept:**` line of `09_finalize.md` — Phase 5 has already archived the task folder, so resolve the artifact that travelled into `{task-root}/_archive/{task-id}/`, exactly as Phase 7 resolves its `index.md`. Record `clean` when nothing was found, `<n> removed` when residue was swept, or `failed (<reason>)` when the delete errored.
 5. **Idempotent and non-fatal.** Read the line back before sweeping; a line already recording an outcome means the sweep already ran this finalize — skip it. A sweep failure **never** blocks the finalize: warn once naming the reason, record it, and continue to Phase 7. A re-run sweeps again safely (an already-clean area is a no-op).
 
 ---
