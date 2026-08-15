@@ -1,0 +1,11 @@
+{
+  "task": "/wf:implement FAKE-6",
+  "skill": "/wf:implement FAKE-6",
+  "fixture": "implement-empty-slot-start",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-implement-eis", "plugin_build": "fp-current-implement-7c2d90", "cli_version": "claude 1.0.0", "run": "fp-eis-cur-r2" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "current build, implement.start resolved {status: unfilled} — no capability contributes the slot"
+}

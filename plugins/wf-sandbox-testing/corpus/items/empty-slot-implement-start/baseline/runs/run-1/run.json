@@ -1,0 +1,11 @@
+{
+  "task": "/wf:implement FAKE-6",
+  "skill": "/wf:implement FAKE-6",
+  "fixture": "implement-empty-slot-start",
+  "plugin_source": "/pinned/preslot-implement-build",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-implement-eis", "plugin_build": "fp-preslot-implement-a31f74", "cli_version": "claude 1.0.0", "run": "fp-eis-base-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "pre-slot baseline arm: the implement.start slot did not exist on this pinned build"
+}

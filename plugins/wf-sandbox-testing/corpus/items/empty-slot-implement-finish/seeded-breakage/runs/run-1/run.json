@@ -1,0 +1,11 @@
+{
+  "task": "/wf:implement FAKE-8",
+  "skill": "/wf:implement FAKE-8",
+  "fixture": "implement-empty-slot-finish",
+  "plugin_source": "current+seeded-fill",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-implement-eif", "plugin_build": "fp-seeded-implement-finish-fill-6a5c", "cli_version": "claude 1.0.0", "run": "fp-eif-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "SEEDED BREAKAGE: implement.finish resolved {status: composed} and consolidated the execution record, moving it and its umbrella to a NON-terminal review state — the empty-slot invariant must diverge against the pre-slot baseline"
+}

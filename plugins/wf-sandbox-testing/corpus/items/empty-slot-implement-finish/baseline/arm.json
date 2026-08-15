@@ -1,0 +1,15 @@
+{
+  "_comment": "The recorded pinned-build baseline arm for the implement.finish empty-slot invariant. Produced via WF-345's pinned-build install option: the pre-slot implement build installed as the run source. Carries the pinned build's fingerprint and the run fingerprints of the baseline set. CANNED per item.md's disclosure — Docker + CLAUDE_CODE_OAUTH_TOKEN are unavailable in this environment; the run bytes are shaped exactly like the WF-345 runner's output tree, and runner/run-skill.sh regenerates them from the real pinned build when a container and token are available.",
+  "slot": "implement.finish",
+  "skill": "/wf:implement FAKE-8",
+  "fixture": "implement-empty-slot-finish",
+  "pinned_build": {
+    "source": "/pinned/preslot-implement-build",
+    "description": "the implement skill immediately before the implement.finish composition point was introduced",
+    "fingerprint": "fp-preslot-implement-a31f74"
+  },
+  "runs": [
+    { "dir": "runs/run-1", "fingerprint": "fp-eif-base-r1" },
+    { "dir": "runs/run-2", "fingerprint": "fp-eif-base-r2" }
+  ]
+}

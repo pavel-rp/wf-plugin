@@ -1,0 +1,17 @@
+{
+  "task": "/wf:implement FAKE-7",
+  "skill": "/wf:implement FAKE-7",
+  "fixture": "implement-empty-slot-milestone",
+  "plugin_source": "current+seeded-fill",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-implement-eim", "plugin_build": "fp-seeded-implement-milestone-fill-3e07", "cli_version": "claude 1.0.0", "run": "fp-eim-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "SEEDED BREAKAGE: implement.milestone resolved {status: composed, policy: append} with TWO registered contributions — both ran, in registry order (cap-general then cap-specific), at every checkpoint — so the empty-slot invariant must diverge against the pre-slot baseline",
+  "append_evidence": {
+    "policy": "append",
+    "parts": ["inline-default", "cap-general", "cap-specific"],
+    "registry_order": ["cap-general", "cap-specific"],
+    "note": "ops_invoked is a sorted-unique surface:op set and is order-insensitive by construction; the ordering and both-contributors-present evidence is the op log's seq order plus each entry's contributor argument."
+  }
+}

@@ -1,0 +1,4 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"result":"feature/FAKE-8-demo-work-item"}
+{"seq":2,"surface":"tracker","op":"update","args":{"id":"FAKE-8-4","description":"## Summary / ## Audit / ## Tests / ## Log"},"result":{"ok":true}}
+{"seq":3,"surface":"tracker","op":"set_status","args":{"id":"FAKE-8-4","status":"Done"},"result":{"ok":true}}
+{"seq":4,"surface":"tracker","op":"set_status","args":{"id":"FAKE-8","status":"In Review"},"result":{"ok":true}}
