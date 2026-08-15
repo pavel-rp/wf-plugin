@@ -70,6 +70,7 @@ Record the resolved value and source — both appear in the Final Output block s
 - Use MSSQL extension tools (`mssql_run_query`, `mssql_list_tables`, `mssql_list_views`, `mssql_list_schemas`) for database schema and data exploration
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query)
 - Write/create files ONLY inside the task folder (`{task-root}/{task-id}/`)
+- Resolve the declared `plan.publish` (Phase 3) slot via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: plan`) — **one call per marker** — and, only on a `composed` outcome, follow the served body as prose in this skill's own context. A followed body may perform **exactly** the operations it names — including writes to the task folder's artifacts and any contract-bound provider operation it invokes, which may be a write. That authorization is scoped to the served body: nothing at a marker is ever improvised, and an unfilled, unresolved, or refused slot authorizes no operation at all.
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 0 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 0.5 type resolution (read-only).
 
 **Forbidden:**
@@ -77,6 +78,7 @@ Record the resolved value and source — both appear in the Final Output block s
 - Modify any source file outside the task folder
 - Run builds, tests, linters, or installs
 - Run any destructive version-control operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above)
+- Improvise a publish, a comment, or any other operation at a slot marker whose slot is `unfilled`, `unresolved`, or `refused` — the inline-default region is executed **exactly** (the no-improvisation rule), and each marker is resolved at most once per run
 
 ---
 
@@ -158,6 +160,20 @@ Before writing the plan, explore the project to understand what files are releva
 
 ---
 
+## Phase 3: Publish the Plan Artifact
+
+This is the declared `plan.publish` composition point — reached **after** `02_plan.md` is written and the index row recorded, so the artifact being published is the finished one. Resolve it lazily with **one** call: `resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: plan`, `point: publish`. Act on the typed outcome — never improvise a publish at this marker:
+
+- **`{status: unfilled}`** (no slot contribution registered and no personal `_local/slots/plan.publish.md` override) → execute **exactly** the inline-default region below, then emit the Final Output block.
+- **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content` as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale), then emit the Final Output block.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not improvise: run the inline-default region below and state the resolver's reason. Follow the content surface's degradation discipline — never a wrong-path body, never a raw-read fall-through. A failure here never invalidates the plan: `02_plan.md` is already written and is the source of truth.
+
+<!-- wf:slot plan.publish -->
+Nothing is published anywhere. `02_plan.md` and the per-task index row are the run's only outputs — no external record is opened, updated, or annotated, and no operation of any kind is emitted at this point. Proceed to the Final Output block.
+<!-- wf:slot-end plan.publish -->
+
+---
+
 ## Plan Template
 
 The verbatim `02_plan.md` template — the metadata block, `## Progress` checklist, and `## Execution Plan` step shape (`### - [ ] STEP-NNN:`) that `/wf:implement` ticks — lives at `plan-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: plan`, `ref: plan-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path, so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
@@ -171,6 +187,8 @@ The verbatim `02_plan.md` template — the metadata block, `## Progress` checkli
 - **Folder already has `02_plan.md`:** Overwrite it.
 - **Dependency on another task:** If during exploration you discover this task depends on another planned task, note it in the `Depends on` field.
 - **No project files found:** Ask the user for the project root path to explore.
+- **The `plan.publish` slot is unfilled:** the default state when nothing is registered against the point. Execute the marker's inline-default region exactly — the default publishes nothing — and continue. Not an error, not a warning: the run is byte-for-byte what it would be with no composition point at all.
+- **The `plan.publish` slot resolves `unresolved` or `refused`:** run the same inline-default region and state the resolver's reason once. Never fall back to reading a fragment path directly and never improvise the publish. This is never fatal — `02_plan.md` is already written and is the source of truth; the Final Output block is still emitted.
 
 ---
 
