@@ -67,6 +67,40 @@ run_one() {
   fi
 }
 
+# --- Shape guard: the exclusions must stay SHAPE-based, never path-pinned -------
+# Every check shares one target set, and the fixture exclusions in it are stated as
+# shapes: any directory segment ending in `-fixtures`, and any adjacent `test/fixtures`
+# pair — WHEREVER THEY SIT. That matters because the seeded fixtures will move: SUB-8
+# and SUB-9 relocate checks into this folder, and a path-pinned exclusion would
+# silently start scanning the planted violations (turning every check red) or, worse,
+# silently stop excluding a folder that moved (turning them vacuously green).
+#
+# So assert the shape directly, from three unrelated parent paths plus the negative
+# case. If someone "simplifies" the globs into a prefix, this fails before the checks
+# even run.
+# shellcheck source=./skill-targets.sh
+. "$DIR/skill-targets.sh"
+
+shape_guard() {
+  local path="$1" expect="$2" label="$3"
+  if craft_is_excluded "$path"; then local got=excluded; else local got=included; fi
+  if [ "$got" != "$expect" ]; then
+    err "FAIL: shape guard — '$path' is $got, expected $expect ($label)."
+    fail=$((fail + 1))
+  fi
+}
+
+echo "=== $SUITE: exclusion shape guard ==="
+shape_guard "plugins/anything/deep/down/craft-fixtures/x/SKILL.md"   excluded "E1 applies at any depth, under any parent"
+shape_guard "plugins/other/slot-marker-fixtures/y/SKILL.md"          excluded "E1 is about the -fixtures suffix, not a specific folder name"
+shape_guard "some/unrelated/root/registry-fixtures/z/SKILL.md"       excluded "E1 holds outside plugins/ too — the rule is the shape"
+shape_guard "plugins/wf/mcp/test/fixtures/a/SKILL.md"                excluded "E2 adjacent test/fixtures pair"
+shape_guard "any/where/test/fixtures/b/SKILL.md"                     excluded "E2 is likewise unpinned"
+shape_guard "plugins/wf/skills/spec/SKILL.md"                        included "a real skill body is never excluded"
+shape_guard "plugins/wf-core-authoring/capabilities/x/fixtures/SKILL.md" included "a plain fixtures/ segment is NOT the shape — only *-fixtures/ and test/fixtures"
+if [ "$fail" -eq 0 ]; then echo "shape guard: PASS — exclusions are shape-based, not path-pinned."; fi
+echo
+
 echo "=== $SUITE: selftests (each check drives its seeded fixtures) ==="
 for c in $CHECKS; do
   run_one "$c" --selftest
