@@ -1,0 +1,21 @@
+{
+  "task": "/wf:spec BARE-1 -> /wf:plan BARE-1 -> /wf:tasks BARE-1 -> /wf:implement BARE-1",
+  "skill": "/wf:spec BARE-1 -> /wf:plan BARE-1 -> /wf:tasks BARE-1 -> /wf:implement BARE-1",
+  "fixture": "barecore-conveyor",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-barecore", "plugin_build": "fp-barecore-conveyor-d5e91a", "cli_version": "claude 1.0.0", "run": "fp-bcc-cur-r1" },
+  "registry": { "capability_rows": 0, "delivery_state": "unconfigured", "tracker_state": "unconfigured" },
+  "slot_resolutions": [
+    { "slot": "spec.questions",      "status": "unfilled", "executed": "inline-default" },
+    { "slot": "spec.publish",        "status": "unfilled", "executed": "inline-default" },
+    { "slot": "plan.publish",        "status": "unfilled", "executed": "inline-default" },
+    { "slot": "tasks.publish",       "status": "unfilled", "executed": "inline-default" },
+    { "slot": "implement.start",     "status": "unfilled", "executed": "inline-default" },
+    { "slot": "implement.milestone", "status": "unfilled", "executed": "inline-default" },
+    { "slot": "implement.finish",    "status": "unfilled", "executed": "inline-default" }
+  ],
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "bare-core registry (zero capability rows): both provider surfaces unconfigured, all seven conveyor slots resolved {status: unfilled} and ran their no-op inline defaults; op log empty — zero provider ops of any surface, so zero tracker calls; conveyor completed with no error"
+}

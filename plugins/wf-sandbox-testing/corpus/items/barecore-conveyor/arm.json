@@ -1,0 +1,43 @@
+{
+  "_comment": "The bare-core arm for corpus item 14 (WF-414). A workspace whose ## Capabilities registry has ZERO rows: both the delivery and tracker surfaces resolve `unconfigured`, so no tracker binding exists and every declared slot resolves {status: unfilled} and runs its no-op inline default. Unlike items 1 and 7-13 — whose arms run in the demo-fake fixture where `fake` owns BOTH surfaces and whose op logs genuinely contain tracker records — this arm is the only evidence in the corpus for C021 OUT-4's actual promise: zero tracker calls and zero errors with no tracker pack registered. Its assertions are absolute, not variance-based; see item.md.",
+  "item": "barecore-conveyor",
+  "skill": "/wf:spec BARE-1 -> /wf:plan BARE-1 -> /wf:tasks BARE-1 -> /wf:implement BARE-1",
+  "fixture": "barecore-conveyor",
+  "registry": {
+    "capability_rows": 0,
+    "delivery_state": "unconfigured",
+    "tracker_state": "unconfigured"
+  },
+  "pinned_build": {
+    "source": "/current/wf-build",
+    "description": "the current wf build carrying all eight declared slots; bare core is the registry configuration under test, not a pinned pre-slot build — this arm is an absolute assertion, not a comparison against a pre-slot control",
+    "fingerprint": "fp-barecore-conveyor-d5e91a"
+  },
+  "slots_covered": [
+    "spec.questions",
+    "spec.publish",
+    "plan.publish",
+    "tasks.publish",
+    "implement.start",
+    "implement.milestone",
+    "implement.finish"
+  ],
+  "slots_exempt": [
+    {
+      "slot": "ship.review",
+      "reason": "declared in /wf:ship Phase 4.5, which is unreachable in bare core: /wf:ship Phase 1 REQUIRES a delivery provider and hard-stops with `SHIP — Blocked` (\"No delivery provider is registered — nothing to open or merge\") before Phase 4.5 ever resolves the slot. Its unfilled behavior stays covered by corpus item 1, its own per-slot comparison arm."
+    }
+  ],
+  "runs": [
+    { "dir": "runs-current/run-1", "fingerprint": "fp-bcc-cur-r1" },
+    { "dir": "runs-current/run-2", "fingerprint": "fp-bcc-cur-r2" },
+    { "dir": "runs-current/run-3", "fingerprint": "fp-bcc-cur-r3" }
+  ],
+  "seeded_runs": [
+    { "dir": "seeded-breakage/runs/run-1", "fingerprint": "fp-bcc-seed-r1" }
+  ],
+  "provenance": {
+    "path": "canned",
+    "reason": "Docker and CLAUDE_CODE_OAUTH_TOKEN are both absent in the authoring/CI environment (the same constraint WF-345/WF-346/WF-347 hit); and the installed plugin cache is wf 0.87.0 while the seven slots live in 0.93.0 — skills execute from the installed cache, so a live conveyor here would have exercised a PRE-SLOT build in which the <!-- wf:slot --> markers do not exist, observing no slot resolution at all while appearing authoritative. Run bytes are shaped exactly like the WF-345 runner output tree; runner/run-skill.sh regenerates them unchanged when a container, a token, and a current-build install are available."
+  }
+}

@@ -22,6 +22,22 @@
 #   5. REVIEW-GATE    — the five-requirements scenario runs green against wf-fake's scripted
 #                       threads (op log shows all five requirement ops); a seeded "merged while
 #                       claiming no review landed" run turns red naming the failed assertion.
+#   6. ASSERTION ITEMS— items 3-5 (the WF-348 C014 retrofits): each runs-current set is green
+#                       against its expect.json; each seeded-breakage set turns red naming a family.
+#   7. COVERAGE LEDGER— every named C014/C015 item + WF-203 comment is accounted for
+#                       (covered/subsumed/deferred) with a resolvable provenance link.
+#   8. HOST AVAILABILITY — deterministic contract/model coverage plus an executed registered-host
+#                       14-operation-scenario lifecycle.
+#   9. BARE CORE      — (WF-414) with NO tracker pack registered the full conveyor completes with
+#                       ZERO tracker calls and ZERO errors and every declared conveyor slot
+#                       resolves {status: unfilled} onto its no-op inline default. ABSOLUTE, never
+#                       variance-based: check 3's ops_invoked ceiling (0.34) tolerates one outlier
+#                       in a 3-run set, which cannot express "zero". A seeded run whose inline
+#                       default emits a tracker call must trip it.
+#  10. ARMLESS META   — (WF-414) proves check 2's arm-less failure actually FIRES, by running the
+#                       same enumeration + arm lookup against a synthetic declared slot.
+#  11. DISCLOSURE     — (WF-414) every arm carries machine-readable provenance {path, reason}
+#                       (canned vs real) plus its paired human-readable disclosure section.
 #
 # Usage: run.sh   (run every check; wired into CI as its own step)
 set -uo pipefail
@@ -73,18 +89,33 @@ check_provenance() {
 # ---------------------------------------------------------------------------
 # 2. SLOT ENUM — enumerate declared slots from source; every slot has a corpus item.
 # ---------------------------------------------------------------------------
-declared_slots() {
+declared_slots_in() {
   # Mechanical: the opening <!-- wf:slot skill.point --> markers in real skill bodies
-  # (plugins/*/skills/*/SKILL.md; the _contracts/slot-marker-fixtures live one level deeper
-  # and are not matched). This is the same declared-slot surface the resolver reads (WF-329).
+  # (<root>/plugins/*/skills/*/SKILL.md; the _contracts/slot-marker-fixtures live one level
+  # deeper and are not matched). This is the same declared-slot surface the resolver reads
+  # (WF-329). Parameterized on <root> so the WF-414 arm-less meta-check can run the SAME
+  # enumeration against a synthetic tree instead of re-implementing it.
   grep -hoE '<!--[[:space:]]*wf:slot[[:space:]]+[a-z0-9-]+\.[a-z0-9-]+[[:space:]]*-->' \
-    "$REPO_ROOT"/plugins/*/skills/*/SKILL.md 2>/dev/null \
+    "$1"/plugins/*/skills/*/SKILL.md 2>/dev/null \
     | sed -E 's/.*wf:slot[[:space:]]+([a-z0-9-]+\.[a-z0-9-]+).*/\1/' | LC_ALL=C sort -u
 }
+
+declared_slots() { declared_slots_in "$REPO_ROOT"; }
 
 slot_item_dir() {
   # ship.review -> items/empty-slot-ship-review
   printf '%s/empty-slot-%s' "$ITEMS" "$(printf '%s' "$1" | tr '.' '-')"
+}
+
+armless_slots() {
+  # Print every slot declared under <root> that has NO empty-slot corpus item. The shared
+  # detector behind both check_slot_enum's loud failure and the WF-414 meta-check that proves
+  # that failure actually fires — an arm-less declared slot must be a red, never a silent pass.
+  local slot
+  while IFS= read -r slot; do
+    [ -n "$slot" ] || continue
+    [ -d "$(slot_item_dir "$slot")" ] || printf '%s\n' "$slot"
+  done <<< "$(declared_slots_in "$1")"
 }
 
 check_slot_enum() {
@@ -268,6 +299,150 @@ check_host_availability() {
   [ "$fail" = "$before" ] || true
 }
 
+# ---------------------------------------------------------------------------
+# 9. BARE CORE — the C021 OUT-4 invariant (WF-414): with NO tracker pack registered the full
+#    conveyor completes with ZERO tracker calls and ZERO errors, and every declared conveyor
+#    slot resolves {status: unfilled} and runs its no-op inline default.
+#
+#    ABSOLUTE, never variance-based. The empty-slot comparison items (3.) judge an unfilled
+#    slot against a tracker-REGISTERED control under an ops_invoked ceiling of 0.34 — "one
+#    outlier in a 3-run set tolerated" — so a no-op default emitting a tracker call on a
+#    minority of runs is classified drift and passes there. "Zero tracker calls" is not
+#    expressible as a variance threshold, so this check calls compare.sh not at all.
+# ---------------------------------------------------------------------------
+check_barecore() {
+  local before=$fail
+  local dir="$ITEMS/barecore-conveyor"
+  local arm="$dir/arm.json"
+  [ -d "$dir" ] || { err "barecore: item directory missing at ${dir#$REPO_ROOT/}"; return; }
+  [ -f "$arm" ] || { err "barecore: arm.json missing at ${arm#$REPO_ROOT/}"; return; }
+
+  # (a) Slot-set completeness — covered + exempt must equal the mechanically enumerated
+  #     declared-slot set, so a NEWLY declared slot appearing in neither list fails loudly.
+  local slots union uncovered slot n_cov n_exm bad_reason
+  slots="$(declared_slots)"
+  n_cov="$(jq -r '.slots_covered // [] | length' "$arm")"
+  n_exm="$(jq -r '.slots_exempt  // [] | length' "$arm")"
+  union="$( { jq -r '.slots_covered[]?' "$arm"; jq -r '.slots_exempt[]?.slot' "$arm"; } | grep -v '^$' | LC_ALL=C sort -u )"
+  uncovered=""
+  while IFS= read -r slot; do
+    [ -n "$slot" ] || continue
+    printf '%s\n' "$union" | grep -qxF "$slot" || uncovered="$uncovered $slot"
+  done <<< "$slots"
+  if [ -n "$uncovered" ]; then
+    err "barecore: declared slot(s)$uncovered appear in neither slots_covered nor slots_exempt — a newly declared slot must be covered by the bare-core arm or explicitly exempted with a reason"
+  else
+    ok "barecore: slot-set complete — $n_cov covered + $n_exm exempt covers every declared slot"
+  fi
+  # Every exemption must carry a non-empty reason (an unexplained exemption is a hiding place).
+  bad_reason="$(jq -r '[.slots_exempt[]? | select((.reason // "") == "") | .slot] | join(" ")' "$arm")"
+  [ -z "$bad_reason" ] || err "barecore: exempt slot(s) [$bad_reason] carry no reason — an exemption must state why the slot is unreachable in bare core"
+
+  # (b)-(d) Over every run in the current set: per-slot unfilled resolution, zero tracker
+  #         records (absolute), and a clean exit.
+  local run rc_runs=0 log ntrk exit_code verdict missing_slot cov
+  cov="$(jq -r '.slots_covered[]?' "$arm")"
+  for run in "$dir"/runs-current/run-*; do
+    [ -d "$run" ] || continue
+    rc_runs=$((rc_runs+1))
+    # per-slot unfilled -> inline-default
+    missing_slot=""
+    while IFS= read -r slot; do
+      [ -n "$slot" ] || continue
+      jq -e --arg s "$slot" \
+        'any(.slot_resolutions[]?; .slot == $s and .status == "unfilled" and .executed == "inline-default")' \
+        "$run/run.json" >/dev/null 2>&1 || missing_slot="$missing_slot $slot"
+    done <<< "$cov"
+    [ -z "$missing_slot" ] || err "barecore[$(basename "$run")]: slot(s)$missing_slot not recorded as {status: unfilled} executing the no-op inline default"
+    # ZERO tracker-surface records — absolute, no tolerated outlier.
+    log="$run/workspace-snapshot/_local/fake/op-log.jsonl"
+    ntrk=0
+    [ -f "$log" ] && ntrk="$(jq -s '[.[] | select(.surface == "tracker")] | length' "$log" 2>/dev/null || echo 0)"
+    [ "${ntrk:-0}" -eq 0 ] || err "barecore[$(basename "$run")]: op log records ${ntrk} tracker-surface op(s) — a bare-core conveyor must emit ZERO tracker calls: $(jq -r 'select(.surface == "tracker") | "slot=\(.slot // "?") op=\(.op)"' "$log" | tr '\n' ' ')"
+    # ZERO errors — in bare core an attempted tracker call cannot silently succeed.
+    exit_code="$(jq -r '.run.exit_code // 1' "$run/run.json")"
+    verdict="$(jq -r '.verdict // "?"' "$run/run.json")"
+    { [ "$exit_code" = "0" ] && [ "$verdict" = "ok" ]; } \
+      || err "barecore[$(basename "$run")]: run did not complete cleanly (exit_code=$exit_code verdict=$verdict) — the bare-core invariant requires zero errors"
+  done
+  [ "$rc_runs" -ge 2 ] || err "barecore: expected an N-run set (>=2 runs) in runs-current/, found $rc_runs"
+
+  # (e) The seeded set must turn this check RED — the negative control proving the detector
+  #     can actually observe a tracker call rather than passing vacuously.
+  local sdir="$dir/seeded-breakage/runs" seen_trk=0 seen_err=0
+  for run in "$sdir"/run-*; do
+    [ -d "$run" ] || continue
+    log="$run/workspace-snapshot/_local/fake/op-log.jsonl"
+    if [ -f "$log" ] && [ "$(jq -s '[.[] | select(.surface == "tracker")] | length' "$log" 2>/dev/null || echo 0)" -gt 0 ]; then seen_trk=1; fi
+    [ "$(jq -r '.run.exit_code // 0' "$run/run.json")" = "0" ] || seen_err=1
+  done
+  if [ "$seen_trk" -eq 1 ] && [ "$seen_err" -eq 1 ]; then
+    ok "barecore: seeded breakage carries a tracker-surface op AND a non-zero exit — it fails both the zero-call and the zero-error assertions, proving the check is load-bearing"
+  else
+    err "barecore: the seeded breakage set does not trip both assertions (tracker-op seen=$seen_trk, error seen=$seen_err) — without it, 'zero tracker records' could pass vacuously"
+  fi
+
+  [ "$fail" = "$before" ] && ok "barecore: $rc_runs-run bare-core conveyor set — zero tracker calls, zero errors, every covered slot unfilled on its no-op inline default (absolute, no variance ceiling)"
+}
+
+# ---------------------------------------------------------------------------
+# 10. ARM-LESS META — prove the arm-less-declared-slot failure actually FIRES (WF-414).
+#     check_slot_enum implements it; nothing exercised it. A guard nobody has seen go red is
+#     indistinguishable from a guard that cannot.
+# ---------------------------------------------------------------------------
+check_armless_meta() {
+  local before=$fail synth="$TMP/armless/plugins/synthpack/skills/ghost" detected real_armless
+  mkdir -p "$synth"
+  {
+    printf '# /wf:ghost — synthetic fixture skill (WF-414 meta-check, never installed)\n\n'
+    printf '<!-- wf:slot ghost.nonexistent -->\n'
+    printf 'A synthetic no-op inline default. This body exists only inside the corpus\n'
+    printf 'self-check temp dir for the length of one run.\n'
+    printf '<!-- wf:slot-end ghost.nonexistent -->\n'
+  } > "$synth/SKILL.md"
+
+  # The SAME enumeration + arm lookup the real check uses, pointed at the synthetic tree.
+  detected="$(armless_slots "$TMP/armless" | tr '\n' ' ' | sed 's/ *$//')"
+  if [ "$detected" = "ghost.nonexistent" ]; then
+    ok "armless-meta: a declared slot with no matching arm IS detected as arm-less ('$detected') — the suite fails loudly rather than passing silently"
+  else
+    err "armless-meta: the arm-less detector did NOT flag the synthetic declared slot (got '$detected', expected 'ghost.nonexistent') — an arm-less declared slot could pass silently"
+  fi
+
+  # Control: the real tree must have zero arm-less slots, or check_slot_enum is already red.
+  real_armless="$(armless_slots "$REPO_ROOT" | tr '\n' ' ' | sed 's/ *$//')"
+  [ -z "$real_armless" ] || err "armless-meta: the shipped tree has arm-less declared slot(s) [$real_armless]"
+  [ "$fail" = "$before" ] && ok "armless-meta: detector proven in both directions — fires on a synthetic arm-less slot, silent on the shipped tree"
+}
+
+# ---------------------------------------------------------------------------
+# 11. DISCLOSURE — every arm states, machine-readably, whether it was produced by a real
+#     containerized run or canned, and why (WF-414). Prose alone is not auditable.
+# ---------------------------------------------------------------------------
+check_disclosure() {
+  local before=$fail arm p r n=0 rel
+  for arm in "$ITEMS"/empty-slot-*/baseline/arm.json "$ITEMS"/barecore-conveyor/arm.json; do
+    [ -f "$arm" ] || { err "disclosure: expected arm.json missing at ${arm#$REPO_ROOT/}"; continue; }
+    n=$((n+1)); rel="${arm#$ITEMS/}"
+    p="$(jq -r '.provenance.path   // empty' "$arm")"
+    r="$(jq -r '.provenance.reason // empty' "$arm")"
+    case "$p" in
+      canned|real) ;;
+      "") err "disclosure: $rel carries no provenance.path — every arm must disclose canned vs real"; continue;;
+      *)  err "disclosure: $rel has provenance.path '$p' — must be exactly 'canned' or 'real'"; continue;;
+    esac
+    [ -n "$r" ] || err "disclosure: $rel is '$p' but carries no provenance.reason — a canned arm must say why a live run was not used"
+  done
+  # The paired human-readable disclosure section must exist alongside the machine-readable field.
+  local item
+  for item in "$ITEMS"/empty-slot-*/item.md "$ITEMS"/barecore-conveyor/item.md; do
+    [ -f "$item" ] || { err "disclosure: item.md missing at ${item#$REPO_ROOT/}"; continue; }
+    grep -qi 'Canned-vs-real disclosure' "$item" \
+      || err "disclosure: ${item#$ITEMS/} has no 'Canned-vs-real disclosure' section"
+  done
+  [ "$fail" = "$before" ] && ok "disclosure: all $n arms carry a machine-readable provenance {path, reason} plus a paired canned-vs-real disclosure section"
+}
+
 check_provenance
 check_slot_enum
 check_flagship
@@ -276,6 +451,9 @@ check_review_gate
 check_assertion_items
 check_ledger
 check_host_availability
+check_barecore
+check_armless_meta
+check_disclosure
 
 if [ "$fail" -ne 0 ]; then
   echo "wf-sandbox-testing corpus self-checks: FAIL" >&2
