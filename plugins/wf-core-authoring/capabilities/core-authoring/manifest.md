@@ -22,15 +22,29 @@ It owns **no** provider surface, declares **no** `requires:` and **no** `conflic
 **no** `profile-template:` — it fills no contract slot with project values, so there is nothing for a
 project to override.
 
-This pack is a **skeleton**. It deliberately owns no core-authoring content yet: no scaffolder for a
-core skill, no contract authoring, and no ownership of a repository lint. Those arrive as their own
-changes, each landing a fragments row in the same change as the file that row names.
+The pack's content arrives one change at a time; contract authoring is the first piece to land, as
+the `new-contract` scaffolder below. A core-skill scaffolder and ownership of a repository lint are
+still to come, each arriving as its own change — and any change that does attach a phase fragment
+lands its fragments row in the same change as the file that row names.
 
 **Registration is required before any phase contribution can fire** — run `/wf-core-authoring:init`
 once after `/wf:init`. That skill self-registers through the resolver's `inspect_pack` /
 `register_pack` tools (idempotent), refreshing the snapshot so the capability resolves. With the
 capability unregistered, nothing is reached and no authoring term surfaces in any core phase —
 behavior is byte-identical to the plugin never having been installed.
+
+## Skills
+
+As a `both` capability, core-authoring ships its skills natively — install the plugin and the
+`/wf-core-authoring:*` commands are discoverable, because native plugin composition loads them
+regardless of registration. The `skills:` key is therefore **documentation only**; it records what
+the pack ships, it does not cause it to load.
+
+```
+skills:
+  - plugins/wf-core-authoring/skills/init/         # /wf-core-authoring:init — self-registering onboarding
+  - plugins/wf-core-authoring/skills/new-contract/ # /wf-core-authoring:new-contract — scaffolds a core contract pair, green under the contract-shape guard
+```
 
 ## Fragments
 
@@ -44,3 +58,10 @@ contribution, so it declares no row yet. Registry validation tolerates a zero-ro
 capability still registers — which is the point of registering now: the registration path is proven
 before the first fragment depends on it. A row and the fragment file it names are authored together,
 in the change that introduces them.
+
+The `new-contract` scaffolder adds **no** row, and that is not an oversight: every fragments row
+must name a `phase` and a `contribution-kind` drawn from the fixed sets, and a contract scaffolder
+maps to no phase in the `spec → plan → tasks → implement → verify → qa` spine. It is an authoring
+tool a maintainer invokes directly, not a contribution any phase fires. Declaring it under `skills:`
+is the whole of its declaration — which is also why, with this capability unregistered, the pack
+contributes nothing to any phase while the skill itself still loads.
