@@ -88,8 +88,7 @@ placeholder body `implement.start` wrote with the finished document. Four sectio
   given a single readable-back surface; the comments stay where they are and are **not** deleted,
   edited, or re-posted.
 
-Touch no field other than the description. On success, record `**Impl finished:** done` in
-`02_plan.md`.
+Touch no field other than the description.
 
 ## Step 3 — Mark the record done
 
@@ -109,6 +108,13 @@ would collide with `tf`'s close and break the no-double-drive contract above.
 
 The task has been implemented and is awaiting review. Post **no** comment alongside it (see the
 reconciliation table above). On failure, state one line and continue.
+
+On success, on stated failure-and-continue, **or** on the deliberate template skip above — i.e. once
+this step is reached and resolved either way, after both Step 3's and Step 4's `set_status` calls
+have been attempted or consciously skipped — record `**Impl finished:** done` in `02_plan.md`.
+Writing the guard only here, after both transitions are settled, means an interrupted run (e.g. the
+session ends between Step 2 and Step 4) still retries Steps 3–4 on resume instead of Step 1's own
+"already `done`" short-circuit skipping transitions that never actually ran.
 
 ## Step 5 — Return
 
