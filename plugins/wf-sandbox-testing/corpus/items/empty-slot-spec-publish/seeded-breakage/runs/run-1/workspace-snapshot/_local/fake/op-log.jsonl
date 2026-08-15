@@ -1,0 +1,5 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"response":"feature/FAKE-3-demo"}
+{"seq":2,"surface":"tracker","op":"get","args":{"id":"FAKE-3"},"response":{"id":"FAKE-3","title":"Demo work item","description":"A demo description.","state":"In Progress"}}
+{"seq":3,"surface":"tracker","op":"create_child","args":{"parent":"FAKE-3","title":"Spec: Demo work item","body":"Demo objective for the empty-slot fixture."},"response":{"id":"FAKE-3-1","url":"https://fake.local/item/FAKE-3-1"}}
+{"seq":4,"surface":"tracker","op":"update","args":{"id":"FAKE-3-1","labels":["wf-artifact"]},"response":{"state":"updated"}}
+{"seq":5,"surface":"tracker","op":"set_status","args":{"id":"FAKE-3-1","status":"Done"},"response":{"state":"updated"}}

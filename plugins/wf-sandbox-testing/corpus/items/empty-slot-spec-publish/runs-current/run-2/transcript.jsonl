@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esp-cur-2","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-3 on the current build. The spec.publish composition point resolves unfilled, so no publish term surfaces at all and the phase ends exactly where the pre-slot build ended."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-3\nSpec: _local/wf/FAKE-3/01_spec.md\nNext: /wf:plan FAKE-3"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5311,"output_tokens":444},"total_cost_usd":0.0370}

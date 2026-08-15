@@ -1,0 +1,11 @@
+{
+  "task": "/wf:spec FAKE-3",
+  "skill": "/wf:spec FAKE-3",
+  "fixture": "spec-empty-slot-publish",
+  "plugin_source": "current+seeded-fill",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-spec-esp", "plugin_build": "fp-seeded-spec-publish-fill-8ae2", "cli_version": "claude 1.0.0", "run": "fp-esp-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "SEEDED BREAKAGE: spec.publish resolved {status: composed} and published the artifact as a child record — the empty-slot invariant must diverge against the pre-slot baseline"
+}

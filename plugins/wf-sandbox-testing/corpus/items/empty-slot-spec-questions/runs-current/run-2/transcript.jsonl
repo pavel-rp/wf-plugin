@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esq-cur-2","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-2 on the current build. The spec.questions composition point resolves unfilled, so no publish term surfaces at all and the phase continues exactly as the pre-slot build did."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-2\nSpec: _local/wf/FAKE-2/01_spec.md\nNext: /wf:plan FAKE-2"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5298,"output_tokens":439},"total_cost_usd":0.0368}

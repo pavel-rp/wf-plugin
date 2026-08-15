@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esp-seed-1","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-3 with a seeded spec.publish fill registered. The slot resolves composed under a replace policy, so the fill supersedes the inline default: it reuses the task's umbrella, creates one child artifact record for the spec, labels it and marks it done."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-3\nSpec: _local/wf/FAKE-3/01_spec.md\nNext: /wf:plan FAKE-3"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5701,"output_tokens":533},"total_cost_usd":0.0418}

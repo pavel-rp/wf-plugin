@@ -1,0 +1,2 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"response":"feature/FAKE-3-demo"}
+{"seq":2,"surface":"tracker","op":"get","args":{"id":"FAKE-3"},"response":{"id":"FAKE-3","title":"Demo work item","description":"A demo description.","state":"In Progress"}}

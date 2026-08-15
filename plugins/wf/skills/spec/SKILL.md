@@ -187,9 +187,10 @@ Determine the task's branch-type bucket (one of `feat`, `fix`, `chore`, `refacto
 - Use sourcebot MCP tools (`mcp__sourcebot__search_code`, `mcp__sourcebot__read_file`, `mcp__sourcebot__list_tree`) for code search — preferred over raw `Grep`/`Glob` because it's indexed and cross-repo
 - Read any file in the project (`Read`, `Glob`, `Grep`) — fall back when sourcebot is unavailable or for file-pattern search
 - Use MSSQL extension tools (`mssql_run_query`, `mssql_list_tables`, `mssql_list_views`, `mssql_list_schemas`) for database schema and data exploration
-- Invoke `get`/`update` via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "tracker" })` query — **read-only, with exactly one write exception**: Phase 0 step 3 may invoke `update` to patch the description field on the child work item, only when that description is empty/minimal, the title starts with `Dev`, and a parent with a real description exists. No other field or work item may ever be written.
+- Invoke `get`/`update` via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "tracker" })` query — **read-only, with exactly one write exception**: Phase 0 step 3 may invoke `update` to patch the description field on the child work item, only when that description is empty/minimal, the title starts with `Dev`, and a parent with a real description exists. **This skill's own body** never writes any other field or work item; operations a *composed slot body* performs are governed by the slot bullet below, not by this one.
 - Read-only resolution via `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query)
 - Write/create files ONLY inside the task folder (`{task-root}/{task-id}/`)
+- Resolve the declared `spec.questions` (Phase 2) and `spec.publish` (Phase 4) slots via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: spec`) — **one call per marker** — and, only on a `composed` outcome, follow the served body as prose in this skill's own context. A followed body may perform **exactly** the operations it names — including writes to the task folder's artifacts and any contract-bound provider operation it invokes, which may be a write. That authorization is scoped to the served body: nothing at a marker is ever improvised, and an unfilled, unresolved, or refused slot authorizes no operation at all.
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 0.5 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits. Invoke the **Task** tool with `subagent_type: wf:classify` for Phase 0.7 type resolution (read-only).
 
 **Forbidden:**
@@ -198,6 +199,7 @@ Determine the task's branch-type bucket (one of `feat`, `fix`, `chore`, `refacto
 - Run builds, tests, linters, or installs
 - Run any destructive version-control operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above)
 - Create implementation plans or step-by-step checklists (that is `/wf:plan`'s job)
+- Improvise a publish, a comment, or any other operation at a slot marker whose slot is `unfilled`, `unresolved`, or `refused` — the inline-default region is executed **exactly** (the no-improvisation rule), and each marker is resolved at most once per run
 
 ---
 
@@ -227,10 +229,20 @@ The goal is context, not a plan. Collect facts that inform WHAT to build, not HO
 After exploration, identify any ambiguities or decisions that affect the spec. Resolve them NOW so the spec ships clean.
 
 1. **Identify questions** — ambiguities in the description, technical decisions with multiple valid approaches, unclear scope boundaries, constraints that need confirmation.
-2. **Prompt the user** — use `AskUserQuestion` with suggested options derived from exploration. Offer concrete choices, not open-ended questions.
-3. **Record resolutions** — bake answers into the spec as confident statements. No residual Q&A in the output.
 
-If no questions exist, skip to Phase 3.
+2. **Publish the open questions** — this is the declared `spec.questions` composition point, reached once the questions are identified and **before** the interactive prompt in step 3, so anyone following the task elsewhere sees what is being asked before it is answered. Resolve it lazily with **one** call: `resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: spec`, `point: questions`. Act on the typed outcome — never improvise a publish at this marker:
+   - **`{status: unfilled}`** (no slot contribution registered and no personal `_local/slots/spec.questions.md` override) → execute **exactly** the inline-default region below, then continue to step 3.
+   - **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content` as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale), then continue to step 3.
+   - **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not improvise: run the inline-default region below (continue to step 3) and state the resolver's reason. Follow the content surface's degradation discipline — never a wrong-path body, never a raw-read fall-through.
+
+<!-- wf:slot spec.questions -->
+Nothing is published anywhere. The open questions stay local to this run — they are carried straight into the interactive prompt in step 3, and no operation of any kind is emitted at this point.
+<!-- wf:slot-end spec.questions -->
+
+3. **Prompt the user** — use `AskUserQuestion` with suggested options derived from exploration. Offer concrete choices, not open-ended questions.
+4. **Record resolutions** — bake answers into the spec as confident statements. No residual Q&A in the output.
+
+If no questions exist, skip to Phase 3 — with no questions identified there is nothing to publish, so step 2 is skipped along with the prompt.
 
 ---
 
@@ -262,6 +274,21 @@ The verbatim `01_spec.md` template — the metadata block, `## Objective`, `## S
 Sections are optional — omit any that would be empty. Only include an "Open Questions" section if some questions are truly unresolvable (e.g., depends on an external team decision).
 
 **After writing the spec**, invoke `/wf:index {id} spec "<type> · <complexity> · <n> success criteria"` to record it in the per-task index. Substitute the resolved values (e.g. `feat · M · 4 success criteria`).
+
+---
+
+## Phase 4: Publish the Spec Artifact
+
+This is the declared `spec.publish` composition point — reached **after** `01_spec.md` is written and the index row recorded, so the artifact being published is the finished one. Resolve it lazily with **one** call: `resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: spec`, `point: publish`. Act on the typed outcome — never improvise a publish at this marker:
+
+- **`{status: unfilled}`** (no slot contribution registered and no personal `_local/slots/spec.publish.md` override) → execute **exactly** the inline-default region below, then emit the Final Output block.
+- **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content` as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale), then emit the Final Output block.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not improvise: run the inline-default region below and state the resolver's reason. Follow the content surface's degradation discipline — never a wrong-path body, never a raw-read fall-through. A failure here never invalidates the spec: `01_spec.md` is already written and is the source of truth.
+
+<!-- wf:slot spec.publish -->
+Nothing is published anywhere. `01_spec.md` and the per-task index row are the run's only outputs — no external record is opened, updated, or annotated, and no operation of any kind is emitted at this point. Proceed to the Final Output block.
+<!-- wf:slot-end spec.publish -->
+
 ---
 
 ## Edge Cases
@@ -276,6 +303,8 @@ Sections are optional — omit any that would be empty. Only include an "Open Qu
 - **Folder already has `02_plan.md`:** Warn: "A plan already exists. The spec will be updated but the existing plan may be outdated."
 - **No project files found:** Ask the user for the project root path to explore.
 - **All questions resolved:** Omit the "Open Questions" section entirely.
+- **A slot is unfilled (`spec.questions` / `spec.publish`):** the default state when nothing is registered against the point. Execute the marker's inline-default region exactly — both defaults publish nothing — and continue. Not an error, not a warning: the run is byte-for-byte what it would be with no composition point at all.
+- **A slot resolves `unresolved` or `refused`:** run the same inline-default region and state the resolver's reason once. Never fall back to reading a fragment path directly and never improvise the publish. For `spec.publish` this is never fatal — `01_spec.md` is already written and is the source of truth; the Final Output block is still emitted.
 
 ---
 

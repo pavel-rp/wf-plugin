@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esq-cur-1","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-2 on the current build. Phase 2 resolves the spec.questions slot — status unfilled (no contribution and no personal override), so the inline default runs: the open question stays local to this run and goes straight into the prompt."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-2\nSpec: _local/wf/FAKE-2/01_spec.md\nNext: /wf:plan FAKE-2"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5340,"output_tokens":448},"total_cost_usd":0.0372}

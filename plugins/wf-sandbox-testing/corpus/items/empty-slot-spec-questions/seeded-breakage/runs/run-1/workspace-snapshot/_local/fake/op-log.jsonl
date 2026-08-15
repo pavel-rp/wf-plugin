@@ -1,0 +1,3 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"response":"feature/FAKE-2-demo"}
+{"seq":2,"surface":"tracker","op":"get","args":{"id":"FAKE-2"},"response":{"id":"FAKE-2","title":"Demo work item","description":"A demo description with one ambiguity.","state":"In Progress"}}
+{"seq":3,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-2","body":"Open questions for this spec run:\n\n1. Which of the two demo behaviours is in scope?"},"response":{"state":"posted","url":"https://fake.local/item/FAKE-2#comment-1"}}

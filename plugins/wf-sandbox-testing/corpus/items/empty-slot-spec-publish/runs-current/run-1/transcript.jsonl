@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"esp-cur-1","tools":["Read","Write","Skill"]}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Speccing FAKE-3 on the current build. Phase 4 resolves the spec.publish slot — status unfilled (no contribution and no personal override), so the inline default runs: 01_spec.md and the index row are the only outputs and no operation is emitted."}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"SPEC — Complete\n\nTask: FAKE-3\nSpec: _local/wf/FAKE-3/01_spec.md\nNext: /wf:plan FAKE-3"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"SPEC — Complete","usage":{"input_tokens":5352,"output_tokens":451},"total_cost_usd":0.0374}

@@ -35,13 +35,16 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 4 | drift on model swap | assertion (`expect.json` vs scripted responses) | SMOKE | `model-swap-drift` — the same unfilled-slot `/wf:ship` run under two model arms | **WF-203 comment 2026-07-17** (C016 watch-list item **3**: "the gate fragment bakes no model id and names only abstract delivery ops … a model swap should not drift its behaviour"); **C014 (WF-322)** watch-list; **C016 (WF-343) OUT-6**. |
 | 5 | orphaned overrides at upgrade | assertion (`expect.json` vs scripted responses) | SMOKE | `orphaned-override` — a personal `_local/slots/ship.review.md` override present, winning under `replace` | **WF-203 comment 2026-07-17** (C016 watch-list item **4**: "a personal `_local/slots/ship.review.md` override (tier rank 30) supersedes the pack contribution (rank 10) wholesale under `replace` … an orphaned override silently keeps the old gate"); **C014 (WF-322)** watch-list; **C016 (WF-343) OUT-6**. |
 | 6 | host availability and reversible teardown | deterministic fixture assertion | SMOKE | qa-auto contract/model signatures plus an executed registered-host 14-operation-scenario lifecycle | **WF-432** — “Make host-dependent QA executable or fail fast”, STEP-006. |
+| 7 | empty-slot invariant — `spec.questions` | comparison (per declared slot) | SMOKE | `spec.questions` (`plugins/wf/skills/spec/interface.md` → `## Slots`; marker in `spec/SKILL.md` Phase 2 step 2) | **WF-406** — "SUB-1: mirror the spec phase to the tracker via two slots"; the per-declared-slot arm the enumeration in `run.sh` requires the moment a slot is declared; **C014 (WF-322)** empty-slot invariant; **C016 (WF-343) OUT-6(a)**. |
+| 8 | empty-slot invariant — `spec.publish` | comparison (per declared slot) | SMOKE | `spec.publish` (`plugins/wf/skills/spec/interface.md` → `## Slots`; marker in `spec/SKILL.md` Phase 4) | **WF-406** — "SUB-1: mirror the spec phase to the tracker via two slots"; the highest-consequence of the three declared slots (its fill performs creating writes), so its unfilled case is asserted silent; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 
-All six items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+All eight items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
 decision 1). Items 3–5 are the C014 watch-list items retrofit by **WF-348**; items 1–2 are
-the WF-347 corpus core.
+the WF-347 corpus core; items 7–8 are the per-slot arms **WF-406** owes for the two `spec`
+slots it declares.
 
 ## Subsumption record
 
@@ -102,18 +105,21 @@ provenance**, not silently dropped.
 Item 1 is asserted **per declared slot**, not once globally. The declared-slot set is read
 mechanically from the resolver's per-slot surface — a skill declares its slots in its
 `interface.md` `## Slots` table and marks them with a `<!-- wf:slot <skill>.<point> -->`
-body-marker pair (WF-329). At WF-347 implementation time the entire marketplace tree
-declares exactly **one** slot:
+body-marker pair (WF-329). At WF-347 implementation time the entire marketplace tree declared
+exactly one slot (`ship.review`); **WF-406** declares two more, so the set is now:
 
 ```
-ship.review   (plugins/wf/skills/ship/interface.md → ## Slots; marker in ship/SKILL.md Phase 4.5)
+ship.review      (plugins/wf/skills/ship/interface.md → ## Slots; marker in ship/SKILL.md Phase 4.5)
+spec.questions   (plugins/wf/skills/spec/interface.md → ## Slots; marker in spec/SKILL.md Phase 2 step 2)
+spec.publish     (plugins/wf/skills/spec/interface.md → ## Slots; marker in spec/SKILL.md Phase 4)
 ```
 
 `run.sh`'s enumeration step re-derives this set from the source at run time and asserts one
 baseline-comparison item per declared slot, so a newly-declared slot with no empty-slot arm
-fails the suite loudly rather than going silently unchecked. See
-`items/empty-slot-ship-review/item.md` for the per-family variance thresholds (the named
-spec-time decision) and the baseline-arm provenance.
+fails the suite loudly rather than going silently unchecked — which is exactly how items 7–8
+came to be owed. Each item's `item.md` carries the per-family variance thresholds and its own
+baseline-arm provenance; `items/empty-slot-ship-review/item.md` holds the original named
+spec-time threshold decision the later arms inherit unchanged.
 
 ## Files
 
@@ -131,6 +137,8 @@ spec-time decision) and the baseline-arm provenance.
 | `items/contribution-survival/` | item 3 (C014-2): `item.md` + `expect.json` + `fake-scripts.json`; `runs-current/` (original + reworded Phase 4.5 prose) green; `seeded-breakage/` (marker dropped) red |
 | `items/model-swap-drift/` | item 4 (C014-3): `item.md` + `expect.json` + `fake-scripts.json`; `runs-current/` (two model arms) green; `seeded-breakage/` (drift skips merge) red |
 | `items/orphaned-override/` | item 5 (C014-4): `item.md` + `expect.json` + `fake-scripts.json`; `runs-current/` (override present, wins under `replace`) green; `seeded-breakage/` (override removed) red |
+| `items/empty-slot-spec-questions/` | item 7 (WF-406): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that posts the questions comment) |
+| `items/empty-slot-spec-publish/` | item 8 (WF-406): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the spec as a child record) |
 | `fixtures/host-lifecycle/` | item 6 (WF-432): deterministic no-egress host availability signatures and a 14-scenario `expose`/`augment`/`seed`/`fixture` lifecycle; byte-tree restoration is checked after success and failure |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, and the coverage-ledger audit (CI entrypoint) |
