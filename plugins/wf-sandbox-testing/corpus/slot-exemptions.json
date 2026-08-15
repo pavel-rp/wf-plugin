@@ -1,0 +1,10 @@
+{
+  "_comment": "Declared slots that are deliberately NOT covered by a per-slot empty-slot corpus item, each with the reason no conveyor arm can exercise them. The corpus self-check (corpus/run.sh check 2, SLOT ENUM) enumerates declared slots mechanically from the <!-- wf:slot --> markers in every plugin's skill bodies and requires an arm per slot; that requirement assumes the declaring skill is on the SDD conveyor the runner drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement, plus /wf:ship). A slot declared on a skill outside that conveyor has no arm that could observe it, and a fabricated arm would violate the corpus's founding rule that assertions are born from observations, never speculation. Such a slot is listed here, with a reason, rather than silently unchecked or covered by invented run bytes. This list is NOT a place to park a conveyor slot whose arm is merely unwritten: check 2 fails an exemption whose slot DOES have a corpus item (a stale exemption), and check 9 (BARE CORE) still requires every declared slot to appear in the bare-core arm's own slots_covered/slots_exempt, so an exemption here never removes a slot from that accounting.",
+  "exempt": [
+    {
+      "slot": "new-skill.constraints",
+      "reason": "declared in /wf-author-caps:new-skill, an interactive pack-owned scaffolder that is not on the SDD conveyor the runner drives and takes no task id — the runner has no way to invoke it, so no arm can observe its unfilled behavior. Its inertness is asserted instead at the resolver, the layer that actually composes the slot: resolve_content({class: \"slot\", skill: \"new-skill\", point: \"constraints\"}) returns {status: \"unfilled\"} with no contribution and no override registered, which is the same reading the empty-slot arms exist to corroborate. First pack-owned slot in the marketplace (WF-363, C023); revisit when the runner can drive a pack scaffolder.",
+      "provenance": "WF-363"
+    }
+  ]
+}
