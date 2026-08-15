@@ -1,16 +1,16 @@
 ---
 name: ship
-description: Drives a single task end-to-end to a merged pull request with no human pause. Resolves the task, requires a registered delivery provider, drives the wf:* build chain past its gates, opens the pull request, waits for the delivery checks to settle (never merging a red one), then finalizes the merge. Stops honestly with a stated reason when no delivery provider is registered or the checks do not pass — never a partial merge. Use to ship one ready task from nothing to a merged PR unattended. Reads _local/config.md first; run /wf:init if it is absent.
-allowed-tools: [Read, Bash, Skill]
+description: Drives a single task end-to-end to a merged pull request with no human pause. Resolves the task, requires a registered delivery provider, drives the wf:* build chain past its gates, opens the pull request, waits for the delivery checks to settle (never merging a red one), converges failing checks through a bounded CI-remediation loop, then finalizes the merge. Stops honestly with a stated reason when no delivery provider is registered or the checks do not converge within the loop's iteration bound — never a partial merge. Use to ship one ready task from nothing to a merged PR unattended. Reads _local/config.md first; run /wf:init if it is absent.
+allowed-tools: [Read, Bash, Skill, Task, Edit]
 ---
 
 # /wf:ship — one task, driven unattended to a merged PR
 
 Takes a single task all the way to a **merged pull request** without a human pause between phases. In one run it: resolves the task id, **requires** a registered **delivery** provider (there is nothing to merge without one), drives the `wf:*` build chain **past the gates** where `/wf:run` halts, opens the pull request, **waits for the delivery checks to settle** — never merging a red one — and then finalizes the merge through `/wf:tf`.
 
-`ship` is a **pure orchestrator**: it writes no artifact and mutates no source of its own. Every source edit and every artifact belongs to the phase skills it drives; the merge, archive, and work-item close belong to `/wf:tf`. `ship` only resolves, decides, and dispatches — reaching merge/check state solely through the abstract **delivery** provider operations, never knowing or naming which concrete tool implements them.
+`ship` is an **orchestrator**: it writes no artifact, and it mutates source in exactly **one** bounded place — the Phase 4.2 CI-remediation loop, where it applies the minimal distilled fix for a failing check. Everywhere else every source edit and every artifact belongs to the phase skills it drives; the merge, archive, and work-item close belong to `/wf:tf`. `ship` otherwise only resolves, decides, and dispatches — reaching merge/check state solely through the abstract **delivery** provider operations, never knowing or naming which concrete tool implements them.
 
-The **review-address loop is out of scope** for this skill's own behaviour — `ship` drives build → checks → merge and exposes a declared `ship.review` slot at the point where a review step attaches (Phase 4.5). When that slot is unfilled — the default with no review capability registered — the inline default drives no reviewer; `ship` never improvises one.
+Converge has two halves. The **CI half is `ship`'s own** (Phase 4.2): failing checks are re-read per iteration at the current head, distilled in an isolated read-only agent, fixed, re-pushed, and re-checked under a fixed iteration bound. The **review half is out of scope** for this skill's own behaviour — `ship` exposes a declared `ship.review` slot at the point where a review step attaches (Phase 4.5). When that slot is unfilled — the default with no review capability registered — the inline default drives no reviewer; `ship` never improvises one.
 
 ---
 
@@ -49,11 +49,16 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 - Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config({ workspaceRoot, ... })` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query).
 - Resolve the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, and invoke its **read** operations — `pr-detect` and `checks-read` — by obtaining each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`) and following it in this skill's own context.
 - Resolve the `ship.review` slot (Phase 4.5) via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: ship`, `point: review`), and — only on a `composed` outcome — follow the served body as prose in this skill's own context.
-- Invoke the sibling `wf:*` commands this skill drives through the **Skill** tool: `/wf:branch`, `/wf:run` (and each gated `/wf:*` command `/wf:run` names in its handoff), `/wf:pr`, and `/wf:tf`.
+- Invoke the sibling `wf:*` commands this skill drives through the **Skill** tool: `/wf:branch`, `/wf:run` (and each gated `/wf:*` command `/wf:run` names in its handoff), `/wf:commit`, `/wf:pr`, and `/wf:tf`.
+- Dispatch the bulk of a failing check set to the read-only `wf:context-distiller` agent (`MODE: ci`) via the **Task** tool, inside Phase 4.2 only, so the raw check output is read in that agent's own context and never in this one.
+- **The single source-write exception:** inside **Phase 4.2 only**, apply the minimal fix a `CI DISTILL` block classed `code` names, at the `Location` it names. Nowhere else, for no other reason, and never for a block classed `infra/transient`. Commit and push that fix by invoking `/wf:commit <id> --push` through the **Skill** tool — `ship` performs no delivery write of its own.
 
 **Forbidden:**
 
-- Write or edit **any** file — artifact, source, or config. `ship` is a dispatcher; every write belongs to the phase skills it drives or to `/wf:tf`.
+- Write or edit any file — artifact, source, or config — **outside the single Phase-4.2 exception above**. Everywhere else `ship` is a dispatcher; every write belongs to the phase skills it drives or to `/wf:tf`. It never writes an artifact at all, in any phase.
+- Edit source at Phase 4.2 beyond the minimal change the distilled `Suggested fix` describes at its named `Location` — no opportunistic refactor, no fix for a failure the distiller did not localize, and no edit at all when the distiller returns `NOTHING ACTIONABLE` or `NO INPUT`.
+- Read a raw check log, or any other bulk delivery output, into this skill's own context — that bulk belongs in the isolated distiller. `ship` ingests only the compact `CI DISTILL` blocks.
+- Modify the `wf:context-distiller` agent, or any file it owns — Phase 4.2 wires to it and never changes it.
 - Finalize a merge while any delivery check is failing or has not settled — **never merge a red PR**. Merge is performed only by `/wf:tf`, and only after Phase 4 confirms the checks are green.
 - Run any destructive version-control operation, or invoke `pr-merge` directly — the single merge write is `/wf:tf`'s, through the delivery provider (detect-first, never a double-merge).
 - Drive any reviewer or review-address loop, or call any review skill, on `ship`'s own initiative — the review step attaches only through the declared `ship.review` slot (Phase 4.5); when the slot is unfilled, no reviewer is driven and the marker's inline default is executed exactly, with no improvisation.
@@ -64,7 +69,9 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 
 ## Fixed sibling-Skill routing
 
-Every executable sibling-Skill edge below is routed independently and immediately before that Skill-tool call. Call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, the edge's stated stable `role`, exactly one canonical stable `unitIds` entry for that edge (`ship:branch`, `ship:run-initial`, `ship:phase`, `ship:run-resume`, `ship:pr`, or `ship:finalize`), `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical", contextIsolation: "none", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it. Emit the compact operational record, separate from artifact attribution. Hard-stop before the Skill call on `status: stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly (this evidence selects `inline`) and pass no model or effort selector. The `ship` parent evaluates the returned terminal block; only it may submit `postAttempt` for a contract-defined insufficiency and retry that edge. A child never invokes its own replacement.
+Every executable sibling-Skill edge below is routed independently and immediately before that Skill-tool call. Call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, the edge's stated stable `role`, exactly one canonical stable `unitIds` entry for that edge (`ship:branch`, `ship:run-initial`, `ship:phase`, `ship:run-resume`, `ship:ci-commit`, `ship:pr`, or `ship:finalize`), `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical", contextIsolation: "none", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it. Emit the compact operational record, separate from artifact attribution. Hard-stop before the Skill call on `status: stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly (this evidence selects `inline`) and pass no model or effort selector. The `ship` parent evaluates the returned terminal block; only it may submit `postAttempt` for a contract-defined insufficiency and retry that edge. A child never invokes its own replacement.
+
+The one **Task** edge — the Phase 4.2 distiller dispatch — is routed the same way but carries its own evidence, because it is deliberately isolated: `role: "distiller"`, `unitIds: ["ship:ci-distill"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk: "elevated", toolWork: "material", validation: "mechanical", contextIsolation: "required", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. This evidence selects `isolated`; pass the model selector only when non-null and preserve inherited effort. Route it afresh on **every** loop iteration — one decision binds one dispatch.
 
 ---
 
@@ -129,10 +136,33 @@ Never merge a red or unsettled pull request. Invoke the delivery `checks-read` o
 
 - **No checks configured** (an empty check set) → vacuously settled and green; proceed.
 - **All checks passing** → settled and green; proceed.
-- **Any check failing** → **`SHIP — Blocked`**, naming the failing check(s). No merge — a red pull request is never merged. Stop.
-- **Any check still pending / in progress** → re-read `checks-read`, **capped** at a small number of attempts. If every check has resolved to passing within the cap, proceed. If any resolves to failing → the failing-check stop above. If checks are still pending after the cap → **`SHIP — Blocked`** ("delivery checks did not settle within the cap"). No merge. Stop.
+- **Any check failing** → **enter Phase 4.2**, the bounded CI-remediation loop. Do **not** stop here: a red pull request is still never merged, but it is now converged rather than abandoned. Phase 4.2 either brings the checks green — after which the run continues at Phase 4.5 — or stops cleanly at its iteration bound.
+- **Any check still pending / in progress** → re-read `checks-read`, **capped** at a small number of attempts. If every check has resolved to passing within the cap, proceed. If any resolves to failing → the failing-check branch above (enter Phase 4.2). If checks are still pending after the cap → **`SHIP — Blocked`** ("delivery checks did not settle within the cap"). No merge. Stop.
 
 The cap keeps the wait bounded so an unattended run can never hang indefinitely; a genuinely slow pipeline is reported honestly and re-run, never merged early.
+
+## Phase 4.2: Converge red checks (the bounded CI-remediation loop)
+
+Entered **only** from Phase 4's failing-check branch. This is the CI half of converge: the loop re-reads the checks at the current head, distils the failures in an isolated read-only agent, applies the minimal fix, re-pushes, and re-checks — **bounded at 5 iterations**. It is the one place in this skill that edits source, under the single exception in the Safety Rules.
+
+Run iterations `1..5`. Each iteration:
+
+1. **Re-read the checks at the current head.** Invoke `checks-read` for the task branch again (obtain its body via `resolve_content({ workspaceRoot, ... })` from the Phase-1 record). `checks-read` reports the checks of the pull request's current head, so the loop binds every read to the head it most recently pushed (`HEAD_SHA`). A check set attributed to an **earlier** head — or one still propagating after this loop's own push — is **unsettled, never green**: re-read within Phase 4's pending cap before this iteration counts. Never carry a check result across a push.
+
+2. **Green exits the loop.** If every check at that head passes (or the set is empty), the pull request has converged → leave Phase 4.2 and continue at Phase 4.5. Record the iteration count for the final block.
+
+3. **Distil the failures in isolation.** Route the distiller edge afresh (`role: "distiller"`, `unitIds: ["ship:ci-distill"]`) per §"Fixed sibling-Skill routing", then invoke the **Task** tool with `subagent_type: wf:context-distiller`. The prompt begins with the line `MODE: ci`, followed by the failing checks' references from the `checks-read` result. The agent reads the bulk in **its own** context and returns only `CI DISTILL` blocks (`Failing check`, `Class`, `Root cause`, `Location`, `Suggested fix`). Never read the raw check output here.
+
+4. **Act on each block, most actionable first.**
+   - **`Class: code`** with a concrete `Location` → apply the **minimal** change `Suggested fix` describes, at that location and nowhere else.
+   - **`Class: infra/transient`** → apply **no** source change; the operational action is simply to re-read on the next iteration.
+   - **`Class: code` without a localizable `Location`**, or a `NOTHING ACTIONABLE` / `NO INPUT` response → the loop cannot act on this failure; treat it as unactionable for the exit test in step 6.
+
+5. **Flush any fix.** If step 4 applied at least one edit, route the commit edge (`role: "commit"`, `unitIds: ["ship:ci-commit"]`) and invoke `/wf:commit <id> --push` through the **Skill** tool to commit and push it; this moves the head, so the next iteration's read is against a new `HEAD_SHA`. On its error state → **`SHIP — Blocked`**, surface the reason, stop. If step 4 applied no edit, push nothing and go straight to the next iteration.
+
+6. **Exit tests.** If every failing check this iteration was unactionable — nothing was fixed and nothing is transient — stop **cleanly**: **`SHIP — Blocked`**, reason "CI remediation has no actionable fix — <checks>". Otherwise continue.
+
+**The stuck guard.** After the 5th iteration completes without reaching green, the loop stops: **`SHIP — Blocked`**, `Checks: red (<failing>) — stuck guard tripped after 5 iterations`, `Merge: not merged — CI remediation did not converge within the 5-iteration bound`. This is an **accepted terminal outcome of the loop**, not an internal error and not a partial merge — the bound is what guarantees an unattended run can never spin forever. Re-running `/wf:ship <id>` after the underlying failure is addressed resumes safely.
 
 ## Phase 4.5: Review attachment point (the `ship.review` slot)
 
@@ -168,7 +198,11 @@ Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "
 - **A build phase fails or halts for input:** Phase 2 stops with `SHIP — Blocked` surfacing that phase's own reason — `ship` never rescues a failed phase by doing its work itself.
 - **Pipeline stuck (no progress):** the Phase-2 progress guard stops with `SHIP — Blocked` rather than re-dispatching the same phase forever.
 - **`/wf:pr` opens no pull request:** Phase 3 stops (`SHIP — Blocked`); a `<PR>` is never fabricated.
-- **Red checks:** Phase 4 stops (`SHIP — Blocked`) naming the failing checks — a red pull request is never merged.
+- **Red checks:** Phase 4 no longer stops — it enters the Phase 4.2 remediation loop. A red pull request is still never merged; it is converged to green or the loop stops cleanly.
+- **CI remediation exhausts its bound:** the Phase-4.2 stuck guard trips after 5 iterations → `SHIP — Blocked` naming the still-failing checks and the exhausted bound. A clean, accepted terminal — no forever-loop, no partial merge — not an internal error.
+- **Only infra/transient failures:** no source edit is applied; the loop simply re-reads at the current head each iteration and, if they never clear, trips the same stuck guard with the transient checks named.
+- **Distiller returns `NOTHING ACTIONABLE` / `NO INPUT`, or localizes nothing:** the loop applies no edit and stops cleanly (`SHIP — Blocked`, "CI remediation has no actionable fix") rather than guessing at a change.
+- **The remediation commit fails to land:** `/wf:commit` returns its error state → `SHIP — Blocked` with that reason; nothing is merged and the pushed state is whatever last succeeded.
 - **Checks never settle (cap hit):** Phase 4 stops (`SHIP — Blocked`) after the capped re-reads; re-run once the pipeline finishes rather than merging early.
 - **Merge blocked at finalize:** `/wf:tf` returns `partial` (failing required checks, unresolved conversations, conflicts) → `SHIP — Blocked` with its reason; re-running `ship` after the blocker clears retries the merge safely (`/wf:tf` is detect-first and idempotent).
 - **Already shipped:** `/wf:tf` returns `already-finalized` → `SHIP — Merged` (idempotent).
@@ -184,11 +218,13 @@ SHIP — <Merged | Blocked | Handed-off>
 Task:     {task-id}
 Built:    <ready for review | stopped at <phase>>
 PR:       <url | none>
-Checks:   <green | red (<failing>) | unsettled | n/a>
+Checks:   <green | green after <n> CI-remediation iteration(s) | red (<failing>) — stuck guard tripped after 5 iterations | unsettled | n/a>
 Merge:    <merged (<url>) | not merged — <reason>>
 Next:     <none — terminus | the command that clears the block>
 ```
 
-`Merged` — the pull request is merged and the task finalized. `Blocked` — a required condition was not met (no delivery provider, a failed/halted build phase, no pull request, red or unsettled checks, or a blocked finalize); the `Next:` line names the existing `/wf:*` command that clears it (e.g. `/wf:run <id>` to resume the build, `/wf:init` for missing config, or `/wf:ship <id>` to retry once the blocker clears). `Handed-off` — the context-ceiling checkpoint fired: the run stayed under the ceiling by flushing (committing and pushing) the work so far and yielding for continuation, **not** an error and **not** a partial merge. `Built:` names the boundary reached, `Merge:` reads `not merged — context ceiling reached, handed off after <boundary>`, and `Next:` is `/wf:ship <id>` — re-invoking it in a fresh context resumes detect-first and drives the same run to merge. The block shape (the fenced `SHIP — …` with `Task/Built/PR/Checks/Merge/Next`) is unchanged; only the status token widens.
+When the Phase-4.2 loop ran, `Checks:` states how it ended — `green after <n> CI-remediation iteration(s)` on convergence, or `red (<failing>) — stuck guard tripped after 5 iterations` when the bound was exhausted, paired with `Merge: not merged — CI remediation did not converge within the 5-iteration bound`. A guard trip is a clean bounded stop, reported honestly; it is never dressed up as a merge and never as a crash.
+
+`Merged` — the pull request is merged and the task finalized. `Blocked` — a required condition was not met (no delivery provider, a failed/halted build phase, no pull request, unsettled checks, checks the Phase-4.2 loop could not converge, or a blocked finalize); the `Next:` line names the existing `/wf:*` command that clears it (e.g. `/wf:run <id>` to resume the build, `/wf:init` for missing config, or `/wf:ship <id>` to retry once the blocker clears). `Handed-off` — the context-ceiling checkpoint fired: the run stayed under the ceiling by flushing (committing and pushing) the work so far and yielding for continuation, **not** an error and **not** a partial merge. `Built:` names the boundary reached, `Merge:` reads `not merged — context ceiling reached, handed off after <boundary>`, and `Next:` is `/wf:ship <id>` — re-invoking it in a fresh context resumes detect-first and drives the same run to merge. The block shape (the fenced `SHIP — …` with `Task/Built/PR/Checks/Merge/Next`) is unchanged; only the status token widens.
 
 **The final-output block must always be the very last thing output to chat.**
