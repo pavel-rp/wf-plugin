@@ -240,7 +240,8 @@ Nothing is published anywhere. The open questions stay local to this run — the
 <!-- wf:slot-end spec.questions -->
 
 3. **Prompt the user** — use `AskUserQuestion` with suggested options derived from exploration. Offer concrete choices, not open-ended questions.
-4. **Record resolutions** — bake answers into the spec as confident statements. No residual Q&A in the output.
+4. **When there is no interactive channel, do not block.** `AskUserQuestion` is not available in every execution context — notably when this phase runs inside an isolated subagent, where it is absent from the tool catalog altogether. Establish this from the tool actually being unavailable, never by guessing at the context. When it is unavailable, skip step 3 rather than waiting on it: resolve each question with the best codebase-grounded interpretation, record it under the spec's `## Open Questions` section marked as resolved-by-assumption, and continue to Phase 3. The phase still returns `SPEC — Complete` — there is deliberately **no** NEEDS_INPUT terminal state and no relay carrying the question back to a user (see `## Edge Cases`), so that recorded section is the only channel these items travel on, and the pipeline's next human gate is where they are reviewed.
+5. **Record resolutions** — bake answers into the spec as confident statements. No residual Q&A in the output.
 
 If no questions exist, skip to Phase 3 — with no questions identified there is nothing to publish, so step 2 is skipped along with the prompt.
 
@@ -271,7 +272,7 @@ Write `01_spec.md` in the task folder using the template below.
 
 The verbatim `01_spec.md` template — the metadata block, `## Objective`, `## Success Criteria`, `## Context`, `## Scope`, `## Constraints`, `## User Journeys`, and `## Boundaries` — lives at `spec-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: spec`, `ref: spec-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 3), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
-Sections are optional — omit any that would be empty. Only include an "Open Questions" section if some questions are truly unresolvable (e.g., depends on an external team decision).
+Sections are optional — omit any that would be empty. Only include an "Open Questions" section if some questions are truly unresolvable (e.g., depends on an external team decision) — or if a question was resolved by assumption under Phase 2 step 4's no-interactive-channel path, which is recorded there rather than omitted.
 
 **After writing the spec**, invoke `/wf:index {id} spec "<type> · <complexity> · <n> success criteria"` to record it in the per-task index. Substitute the resolved values (e.g. `feat · M · 4 success criteria`).
 
@@ -302,7 +303,8 @@ Nothing is published anywhere. `01_spec.md` and the per-task index row are the r
 - **Folder already has `01_spec.md`:** Overwrite it.
 - **Folder already has `02_plan.md`:** Warn: "A plan already exists. The spec will be updated but the existing plan may be outdated."
 - **No project files found:** Ask the user for the project root path to explore.
-- **All questions resolved:** Omit the "Open Questions" section entirely.
+- **All questions resolved:** Omit the "Open Questions" section entirely. A question resolved by assumption under the no-interactive-channel path below is **not** resolved in this sense — record it.
+- **No interactive channel (e.g. the phase is running inside an isolated subagent):** step 3's prompt cannot run, because `AskUserQuestion` is not in the tool catalog there. This is not an error and never a hang — per Phase 2 step 4 the questions are resolved on the best codebase-grounded reading, recorded under `## Open Questions` as resolved-by-assumption, and the run continues to a normal `SPEC — Complete`. **The absence of a needs-input relay is deliberate, not an oversight:** under a hands-off walk there is no human on the other end to relay to, and the pipeline already halts before the first source-writing phase, which is where a human reviews the recorded assumptions in time to act on them. Do not improvise a relay, a new terminal token, or a halt at this point.
 - **A slot is unfilled (`spec.questions` / `spec.publish`):** the default state when nothing is registered against the point. Execute the marker's inline-default region exactly — both defaults publish nothing — and continue. Not an error, not a warning: the run is byte-for-byte what it would be with no composition point at all.
 - **A slot resolves `unresolved` or `refused`:** run the same inline-default region and state the resolver's reason once. Never fall back to reading a fragment path directly and never improvise the publish. For `spec.publish` this is never fatal — `01_spec.md` is already written and is the source of truth; the Final Output block is still emitted.
 
