@@ -22,15 +22,21 @@
 #   5. REVIEW-GATE    — the five-requirements scenario runs green against wf-fake's scripted
 #                       threads (op log shows all five requirement ops); a seeded "merged while
 #                       claiming no review landed" run turns red naming the failed assertion.
-#   6. BARE CORE      — (WF-414) with NO tracker pack registered the full conveyor completes with
+#   6. ASSERTION ITEMS— items 3-5 (the WF-348 C014 retrofits): each runs-current set is green
+#                       against its expect.json; each seeded-breakage set turns red naming a family.
+#   7. COVERAGE LEDGER— every named C014/C015 item + WF-203 comment is accounted for
+#                       (covered/subsumed/deferred) with a resolvable provenance link.
+#   8. HOST AVAILABILITY — deterministic contract/model coverage plus an executed registered-host
+#                       14-operation-scenario lifecycle.
+#   9. BARE CORE      — (WF-414) with NO tracker pack registered the full conveyor completes with
 #                       ZERO tracker calls and ZERO errors and every declared conveyor slot
 #                       resolves {status: unfilled} onto its no-op inline default. ABSOLUTE, never
 #                       variance-based: check 3's ops_invoked ceiling (0.34) tolerates one outlier
 #                       in a 3-run set, which cannot express "zero". A seeded run whose inline
 #                       default emits a tracker call must trip it.
-#   7. ARMLESS META   — (WF-414) proves check 2's arm-less failure actually FIRES, by running the
+#  10. ARMLESS META   — (WF-414) proves check 2's arm-less failure actually FIRES, by running the
 #                       same enumeration + arm lookup against a synthetic declared slot.
-#   8. DISCLOSURE     — (WF-414) every arm carries machine-readable provenance {path, reason}
+#  11. DISCLOSURE     — (WF-414) every arm carries machine-readable provenance {path, reason}
 #                       (canned vs real) plus its paired human-readable disclosure section.
 #
 # Usage: run.sh   (run every check; wired into CI as its own step)
