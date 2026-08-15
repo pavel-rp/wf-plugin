@@ -37,6 +37,8 @@ ship-branch	included	plugins/wf/skills/ship/SKILL.md	/wf:branch	branch	model=fal
 ship-run-initial	included	plugins/wf/skills/ship/SKILL.md	/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	ship
 ship-gated-phase	included	plugins/wf/skills/ship/SKILL.md	/wf:<phase>	phase-runner	model=false;effort=false	fixed-skill-route	ship
 ship-run-resume	included	plugins/wf/skills/ship/SKILL.md	re-invoke `/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	ship
+ship-ci-distill	included	plugins/wf/skills/ship/SKILL.md	wf:context-distiller	distiller	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	ship
+ship-ci-commit	included	plugins/wf/skills/ship/SKILL.md	/wf:commit	commit	model=false;effort=false	fixed-skill-route	ship
 ship-pr	included	plugins/wf/skills/ship/SKILL.md	/wf:pr	pr	model=false;effort=false	fixed-skill-route	ship
 ship-finalize	included	plugins/wf/skills/ship/SKILL.md	/wf:tf	finalize	model=false;effort=false	fixed-skill-route	ship
 fleet-agent-initial	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	fleet-cardinality-route	fleet
