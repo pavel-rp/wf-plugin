@@ -1,6 +1,6 @@
 # `01_spec.md` template
 
-The verbatim template `/wf:spec` emits at write time (Phase 3). Substitute the placeholders; sections are optional — omit any that would be empty. Only include an "Open Questions" section if some questions are truly unresolvable (e.g. they depend on an external team decision).
+The verbatim template `/wf:spec` emits at write time (Phase 3). Substitute the placeholders; sections are optional — omit any that would be empty. Only include an "Open Questions" section if some questions are truly unresolvable (e.g. they depend on an external team decision), or if a question was resolved by assumption because no interactive channel was available (SKILL.md Phase 2 step 4) — those are recorded there, not omitted.
 
 ## Contents
 
