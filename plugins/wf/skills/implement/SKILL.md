@@ -85,7 +85,7 @@ When `--steps` is provided, only the specified steps are executed (plus STEP-001
 - Run any destructive version-control operation directly (the delegated wf:branch subagent is constrained to non-destructive ops above).
 - Run builds, tests, linters, or installs other than the verify command specified in the plan.
 - Skip steps in `02_plan.md`, or expand scope beyond what's explicitly checked off in the loaded plan.
-- Modify `00_reqs.md`, `01_spec.md`, or `02_plan.md` content other than ticking the plan's checkboxes as steps complete.
+- Modify `00_reqs.md`, `01_spec.md`, or `02_plan.md` content other than ticking the plan's checkboxes as steps complete — **except** a single bookkeeping guard line (e.g. `**Tracker impl item:**`, `**Tracker umbrella:**`, `**Impl finished:**`) that a registered `implement.start`/`implement.milestone`/`implement.finish` slot fill writes into `02_plan.md` as its own documented composition-point contract (Phases 1.5/2.5/5.5 below). That write belongs to the slot fill, not to this skill's own body, and is the sole named exception.
 
 ---
 
