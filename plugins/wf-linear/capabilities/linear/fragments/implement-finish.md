@@ -85,8 +85,7 @@ placeholder body `implement.start` wrote with the finished document. Four sectio
   given a single readable-back surface; the comments stay where they are and are **not** deleted,
   edited, or re-posted.
 
-Touch no field other than `description`. On success, record `**Impl finished:** done` in
-`02_plan.md`.
+Touch no field other than `description`.
 
 ## Step 3 — Mark the record Done
 
@@ -99,6 +98,12 @@ progress. On failure, state one line and continue.
 Invoke `set_status(<umbrella-id>, "In Review")` — **exactly one call, exactly this value.** The task
 has been implemented and is awaiting review. Post **no** comment alongside it (see the reconciliation
 table above). On failure, state one line and continue.
+
+On success **or** stated failure-and-continue of both Step 3 and Step 4 — i.e. once this step is
+reached and its `set_status` call has been attempted — record `**Impl finished:** done` in
+`02_plan.md`. Writing the guard only here, after both `set_status` attempts, means an interrupted run
+(e.g. the session ends between Step 2 and Step 4) still retries Steps 3–4 on resume instead of Step
+1's own "already `done`" short-circuit skipping transitions that never actually ran.
 
 ## Step 5 — Return
 
