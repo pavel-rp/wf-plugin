@@ -113,8 +113,11 @@ failure — a half-emitted pair is a scaffolder defect, not a partial success.
 1. **Locate the contract-shape guard by role.** It is the repository's executable ops/reference
    drift guard — the one enforcing the four-check set *ops line budget · ops-to-reference heading
    parity · cross-link anchor resolution · contract-pointer ban*. Find it by searching the
-   repository's shell scripts for the phrase `contract-pointer ban`; exactly one script matches, and
-   that script is the guard. Zero matches, or more than one, is a stop condition (see Edge Cases) —
+   repository's shell scripts for a **non-comment** line naming the phrase `contract-pointer ban`:
+   the guard is the script that *reports* that check, so the phrase appears in its emitted output,
+   not merely in a comment. A callers-and-comments match — a CI entry point describing what it
+   invokes — is excluded by that non-comment condition. Exactly one script survives it, and that
+   script is the guard. Zero survivors, or more than one, is a stop condition (see Edge Cases) —
    never substitute a remembered path.
 2. **Run it** with `Bash`, and read its report for the emitted pair. Record the resolved path.
 3. **Run the typed validators** over what changed: `validate_references` for the emitted set, and
@@ -138,11 +141,11 @@ the two paths. A red pair reported honestly is a usable result; a green claim ov
 
 - **No contracts folder found** (no `*.contract.md` anywhere): stop — the repository has no contract
   pair to sit beside, and this skill does not invent a home for one.
-- **Guard not found by role** (zero shell scripts mention the contract-pointer ban): stop, naming
-  what was searched for. The pair stays on disk unverified and is reported as unverified — never
-  reported green, and never verified against a guessed path.
-- **More than one candidate guard:** stop and name both. Guessing which one is authoritative would
-  make a green report meaningless.
+- **Guard not found by role** (no shell script reports the contract-pointer ban outside a comment):
+  stop, naming what was searched for. The pair stays on disk unverified and is reported as
+  unverified — never reported green, and never verified against a guessed path.
+- **More than one candidate guard survives the search:** stop and name each. Guessing which one is
+  authoritative would make a green report meaningless.
 - **Either half already exists:** ask before overwriting; without confirmation, stop.
 - **The caller names a folder that is not the shared contracts folder:** ask first, then honour the
   answer.
