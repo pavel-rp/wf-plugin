@@ -1,0 +1,11 @@
+{
+  "task": "/wf:plan FAKE-4",
+  "skill": "/wf:plan FAKE-4",
+  "fixture": "plan-empty-slot-publish",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-plan-epp", "plugin_build": "fp-current-plan-3d81f4", "cli_version": "claude 1.0.0", "run": "fp-epp-cur-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "current build, plan.publish resolved {status: unfilled} — no capability contributes the slot"
+}

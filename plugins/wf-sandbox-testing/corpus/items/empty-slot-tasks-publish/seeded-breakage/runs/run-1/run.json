@@ -1,0 +1,11 @@
+{
+  "task": "/wf:tasks FAKE-5",
+  "skill": "/wf:tasks FAKE-5",
+  "fixture": "tasks-empty-slot-publish",
+  "plugin_source": "current+seeded-fill",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-tasks-etp", "plugin_build": "fp-seeded-tasks-publish-fill-4d1a", "cli_version": "claude 1.0.0", "run": "fp-etp-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "SEEDED BREAKAGE: tasks.publish resolved {status: composed} and published the decomposition as one child artifact record — the empty-slot invariant must diverge against the pre-slot baseline"
+}

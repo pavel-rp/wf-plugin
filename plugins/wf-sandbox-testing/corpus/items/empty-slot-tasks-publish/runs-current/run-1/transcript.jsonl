@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"etp-cur-r1","cwd":"/workspace","tools":["Read","Write","Edit","Glob","Grep","Bash","Skill"],"model":"fake-model-a"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Read `_local/wf/FAKE-5/02_plan.md` as the authoritative input and `01_spec.md` for acceptance grounding. Deriving the decomposition."}]},"session_id":"etp-cur-r1"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"TASKS — Complete\n\nTask:  FAKE-5 — Demo work item\nTasks: 3, derived from 02_plan.md\nFile:  _local/wf/FAKE-5/03_tasks.md\n\nNext:  /wf:implement FAKE-5"}]},"session_id":"etp-cur-r1"}
+{"type":"result","subtype":"success","is_error":false,"session_id":"etp-cur-r1","num_turns":2,"duration_ms":20337}

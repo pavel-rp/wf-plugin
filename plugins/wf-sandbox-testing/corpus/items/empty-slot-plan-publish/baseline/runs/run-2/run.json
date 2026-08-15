@@ -1,0 +1,11 @@
+{
+  "task": "/wf:plan FAKE-4",
+  "skill": "/wf:plan FAKE-4",
+  "fixture": "plan-empty-slot-publish",
+  "plugin_source": "/pinned/preslot-plan-build",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-plan-epp", "plugin_build": "fp-preslot-plan-a91c33", "cli_version": "claude 1.0.0", "run": "fp-epp-base-r2" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "pre-slot baseline arm: the plan.publish slot did not exist on this pinned build"
+}

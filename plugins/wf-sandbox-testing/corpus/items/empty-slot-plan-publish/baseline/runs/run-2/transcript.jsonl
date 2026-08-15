@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"epp-base-r2","cwd":"/workspace","tools":["Read","Write","Edit","Glob","Grep","Bash","Skill"],"model":"fake-model-a"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Spec read; both named files confirmed unchanged. Building the checklist."}]},"session_id":"epp-base-r2"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"PLAN — Complete\n\nTask: FAKE-4 — Demo work item\nType: feat  (source: spec)\nComplexity: S  (source: spec)\nSteps: 2\nFolder: _local/wf/FAKE-4/\nSpec: _local/wf/FAKE-4/01_spec.md\nPlan: _local/wf/FAKE-4/02_plan.md\nNext: /wf:tasks FAKE-4"}]},"session_id":"epp-base-r2"}
+{"type":"result","subtype":"success","is_error":false,"session_id":"epp-base-r2","num_turns":2,"duration_ms":22874}

@@ -1,0 +1,5 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"result":"feature/FAKE-4-demo-work-item"}
+{"seq":2,"surface":"tracker","op":"get","args":{"id":"FAKE-4"},"result":{"id":"FAKE-4","title":"Demo work item"}}
+{"seq":3,"surface":"tracker","op":"create_child","args":{"parent":"FAKE-4","title":"Plan: Demo work item"},"result":{"id":"FAKE-4-2"}}
+{"seq":4,"surface":"tracker","op":"update","args":{"id":"FAKE-4-2","labels":["wf-artifact"]},"result":{"ok":true}}
+{"seq":5,"surface":"tracker","op":"set_status","args":{"id":"FAKE-4-2","status":"Done"},"result":{"ok":true}}

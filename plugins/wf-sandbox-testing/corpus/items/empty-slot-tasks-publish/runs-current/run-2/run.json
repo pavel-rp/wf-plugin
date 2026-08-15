@@ -1,0 +1,11 @@
+{
+  "task": "/wf:tasks FAKE-5",
+  "skill": "/wf:tasks FAKE-5",
+  "fixture": "tasks-empty-slot-publish",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-tasks-etp", "plugin_build": "fp-current-tasks-9f4b12", "cli_version": "claude 1.0.0", "run": "fp-etp-cur-r2" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "current build, tasks.publish resolved {status: unfilled} — no capability contributes the slot"
+}
