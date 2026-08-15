@@ -1,0 +1,1 @@
+{"seq":1,"surface":"tracker","op":"create_child","slot":"implement.start","args":{"parent":"BARE-1","title":"Execution: Demo work item"},"response":null,"error":"no capability owns the `tracker` surface (state: unconfigured) — the inline default for implement.start attempted a tracker call in a bare-core registry"}

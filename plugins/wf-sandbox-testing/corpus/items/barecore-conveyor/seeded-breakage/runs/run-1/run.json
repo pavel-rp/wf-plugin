@@ -1,0 +1,21 @@
+{
+  "task": "/wf:spec BARE-1 -> /wf:plan BARE-1 -> /wf:tasks BARE-1 -> /wf:implement BARE-1",
+  "skill": "/wf:spec BARE-1 -> /wf:plan BARE-1 -> /wf:tasks BARE-1 -> /wf:implement BARE-1",
+  "fixture": "barecore-conveyor",
+  "plugin_source": "seeded-breakage",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-barecore", "plugin_build": "fp-barecore-seeded-9b3c04", "cli_version": "claude 1.0.0", "run": "fp-bcc-seed-r1" },
+  "registry": { "capability_rows": 0, "delivery_state": "unconfigured", "tracker_state": "unconfigured" },
+  "slot_resolutions": [
+    { "slot": "spec.questions",      "status": "unfilled", "executed": "inline-default" },
+    { "slot": "spec.publish",        "status": "unfilled", "executed": "inline-default" },
+    { "slot": "plan.publish",        "status": "unfilled", "executed": "inline-default" },
+    { "slot": "tasks.publish",       "status": "unfilled", "executed": "inline-default" },
+    { "slot": "implement.start",     "status": "unfilled", "executed": "inline-default-emitted-tracker-call" },
+    { "slot": "implement.milestone", "status": "unfilled", "executed": "inline-default" },
+    { "slot": "implement.finish",    "status": "unfilled", "executed": "not-reached" }
+  ],
+  "run": { "exit_code": 1, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "error",
+  "reason": "SEEDED BREAKAGE — implement.start's inline default attempted a tracker `create_child` in a bare-core registry. The op log records the attempted tracker-surface op and the conveyor errored out, so the run fails BOTH the zero-tracker-call assertion and the zero-errors assertion. This is the negative control proving check_barecore can actually observe a tracker call rather than passing vacuously."
+}

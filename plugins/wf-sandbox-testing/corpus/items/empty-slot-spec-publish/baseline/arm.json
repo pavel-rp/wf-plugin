@@ -9,7 +9,17 @@
     "fingerprint": "fp-preslot-spec-b4d7e1"
   },
   "runs": [
-    { "dir": "runs/run-1", "fingerprint": "fp-esp-base-r1" },
-    { "dir": "runs/run-2", "fingerprint": "fp-esp-base-r2" }
-  ]
+    {
+      "dir": "runs/run-1",
+      "fingerprint": "fp-esp-base-r1"
+    },
+    {
+      "dir": "runs/run-2",
+      "fingerprint": "fp-esp-base-r2"
+    }
+  ],
+  "provenance": {
+    "path": "canned",
+    "reason": "Docker and CLAUDE_CODE_OAUTH_TOKEN are both absent in the authoring/CI environment (the same constraint WF-345/WF-346/WF-347 hit), so the pinned pre-slot build was not re-installed and executed in a live container. The run bytes are shaped exactly like the WF-345 runner output tree; runner/run-skill.sh regenerates them from the real pinned build when a container and token are available, and the comparison re-runs unchanged. Disclosed in this item .md under \"Canned-vs-real disclosure\"."
+  }
 }

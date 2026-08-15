@@ -43,7 +43,9 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 12 | empty-slot invariant — `implement.milestone` (the first `append` point) | comparison (per declared slot) | SMOKE | `implement.milestone` (`plugins/wf/skills/implement/interface.md` → `## Slots`; marker in `implement/SKILL.md` Phase 2.5) | **WF-408** — "SUB-3: mirror the implement phase via three lifecycle slots"; the **only `append`-policy composition point** in the charter, so its seeded arm asserts registry-ordered concatenation of two contributions rather than the single-author `replace` shape; **C021 (WF-405)**; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 | 13 | empty-slot invariant — `implement.finish` | comparison (per declared slot) | SMOKE | `implement.finish` (`plugins/wf/skills/implement/interface.md` → `## Slots`; marker in `implement/SKILL.md` Phase 5.5) | **WF-408** — "SUB-3: mirror the implement phase via three lifecycle slots"; it fires mid-conveyor, so its fill moves an external record to a **non-terminal** state and the unfilled case is the clean control for that; **C021 (WF-405)**; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 
-All thirteen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+| 14 | bare-core conveyor — zero tracker calls, zero errors, seven unfilled slots | absolute assertion (zero-tolerance, no variance ceiling) | SMOKE | `barecore-conveyor` — the full `spec → plan → tasks → implement` conveyor in a registry with **zero capability rows** (both provider surfaces `unconfigured`) | **WF-414** — "SUB-5: prove and lock the ×7 bare-core empty-slot invariant"; **C021 (WF-405) OUT-4** ("works identically, locally, zero tracker traffic"); the empty-slot invariant of **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
+
+All fourteen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
@@ -51,7 +53,51 @@ decision 1). Items 3–5 are the C014 watch-list items retrofit by **WF-348**; i
 the WF-347 corpus core; items 7–8 are the per-slot arms **WF-406** owes for the two `spec`
 slots it declares; items 9–10 are the per-slot arms **WF-407** owes for the `plan` and
 `tasks` publish slots it declares; items 11–13 are the per-slot arms **WF-408** owes for the
-three `implement` lifecycle slots it declares.
+three `implement` lifecycle slots it declares. Item 14 is the bare-core arm **WF-414** adds — the
+one configuration items 1 and 7–13 structurally cannot cover, because every one of their arms runs
+in the `demo-fake` fixture where `fake` owns **both** provider surfaces and their `runs-current` op
+logs genuinely contain tracker records.
+
+### Why item 14 is not a duplicate of items 1 and 7–13
+
+Items 1 and 7–13 compare an unfilled slot against a **pinned pre-slot baseline with a tracker
+registered**, under an `ops_invoked` variance ceiling of **`0.34`** ("one outlier in a 3-run set
+tolerated"). Two consequences make them unable to carry C021 OUT-4:
+
+1. **They assert equivalence, not absence.** A no-op inline default emitting a tracker call on a
+   *minority* of runs is classified **drift**, not regression, and passes. "Zero tracker calls" is
+   not expressible as a variance threshold.
+2. **They never exercise the unconfigured-surface path.** Bare core is a distinct code path —
+   `state: unconfigured` on both surfaces — with its own documented degradation in every conveyor
+   skill body.
+
+Item 14 is therefore **additive and absolute**: it calls `assert/compare.sh` not at all, and one
+tracker-surface record anywhere in its run set is a hard failure. Its seeded-breakage set is the
+negative control proving the detector can observe a tracker call rather than passing vacuously.
+
+## Per-arm canned-vs-real disclosure ledger
+
+Charter OUT-3 requires each arm to state which path produced it, so a reviewer knows exactly what
+each arm proves. `run.sh`'s `check_disclosure` audits this mechanically: every `arm.json` carries
+`provenance: { path, reason }` with `path` ∈ {`canned`, `real`}, and every item carries the paired
+prose section. **All nine arms are `canned`** — zero real containerized arms exist in this
+environment, and none is claimed.
+
+| Arm | Item | Path | Why not a live run |
+|-----|------|------|--------------------|
+| `empty-slot-ship-review/baseline` | 1 | **canned** | Docker + `CLAUDE_CODE_OAUTH_TOKEN` both absent (the WF-345/346/347 constraint) |
+| `empty-slot-spec-questions/baseline` | 7 | **canned** | as above |
+| `empty-slot-spec-publish/baseline` | 8 | **canned** | as above |
+| `empty-slot-plan-publish/baseline` | 9 | **canned** | as above |
+| `empty-slot-tasks-publish/baseline` | 10 | **canned** | as above |
+| `empty-slot-implement-start/baseline` | 11 | **canned** | as above |
+| `empty-slot-implement-milestone/baseline` | 12 | **canned** | as above |
+| `empty-slot-implement-finish/baseline` | 13 | **canned** | as above |
+| `barecore-conveyor` | 14 | **canned** | Docker + token absent, **and** the installed plugin cache is `wf` 0.87.0 while the seven slots live in 0.93.0 — skills execute from the installed cache, so a live conveyor would have exercised a **pre-slot** build in which the `<!-- wf:slot … -->` markers do not exist, observing no slot resolution at all while appearing authoritative |
+
+When Docker, a token, and a current-build install are available, `runner/run-skill.sh` regenerates
+any of these sets and the assertions re-run **unchanged** — only the provenance of the run bytes
+changes, never the assertion machinery.
 
 ## Subsumption record
 
@@ -132,6 +178,20 @@ implement.finish     (plugins/wf/skills/implement/interface.md → ## Slots; mar
 multiple contributions. The enumeration itself is policy-blind — it asserts one arm per declared
 slot regardless of merge policy — so the distinction lives in the item, not in `run.sh`.
 
+The same enumeration also drives item 14's bare-core coverage: `barecore-conveyor/arm.json`
+declares `slots_covered` (the seven conveyor slots) and `slots_exempt`, and `check_barecore`
+asserts their union equals the enumerated declared-slot set — so a newly declared slot appearing
+in neither list fails there too. Exactly one slot is exempt: **`ship.review`**, because it is
+declared in `/wf:ship` Phase 4.5 and `/wf:ship` Phase 1 **requires** a delivery provider,
+hard-stopping with `SHIP — Blocked` before Phase 4.5 ever resolves the slot. It is therefore
+unreachable in bare core by `/wf:ship`'s own documented contract, not by omission — and its
+unfilled behavior stays covered by item 1. Every exemption must carry a non-empty reason, so an
+exemption cannot become a hiding place.
+
+**The arm-less failure is itself tested.** `check_armless_meta` (WF-414) runs the same enumeration
+and arm lookup against a synthetic declared slot in a temp tree and asserts it is reported
+arm-less — a guard nobody has watched go red is indistinguishable from a guard that cannot.
+
 `run.sh`'s enumeration step re-derives this set from the source at run time and asserts one
 baseline-comparison item per declared slot, so a newly-declared slot with no empty-slot arm
 fails the suite loudly rather than going silently unchecked — which is exactly how items 7–8,
@@ -163,6 +223,10 @@ spec-time threshold decision the later arms inherit unchanged.
 | `items/empty-slot-implement-milestone/` | item 12 (WF-408): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (**two** contributions to the same `append` point, both running in registry order at every checkpoint) |
 | `items/empty-slot-implement-finish/` | item 13 (WF-408): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that consolidates the execution record and moves it to a non-terminal review state) |
 | `fixtures/host-lifecycle/` | item 6 (WF-432): deterministic no-egress host availability signatures and a 14-scenario `expose`/`augment`/`seed`/`fixture` lifecycle; byte-tree restoration is checked after success and failure |
+| `items/barecore-conveyor/item.md` | item 14 (WF-414) spec: what bare core means here, why the eight per-slot arms cannot cover it, the slot-coverage/exemption record, and the canned-vs-real disclosure |
+| `items/barecore-conveyor/arm.json` | the bare-core arm: registry state, `slots_covered` / `slots_exempt` (each exemption reasoned), run fingerprints, and machine-readable `provenance` |
+| `items/barecore-conveyor/runs-current/` | the 3-run bare-core conveyor set — present-but-empty op logs (zero provider ops of any surface), all seven covered slots `unfilled` on their no-op inline defaults |
+| `items/barecore-conveyor/seeded-breakage/runs/` | the negative control: `implement.start`'s inline default attempts a tracker `create_child`, tripping both the zero-call and the zero-error assertions |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, and the coverage-ledger audit (CI entrypoint) |
 | `README.md` | authoring reference (never read at runtime) |
