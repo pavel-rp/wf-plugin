@@ -109,6 +109,34 @@ Reached by calling the bundled `wf-resolver` MCP tool `resolve_provider({ worksp
 
 ---
 
+## Phase 1.5: Execution-Start Announcement
+
+This is the declared `implement.start` composition point — reached **after** the branch gate has
+cleared and **before** STEP-001 runs, so anything attached here fires exactly once, at the moment
+this phase genuinely begins doing work. Resolve it lazily with **one** call:
+`resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: implement`, `point: start`.
+Act on the typed outcome — never improvise an announcement at this marker:
+
+- **`{status: unfilled}`** (no slot contribution registered and no personal
+  `_local/slots/implement.start.md` override) → execute **exactly** the inline-default region below,
+  then continue to Phase 2.
+- **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content`
+  as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale),
+  then continue to Phase 2.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not
+  improvise: run the inline-default region below and state the resolver's reason. Follow the content
+  surface's degradation discipline — never a wrong-path body, never a raw-read fall-through.
+
+A failure at this point never blocks execution: the plan is already approved and the work proceeds
+regardless of whether anything is attached here.
+
+<!-- wf:slot implement.start -->
+Nothing is announced anywhere. Execution simply begins — no external record is opened, updated, or
+annotated, and no operation of any kind is emitted at this point. Proceed to Phase 2.
+<!-- wf:slot-end implement.start -->
+
+---
+
 ## Phase 2: STEP-001 Gate (Always Enforced)
 
 STEP-001 is always "Read affected files and confirm approach."
@@ -128,6 +156,53 @@ STEP-001 is always "Read affected files and confirm approach."
 ```markdown
 > ⚠️ Task already implemented as of YYYY-MM-DD. Confirmed by: [what you observed]. No implementation needed.
 ```
+
+---
+
+## Phase 2.5: Checkpoint Announcements
+
+This is the declared `implement.milestone` composition point. Unlike every other point in this
+skill it is reached **repeatedly** within one run — once at each of the five defined checkpoints
+below, as that checkpoint is reached, never batched at the end:
+
+| # | Checkpoint | Reached when |
+|---|------------|--------------|
+| **1** | approach confirmed | STEP-001's gate has been ticked — the affected files are read and the approach judged sound (Phase 2) |
+| **2** | plan step completed | a step after STEP-001 is ticked, or halts unfinished — fires **once per such step** (Phase 3) |
+| **3** | verification run | the plan's verification command has run and its result is known (Phase 4, step 4a) |
+| **4** | acceptance criteria resolved | every "Done When" criterion has been recorded as met or unmet (Phase 4, step 4b) |
+| **5** | handoff checks complete | the scope-confinement guard has run and the work is ready for review (Phase 5) |
+
+Checkpoint 2 is the repeating one, which is why this point's merge policy is **`append`**: a single
+run reaches this marker many times, and the contributions **accumulate** into one running record
+rather than each superseding the last.
+
+At **each** checkpoint, resolve the point with **one** call:
+`resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: implement`, `point: milestone`
+— one call per checkpoint reached, carrying which checkpoint it is and what was observed. Act on
+the typed outcome — never improvise an announcement at this marker:
+
+- **`{status: unfilled}`** (no slot contribution registered and no personal
+  `_local/slots/implement.milestone.md` override) → execute **exactly** the inline-default region
+  below, then continue the phase.
+- **`{status: composed, content, policy, …}`** → one or more fills are registered. Because this
+  point's policy is **`append`**, the resolver has already concatenated **every** contribution in
+  **registry order** with any personal override last, and serves the result as a single body —
+  **follow the served `content` as prose** in this skill's own context, in the order served. Do not
+  re-order it, do not select among the parts, and do not drop any: composition is the resolver's
+  job, and the whole served body applies at this checkpoint.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not
+  improvise: run the inline-default region below and state the resolver's reason. Follow the content
+  surface's degradation discipline — never a wrong-path body, never a raw-read fall-through.
+
+A failure at any checkpoint never blocks execution and never un-ticks a step: the plan's checkboxes
+remain the run's durable progress record either way, and a later checkpoint still fires normally.
+
+<!-- wf:slot implement.milestone -->
+Nothing is announced anywhere. The checkpoint is reached and execution continues — no external
+record is opened, updated, or annotated, and no operation of any kind is emitted at this point. The
+plan's own checkboxes and step notes remain the only progress record this phase produces.
+<!-- wf:slot-end implement.milestone -->
 
 ---
 
@@ -215,6 +290,34 @@ Tick the final step checkbox and add a ready-for-review note:
 
 > Ready for review. Audit against spec with `/wf:verify-spec <id>`, QA it with `/wf:qa-gen <id>` then `/wf:qa-auto <id>` (or `/wf:qa-run <id>`), or ship it: `/wf:commit <id> --push` then `/wf:pr <id>` (or commit manually).
 ```
+
+---
+
+## Phase 5.5: Execution-End Announcement
+
+This is the declared `implement.finish` composition point — reached **after** the handoff checks
+have run and the final step is ticked, so the work being announced is finished and its outcome is
+known, and **before** the completion report is emitted. Resolve it lazily with **one** call:
+`resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: implement`, `point: finish`.
+Act on the typed outcome — never improvise an announcement at this marker:
+
+- **`{status: unfilled}`** (no slot contribution registered and no personal
+  `_local/slots/implement.finish.md` override) → execute **exactly** the inline-default region below,
+  then emit the Phase 6 completion report.
+- **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content`
+  as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale),
+  then emit the Phase 6 completion report.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not
+  improvise: run the inline-default region below and state the resolver's reason. Follow the content
+  surface's degradation discipline — never a wrong-path body, never a raw-read fall-through.
+
+A failure here never invalidates the work: the source changes are already made, the plan's
+checkboxes are already ticked, and the completion report is emitted unchanged either way.
+
+<!-- wf:slot implement.finish -->
+Nothing is announced anywhere. Execution simply ends — no external record is opened, updated, or
+annotated, and no operation of any kind is emitted at this point. Proceed to the completion report.
+<!-- wf:slot-end implement.finish -->
 
 ---
 

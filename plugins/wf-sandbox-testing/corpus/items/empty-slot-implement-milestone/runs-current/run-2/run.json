@@ -1,0 +1,11 @@
+{
+  "task": "/wf:implement FAKE-7",
+  "skill": "/wf:implement FAKE-7",
+  "fixture": "implement-empty-slot-milestone",
+  "plugin_source": "current",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-implement-eim", "plugin_build": "fp-current-implement-7c2d90", "cli_version": "claude 1.0.0", "run": "fp-eim-cur-r2" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "current build, implement.milestone resolved {status: unfilled} at every checkpoint — no capability contributes the slot, so the append policy has nothing to concatenate"
+}

@@ -1,0 +1,11 @@
+{
+  "task": "/wf:implement FAKE-6",
+  "skill": "/wf:implement FAKE-6",
+  "fixture": "implement-empty-slot-start",
+  "plugin_source": "current+seeded-fill",
+  "cli_version": "claude 1.0.0",
+  "fingerprints": { "fixture": "fp-fixture-implement-eis", "plugin_build": "fp-seeded-implement-start-fill-9b21", "cli_version": "claude 1.0.0", "run": "fp-eis-seed-r1" },
+  "run": { "exit_code": 0, "transcript": "transcript.jsonl", "transcript_parseable": true, "workspace_snapshot": "workspace-snapshot" },
+  "verdict": "ok",
+  "reason": "SEEDED BREAKAGE: implement.start resolved {status: composed} and opened an execution child record, moving it and its umbrella into progress — the empty-slot invariant must diverge against the pre-slot baseline"
+}

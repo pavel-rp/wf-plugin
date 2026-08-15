@@ -165,6 +165,58 @@ carries none, which is what keeps all of a task's artifacts under one umbrella i
 minting a second. The distinct per-artifact keys are what make three fills coexist without ever
 touching the same field of the same item.
 
+## The three `implement` lifecycle fills (WF-408, charter C021)
+
+WF-408 completes the mirror across the conveyor's longest and previously most tracker-silent
+phase. Three fills target `/wf:implement`'s declared points: `fragments/implement-start.md`
+(`implement.start`, `replace`), `fragments/implement-milestone.md` (`implement.milestone`,
+**`append`**) and `fragments/implement-finish.md` (`implement.finish`, `replace`). They reuse every
+convention above unchanged — the same umbrella resolution order, read-back guard discipline,
+best-effort label, and zero-contract-extension rule.
+
+**Why the `Impl:` child is created at phase *entry*, not phase end.** The other artifact fills
+publish a finished document, so they fire after their artifact is written. This one is inverted on
+purpose: the whole point of the implement mirror is that a team can see work is *in flight*, so the
+record is opened In Progress before STEP-001 runs and only filled in at the end. `implement.finish`
+rewrites its placeholder description into the full Summary / Audit / Tests / Log document and marks
+it Done, which is why `implement.finish` must never create the record itself — a record that was
+never In Progress would misrepresent the very lifecycle the mirror exists to show.
+
+**Why the running log is a comment thread, not one edited comment.** The success criterion asks for
+entries "appended to the running implementation log, prior entries retained, not replaced." The
+tracker contract has **no comment-edit operation**, and WF-408 deliberately did not invent one. The
+`Impl:` child's comment thread *is* the running log: each checkpoint appends one comment via
+`post_comment` and earlier entries are never touched. `implement.finish` then consolidates every
+entry into the record's description `## Log` section via `update`, giving the same log a single
+readable-back surface without deleting or rewriting any comment. Both readings of "the running log"
+are satisfied with zero contract extension.
+
+**Why `implement.milestone` is the set's only `append` point.** It is the only point reached more
+than once per run — once per checkpoint across the five `implement` defines, and checkpoint 2 fires
+once per plan step. Under `replace` only the last contributor would survive; under `append` the
+resolver concatenates every contribution in registry order (personal override last) and serves one
+body, so this fill coexists with any other capability's fill at the same checkpoint. Note what the
+policy does **not** mean: it governs how *contributions* compose, not how *firings* accumulate —
+each firing still appends exactly its own one entry, guarded by the per-checkpoint key list in
+`**Impl log:**` so a resumed run never double-posts a checkpoint an earlier session already logged.
+
+**Where each guard line lives.** All three record into `02_plan.md`, the artifact `implement`
+executes: `**Tracker umbrella:**` and `**Tracker impl item:**` (from `implement.start`),
+`**Impl log:**` (the comma-separated checkpoint keys already posted), and `**Impl finished:** done`
+(from `implement.finish`). `**Tracker impl item:**` is distinct from `plan.publish`'s
+`**Tracker plan item:**`, so the two fills coexist in the same file without ever touching the same
+field.
+
+**The `tf` reconciliation, in one place.** `tf` finalizes with `post_comment({task-id}, …)` and a
+terminal `set_status({task-id}, …)` on the umbrella. The implement fills are disjoint from both on
+three axes: they target the `Impl:` **child** (except for exactly two umbrella status calls), they
+set only **non-terminal** umbrella states (In Progress, then In Review), and they post **no**
+umbrella comment at all. They also never touch `09_finalize.md`'s `**Resolution comment:**` /
+`**Closed:**` guard lines, so `tf` re-derives its behaviour unchanged. The three umbrella
+transitions are strictly ordered in time and disjoint in value — which is why WF-408 required **no
+change to `tf`**. A future fill that wants to comment on the umbrella at phase end must reconcile
+with `tf` first; that is the charter's named failure case.
+
 ## Version history
 
 - **WF-136** — second, independent tracker-provider capability, binding the contract's
@@ -189,3 +241,12 @@ touching the same field of the same item.
   the umbrella and marks it done; `fragments/tasks-publish.md` does the same for `03_tasks.md` as
   a `Tasks:` child. No tracker-contract extension; the comment-vs-child decision and the
   per-artifact guard keys are documented above.
+- **WF-408** (charter C021) — three further `slot` fills added, completing the conveyor mirror by
+  targeting `/wf:implement`'s declared `implement.start` (`replace`), `implement.milestone`
+  (**`append`** — the set's only one) and `implement.finish` (`replace`) composition points:
+  `fragments/implement-start.md` opens an `Impl:` child In Progress and moves the umbrella In
+  Progress; `fragments/implement-milestone.md` appends one log entry per checkpoint to that child's
+  comment thread; `fragments/implement-finish.md` rewrites the child's description into
+  Summary/Audit/Tests/Log, marks it Done, and moves the umbrella to In Review. No tracker-contract
+  extension — in particular no comment-edit operation was added, which is why the running log is a
+  comment thread. The `tf` reconciliation is documented above; `tf` itself required no change.

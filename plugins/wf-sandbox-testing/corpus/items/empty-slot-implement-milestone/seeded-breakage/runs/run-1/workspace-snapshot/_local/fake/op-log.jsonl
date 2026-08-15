@@ -1,0 +1,11 @@
+{"seq":1,"surface":"delivery","op":"current-branch-query","args":{},"result":"feature/FAKE-7-demo-work-item"}
+{"seq":2,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"approach","contributor":"cap-general"},"result":{"ok":true}}
+{"seq":3,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"approach","contributor":"cap-specific"},"result":{"ok":true}}
+{"seq":4,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"step-002","contributor":"cap-general"},"result":{"ok":true}}
+{"seq":5,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"step-002","contributor":"cap-specific"},"result":{"ok":true}}
+{"seq":6,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"verify","contributor":"cap-general"},"result":{"ok":true}}
+{"seq":7,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"verify","contributor":"cap-specific"},"result":{"ok":true}}
+{"seq":8,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"criteria","contributor":"cap-general"},"result":{"ok":true}}
+{"seq":9,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"criteria","contributor":"cap-specific"},"result":{"ok":true}}
+{"seq":10,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"handoff","contributor":"cap-general"},"result":{"ok":true}}
+{"seq":11,"surface":"tracker","op":"post_comment","args":{"id":"FAKE-7-4","checkpoint":"handoff","contributor":"cap-specific"},"result":{"ok":true}}

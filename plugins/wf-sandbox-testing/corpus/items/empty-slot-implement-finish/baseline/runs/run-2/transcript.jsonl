@@ -1,0 +1,4 @@
+{"type":"system","subtype":"init","session_id":"eif-base-r2","cwd":"/workspace","tools":["Read","Write","Edit","Glob","Grep","Bash","Skill"],"model":"fake-model-a"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Scope-confinement guard clean; listed the files for the user to stage and moved straight to the completion report."}]},"session_id":"eif-base-r2"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"IMPLEMENT — Complete\n\nFAKE-8 — Demo work item\nSteps completed: 3/3\nStatus: READY FOR REVIEW (not committed)\nVerification: PASS\nDone When: \"The helper is exported, the call site uses it, and the demo build passes.\"\nChanged files:\n- demo/helper.ts\n- demo/site.ts\n\nNext:  /wf:verify-spec FAKE-8"}]},"session_id":"eif-base-r2"}
+{"type":"result","subtype":"success","is_error":false,"session_id":"eif-base-r2","num_turns":2,"duration_ms":24310}
