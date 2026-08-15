@@ -199,6 +199,20 @@ then items 9–10, then items 11–13 came to be owed. Each item's `item.md` car
 baseline-arm provenance; `items/empty-slot-ship-review/item.md` holds the original named
 spec-time threshold decision the later arms inherit unchanged.
 
+**Slots the runner cannot reach are exempted, not faked.** The enumeration reads every plugin's
+skill bodies, so it also picks up slots declared on skills that are **off** the SDD conveyor the
+runner drives — the first being `new-skill.constraints` (WF-363), declared on the interactive
+`/wf-author-caps:new-skill` scaffolder, which takes no task id and cannot be invoked by the
+runner. No arm could observe such a slot, and inventing one would violate the corpus's founding
+rule that assertions are born from observations, never speculation. `corpus/slot-exemptions.json`
+records those slots with a per-slot reason; checks 2 (SLOT ENUM), 4 (ARM RECORD), and 10 (ARMLESS
+META) subtract them from the **arm** requirement only. The list cannot become a hiding place:
+check 2 fails an exemption with an empty reason, fails one naming a slot that is not declared,
+and fails one whose slot *does* have a corpus item (a stale entry) — and check 9 (BARE CORE)
+still requires every declared slot, exempt or not, to appear in the bare-core arm's own
+`slots_covered`/`slots_exempt`. The inertness of an exempted slot is asserted at the resolver
+instead: `resolve_content({class: "slot", …})` returning `{status: "unfilled"}`.
+
 ## Files
 
 | Path | Role |
@@ -229,4 +243,5 @@ spec-time threshold decision the later arms inherit unchanged.
 | `items/barecore-conveyor/seeded-breakage/runs/` | the negative control: `implement.start`'s inline default attempts a tracker `create_child`, tripping both the zero-call and the zero-error assertions |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, and the coverage-ledger audit (CI entrypoint) |
+| `slot-exemptions.json` | declared slots deliberately carrying no per-slot arm, each with the reason no runner arm can reach them (WF-363) |
 | `README.md` | authoring reference (never read at runtime) |

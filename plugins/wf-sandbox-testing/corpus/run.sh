@@ -48,6 +48,7 @@ REPO_ROOT="$(cd "$PACK_DIR/../.." && pwd)"
 ASSERT="$PACK_DIR/assert"
 MANIFEST="$CORPUS_DIR/manifest.md"
 ITEMS="$CORPUS_DIR/items"
+SLOT_EXEMPTIONS="$CORPUS_DIR/slot-exemptions.json"
 MAXVAR="0.34"   # the governing comparison ceiling — the named per-family threshold decision (item.md)
 
 fail=0
@@ -102,6 +103,17 @@ declared_slots_in() {
 
 declared_slots() { declared_slots_in "$REPO_ROOT"; }
 
+exempt_slots() {
+  # The slots deliberately carrying no per-slot corpus item, read from the single reason-bearing
+  # exemption list (corpus/slot-exemptions.json). A slot lands there only when the declaring skill
+  # is off the SDD conveyor the runner drives, so no arm could observe it and a fabricated one
+  # would violate "observations, never speculation". Subtracted from the arm requirement ONLY —
+  # check 9's bare-core slot-set accounting still enumerates every declared slot.
+  jq -r '.exempt[]?.slot // empty' "$SLOT_EXEMPTIONS" 2>/dev/null | grep -v '^$' | LC_ALL=C sort -u
+}
+
+is_exempt_slot() { printf '%s\n' "$(exempt_slots)" | grep -qxF "$1"; }
+
 slot_item_dir() {
   # ship.review -> items/empty-slot-ship-review
   printf '%s/empty-slot-%s' "$ITEMS" "$(printf '%s' "$1" | tr '.' '-')"
@@ -114,6 +126,7 @@ armless_slots() {
   local slot
   while IFS= read -r slot; do
     [ -n "$slot" ] || continue
+    is_exempt_slot "$slot" && continue
     [ -d "$(slot_item_dir "$slot")" ] || printf '%s\n' "$slot"
   done <<< "$(declared_slots_in "$1")"
 }
@@ -122,8 +135,23 @@ check_slot_enum() {
   local before=$fail slot dir count=0
   local slots; slots="$(declared_slots)"
   [ -n "$slots" ] || { err "slot-enum: no declared slots found in source — the enumeration is broken (expected at least ship.review)"; return; }
+  # Exemptions first: each must carry a non-empty reason (an unexplained exemption is a hiding
+  # place), and must NOT also have a corpus item (a stale exemption silently weakens the gate).
+  local exempt bad_reason stale=""
+  exempt="$(exempt_slots)"
+  bad_reason="$(jq -r '[.exempt[]? | select((.reason // "") == "") | .slot] | join(" ")' "$SLOT_EXEMPTIONS" 2>/dev/null)"
+  [ -z "$bad_reason" ] || err "slot-enum: exempt slot(s) [$bad_reason] carry no reason — an exemption must state why no arm can observe the slot"
   while IFS= read -r slot; do
     [ -n "$slot" ] || continue
+    printf '%s\n' "$slots" | grep -qxF "$slot" || stale="$stale $slot"
+    [ -d "$(slot_item_dir "$slot")" ] && stale="$stale $slot(has-item)"
+  done <<< "$exempt"
+  [ -z "$stale" ] || err "slot-enum: stale exemption(s)$stale in corpus/slot-exemptions.json — an exemption whose slot is undeclared, or which does have a corpus item, must be removed"
+
+  local n_exm=0
+  while IFS= read -r slot; do
+    [ -n "$slot" ] || continue
+    if is_exempt_slot "$slot"; then n_exm=$((n_exm+1)); continue; fi
     count=$((count+1))
     dir="$(slot_item_dir "$slot")"
     [ -d "$dir" ] || { err "slot-enum: declared slot '$slot' has NO empty-slot corpus item at ${dir#$REPO_ROOT/}"; continue; }
@@ -131,7 +159,7 @@ check_slot_enum() {
     [ -d "$dir/runs-current" ]      || err "slot-enum: '$slot' item missing runs-current/"
     [ -d "$dir/seeded-breakage/runs" ] || err "slot-enum: '$slot' item missing seeded-breakage/runs/"
   done <<< "$slots"
-  [ "$fail" = "$before" ] && ok "slot-enum: $count declared slot(s) [$(printf '%s' "$slots" | tr '\n' ' ')] each have a per-slot empty-slot corpus item (per declared slot, not one global)"
+  [ "$fail" = "$before" ] && ok "slot-enum: $count declared slot(s) each have a per-slot empty-slot corpus item, $n_exm reason-bearing exemption(s) [$(printf '%s' "$exempt" | tr '\n' ' ')] (per declared slot, not one global)"
 }
 
 # ---------------------------------------------------------------------------
@@ -172,6 +200,10 @@ check_arm_record() {
   local slots; slots="$(declared_slots)"
   while IFS= read -r slot; do
     [ -n "$slot" ] || continue
+    # A slot carrying a reason-bearing entry in slot-exemptions.json has no arm by design
+    # (check 2 owns that list and fails a stale entry); demanding its arm record here would
+    # re-impose the requirement check 2 deliberately waived.
+    is_exempt_slot "$slot" && continue
     dir="$(slot_item_dir "$slot")"; arm="$dir/baseline/arm.json"
     [ -f "$arm" ] || { err "arm[$slot]: baseline/arm.json missing"; continue; }
     pf="$(jq -r '.pinned_build.fingerprint // empty' "$arm" 2>/dev/null)"
