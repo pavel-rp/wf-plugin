@@ -37,14 +37,17 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 6 | host availability and reversible teardown | deterministic fixture assertion | SMOKE | qa-auto contract/model signatures plus an executed registered-host 14-operation-scenario lifecycle | **WF-432** — “Make host-dependent QA executable or fail fast”, STEP-006. |
 | 7 | empty-slot invariant — `spec.questions` | comparison (per declared slot) | SMOKE | `spec.questions` (`plugins/wf/skills/spec/interface.md` → `## Slots`; marker in `spec/SKILL.md` Phase 2 step 2) | **WF-406** — "SUB-1: mirror the spec phase to the tracker via two slots"; the per-declared-slot arm the enumeration in `run.sh` requires the moment a slot is declared; **C014 (WF-322)** empty-slot invariant; **C016 (WF-343) OUT-6(a)**. |
 | 8 | empty-slot invariant — `spec.publish` | comparison (per declared slot) | SMOKE | `spec.publish` (`plugins/wf/skills/spec/interface.md` → `## Slots`; marker in `spec/SKILL.md` Phase 4) | **WF-406** — "SUB-1: mirror the spec phase to the tracker via two slots"; the highest-consequence of the three declared slots (its fill performs creating writes), so its unfilled case is asserted silent; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
+| 9 | empty-slot invariant — `plan.publish` | comparison (per declared slot) | SMOKE | `plan.publish` (`plugins/wf/skills/plan/interface.md` → `## Slots`; marker in `plan/SKILL.md` Phase 3) | **WF-407** — "SUB-2: mirror the plan and tasks phases via two publish slots"; the per-declared-slot arm `run.sh`'s enumeration requires the moment a slot is declared; its fill performs creating writes, so the unfilled case is asserted silent; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
+| 10 | empty-slot invariant — `tasks.publish` | comparison (per declared slot) | SMOKE | `tasks.publish` (`plugins/wf/skills/tasks/interface.md` → `## Slots`; marker in `tasks/SKILL.md` Phase 5) | **WF-407** — "SUB-2: mirror the plan and tasks phases via two publish slots"; the decomposition it publishes is a list, so the unfilled case is asserted to emit **zero** records rather than "one fewer than the fill would"; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 
-All eight items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+All ten items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
 decision 1). Items 3–5 are the C014 watch-list items retrofit by **WF-348**; items 1–2 are
 the WF-347 corpus core; items 7–8 are the per-slot arms **WF-406** owes for the two `spec`
-slots it declares.
+slots it declares; items 9–10 are the per-slot arms **WF-407** owes for the `plan` and
+`tasks` publish slots it declares.
 
 ## Subsumption record
 
@@ -106,18 +109,21 @@ Item 1 is asserted **per declared slot**, not once globally. The declared-slot s
 mechanically from the resolver's per-slot surface — a skill declares its slots in its
 `interface.md` `## Slots` table and marks them with a `<!-- wf:slot <skill>.<point> -->`
 body-marker pair (WF-329). At WF-347 implementation time the entire marketplace tree declared
-exactly one slot (`ship.review`); **WF-406** declares two more, so the set is now:
+exactly one slot (`ship.review`); **WF-406** declares two more and **WF-407** two more again,
+so the set is now:
 
 ```
-ship.review      (plugins/wf/skills/ship/interface.md → ## Slots; marker in ship/SKILL.md Phase 4.5)
-spec.questions   (plugins/wf/skills/spec/interface.md → ## Slots; marker in spec/SKILL.md Phase 2 step 2)
-spec.publish     (plugins/wf/skills/spec/interface.md → ## Slots; marker in spec/SKILL.md Phase 4)
+ship.review      (plugins/wf/skills/ship/interface.md  → ## Slots; marker in ship/SKILL.md  Phase 4.5)
+spec.questions   (plugins/wf/skills/spec/interface.md  → ## Slots; marker in spec/SKILL.md  Phase 2 step 2)
+spec.publish     (plugins/wf/skills/spec/interface.md  → ## Slots; marker in spec/SKILL.md  Phase 4)
+plan.publish     (plugins/wf/skills/plan/interface.md  → ## Slots; marker in plan/SKILL.md  Phase 3)
+tasks.publish    (plugins/wf/skills/tasks/interface.md → ## Slots; marker in tasks/SKILL.md Phase 5)
 ```
 
 `run.sh`'s enumeration step re-derives this set from the source at run time and asserts one
 baseline-comparison item per declared slot, so a newly-declared slot with no empty-slot arm
 fails the suite loudly rather than going silently unchecked — which is exactly how items 7–8
-came to be owed. Each item's `item.md` carries the per-family variance thresholds and its own
+and then items 9–10 came to be owed. Each item's `item.md` carries the per-family variance thresholds and its own
 baseline-arm provenance; `items/empty-slot-ship-review/item.md` holds the original named
 spec-time threshold decision the later arms inherit unchanged.
 
@@ -139,6 +145,8 @@ spec-time threshold decision the later arms inherit unchanged.
 | `items/orphaned-override/` | item 5 (C014-4): `item.md` + `expect.json` + `fake-scripts.json`; `runs-current/` (override present, wins under `replace`) green; `seeded-breakage/` (override removed) red |
 | `items/empty-slot-spec-questions/` | item 7 (WF-406): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that posts the questions comment) |
 | `items/empty-slot-spec-publish/` | item 8 (WF-406): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the spec as a child record) |
+| `items/empty-slot-plan-publish/` | item 9 (WF-407): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the plan as a child record) |
+| `items/empty-slot-tasks-publish/` | item 10 (WF-407): `item.md` + `baseline/` (pinned pre-slot arm) + `runs-current/` (unfilled) + `seeded-breakage/` (a fill that publishes the decomposition as one child record) |
 | `fixtures/host-lifecycle/` | item 6 (WF-432): deterministic no-egress host availability signatures and a 14-scenario `expose`/`augment`/`seed`/`fixture` lifecycle; byte-tree restoration is checked after success and failure |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, and the coverage-ledger audit (CI entrypoint) |
