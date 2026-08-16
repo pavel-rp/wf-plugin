@@ -269,49 +269,22 @@ else
   fail=$((fail + 1))
 fi
 
-# --- WF-341: glossary vocabulary lint ----------------------------------------
-# The canonical authoring vocabulary lives in ../GLOSSARY.md; ../glossary-lint.sh
-# is its live consumer — it parses that file directly (no rule is transcribed into
-# the script) and fails authored prose that drifts from it, naming the file, the
-# offending term, and the canonical alternative. Only the --selftest is wired
-# here, and deliberately so: the charter's severity model is ON-TOUCH, so the
-# real-tree file set is computed by the PR gate (WF-342), not by this chain. The
-# self-test runs against its own fixture glossary (so a later edit to a live
-# GLOSSARY.md entry cannot silently delete the term it asserts on) plus a
-# smoke-parse of the REAL GLOSSARY.md — it scans zero real-tree files, so `main`
-# stays green while the seeded-violation catch stays proven on every PR.
-echo ""
-echo "=== Glossary vocabulary lint — fixture self-test (glossary-lint.sh --selftest) ==="
-if bash "$DIR/../glossary-lint.sh" --selftest; then
-  printf 'PASS: %s\n' "glossary lint self-test (seeded violation caught, clean sibling passes, real GLOSSARY.md parses)"
-  pass=$((pass + 1))
-else
-  printf 'FAIL: %s\n' "glossary lint self-test"
-  fail=$((fail + 1))
-fi
-
-# --- WF-342: on-touch scoping for the glossary gate --------------------------
-# WF-341 supplies the catch; ../glossary-on-touch.sh supplies the SCOPE — which
-# files the gate may fail on (touched + always added, never untouched). The gate
-# itself runs as a sibling step in .github/workflows/ci.yml, because the touched
-# set needs the PR base sha, workflow-level git context this chain cannot reach.
-# Its SCOPING is behaviour, not plumbing, so it is fixture-proven here like every
-# other resident guard: the self-test builds a throwaway repository, replays one
-# PR shape per assertion, and checks both directions — a PR touching no violator
-# passes while a pre-existing violator sits untouched in the same tree, and a
-# touched-into-violation or newly-added violating file hard-fails naming the term.
-# It also pins the charter's High risk: an empty touched set is treated as a
-# mis-computed diff (exit 2), never as a clean PR, so base-ref unavailability can
-# never surface as a vacuous green.
-echo ""
-echo "=== Glossary on-touch gate — scoping self-test (glossary-on-touch.sh --selftest) ==="
-if bash "$DIR/../glossary-on-touch.sh" --selftest; then
-  printf 'PASS: %s\n' "glossary on-touch scoping self-test (touched/added fail, untouched passes, empty set never passes vacuously)"
-  pass=$((pass + 1))
-else
-  printf 'FAIL: %s\n' "glossary on-touch scoping self-test"
-  fail=$((fail + 1))
-fi
+# --- WF-370 (C023 OUT-8): the glossary lints are NOT gated here any more -------
+# This chain used to carry two glossary blocks: `glossary-lint.sh --selftest`
+# (WF-341) and `glossary-on-touch.sh --selftest` (WF-342). They were the last two
+# of the five authoring-convention lint invocations C023 sheds from core; WF-369
+# shed the other three. Both scripts and their `glossary-fixtures/` corpus now live
+# at plugins/wf-core-authoring/capabilities/core-authoring/fixtures/, gated by that
+# pack's own `fixtures/run.sh` — which CI discovers by convention, so nothing was
+# added to the workflow for them.
+#
+# This chain is now purely CORE-STRUCTURAL, which is the point: core must validate
+# its own structure with ZERO PACKS PRESENT. Reaching across into a pack from here
+# would break that, so the blocks were SHED rather than re-pointed.
+#
+# `GLOSSARY.md` itself did not move — it stays at ../GLOSSARY.md, because
+# `wf-author-caps` is end-user-installable and consumes it there. What moved is the
+# LINTS, not the vocabulary.
 
 # --- WF-304 / WF-305 / WF-306 / WF-307 / WF-308: OUT-2 content-read acceptance --
 # (the COMPOSITE gate — all five content classes)

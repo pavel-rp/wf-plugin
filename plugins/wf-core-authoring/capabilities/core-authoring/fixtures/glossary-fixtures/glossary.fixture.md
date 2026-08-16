@@ -15,7 +15,22 @@ The three entries are chosen to exercise one discrimination each:
 |---|---|
 | `widget` | the plain catch — a forbidden synonym fires |
 | `dispatch is prefixed` | `except:` — a matching line is exempt and must stay silent |
-| `gizmo` | `applies-to:` — an `agent`-only entry must not fire on a skill body |
+| `gizmo` | `applies-to:` — an out-of-scope entry must not fire on this corpus |
+
+## `applies-to` is location-derived — re-anchored by WF-370
+
+`glossary-lint.sh` derives a file's document class from its **repo-relative path**. While this
+corpus lived at `plugins/wf/skills/_contracts/glossary-fixtures/` its files classified as
+`skill-body`; at its pack home under `plugins/wf-core-authoring/capabilities/…/` they classify as
+`capability` instead. The `applies-to` values below are therefore a location-derived path of the
+same class as the four in the scripts, and were re-anchored in the same move.
+
+Carried over verbatim, the `widget` entry would simply have stopped applying and the self-test's
+done-criterion ("the seeded violation is caught") would have gone **vacuously green** — a lint
+finding nothing because its rule no longer reaches the file, not because the file is clean. So
+`capability` was added to the two entries that must reach this corpus, and `gizmo` was deliberately
+left out of scope so its discrimination still holds. Every verdict is unchanged: the seeded
+violation is caught, the `except:`-exempt line stays silent, and the out-of-scope term stays silent.
 
 ## Entries
 
@@ -24,7 +39,7 @@ definition: The fixture's canonical noun; the seeded violation spells it wrong o
 avoid: wodget, wodgets
 pattern: wodgets?
 except: none
-applies-to: skill-body, agent
+applies-to: skill-body, capability, agent
 check: avoid-term
 evidence: glossary-fixtures/violation/SKILL.md — the seeded misspelling this entry exists to catch
 
@@ -33,7 +48,7 @@ definition: A fixture dispatch value carries an `inline:` or `subagent:` prefix;
 avoid: none
 pattern: dispatch: [a-z]+
 except: dispatch: (inline|subagent)
-applies-to: skill-body
+applies-to: skill-body, capability
 check: avoid-term
 evidence: glossary-fixtures/clean/SKILL.md — carries `dispatch: inline`, which the except: ERE must exempt
 

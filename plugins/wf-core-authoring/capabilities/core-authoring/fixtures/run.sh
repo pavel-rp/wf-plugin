@@ -15,11 +15,15 @@
 #    structural fixture exclusions live there once, for every check.
 # 3. Add its basename to the CHECKS list below. That is the whole registration.
 #
-# The list is ordered and open. WF-369 (SUB-8) has landed: it migrated the
+# A check whose real-tree gate is NOT a bare whole-tree scan goes in
+# SELFTEST_ONLY_CHECKS instead — see that list's own note. It is registered exactly
+# the same way, minus step 1's default mode.
+#
+# The list is ordered and open. WF-369 (SUB-8) landed first: it migrated the
 # ops-budget and slot-marker lints out of core into this same folder — deleting
 # the core copies and shedding their three `registry-fixtures/run.sh`
-# invocations — and appended their basenames below. WF-370 (SUB-9) is the next
-# contributor and moves the glossary pair the same way.
+# invocations — and appended their basenames below. WF-370 (SUB-9) completed the
+# five-block shed with the glossary pair, which register below as selftest-only.
 #
 # --- WHY EVERY CHECK RUNS ITS SELFTEST FIRST ---
 # A lint that scans a real tree and finds nothing is indistinguishable from a lint
@@ -46,12 +50,36 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUITE="core-authoring fixtures"
 
 # The ordered, open check list. One basename per line; append to extend.
+# Each runs twice: `--selftest`, then a bare live-tree scan.
 CHECKS="
 check-skill-name.sh
 check-skill-description.sh
 check-skill-body-length.sh
 check-ops-docs.sh
 skill-slot-marker-lint.sh
+"
+
+# --- SELFTEST-ONLY CHECKS (WF-370) -------------------------------------------
+# The same registration, minus the bare live-tree scan — for a check whose
+# real-tree gate is NOT a whole-tree scan and so cannot be invoked bare.
+#
+# Both glossary lints are that shape, and deliberately so. Their severity model is
+# ON-TOUCH: the gate may fail only on files a pull request touched or added, never
+# on untouched pre-existing prose. `glossary-lint.sh` therefore takes an EXPLICIT
+# file set and treats a bare zero-argument call as a usage error (exit 2) rather
+# than inheriting a whole-tree default that would contradict the model.
+# `glossary-on-touch.sh` computes that file set from the PR base sha — workflow-level
+# git context this chain cannot reach — so its real-tree gate runs as its own step
+# in .github/workflows/ci.yml, with `fetch-depth: 0`, and NOT from here.
+#
+# Running them bare in the live-tree loop would score a usage error as a failure and
+# redden the suite. Running only their selftests is not a weakening: each selftest
+# drives seeded fixtures that plant every violation it claims to catch, plus a
+# smoke-parse of the REAL plugins/wf/skills/_contracts/GLOSSARY.md, so a green here
+# still means "the catch is proven", exactly as the WHY-SELFTEST-FIRST note demands.
+SELFTEST_ONLY_CHECKS="
+glossary-lint.sh
+glossary-on-touch.sh
 "
 
 fail=0
@@ -106,12 +134,13 @@ if [ "$fail" -eq 0 ]; then echo "shape guard: PASS — exclusions are shape-base
 echo
 
 echo "=== $SUITE: selftests (each check drives its seeded fixtures) ==="
-for c in $CHECKS; do
+for c in $CHECKS $SELFTEST_ONLY_CHECKS; do
   run_one "$c" --selftest
 done
 
 if [ "${1:-}" != "--selftest" ]; then
   echo
+  # $SELFTEST_ONLY_CHECKS is deliberately absent here — see that list's note.
   echo "=== $SUITE: live tree ==="
   for c in $CHECKS; do
     run_one "$c"
