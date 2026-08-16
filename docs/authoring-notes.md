@@ -54,7 +54,7 @@ The rules these enforce are stated resident in `CLAUDE.md` §5; the mechanism is
 
 **On-touch PR gate.** `glossary-on-touch.sh` supplies that file set: it diffs against the PR's base commit, filters the touched set to the lint surface (`plugins/*/skills/**/*.md`, `plugins/*/capabilities/**/*.md`, `plugins/*/agents/*.md`, minus the structural exclusions), and lints exactly that. **A violation hard-fails on a file the PR touched, and always on a file it added; an untouched pre-existing violator never fails the gate.** When nothing touched is on the surface, the gate skips and passes; when the touched set comes back empty it fails loudly (so a shallow checkout can't silently disable it). It runs as its own step in `.github/workflows/ci.yml` (it needs the base sha, which the guard chain can't see); `registry-fixtures/run.sh` gates its scoping self-test.
 
-**Ops-doc budget.** `check-ops-docs.sh` enforces the ≤150-line runtime-read ops budget.
+**Ops-doc budget.** `check-ops-docs.sh` enforces the ≤150-line runtime-read ops budget. Since WF-369 it and `skill-slot-marker-lint.sh` are carried by the `wf-core-authoring` pack (`plugins/wf-core-authoring/capabilities/core-authoring/fixtures/`) and registered in that folder's own `run.sh`, which CI discovers by convention — core's `registry-fixtures/run.sh` no longer invokes either.
 
 **Sibling skill-read guard.** `out4-skill-read-guard.sh` (wired into the CI chain via `registry-fixtures/run.sh`) fails any PR reintroducing a filesystem-read *instruction* against a sibling skill body; its instruction-vs-prose classifier and false-positive exclusions are documented in the script header.
 

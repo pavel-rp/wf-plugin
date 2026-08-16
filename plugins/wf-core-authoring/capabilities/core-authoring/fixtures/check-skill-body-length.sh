@@ -16,7 +16,7 @@
 # It is also NOT the ops-doc budget. The ≤150-line ceiling on a runtime-read ops
 # doc is a DIFFERENT rule over a DIFFERENT target set (`_contracts/*.ops.md`, not
 # `SKILL.md`), and it is already owned and enforced elsewhere in this repository by
-# `plugins/wf/skills/_contracts/check-ops-docs.sh` GUARD 1. Do not add an ops-budget
+# its sibling `check-ops-docs.sh` GUARD 1 (next to this file since WF-369). Do not add an ops-budget
 # assertion here: two scripts asserting one budget is how the two drift apart.
 #
 # Target set + structural fixture exclusions + the deference rule: skill-targets.sh.

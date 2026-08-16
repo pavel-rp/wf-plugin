@@ -922,9 +922,11 @@ body by an HTML-comment **marker pair**, each marker **alone on its line**
   WF-327, out of scope here; WF-326 fixes only the shape and the unfilled
   behaviour.)
 
-**Mechanical enforcement.** `skill-slot-marker-lint.sh` (a sibling of
-`out1-grep.sh` / `out4-skill-read-guard.sh`, wired into `registry-fixtures/run.sh`)
-keeps body and declaration honest, each failure naming file + line:
+**Mechanical enforcement.** `skill-slot-marker-lint.sh` — since WF-369 carried by
+the `wf-core-authoring` pack at
+`plugins/wf-core-authoring/capabilities/core-authoring/fixtures/`, registered in
+that folder's own `run.sh` and discovered by CI by convention — keeps body and
+declaration honest, each failure naming file + line:
 
 - a **well-formed** marker matching a `## Slots` declaration passes;
 - a **malformed** marker (bad id grammar, wrong folder segment, not alone on its
@@ -936,7 +938,8 @@ keeps body and declaration honest, each failure naming file + line:
 
 The lint and this contract change **together** (CLAUDE.md §10): the marker grammar
 and declaration shape here are exactly what the lint enforces, and its
-`slot-marker-fixtures/` are the reviewable proof it discriminates. **No composed
+`slot-marker-fixtures/` (alongside the lint in the pack fixture folder named
+above) are the reviewable proof it discriminates. **No composed
 `SKILL.md` is ever materialized** — a slot is a marker in the one authored body,
 not a code-generated file.
 

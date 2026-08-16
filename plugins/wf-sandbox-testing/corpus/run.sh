@@ -92,8 +92,9 @@ check_provenance() {
 # ---------------------------------------------------------------------------
 declared_slots_in() {
   # Mechanical: the opening <!-- wf:slot skill.point --> markers in real skill bodies
-  # (<root>/plugins/*/skills/*/SKILL.md; the _contracts/slot-marker-fixtures live one level
-  # deeper and are not matched). This is the same declared-slot surface the resolver reads
+  # (<root>/plugins/*/skills/*/SKILL.md; the seeded slot-marker-fixtures/ live outside that
+  # glob — since WF-369 under the wf-core-authoring pack's fixtures/ — and are not matched).
+  # This is the same declared-slot surface the resolver reads
   # (WF-329). Parameterized on <root> so the WF-414 arm-less meta-check can run the SAME
   # enumeration against a synthetic tree instead of re-implementing it.
   grep -hoE '<!--[[:space:]]*wf:slot[[:space:]]+[a-z0-9-]+\.[a-z0-9-]+[[:space:]]*-->' \
