@@ -13,8 +13,8 @@ is not a detail of the current implementation — it is what each tool is *for*.
 
 **`preview_composition` renders off the already-resolved snapshot.** It reads the resolved capability
 records and the fragment rows the resolver already parsed out of them. It re-parses no manifest and
-re-reads no registry. That is exactly why it is cheap, deterministic, and safe to call repeatedly — and
-exactly why, on its own, it cannot see an edit that has not been resolved yet.
+re-reads no registry itself. That is exactly why it is cheap, deterministic, and safe to call repeatedly —
+and exactly why its answer is only ever as current as the snapshot underneath it.
 
 **`validate_manifest` derives its rules live.** It re-derives the rule set from the taxonomy contract's
 ops doc on every single call, and judges each active manifest against the rules it just derived. It
@@ -26,19 +26,29 @@ Everything the body mandates follows from those two sentences.
 
 ## Why the composition arm's refresh is required, not incidental
 
-A maintainer who edits a manifest fragments row and then calls `preview_composition` gets a perfectly
-well-formed render — of the composition *before* their edit. Nothing in the output says so. The render
-does not lie about being a render; it simply answers a question about a snapshot that predates the edit,
-and there is no field in it that distinguishes the two cases.
+The obvious argument is that without a refresh the render answers about a snapshot predating the edit —
+a confident, well-shaped, wrong answer delivered in exactly the situation the surface exists to protect
+against. That failure is real whenever the snapshot is stale, and it is the reason the ordering is a hard
+rule rather than an optimization.
 
-That is the worst available failure mode for a preview surface: a confident, well-shaped, wrong answer,
-delivered in precisely the situation the surface was invoked to protect against. The `resolve_refresh`
-that precedes the render is what makes the snapshot describe the edited tree, so it is ordered ahead of
-the render as a hard rule rather than offered as an optimization. A render without it is not a weaker
-preview — it is a preview of something else.
+**It is not the whole story, and the measured behaviour is worth writing down.** The resolver revalidates
+its inputs' fingerprints, so a render reached without an explicit refresh will often come out current
+anyway: the rebuild simply happens *inside* the render call. Measured against a pending, uncommitted
+fragments-row edit, the render returned the edited composition with no refresh in front of it — and the
+lifecycle state's `generatedAt` moved to the render's own timestamp, carrying a changed-source freshness
+diagnostic. The render had rebuilt the snapshot.
 
-The refresh is announced before it is made because it is the run's only state mutation, and a read-only
-surface that silently mutates anything has stopped being read-only in the way its caller assumed.
+That is why the rule survives the discovery rather than being weakened by it. Skipping the refresh does
+not reliably give you a stale answer; it gives you an **unannounced, unattributed rebuild with no recorded
+reason**, performed by the one call the surface elsewhere claims is non-mutating. The explicit refresh
+moves that mutation into the open, where it is announced before it happens and its reason is recorded as a
+diagnostic — and it leaves the subsequent render genuinely inert, which is what makes the bracket below
+mean anything. A second render with nothing changed in between held `generatedAt` fixed, confirming both
+halves.
+
+The refresh is announced before it is made because it is the run's only *deliberate* state mutation, and a
+surface presented as read-only that silently mutates anything has stopped being read-only in the way its
+caller assumed.
 
 ---
 

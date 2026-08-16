@@ -125,10 +125,13 @@ invocation; the argument exists only to narrow a noisy tree.
 
 1. **Announce the refresh before making it.** State that the next call rebuilds the resolved snapshot,
    that it is the run's only state mutation, and that it is deliberate.
-2. **Call `resolve_refresh`.** This is **required, not incidental**: `preview_composition` renders purely
-   off the already-resolved snapshot and re-parses no manifest, so without the refresh the render is the
-   **pre-edit** composition presented as though it were current — the exact failure this surface exists to
-   prevent. Never skip it, never reorder it, never call a render edit-aware without it.
+2. **Call `resolve_refresh`, recording the pending edit as its reason.** This is **required, not
+   incidental**: `preview_composition` renders off the resolved snapshot and re-parses no manifest itself,
+   so its output is only ever as current as the snapshot it renders off. The resolver does revalidate its
+   inputs, so an unrefreshed render may come out current anyway — but then the rebuild happens *inside* the
+   render call, unannounced and with no recorded reason, and that call is no longer the non-mutating read
+   step 6 claims it is. The explicit refresh is what makes the resolution announced, attributable, and
+   bracketable. Never skip it, never reorder it, never call a render edit-aware without it.
 3. **If the refresh reports the registry invalid**, report its diagnostics and stop this arm: a render off
    an invalid registry previews nothing. If the taxonomy arm was also selected it still runs.
 4. **Read the lifecycle state** (`resolve_inspect`) immediately before the render.
@@ -137,6 +140,9 @@ invocation; the argument exists only to narrow a noisy tree.
 6. **Read the lifecycle state again**, immediately after, and report both reads. **The no-mutation claim
    brackets this one call**: `preview_composition` is what leaves lifecycle state untouched. The
    `resolve_refresh` in step 2 changed it on purpose. Never make the claim over the surface as a whole.
+   The bracket reads identical **because** step 2 already brought the snapshot current — which is the
+   second reason the ordering is fixed. If the two reads differ, report the render as un-bracketed rather
+   than repeating the claim.
 7. **Report the render as the composition *as edited*** — per phase, every entry in the order the resolver
    returned it, naming the contributing capability, the contribution kind, the dispatch target, and the
    scope where one is present.
@@ -186,6 +192,9 @@ up to a clean verdict.
 - **`ruleSources` names a copy other than the edited one:** the taxonomy arm is inconclusive, and the
   report says which copy was read and which was edited.
 - **A phase renders zero entries, or the registry is empty:** an inert outcome, reported as such.
+- **The two bracketing lifecycle reads differ:** the render moved state, so the refresh in step 2 was
+  skipped or an input changed underneath the run. Report the render as un-bracketed and re-run the arm
+  from step 1 — never restate the no-mutation claim over a bracket that did not hold.
 - **A pending manifest edit belongs to a capability the registry does not activate:** it resolves to no
   active capability, so the render will not move. Report the path as classified but unregistered, rather
   than as a composition change that did nothing.
