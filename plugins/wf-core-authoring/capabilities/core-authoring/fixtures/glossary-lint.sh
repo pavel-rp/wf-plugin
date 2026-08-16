@@ -63,12 +63,23 @@
 # --- Exclusions (structural, not a suppression list) ---
 #   * GLOSSARY.md itself — it necessarily quotes every forbidden form it bans, so
 #     linting it would fire on every entry. Excluded by name, always.
-#   * Any `*-fixtures/` folder under `plugins/wf/skills/_contracts/` — a
-#     SELF-MAINTAINING glob rule, not a hardcoded folder list: it already covers
-#     `skill-read-fixtures/`, `slot-marker-fixtures/`, `registry-fixtures/` and
-#     this lint's own `glossary-fixtures/`, and covers any future guard's fixture
-#     folder with nothing to keep current. Those files carry deliberately
+#   * Any `*-fixtures/` folder, and any adjacent `test/fixtures` pair, WHEREVER
+#     THEY SIT — the shared shape-based rule `craft_is_excluded` in
+#     `skill-targets.sh`, not a hardcoded folder list and not a pinned path. It
+#     covers `skill-read-fixtures/`, `registry-fixtures/`, the relocated
+#     `slot-marker-fixtures/` and `ops-docs-fixtures/`, and this lint's own
+#     `glossary-fixtures/` at its new pack location, plus any future guard's
+#     fixture folder with nothing to keep current. Those files carry deliberately
 #     violating-shaped prose.
+#
+#     WF-370 REPLACED A PATH-PINNED ARM HERE. Until this move the exclusion read
+#     `plugins/wf/skills/_contracts/*-fixtures/*`, which stopped matching the
+#     moment SUB-8 relocated its fixtures under `plugins/*/capabilities/` — while
+#     the on-touch surface glob `^plugins/[^/]+/capabilities/.*\.md$` STARTED
+#     matching them. Measured on the pre-move tree that already put 27 relocated
+#     fixture files onto the live lint surface. Carried forward unchanged it would
+#     have turned this lint's own `glossary-fixtures/violation/SKILL.md` into a
+#     live, newly-ADDED gate target. Do not re-pin it.
 # `--allow-fixtures` lifts BOTH exclusions. It exists only so `--selftest` can
 # lint its own fixtures; nothing else passes it, and the self-test asserts that
 # WITHOUT it the seeded violation is skipped.
@@ -81,19 +92,59 @@
 #   2  usage error, malformed glossary, unimplemented check kind, or grep failure
 #      (never a silent pass)
 #
-# Wired into CI by registry-fixtures/run.sh (the established guard chain that
-# .github/workflows/ci.yml invokes) — this lint is NOT auto-discovered. Only the
+# --- TARGET-SET ANCHORING (WF-370) ---
+# THIS SCRIPT LIVES IN THE PACK; ITS GLOSSARY AND ITS TARGETS LIVE IN THE
+# REPOSITORY. `ROOT` is therefore resolved via `craft_repo_root` out of the shared
+# `skill-targets.sh`, never by a fixed `${BASH_SOURCE[0]}/../../../..` ascent.
+# Before WF-370 this script sat in `plugins/wf/skills/_contracts/` where that
+# four-level climb hit the repo root; carried to the pack path unchanged it would
+# land somewhere else entirely.
+#
+# `DEFAULT_GLOSSARY` is re-pointed at the UNCHANGED CORE PATH. `GLOSSARY.md`
+# deliberately did NOT move — `wf-author-caps` is end-user-installable and consumes
+# it there, and an end-user pack must never depend on a maintainer-only pack's
+# files. A verbatim `$SELF_DIR/GLOSSARY.md` would error "glossary not found"; a
+# pack-local copy would be a second home for the rules. Neither is acceptable.
+#
+# `FIXDIR` stays anchored to this script's OWN directory — the one deliberate
+# exception, so the fixture corpus travels with the script.
+#
+# A mis-anchored `ROOT` would not error. It would make `rel` fall through, classify
+# every file "not an authored-prose surface", and report PASS over ZERO scanned
+# files — a vacuous green. `assert_anchor` below refuses that outcome explicitly.
+#
+# Wired into CI by this folder's `run.sh` CHECKS registration (a selftest-only
+# entry — this lint has no live-tree mode by design). CI discovers that runner by
+# convention, so this lint needs no workflow entry of its own. Only the
 # `--selftest` is wired: it runs against its fixtures plus a smoke-parse of the
 # REAL GLOSSARY.md, and scans zero real-tree files, so `main` stays green while
-# the catch stays proven on every PR.
+# the catch stays proven on every PR. The real-tree gate is the on-touch sibling,
+# which the workflow invokes with the PR base sha.
 #
-# Model: claude-opus-4-8
+# Model: claude-opus-5[1m]
 set -u
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$SELF_DIR/../../../.." && pwd)"            # -> repo root
-DEFAULT_GLOSSARY="$SELF_DIR/GLOSSARY.md"
-FIXDIR="$SELF_DIR/glossary-fixtures"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./skill-targets.sh
+. "$DIR/skill-targets.sh"
+
+ROOT="$(craft_repo_root)"                              # -> repo root, never this script's folder
+DEFAULT_GLOSSARY="$ROOT/plugins/wf/skills/_contracts/GLOSSARY.md"
+FIXDIR="$DIR/glossary-fixtures"
+
+# assert_anchor — the never-vacuously-green guard. A resolved root that does not
+# contain the core contracts folder is a MIS-ANCHORED MOVE, not a clean tree.
+assert_anchor() {
+  if [ ! -d "$ROOT/plugins" ] || [ ! -d "$ROOT/plugins/wf/skills/_contracts" ]; then
+    echo "GLOSSARY-LINT: ERROR — the resolved repository root '$ROOT' contains no"
+    echo "  plugins/wf/skills/_contracts/. Every path this lint classifies is repo-relative,"
+    echo "  so from here it would skip every file and report PASS over zero of them."
+    echo "  This is a MIS-ANCHORED MOVE, not a clean tree — verify craft_repo_root() in"
+    echo "  skill-targets.sh still resolves to the repository root."
+    return 2
+  fi
+  return 0
+}
 
 usage() {
   cat <<'USAGE'
@@ -192,9 +243,10 @@ applies_here() {
 # ---------------------------------------------------------------------------
 is_excluded() {
   [ "$ALLOW_FIXTURES" -eq 1 ] && return 1
-  case "$1" in
-    plugins/wf/skills/_contracts/*-fixtures/*) return 0 ;;
-  esac
+  # BY SHAPE, NEVER BY A PINNED PATH — the shared rule out of skill-targets.sh:
+  # any `*-fixtures/` segment, and any adjacent `test/fixtures` pair, at any depth
+  # under any parent. See the header note on what WF-370 replaced here.
+  craft_is_excluded "$1" && return 0
   case "${1##*/}" in
     GLOSSARY.md) return 0 ;;
   esac
@@ -259,7 +311,9 @@ run_entry() {
 lint_files() {
   local glossary="$1"; shift
   local records rec kind term definition avoid pattern except applies check
-  local f abs rel out violations=0 scanned=0 rc
+  local f abs rel out violations=0 scanned=0 excluded=0 offsurface=0 rc
+
+  assert_anchor || return 2
 
   if [ ! -f "$glossary" ]; then
     echo "GLOSSARY-LINT: ERROR — glossary not found: $glossary"
@@ -288,10 +342,12 @@ lint_files() {
     rel="${abs#"$ROOT"/}"
     if is_excluded "$rel"; then
       echo "GLOSSARY-LINT: skipped (off the lint surface): $rel"
+      excluded=$((excluded + 1))
       continue
     fi
     if ! in_any_class "$rel"; then
       echo "GLOSSARY-LINT: skipped (not an authored-prose surface file): $rel"
+      offsurface=$((offsurface + 1))
       continue
     fi
     scanned=$((scanned + 1))
@@ -314,6 +370,18 @@ lint_files() {
 $records
 EOF
   done
+
+  # The never-vacuously-green guard. Files WERE supplied, none was excluded by a
+  # structural rule, and yet not one classified onto the authored-prose surface —
+  # the exact signature of a mis-anchored ROOT, where every repo-relative path
+  # computation falls through. A lint that inspects nothing cannot pass.
+  if [ "$scanned" -eq 0 ] && [ "$excluded" -eq 0 ] && [ "$offsurface" -gt 0 ]; then
+    echo "GLOSSARY-LINT: FAIL — the resolved target set contains 0 files: all $offsurface supplied"
+    echo "  file(s) classified 'not an authored-prose surface' and none was structurally excluded."
+    echo "  This is a MIS-ANCHORED MOVE, not a clean tree — document classes are derived from paths"
+    echo "  relative to '$ROOT'. Verify craft_repo_root() in skill-targets.sh."
+    return 1
+  fi
 
   if [ "$violations" -gt 0 ]; then
     echo "GLOSSARY-LINT: FAIL — $violations vocabulary violation(s) across $scanned file(s). Fix the prose or amend $glossary."
@@ -338,6 +406,22 @@ selftest() {
 
   say_ok()   { echo "selftest ok: $1"; }
   say_fail() { echo "selftest FAIL: $1"; fails=$((fails + 1)); }
+
+  # 0. THE ANCHOR (WF-370). Everything below classifies paths relative to ROOT, so
+  #    a mis-anchored move would make every later assertion pass while proving
+  #    nothing. Report the resolved root and refuse to continue from a wrong one.
+  echo "GLOSSARY-LINT: repository root resolved to $ROOT"
+  if ! assert_anchor; then
+    say_fail "repository root is mis-anchored — refusing to run the remaining assertions"
+    echo ""
+    echo "GLOSSARY-LINT selftest: FAIL — $fails assertion(s) misbehaved."
+    return 1
+  fi
+  if [ ! -f "$DEFAULT_GLOSSARY" ]; then
+    say_fail "GLOSSARY.md did not resolve at its unchanged core path ($DEFAULT_GLOSSARY)"
+  else
+    say_ok "GLOSSARY.md resolves at its unchanged core path plugins/wf/skills/_contracts/GLOSSARY.md"
+  fi
 
   # 1. The REAL glossary parses clean and yields entries (OUT-1 smoke assertion).
   local recs bad n
@@ -407,12 +491,39 @@ selftest() {
     say_ok "zero-argument invocation prints usage naming both modes and exits $rc (never a whole-tree scan)"
   fi
 
+  # 8. The `*-fixtures/` exclusion is SHAPE-based, so it covers this lint's own
+  #    fixtures at their NEW pack location and would cover the next relocation too.
+  #    Asserted on repo-relative paths directly, from unrelated parents, because a
+  #    path-pinned arm would pass assertion 4 by accident of where the corpus
+  #    happens to sit today.
+  local p ok=1
+  for p in \
+    'plugins/wf-core-authoring/capabilities/core-authoring/fixtures/glossary-fixtures/violation/SKILL.md' \
+    'plugins/wf/skills/_contracts/registry-fixtures/x.md' \
+    'some/unrelated/root/slot-marker-fixtures/y.md'
+  do
+    ALLOW_FIXTURES=0 is_excluded "$p" || { ok=0; say_fail "shape exclusion missed '$p'"; }
+  done
+  ALLOW_FIXTURES=0 is_excluded 'plugins/wf/skills/spec/SKILL.md' \
+    && { ok=0; say_fail "shape exclusion wrongly excluded a real skill body"; }
+  [ "$ok" -eq 1 ] && say_ok "the *-fixtures/ exclusion is shape-based — it covers the migrated corpus at its new pack location, at any depth, under any parent, and never a real skill body"
+
+  # 9. The never-vacuously-green guard: a supplied file set that classifies onto
+  #    nothing (the mis-anchored-move signature) FAILS rather than reporting PASS
+  #    over zero files.
+  out="$(bash "${BASH_SOURCE[0]}" --glossary "$fg" --allow-fixtures "$DIR/skill-targets.sh" 2>&1)"; rc=$?
+  if [ "$rc" -ne 1 ] || [ -n "${out##*resolved target set contains 0*}" ]; then
+    say_fail "an all-off-surface file set did not fail as a mis-anchored move (expected exit 1, got $rc):"; echo "$out"
+  else
+    say_ok "a resolved target set of 0 fails loudly as a MIS-ANCHORED MOVE, never a vacuous PASS"
+  fi
+
   echo ""
   if [ "$fails" -ne 0 ]; then
     echo "GLOSSARY-LINT selftest: FAIL — $fails assertion(s) misbehaved."
     return 1
   fi
-  echo "GLOSSARY-LINT selftest: PASS — seeded violation caught, clean sibling passes, exclusions hold, real GLOSSARY.md parses."
+  echo "GLOSSARY-LINT selftest: PASS — seeded violation caught, clean sibling passes, exclusions hold by shape, empty target set fails loudly, real GLOSSARY.md parses at its unchanged core path."
   return 0
 }
 

@@ -25,12 +25,24 @@
 #   plugins/*/capabilities/**/*.md  fragments and manifests
 #   plugins/*/agents/*.md           agent files
 # minus, at the FILTER level (not merely via the lint's own exclusions):
-#   * any `*-fixtures/` folder under plugins/wf/skills/_contracts/ — the
-#     self-maintaining rule (OUT-2). It already covers skill-read-fixtures/,
-#     slot-marker-fixtures/, registry-fixtures/ and glossary-fixtures/, and covers
-#     any future guard's fixture folder with no list to keep current. A PR editing
-#     a deliberately violating-shaped fixture must never trip the gate.
+#   * any `*-fixtures/` folder, and any adjacent `test/fixtures` pair, WHEREVER
+#     THEY SIT — the shared shape-based rule `craft_is_excluded` in
+#     `skill-targets.sh` (OUT-2). It covers skill-read-fixtures/,
+#     registry-fixtures/, the relocated slot-marker-fixtures/ and
+#     ops-docs-fixtures/, and glossary-fixtures/ at its new pack home, plus any
+#     future guard's fixture folder with no list to keep current. A PR editing a
+#     deliberately violating-shaped fixture must never trip the gate.
 #   * GLOSSARY.md itself, which necessarily quotes every form it bans.
+#
+# WF-370 REPLACED A PATH-PINNED ARM HERE, and this is the delicate half of that
+# move. The old arm read `plugins/wf/skills/_contracts/*-fixtures/*`. The instant
+# the fixture corpora moved under `plugins/*/capabilities/`, that arm stopped
+# matching them — while THIS FILE'S OWN on-surface glob
+# `^plugins/[^/]+/capabilities/.*\.md$` STARTED matching them. Measured on the
+# pre-move tree the gate already put 27 relocated fixture files on the live
+# surface, and carrying it forward would have made the deliberately-violating
+# `glossary-fixtures/violation/SKILL.md` a newly-ADDED gate target that hard-fails
+# this very pull request. The exclusion must stay stated as a SHAPE. Do not re-pin it.
 #
 # --- Empty sets: the two distinct kinds, and why only one is fatal ---
 # A PR whose touched set carries NO surface file (e.g. only plugins/wf/mcp/ source)
@@ -61,21 +73,63 @@
 #   1  at least one vocabulary violation in a touched/added surface file
 #   2  base ref unresolvable, touched set mis-computed, or usage error
 #
-# Wired into CI as a sibling step in .github/workflows/ci.yml — NOT into
-# registry-fixtures/run.sh — because the touched set needs workflow-level git
-# context (the PR base sha) that the guard chain has no access to. This resolves
-# charter assumption 8 to its named acceptable alternative. The SCOPING SELF-TEST
-# below is wired into run.sh, so the scoping logic is fixture-proven on every run
-# exactly like every other resident guard.
+# --- TARGET-SET ANCHORING (WF-370) ---
+# THIS SCRIPT LIVES IN THE PACK; THE REPOSITORY IT GATES IS THE CHECKOUT AROUND IT.
+# `ROOT` is resolved via `craft_repo_root` out of the shared `skill-targets.sh`,
+# never by a fixed `${BASH_SOURCE[0]}/../../../..` ascent — that four-level climb
+# hit the repo root only from the old core path. `ROOT` is this gate's DEFAULT
+# `--repo`, so a mis-anchored root would silently gate the wrong tree (or no tree).
+# `LINT` is re-pointed at the migrated sibling's pack path — it now sits beside
+# this script, so it is anchored to `$DIR` rather than re-derived. `FIXROOT` stays
+# `$DIR`-relative on purpose, so the fixture corpus travels with the script.
 #
-# Model: claude-opus-4-8
+# THE BASE-SHA GATE IS UNCHANGED BY THE MOVE. `--base` is supplied by the workflow
+# from `github.event.pull_request.base.sha`; `resolve_base` still resolves it in
+# `--repo` (defaulting to the resolved repository root, not this script's folder),
+# still prefers the merge base, and still treats an empty raw touched set as a
+# mis-computed diff (exit 2) rather than a clean PR. Moving the script changes
+# WHERE the gate is read from, never WHAT it resolves against.
+#
+# Wired into CI as a sibling step in .github/workflows/ci.yml — NOT into a fixtures
+# runner — because the touched set needs workflow-level git context (the PR base
+# sha) that a fixtures chain has no access to. That step's shape, its
+# `fetch-depth: 0` checkout, and its base-sha argument are unchanged by this move;
+# only its script path moved. This resolves charter assumption 8 to its named
+# acceptable alternative. The SCOPING SELF-TEST below is wired into this folder's
+# run.sh, so the scoping logic is fixture-proven on every run exactly like every
+# other resident guard.
+#
+# Model: claude-opus-5[1m]
 set -u
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$SELF_DIR/../../../.." && pwd)"            # -> repo root
-LINT="$SELF_DIR/glossary-lint.sh"
-FIXROOT="$SELF_DIR/glossary-fixtures"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./skill-targets.sh
+. "$DIR/skill-targets.sh"
+
+ROOT="$(craft_repo_root)"                              # -> repo root, never this script's folder
+LINT="$DIR/glossary-lint.sh"
+FIXROOT="$DIR/glossary-fixtures"
 TMPREPO="$FIXROOT/.scoping-tmp"
+
+# assert_anchor — the never-vacuously-green guard. `ROOT` is this gate's default
+# repository; resolved wrong, the gate would compute a touched set over the wrong
+# tree (or fail to find one) instead of gating this checkout.
+assert_anchor() {
+  if [ ! -d "$ROOT/plugins" ] || [ ! -d "$ROOT/plugins/wf/skills/_contracts" ]; then
+    echo "GLOSSARY-ON-TOUCH: ERROR — the resolved repository root '$ROOT' contains no" >&2
+    echo "  plugins/wf/skills/_contracts/, so the default gate target is not this repository." >&2
+    echo "  This is a MIS-ANCHORED MOVE, not a clean tree — verify craft_repo_root() in" >&2
+    echo "  skill-targets.sh still resolves to the repository root." >&2
+    return 2
+  fi
+  if [ ! -f "$LINT" ]; then
+    echo "GLOSSARY-ON-TOUCH: ERROR — the lint this gate invokes is not at '$LINT'." >&2
+    echo "  The gate cannot check anything, and must not pass vacuously. This is a" >&2
+    echo "  MIS-ANCHORED MOVE: re-point LINT at the migrated glossary-lint.sh." >&2
+    return 2
+  fi
+  return 0
+}
 
 usage() {
   cat <<'USAGE'
@@ -103,12 +157,11 @@ USAGE
 on_surface() {
   local p="$1"
 
-  # Exclusion first: a fixture folder under _contracts/ is off the surface no
-  # matter which surface glob it also matches. Self-maintaining — the glob names
-  # no individual folder.
-  case "$p" in
-    plugins/wf/skills/_contracts/*-fixtures/*) return 1 ;;
-  esac
+  # Exclusion first: a fixture folder is off the surface no matter which surface
+  # glob it also matches. Stated BY SHAPE via the shared `craft_is_excluded`, so it
+  # names no individual folder and survives relocation — see the header note on
+  # what WF-370 replaced here.
+  craft_is_excluded "$p" && return 1
   case "${p##*/}" in
     GLOSSARY.md) return 1 ;;
   esac
@@ -160,6 +213,8 @@ resolve_base() {
 run_gate() {
   local repo="$1" base="$2"
   local diffbase raw live f kept=() rc
+
+  assert_anchor || return 2
 
   diffbase="$(resolve_base "$repo" "$base")" || return 2
   echo "GLOSSARY-ON-TOUCH: base '$base' -> diff base $diffbase"
@@ -294,6 +349,19 @@ selftest() {
     bash "${BASH_SOURCE[0]}" --repo "$TMPREPO" --glossary "$fg" --allow-fixtures "$@" 2>&1
   }
 
+  # 0. THE ANCHOR (WF-370). Every assertion below runs the gate for real, so a
+  #    mis-anchored root or a mis-pointed LINT would let them pass while proving
+  #    nothing. Report both and refuse to continue from a wrong one.
+  echo "GLOSSARY-ON-TOUCH: repository root resolved to $ROOT"
+  echo "GLOSSARY-ON-TOUCH: lint resolved to $LINT"
+  if ! assert_anchor; then
+    say_fail "repository root or lint path is mis-anchored — refusing to run the remaining assertions"
+    echo ""
+    echo "GLOSSARY-ON-TOUCH selftest: FAIL — $fails assertion(s) misbehaved."
+    return 1
+  fi
+  say_ok "the gate's repository root and its migrated lint both resolve from the pack path"
+
   build_tmp_repo
   trap 'rm -rf "$TMPREPO"' RETURN
 
@@ -423,12 +491,35 @@ selftest() {
     say_ok "a base given as a ref name resolves to a diff base like a raw sha does"
   fi
 
+  # 11. THE MOVE'S OWN GUARD (WF-370). `on_surface` must exclude a `*-fixtures/`
+  #     path BY SHAPE — including this corpus at its new pack location, which the
+  #     surface glob `^plugins/[^/]+/capabilities/.*\.md$` otherwise matches. A
+  #     path-pinned arm passes assertions 7 and 10 and still fails here.
+  local p ok=1
+  for p in \
+    'plugins/wf-core-authoring/capabilities/core-authoring/fixtures/glossary-fixtures/violation/SKILL.md' \
+    'plugins/wf-core-authoring/capabilities/core-authoring/fixtures/slot-marker-fixtures/x/SKILL.md' \
+    'plugins/wf/skills/_contracts/registry-fixtures/y.md' \
+    'some/unrelated/root/craft-fixtures/z.md' \
+    'plugins/wf/mcp/test/fixtures/a/SKILL.md'
+  do
+    if on_surface "$p"; then ok=0; say_fail "on_surface did not exclude the fixture-shaped path '$p'"; fi
+  done
+  for p in \
+    'plugins/wf/skills/spec/SKILL.md' \
+    'plugins/wf-core-authoring/capabilities/core-authoring/manifest.md' \
+    'plugins/wf/agents/branch.md'
+  do
+    if ! on_surface "$p"; then ok=0; say_fail "on_surface wrongly excluded the real surface path '$p'"; fi
+  done
+  [ "$ok" -eq 1 ] && say_ok "the surface filter excludes fixture folders BY SHAPE — the migrated corpus at its new pack location is off the surface, at any depth under any parent, while real skill/capability/agent files stay on it"
+
   echo ""
   if [ "$fails" -ne 0 ]; then
     echo "GLOSSARY-ON-TOUCH selftest: FAIL — $fails assertion(s) misbehaved."
     return 1
   fi
-  echo "GLOSSARY-ON-TOUCH selftest: PASS — touched fails, added fails, untouched passes, fixtures excluded, empty set skips, mis-computed diff fails loudly."
+  echo "GLOSSARY-ON-TOUCH selftest: PASS — touched fails, added fails, untouched passes, fixtures excluded by shape, empty set skips, mis-computed diff fails loudly, anchoring proven."
   return 0
 }
 
