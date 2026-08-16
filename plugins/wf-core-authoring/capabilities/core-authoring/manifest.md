@@ -1,6 +1,6 @@
 # core-authoring capability manifest
 
-**Version:** 0.2.0
+**Version:** 0.3.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** core-authoring (registers into the downstream `## Capabilities` registry as `core-authoring`)
 **Kind:** both (ships skills and is authored to attach phase fragments)
@@ -25,7 +25,9 @@ project to override.
 Its **first content** is the distilled authoring-vocabulary article below — the leading-word landing and
 the admitted term rules of `plugins/wf/skills/_contracts/GLOSSARY.md`, condensed to ten clauses so a
 session in this repository starts with them already in context rather than meeting them at review. Contract
-authoring has since landed alongside it, as the `new-contract` scaffolder declared under `## Skills` below.
+authoring has since landed alongside it, as the `new-contract` scaffolder declared under `## Skills` below,
+and the glossary now has a maintenance surface too — the `add-term` skill, which lands a term together with
+the parse-contract entry that makes it enforceable, so the vocabulary cannot grow documentation-only.
 
 It also owns its **first repository lint**: the craft-C4 frontmatter and body-length checks in
 `fixtures/`, gated in CI by `fixtures/run.sh` (discovered by convention, so no workflow names this
@@ -75,6 +77,7 @@ the pack ships, it does not cause it to load.
 skills:
   - plugins/wf-core-authoring/skills/init/         # /wf-core-authoring:init — self-registering onboarding
   - plugins/wf-core-authoring/skills/new-contract/ # /wf-core-authoring:new-contract — scaffolds a core contract pair, green under the contract-shape guard
+  - plugins/wf-core-authoring/skills/add-term/     # /wf-core-authoring:add-term — lands one glossary term together with the lint entry that enforces it
 ```
 
 ## Fragments
@@ -96,3 +99,9 @@ maps to no phase in the `spec → plan → tasks → implement → verify → qa
 tool a maintainer invokes directly, not a contribution any phase fires. Declaring it under `skills:`
 is the whole of its declaration — which is also why, with this capability unregistered, the pack
 contributes nothing to any phase while the skill itself still loads.
+
+The `add-term` surface adds no row for the same reason: admitting a term to the authoring vocabulary is a
+maintainer action against a repository file, not a contribution any SDD phase fires. It is declared under
+`skills:` and nowhere else, so with this capability unregistered the skill still loads — native plugin
+composition loads a pack's skills regardless of registration — while contributing nothing to any core
+phase and filling no slot. No glossary-authoring guidance reaches a phase either way.
