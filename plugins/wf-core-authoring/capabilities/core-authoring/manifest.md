@@ -1,6 +1,6 @@
 # core-authoring capability manifest
 
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** core-authoring (registers into the downstream `## Capabilities` registry as `core-authoring`)
 **Kind:** both (ships skills and is authored to attach phase fragments)
@@ -86,12 +86,16 @@ Schema `phase | contribution-kind | dispatch | scope`.
 
 | phase | contribution-kind | dispatch | scope |
 |-------|-------------------|----------|-------|
+| —     | slot              | `inline: fragments/new-skill-constraints.md` | new-skill.constraints append |
 
-**This table is deliberately empty.** The capability's first contribution is a constitution article, and an
-article attaches to the constitution rather than to an SDD phase — it is the `article:` manifest key above,
-never a fragments row — so no phase fragment is declared yet. Registry validation tolerates a zero-row
-table, and the capability still registers. A row and the fragment file it names are authored together, in
-the change that introduces them.
+**The table stayed empty until a contribution had a legal row, and this one does.** A `slot` targets a
+per-skill composition **point**, not an SDD phase, so its phase cell is `—` and its scope is the
+`<skill>.<point> <merge-policy>` compound — here `new-skill.constraints append`, the point
+`/wf-author-caps:new-skill` declares in its `interface.md`. That is why this row is legal where the
+earlier content was not: a constitution article is the `article:` manifest key above and never a row,
+and the `new-contract` scaffolder maps to no phase in the `spec → plan → tasks → implement → verify →
+qa` spine, so it is declared under `skills:` and adds no row. Neither had a legal `phase` /
+`contribution-kind` pair; a `slot` needs none, because the fixed set admits it with `—`.
 
 The `new-contract` scaffolder adds **no** row either, and that is not an oversight: every fragments row
 must name a `phase` and a `contribution-kind` drawn from the fixed sets, and a contract scaffolder
@@ -105,3 +109,26 @@ maintainer action against a repository file, not a contribution any SDD phase fi
 `skills:` and nowhere else, so with this capability unregistered the skill still loads — native plugin
 composition loads a pack's skills regardless of registration — while contributing nothing to any core
 phase and filling no slot. No glossary-authoring guidance reaches a phase either way.
+
+A `slot` fill is the one contribution those two cases do not cover, and it is why this row exists rather
+than a third `skills:` line. `skills:` records a **skill** the pack ships; this contribution ships no
+skill — it is a fragment body the resolver composes into a point another pack's skill declares, and a
+fragment file has no representation under `skills:` at all. The precedent those two set is that a surface
+with no legal `phase` / `contribution-kind` pair stays out of the table; it is not a precedent against a
+contribution that has one.
+
+The fill carries this repository's core-only authoring rules into the scaffolder — core purity, the
+body budget, the terminal `Next:` line, attribution without promotion, and the release version pair —
+each cited to the section of `CLAUDE.md` that owns it rather than restated. The merge policy is
+`append`, so the scaffolder's inline default applies first and this fill is added after it; two
+`append` claims on one point compose, so the row can never collide with another capability's. It
+changes no file under `plugins/wf-author-caps/`: the point was declared there, and filling it is a
+registry-side act.
+
+The row and the fragment file it names are authored together, in the change that introduces them.
+With this capability unregistered the row is never reached, the point resolves `unfilled`, and the
+scaffolder runs its inline default — no authoring term of this capability surfaces anywhere.
+
+Rationale, the constraint-to-section mapping, and why each rule is cited rather than restated:
+[`references/new-skill-constraints.md`](references/new-skill-constraints.md) — read by authors,
+never at slot-fire.
