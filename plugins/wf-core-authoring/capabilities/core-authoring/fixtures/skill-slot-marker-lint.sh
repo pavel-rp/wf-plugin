@@ -51,14 +51,43 @@
 # it emits nothing. The whole current skill tree (which declares no slots yet)
 # passes unchanged.
 #
+# --- DEFERENCE: `validate_skill_interface` is the authority (WF-369) ---
+# The D1-D5 rules above describe the SAME skill-interface surface the WF-352
+# typed resolver validator `validate_skill_interface` owns. That validator is the
+# AUTHORITY: if a rule implemented below ever contradicts it, the validator wins
+# and THIS SCRIPT is the thing that changes. The obligation here is
+# NON-DIVERGENCE PLUS ATTRIBUTION, not delegation.
+#
+# It is not delegation because it cannot be: no shell-callable surface for the
+# WF-352 validators exists. `plugins/wf/mcp/package.json` declares only
+# `main: dist/server.mjs` — no `bin`, no CLI — so a bash script has no way to
+# invoke `validate_skill_interface`, and this change deliberately does not build
+# one. Building that shim is filed to WF-203 (usage findings backlog). Until it
+# lands, stripping the D1-D5 implementation below would leave the gate with
+# nothing to run, so the implementation stays and this comment carries the
+# attribution.
+#
 # --- Scope (path) ---
-# Scanned:  plugins/*/skills/*/ — every skill folder across ALL packs (a folder
-#           counts as a skill only if it holds a SKILL.md).
-# NOT scanned: plugins/*/skills/_contracts/** — the frozen contract layer, THIS
-#           script, and slot-marker-fixtures/ (the deliberate pass/fail cases the
-#           --selftest exercises). `_contracts/` itself holds no SKILL.md, and the
-#           fixtures sit two levels deeper than the `plugins/*/skills/*/` glob, so
-#           the real-tree scan never reaches them.
+# Scanned:  <repo-root>/plugins/*/skills/*/ — every skill folder across ALL packs
+#           (a folder counts as a skill only if it holds a SKILL.md).
+# NOT scanned: plugins/*/skills/_contracts/** — the frozen contract layer — and
+#           slot-marker-fixtures/ (the deliberate pass/fail cases the --selftest
+#           exercises). `_contracts/` itself holds no SKILL.md, and the fixtures
+#           now live beside THIS script under
+#           plugins/wf-core-authoring/capabilities/core-authoring/fixtures/,
+#           which is outside the `plugins/*/skills/*/` glob entirely, so the
+#           real-tree scan can never reach the seeded violators.
+#
+# --- TARGET-SET ANCHORING (WF-369) ---
+# THIS SCRIPT LIVES IN THE PACK; ITS TARGETS LIVE IN THE REPOSITORY. `ROOT` is
+# therefore resolved via `craft_repo_root` out of the shared `skill-targets.sh`,
+# never by a fixed `${BASH_SOURCE[0]}/../../../..` ascent. Before WF-369 this
+# script sat in `plugins/wf/skills/_contracts/` where that four-level climb hit
+# the repo root; carried to the pack path unchanged it would land somewhere else
+# entirely, match zero skill directories, and pass VACUOUSLY GREEN. The resolved
+# skill-directory count is printed on every run and a count of zero is a hard
+# failure for exactly that reason. `FIXROOT` is anchored to this script's own
+# directory, where the relocated fixtures now sit.
 #
 # Requires GNU/PCRE grep (`grep -P`; present on the Linux CI runner and Git Bash).
 # Exit 0 = clean; exit 1 = a defect was found; exit 2 = grep/PCRE error (never a
@@ -66,14 +95,18 @@
 # asserts each planted pass/fail case behaves as specified — proving the linter
 # discriminates before it is trusted on the real tree.
 #
-# Wired into CI by registry-fixtures/run.sh (the established guard chain that
-# .github/workflows/ci.yml invokes) — this lint is NOT auto-discovered.
+# Registered in this folder's run.sh CHECKS list; CI discovers that runner by
+# convention, so this lint needs no workflow entry of its own.
 #
-# Model: claude-opus-4-8
+# Model: claude-opus-5[1m]
 set -u
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"   # -> repo root
-FIXROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/slot-marker-fixtures"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./skill-targets.sh
+. "$DIR/skill-targets.sh"
+
+ROOT="$(craft_repo_root)"          # -> repository root, never this script's folder
+FIXROOT="$DIR/slot-marker-fixtures"
 
 # A well-formed skill.point: two dot-joined segments, each [a-z0-9-]+.
 idre='[a-z0-9-]+\.[a-z0-9-]+'
@@ -231,14 +264,27 @@ if [ "${1:-}" = "--selftest" ]; then
 fi
 
 # --- Default: scan the real skill tree ----------------------------------------
+echo "OUT-SLOT: repository root resolved to $ROOT"
 hits=""
 rc_any=0
+scanned=0
 for dir in "$ROOT"/plugins/*/skills/*/; do
   [ -d "$dir" ] || continue
+  scanned=$((scanned + 1))
   out="$(lint_skill_dir "$dir")"; rc=$?
   if [ "$rc" -ge 2 ]; then rc_any=2; fi
   [ -n "$out" ] && hits="$hits$out"$'\n'
 done
+
+# A scan whose target set resolved empty has proven nothing — fail LOUDLY rather
+# than passing vacuously. This is the guard that catches a mis-anchored move.
+if [ "$scanned" -eq 0 ]; then
+  echo "OUT-SLOT: FAIL — the scan resolved 0 skill directories under $ROOT/plugins/*/skills/*/."
+  echo "          A lint that inspects nothing cannot pass. This is a MIS-ANCHORED MOVE, not a clean tree —"
+  echo "          verify craft_repo_root() in skill-targets.sh still resolves to the repository root."
+  exit 1
+fi
+echo "OUT-SLOT: resolved target set — $scanned skill directories under plugins/*/skills/*/."
 
 if [ "$rc_any" -ge 2 ]; then
   echo "OUT-SLOT: ERROR — grep failed (requires PCRE grep -P)."

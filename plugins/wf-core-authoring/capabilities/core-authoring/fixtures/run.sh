@@ -15,9 +15,11 @@
 #    structural fixture exclusions live there once, for every check.
 # 3. Add its basename to the CHECKS list below. That is the whole registration.
 #
-# The list is ordered and open. WF-368 (SUB-8) and WF-369 (SUB-9) are the next
-# contributors: they migrate further craft checks into this same folder and append
-# their basenames here.
+# The list is ordered and open. WF-369 (SUB-8) has landed: it migrated the
+# ops-budget and slot-marker lints out of core into this same folder — deleting
+# the core copies and shedding their three `registry-fixtures/run.sh`
+# invocations — and appended their basenames below. WF-370 (SUB-9) is the next
+# contributor and moves the glossary pair the same way.
 #
 # --- WHY EVERY CHECK RUNS ITS SELFTEST FIRST ---
 # A lint that scans a real tree and finds nothing is indistinguishable from a lint
@@ -48,6 +50,8 @@ CHECKS="
 check-skill-name.sh
 check-skill-description.sh
 check-skill-body-length.sh
+check-ops-docs.sh
+skill-slot-marker-lint.sh
 "
 
 fail=0

@@ -13,9 +13,11 @@
 # the validator resolves them against the real repo root exactly as it would in
 # production — fixture resolution is byte-identical to a real run.
 #
-# Since WF-208 this script also gates the ops-doc drift guards
-# (../check-ops-docs.sh: line budget, heading parity, cross-link anchors,
-# contract-pointer ban) as one additional assert in the same CI entry point.
+# WF-369 moved the ops-doc drift guards (check-ops-docs.sh) and the skill
+# slot-marker lint (skill-slot-marker-lint.sh) out of core and into the
+# wf-core-authoring pack's own fixture suite, and shed the three blocks that
+# invoked them from here. Core validates its own structure with ZERO PACKS
+# PRESENT, so this chain reaches no pack script — it sheds rather than reaches.
 #
 # Since WF-200 every plugin-anchored case injects the fixture install manifest
 # (installed_plugins.fixture.json) as the validator's 3rd arg, so the
@@ -240,21 +242,6 @@ assert "plugin root backslash named"  fail-plugin-root-backslash.md - 1 "testpkg
 assert "plugin root dotdot named"     fail-plugin-root-dotdot.md    - 1 "testpkg" "'..' segment"
 assert "plugin root duplicate named"  fail-plugin-root-dup.md       - 1 "testpkg" "duplicate plugin root name"
 
-# --- WF-208: ops/reference drift guards ---------------------------------------
-# The contracts are split into runtime-ops docs (*.ops.md) + reference halves
-# (*.contract.md); check-ops-docs.sh keeps the pair from drifting (line budget,
-# heading parity, cross-link anchors, contract-pointer ban). Gated here so the
-# existing CI entry point covers it with no workflow change.
-echo ""
-echo "=== Ops-doc drift guards (check-ops-docs.sh) ==="
-if bash "$DIR/../check-ops-docs.sh"; then
-  printf 'PASS: %s\n' "ops-doc drift guards"
-  pass=$((pass + 1))
-else
-  printf 'FAIL: %s\n' "ops-doc drift guards"
-  fail=$((fail + 1))
-fi
-
 # --- WF-291: OUT-4 SKILL.md read-instruction regression guard ------------------
 # Agents/skill bodies must INVOKE a sibling skill via the Skill tool, never
 # filesystem-read its SKILL.md (CLAUDE.md §8). This guard's --selftest proves the
@@ -279,35 +266,6 @@ if bash "$DIR/../out4-skill-read-guard.sh"; then
   pass=$((pass + 1))
 else
   printf 'FAIL: %s\n' "skill-read guard real-tree scan"
-  fail=$((fail + 1))
-fi
-
-# --- WF-326: skill interface slot-marker lint --------------------------------
-# A skill's externally-bindable slots are declared in skills/<name>/interface.md
-# and placed in its SKILL.md body with a grep-validatable marker pair. This lint
-# keeps the two honest: well-formed markers matching a declaration pass; a
-# malformed marker, an undeclared marker id, or a declared slot with no marker
-# fail naming file+line. Its --selftest proves the linter discriminates over the
-# pass/fail fixtures; the default scan proves the whole real skill tree (which
-# declares no slots yet) passes unchanged — inert on slot-free skills. Wired here
-# so the CI entry point covers it (the lint is NOT auto-discovered).
-echo ""
-echo "=== Skill slot-marker lint — fixture self-test (skill-slot-marker-lint.sh --selftest) ==="
-if bash "$DIR/../skill-slot-marker-lint.sh" --selftest; then
-  printf 'PASS: %s\n' "slot-marker lint self-test (pass/fail fixtures behave as specified)"
-  pass=$((pass + 1))
-else
-  printf 'FAIL: %s\n' "slot-marker lint self-test"
-  fail=$((fail + 1))
-fi
-
-echo ""
-echo "=== Skill slot-marker lint — real-tree scan (skill-slot-marker-lint.sh) ==="
-if bash "$DIR/../skill-slot-marker-lint.sh"; then
-  printf 'PASS: %s\n' "slot-marker lint real-tree scan"
-  pass=$((pass + 1))
-else
-  printf 'FAIL: %s\n' "slot-marker lint real-tree scan"
   fail=$((fail + 1))
 fi
 

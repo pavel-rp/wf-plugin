@@ -10,6 +10,11 @@
 //   registry-fixtures/*.md   -> validate-registry.sh   vs validate_registry
 //   slot-marker-fixtures/*/  -> skill-slot-marker-lint.sh (its own lint logic,
 //                               driven per fixture dir) vs validate_skill_interface
+//
+// WF-369 moved the slot-marker guard and its fixtures out of core and into the
+// wf-core-authoring pack's fixture suite, so the two sets no longer share a
+// folder: the registry pair still resolves under plugins/wf/skills/_contracts/,
+// the slot-marker pair under the pack. The agreement contract is unchanged.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -37,7 +42,12 @@ const CONTRACTS = join(REPO_ROOT, "plugins", "wf", "skills", "_contracts");
 const OPS_DOC = join(CONTRACTS, "capability-registry.ops.md");
 const REGISTRY_GUARD = join(CONTRACTS, "validate-registry.sh");
 const REGISTRY_FIXTURES = join(CONTRACTS, "registry-fixtures");
-const SLOT_FIXTURES = join(CONTRACTS, "slot-marker-fixtures");
+// WF-369: the slot-marker guard, its shared target-set helper, and its fixtures
+// all live in the wf-core-authoring pack's fixture suite now.
+const PACK_FIXTURES = join(REPO_ROOT, "plugins", "wf-core-authoring", "capabilities", "core-authoring", "fixtures");
+const SLOT_GUARD = join(PACK_FIXTURES, "skill-slot-marker-lint.sh");
+const SLOT_TARGETS = join(PACK_FIXTURES, "skill-targets.sh");
+const SLOT_FIXTURES = join(PACK_FIXTURES, "slot-marker-fixtures");
 const INSTALL_MANIFEST = join(REGISTRY_FIXTURES, "installed_plugins.fixture.json");
 
 /** A real-filesystem ValidatorFs — the same surface the service injects. */
@@ -256,17 +266,20 @@ test("every verdict records the rule sources it parsed", () => {
  */
 function slotGuardExit(fixtureDir: string): number {
   const tmp = mkdtempSync(join(tmpdir(), "wf-352-slot-"));
-  const contractsDir = join(tmp, "plugins", "wf", "skills", "_contracts");
-  mkdirSync(contractsDir, { recursive: true });
-  // The root-walk stops at the marketplace marker; provide it so the guard
-  // resolves <tmp> as the repo root exactly as it does in the real tree.
+  // WF-369: the guard resolves the repo root by ascending out of its own pack
+  // fixtures folder (craft_repo_root in skill-targets.sh), so the throwaway tree
+  // has to reproduce that shape — plugins/<pack>/capabilities/<cap>/fixtures/ —
+  // and carry the helper the guard sources.
+  const packFixturesDir = join(tmp, "plugins", "wf-core-authoring", "capabilities", "core-authoring", "fixtures");
+  mkdirSync(packFixturesDir, { recursive: true });
   mkdirSync(join(tmp, ".claude-plugin"), { recursive: true });
   writeFileSync(join(tmp, ".claude-plugin", "marketplace.json"), "{}", "utf8");
-  copyFileSync(join(CONTRACTS, "skill-slot-marker-lint.sh"), join(contractsDir, "skill-slot-marker-lint.sh"));
+  copyFileSync(SLOT_GUARD, join(packFixturesDir, "skill-slot-marker-lint.sh"));
+  copyFileSync(SLOT_TARGETS, join(packFixturesDir, "skill-targets.sh"));
   cpSync(join(SLOT_FIXTURES, fixtureDir), join(tmp, "plugins", "wf", "skills", fixtureDir), {
     recursive: true,
   });
-  const res = spawnSync("bash", [join(contractsDir, "skill-slot-marker-lint.sh")], { encoding: "utf8" });
+  const res = spawnSync("bash", [join(packFixturesDir, "skill-slot-marker-lint.sh")], { encoding: "utf8" });
   rmSync(tmp, { recursive: true, force: true });
   return res.status ?? 2;
 }
@@ -284,7 +297,7 @@ const SLOT_CASES: Array<{ dir: string; expect: "pass" | "fail"; rule?: string }>
 ];
 
 test("the shell lint's own selftest passes (the guard we are agreeing with is sound)", () => {
-  const res = spawnSync("bash", [join(CONTRACTS, "skill-slot-marker-lint.sh"), "--selftest"], {
+  const res = spawnSync("bash", [SLOT_GUARD, "--selftest"], {
     encoding: "utf8",
   });
   assert.equal(res.status, 0, `slot-marker lint selftest failed:\n${res.stdout}\n${res.stderr}`);
