@@ -15,11 +15,18 @@
 #   E1. any path with a directory segment whose name ends in `-fixtures`
 #   E2. any path with an adjacent `test/fixtures` segment pair
 #
-# Today E1 catches plugins/wf/skills/_contracts/glossary-fixtures/ and
-# .../slot-marker-fixtures/, and E2 catches plugins/wf/mcp/test/fixtures/** (the
-# four `wf-fixture` reference-resolution skills). Every one of those deliberately
-# carries malformed or clause-free frontmatter, so scanning them would turn a
-# fixture into a false failure.
+# Today E1 catches this folder's own glossary-fixtures/, slot-marker-fixtures/ and
+# ops-docs-fixtures/, plus the core plugins/wf/skills/_contracts/*-fixtures/ that
+# have not moved; E2 catches plugins/wf/mcp/test/fixtures/** (the four
+# `wf-fixture` reference-resolution skills). Every one of those deliberately
+# carries malformed, clause-free, or violating-shaped content, so scanning them
+# would turn a fixture into a false failure.
+#
+# Since WF-370, `craft_is_excluded` is shared beyond the craft-C4 checks: both
+# glossary lints call it as THEIR structural exclusion too, replacing a path-pinned
+# arm that went stale the moment the corpora moved here. That widens the blast
+# radius of a "simplification" — re-pinning either glob now silently puts seeded
+# violating fixtures onto a live PR gate.
 #
 # THE SHAPE IS THE POINT. Pinning either rule to `plugins/wf/skills/_contracts/`
 # would go stale the moment those folders are relocated under this pack's own

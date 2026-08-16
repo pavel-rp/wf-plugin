@@ -133,10 +133,16 @@ Run all three, over the emitted set, on every pass:
   since it has no whole-tree default:
 
   ```bash
-  bash <wf-plugin-root>/skills/_contracts/glossary-lint.sh <emitted-files>
+  bash <core-authoring-root>/capabilities/core-authoring/fixtures/glossary-lint.sh <emitted-files>
   ```
 
-  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root({ plugin: "wf", workspaceRoot })`.
+  Resolve `<core-authoring-root>` through the resolver's
+  `resolve_plugin_root({ plugin: "wf-core-authoring", workspaceRoot })`. That pack is
+  **maintainer-only and optional**: when it is not installed the root does not resolve, and this
+  check is then **not applicable** — report it that way and continue, never as clean and never as an
+  error. The vocabulary itself still lives in core at
+  `plugins/wf/skills/_contracts/GLOSSARY.md`; only the lint that enforces it ships with the
+  maintainer pack.
 
 Map `pass` / `fail` / `error` exactly as the loop's table says; `error` is never a pass. The lint
 scopes each rule by path shape, and a manifest or fragment under `plugins/*/capabilities/**` is in

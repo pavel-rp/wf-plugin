@@ -46,19 +46,23 @@ jobs:
         run: bash plugins/wf/skills/_contracts/registry-fixtures/run.sh
 
       - name: Glossary vocabulary gate (on-touch)
-        # The authored-prose vocabulary gate. It is deliberately NOT inside
-        # registry-fixtures/run.sh like the other guards: the severity model is
-        # on-touch, so the gate needs the PR's base sha — workflow-level git
-        # context the guard chain has no access to. run.sh gates the scoping
-        # SELF-TEST; this step runs the gate itself.
+        # The authored-prose vocabulary gate. It is deliberately NOT inside a
+        # fixtures runner like the other guards: the severity model is on-touch,
+        # so the gate needs the PR's base sha — workflow-level git context a
+        # fixtures chain has no access to. The pack's fixtures/run.sh gates the
+        # scoping SELF-TEST; this step runs the gate itself.
+        #
+        # WF-370 moved the script into the wf-core-authoring pack and changed
+        # NOTHING ELSE about this step — same shape, same fetch-depth: 0 checkout
+        # above, same base-sha argument below. Only the path moved.
         #
         # On a pull_request run, base.sha is the PR's base commit and the step
         # lints exactly the files this PR touched or added. On a push to main
         # the expression is empty, --base is omitted, and the gate degrades to a
-        # documented no-op (the catch still runs via the self-test in run.sh) —
-        # so main can never be failed by a pre-existing violation.
+        # documented no-op (the catch still runs via the self-test in the pack's
+        # fixtures/run.sh) — so main can never be failed by a pre-existing violation.
         run: |
-          bash plugins/wf/skills/_contracts/glossary-on-touch.sh \
+          bash plugins/wf-core-authoring/capabilities/core-authoring/fixtures/glossary-on-touch.sh \
             ${{ github.event.pull_request.base.sha && format('--base {0}', github.event.pull_request.base.sha) || '' }}
 
       - name: Sandbox-testing assertion suite

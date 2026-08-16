@@ -163,13 +163,18 @@ Run both, over the emitted file, on every pass:
   argument, since it has no whole-tree default:
 
   ```bash
-  bash <wf-plugin-root>/skills/_contracts/glossary-lint.sh <emitted-file>
+  bash <core-authoring-root>/capabilities/core-authoring/fixtures/glossary-lint.sh <emitted-file>
   ```
 
-  Resolve `<wf-plugin-root>` through the resolver's `resolve_plugin_root({ plugin: "wf", workspaceRoot })`. The
-  lint scopes each rule by path shape; a file emitted outside `plugins/*/skills/**/SKILL.md` is out
-  of its `skill-body` scope, and the loop's scope-honesty rule then applies — report it as *not
-  applicable*, never as clean.
+  Resolve `<core-authoring-root>` through the resolver's
+  `resolve_plugin_root({ plugin: "wf-core-authoring", workspaceRoot })`. That pack is
+  **maintainer-only and optional**: when it is not installed the root does not resolve, and this
+  check is then **not applicable** — report it that way and continue, never as clean and never as an
+  error. The vocabulary itself still lives in core at
+  `plugins/wf/skills/_contracts/GLOSSARY.md`; only the lint that enforces it ships with the
+  maintainer pack. The lint also scopes each rule by path shape; a file emitted outside
+  `plugins/*/skills/**/SKILL.md` is out of its `skill-body` scope, and the loop's scope-honesty rule
+  then applies — report it as *not applicable*, never as clean.
 
 The registry and manifest validators are **not** in this set: this skill emits a lone skill file and
 no registry artifact, so they have no target here.

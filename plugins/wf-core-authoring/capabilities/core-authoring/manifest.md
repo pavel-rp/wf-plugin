@@ -29,12 +29,29 @@ authoring has since landed alongside it, as the `new-contract` scaffolder declar
 and the glossary now has a maintenance surface too — the `add-term` skill, which lands a term together with
 the parse-contract entry that makes it enforceable, so the vocabulary cannot grow documentation-only.
 
-It also owns its **first repository lint**: the craft-C4 frontmatter and body-length checks in
-`fixtures/`, gated in CI by `fixtures/run.sh` (discovered by convention, so no workflow names this
-capability). Those are pack-carried scripts, not a phase contribution — they assert authoring rules
-over this repository's own files and reach no core phase. The remaining core-authoring content — a
-scaffolder for a core skill — arrives as its own change, each landing a fragments row in the same
-change as the file that row names.
+It also owns the repository's **authoring-convention lints**: the craft-C4 frontmatter and
+body-length checks, the ops-docs budget and slot-marker lints migrated out of core by SUB-8, and the
+glossary vocabulary lint plus its on-touch PR gate migrated by SUB-9 — all in `fixtures/`, gated in
+CI by `fixtures/run.sh` (discovered by convention, so no workflow names this capability). The one
+exception is the on-touch gate's real-tree half, which runs as its own workflow step because it needs
+the pull request's base sha.
+
+**None of these adds a fragments row or a `skills:` entry, and that is deliberate.** They are
+pack-carried scripts: they assert authoring rules over this repository's own files and reach no core
+phase, so they have no legal `phase` / `contribution-kind` pair — the same reason `new-contract` and
+`add-term` stay out of the table. Nor are they skills: `skills:` records a `skills/<name>/` folder the
+pack ships, and a lint script is not one. The `slot` row precedent below does not apply either — that
+row exists because a slot fill is a real contribution the resolver composes, whereas a lint script is
+reached only by a CI runner. Registration therefore gates none of them, which is correct: they gate
+this repository, not a downstream project.
+
+These lints **consume** `plugins/wf/skills/_contracts/GLOSSARY.md`; they do not own it. That file
+stays at its core path for the same reason stated below — `wf-author-caps` is end-user-installable and
+consumes it there, and an end-user pack must never depend on a maintainer-only pack's files. SUB-9
+moved the lints, not the vocabulary.
+
+The remaining core-authoring content — a scaffolder for a core skill — arrives as its own change,
+each landing a fragments row in the same change as the file that row names.
 
 ## Constitution articles
 
