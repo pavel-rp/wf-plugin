@@ -1,6 +1,6 @@
 ---
 name: index
-description: Updates one row in the per-task `index.md` manifest with a status and summary, creating the file (with all-N/A seed rows) on first call. Designed for other wf:* skills to call after they write any artifact or produce any small per-task result (branch name, classification, etc.) so the index stays in sync with reality. Lean — single responsibility.
+description: Updates one row in the per-task `index.md` manifest with a status and summary, creating the file (with all-N/A seed rows) on first call. Designed for other wf:* skills to call after they write any artifact or produce any small per-task result (branch name, classification, etc.) so the index stays in sync with reality. Use immediately after writing a per-task artifact or resolving a small per-task value, to record it in that task's index. Lean — single responsibility.
 allowed-tools: [Read, Write, Edit, Bash]
 ---
 
