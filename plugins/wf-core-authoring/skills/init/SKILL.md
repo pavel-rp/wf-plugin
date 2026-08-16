@@ -123,9 +123,9 @@ Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specif
   to get the current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-core-authoring", expectedFingerprint: <current fingerprint> })`.
 - **`core-authoring` already registered:** `register_pack` upserts idempotently — re-running is
   always safe; report `already-registered` per step 2's pre-check.
-- **The capability declares no fragment row yet:** expected — this pack is a skeleton and registers
-  ahead of its first contribution. Registry validation passes on a zero-row table, and no authoring
-  term surfaces in any core phase until those fragments land.
+- **A declared fragment row resolves nothing before registration:** expected — the capability's rows
+  are reached only through the registry, so until this skill writes the registry row the point they
+  target resolves unfilled and no authoring term of this capability surfaces anywhere.
 - **Self-check FAIL:** report `partial`; never claim success.
 
 ---
