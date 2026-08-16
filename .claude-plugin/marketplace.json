@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.136.0",
+  "version": "0.137.0",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-host generic QA host, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature, wf-author-caps authoring toolkit).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -141,8 +141,8 @@
     {
       "name": "wf-core-authoring",
       "source": "./plugins/wf-core-authoring",
-      "version": "0.8.0",
-      "description": "wf core-authoring pack: the core-authoring capability, carrying the knowledge for authoring the wf core plugin itself — the domain-free skill spine, the frozen contracts under the core plugin's _contracts folder, and the repository authoring rules its CI gates enforce. Declared kind: both; it ships its own skills and is authored to attach phase fragments. Its first contribution is the distilled authoring-vocabulary article it declares as constitution articles, so a session in this repository starts with those rules in its injected context; it also carries the craft-C4 authoring lint its own fixtures runner gates in CI, and it fills the new-skill.constraints composition point declared by /wf-author-caps:new-skill with this repository's core-only authoring rules, so a skill scaffolded here is core-compliant as it is emitted. Ships /wf-core-authoring:init for one-command self-registration of the capability, /wf-core-authoring:new-contract to scaffold a core contract pair that is green under the repository's contract-shape guard on its first run, and /wf-core-authoring:add-term to land one authoring-glossary term together with the parse-contract entry that makes it enforceable.",
+      "version": "0.9.0",
+      "description": "wf core-authoring pack: the core-authoring capability, carrying the knowledge for authoring the wf core plugin itself — the domain-free skill spine, the frozen contracts under the core plugin's _contracts folder, and the repository authoring rules its CI gates enforce. Declared kind: both; it ships its own skills and is authored to attach phase fragments. Its first contribution is the distilled authoring-vocabulary article it declares as constitution articles, so a session in this repository starts with those rules in its injected context; it also carries the craft-C4 authoring lint its own fixtures runner gates in CI, and it fills the new-skill.constraints composition point declared by /wf-author-caps:new-skill with this repository's core-only authoring rules, so a skill scaffolded here is core-compliant as it is emitted. Ships /wf-core-authoring:init for one-command self-registration of the capability, /wf-core-authoring:new-contract to scaffold a core contract pair that is green under the repository's contract-shape guard on its first run, /wf-core-authoring:add-term to land one authoring-glossary term together with the parse-contract entry that makes it enforceable, and /wf-core-authoring:preview-edit to see what a pending, uncommitted capability-manifest, registry, or taxonomy-contract edit would do before it reaches a commit.",
       "author": {
         "name": "Pavel Kalabin"
       },
