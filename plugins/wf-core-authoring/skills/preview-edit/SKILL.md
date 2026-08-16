@@ -33,7 +33,7 @@ defines none of them and is not the place to look them up.
 | [Edge Cases](#edge-cases) | the stop and inert conditions |
 
 Why each arm is sequenced the way it is — the asymmetry that makes the ordering load-bearing — lives in
-`references/routing-rationale.md`, which is never read at runtime.
+this skill's paired `routing-rationale.md` reference, which is never read at runtime.
 
 ---
 
