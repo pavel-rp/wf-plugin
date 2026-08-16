@@ -26,6 +26,10 @@
     {
       "slot": "ship.review",
       "reason": "declared in /wf:ship Phase 4.5, which is unreachable in bare core: /wf:ship Phase 1 REQUIRES a delivery provider and hard-stops with `SHIP — Blocked` (\"No delivery provider is registered — nothing to open or merge\") before Phase 4.5 ever resolves the slot. Its unfilled behavior stays covered by corpus item 1, its own per-slot comparison arm."
+    },
+    {
+      "slot": "new-skill.constraints",
+      "reason": "declared in /wf-author-caps:new-skill, an interactive pack-owned scaffolder that is not on the SDD conveyor this arm drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement) and takes no task id — the bare-core run never reaches it, so it cannot be covered here. It is also the first declared slot with no per-slot arm at all; that is recorded, with its reason, in corpus/slot-exemptions.json, and its inertness is asserted at the resolver instead (WF-363)."
     }
   ],
   "runs": [

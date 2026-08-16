@@ -121,7 +121,7 @@
     {
       "name": "wf-author-caps",
       "source": "./plugins/wf-author-caps",
-      "version": "0.5.2",
+      "version": "0.6.0",
       "description": "wf authoring toolkit: the author-caps capability, teaching how to author capabilities, skills, and plugins for this marketplace. Ships two model-invoked reference skills — /wf-author-caps:authoring-guide (core-versus-capability sorting, plugin anatomy, interface-first skill design, skill-versus-subagent, native and registry composition, the registration flow, canonical vocabulary) and /wf-author-caps:authoring-taxonomy (the SDD phase spine, the contribution kinds, aggregate-versus-partition policy, manifest schema v2, the registry row, constitution composition, registry validation) — that load by description auto-selection when an authoring question comes up, no slash command required. Declared kind: both; attaches five inline phase fragments — guidance at spec and implement, two findings at verify (structural validation and reference existence), a scenario at qa-generation — plus constitution article keys, all inert until registered. Ships four scaffolders that emit real, already-linted files — /wf-author-caps:new-skill, /wf-author-caps:new-capability, /wf-author-caps:new-pack (a complete registerable pack skeleton: plugin manifest, capability folder, and an init skill on the pack-onboarding spine) and /wf-author-caps:new-provider (a capability bound to one contract surface, speaking only the abstract operations with binding values in profile slots) — plus /wf-author-caps:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"
@@ -131,7 +131,7 @@
     {
       "name": "wf-sandbox-testing",
       "source": "./plugins/wf-sandbox-testing",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "description": "wf skill-eval harness pack: the sandbox-testing feature capability. Runs real headless wf:* skill invocations hermetically in a fingerprinted container (runner/), judges the runner's structural outputs — terminal block, workspace file set, invoked contract-op set — statistically over N runs and emits a variance-aware report separating drift from regression (assert/), ships the SMOKE/STATISTICAL tier commands and the baseline-comparison primitive, the behavioral-regression corpus mined retrofit-first from observed failures (corpus/), and the findings-loop procedure that turns a new observed failure into an assertion. Owns no provider surface and attaches no phase fragment; downstream fixtures that script a provider pair with the wf-fake pack (enforced loudly at run time, not via requires:). Ships /wf-sandbox-testing:new-experiment, an interview-driven scaffolder that emits a runnable experiment kit — manifest, kit-root files, and an engine-derived runbook — for the shared experiment engine, plus /wf-sandbox-testing:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"

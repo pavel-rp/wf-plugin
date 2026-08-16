@@ -52,6 +52,10 @@ re-asked when it fails.
 - Read any file in the workspace, and glob it to detect the target plugin and collisions.
 - Write and edit files **only** under the resolved `plugins/<plugin-name>/skills/<name>/` folder.
 - Run the resolver's `validate_skill_interface({ plugin: <plugin-name>, skill: <name>, workspaceRoot })` tool and the repository's `glossary-lint.sh`.
+- Resolve the declared `new-skill.constraints` slot via `resolve_content({ workspaceRoot, ... })`
+  (`class: slot`, `skill: new-skill`, `point: constraints`) — **one call per marker** — and, only on
+  a `composed` outcome, follow the served body as prose in this skill's own context, which
+  authorizes **exactly** the constraints that body names.
 
 **Forbidden:**
 
@@ -62,6 +66,8 @@ re-asked when it fails.
 - Write the current model id as an AI-attribution trailer, a "generated with" footer, an emoji, or a
   promotional tagline into any emitted file.
 - Overwrite an existing `SKILL.md` without asking first.
+- Improvise a constraint, a check, or any other operation at the `new-skill.constraints` marker when
+  its slot is unfilled, unresolved, or refused — the inline-default region is executed **exactly**.
 
 ---
 
@@ -114,6 +120,34 @@ Emit exactly one file at that path, with these parts in this order and no others
 Use forward slashes in every path. Address any reference file through the `resolve_content` form
 above — a plain relative markdown link to one is classified as a raw-read instruction and fails the
 repository's content-read guard.
+
+#### Additional constraints on the emitted skill
+
+This is the declared `new-skill.constraints` composition point — reached once the emission template
+above has stated the scaffolder's own rules and **before** the check set below runs, so anything
+attached here shapes the file while it is still being emitted rather than being reported on it after
+the fact. Resolve it lazily with **one** call: `resolve_content({ workspaceRoot, ... })` with
+`class: slot`, `skill: new-skill`, `point: constraints`. Act on the typed outcome — never improvise
+a constraint at this marker:
+
+- **`{status: unfilled}`** (no slot contribution registered and no personal
+  `_local/slots/new-skill.constraints.md` override) → execute **exactly** the inline-default region
+  below, then continue to Input 3.
+- **`{status: composed, content, policy, …}`** → one or more fills are registered. This point's
+  policy is **`append`**, so the inline default below applies **first** and the resolver has already
+  concatenated every contribution in registry order with any personal override last; **follow the
+  served `content` as prose** in this skill's own context, in the order served, then continue to
+  Input 3. Do not re-order it, select among the parts, or drop any — composition is the resolver's
+  job, and the whole served body applies here.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → do not
+  improvise: run the inline-default region below (continue to Input 3) and state the resolver's
+  reason. Follow the content surface's degradation discipline — never a wrong-path body, never a
+  raw-read fall-through.
+
+<!-- wf:slot new-skill.constraints -->
+No additional constraint applies. The emission template above is the whole rule set the emitted file
+is held to, and no operation of any kind is emitted at this point. Continue to Input 3.
+<!-- wf:slot-end new-skill.constraints -->
 
 ### Input 3 — the check set the loop runs (Stage 3)
 
