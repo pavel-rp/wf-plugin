@@ -1,6 +1,6 @@
 # core-authoring capability manifest
 
-**Version:** 0.4.0
+**Version:** 0.5.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** core-authoring (registers into the downstream `## Capabilities` registry as `core-authoring`)
 **Kind:** both (ships skills and is authored to attach phase fragments)
@@ -95,6 +95,7 @@ skills:
   - plugins/wf-core-authoring/skills/init/         # /wf-core-authoring:init — self-registering onboarding
   - plugins/wf-core-authoring/skills/new-contract/ # /wf-core-authoring:new-contract — scaffolds a core contract pair, green under the contract-shape guard
   - plugins/wf-core-authoring/skills/add-term/     # /wf-core-authoring:add-term — lands one glossary term together with the lint entry that enforces it
+  - plugins/wf-core-authoring/skills/preview-edit/ # /wf-core-authoring:preview-edit — previews what a pending, uncommitted registry or taxonomy edit would do before it is committed
 ```
 
 ## Fragments
@@ -126,6 +127,17 @@ maintainer action against a repository file, not a contribution any SDD phase fi
 `skills:` and nowhere else, so with this capability unregistered the skill still loads — native plugin
 composition loads a pack's skills regardless of registration — while contributing nothing to any core
 phase and filling no slot. No glossary-authoring guidance reaches a phase either way.
+
+The `preview-edit` surface adds no row on that same basis, stated in its own terms. It observes what a
+**pending, uncommitted** edit would do, and observing is not a contribution any phase fires: every
+fragments row must name a `phase` and a `contribution-kind` drawn from the fixed sets, and a
+maintainer-invoked preview maps to no member of the fixed phase set — it is reached by a maintainer at a
+keyboard, never by a phase firing. Declaring it under `skills:` is the whole of its declaration. That is
+the basis `new-contract` and `add-term` state, and it is **distinct from the `slot` row's**, which is legal
+precisely because a `slot` targets a per-skill composition point and therefore needs no phase at all. With
+this capability unregistered the skill still loads — native plugin composition loads a pack's skills
+regardless of registration — while contributing to no core phase and filling no slot: no fragments row and
+no `slot` scope names it.
 
 A `slot` fill is the one contribution those two cases do not cover, and it is why this row exists rather
 than a third `skills:` line. `skills:` records a **skill** the pack ships; this contribution ships no
