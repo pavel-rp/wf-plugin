@@ -24,10 +24,10 @@ project to override.
 
 Its **first content** is the distilled authoring-vocabulary article below — the leading-word landing and
 the admitted term rules of `plugins/wf/skills/_contracts/GLOSSARY.md`, condensed to ten clauses so a
-session in this repository starts with them already in context rather than meeting them at review. The
-remaining core-authoring content — a scaffolder for a core skill, contract authoring, and ownership of a
-repository lint — arrives as its own change, each landing a fragments row in the same change as the file
-that row names.
+session in this repository starts with them already in context rather than meeting them at review. Contract
+authoring has since landed alongside it, as the `new-contract` scaffolder declared under `## Skills` below.
+The remaining core-authoring content — a scaffolder for a core skill, and ownership of a repository lint —
+arrives as its own change, each landing a fragments row in the same change as the file that row names.
 
 ## Constitution articles
 
@@ -59,6 +59,19 @@ once after `/wf:init`. That skill self-registers through the resolver's `inspect
 capability unregistered, nothing is reached and no authoring term surfaces in any core phase —
 behavior is byte-identical to the plugin never having been installed.
 
+## Skills
+
+As a `both` capability, core-authoring ships its skills natively — install the plugin and the
+`/wf-core-authoring:*` commands are discoverable, because native plugin composition loads them
+regardless of registration. The `skills:` key is therefore **documentation only**; it records what
+the pack ships, it does not cause it to load.
+
+```
+skills:
+  - plugins/wf-core-authoring/skills/init/         # /wf-core-authoring:init — self-registering onboarding
+  - plugins/wf-core-authoring/skills/new-contract/ # /wf-core-authoring:new-contract — scaffolds a core contract pair, green under the contract-shape guard
+```
+
 ## Fragments
 
 Schema `phase | contribution-kind | dispatch | scope`.
@@ -71,3 +84,10 @@ article attaches to the constitution rather than to an SDD phase — it is the `
 never a fragments row — so no phase fragment is declared yet. Registry validation tolerates a zero-row
 table, and the capability still registers. A row and the fragment file it names are authored together, in
 the change that introduces them.
+
+The `new-contract` scaffolder adds **no** row either, and that is not an oversight: every fragments row
+must name a `phase` and a `contribution-kind` drawn from the fixed sets, and a contract scaffolder
+maps to no phase in the `spec → plan → tasks → implement → verify → qa` spine. It is an authoring
+tool a maintainer invokes directly, not a contribution any phase fires. Declaring it under `skills:`
+is the whole of its declaration — which is also why, with this capability unregistered, the pack
+contributes nothing to any phase while the skill itself still loads.

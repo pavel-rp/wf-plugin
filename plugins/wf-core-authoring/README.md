@@ -8,17 +8,18 @@ how to author a *pack*; this pack is about the *core*. Neither is about a downst
 
 ## What ships today
 
-This pack is a **skeleton**, and says so on purpose: the registration path lands before the first
-piece of content that depends on it.
+The registration path landed first, on purpose, before the content that depends on it. Contract
+authoring is the first piece of content on top of it.
 
 | Path | What it is |
 |---|---|
 | `skills/init/SKILL.md` | `/wf-core-authoring:init` — one-command self-registration of the `core-authoring` capability. |
-| `capabilities/core-authoring/manifest.md` | The schema-v2 manifest. `kind: both`, zero-row Fragments table, no `requires:`, no `conflicts:`, no `profile-template:`. |
+| `skills/new-contract/SKILL.md` | `/wf-core-authoring:new-contract` — scaffolds a matched core contract pair (a bounded runtime-ops half plus its paired reference half) and proves it green under the repository's contract-shape guard before handing it back. |
+| `capabilities/core-authoring/manifest.md` | The schema-v2 manifest. `kind: both`, a documentation-only `skills:` block, zero-row Fragments table, no `requires:`, no `conflicts:`, no `profile-template:`. |
 | `.claude-plugin/plugin.json` | The plugin manifest. |
 
-No scaffolder for a core skill, no contract authoring, and no ownership of a repository lint yet.
-Each arrives as its own change, landing a fragments row in the same change as the file that row
+No scaffolder for a core skill and no ownership of a repository lint yet. Each arrives as its own
+change; a change that attaches a phase fragment lands its fragments row alongside the file that row
 names.
 
 ## Install and register
