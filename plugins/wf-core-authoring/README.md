@@ -61,6 +61,11 @@ you by native plugin composition the moment the plugin is installed — no regis
 project that never registers behaves exactly as it did before the plugin existed, and no authoring
 term surfaces in any core phase.
 
+That last sentence is measured, not asserted. The capability's `inertness-evidence.md` reference
+records the three-arm comparison behind it — the unregistered fixture, a registered control that must
+diverge on every surface, and the return to the fixture — together with the two load-bearing
+exclusions and their reasons, and an explicit statement of what was and was not run.
+
 ## Registration does not travel
 
 The registry lives in `_local/config.md`, which is **gitignored**. It is per-checkout machine state,
