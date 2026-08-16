@@ -15,16 +15,18 @@ authoring and the repository's craft-C4 authoring lint are the content on top of
 |---|---|
 | `skills/init/SKILL.md` | `/wf-core-authoring:init` — one-command self-registration of the `core-authoring` capability. |
 | `skills/new-contract/SKILL.md` | `/wf-core-authoring:new-contract` — scaffolds a matched core contract pair (a bounded runtime-ops half plus its paired reference half) and proves it green under the repository's contract-shape guard before handing it back. |
-| `capabilities/core-authoring/manifest.md` | The schema-v2 manifest. `kind: both`, a documentation-only `skills:` block, zero-row Fragments table, no `requires:`, no `conflicts:`, no `profile-template:`. |
+| `capabilities/core-authoring/manifest.md` | The schema-v2 manifest. `kind: both`, a documentation-only `skills:` block, one `slot` fragments row, no `requires:`, no `conflicts:`, no `profile-template:`. |
+| `capabilities/core-authoring/fragments/new-skill-constraints.md` | The fill for `/wf-author-caps:new-skill`'s declared `new-skill.constraints` point (`append`). Carries this repository's core-only rules — core purity, the body budget, the terminal `Next:` line, attribution without promotion, and the release version pair — each cited to the section of `CLAUDE.md` that owns it, plus the two validators it adds to the scaffolder's check set. |
 | `capabilities/core-authoring/fixtures/run.sh` | The capability's fixture suite. CI discovers it by the `plugins/*/capabilities/*/fixtures/run.sh` convention — adding a check needs no workflow edit. |
 | `capabilities/core-authoring/fixtures/check-skill-*.sh` | The craft-C4 checks over every `SKILL.md`: `name` (≤64 chars, matches its directory), `description` (≤1024 chars, third-person "what", `Use ...` "when"), and body length (under 500 lines). Each ships a `--selftest` that drives seeded fixtures, so a green live run means the tree is clean rather than the check being inert. |
 | `capabilities/core-authoring/fixtures/craft-fixtures/` | The seeded pass/fail fixtures those selftests drive. Excluded from the live target set by shape, not by path. |
 | `.claude-plugin/plugin.json` | The plugin manifest. |
 
 The lint is **pack-carried scripts, not a phase contribution** — it asserts authoring rules over this
-repository's own files and reaches no core phase, which is why the Fragments table stays zero-row.
-Still to come: a scaffolder for a core skill. It arrives as its own change; a change that attaches a
-phase fragment lands its fragments row alongside the file that row names.
+repository's own files and reaches no core phase, so it carries no fragments row. The `slot` fill does
+carry one: a slot targets a per-skill composition point rather than an SDD phase, so its phase cell is
+`—` and its scope is the `<skill>.<point> <merge-policy>` compound. Every row lands in the same change
+as the file it names.
 
 ## Install and register
 
@@ -76,7 +78,8 @@ that reports the capability missing in a fresh checkout is correct behavior, not
 phase fragments as its content lands. `adapter` is not available to it: a pack always ships an init
 skill, so a fragments-only kind cannot describe it.
 
-Its Fragments table is deliberately zero-row. Registry validation tolerates that, and the capability
-still registers with `validity: ok` — which is the point of registering now. It owns no provider
-surface, so it partitions against nothing and cannot collide with a registered `tracker`, `delivery`,
-`engine`, or `host` owner.
+Its Fragments table carries exactly one row — the `new-skill.constraints` `slot` fill, at merge policy
+`append`. Two `append` claims on one point compose rather than conflict, so the row partitions against
+nothing. It owns no provider surface either, so it cannot collide with a registered `tracker`,
+`delivery`, `engine`, or `host` owner. Unregistered, the row is never reached: the point resolves
+`unfilled`, the scaffolder runs its own inline default, and no term of this capability surfaces.
