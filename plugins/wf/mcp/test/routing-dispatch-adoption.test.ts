@@ -38,6 +38,13 @@ const atomicEvidence = {
   independentReview: false, returnContract: "mechanically-judgeable" as const, requestedParallelism: 1,
 };
 
+const indexEvidence = {
+  workSurface: "caller-context", atomicity: "atomic", unitCount: 1,
+  unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none",
+  validation: "mechanical", contextIsolation: "none", independentReview: false,
+  returnContract: "mechanically-judgeable", requestedParallelism: 1,
+} as const;
+
 test("inventory target matching rejects token-prefix and prose collisions", () => {
   assert.equal(exactInventoryTargetIsPresent("invoke `/wf:child`", "/wf:child"), true);
   assert.equal(exactInventoryTargetIsPresent("invoke `/wf:child2`", "/wf:child"), false);
@@ -64,6 +71,30 @@ test("authoritative dispatch inventory is normalized and bidirectional", () => {
   assert.ok(included.some((row) => row.id === "phase-runner-skill"));
   const init = readFileSync(join(repoRoot, "plugins/wf/skills/init/SKILL.md"), "utf8");
   assert.match(init, /role: "constitution"`, `unitIds: \["init:constitution"\]/);
+});
+
+test("index routing stays inline while bounded tool work stays isolated", () => {
+  const inline = resolveRouting({}, {
+    role: "index", shapeEvidence: indexEvidence, unitIds: ["index:single"],
+    supportsModelSelector: false, supportsEffortSelector: false,
+  });
+  assert.equal(inline.status, "dispatch");
+  assert.equal(inline.diagnostic, null);
+  assert.equal(inline.executionShape, "inline");
+  assert.equal(inline.shapeReason, "atomic-caller-context");
+  assert.equal(inline.model.value, null);
+  assert.equal(inline.model.source, "inheritance");
+  assert.equal(inline.effort.value, null);
+  assert.equal(inline.effort.source, "inheritance");
+
+  const bounded = resolveRouting({}, {
+    role: "index", shapeEvidence: { ...indexEvidence, toolWork: "bounded" },
+    unitIds: ["index:single"], supportsModelSelector: false, supportsEffortSelector: false,
+  });
+  assert.equal(bounded.status, "dispatch");
+  assert.equal(bounded.diagnostic, null);
+  assert.equal(bounded.executionShape, "isolated");
+  assert.equal(bounded.shapeReason, "single-isolation-worthy-unit");
 });
 
 test("real routing guard enforces workspace-root ordering and explicit binding", () => {
