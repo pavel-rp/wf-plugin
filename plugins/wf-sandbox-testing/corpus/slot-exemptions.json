@@ -3,8 +3,8 @@
   "exempt": [
     {
       "slot": "new-skill.constraints",
-      "reason": "declared in /wf-author-caps:new-skill, an interactive pack-owned scaffolder that is not on the SDD conveyor the runner drives and takes no task id — the runner has no way to invoke it, so no arm can observe its unfilled behavior. Its inertness is asserted instead at the resolver, the layer that actually composes the slot: resolve_content({class: \"slot\", skill: \"new-skill\", point: \"constraints\"}) returns {status: \"unfilled\"} with no contribution and no override registered, which is the same reading the empty-slot arms exist to corroborate. First pack-owned slot in the marketplace (WF-363, C023); revisit when the runner can drive a pack scaffolder.",
-      "provenance": "WF-363"
+      "reason": "declared in /wf-author-caps:new-skill, an interactive pack-owned scaffolder that is not on the SDD conveyor the runner drives and takes no task id — the runner has no way to invoke it, so no arm can observe its unfilled behavior. Its inertness is asserted instead at the resolver, the layer that actually composes the slot: when wf-core-authoring is unregistered and no override is present, resolve_content({class: \"slot\", skill: \"new-skill\", point: \"constraints\"}) returns {status: \"unfilled\"}; when wf-core-authoring is registered, its append contribution fills new-skill.constraints. These registration-dependent readings are what the empty-slot arms exist to corroborate. First pack-owned slot in the marketplace (WF-363, C023); registered fill added by WF-368; revisit when the runner can drive a pack scaffolder.",
+      "provenance": "WF-363, WF-368"
     }
   ]
 }
