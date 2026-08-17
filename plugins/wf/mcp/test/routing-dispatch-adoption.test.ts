@@ -74,6 +74,14 @@ test("authoritative dispatch inventory is normalized and bidirectional", () => {
 });
 
 test("index routing stays inline while bounded tool work stays isolated", () => {
+  const indexSkill = readFileSync(join(repoRoot, "plugins/wf/skills/index/SKILL.md"), "utf8");
+  const routingBlock = indexSkill.match(/## Phase 2: Route, then write inline([\s\S]*?)### Slot Catalogue/)?.[1];
+  assert.ok(routingBlock, "index skill must prescribe routing immediately before its write");
+  const normalizedRoutingBlock = routingBlock.replace(/\s+/g, " ");
+  assert.ok(normalizedRoutingBlock.includes('`role: "index"`, `unitIds: ["index:single"]`'));
+  assert.ok(normalizedRoutingBlock.includes('`shapeEvidence: { workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical", contextIsolation: "none", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`'));
+  assert.ok(normalizedRoutingBlock.includes('`supportsModelSelector: false`, and `supportsEffortSelector: false`'));
+
   const inline = resolveRouting({}, {
     role: "index", shapeEvidence: indexEvidence, unitIds: ["index:single"],
     supportsModelSelector: false, supportsEffortSelector: false,
