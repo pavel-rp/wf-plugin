@@ -92,7 +92,7 @@ The only delivery operation this file invokes — `current-branch-query` (the br
 `workspaceRoot: <absolute pwd -P workspace root>`, `role: "index"`, `unitIds:
 ["index:single"]`, `shapeEvidence: { workSurface: "caller-context", atomicity:
 "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low",
-toolWork: "bounded", validation: "mechanical", contextIsolation: "none",
+toolWork: "none", validation: "mechanical", contextIsolation: "none",
 independentReview: false, returnContract: "mechanically-judgeable",
 requestedParallelism: 1 }`, `supportsModelSelector: false`, and
 `supportsEffortSelector: false`. Emit the compact operational record (role; shape +
