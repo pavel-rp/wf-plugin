@@ -19,15 +19,17 @@
  *  Bumped to 3 in WF-334 when `_local/constitution.md` became a fingerprinted
  *  `constitution` source (so a project-clause edit invalidates the snapshot and
  *  the SessionStart hook serves the composed constitution under fingerprint
- *  discipline) — old snapshots lack that source and must rebuild to gain it. */
-export const SNAPSHOT_SCHEMA_VERSION = 3;
+ *  discipline) — old snapshots lack that source and must rebuild to gain it.
+ *  Bumped to 4 in WF-440 when capability records gained validated interview
+ *  question metadata and profile-template source fingerprints. */
+export const SNAPSHOT_SCHEMA_VERSION = 4;
 
 /** Identity of the resolver runtime that stamps a snapshot. `version` is part of
  *  the freshness contract (WF-271): a snapshot built by a different resolver
  *  version is refreshed, so a runtime upgrade never serves a snapshot shaped by
  *  older resolution logic. Bump on any resolution-logic change that should
  *  invalidate previously persisted snapshots. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" } as const;
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.0" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */
@@ -43,6 +45,9 @@ export interface SourceFingerprint {
     | "registry"
     | "core-config"
     | "manifest"
+    /** A declared capability `profile.template.json` — hashed but never stored raw;
+     * its validated `ask` metadata is normalized into `questions`. */
+    | "profile-template"
     | "profile"
     | "plugin-list"
     /** A pack slot-contribution body (`<cap>/<inline-dispatch>`) — hashed, never
@@ -189,6 +194,9 @@ export interface CapabilityRecord {
   conflicts: string[];
   /** Normalized path declared by `profile-template:`, or `null`. */
   profileTemplatePath: string | null;
+  /** Ordered, validated declarations plus effective persisted/suggestion state.
+   * Empty when no questions are declared or the complete set failed validation. */
+  questions: QuestionRecord[];
   /** `ok` when the manifest resolved and parsed; `unrecoverable` when the
    *  registered path yields no readable manifest. */
   validity: "ok" | "unrecoverable";

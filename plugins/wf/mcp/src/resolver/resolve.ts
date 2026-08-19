@@ -35,6 +35,7 @@ import {
 } from "./slot.js";
 import { parseRegistry } from "./registry.js";
 import { parseManifest } from "./manifest.js";
+import { applyQuestionValues, parseQuestionDeclarations } from "./questions.js";
 import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
 import { parseCoreConfig, parseRoutingConfig } from "./config.js";
 import { fingerprint } from "./fingerprint.js";
@@ -47,6 +48,7 @@ import {
   type PackRecord,
   type PluginRootRecord,
   type ProviderOwnershipRecord,
+  type QuestionDiagnostic,
   type ResolverSnapshot,
   type SlotProvenanceRecord,
   type SourceFingerprint,
@@ -111,6 +113,26 @@ function toAbsolute(workspaceRoot: string, snapshotPath: string): string {
 function inlineDispatchRel(dispatch: string): string | null {
   const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
   return m ? m[1].trim() : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function appendQuestionDiagnostics(
+  target: Diagnostic[],
+  questionDiagnostics: readonly QuestionDiagnostic[],
+): void {
+  for (const issue of questionDiagnostics) {
+    target.push({
+      severity: "error",
+      code: issue.code,
+      message: issue.message,
+      category: "registry-invalid",
+      recovery:
+        "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.",
+    });
+  }
 }
 
 export function buildSnapshot(
@@ -224,6 +246,7 @@ export function buildSnapshot(
     let requires: string[] = [];
     let conflicts: string[] = [];
     let profileTemplatePath: string | null = null;
+    let questions: CapabilityRecord["questions"] = [];
 
     if (resolved.manifestPath) {
       const content = io.readFile(resolved.manifestPath);
@@ -238,10 +261,27 @@ export function buildSnapshot(
         requires = m.requires;
         conflicts = m.conflicts;
         if (m.profileTemplate && resolved.resolvedPath) {
-          profileTemplatePath = relativize(
-            workspaceRoot,
-            joinSlash(resolved.resolvedPath, m.profileTemplate),
+          const profileTemplateAbs = joinSlash(resolved.resolvedPath, m.profileTemplate);
+          profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
+          const profileTemplateRaw = io.readFile(profileTemplateAbs);
+          sources.push(
+            fingerprint("profile-template", profileTemplatePath, profileTemplateRaw),
           );
+          if (profileTemplateRaw === null) {
+            appendQuestionDiagnostics(diagnostics, [
+              {
+                code: "question/template-missing",
+                pack: row.name,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${row.name}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`,
+              },
+            ]);
+          } else {
+            const parsedQuestions = parseQuestionDeclarations(row.name, profileTemplateRaw);
+            if (parsedQuestions.ok) questions = parsedQuestions.questions;
+            else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+          }
         }
       }
     }
@@ -291,6 +331,7 @@ export function buildSnapshot(
       requires,
       conflicts,
       profileTemplatePath,
+      questions,
       validity,
     };
   });
@@ -399,18 +440,55 @@ export function buildSnapshot(
       `${cap.name}.profile.json`,
     );
     const content = io.readFile(profilePath);
-    if (content === null) continue;
     sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
+    if (content === null) continue;
     try {
-      profiles[cap.name] = JSON.parse(content);
+      const parsedProfile: unknown = JSON.parse(content);
+      profiles[cap.name] = parsedProfile;
+      if (cap.questions.length > 0) {
+        if (!isRecord(parsedProfile)) {
+          cap.questions = [];
+          appendQuestionDiagnostics(diagnostics, [
+            {
+              code: "question/persisted-container-invalid",
+              pack: cap.name,
+              question: null,
+              field: "profile",
+              message: `pack \`${cap.name}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`,
+            },
+          ]);
+        } else {
+          const applied = applyQuestionValues(cap.questions, { persisted: parsedProfile });
+          if (applied.ok) cap.questions = applied.questions;
+          else {
+            cap.questions = [];
+            appendQuestionDiagnostics(diagnostics, applied.diagnostics);
+          }
+        }
+      }
     } catch (err) {
-      diagnostics.push({
-        severity: "warning",
-        code: "profile/unparseable",
-        message: `profile for \`${cap.name}\` is not valid JSON: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      });
+      if (cap.questions.length > 0) {
+        cap.questions = [];
+        appendQuestionDiagnostics(diagnostics, [
+          {
+            code: "question/persisted-unparseable",
+            pack: cap.name,
+            question: null,
+            field: "profile",
+            message: `pack \`${cap.name}\`, field \`profile\`: persisted question answers are not valid JSON: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          },
+        ]);
+      } else {
+        diagnostics.push({
+          severity: "warning",
+          code: "profile/unparseable",
+          message: `profile for \`${cap.name}\` is not valid JSON: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        });
+      }
     }
   }
 

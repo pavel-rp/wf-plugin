@@ -18,13 +18,14 @@ import { resolveContainedRegistryWritePath } from "../src/ports.js";
 import { normalizeSlashes, joinSlash } from "../src/resolver/paths.js";
 import { parsePluginList } from "../src/resolver/plugin-list.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
-import type { ResolverSnapshot } from "../src/resolver/types.js";
+import { RESOLVER_GENERATOR, type ResolverSnapshot } from "../src/resolver/types.js";
 
 const WS = "/ws";
 const INSTALL = "/ws/packs/wf-demo";
 
 const SECRET_MANIFEST = "SECRET_MANIFEST_PROSE_do_not_leak";
 const SECRET_FRAGMENT = "SECRET_FRAGMENT_BODY_do_not_leak";
+const SECRET_TEMPLATE = "SECRET_PROFILE_TEMPLATE_BODY_do_not_leak";
 
 const DEMO_MANIFEST = `# demo capability
 
@@ -39,9 +40,30 @@ article: demo-rule = required
 | phase | contribution-kind | dispatch | scope |
 |-------|-------------------|----------|-------|
 | implement | provider | \`inline: fragments/thing.ops.md\` | delivery |
+
+profile-template: profile.template.json
 `;
 
 const DEMO_FRAGMENT = `# thing fragment\n\n${SECRET_FRAGMENT} — never read into any response.\n`;
+const DEMO_TEMPLATE = JSON.stringify({
+  ask: [
+    {
+      id: "project-name",
+      destination: "project-name",
+      prompt: "Project name?",
+      schema: { type: "string", minLength: 2, maxLength: 12 },
+      suggestedDefault: "demo",
+    },
+    {
+      id: "mode",
+      destination: "mode",
+      prompt: "Operating mode?",
+      schema: { type: "enum", values: ["safe", "fast"] },
+    },
+  ],
+  mode: "safe",
+  privateNote: SECRET_TEMPLATE,
+});
 
 const BASE_CONFIG = `# Config
 
@@ -80,6 +102,7 @@ function makePorts(opts?: {
   const seed: Record<string, string> = {
     [`${WS}/_local/config.md`]: BASE_CONFIG,
     [`${INSTALL}/capabilities/demo/manifest.md`]: DEMO_MANIFEST,
+    [`${INSTALL}/capabilities/demo/profile.template.json`]: DEMO_TEMPLATE,
     [`${INSTALL}/capabilities/demo/fragments/thing.ops.md`]: DEMO_FRAGMENT,
     ...(opts?.files ?? {}),
   };
@@ -103,7 +126,7 @@ function makePorts(opts?: {
         io,
         pluginListRaw: pluginListRaw ?? undefined,
         now: () => new Date("2026-07-16T00:00:00.000Z"),
-        generator: { name: "wf-resolver", version: "0.3.0" },
+        generator: RESOLVER_GENERATOR,
       });
     },
     persist(snap) {
@@ -250,8 +273,146 @@ test("no query/inspect response carries a manifest or fragment body", () => {
   ]);
   assert.ok(!blob.includes(SECRET_MANIFEST), "manifest body must not leak");
   assert.ok(!blob.includes(SECRET_FRAGMENT), "fragment body must not leak");
-  // The dispatch PATH (metadata) is allowed and expected.
+  assert.ok(!blob.includes(SECRET_TEMPLATE), "raw profile-template body must not leak");
+  // The normalized declaration prompt is metadata; unrelated template fields are not.
   assert.ok(blob.includes("fragments/thing.ops.md"));
+});
+
+test("inspect_pack exposes complete ordered validated question metadata", () => {
+  const ports = makePorts();
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, true);
+  assert.deepEqual(
+    inspected.capabilities[0].questions.map((question) => question.id),
+    ["project-name", "mode"],
+  );
+  assert.ok(inspected.capabilities[0].questions.every((question) => question.pack === "demo"));
+  assert.deepEqual(inspected.capabilities[0].questionDiagnostics, []);
+  assert.deepEqual(inspected.capabilities[0].questions[1].state.suggestions, [
+    { source: "pack-default", value: "safe" },
+  ]);
+});
+
+test("active registry metadata resolves only valid explicitly persisted profile answers", () => {
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/profiles/demo.profile.json`]: JSON.stringify({
+        "project-name": "omega",
+      }),
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+  assert.equal(inspected.valid, true);
+  assert.equal(svc.registerPack("wf-demo@local", inspected.fingerprint!).status, "registered");
+
+  const active = svc.resolveRegistry().capabilities.find((capability) => capability.name === "demo");
+  assert.ok(active);
+  assert.deepEqual(
+    active.questions.map((question) => question.id),
+    ["project-name", "mode"],
+  );
+  assert.deepEqual(active.questions[0].state, {
+    status: "resolved",
+    source: "persisted",
+    value: "omega",
+    suggestions: [{ source: "suggested-default", value: "demo" }],
+  });
+  assert.equal(active.questions[1].state.status, "unresolved");
+});
+
+test("inspect_pack rejects malformed question metadata with complete attribution", () => {
+  const ports = makePorts({
+    files: {
+      [`${INSTALL}/capabilities/demo/profile.template.json`]: JSON.stringify({
+        ask: [
+          {
+            id: "duplicate",
+            destination: "same",
+            prompt: "First?",
+            schema: { type: "boolean", unexpected: true },
+          },
+          {
+            id: "duplicate",
+            destination: "same",
+            prompt: "Second?",
+            schema: { type: "integer", minimum: 1 },
+          },
+        ],
+      }),
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, false);
+  assert.deepEqual(inspected.capabilities[0].questions, []);
+  assert.ok(inspected.capabilities[0].questionDiagnostics.length >= 3);
+  assert.ok(
+    inspected.capabilities[0].questionDiagnostics.every(
+      (issue) => issue.pack === "demo" && issue.question !== null && issue.field.length > 0,
+    ),
+  );
+  assert.ok(inspected.issues.every((issue) => issue.includes("pack `demo`")));
+  const registered = svc.registerPack("wf-demo@local", inspected.fingerprint!);
+  assert.equal(registered.status, "rejected");
+  assert.match(registered.reason ?? "", /invalid pack metadata/);
+  assert.equal(ports.counts.writeFile, 0);
+});
+
+test("active invalid persisted values fail metadata exposure without a partial question set", () => {
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/profiles/demo.profile.json`]: JSON.stringify({ mode: "unknown" }),
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+  assert.equal(svc.registerPack("wf-demo@local", inspected.fingerprint!).status, "registered");
+
+  const active = svc.resolveRegistry().capabilities.find((capability) => capability.name === "demo");
+  assert.ok(active);
+  assert.deepEqual(active.questions, []);
+  const lifecycle = svc.inspect();
+  assert.ok(
+    lifecycle.diagnostics.some(
+      (entry) => entry.code === "question/value-enum" && entry.message.includes("question `mode`"),
+    ),
+  );
+});
+
+test("active malformed template metadata emits pack-attributed resolver diagnostics", () => {
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/config.md`]: `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| bad | capabilities/bad |\n`,
+      [`${WS}/capabilities/bad/manifest.md`]: `# bad\n\n**Kind:** adapter\n\nprofile-template: profile.template.json\n`,
+      [`${WS}/capabilities/bad/profile.template.json`]: JSON.stringify({
+        ask: [
+          {
+            id: "broken",
+            destination: "broken",
+            prompt: "Broken?",
+            schema: { type: "integer", maximum: 2 },
+          },
+        ],
+      }),
+    },
+  });
+  const svc = new ResolverService(ports);
+  svc.refresh();
+
+  const bad = svc.resolveRegistry().capabilities.find((capability) => capability.name === "bad");
+  assert.ok(bad);
+  assert.deepEqual(bad.questions, []);
+  assert.ok(
+    svc.inspect().diagnostics.some(
+      (entry) =>
+        entry.code === "question/schema-incomplete-bounds" &&
+        entry.message.includes("pack `bad`, question `broken`"),
+    ),
+  );
 });
 
 // --- register_pack: success path ------------------------------------------

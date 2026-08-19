@@ -5,9 +5,10 @@
 // facts ONLY by calling the typed queries here — there is no shell/CLI/plugin-
 // root probe or installed-folder walk on the consumer side; all discovery
 // happens once, inside this service, over the deterministic resolver engine
-// (WF-269). Every response is bounded metadata / normalized paths / enums /
-// small maps — NEVER a capability fragment body, a skill body, or prompt text
-// (the snapshot itself already excludes bodies; these projections only narrow).
+// (WF-269). Every metadata query response is bounded normalized metadata / paths /
+// enums / small maps — NEVER a capability fragment body, skill body, manifest
+// body, or raw profile-template body. A validated interview `prompt` is an
+// intentional declaration field, not an executable prompt/template body.
 //
 // The service owns the snapshot lifecycle for a server session: a lazily built,
 // in-memory-cached resolved view, an `invalidate` flag that forces the next
@@ -66,12 +67,15 @@ import {
   type CompositionPreview,
 } from "./resolver/preview-composition.js";
 import type { ValidationVerdict } from "./resolver/validate-rules.js";
+import { parseManifest } from "./resolver/manifest.js";
+import { parseQuestionDeclarations } from "./resolver/questions.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
 import {
   RESOLVER_GENERATOR,
   type CapabilityRecord,
   type Diagnostic,
+  type QuestionDiagnostic,
   type ResolverErrorCategory,
   type ResolverSnapshot,
 } from "./resolver/types.js";
@@ -148,6 +152,7 @@ export interface RegistryResponse {
     requires: string[];
     conflicts: string[];
     profileTemplatePath: string | null;
+    questions: CapabilityRecord["questions"];
   }>;
 }
 
@@ -308,6 +313,10 @@ export interface PackCapabilitySummary {
   path: string;
   manifestPath: string;
   kind: string | null;
+  /** Ordered validated declarations; empty when absent or when the set is invalid. */
+  questions: CapabilityRecord["questions"];
+  /** Complete pack/question/field-attributed declaration diagnostics. */
+  questionDiagnostics: QuestionDiagnostic[];
 }
 
 export interface InspectPackResponse {
@@ -463,6 +472,7 @@ export class ResolverService {
         requires: c.requires,
         conflicts: c.conflicts,
         profileTemplatePath: c.profileTemplatePath,
+        questions: c.questions,
       })),
     };
   }
@@ -928,13 +938,14 @@ export class ResolverService {
 
     const found = this.scanPackCapabilities(pack.installPath, pack.name);
     base.capabilities = found.capabilities;
+    base.issues.push(...found.issues);
     if (found.capabilities.length === 0) {
       base.issues.push(
         `no readable \`capabilities/*/manifest.md\` under \`${pack.installPath}\`.`,
       );
     }
 
-    base.fingerprint = this.packFingerprint(pack, found.manifestContents);
+    base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
     base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
     return base;
   }
@@ -957,6 +968,11 @@ export class ResolverService {
     if (!inspected.installPath || inspected.capabilities.length === 0) {
       return reject(
         `plugin \`${pluginId}\` has no valid pack manifest (path-invalid or manifest-invalid).`,
+      );
+    }
+    if (!inspected.valid) {
+      return reject(
+        `plugin \`${pluginId}\` has invalid pack metadata: ${inspected.issues.join(" ")}`,
       );
     }
     if (inspected.fingerprint !== expectedFingerprint) {
@@ -1035,9 +1051,14 @@ export class ResolverService {
   private scanPackCapabilities(
     installPath: string,
     pluginName: string,
-  ): { capabilities: PackCapabilitySummary[]; manifestContents: string[] } {
+  ): {
+    capabilities: PackCapabilitySummary[];
+    fingerprintInputs: Array<{ path: string; content: string | null }>;
+    issues: string[];
+  } {
     const capabilities: PackCapabilitySummary[] = [];
-    const manifestContents: string[] = [];
+    const fingerprintInputs: Array<{ path: string; content: string | null }> = [];
+    const issues: string[] = [];
     // Discover the pack's capability folders by listing `<installPath>/
     // capabilities/*` and keeping those with a readable `manifest.md`. This
     // folder listing runs ONLY on the register write-path (init), never on a
@@ -1049,28 +1070,60 @@ export class ResolverService {
       const manifestAbs = joinSlash(installPath, rel, "manifest.md");
       const body = this.ports.readFile(manifestAbs);
       if (body === null) continue;
-      manifestContents.push(body);
+      fingerprintInputs.push({ path: normalizeSlashes(manifestAbs), content: body });
+
+      const manifest = parseManifest(body);
+      let questions: CapabilityRecord["questions"] = [];
+      let questionDiagnostics: QuestionDiagnostic[] = [];
+      if (manifest.profileTemplate) {
+        const templateAbs = joinSlash(installPath, rel, manifest.profileTemplate);
+        const templateRaw = this.ports.readFile(templateAbs);
+        fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
+        if (templateRaw === null) {
+          questionDiagnostics = [
+            {
+              code: "question/template-missing",
+              pack: name,
+              question: null,
+              field: "profile-template",
+              message: `pack \`${name}\`, field \`profile-template\`: declared template \`${manifest.profileTemplate}\` is not readable.`,
+            },
+          ];
+        } else {
+          const parsed = parseQuestionDeclarations(name, templateRaw);
+          if (parsed.ok) questions = parsed.questions;
+          else questionDiagnostics = parsed.diagnostics;
+        }
+      }
+
+      if (questionDiagnostics.length > 0) {
+        issues.push(...questionDiagnostics.map((issue) => issue.message));
+      }
       capabilities.push({
         name,
         path: `plugin:${pluginName}/${rel}`,
         manifestPath: normalizeSlashes(manifestAbs),
-        kind: this.manifestKind(body),
+        kind: manifest.kind,
+        questions,
+        questionDiagnostics,
       });
     }
-    return { capabilities, manifestContents };
+    return { capabilities, fingerprintInputs, issues };
   }
 
-  private manifestKind(body: string): string | null {
-    const m = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/m.exec(body);
-    return m ? m[1] : null;
-  }
-
-  private packFingerprint(pack: InstalledPlugin, manifestContents: string[]): string {
+  private packFingerprint(
+    pack: InstalledPlugin,
+    inputs: Array<{ path: string; content: string | null }>,
+  ): string {
     return sha256Hex(
       JSON.stringify({
         installPath: pack.installPath,
         version: pack.version,
-        manifests: manifestContents.map((c) => sha256Hex(c)),
+        sources: inputs.map((input) => ({
+          path: input.path,
+          present: input.content !== null,
+          sha256: input.content === null ? null : sha256Hex(input.content),
+        })),
       }),
     );
   }

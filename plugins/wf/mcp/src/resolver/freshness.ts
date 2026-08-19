@@ -60,6 +60,7 @@ const FILE_SOURCE_KINDS: ReadonlySet<SourceFingerprint["kind"]> = new Set([
   "registry",
   "core-config",
   "manifest",
+  "profile-template",
   "profile",
   // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
   // settings overrides join the re-read set — editing any of them invalidates
