@@ -514,7 +514,7 @@ export function parseQuestionDeclarations(
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawTemplate);
-  } catch (err) {
+  } catch {
     return {
       ok: false,
       questions: [],
@@ -524,7 +524,7 @@ export function parseQuestionDeclarations(
           null,
           "template",
           "question/template-unparseable",
-          `must be valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+          "must be valid JSON.",
         ),
       ],
     };
