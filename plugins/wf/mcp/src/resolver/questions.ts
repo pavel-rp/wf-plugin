@@ -24,6 +24,72 @@ const DECLARATION_FIELDS = new Set([
 ]);
 const ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const DESTINATION_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+const MAX_PATTERN_INPUT_LENGTH = 1024;
+const MAX_PATTERN_LENGTH = 256;
+
+/** Keep pack-controlled patterns in a deterministic, bounded RegExp subset.
+ *  Grouping, alternation, backreferences, and more than one variable quantifier
+ *  are excluded so the native matcher cannot enter catastrophic backtracking. */
+function patternSafetyError(pattern: string): string | null {
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    return `must be at most ${MAX_PATTERN_LENGTH} characters.`;
+  }
+
+  let inClass = false;
+  let escaped = false;
+  let variableQuantifiers = 0;
+  for (let index = 0; index < pattern.length; index++) {
+    const char = pattern[index];
+    if (escaped) {
+      if (/[1-9]/.test(char) || (char === "k" && pattern[index + 1] === "<")) {
+        return "backreferences are not supported.";
+      }
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (inClass) {
+      if (char === "]") inClass = false;
+      continue;
+    }
+    if (char === "[") {
+      inClass = true;
+      continue;
+    }
+    if (char === "(" || char === ")" || char === "|") {
+      return "grouping and alternation are not supported.";
+    }
+    if (char === "*" || char === "+" || char === "?") {
+      variableQuantifiers++;
+    } else if (char === "{") {
+      const quantifier = /^\{(\d+)(?:,(\d*))?\}/.exec(pattern.slice(index));
+      if (quantifier) {
+        const minimum = Number(quantifier[1]);
+        const maximum =
+          quantifier[2] === undefined
+            ? minimum
+            : quantifier[2] === ""
+              ? null
+              : Number(quantifier[2]);
+        if (
+          minimum > MAX_PATTERN_INPUT_LENGTH ||
+          (maximum !== null && maximum > MAX_PATTERN_INPUT_LENGTH)
+        ) {
+          return `quantifier bounds must not exceed ${MAX_PATTERN_INPUT_LENGTH}.`;
+        }
+        if (maximum === null || minimum !== maximum) variableQuantifiers++;
+        index += quantifier[0].length - 1;
+      }
+    }
+    if (variableQuantifiers > 1) {
+      return "at most one variable quantifier is supported.";
+    }
+  }
+  return null;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -171,10 +237,48 @@ function parseSchema(
           ),
         );
       } else {
+        let patternValid = true;
+        if (!hasMin || !hasMax || minLength === null || maxLength === null) {
+          patternValid = false;
+          diagnostics.push(
+            diagnostic(
+              pack,
+              question,
+              "schema.pattern",
+              "question/schema-pattern-unbounded",
+              "requires valid `minLength` and `maxLength` bounds.",
+            ),
+          );
+        } else if (maxLength > MAX_PATTERN_INPUT_LENGTH) {
+          patternValid = false;
+          diagnostics.push(
+            diagnostic(
+              pack,
+              question,
+              "schema.maxLength",
+              "question/schema-pattern-input-too-large",
+              `must not exceed ${MAX_PATTERN_INPUT_LENGTH} when a pattern is declared.`,
+            ),
+          );
+        }
+
+        const safetyIssue = patternSafetyError(value.pattern);
+        if (safetyIssue !== null) {
+          patternValid = false;
+          diagnostics.push(
+            diagnostic(
+              pack,
+              question,
+              "schema.pattern",
+              "question/schema-unsafe-pattern",
+              safetyIssue,
+            ),
+          );
+        }
         try {
           new RegExp(value.pattern);
-          pattern = value.pattern;
         } catch (err) {
+          patternValid = false;
           diagnostics.push(
             diagnostic(
               pack,
@@ -187,6 +291,7 @@ function parseSchema(
             ),
           );
         }
+        if (patternValid) pattern = value.pattern;
       }
     }
 

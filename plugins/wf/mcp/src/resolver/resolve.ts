@@ -16,6 +16,7 @@ import {
   joinSlash,
   normalizeSlashes,
   resolveCapabilityPath,
+  resolveContainedCapabilityPath,
   type InstalledRoot,
   type RecordedRoot,
 } from "./paths.js";
@@ -107,6 +108,15 @@ function toAbsolute(workspaceRoot: string, snapshotPath: string): string {
   return isAbsoluteRoot(snapshotPath)
     ? normalizeSlashes(snapshotPath)
     : joinSlash(workspaceRoot, snapshotPath);
+}
+
+/** Canonical question provenance is the owning capability folder, which is the
+ *  only stable identity shared by installed-pack inspection and aliased registry rows. */
+function questionPackName(resolvedPath: string, fallback: string): string {
+  const normalized = normalizeSlashes(resolvedPath).replace(/\/+$/, "");
+  const separator = normalized.lastIndexOf("/");
+  const name = separator >= 0 ? normalized.slice(separator + 1) : normalized;
+  return name || fallback;
 }
 
 /** Parse an `inline: <rel>` dispatch to its rel path; `null` for subagent/other. */
@@ -261,26 +271,42 @@ export function buildSnapshot(
         requires = m.requires;
         conflicts = m.conflicts;
         if (m.profileTemplate && resolved.resolvedPath) {
-          const profileTemplateAbs = joinSlash(resolved.resolvedPath, m.profileTemplate);
-          profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
-          const profileTemplateRaw = io.readFile(profileTemplateAbs);
-          sources.push(
-            fingerprint("profile-template", profileTemplatePath, profileTemplateRaw),
+          const packName = questionPackName(resolved.resolvedPath, row.name);
+          const profileTemplateAbs = resolveContainedCapabilityPath(
+            resolved.resolvedPath,
+            m.profileTemplate,
           );
-          if (profileTemplateRaw === null) {
+          if (profileTemplateAbs === null) {
             appendQuestionDiagnostics(diagnostics, [
               {
-                code: "question/template-missing",
-                pack: row.name,
+                code: "question/template-path-invalid",
+                pack: packName,
                 question: null,
                 field: "profile-template",
-                message: `pack \`${row.name}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`,
+                message: `pack \`${packName}\`, field \`profile-template\`: declared template path \`${m.profileTemplate}\` must be a forward-slash relative path contained beneath its capability folder.`,
               },
             ]);
           } else {
-            const parsedQuestions = parseQuestionDeclarations(row.name, profileTemplateRaw);
-            if (parsedQuestions.ok) questions = parsedQuestions.questions;
-            else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+            profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
+            const profileTemplateRaw = io.readFile(profileTemplateAbs);
+            sources.push(
+              fingerprint("profile-template", profileTemplatePath, profileTemplateRaw),
+            );
+            if (profileTemplateRaw === null) {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-missing",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`,
+                },
+              ]);
+            } else {
+              const parsedQuestions = parseQuestionDeclarations(packName, profileTemplateRaw);
+              if (parsedQuestions.ok) questions = parsedQuestions.questions;
+              else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+            }
           }
         }
       }
@@ -446,15 +472,16 @@ export function buildSnapshot(
       const parsedProfile: unknown = JSON.parse(content);
       profiles[cap.name] = parsedProfile;
       if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
         if (!isRecord(parsedProfile)) {
           cap.questions = [];
           appendQuestionDiagnostics(diagnostics, [
             {
               code: "question/persisted-container-invalid",
-              pack: cap.name,
+              pack: packName,
               question: null,
               field: "profile",
-              message: `pack \`${cap.name}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`,
+              message: `pack \`${packName}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`,
             },
           ]);
         } else {
@@ -468,14 +495,15 @@ export function buildSnapshot(
       }
     } catch (err) {
       if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
         cap.questions = [];
         appendQuestionDiagnostics(diagnostics, [
           {
             code: "question/persisted-unparseable",
-            pack: cap.name,
+            pack: packName,
             question: null,
             field: "profile",
-            message: `pack \`${cap.name}\`, field \`profile\`: persisted question answers are not valid JSON: ${
+            message: `pack \`${packName}\`, field \`profile\`: persisted question answers are not valid JSON: ${
               err instanceof Error ? err.message : String(err)
             }`,
           },

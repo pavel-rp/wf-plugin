@@ -259,6 +259,46 @@ for (const fixture of INVALID_CASES) {
   });
 }
 
+test("pattern schemas require bounded input and reject backtracking-prone constructs", () => {
+  const cases = [
+    {
+      schema: { type: "string", pattern: "^[a-z]+$" },
+      code: "question/schema-pattern-unbounded",
+    },
+    {
+      schema: { type: "string", minLength: 0, maxLength: 32, pattern: "^(a+)+$" },
+      code: "question/schema-unsafe-pattern",
+    },
+    {
+      schema: { type: "string", minLength: 0, maxLength: 32, pattern: "^a*a*b$" },
+      code: "question/schema-unsafe-pattern",
+    },
+    {
+      schema: { type: "string", minLength: 0, maxLength: 1025, pattern: "^[a-z]+$" },
+      code: "question/schema-pattern-input-too-large",
+    },
+  ];
+
+  for (const fixture of cases) {
+    const parsed = parseQuestionDeclarations(
+      "demo",
+      JSON.stringify({
+        ask: [
+          {
+            id: "name",
+            destination: "name",
+            prompt: "Name?",
+            schema: fixture.schema,
+          },
+        ],
+      }),
+    );
+    assert.equal(parsed.ok, false);
+    assert.deepEqual(parsed.questions, []);
+    assert.ok(parsed.diagnostics.some((diagnostic) => diagnostic.code === fixture.code));
+  }
+});
+
 test("invalid suggested and pack defaults reject the complete declaration set", () => {
   const invalidSuggested = parseQuestionDeclarations(
     "demo",

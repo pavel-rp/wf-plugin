@@ -295,6 +295,67 @@ test("inspect_pack exposes complete ordered validated question metadata", () => 
   ]);
 });
 
+test("profile-template paths cannot escape their installed capability folder", () => {
+  for (const candidate of ["../outside.json", "/outside.json", "..\\outside.json"]) {
+    const escapedRead = joinSlash(INSTALL, "capabilities/demo", candidate);
+    const ports = makePorts({
+      files: {
+        [`${INSTALL}/capabilities/demo/manifest.md`]: DEMO_MANIFEST.replace(
+          "profile.template.json",
+          candidate,
+        ),
+        [escapedRead]: DEMO_TEMPLATE,
+      },
+    });
+    const inspected = new ResolverService(ports).inspectPack("wf-demo@local");
+
+    assert.equal(inspected.valid, false, candidate);
+    assert.deepEqual(inspected.capabilities[0].questions, [], candidate);
+    assert.ok(
+      inspected.capabilities[0].questionDiagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-path-invalid",
+      ),
+      candidate,
+    );
+  }
+});
+
+test("active metadata keeps folder provenance when a registry row is aliased", () => {
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/config.md`]: `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| alias | plugin:wf-demo/capabilities/demo |\n`,
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+  const active = svc.resolveRegistry().capabilities.find((capability) => capability.name === "alias");
+
+  assert.ok(active);
+  assert.ok(inspected.capabilities[0].questions.every((question) => question.pack === "demo"));
+  assert.ok(active.questions.every((question) => question.pack === "demo"));
+});
+
+test("active discovery rejects profile-template traversal before reading", () => {
+  const capabilityRoot = `${WS}/capabilities/bad`;
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/config.md`]: `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| bad | capabilities/bad |\n`,
+      [`${capabilityRoot}/manifest.md`]: `# bad\n\n**Kind:** adapter\n\nprofile-template: ../outside.json\n`,
+      [joinSlash(capabilityRoot, "../outside.json")]: DEMO_TEMPLATE,
+    },
+  });
+  const svc = new ResolverService(ports);
+  const active = svc.resolveRegistry().capabilities.find((capability) => capability.name === "bad");
+
+  assert.ok(active);
+  assert.deepEqual(active.questions, []);
+  assert.ok(
+    svc.inspect().diagnostics.some(
+      (diagnostic) => diagnostic.code === "question/template-path-invalid",
+    ),
+  );
+});
+
 test("active registry metadata resolves only valid explicitly persisted profile answers", () => {
   const ports = makePorts({
     files: {

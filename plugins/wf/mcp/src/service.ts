@@ -54,6 +54,7 @@ import {
   joinSlash,
   normalizeSlashes,
   registryPathShapeError,
+  resolveContainedCapabilityPath,
 } from "./resolver/paths.js";
 import {
   validateManifest,
@@ -1076,23 +1077,39 @@ export class ResolverService {
       let questions: CapabilityRecord["questions"] = [];
       let questionDiagnostics: QuestionDiagnostic[] = [];
       if (manifest.profileTemplate) {
-        const templateAbs = joinSlash(installPath, rel, manifest.profileTemplate);
-        const templateRaw = this.ports.readFile(templateAbs);
-        fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
-        if (templateRaw === null) {
+        const capabilityRoot = joinSlash(installPath, rel);
+        const templateAbs = resolveContainedCapabilityPath(
+          capabilityRoot,
+          manifest.profileTemplate,
+        );
+        if (templateAbs === null) {
           questionDiagnostics = [
             {
-              code: "question/template-missing",
+              code: "question/template-path-invalid",
               pack: name,
               question: null,
               field: "profile-template",
-              message: `pack \`${name}\`, field \`profile-template\`: declared template \`${manifest.profileTemplate}\` is not readable.`,
+              message: `pack \`${name}\`, field \`profile-template\`: declared template path \`${manifest.profileTemplate}\` must be a forward-slash relative path contained beneath its capability folder.`,
             },
           ];
         } else {
-          const parsed = parseQuestionDeclarations(name, templateRaw);
-          if (parsed.ok) questions = parsed.questions;
-          else questionDiagnostics = parsed.diagnostics;
+          const templateRaw = this.ports.readFile(templateAbs);
+          fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
+          if (templateRaw === null) {
+            questionDiagnostics = [
+              {
+                code: "question/template-missing",
+                pack: name,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${name}\`, field \`profile-template\`: declared template \`${manifest.profileTemplate}\` is not readable.`,
+              },
+            ];
+          } else {
+            const parsed = parseQuestionDeclarations(name, templateRaw);
+            if (parsed.ok) questions = parsed.questions;
+            else questionDiagnostics = parsed.diagnostics;
+          }
         }
       }
 
