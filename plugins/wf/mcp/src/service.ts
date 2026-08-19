@@ -406,8 +406,9 @@ export class ResolverService {
    *  backstop. Every typed query routes through here; before reusing a cached or
    *  in-memory snapshot it re-validates the recorded input fingerprints and the
    *  schema/resolver version, rebuilding on any mismatch. Validation re-reads
-   *  ONLY the exact source paths the snapshot recorded (via `ports.readFile`) —
-   *  it never lists/walks capability folders, so unchanged inputs are a cheap
+   *  ONLY the exact source paths the snapshot recorded; profile templates use
+   *  the same bounded contained-file port as discovery, while other sources use
+   *  `ports.readFile`. It never lists/walks capability folders, so unchanged inputs are a cheap
    *  hash comparison with no rediscovery. Freshness is fingerprint-driven only;
    *  there is no elapsed-time / TTL path. */
   private ensure(): ResolverSnapshot {
@@ -423,6 +424,10 @@ export class ResolverService {
 
     const { fresh, reasons } = evaluateFreshness(candidate, this.ports.workspaceRoot, {
       readFile: (p) => this.ports.readFile(p),
+      readContainedFile: this.ports.readContainedFile
+        ? (root, selectedPath, maxBytes) =>
+            this.ports.readContainedFile!(root, selectedPath, maxBytes)
+        : undefined,
       generatorVersion: RESOLVER_GENERATOR.version,
     });
     if (!fresh) {

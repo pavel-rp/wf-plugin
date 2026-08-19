@@ -418,243 +418,6 @@ function fingerprint(kind, path, content) {
   };
 }
 
-// src/resolver/freshness.ts
-var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
-  "wf-config",
-  "registry",
-  "core-config",
-  "manifest",
-  "profile-template",
-  "profile",
-  // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
-  // settings overrides join the re-read set — editing any of them invalidates
-  // the snapshot on the next query (recorded by their exact path, never a walk).
-  "slot-contribution",
-  "slot-override",
-  "settings-override",
-  // WF-334: the composed constitution record joins the re-read set — editing a
-  // project clause (or re-composing capability articles into it) invalidates the
-  // snapshot on the next query, keeping the SessionStart constitution payload
-  // fresh through fingerprint discipline, never an un-fingerprinted raw read.
-  "constitution"
-]);
-function isAbsolute2(p) {
-  return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
-}
-function absOf(workspaceRoot2, recordedPath) {
-  const p = normalizeSlashes(recordedPath);
-  return isAbsolute2(p) ? p : joinSlash(workspaceRoot2, p);
-}
-function normalizePluginList(raw) {
-  if (raw === null) return null;
-  const parsed = parsePluginList(raw);
-  if (!parsed.contractOk) {
-    return raw;
-  }
-  const projected = parsed.plugins.map((p) => ({
-    id: p.id,
-    name: p.name,
-    version: p.version,
-    scope: p.scope,
-    enabled: p.enabled,
-    installPath: p.installPath
-  })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-  return JSON.stringify(projected);
-}
-function evaluateFreshness(snapshot, workspaceRoot2, probe) {
-  const reasons = [];
-  if (snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
-    reasons.push({
-      code: "schema/incompatible",
-      message: `snapshot schemaVersion ${String(
-        snapshot.schemaVersion
-      )} is incompatible with this runtime (expects ${SNAPSHOT_SCHEMA_VERSION}).`
-    });
-  }
-  const currentGenVersion = probe.generatorVersion ?? RESOLVER_GENERATOR.version;
-  if (snapshot.generator?.version && snapshot.generator.version !== currentGenVersion) {
-    reasons.push({
-      code: "resolver/version-changed",
-      message: `snapshot built by resolver ${snapshot.generator.version}; runtime is ${currentGenVersion}.`
-    });
-  }
-  for (const src of snapshot.sources) {
-    if (!FILE_SOURCE_KINDS.has(src.kind)) continue;
-    const content = probe.readFile(absOf(workspaceRoot2, src.path));
-    const now = fingerprint(src.kind, src.path, content);
-    if (now.present !== src.present || now.sha256 !== src.sha256) {
-      const change = !now.present ? "was removed" : !src.present ? "appeared" : "changed";
-      reasons.push({
-        code: `${src.kind}/changed`,
-        message: `${src.kind} source \`${src.path}\` ${change}.`,
-        source: src.path
-      });
-    }
-  }
-  if (probe.pluginListRaw !== void 0) {
-    const recorded = snapshot.sources.find((s) => s.kind === "plugin-list");
-    const now = fingerprint(
-      "plugin-list",
-      "claude plugin list --json",
-      normalizePluginList(probe.pluginListRaw)
-    );
-    if (!recorded || now.present !== recorded.present || now.sha256 !== recorded.sha256) {
-      reasons.push({
-        code: "plugin-list/changed",
-        message: "installed plugin inventory changed (add / remove / enable / disable) since the snapshot.",
-        source: "claude plugin list --json"
-      });
-    }
-  }
-  return { fresh: reasons.length === 0, reasons };
-}
-
-// src/resolver/content.ts
-var CONTENT_REF_CLASSES = [
-  "fragment",
-  "contract",
-  "shared",
-  "references-template",
-  "profile-template"
-];
-var ALL_CONTENT_CLASSES = [...CONTENT_REF_CLASSES, "slot"];
-
-// src/resolver/settings.ts
-var SETTINGS_STORAGE_DIR = "_local/profiles";
-var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
-var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
-var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
-function isSkillSlug(s) {
-  return typeof s === "string" && SEGMENT.test(s);
-}
-function skillFromSettingsFilename(filename) {
-  if (!filename.endsWith(SETTINGS_OVERRIDE_SUFFIX)) return null;
-  const stem = filename.slice(0, -SETTINGS_OVERRIDE_SUFFIX.length);
-  return isSkillSlug(stem) ? stem : null;
-}
-function unquote(cell) {
-  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
-}
-function parseSettingsDeclaration(interfaceMd) {
-  const lines = interfaceMd.split(/\r?\n/);
-  let inSection = false;
-  let sawSection = false;
-  const decl = /* @__PURE__ */ new Map();
-  for (const line of lines) {
-    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
-    if (heading) {
-      inSection = /^settings$/i.test(heading[1].trim());
-      if (inSection) sawSection = true;
-      continue;
-    }
-    if (!inSection) continue;
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
-    if (cells.length < 2) continue;
-    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
-    const key = unquote(cells[0]);
-    if (key === "key" || !SETTINGS_KEY.test(key)) continue;
-    decl.set(key, unquote(cells[1]));
-  }
-  return sawSection ? decl : null;
-}
-function parseSettingsOverride(jsonText) {
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, error: "a settings override must be a JSON object of key \u2192 value" };
-  }
-  return { ok: true, value: parsed };
-}
-function mergeSettings(declared, override) {
-  const values = {};
-  for (const [key, def] of declared) {
-    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
-  }
-  const undeclared = [];
-  if (override) {
-    for (const key of Object.keys(override)) {
-      if (!declared.has(key)) undeclared.push(key);
-    }
-  }
-  undeclared.sort();
-  return { values, undeclared };
-}
-function locateInterface(skill, roots, readFile, joinSlash2) {
-  for (const root of roots) {
-    const path = joinSlash2(root, "skills", skill, "interface.md");
-    const content = readFile(path);
-    if (content === null) continue;
-    const declared = parseSettingsDeclaration(content);
-    if (declared === null) continue;
-    return { root, path, declared };
-  }
-  return null;
-}
-
-// src/resolver/slot.ts
-var OVERRIDE_DIR = "_local/slots";
-function isSegment(s) {
-  return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
-}
-var SLOT_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
-function parseSlotDeclaration(interfaceMd) {
-  const lines = interfaceMd.split(/\r?\n/);
-  let inSection = false;
-  let sawSection = false;
-  const decl = /* @__PURE__ */ new Set();
-  for (const line of lines) {
-    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
-    if (heading) {
-      inSection = /^slots$/i.test(heading[1].trim());
-      if (inSection) sawSection = true;
-      continue;
-    }
-    if (!inSection) continue;
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
-    if (cells.length < 1) continue;
-    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
-    const id = cells[0].replace(/^`/, "").replace(/`$/, "").trim();
-    if (SLOT_ID.test(id)) decl.add(id);
-  }
-  return sawSection ? decl : null;
-}
-function locateSlotInterface(skill, roots, readFile, joinSlashFn) {
-  for (const root of roots) {
-    const path = joinSlashFn(root, "skills", skill, "interface.md");
-    const content = readFile(path);
-    if (content === null) continue;
-    const declared = parseSlotDeclaration(content);
-    if (declared === null) continue;
-    return { root, path, declared };
-  }
-  return null;
-}
-function slotPointFromOverrideFilename(filename) {
-  if (!filename.endsWith(".md")) return null;
-  const stem = filename.slice(0, -3);
-  const segs = stem.split(".");
-  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
-  return { skillPoint: stem, skill: segs[0], point: segs[1] };
-}
-function parseSlotScope(scope) {
-  if (!scope) return null;
-  const parts = scope.trim().split(/\s+/);
-  if (parts.length !== 2) return null;
-  const [id, policyRaw] = parts;
-  const segs = id.split(".");
-  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
-  if (policyRaw !== "replace" && policyRaw !== "append") return null;
-  return { skillPoint: id, policy: policyRaw };
-}
-
 // src/resolver/questions.ts
 var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
   "id",
@@ -1369,6 +1132,266 @@ function applyQuestionValues(questions, inputs) {
   const pack = resolved[0]?.pack ?? questions[0]?.pack ?? "unknown";
   const sizeDiagnostic = normalizedMetadataDiagnostic(pack, resolved);
   return sizeDiagnostic === null ? { ok: true, questions: resolved, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
+}
+
+// src/resolver/freshness.ts
+var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
+  "wf-config",
+  "registry",
+  "core-config",
+  "manifest",
+  "profile-template",
+  "profile",
+  // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
+  // settings overrides join the re-read set — editing any of them invalidates
+  // the snapshot on the next query (recorded by their exact path, never a walk).
+  "slot-contribution",
+  "slot-override",
+  "settings-override",
+  // WF-334: the composed constitution record joins the re-read set — editing a
+  // project clause (or re-composing capability articles into it) invalidates the
+  // snapshot on the next query, keeping the SessionStart constitution payload
+  // fresh through fingerprint discipline, never an un-fingerprinted raw read.
+  "constitution"
+]);
+function isAbsolute2(p) {
+  return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
+}
+function absOf(workspaceRoot2, recordedPath) {
+  const p = normalizeSlashes(recordedPath);
+  return isAbsolute2(p) ? p : joinSlash(workspaceRoot2, p);
+}
+function profileTemplateContent(snapshot, workspaceRoot2, source, probe) {
+  if (!probe.readContainedFile) return null;
+  const capability = snapshot.capabilities.find(
+    (candidate) => candidate.profileTemplatePath === source.path
+  );
+  if (!capability?.resolvedPath) return null;
+  const capabilityRoot = absOf(workspaceRoot2, capability.resolvedPath);
+  const templatePath = absOf(workspaceRoot2, source.path);
+  const normalizedRoot = normalizeSlashes(capabilityRoot).replace(/\/+$/, "");
+  const normalizedTemplate = normalizeSlashes(templatePath);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  if (!normalizedTemplate.startsWith(prefix)) return null;
+  const selectedPath = normalizedTemplate.slice(prefix.length);
+  if (resolveContainedCapabilityPath(capabilityRoot, selectedPath) !== normalizedTemplate) {
+    return null;
+  }
+  const read = probe.readContainedFile(
+    capabilityRoot,
+    selectedPath,
+    MAX_PROFILE_TEMPLATE_BYTES
+  );
+  return read.status === "ok" ? read.content : null;
+}
+function normalizePluginList(raw) {
+  if (raw === null) return null;
+  const parsed = parsePluginList(raw);
+  if (!parsed.contractOk) {
+    return raw;
+  }
+  const projected = parsed.plugins.map((p) => ({
+    id: p.id,
+    name: p.name,
+    version: p.version,
+    scope: p.scope,
+    enabled: p.enabled,
+    installPath: p.installPath
+  })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  return JSON.stringify(projected);
+}
+function evaluateFreshness(snapshot, workspaceRoot2, probe) {
+  const reasons = [];
+  if (snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+    reasons.push({
+      code: "schema/incompatible",
+      message: `snapshot schemaVersion ${String(
+        snapshot.schemaVersion
+      )} is incompatible with this runtime (expects ${SNAPSHOT_SCHEMA_VERSION}).`
+    });
+  }
+  const currentGenVersion = probe.generatorVersion ?? RESOLVER_GENERATOR.version;
+  if (snapshot.generator?.version && snapshot.generator.version !== currentGenVersion) {
+    reasons.push({
+      code: "resolver/version-changed",
+      message: `snapshot built by resolver ${snapshot.generator.version}; runtime is ${currentGenVersion}.`
+    });
+  }
+  for (const src of snapshot.sources) {
+    if (!FILE_SOURCE_KINDS.has(src.kind)) continue;
+    const content = src.kind === "profile-template" ? profileTemplateContent(snapshot, workspaceRoot2, src, probe) : probe.readFile(absOf(workspaceRoot2, src.path));
+    const now = fingerprint(src.kind, src.path, content);
+    if (now.present !== src.present || now.sha256 !== src.sha256) {
+      const change = !now.present ? "was removed" : !src.present ? "appeared" : "changed";
+      reasons.push({
+        code: `${src.kind}/changed`,
+        message: `${src.kind} source \`${src.path}\` ${change}.`,
+        source: src.path
+      });
+    }
+  }
+  if (probe.pluginListRaw !== void 0) {
+    const recorded = snapshot.sources.find((s) => s.kind === "plugin-list");
+    const now = fingerprint(
+      "plugin-list",
+      "claude plugin list --json",
+      normalizePluginList(probe.pluginListRaw)
+    );
+    if (!recorded || now.present !== recorded.present || now.sha256 !== recorded.sha256) {
+      reasons.push({
+        code: "plugin-list/changed",
+        message: "installed plugin inventory changed (add / remove / enable / disable) since the snapshot.",
+        source: "claude plugin list --json"
+      });
+    }
+  }
+  return { fresh: reasons.length === 0, reasons };
+}
+
+// src/resolver/content.ts
+var CONTENT_REF_CLASSES = [
+  "fragment",
+  "contract",
+  "shared",
+  "references-template",
+  "profile-template"
+];
+var ALL_CONTENT_CLASSES = [...CONTENT_REF_CLASSES, "slot"];
+
+// src/resolver/settings.ts
+var SETTINGS_STORAGE_DIR = "_local/profiles";
+var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
+var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
+var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
+function isSkillSlug(s) {
+  return typeof s === "string" && SEGMENT.test(s);
+}
+function skillFromSettingsFilename(filename) {
+  if (!filename.endsWith(SETTINGS_OVERRIDE_SUFFIX)) return null;
+  const stem = filename.slice(0, -SETTINGS_OVERRIDE_SUFFIX.length);
+  return isSkillSlug(stem) ? stem : null;
+}
+function unquote(cell) {
+  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function parseSettingsDeclaration(interfaceMd) {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = /* @__PURE__ */ new Map();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^settings$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 2) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const key = unquote(cells[0]);
+    if (key === "key" || !SETTINGS_KEY.test(key)) continue;
+    decl.set(key, unquote(cells[1]));
+  }
+  return sawSection ? decl : null;
+}
+function parseSettingsOverride(jsonText) {
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "a settings override must be a JSON object of key \u2192 value" };
+  }
+  return { ok: true, value: parsed };
+}
+function mergeSettings(declared, override) {
+  const values = {};
+  for (const [key, def] of declared) {
+    values[key] = override && Object.prototype.hasOwnProperty.call(override, key) ? override[key] : def;
+  }
+  const undeclared = [];
+  if (override) {
+    for (const key of Object.keys(override)) {
+      if (!declared.has(key)) undeclared.push(key);
+    }
+  }
+  undeclared.sort();
+  return { values, undeclared };
+}
+function locateInterface(skill, roots, readFile, joinSlash2) {
+  for (const root of roots) {
+    const path = joinSlash2(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSettingsDeclaration(content);
+    if (declared === null) continue;
+    return { root, path, declared };
+  }
+  return null;
+}
+
+// src/resolver/slot.ts
+var OVERRIDE_DIR = "_local/slots";
+function isSegment(s) {
+  return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
+}
+var SLOT_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
+function parseSlotDeclaration(interfaceMd) {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = /* @__PURE__ */ new Set();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^slots$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 1) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const id = cells[0].replace(/^`/, "").replace(/`$/, "").trim();
+    if (SLOT_ID.test(id)) decl.add(id);
+  }
+  return sawSection ? decl : null;
+}
+function locateSlotInterface(skill, roots, readFile, joinSlashFn) {
+  for (const root of roots) {
+    const path = joinSlashFn(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSlotDeclaration(content);
+    if (declared === null) continue;
+    return { root, path, declared };
+  }
+  return null;
+}
+function slotPointFromOverrideFilename(filename) {
+  if (!filename.endsWith(".md")) return null;
+  const stem = filename.slice(0, -3);
+  const segs = stem.split(".");
+  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
+  return { skillPoint: stem, skill: segs[0], point: segs[1] };
+}
+function parseSlotScope(scope) {
+  if (!scope) return null;
+  const parts = scope.trim().split(/\s+/);
+  if (parts.length !== 2) return null;
+  const [id, policyRaw] = parts;
+  const segs = id.split(".");
+  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
+  if (policyRaw !== "replace" && policyRaw !== "append") return null;
+  return { skillPoint: id, policy: policyRaw };
 }
 
 // src/resolver/resolve.ts
@@ -2252,6 +2275,7 @@ function refreshIfStale(root) {
   }
   const { fresh, reasons } = evaluateFreshness(cached, root, {
     readFile: (p) => fsIO.readFile(p),
+    readContainedFile: (capabilityRoot, selectedPath, maxBytes) => fsIO.readContainedFile(capabilityRoot, selectedPath, maxBytes),
     pluginListRaw: runPluginList(),
     generatorVersion: RESOLVER_GENERATOR.version
   });

@@ -364,8 +364,17 @@ test("symlinked profile templates fail installed-pack and active discovery", () 
       },
     ]);
     const production = createDefaultPorts(normalizeSlashes(workspace));
+    const templateLink = normalizeSlashes(join(capability, "profile.template.json"));
     const ports: ResolverServicePorts = {
       ...production,
+      readFile: (path) => {
+        assert.notEqual(
+          normalizeSlashes(path),
+          templateLink,
+          "profile-template freshness must not use unrestricted readFile",
+        );
+        return production.readFile(path);
+      },
       listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
       resolveFresh: () =>
         resolveSnapshot({
@@ -395,6 +404,7 @@ test("symlinked profile templates fail installed-pack and active discovery", () 
         (diagnostic) => diagnostic.code === "question/template-path-invalid",
       ),
     );
+    assert.doesNotThrow(() => service.resolveRegistry());
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
