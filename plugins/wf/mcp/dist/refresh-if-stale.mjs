@@ -20,6 +20,17 @@ function joinSlash(...segments) {
     return seg;
   }).filter((s) => s.length > 0).join("/");
 }
+function resolveContainedCapabilityPath(root, relative) {
+  if (relative.length === 0 || relative.includes("\\") || isAbsoluteRoot(relative)) return null;
+  const segments = relative.split("/");
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    return null;
+  }
+  const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
+  const candidate = joinSlash(normalizedRoot, ...segments);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  return candidate.startsWith(prefix) ? candidate : null;
+}
 var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
 function parsePluginAnchor(registryPath) {
   const m = PLUGIN_ANCHOR.exec(registryPath.trim());
@@ -650,6 +661,59 @@ var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
 ]);
 var ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 var DESTINATION_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+var MAX_PATTERN_INPUT_LENGTH = 1024;
+var MAX_PATTERN_LENGTH = 256;
+function patternSafetyError(pattern) {
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    return `must be at most ${MAX_PATTERN_LENGTH} characters.`;
+  }
+  let inClass = false;
+  let escaped = false;
+  let variableQuantifiers = 0;
+  for (let index = 0; index < pattern.length; index++) {
+    const char = pattern[index];
+    if (escaped) {
+      if (/[1-9]/.test(char) || char === "k" && pattern[index + 1] === "<") {
+        return "backreferences are not supported.";
+      }
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (inClass) {
+      if (char === "]") inClass = false;
+      continue;
+    }
+    if (char === "[") {
+      inClass = true;
+      continue;
+    }
+    if (char === "(" || char === ")" || char === "|") {
+      return "grouping and alternation are not supported.";
+    }
+    if (char === "*" || char === "+" || char === "?") {
+      variableQuantifiers++;
+    } else if (char === "{") {
+      const quantifier = /^\{(\d+)(?:,(\d*))?\}/.exec(pattern.slice(index));
+      if (quantifier) {
+        const minimum = Number(quantifier[1]);
+        const maximum = quantifier[2] === void 0 ? minimum : quantifier[2] === "" ? null : Number(quantifier[2]);
+        if (minimum > MAX_PATTERN_INPUT_LENGTH || maximum !== null && maximum > MAX_PATTERN_INPUT_LENGTH) {
+          return `quantifier bounds must not exceed ${MAX_PATTERN_INPUT_LENGTH}.`;
+        }
+        if (maximum === null || minimum !== maximum) variableQuantifiers++;
+        index += quantifier[0].length - 1;
+      }
+    }
+    if (variableQuantifiers > 1) {
+      return "at most one variable quantifier is supported.";
+    }
+  }
+  return null;
+}
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -761,10 +825,47 @@ function parseSchema(pack, question, value, diagnostics) {
           )
         );
       } else {
+        let patternValid = true;
+        if (!hasMin || !hasMax || minLength === null || maxLength === null) {
+          patternValid = false;
+          diagnostics.push(
+            diagnostic(
+              pack,
+              question,
+              "schema.pattern",
+              "question/schema-pattern-unbounded",
+              "requires valid `minLength` and `maxLength` bounds."
+            )
+          );
+        } else if (maxLength > MAX_PATTERN_INPUT_LENGTH) {
+          patternValid = false;
+          diagnostics.push(
+            diagnostic(
+              pack,
+              question,
+              "schema.maxLength",
+              "question/schema-pattern-input-too-large",
+              `must not exceed ${MAX_PATTERN_INPUT_LENGTH} when a pattern is declared.`
+            )
+          );
+        }
+        const safetyIssue = patternSafetyError(value.pattern);
+        if (safetyIssue !== null) {
+          patternValid = false;
+          diagnostics.push(
+            diagnostic(
+              pack,
+              question,
+              "schema.pattern",
+              "question/schema-unsafe-pattern",
+              safetyIssue
+            )
+          );
+        }
         try {
           new RegExp(value.pattern);
-          pattern = value.pattern;
         } catch (err) {
+          patternValid = false;
           diagnostics.push(
             diagnostic(
               pack,
@@ -775,6 +876,7 @@ function parseSchema(pack, question, value, diagnostics) {
             )
           );
         }
+        if (patternValid) pattern = value.pattern;
       }
     }
     const schema = { type: "string" };
@@ -1196,6 +1298,12 @@ function relativize(workspaceRoot2, absPath) {
 function toAbsolute(workspaceRoot2, snapshotPath2) {
   return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot2, snapshotPath2);
 }
+function questionPackName(resolvedPath, fallback) {
+  const normalized = normalizeSlashes(resolvedPath).replace(/\/+$/, "");
+  const separator = normalized.lastIndexOf("/");
+  const name = separator >= 0 ? normalized.slice(separator + 1) : normalized;
+  return name || fallback;
+}
 function inlineDispatchRel(dispatch) {
   const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
   return m ? m[1].trim() : null;
@@ -1296,26 +1404,42 @@ function buildSnapshot(inputs, io) {
         requires = m.requires;
         conflicts = m.conflicts;
         if (m.profileTemplate && resolved.resolvedPath) {
-          const profileTemplateAbs = joinSlash(resolved.resolvedPath, m.profileTemplate);
-          profileTemplatePath = relativize(workspaceRoot2, profileTemplateAbs);
-          const profileTemplateRaw = io.readFile(profileTemplateAbs);
-          sources.push(
-            fingerprint("profile-template", profileTemplatePath, profileTemplateRaw)
+          const packName = questionPackName(resolved.resolvedPath, row.name);
+          const profileTemplateAbs = resolveContainedCapabilityPath(
+            resolved.resolvedPath,
+            m.profileTemplate
           );
-          if (profileTemplateRaw === null) {
+          if (profileTemplateAbs === null) {
             appendQuestionDiagnostics(diagnostics, [
               {
-                code: "question/template-missing",
-                pack: row.name,
+                code: "question/template-path-invalid",
+                pack: packName,
                 question: null,
                 field: "profile-template",
-                message: `pack \`${row.name}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`
+                message: `pack \`${packName}\`, field \`profile-template\`: declared template path \`${m.profileTemplate}\` must be a forward-slash relative path contained beneath its capability folder.`
               }
             ]);
           } else {
-            const parsedQuestions = parseQuestionDeclarations(row.name, profileTemplateRaw);
-            if (parsedQuestions.ok) questions = parsedQuestions.questions;
-            else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+            profileTemplatePath = relativize(workspaceRoot2, profileTemplateAbs);
+            const profileTemplateRaw = io.readFile(profileTemplateAbs);
+            sources.push(
+              fingerprint("profile-template", profileTemplatePath, profileTemplateRaw)
+            );
+            if (profileTemplateRaw === null) {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-missing",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`
+                }
+              ]);
+            } else {
+              const parsedQuestions = parseQuestionDeclarations(packName, profileTemplateRaw);
+              if (parsedQuestions.ok) questions = parsedQuestions.questions;
+              else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+            }
           }
         }
       }
@@ -1452,15 +1576,16 @@ function buildSnapshot(inputs, io) {
       const parsedProfile = JSON.parse(content);
       profiles[cap.name] = parsedProfile;
       if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
         if (!isRecord2(parsedProfile)) {
           cap.questions = [];
           appendQuestionDiagnostics(diagnostics, [
             {
               code: "question/persisted-container-invalid",
-              pack: cap.name,
+              pack: packName,
               question: null,
               field: "profile",
-              message: `pack \`${cap.name}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`
+              message: `pack \`${packName}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`
             }
           ]);
         } else {
@@ -1474,14 +1599,15 @@ function buildSnapshot(inputs, io) {
       }
     } catch (err) {
       if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
         cap.questions = [];
         appendQuestionDiagnostics(diagnostics, [
           {
             code: "question/persisted-unparseable",
-            pack: cap.name,
+            pack: packName,
             question: null,
             field: "profile",
-            message: `pack \`${cap.name}\`, field \`profile\`: persisted question answers are not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+            message: `pack \`${packName}\`, field \`profile\`: persisted question answers are not valid JSON: ${err instanceof Error ? err.message : String(err)}`
           }
         ]);
       } else {
