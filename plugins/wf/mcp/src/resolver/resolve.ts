@@ -1,15 +1,16 @@
 // wf resolver — the deterministic snapshot builder.
 //
 // `buildSnapshot` is a PURE function of its declared inputs plus an injected
-// read-only IO port (a single `readFile` probe). Given identical inputs it
-// produces an identical snapshot (the persist-time `generatedAt` stamp is the
-// only non-deterministic field, and it is supplied by the caller). This is what
-// makes the engine testable without a real filesystem or the `claude` CLI: a
-// test drives it with synthetic file contents and a fixture plugin-list.
+// read-only IO port. Given identical inputs it produces an identical snapshot
+// (the persist-time `generatedAt` stamp is the only non-deterministic field, and
+// it is supplied by the caller). This makes the engine testable without a real
+// filesystem or the `claude` CLI: a test drives it with synthetic file contents
+// and a fixture plugin-list.
 //
 // It records ONLY paths, normalized metadata, source fingerprints, resolution
-// diagnostics, and provenance. It never reads or stores a fragment/skill/prompt
-// body — it resolves a fragment's DISPATCH path and stops there.
+// diagnostics, and provenance. It never reads or stores a fragment/skill body;
+// a declared profile template is read through a bounded containment-aware port
+// only to normalize its reserved question metadata, and its raw body is discarded.
 
 import {
   isAbsoluteRoot,
@@ -17,6 +18,7 @@ import {
   normalizeSlashes,
   resolveCapabilityPath,
   resolveContainedCapabilityPath,
+  type ContainedFileReadResult,
   type InstalledRoot,
   type RecordedRoot,
 } from "./paths.js";
@@ -36,7 +38,11 @@ import {
 } from "./slot.js";
 import { parseRegistry } from "./registry.js";
 import { parseManifest } from "./manifest.js";
-import { applyQuestionValues, parseQuestionDeclarations } from "./questions.js";
+import {
+  MAX_PROFILE_TEMPLATE_BYTES,
+  applyQuestionValues,
+  parseQuestionDeclarations,
+} from "./questions.js";
 import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
 import { parseCoreConfig, parseRoutingConfig } from "./config.js";
 import { fingerprint } from "./fingerprint.js";
@@ -63,6 +69,13 @@ import {
  *  directory is absent. */
 export interface ResolverIO {
   readFile(absPath: string): string | null;
+  /** Security boundary for manifest-selected profile templates. Omission fails
+   * closed for question discovery; core never falls back to an unrestricted read. */
+  readContainedFile?(
+    capabilityRoot: string,
+    selectedPath: string,
+    maxBytes: number,
+  ): ContainedFileReadResult;
   listFiles?(absDir: string): string[];
 }
 
@@ -288,11 +301,23 @@ export function buildSnapshot(
             ]);
           } else {
             profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
-            const profileTemplateRaw = io.readFile(profileTemplateAbs);
+            const templateRead = io.readContainedFile
+              ? io.readContainedFile(
+                  resolved.resolvedPath,
+                  m.profileTemplate,
+                  MAX_PROFILE_TEMPLATE_BYTES,
+                )
+              : ({
+                  status: "unsupported",
+                  path: profileTemplateAbs,
+                  content: null,
+                } satisfies ContainedFileReadResult);
+            const profileTemplateRaw =
+              templateRead.status === "ok" ? templateRead.content : null;
             sources.push(
               fingerprint("profile-template", profileTemplatePath, profileTemplateRaw),
             );
-            if (profileTemplateRaw === null) {
+            if (templateRead.status === "missing") {
               appendQuestionDiagnostics(diagnostics, [
                 {
                   code: "question/template-missing",
@@ -302,8 +327,28 @@ export function buildSnapshot(
                   message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`,
                 },
               ]);
+            } else if (templateRead.status === "too-large") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-too-large",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
+                },
+              ]);
+            } else if (templateRead.status !== "ok") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-path-invalid",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`,
+                },
+              ]);
             } else {
-              const parsedQuestions = parseQuestionDeclarations(packName, profileTemplateRaw);
+              const parsedQuestions = parseQuestionDeclarations(packName, templateRead.content);
               if (parsedQuestions.ok) questions = parsedQuestions.questions;
               else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
             }

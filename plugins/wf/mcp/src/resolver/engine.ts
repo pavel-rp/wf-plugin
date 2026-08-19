@@ -6,10 +6,25 @@
 // plugin metadata (the ONLY source of installed-pack facts — never a private
 // Claude install manifest). Then calls buildSnapshot and persists it atomically.
 
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
-import { normalizeSlashes } from "./paths.js";
+import {
+  normalizeSlashes,
+  resolveContainedCapabilityPath,
+  type ContainedFileReadResult,
+} from "./paths.js";
 import { buildSnapshot, type BuildSnapshotInputs, type ResolverIO } from "./resolve.js";
 import { writeSnapshot } from "./snapshot-store.js";
 import { RESOLVER_GENERATOR, type ResolverSnapshot } from "./types.js";
@@ -26,6 +41,140 @@ function readOrNull(absPath: string): string | null {
   }
 }
 
+/** Read one manifest-selected capability file through a descriptor after canonical
+ * containment and identity checks. The bounded descriptor loop prevents a raced
+ * growth from materializing more than `maxBytes + 1` bytes. */
+export function readContainedCapabilityFile(
+  root: string,
+  selectedPath: string,
+  maxBytes: number,
+): ContainedFileReadResult {
+  const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
+  if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    return { status: "unsafe", path: lexicalPath, content: null };
+  }
+
+  const inside = (canonicalRoot: string, candidate: string): boolean => {
+    const fromRoot = relative(canonicalRoot, candidate);
+    return (
+      fromRoot !== ".." &&
+      !fromRoot.startsWith(`..${sep}`) &&
+      !isAbsolute(fromRoot)
+    );
+  };
+  const comparable = (path: string): string => {
+    const normalized = normalizeSlashes(path);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  const sameIdentity = (
+    left: { dev: bigint; ino: bigint },
+    right: { dev: bigint; ino: bigint },
+  ): boolean => left.dev === right.dev && left.ino === right.ino;
+
+  let fd: number | null = null;
+  let targetValidated = false;
+  try {
+    const canonicalRoot = realpathSync(root);
+    const rootStat = statSync(canonicalRoot, { bigint: true });
+    if (!rootStat.isDirectory()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+
+    const segments = selectedPath.split("/");
+    const canonicalCandidate = resolve(canonicalRoot, ...segments);
+    if (!inside(canonicalRoot, canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+
+    let cursor = canonicalRoot;
+    for (const segment of segments) {
+      cursor = resolve(cursor, segment);
+      if (lstatSync(cursor).isSymbolicLink()) {
+        return { status: "unsafe", path: lexicalPath, content: null };
+      }
+    }
+
+    const canonicalTarget = realpathSync(canonicalCandidate);
+    if (
+      !inside(canonicalRoot, canonicalTarget) ||
+      comparable(canonicalTarget) !== comparable(canonicalCandidate)
+    ) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+
+    const expected = statSync(canonicalTarget, { bigint: true });
+    if (!expected.isFile()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (expected.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    targetValidated = true;
+
+    if (typeof constants.O_NOFOLLOW !== "number" || constants.O_NOFOLLOW === 0) {
+      return { status: "unsupported", path: lexicalPath, content: null };
+    }
+    const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
+    fd = openSync(canonicalTarget, constants.O_RDONLY | constants.O_NOFOLLOW | nonBlock);
+    const opened = fstatSync(fd, { bigint: true });
+    if (!opened.isFile() || !sameIdentity(expected, opened)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (opened.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+
+    const postOpenTarget = realpathSync(canonicalCandidate);
+    const postOpenStat = statSync(canonicalCandidate, { bigint: true });
+    const postOpenRoot = statSync(canonicalRoot, { bigint: true });
+    if (
+      comparable(postOpenTarget) !== comparable(canonicalTarget) ||
+      !inside(canonicalRoot, postOpenTarget) ||
+      !sameIdentity(opened, postOpenStat) ||
+      !sameIdentity(rootStat, postOpenRoot)
+    ) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (total <= maxBytes) {
+      const remaining = maxBytes + 1 - total;
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, total);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total > maxBytes) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+
+    const afterRead = fstatSync(fd, { bigint: true });
+    if (!sameIdentity(opened, afterRead) || afterRead.size !== opened.size) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    return {
+      status: "ok",
+      path: normalizeSlashes(lexicalPath),
+      content: Buffer.concat(chunks, total).toString("utf8"),
+    };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ELOOP") return { status: "unsafe", path: lexicalPath, content: null };
+    if (code === "ENOENT" && !targetValidated) {
+      return { status: "missing", path: lexicalPath, content: null };
+    }
+    return {
+      status: targetValidated ? "unsafe" : "unreadable",
+      path: lexicalPath,
+      content: null,
+    };
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
+
 /** List immediate file (non-directory) names of a directory, or `[]` when it is
  *  absent — the settings-validation pass enumerates `_local/profiles/` with it. */
 function listFilesOrEmpty(absDir: string): string[] {
@@ -39,7 +188,11 @@ function listFilesOrEmpty(absDir: string): string[] {
 }
 
 /** Real read-only IO port backed by the filesystem. */
-export const fsIO: ResolverIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
+export const fsIO: ResolverIO = {
+  readFile: readOrNull,
+  readContainedFile: readContainedCapabilityFile,
+  listFiles: listFilesOrEmpty,
+};
 
 /** Extract the configured value verbatim (apart from surrounding whitespace). */
 export function extractRegistryPathRaw(wfConfig: string | null): string {

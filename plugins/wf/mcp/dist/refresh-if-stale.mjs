@@ -1,6 +1,6 @@
 // src/refresh.ts
 import { readFileSync as readFileSync3 } from "node:fs";
-import { dirname as dirname2, resolve as resolve2 } from "node:path";
+import { dirname as dirname2, resolve as resolve3 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/git-workspace.ts
@@ -20,10 +20,14 @@ function joinSlash(...segments) {
     return seg;
   }).filter((s) => s.length > 0).join("/");
 }
-function resolveContainedCapabilityPath(root, relative) {
-  if (relative.length === 0 || relative.includes("\\") || isAbsoluteRoot(relative)) return null;
-  const segments = relative.split("/");
-  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+function resolveContainedCapabilityPath(root, relative2) {
+  if (relative2.length === 0 || relative2.includes("\0") || relative2.includes("\\") || isAbsoluteRoot(relative2)) {
+    return null;
+  }
+  const segments = relative2.split("/");
+  if (segments.some(
+    (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":")
+  )) {
     return null;
   }
   const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
@@ -661,6 +665,11 @@ var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
 ]);
 var ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 var DESTINATION_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+var MAX_PROFILE_TEMPLATE_BYTES = 256 * 1024;
+var MAX_QUESTIONS_PER_TEMPLATE = 64;
+var MAX_ENUM_VALUES = 128;
+var MAX_PROMPT_LENGTH = 2048;
+var MAX_NORMALIZED_QUESTION_BYTES = 128 * 1024;
 var MAX_PATTERN_INPUT_LENGTH = 1024;
 var MAX_PATTERN_LENGTH = 256;
 function patternSafetyError(pattern) {
@@ -729,6 +738,25 @@ function diagnostic(pack, question, field, code, detail) {
     field,
     message: `${owner}, field \`${field}\`: ${detail}`
   };
+}
+function normalizedMetadataDiagnostic(pack, questions) {
+  if (questions.length > MAX_QUESTIONS_PER_TEMPLATE) {
+    return diagnostic(
+      pack,
+      null,
+      "ask",
+      "question/ask-too-many",
+      `must contain at most ${MAX_QUESTIONS_PER_TEMPLATE} questions.`
+    );
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(questions), "utf8");
+  return bytes > MAX_NORMALIZED_QUESTION_BYTES ? diagnostic(
+    pack,
+    null,
+    "ask",
+    "question/metadata-too-large",
+    `normalized question metadata must be at most ${MAX_NORMALIZED_QUESTION_BYTES} UTF-8 bytes.`
+  ) : null;
 }
 function schemaFields(pack, question, raw, allowed, diagnostics) {
   for (const field of Object.keys(raw).filter((key) => !allowed.has(key)).sort()) {
@@ -879,11 +907,10 @@ function parseSchema(pack, question, value, diagnostics) {
         if (patternValid) pattern = value.pattern;
       }
     }
-    const schema = { type: "string" };
-    if (hasMin && minLength !== null) schema.minLength = minLength;
-    if (hasMax && maxLength !== null) schema.maxLength = maxLength;
-    if (pattern !== void 0) schema.pattern = pattern;
-    return schema;
+    if (hasMin && hasMax && minLength !== null && maxLength !== null) {
+      return pattern === void 0 ? { type: "string", minLength, maxLength } : { type: "string", minLength, maxLength, pattern };
+    }
+    return { type: "string" };
   }
   if (type === "boolean") {
     schemaFields(pack, question, value, /* @__PURE__ */ new Set(["type"]), diagnostics);
@@ -927,6 +954,18 @@ function parseSchema(pack, question, value, diagnostics) {
           "schema.values",
           "question/schema-invalid-enum",
           "must be a non-empty array of unique non-empty strings."
+        )
+      );
+      return null;
+    }
+    if (value.values.length > MAX_ENUM_VALUES) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "schema.values",
+          "question/schema-enum-too-large",
+          `must contain at most ${MAX_ENUM_VALUES} values.`
         )
       );
       return null;
@@ -1063,10 +1102,25 @@ function validateQuestionValue(declaration, source, value) {
   return { valid: true, source, value, diagnostics: [] };
 }
 function parseQuestionDeclarations(pack, rawTemplate) {
+  if (Buffer.byteLength(rawTemplate, "utf8") > MAX_PROFILE_TEMPLATE_BYTES) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "template",
+          "question/template-too-large",
+          `must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+        )
+      ]
+    };
+  }
   let parsed;
   try {
     parsed = JSON.parse(rawTemplate);
-  } catch (err) {
+  } catch {
     return {
       ok: false,
       questions: [],
@@ -1076,7 +1130,7 @@ function parseQuestionDeclarations(pack, rawTemplate) {
           null,
           "template",
           "question/template-unparseable",
-          `must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
+          "must be valid JSON."
         )
       ]
     };
@@ -1108,6 +1162,21 @@ function parseQuestionDeclarations(pack, rawTemplate) {
           "ask",
           "question/ask-invalid",
           "must be an array."
+        )
+      ]
+    };
+  }
+  if (parsed.ask.length > MAX_QUESTIONS_PER_TEMPLATE) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "ask",
+          "question/ask-too-many",
+          `must contain at most ${MAX_QUESTIONS_PER_TEMPLATE} questions.`
         )
       ]
     };
@@ -1196,10 +1265,20 @@ function parseQuestionDeclarations(pack, rawTemplate) {
           "must be a non-empty string."
         )
       );
+    } else if (prompt.length > MAX_PROMPT_LENGTH) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "prompt",
+          "question/prompt-too-long",
+          `must be at most ${MAX_PROMPT_LENGTH} characters.`
+        )
+      );
     }
     const beforeSchema = diagnostics.length;
     const schema = parseSchema(pack, question, raw.schema, diagnostics);
-    const structurallyValid = typeof id === "string" && ID_RE.test(id) && typeof destination === "string" && DESTINATION_RE.test(destination) && destination !== "ask" && typeof prompt === "string" && prompt.trim().length > 0 && schema !== null && diagnostics.length === beforeSchema;
+    const structurallyValid = typeof id === "string" && ID_RE.test(id) && typeof destination === "string" && DESTINATION_RE.test(destination) && destination !== "ask" && typeof prompt === "string" && prompt.trim().length > 0 && prompt.length <= MAX_PROMPT_LENGTH && schema !== null && diagnostics.length === beforeSchema;
     if (!structurallyValid) continue;
     const declaration = {
       pack,
@@ -1238,7 +1317,9 @@ function parseQuestionDeclarations(pack, rawTemplate) {
       state: { status: "unresolved", source: null, value: null, suggestions }
     });
   }
-  return diagnostics.length > 0 ? { ok: false, questions: [], diagnostics } : { ok: true, questions, diagnostics: [] };
+  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  const sizeDiagnostic = normalizedMetadataDiagnostic(pack, questions);
+  return sizeDiagnostic === null ? { ok: true, questions, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
 }
 function applyQuestionValues(questions, inputs) {
   const diagnostics = [];
@@ -1284,7 +1365,10 @@ function applyQuestionValues(questions, inputs) {
       });
     }
   }
-  return diagnostics.length > 0 ? { ok: false, questions: [], diagnostics } : { ok: true, questions: resolved, diagnostics: [] };
+  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  const pack = resolved[0]?.pack ?? questions[0]?.pack ?? "unknown";
+  const sizeDiagnostic = normalizedMetadataDiagnostic(pack, resolved);
+  return sizeDiagnostic === null ? { ok: true, questions: resolved, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
 }
 
 // src/resolver/resolve.ts
@@ -1421,11 +1505,20 @@ function buildSnapshot(inputs, io) {
             ]);
           } else {
             profileTemplatePath = relativize(workspaceRoot2, profileTemplateAbs);
-            const profileTemplateRaw = io.readFile(profileTemplateAbs);
+            const templateRead = io.readContainedFile ? io.readContainedFile(
+              resolved.resolvedPath,
+              m.profileTemplate,
+              MAX_PROFILE_TEMPLATE_BYTES
+            ) : {
+              status: "unsupported",
+              path: profileTemplateAbs,
+              content: null
+            };
+            const profileTemplateRaw = templateRead.status === "ok" ? templateRead.content : null;
             sources.push(
               fingerprint("profile-template", profileTemplatePath, profileTemplateRaw)
             );
-            if (profileTemplateRaw === null) {
+            if (templateRead.status === "missing") {
               appendQuestionDiagnostics(diagnostics, [
                 {
                   code: "question/template-missing",
@@ -1435,8 +1528,28 @@ function buildSnapshot(inputs, io) {
                   message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`
                 }
               ]);
+            } else if (templateRead.status === "too-large") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-too-large",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+                }
+              ]);
+            } else if (templateRead.status !== "ok") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-path-invalid",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`
+                }
+              ]);
             } else {
-              const parsedQuestions = parseQuestionDeclarations(packName, profileTemplateRaw);
+              const parsedQuestions = parseQuestionDeclarations(packName, templateRead.content);
               if (parsedQuestions.ok) questions = parsedQuestions.questions;
               else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
             }
@@ -1802,8 +1915,19 @@ function buildSnapshot(inputs, io) {
 }
 
 // src/resolver/engine.ts
-import { readFileSync as readFileSync2, readdirSync } from "node:fs";
-import { join as join2 } from "node:path";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync as readFileSync2,
+  readSync,
+  readdirSync,
+  realpathSync as realpathSync2,
+  statSync as statSync2
+} from "node:fs";
+import { isAbsolute as isAbsolute3, join as join2, relative, resolve as resolve2, sep } from "node:path";
 import { execFileSync as execFileSync2 } from "node:child_process";
 
 // src/resolver/snapshot-store.ts
@@ -1876,6 +2000,107 @@ function readOrNull(absPath) {
     throw err;
   }
 }
+function readContainedCapabilityFile(root, selectedPath, maxBytes) {
+  const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
+  if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    return { status: "unsafe", path: lexicalPath, content: null };
+  }
+  const inside = (canonicalRoot, candidate) => {
+    const fromRoot = relative(canonicalRoot, candidate);
+    return fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute3(fromRoot);
+  };
+  const comparable = (path) => {
+    const normalized = normalizeSlashes(path);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  const sameIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+  let fd = null;
+  let targetValidated = false;
+  try {
+    const canonicalRoot = realpathSync2(root);
+    const rootStat = statSync2(canonicalRoot, { bigint: true });
+    if (!rootStat.isDirectory()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const segments = selectedPath.split("/");
+    const canonicalCandidate = resolve2(canonicalRoot, ...segments);
+    if (!inside(canonicalRoot, canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    let cursor = canonicalRoot;
+    for (const segment of segments) {
+      cursor = resolve2(cursor, segment);
+      if (lstatSync(cursor).isSymbolicLink()) {
+        return { status: "unsafe", path: lexicalPath, content: null };
+      }
+    }
+    const canonicalTarget = realpathSync2(canonicalCandidate);
+    if (!inside(canonicalRoot, canonicalTarget) || comparable(canonicalTarget) !== comparable(canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const expected = statSync2(canonicalTarget, { bigint: true });
+    if (!expected.isFile()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (expected.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    targetValidated = true;
+    if (typeof constants.O_NOFOLLOW !== "number" || constants.O_NOFOLLOW === 0) {
+      return { status: "unsupported", path: lexicalPath, content: null };
+    }
+    const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
+    fd = openSync(canonicalTarget, constants.O_RDONLY | constants.O_NOFOLLOW | nonBlock);
+    const opened = fstatSync(fd, { bigint: true });
+    if (!opened.isFile() || !sameIdentity(expected, opened)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (opened.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    const postOpenTarget = realpathSync2(canonicalCandidate);
+    const postOpenStat = statSync2(canonicalCandidate, { bigint: true });
+    const postOpenRoot = statSync2(canonicalRoot, { bigint: true });
+    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity(opened, postOpenStat) || !sameIdentity(rootStat, postOpenRoot)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const chunks = [];
+    let total = 0;
+    while (total <= maxBytes) {
+      const remaining = maxBytes + 1 - total;
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, total);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total > maxBytes) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    const afterRead = fstatSync(fd, { bigint: true });
+    if (!sameIdentity(opened, afterRead) || afterRead.size !== opened.size) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    return {
+      status: "ok",
+      path: normalizeSlashes(lexicalPath),
+      content: Buffer.concat(chunks, total).toString("utf8")
+    };
+  } catch (err) {
+    const code = err.code;
+    if (code === "ELOOP") return { status: "unsafe", path: lexicalPath, content: null };
+    if (code === "ENOENT" && !targetValidated) {
+      return { status: "missing", path: lexicalPath, content: null };
+    }
+    return {
+      status: targetValidated ? "unsafe" : "unreadable",
+      path: lexicalPath,
+      content: null
+    };
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
 function listFilesOrEmpty(absDir) {
   try {
     return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
@@ -1883,7 +2108,11 @@ function listFilesOrEmpty(absDir) {
     return [];
   }
 }
-var fsIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
+var fsIO = {
+  readFile: readOrNull,
+  readContainedFile: readContainedCapabilityFile,
+  listFiles: listFilesOrEmpty
+};
 function extractRegistryPathRaw(wfConfig) {
   if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
   const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
@@ -1972,14 +2201,14 @@ function composeSessionStartStdout(source, record) {
 // src/refresh.ts
 function workspaceRoot() {
   const configured = process.env.WF_WORKSPACE_ROOT || process.cwd();
-  return resolveWorkspaceIdentity(resolve2(configured)).root;
+  return resolveWorkspaceIdentity(resolve3(configured)).root;
 }
 function corePluginRoot() {
   if (process.env.WF_CORE_PLUGIN_ROOT) {
     return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
   }
   const here = fileURLToPath(import.meta.url);
-  return normalizeSlashes(resolve2(dirname2(here), "..", ".."));
+  return normalizeSlashes(resolve3(dirname2(here), "..", ".."));
 }
 function log(line) {
   process.stderr.write(`wf-resolver refresh-if-stale: ${line}

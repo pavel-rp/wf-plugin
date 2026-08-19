@@ -100,8 +100,14 @@ export interface ArticleRecord {
 export type QuestionSchema =
   | {
       type: "string";
-      minLength?: number;
-      maxLength?: number;
+      minLength?: never;
+      maxLength?: never;
+      pattern?: never;
+    }
+  | {
+      type: "string";
+      minLength: number;
+      maxLength: number;
       pattern?: string;
     }
   | { type: "boolean" }

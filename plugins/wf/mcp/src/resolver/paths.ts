@@ -38,9 +38,20 @@ export function joinSlash(...segments: string[]): string {
  *  Reject absolute anchors, backslashes, empty/dot segments, and traversal before
  *  joining, then prove the normalized result remains under the normalized root. */
 export function resolveContainedCapabilityPath(root: string, relative: string): string | null {
-  if (relative.length === 0 || relative.includes("\\") || isAbsoluteRoot(relative)) return null;
+  if (
+    relative.length === 0 ||
+    relative.includes("\0") ||
+    relative.includes("\\") ||
+    isAbsoluteRoot(relative)
+  ) {
+    return null;
+  }
   const segments = relative.split("/");
-  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+  if (
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":"),
+    )
+  ) {
     return null;
   }
 
@@ -49,6 +60,14 @@ export function resolveContainedCapabilityPath(root: string, relative: string): 
   const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
   return candidate.startsWith(prefix) ? candidate : null;
 }
+
+export type ContainedFileReadResult =
+  | { status: "ok"; path: string; content: string }
+  | {
+      status: "missing" | "unsafe" | "too-large" | "unsupported" | "unreadable";
+      path: string | null;
+      content: null;
+    };
 
 const PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
 

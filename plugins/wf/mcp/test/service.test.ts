@@ -10,13 +10,18 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveSnapshot } from "../src/resolver/engine.js";
-import { resolveContainedRegistryWritePath } from "../src/ports.js";
-import { normalizeSlashes, joinSlash } from "../src/resolver/paths.js";
+import { createDefaultPorts, resolveContainedRegistryWritePath } from "../src/ports.js";
+import {
+  normalizeSlashes,
+  joinSlash,
+  resolveContainedCapabilityPath,
+} from "../src/resolver/paths.js";
 import { parsePluginList } from "../src/resolver/plugin-list.js";
+import { MAX_PROFILE_TEMPLATE_BYTES } from "../src/resolver/questions.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
 import { RESOLVER_GENERATOR, type ResolverSnapshot } from "../src/resolver/types.js";
 
@@ -112,7 +117,18 @@ function makePorts(opts?: {
   let cache: ResolverSnapshot | null = null;
   const pluginListRaw = opts?.pluginList === undefined ? PLUGIN_LIST : opts.pluginList;
 
-  const io = { readFile: (p: string) => files.get(normalizeSlashes(p)) ?? null };
+  const readFile = (p: string): string | null => files.get(normalizeSlashes(p)) ?? null;
+  const readContainedFile = (root: string, selectedPath: string, maxBytes: number) => {
+    const path = resolveContainedCapabilityPath(root, selectedPath);
+    if (path === null) return { status: "unsafe" as const, path: null, content: null };
+    const content = readFile(path);
+    if (content === null) return { status: "missing" as const, path, content: null };
+    if (Buffer.byteLength(content, "utf8") > maxBytes) {
+      return { status: "too-large" as const, path, content: null };
+    }
+    return { status: "ok" as const, path, content };
+  };
+  const io = { readFile, readContainedFile };
 
   return {
     counts,
@@ -134,7 +150,8 @@ function makePorts(opts?: {
       cache = snap;
     },
     readCache: () => cache,
-    readFile: (p) => files.get(normalizeSlashes(p)) ?? null,
+    readFile,
+    readContainedFile,
     writeFile(p, content) {
       counts.writeFile++;
       files.set(normalizeSlashes(p), content);
@@ -317,6 +334,132 @@ test("profile-template paths cannot escape their installed capability folder", (
       ),
       candidate,
     );
+  }
+});
+
+test("symlinked profile templates fail installed-pack and active discovery", () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-template-link-"));
+  try {
+    const workspace = join(root, "workspace");
+    const install = join(root, "wf-demo");
+    const capability = join(install, "capabilities", "demo");
+    const outside = join(root, "outside.json");
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    mkdirSync(capability, { recursive: true });
+    writeFileSync(
+      join(workspace, "_local", "config.md"),
+      `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+    );
+    writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+    writeFileSync(outside, DEMO_TEMPLATE);
+    symlinkSync(outside, join(capability, "profile.template.json"));
+
+    const pluginListRaw = JSON.stringify([
+      {
+        id: "wf-demo@local",
+        version: "1.2.3",
+        scope: "user",
+        enabled: true,
+        installPath: normalizeSlashes(install),
+      },
+    ]);
+    const production = createDefaultPorts(normalizeSlashes(workspace));
+    const ports: ResolverServicePorts = {
+      ...production,
+      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({
+          workspaceRoot: normalizeSlashes(workspace),
+          pluginListRaw,
+          now: () => new Date("2026-08-19T00:00:00.000Z"),
+        }),
+    };
+    const service = new ResolverService(ports);
+
+    const inspected = service.inspectPack("wf-demo@local");
+    assert.equal(inspected.valid, false);
+    assert.deepEqual(inspected.capabilities[0].questions, []);
+    assert.ok(
+      inspected.capabilities[0].questionDiagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-path-invalid",
+      ),
+    );
+
+    const active = service.resolveRegistry().capabilities.find(
+      (candidate) => candidate.name === "demo",
+    );
+    assert.ok(active);
+    assert.deepEqual(active.questions, []);
+    assert.ok(
+      service.inspect().diagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-path-invalid",
+      ),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("oversized profile templates fail before installed-pack and active parsing", () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-template-size-"));
+  try {
+    const workspace = join(root, "workspace");
+    const install = join(root, "wf-demo");
+    const capability = join(install, "capabilities", "demo");
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    mkdirSync(capability, { recursive: true });
+    writeFileSync(
+      join(workspace, "_local", "config.md"),
+      `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+    );
+    writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+    writeFileSync(
+      join(capability, "profile.template.json"),
+      "x".repeat(MAX_PROFILE_TEMPLATE_BYTES + 1),
+    );
+
+    const pluginListRaw = JSON.stringify([
+      {
+        id: "wf-demo@local",
+        version: "1.2.3",
+        scope: "user",
+        enabled: true,
+        installPath: normalizeSlashes(install),
+      },
+    ]);
+    const production = createDefaultPorts(normalizeSlashes(workspace));
+    const ports: ResolverServicePorts = {
+      ...production,
+      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({
+          workspaceRoot: normalizeSlashes(workspace),
+          pluginListRaw,
+          now: () => new Date("2026-08-19T00:00:00.000Z"),
+        }),
+    };
+    const service = new ResolverService(ports);
+
+    const inspected = service.inspectPack("wf-demo@local");
+    assert.equal(inspected.valid, false);
+    assert.ok(
+      inspected.capabilities[0].questionDiagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-too-large",
+      ),
+    );
+
+    assert.deepEqual(
+      service.resolveRegistry().capabilities.find((candidate) => candidate.name === "demo")
+        ?.questions,
+      [],
+    );
+    assert.ok(
+      service.inspect().diagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-too-large",
+      ),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

@@ -9978,14 +9978,14 @@ function inputRequiredRoundsExceededMessage(method, maxRounds) {
   return `Multi-round-trip request '${method}' still required input after ${maxRounds} rounds (inputRequired.maxRounds)`;
 }
 function sleep(ms, signal) {
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     if (signal?.aborted) {
       reject(signal.reason instanceof SdkError ? signal.reason : new SdkError(SdkErrorCode.RequestTimeout, String(signal.reason)));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve3();
+      resolve4();
     }, ms);
     const onAbort = () => {
       clearTimeout(timer);
@@ -10778,7 +10778,7 @@ var Protocol = class {
     const flowStartedAt = Date.now();
     let onAbort;
     let cleanupMessageId;
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve4, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -10846,7 +10846,7 @@ var Protocol = class {
         }
         if (decoded.kind === "invalid") return reject(decoded.error);
         if (decoded.kind === "input_required") {
-          if (options?.allowInputRequired === true) return resolve3(manualInputRequiredValue(decoded));
+          if (options?.allowInputRequired === true) return resolve4(manualInputRequiredValue(decoded));
           const flow = {
             codec,
             request,
@@ -10858,11 +10858,11 @@ var Protocol = class {
               params
             }, resultSchema, legOptions)
           };
-          return resolve3(this._resolveNonCompleteResult(decoded, flow));
+          return resolve4(this._resolveNonCompleteResult(decoded, flow));
         }
         const result = decoded.result;
         validateStandardSchema(resultSchema, result).then((parseResult) => {
-          if (parseResult.success) resolve3(parseResult.data);
+          if (parseResult.success) resolve4(parseResult.data);
           else reject(new SdkError(SdkErrorCode.InvalidResult, `Invalid result for ${request.method}: ${parseResult.error}`));
         }, reject);
       });
@@ -11586,9 +11586,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
       return `${varKind} ${this.name}${rhs};` + _n;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       if (!names[this.name.str]) return;
-      if (this.rhs) this.rhs = optimizeExpr(this.rhs, names, constants);
+      if (this.rhs) this.rhs = optimizeExpr(this.rhs, names, constants2);
       return this;
     }
     get names() {
@@ -11605,9 +11605,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     render({ _n }) {
       return `${this.lhs} = ${this.rhs};` + _n;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects) return;
-      this.rhs = optimizeExpr(this.rhs, names, constants);
+      this.rhs = optimizeExpr(this.rhs, names, constants2);
       return this;
     }
     get names() {
@@ -11666,8 +11666,8 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     optimizeNodes() {
       return `${this.code}` ? this : void 0;
     }
-    optimizeNames(names, constants) {
-      this.code = optimizeExpr(this.code, names, constants);
+    optimizeNames(names, constants2) {
+      this.code = optimizeExpr(this.code, names, constants2);
       return this;
     }
     get names() {
@@ -11693,12 +11693,12 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       }
       return nodes.length > 0 ? this : void 0;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       const { nodes } = this;
       let i = nodes.length;
       while (i--) {
         const n = nodes[i];
-        if (n.optimizeNames(names, constants)) continue;
+        if (n.optimizeNames(names, constants2)) continue;
         subtractNames(names, n.names);
         nodes.splice(i, 1);
       }
@@ -11745,11 +11745,11 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       if (cond === false || !this.nodes.length) return void 0;
       return this;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       var _a3;
-      this.else = (_a3 = this.else) === null || _a3 === void 0 ? void 0 : _a3.optimizeNames(names, constants);
-      if (!(super.optimizeNames(names, constants) || this.else)) return;
-      this.condition = optimizeExpr(this.condition, names, constants);
+      this.else = (_a3 = this.else) === null || _a3 === void 0 ? void 0 : _a3.optimizeNames(names, constants2);
+      if (!(super.optimizeNames(names, constants2) || this.else)) return;
+      this.condition = optimizeExpr(this.condition, names, constants2);
       return this;
     }
     get names() {
@@ -11771,9 +11771,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     render(opts) {
       return `for(${this.iteration})` + super.render(opts);
     }
-    optimizeNames(names, constants) {
-      if (!super.optimizeNames(names, constants)) return;
-      this.iteration = optimizeExpr(this.iteration, names, constants);
+    optimizeNames(names, constants2) {
+      if (!super.optimizeNames(names, constants2)) return;
+      this.iteration = optimizeExpr(this.iteration, names, constants2);
       return this;
     }
     get names() {
@@ -11808,9 +11808,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     render(opts) {
       return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
     }
-    optimizeNames(names, constants) {
-      if (!super.optimizeNames(names, constants)) return;
-      this.iterable = optimizeExpr(this.iterable, names, constants);
+    optimizeNames(names, constants2) {
+      if (!super.optimizeNames(names, constants2)) return;
+      this.iterable = optimizeExpr(this.iterable, names, constants2);
       return this;
     }
     get names() {
@@ -11849,11 +11849,11 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       (_b = this.finally) === null || _b === void 0 || _b.optimizeNodes();
       return this;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       var _a3, _b;
-      super.optimizeNames(names, constants);
-      (_a3 = this.catch) === null || _a3 === void 0 || _a3.optimizeNames(names, constants);
-      (_b = this.finally) === null || _b === void 0 || _b.optimizeNames(names, constants);
+      super.optimizeNames(names, constants2);
+      (_a3 = this.catch) === null || _a3 === void 0 || _a3.optimizeNames(names, constants2);
+      (_b = this.finally) === null || _b === void 0 || _b.optimizeNames(names, constants2);
       return this;
     }
     get names() {
@@ -12102,7 +12102,7 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
   function addExprNames(names, from) {
     return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
   }
-  function optimizeExpr(expr, names, constants) {
+  function optimizeExpr(expr, names, constants2) {
     if (expr instanceof code_1.Name) return replaceName(expr);
     if (!canOptimize(expr)) return expr;
     return new code_1._Code(expr._items.reduce((items, c) => {
@@ -12112,13 +12112,13 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       return items;
     }, []));
     function replaceName(n) {
-      const c = constants[n.str];
+      const c = constants2[n.str];
       if (c === void 0 || names[n.str] !== 1) return n;
       delete names[n.str];
       return c;
     }
     function canOptimize(e) {
-      return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants[c.str] !== void 0);
+      return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants2[c.str] !== void 0);
     }
   }
   function subtractNames(names, from) {
@@ -13778,7 +13778,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
     ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, ref);
     const schOrFunc = root.refs[ref];
     if (schOrFunc) return schOrFunc;
-    let _sch = resolve3.call(this, root, ref);
+    let _sch = resolve4.call(this, root, ref);
     if (_sch === void 0) {
       const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
       const { schemaId } = this.opts;
@@ -13804,7 +13804,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
   function sameSchemaEnv(s1, s2) {
     return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
   }
-  function resolve3(root, ref) {
+  function resolve4(root, ref) {
     let sch;
     while (typeof (sch = this.refs[ref]) == "string") ref = sch;
     return sch || this.schemas[ref] || resolveSchema.call(this, root, ref);
@@ -14254,47 +14254,47 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
     else if (typeof uri === "object") uri = parse3(serialize(uri, options), options);
     return uri;
   }
-  function resolve3(baseURI, relativeURI, options) {
+  function resolve4(baseURI, relativeURI, options) {
     const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
     const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
     schemelessOptions.skipEscape = true;
     return serialize(resolved, schemelessOptions);
   }
-  function resolveComponent(base, relative2, options, skipNormalization) {
+  function resolveComponent(base, relative3, options, skipNormalization) {
     const target = {};
     if (!skipNormalization) {
       base = parse3(serialize(base, options), options);
-      relative2 = parse3(serialize(relative2, options), options);
+      relative3 = parse3(serialize(relative3, options), options);
     }
     options = options || {};
-    if (!options.tolerant && relative2.scheme) {
-      target.scheme = relative2.scheme;
-      target.userinfo = relative2.userinfo;
-      target.host = relative2.host;
-      target.port = relative2.port;
-      target.path = removeDotSegments(relative2.path || "");
-      target.query = relative2.query;
+    if (!options.tolerant && relative3.scheme) {
+      target.scheme = relative3.scheme;
+      target.userinfo = relative3.userinfo;
+      target.host = relative3.host;
+      target.port = relative3.port;
+      target.path = removeDotSegments(relative3.path || "");
+      target.query = relative3.query;
     } else {
-      if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
+        target.userinfo = relative3.userinfo;
+        target.host = relative3.host;
+        target.port = relative3.port;
+        target.path = removeDotSegments(relative3.path || "");
+        target.query = relative3.query;
       } else {
-        if (!relative2.path) {
+        if (!relative3.path) {
           target.path = base.path;
-          if (relative2.query !== void 0) target.query = relative2.query;
+          if (relative3.query !== void 0) target.query = relative3.query;
           else target.query = base.query;
         } else {
-          if (relative2.path[0] === "/") target.path = removeDotSegments(relative2.path);
+          if (relative3.path[0] === "/") target.path = removeDotSegments(relative3.path);
           else {
-            if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) target.path = "/" + relative2.path;
-            else if (!base.path) target.path = relative2.path;
-            else target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+            if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) target.path = "/" + relative3.path;
+            else if (!base.path) target.path = relative3.path;
+            else target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
             target.path = removeDotSegments(target.path);
           }
-          target.query = relative2.query;
+          target.query = relative3.query;
         }
         target.userinfo = base.userinfo;
         target.host = base.host;
@@ -14302,7 +14302,7 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
       }
       target.scheme = base.scheme;
     }
-    target.fragment = relative2.fragment;
+    target.fragment = relative3.fragment;
     return target;
   }
   function equal(uriA, uriB, options) {
@@ -14428,7 +14428,7 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
   const fastUri = {
     SCHEMES,
     normalize,
-    resolve: resolve3,
+    resolve: resolve4,
     resolveComponent,
     equal,
     serialize,
@@ -19364,7 +19364,7 @@ var StdioServerTransport = class {
   }
   send(message) {
     if (this._closed) return Promise.reject(/* @__PURE__ */ new Error("StdioServerTransport is closed"));
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve4, reject) => {
       const json = serializeMessage(message);
       let settled = false;
       const onError = (error2) => {
@@ -19379,14 +19379,14 @@ var StdioServerTransport = class {
         settled = true;
         this._stdout.off("error", onError);
         this._stdout.off("drain", onDrain);
-        resolve3();
+        resolve4();
       };
       this._stdout.once("error", onError);
       if (this._stdout.write(json)) {
         if (settled) return;
         settled = true;
         this._stdout.off("error", onError);
-        resolve3();
+        resolve4();
       } else if (!settled) this._stdout.once("drain", onDrain);
     });
   }
@@ -19440,14 +19440,14 @@ var StdioConnectionChannel = class {
   */
   async whenRequestsAnswered(timeoutMs) {
     if (this._closed || this._pendingRequests.size === 0) return true;
-    return await new Promise((resolve3) => {
+    return await new Promise((resolve4) => {
       const waiter = () => {
         clearTimeout(timer);
-        resolve3(true);
+        resolve4(true);
       };
       const timer = setTimeout(() => {
         this._drainWaiters = this._drainWaiters.filter((pending) => pending !== waiter);
-        resolve3(false);
+        resolve4(false);
       }, timeoutMs);
       this._drainWaiters.push(waiter);
     });
@@ -20363,10 +20363,14 @@ function joinSlash(...segments) {
     return seg;
   }).filter((s) => s.length > 0).join("/");
 }
-function resolveContainedCapabilityPath(root, relative2) {
-  if (relative2.length === 0 || relative2.includes("\\") || isAbsoluteRoot(relative2)) return null;
-  const segments = relative2.split("/");
-  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+function resolveContainedCapabilityPath(root, relative3) {
+  if (relative3.length === 0 || relative3.includes("\0") || relative3.includes("\\") || isAbsoluteRoot(relative3)) {
+    return null;
+  }
+  const segments = relative3.split("/");
+  if (segments.some(
+    (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":")
+  )) {
     return null;
   }
   const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
@@ -20469,8 +20473,8 @@ function resolveWorkspaceIdentity(directory, label = "workspaceRoot") {
 }
 
 // src/ports.ts
-import { lstatSync, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2, isAbsolute as isAbsolute3, relative, resolve as resolve2, sep } from "node:path";
+import { lstatSync as lstatSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/resolver/types.ts
@@ -21355,6 +21359,11 @@ var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
 ]);
 var ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 var DESTINATION_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+var MAX_PROFILE_TEMPLATE_BYTES = 256 * 1024;
+var MAX_QUESTIONS_PER_TEMPLATE = 64;
+var MAX_ENUM_VALUES = 128;
+var MAX_PROMPT_LENGTH = 2048;
+var MAX_NORMALIZED_QUESTION_BYTES = 128 * 1024;
 var MAX_PATTERN_INPUT_LENGTH = 1024;
 var MAX_PATTERN_LENGTH = 256;
 function patternSafetyError(pattern) {
@@ -21423,6 +21432,25 @@ function diagnostic(pack, question, field, code, detail) {
     field,
     message: `${owner}, field \`${field}\`: ${detail}`
   };
+}
+function normalizedMetadataDiagnostic(pack, questions) {
+  if (questions.length > MAX_QUESTIONS_PER_TEMPLATE) {
+    return diagnostic(
+      pack,
+      null,
+      "ask",
+      "question/ask-too-many",
+      `must contain at most ${MAX_QUESTIONS_PER_TEMPLATE} questions.`
+    );
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(questions), "utf8");
+  return bytes > MAX_NORMALIZED_QUESTION_BYTES ? diagnostic(
+    pack,
+    null,
+    "ask",
+    "question/metadata-too-large",
+    `normalized question metadata must be at most ${MAX_NORMALIZED_QUESTION_BYTES} UTF-8 bytes.`
+  ) : null;
 }
 function schemaFields(pack, question, raw, allowed, diagnostics) {
   for (const field of Object.keys(raw).filter((key) => !allowed.has(key)).sort()) {
@@ -21573,11 +21601,10 @@ function parseSchema2(pack, question, value, diagnostics) {
         if (patternValid) pattern = value.pattern;
       }
     }
-    const schema = { type: "string" };
-    if (hasMin && minLength !== null) schema.minLength = minLength;
-    if (hasMax && maxLength !== null) schema.maxLength = maxLength;
-    if (pattern !== void 0) schema.pattern = pattern;
-    return schema;
+    if (hasMin && hasMax && minLength !== null && maxLength !== null) {
+      return pattern === void 0 ? { type: "string", minLength, maxLength } : { type: "string", minLength, maxLength, pattern };
+    }
+    return { type: "string" };
   }
   if (type === "boolean") {
     schemaFields(pack, question, value, /* @__PURE__ */ new Set(["type"]), diagnostics);
@@ -21621,6 +21648,18 @@ function parseSchema2(pack, question, value, diagnostics) {
           "schema.values",
           "question/schema-invalid-enum",
           "must be a non-empty array of unique non-empty strings."
+        )
+      );
+      return null;
+    }
+    if (value.values.length > MAX_ENUM_VALUES) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "schema.values",
+          "question/schema-enum-too-large",
+          `must contain at most ${MAX_ENUM_VALUES} values.`
         )
       );
       return null;
@@ -21757,10 +21796,25 @@ function validateQuestionValue(declaration, source, value) {
   return { valid: true, source, value, diagnostics: [] };
 }
 function parseQuestionDeclarations(pack, rawTemplate) {
+  if (Buffer.byteLength(rawTemplate, "utf8") > MAX_PROFILE_TEMPLATE_BYTES) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "template",
+          "question/template-too-large",
+          `must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+        )
+      ]
+    };
+  }
   let parsed;
   try {
     parsed = JSON.parse(rawTemplate);
-  } catch (err) {
+  } catch {
     return {
       ok: false,
       questions: [],
@@ -21770,7 +21824,7 @@ function parseQuestionDeclarations(pack, rawTemplate) {
           null,
           "template",
           "question/template-unparseable",
-          `must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
+          "must be valid JSON."
         )
       ]
     };
@@ -21802,6 +21856,21 @@ function parseQuestionDeclarations(pack, rawTemplate) {
           "ask",
           "question/ask-invalid",
           "must be an array."
+        )
+      ]
+    };
+  }
+  if (parsed.ask.length > MAX_QUESTIONS_PER_TEMPLATE) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "ask",
+          "question/ask-too-many",
+          `must contain at most ${MAX_QUESTIONS_PER_TEMPLATE} questions.`
         )
       ]
     };
@@ -21890,10 +21959,20 @@ function parseQuestionDeclarations(pack, rawTemplate) {
           "must be a non-empty string."
         )
       );
+    } else if (prompt.length > MAX_PROMPT_LENGTH) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "prompt",
+          "question/prompt-too-long",
+          `must be at most ${MAX_PROMPT_LENGTH} characters.`
+        )
+      );
     }
     const beforeSchema = diagnostics.length;
     const schema = parseSchema2(pack, question, raw.schema, diagnostics);
-    const structurallyValid = typeof id === "string" && ID_RE.test(id) && typeof destination === "string" && DESTINATION_RE.test(destination) && destination !== "ask" && typeof prompt === "string" && prompt.trim().length > 0 && schema !== null && diagnostics.length === beforeSchema;
+    const structurallyValid = typeof id === "string" && ID_RE.test(id) && typeof destination === "string" && DESTINATION_RE.test(destination) && destination !== "ask" && typeof prompt === "string" && prompt.trim().length > 0 && prompt.length <= MAX_PROMPT_LENGTH && schema !== null && diagnostics.length === beforeSchema;
     if (!structurallyValid) continue;
     const declaration = {
       pack,
@@ -21932,7 +22011,9 @@ function parseQuestionDeclarations(pack, rawTemplate) {
       state: { status: "unresolved", source: null, value: null, suggestions }
     });
   }
-  return diagnostics.length > 0 ? { ok: false, questions: [], diagnostics } : { ok: true, questions, diagnostics: [] };
+  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  const sizeDiagnostic = normalizedMetadataDiagnostic(pack, questions);
+  return sizeDiagnostic === null ? { ok: true, questions, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
 }
 function applyQuestionValues(questions, inputs) {
   const diagnostics = [];
@@ -21978,7 +22059,10 @@ function applyQuestionValues(questions, inputs) {
       });
     }
   }
-  return diagnostics.length > 0 ? { ok: false, questions: [], diagnostics } : { ok: true, questions: resolved, diagnostics: [] };
+  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  const pack = resolved[0]?.pack ?? questions[0]?.pack ?? "unknown";
+  const sizeDiagnostic = normalizedMetadataDiagnostic(pack, resolved);
+  return sizeDiagnostic === null ? { ok: true, questions: resolved, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
 }
 
 // src/resolver/resolve.ts
@@ -22115,11 +22199,20 @@ function buildSnapshot(inputs, io) {
             ]);
           } else {
             profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
-            const profileTemplateRaw = io.readFile(profileTemplateAbs);
+            const templateRead = io.readContainedFile ? io.readContainedFile(
+              resolved.resolvedPath,
+              m.profileTemplate,
+              MAX_PROFILE_TEMPLATE_BYTES
+            ) : {
+              status: "unsupported",
+              path: profileTemplateAbs,
+              content: null
+            };
+            const profileTemplateRaw = templateRead.status === "ok" ? templateRead.content : null;
             sources.push(
               fingerprint("profile-template", profileTemplatePath, profileTemplateRaw)
             );
-            if (profileTemplateRaw === null) {
+            if (templateRead.status === "missing") {
               appendQuestionDiagnostics(diagnostics, [
                 {
                   code: "question/template-missing",
@@ -22129,8 +22222,28 @@ function buildSnapshot(inputs, io) {
                   message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`
                 }
               ]);
+            } else if (templateRead.status === "too-large") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-too-large",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+                }
+              ]);
+            } else if (templateRead.status !== "ok") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-path-invalid",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`
+                }
+              ]);
             } else {
-              const parsedQuestions = parseQuestionDeclarations(packName, profileTemplateRaw);
+              const parsedQuestions = parseQuestionDeclarations(packName, templateRead.content);
               if (parsedQuestions.ok) questions = parsedQuestions.questions;
               else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
             }
@@ -22496,8 +22609,19 @@ function buildSnapshot(inputs, io) {
 }
 
 // src/resolver/engine.ts
-import { readFileSync as readFileSync2, readdirSync } from "node:fs";
-import { join as join2 } from "node:path";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync as readFileSync2,
+  readSync,
+  readdirSync,
+  realpathSync as realpathSync2,
+  statSync as statSync2
+} from "node:fs";
+import { isAbsolute as isAbsolute3, join as join2, relative, resolve as resolve2, sep } from "node:path";
 import { execFileSync as execFileSync2 } from "node:child_process";
 
 // src/resolver/snapshot-store.ts
@@ -22570,6 +22694,107 @@ function readOrNull(absPath) {
     throw err;
   }
 }
+function readContainedCapabilityFile(root, selectedPath, maxBytes) {
+  const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
+  if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    return { status: "unsafe", path: lexicalPath, content: null };
+  }
+  const inside = (canonicalRoot, candidate) => {
+    const fromRoot = relative(canonicalRoot, candidate);
+    return fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute3(fromRoot);
+  };
+  const comparable = (path) => {
+    const normalized = normalizeSlashes(path);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  const sameIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+  let fd = null;
+  let targetValidated = false;
+  try {
+    const canonicalRoot = realpathSync2(root);
+    const rootStat = statSync2(canonicalRoot, { bigint: true });
+    if (!rootStat.isDirectory()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const segments = selectedPath.split("/");
+    const canonicalCandidate = resolve2(canonicalRoot, ...segments);
+    if (!inside(canonicalRoot, canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    let cursor = canonicalRoot;
+    for (const segment of segments) {
+      cursor = resolve2(cursor, segment);
+      if (lstatSync(cursor).isSymbolicLink()) {
+        return { status: "unsafe", path: lexicalPath, content: null };
+      }
+    }
+    const canonicalTarget = realpathSync2(canonicalCandidate);
+    if (!inside(canonicalRoot, canonicalTarget) || comparable(canonicalTarget) !== comparable(canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const expected = statSync2(canonicalTarget, { bigint: true });
+    if (!expected.isFile()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (expected.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    targetValidated = true;
+    if (typeof constants.O_NOFOLLOW !== "number" || constants.O_NOFOLLOW === 0) {
+      return { status: "unsupported", path: lexicalPath, content: null };
+    }
+    const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
+    fd = openSync(canonicalTarget, constants.O_RDONLY | constants.O_NOFOLLOW | nonBlock);
+    const opened = fstatSync(fd, { bigint: true });
+    if (!opened.isFile() || !sameIdentity(expected, opened)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (opened.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    const postOpenTarget = realpathSync2(canonicalCandidate);
+    const postOpenStat = statSync2(canonicalCandidate, { bigint: true });
+    const postOpenRoot = statSync2(canonicalRoot, { bigint: true });
+    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity(opened, postOpenStat) || !sameIdentity(rootStat, postOpenRoot)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const chunks = [];
+    let total = 0;
+    while (total <= maxBytes) {
+      const remaining = maxBytes + 1 - total;
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, total);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total > maxBytes) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    const afterRead = fstatSync(fd, { bigint: true });
+    if (!sameIdentity(opened, afterRead) || afterRead.size !== opened.size) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    return {
+      status: "ok",
+      path: normalizeSlashes(lexicalPath),
+      content: Buffer.concat(chunks, total).toString("utf8")
+    };
+  } catch (err) {
+    const code = err.code;
+    if (code === "ELOOP") return { status: "unsafe", path: lexicalPath, content: null };
+    if (code === "ENOENT" && !targetValidated) {
+      return { status: "missing", path: lexicalPath, content: null };
+    }
+    return {
+      status: targetValidated ? "unsafe" : "unreadable",
+      path: lexicalPath,
+      content: null
+    };
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
 function listFilesOrEmpty(absDir) {
   try {
     return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
@@ -22577,7 +22802,11 @@ function listFilesOrEmpty(absDir) {
     return [];
   }
 }
-var fsIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
+var fsIO = {
+  readFile: readOrNull,
+  readContainedFile: readContainedCapabilityFile,
+  listFiles: listFilesOrEmpty
+};
 function extractRegistryPathRaw(wfConfig) {
   if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
   const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
@@ -22630,15 +22859,15 @@ function resolveCorePluginRoot() {
     return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
   }
   const here = fileURLToPath(import.meta.url);
-  return normalizeSlashes(resolve2(dirname2(here), "..", ".."));
+  return normalizeSlashes(resolve3(dirname2(here), "..", ".."));
 }
 function resolveContainedRegistryWritePath(workspaceRoot, registryRelPath) {
-  const canonicalRoot = realpathSync2(workspaceRoot);
-  const target = resolve2(workspaceRoot, registryRelPath);
+  const canonicalRoot = realpathSync3(workspaceRoot);
+  const target = resolve3(workspaceRoot, registryRelPath);
   let existing = target;
   while (true) {
     try {
-      lstatSync(existing);
+      lstatSync2(existing);
       break;
     } catch (err) {
       if (err.code !== "ENOENT") throw err;
@@ -22647,9 +22876,9 @@ function resolveContainedRegistryWritePath(workspaceRoot, registryRelPath) {
       existing = parent;
     }
   }
-  const canonicalExisting = realpathSync2(existing);
-  const fromRoot = relative(canonicalRoot, canonicalExisting);
-  if (fromRoot === "" || fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute3(fromRoot)) {
+  const canonicalExisting = realpathSync3(existing);
+  const fromRoot = relative2(canonicalRoot, canonicalExisting);
+  if (fromRoot === "" || fromRoot !== ".." && !fromRoot.startsWith(`..${sep2}`) && !isAbsolute4(fromRoot)) {
     return normalizeSlashes(target);
   }
   throw new Error(`resolved path leaves workspace root \`${normalizeSlashes(canonicalRoot)}\`.`);
@@ -22674,6 +22903,7 @@ function createDefaultPorts(workspaceRoot) {
       }
     },
     readFile: (absPath) => fsIO.readFile(absPath),
+    readContainedFile: (capabilityRoot, selectedPath, maxBytes) => fsIO.readContainedFile(capabilityRoot, selectedPath, maxBytes),
     writeFile: (absPath, content) => {
       mkdirSync2(dirname2(absPath), { recursive: true });
       writeFileSync2(absPath, content, { encoding: "utf8" });
@@ -25299,9 +25529,18 @@ var ResolverService = class {
             }
           ];
         } else {
-          const templateRaw = this.ports.readFile(templateAbs);
+          const templateRead = this.ports.readContainedFile ? this.ports.readContainedFile(
+            capabilityRoot,
+            manifest.profileTemplate,
+            MAX_PROFILE_TEMPLATE_BYTES
+          ) : {
+            status: "unsupported",
+            path: templateAbs,
+            content: null
+          };
+          const templateRaw = templateRead.status === "ok" ? templateRead.content : null;
           fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
-          if (templateRaw === null) {
+          if (templateRead.status === "missing") {
             questionDiagnostics = [
               {
                 code: "question/template-missing",
@@ -25311,8 +25550,28 @@ var ResolverService = class {
                 message: `pack \`${name}\`, field \`profile-template\`: declared template \`${manifest.profileTemplate}\` is not readable.`
               }
             ];
+          } else if (templateRead.status === "too-large") {
+            questionDiagnostics = [
+              {
+                code: "question/template-too-large",
+                pack: name,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${name}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+              }
+            ];
+          } else if (templateRead.status !== "ok") {
+            questionDiagnostics = [
+              {
+                code: "question/template-path-invalid",
+                pack: name,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${name}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`
+              }
+            ];
           } else {
-            const parsed = parseQuestionDeclarations(name, templateRaw);
+            const parsed = parseQuestionDeclarations(name, templateRead.content);
             if (parsed.ok) questions = parsed.questions;
             else questionDiagnostics = parsed.diagnostics;
           }

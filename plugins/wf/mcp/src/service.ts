@@ -55,6 +55,7 @@ import {
   normalizeSlashes,
   registryPathShapeError,
   resolveContainedCapabilityPath,
+  type ContainedFileReadResult,
 } from "./resolver/paths.js";
 import {
   validateManifest,
@@ -69,7 +70,10 @@ import {
 } from "./resolver/preview-composition.js";
 import type { ValidationVerdict } from "./resolver/validate-rules.js";
 import { parseManifest } from "./resolver/manifest.js";
-import { parseQuestionDeclarations } from "./resolver/questions.js";
+import {
+  MAX_PROFILE_TEMPLATE_BYTES,
+  parseQuestionDeclarations,
+} from "./resolver/questions.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
 import {
@@ -109,6 +113,13 @@ export interface ResolverServicePorts {
   readCache(): ResolverSnapshot | null;
   /** Read a UTF-8 file (pack manifest reads for inspect/register), or `null`. */
   readFile(absPath: string): string | null;
+  /** Security boundary for a manifest-selected profile template. Omission fails
+   * closed; inspection never falls back to `readFile` for this input. */
+  readContainedFile?(
+    capabilityRoot: string,
+    selectedPath: string,
+    maxBytes: number,
+  ): ContainedFileReadResult;
   /** Write a UTF-8 file (registry edits), creating parent dirs. */
   writeFile(absPath: string, content: string): void;
   /** List immediate subdirectory names of `absDir` (used ONLY on the pack
@@ -1093,9 +1104,20 @@ export class ResolverService {
             },
           ];
         } else {
-          const templateRaw = this.ports.readFile(templateAbs);
+          const templateRead = this.ports.readContainedFile
+            ? this.ports.readContainedFile(
+                capabilityRoot,
+                manifest.profileTemplate,
+                MAX_PROFILE_TEMPLATE_BYTES,
+              )
+            : ({
+                status: "unsupported",
+                path: templateAbs,
+                content: null,
+              } satisfies ContainedFileReadResult);
+          const templateRaw = templateRead.status === "ok" ? templateRead.content : null;
           fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
-          if (templateRaw === null) {
+          if (templateRead.status === "missing") {
             questionDiagnostics = [
               {
                 code: "question/template-missing",
@@ -1105,8 +1127,28 @@ export class ResolverService {
                 message: `pack \`${name}\`, field \`profile-template\`: declared template \`${manifest.profileTemplate}\` is not readable.`,
               },
             ];
+          } else if (templateRead.status === "too-large") {
+            questionDiagnostics = [
+              {
+                code: "question/template-too-large",
+                pack: name,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${name}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
+              },
+            ];
+          } else if (templateRead.status !== "ok") {
+            questionDiagnostics = [
+              {
+                code: "question/template-path-invalid",
+                pack: name,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${name}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`,
+              },
+            ];
           } else {
-            const parsed = parseQuestionDeclarations(name, templateRaw);
+            const parsed = parseQuestionDeclarations(name, templateRead.content);
             if (parsed.ok) questions = parsed.questions;
             else questionDiagnostics = parsed.diagnostics;
           }

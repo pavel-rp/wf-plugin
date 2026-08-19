@@ -24,6 +24,11 @@ const DECLARATION_FIELDS = new Set([
 ]);
 const ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const DESTINATION_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+export const MAX_PROFILE_TEMPLATE_BYTES = 256 * 1024;
+export const MAX_QUESTIONS_PER_TEMPLATE = 64;
+export const MAX_ENUM_VALUES = 128;
+export const MAX_PROMPT_LENGTH = 2048;
+export const MAX_NORMALIZED_QUESTION_BYTES = 128 * 1024;
 const MAX_PATTERN_INPUT_LENGTH = 1024;
 const MAX_PATTERN_LENGTH = 256;
 
@@ -114,6 +119,31 @@ function diagnostic(
     field,
     message: `${owner}, field \`${field}\`: ${detail}`,
   };
+}
+
+function normalizedMetadataDiagnostic(
+  pack: string,
+  questions: readonly QuestionRecord[],
+): QuestionDiagnostic | null {
+  if (questions.length > MAX_QUESTIONS_PER_TEMPLATE) {
+    return diagnostic(
+      pack,
+      null,
+      "ask",
+      "question/ask-too-many",
+      `must contain at most ${MAX_QUESTIONS_PER_TEMPLATE} questions.`,
+    );
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(questions), "utf8");
+  return bytes > MAX_NORMALIZED_QUESTION_BYTES
+    ? diagnostic(
+        pack,
+        null,
+        "ask",
+        "question/metadata-too-large",
+        `normalized question metadata must be at most ${MAX_NORMALIZED_QUESTION_BYTES} UTF-8 bytes.`,
+      )
+    : null;
 }
 
 function schemaFields(
@@ -295,11 +325,12 @@ function parseSchema(
       }
     }
 
-    const schema: QuestionSchema = { type: "string" };
-    if (hasMin && minLength !== null) schema.minLength = minLength;
-    if (hasMax && maxLength !== null) schema.maxLength = maxLength;
-    if (pattern !== undefined) schema.pattern = pattern;
-    return schema;
+    if (hasMin && hasMax && minLength !== null && maxLength !== null) {
+      return pattern === undefined
+        ? { type: "string", minLength, maxLength }
+        : { type: "string", minLength, maxLength, pattern };
+    }
+    return { type: "string" };
   }
 
   if (type === "boolean") {
@@ -352,6 +383,18 @@ function parseSchema(
           "schema.values",
           "question/schema-invalid-enum",
           "must be a non-empty array of unique non-empty strings.",
+        ),
+      );
+      return null;
+    }
+    if (value.values.length > MAX_ENUM_VALUES) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "schema.values",
+          "question/schema-enum-too-large",
+          `must contain at most ${MAX_ENUM_VALUES} values.`,
         ),
       );
       return null;
@@ -511,6 +554,22 @@ export function parseQuestionDeclarations(
   pack: string,
   rawTemplate: string,
 ): QuestionDeclarationResult {
+  if (Buffer.byteLength(rawTemplate, "utf8") > MAX_PROFILE_TEMPLATE_BYTES) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "template",
+          "question/template-too-large",
+          `must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
+        ),
+      ],
+    };
+  }
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawTemplate);
@@ -558,6 +617,21 @@ export function parseQuestionDeclarations(
           "ask",
           "question/ask-invalid",
           "must be an array.",
+        ),
+      ],
+    };
+  }
+  if (parsed.ask.length > MAX_QUESTIONS_PER_TEMPLATE) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "ask",
+          "question/ask-too-many",
+          `must contain at most ${MAX_QUESTIONS_PER_TEMPLATE} questions.`,
         ),
       ],
     };
@@ -656,6 +730,16 @@ export function parseQuestionDeclarations(
           "must be a non-empty string.",
         ),
       );
+    } else if (prompt.length > MAX_PROMPT_LENGTH) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "prompt",
+          "question/prompt-too-long",
+          `must be at most ${MAX_PROMPT_LENGTH} characters.`,
+        ),
+      );
     }
 
     const beforeSchema = diagnostics.length;
@@ -668,6 +752,7 @@ export function parseQuestionDeclarations(
       destination !== "ask" &&
       typeof prompt === "string" &&
       prompt.trim().length > 0 &&
+      prompt.length <= MAX_PROMPT_LENGTH &&
       schema !== null &&
       diagnostics.length === beforeSchema;
 
@@ -715,9 +800,11 @@ export function parseQuestionDeclarations(
     });
   }
 
-  return diagnostics.length > 0
-    ? { ok: false, questions: [], diagnostics }
-    : { ok: true, questions, diagnostics: [] };
+  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  const sizeDiagnostic = normalizedMetadataDiagnostic(pack, questions);
+  return sizeDiagnostic === null
+    ? { ok: true, questions, diagnostics: [] }
+    : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
 }
 
 export interface QuestionValueInputs {
@@ -780,7 +867,10 @@ export function applyQuestionValues(
     }
   }
 
-  return diagnostics.length > 0
-    ? { ok: false, questions: [], diagnostics }
-    : { ok: true, questions: resolved, diagnostics: [] };
+  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  const pack = resolved[0]?.pack ?? questions[0]?.pack ?? "unknown";
+  const sizeDiagnostic = normalizedMetadataDiagnostic(pack, resolved);
+  return sizeDiagnostic === null
+    ? { ok: true, questions: resolved, diagnostics: [] }
+    : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
 }

@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  MAX_ENUM_VALUES,
+  MAX_NORMALIZED_QUESTION_BYTES,
+  MAX_PROFILE_TEMPLATE_BYTES,
+  MAX_PROMPT_LENGTH,
+  MAX_QUESTIONS_PER_TEMPLATE,
   applyQuestionValues,
   parseQuestionDeclarations,
   validateQuestionValue,
@@ -82,6 +87,11 @@ test("parseQuestionDeclarations rejects malformed JSON and non-object templates"
   assert.equal(malformed.questions.length, 0);
   assert.equal(malformed.diagnostics[0].pack, "demo");
   assert.equal(malformed.diagnostics[0].field, "template");
+  assert.equal(
+    malformed.diagnostics[0].message,
+    "pack `demo`, field `template`: must be valid JSON.",
+  );
+  assert.ok(!malformed.diagnostics[0].message.includes("{"));
 
   const array = parseQuestionDeclarations("demo", "[]");
   assert.equal(array.ok, false);
@@ -127,6 +137,48 @@ const INVALID_CASES: Array<{ name: string; template: unknown; code: string }> = 
       ],
     },
     code: "question/id-invalid",
+  },
+  {
+    name: "non-string destination",
+    template: {
+      ask: [
+        {
+          id: "name",
+          destination: 42,
+          prompt: "Name?",
+          schema: { type: "string" },
+        },
+      ],
+    },
+    code: "question/destination-invalid",
+  },
+  {
+    name: "malformed destination",
+    template: {
+      ask: [
+        {
+          id: "name",
+          destination: "../name",
+          prompt: "Name?",
+          schema: { type: "string" },
+        },
+      ],
+    },
+    code: "question/destination-invalid",
+  },
+  {
+    name: "reserved ask destination",
+    template: {
+      ask: [
+        {
+          id: "name",
+          destination: "ask",
+          prompt: "Name?",
+          schema: { type: "string" },
+        },
+      ],
+    },
+    code: "question/destination-invalid",
   },
   {
     name: "empty prompt",
@@ -258,6 +310,83 @@ for (const fixture of INVALID_CASES) {
     assert.ok(parsed.diagnostics.every((d) => d.message.includes("pack `demo`")));
   });
 }
+
+test("question declarations enforce template and aggregate metadata bounds", () => {
+  const tooLargeTemplate = parseQuestionDeclarations(
+    "demo",
+    " ".repeat(MAX_PROFILE_TEMPLATE_BYTES + 1),
+  );
+  assert.equal(tooLargeTemplate.ok, false);
+  assert.equal(tooLargeTemplate.diagnostics[0].code, "question/template-too-large");
+
+  const tooManyQuestions = parseQuestionDeclarations(
+    "demo",
+    JSON.stringify({
+      ask: Array.from({ length: MAX_QUESTIONS_PER_TEMPLATE + 1 }, (_, index) => ({
+        id: `question-${index}`,
+        destination: `question-${index}`,
+        prompt: "Value?",
+        schema: { type: "boolean" },
+      })),
+    }),
+  );
+  assert.equal(tooManyQuestions.ok, false);
+  assert.equal(tooManyQuestions.diagnostics[0].code, "question/ask-too-many");
+
+  const tooManyEnumValues = parseQuestionDeclarations(
+    "demo",
+    JSON.stringify({
+      ask: [
+        {
+          id: "mode",
+          destination: "mode",
+          prompt: "Mode?",
+          schema: {
+            type: "enum",
+            values: Array.from({ length: MAX_ENUM_VALUES + 1 }, (_, index) => `v${index}`),
+          },
+        },
+      ],
+    }),
+  );
+  assert.equal(tooManyEnumValues.ok, false);
+  assert.equal(tooManyEnumValues.diagnostics[0].code, "question/schema-enum-too-large");
+
+  const tooLongPrompt = parseQuestionDeclarations(
+    "demo",
+    JSON.stringify({
+      ask: [
+        {
+          id: "name",
+          destination: "name",
+          prompt: "x".repeat(MAX_PROMPT_LENGTH + 1),
+          schema: { type: "string" },
+        },
+      ],
+    }),
+  );
+  assert.equal(tooLongPrompt.ok, false);
+  assert.equal(tooLongPrompt.diagnostics[0].code, "question/prompt-too-long");
+
+  const boundedPromptLength = Math.min(
+    MAX_PROMPT_LENGTH,
+    Math.ceil(MAX_NORMALIZED_QUESTION_BYTES / MAX_QUESTIONS_PER_TEMPLATE),
+  );
+  const oversizedMetadata = parseQuestionDeclarations(
+    "demo",
+    JSON.stringify({
+      ask: Array.from({ length: MAX_QUESTIONS_PER_TEMPLATE }, (_, index) => ({
+        id: `question-${index}`,
+        destination: `question-${index}`,
+        prompt: "x".repeat(boundedPromptLength),
+        schema: { type: "boolean" },
+      })),
+    }),
+  );
+  assert.equal(oversizedMetadata.ok, false);
+  assert.equal(oversizedMetadata.diagnostics[0].code, "question/metadata-too-large");
+  assert.deepEqual(oversizedMetadata.questions, []);
+});
 
 test("pattern schemas require bounded input and reject backtracking-prone constructs", () => {
   const cases = [
