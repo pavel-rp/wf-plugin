@@ -4,7 +4,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
 var __create = Object.create;
 var __defProp2 = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   enumerable: true
 }) : target, mod));
 
-// node_modules/zod/v4/core/core.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/core.js
 var _a;
 var NEVER = /* @__PURE__ */ Object.freeze({
   status: "aborted"
@@ -120,7 +120,7 @@ function config(newConfig) {
   return globalConfig;
 }
 
-// node_modules/zod/v4/core/util.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
   BIGINT_FORMAT_RANGES: () => BIGINT_FORMAT_RANGES,
@@ -816,7 +816,7 @@ var Class = class {
   }
 };
 
-// node_modules/zod/v4/core/errors.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/errors.js
 var initializer = (inst, def) => {
   inst.name = "$ZodError";
   Object.defineProperty(inst, "_zod", {
@@ -885,7 +885,7 @@ function formatError(error2, mapper = (issue2) => issue2.message) {
   return fieldErrors;
 }
 
-// node_modules/zod/v4/core/parse.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => (schema, value, _ctx, _params) => {
   const ctx = _ctx ? { ..._ctx, async: false } : { async: false };
   const result = schema._zod.run({ value, issues: [] }, ctx);
@@ -963,7 +963,7 @@ var _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
   return _safeParseAsync(_Err)(schema, value, _ctx);
 };
 
-// node_modules/zod/v4/core/regexes.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/regexes.js
 var cuid = /^[cC][0-9a-z]{6,}$/;
 var cuid2 = /^[0-9a-z]+$/;
 var ulid = /^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$/;
@@ -1022,7 +1022,7 @@ var _null = /^null$/i;
 var lowercase = /^[^A-Z]*$/;
 var uppercase = /^[^a-z]*$/;
 
-// node_modules/zod/v4/core/checks.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a3;
   inst._zod ?? (inst._zod = {});
@@ -1412,7 +1412,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// node_modules/zod/v4/core/doc.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/doc.js
 var Doc = class {
   constructor(args = []) {
     this.content = [];
@@ -1448,14 +1448,14 @@ var Doc = class {
   }
 };
 
-// node_modules/zod/v4/core/versions.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 4,
   patch: 3
 };
 
-// node_modules/zod/v4/core/schemas.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a3;
   inst ?? (inst = {});
@@ -3000,7 +3000,7 @@ function handleRefineResult(result, payload, input, inst) {
   }
 }
 
-// node_modules/zod/v4/locales/en.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/locales/en.js
 var error = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
@@ -3113,7 +3113,7 @@ function en_default() {
   };
 }
 
-// node_modules/zod/v4/core/registries.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/registries.js
 var _a2;
 var $ZodRegistry = class {
   constructor() {
@@ -3161,7 +3161,7 @@ function registry() {
 (_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry());
 var globalRegistry = globalThis.__zod_globalRegistry;
 
-// node_modules/zod/v4/core/api.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/api.js
 // @__NO_SIDE_EFFECTS__
 function _string(Class2, params) {
   return new Class2({
@@ -3724,7 +3724,7 @@ function _check(fn, params) {
   return ch;
 }
 
-// node_modules/zod/v4/core/to-json-schema.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/to-json-schema.js
 function initializeContext(params) {
   let target = params?.target ?? "draft-2020-12";
   if (target === "draft-4")
@@ -4083,7 +4083,7 @@ var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) =
   return finalize(ctx, schema);
 };
 
-// node_modules/zod/v4/core/json-schema-processors.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/json-schema-processors.js
 var formatMap = {
   guid: "uuid",
   url: "uri",
@@ -4627,7 +4627,7 @@ function toJSONSchema(input, params) {
   return finalize(ctx, input);
 }
 
-// node_modules/zod/v4/classic/iso.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/iso.js
 var iso_exports = {};
 __export(iso_exports, {
   ZodISODate: () => ZodISODate,
@@ -4668,7 +4668,7 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
 
-// node_modules/zod/v4/classic/errors.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/errors.js
 var initializer2 = (inst, issues) => {
   $ZodError.init(inst, issues);
   inst.name = "ZodError";
@@ -4707,7 +4707,7 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, {
   Parent: Error
 });
 
-// node_modules/zod/v4/classic/parse.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/parse.js
 var parse2 = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -4721,7 +4721,7 @@ var safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// node_modules/zod/v4/classic/schemas.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/schemas.js
 var _installedGroups = /* @__PURE__ */ new WeakMap();
 function _installLazyMethods(inst, group, methods) {
   const proto = Object.getPrototypeOf(inst);
@@ -5618,7 +5618,7 @@ function preprocess(fn, schema) {
   });
 }
 
-// node_modules/zod/v4/classic/compat.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/compat.js
 var ZodIssueCode = {
   invalid_type: "invalid_type",
   too_big: "too_big",
@@ -5636,7 +5636,7 @@ var ZodFirstPartyTypeKind;
 /* @__PURE__ */ (function(ZodFirstPartyTypeKind2) {
 })(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
 
-// node_modules/zod/v4/classic/coerce.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/coerce.js
 var coerce_exports = {};
 __export(coerce_exports, {
   bigint: () => bigint2,
@@ -5661,10 +5661,10 @@ function date3(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// node_modules/zod/v4/classic/external.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/external.js
 config(en_default());
 
-// node_modules/@modelcontextprotocol/core/dist/auth-DFgbUATV.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/core/dist/auth-DFgbUATV.mjs
 var LATEST_PROTOCOL_VERSION = "2025-11-25";
 var SUPPORTED_PROTOCOL_VERSIONS = [
   LATEST_PROTOCOL_VERSION,
@@ -6599,7 +6599,7 @@ var OAuthTokenRevocationRequestSchema = object({
   token_type_hint: string2().optional()
 }).strip();
 
-// node_modules/@modelcontextprotocol/server/dist/src-D5Nfqtoz.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/src-D5Nfqtoz.mjs
 var BRANDS = /* @__PURE__ */ Symbol.for("mcp.sdk.errorBrands");
 function stampErrorBrands(instance, ctor) {
   const brands = /* @__PURE__ */ new Set();
@@ -11205,7 +11205,7 @@ function fromJsonSchema(schema, validator) {
   } };
 }
 
-// node_modules/@modelcontextprotocol/server/dist/ajvProvider-CplOkyLC.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/ajvProvider-CplOkyLC.mjs
 var require_code$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
@@ -17798,10 +17798,10 @@ var AjvJsonSchemaValidator = class {
 };
 var Ajv = import_ajv.Ajv;
 
-// node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
 import process3 from "node:process";
 
-// node_modules/@modelcontextprotocol/server/dist/mcp-Ctiu4nBa.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/mcp-Ctiu4nBa.mjs
 var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
 function isCompletable(schema) {
   return !!schema && typeof schema === "object" && COMPLETABLE_SYMBOL in schema;
@@ -19296,13 +19296,13 @@ function unwrapOptionalSchema(schema) {
   return schema.def?.innerType ?? schema;
 }
 
-// node_modules/@modelcontextprotocol/server/dist/index.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/index.mjs
 var _defaultValidator;
 function fromJsonSchema2(schema, validator) {
   return fromJsonSchema(schema, validator ?? (_defaultValidator ??= new AjvJsonSchemaValidator()));
 }
 
-// node_modules/@modelcontextprotocol/server/dist/stdio.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/stdio.mjs
 var StdioServerTransport = class {
   _readBuffer;
   _started = false;
@@ -20463,8 +20463,8 @@ import { dirname as dirname2, isAbsolute as isAbsolute3, relative, resolve as re
 import { fileURLToPath } from "node:url";
 
 // src/resolver/types.ts
-var SNAPSHOT_SCHEMA_VERSION = 3;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" };
+var SNAPSHOT_SCHEMA_VERSION = 4;
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
 // src/resolver/registry.ts
@@ -20757,6 +20757,7 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   "registry",
   "core-config",
   "manifest",
+  "profile-template",
   "profile",
   // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
   // settings overrides join the re-read set — editing any of them invalidates
@@ -21333,6 +21334,551 @@ function composeSlotBody(policy, present) {
   return present.map((p) => p.content).join(APPEND_SEPARATOR);
 }
 
+// src/resolver/questions.ts
+var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
+  "id",
+  "destination",
+  "prompt",
+  "schema",
+  "suggestedDefault"
+]);
+var ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+var DESTINATION_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function own(record2, key) {
+  return Object.prototype.hasOwnProperty.call(record2, key);
+}
+function diagnostic(pack, question, field, code, detail) {
+  const owner = question === null ? `pack \`${pack}\`` : `pack \`${pack}\`, question \`${question}\``;
+  return {
+    code,
+    pack,
+    question,
+    field,
+    message: `${owner}, field \`${field}\`: ${detail}`
+  };
+}
+function schemaFields(pack, question, raw, allowed, diagnostics) {
+  for (const field of Object.keys(raw).filter((key) => !allowed.has(key)).sort()) {
+    diagnostics.push(
+      diagnostic(
+        pack,
+        question,
+        `schema.${field}`,
+        "question/schema-unknown-field",
+        "unknown schema field."
+      )
+    );
+  }
+}
+function integerField(pack, question, raw, field, diagnostics, options = {}) {
+  const value = raw[field];
+  if (!Number.isSafeInteger(value) || options.nonNegative && value < 0) {
+    diagnostics.push(
+      diagnostic(
+        pack,
+        question,
+        `schema.${field}`,
+        "question/schema-invalid-bound",
+        options.nonNegative ? "must be a non-negative safe integer." : "must be a safe integer."
+      )
+    );
+    return null;
+  }
+  return value;
+}
+function parseSchema2(pack, question, value, diagnostics) {
+  if (!isRecord(value)) {
+    diagnostics.push(
+      diagnostic(
+        pack,
+        question,
+        "schema",
+        "question/schema-invalid",
+        "must be an object."
+      )
+    );
+    return null;
+  }
+  const type = value.type;
+  if (type === "string") {
+    const allowed = /* @__PURE__ */ new Set(["type", "minLength", "maxLength", "pattern"]);
+    schemaFields(pack, question, value, allowed, diagnostics);
+    const hasMin = own(value, "minLength");
+    const hasMax = own(value, "maxLength");
+    if (hasMin !== hasMax) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "schema",
+          "question/schema-incomplete-bounds",
+          "string length bounds must declare both `minLength` and `maxLength`."
+        )
+      );
+    }
+    let minLength = null;
+    let maxLength = null;
+    if (hasMin) {
+      minLength = integerField(pack, question, value, "minLength", diagnostics, {
+        nonNegative: true
+      });
+    }
+    if (hasMax) {
+      maxLength = integerField(pack, question, value, "maxLength", diagnostics, {
+        nonNegative: true
+      });
+    }
+    if (minLength !== null && maxLength !== null && minLength > maxLength) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "schema",
+          "question/schema-invalid-range",
+          "`minLength` must be less than or equal to `maxLength`."
+        )
+      );
+    }
+    let pattern;
+    if (own(value, "pattern")) {
+      if (typeof value.pattern !== "string" || value.pattern.length === 0) {
+        diagnostics.push(
+          diagnostic(
+            pack,
+            question,
+            "schema.pattern",
+            "question/schema-invalid-pattern",
+            "must be a non-empty regular-expression string."
+          )
+        );
+      } else {
+        try {
+          new RegExp(value.pattern);
+          pattern = value.pattern;
+        } catch (err) {
+          diagnostics.push(
+            diagnostic(
+              pack,
+              question,
+              "schema.pattern",
+              "question/schema-invalid-pattern",
+              `must compile as a regular expression: ${err instanceof Error ? err.message : String(err)}`
+            )
+          );
+        }
+      }
+    }
+    const schema = { type: "string" };
+    if (hasMin && minLength !== null) schema.minLength = minLength;
+    if (hasMax && maxLength !== null) schema.maxLength = maxLength;
+    if (pattern !== void 0) schema.pattern = pattern;
+    return schema;
+  }
+  if (type === "boolean") {
+    schemaFields(pack, question, value, /* @__PURE__ */ new Set(["type"]), diagnostics);
+    return { type: "boolean" };
+  }
+  if (type === "integer") {
+    schemaFields(pack, question, value, /* @__PURE__ */ new Set(["type", "minimum", "maximum"]), diagnostics);
+    if (!own(value, "minimum") || !own(value, "maximum")) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "schema",
+          "question/schema-incomplete-bounds",
+          "integer schemas must declare both `minimum` and `maximum`."
+        )
+      );
+    }
+    const minimum = own(value, "minimum") ? integerField(pack, question, value, "minimum", diagnostics) : null;
+    const maximum = own(value, "maximum") ? integerField(pack, question, value, "maximum", diagnostics) : null;
+    if (minimum !== null && maximum !== null && minimum > maximum) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "schema",
+          "question/schema-invalid-range",
+          "`minimum` must be less than or equal to `maximum`."
+        )
+      );
+    }
+    return minimum === null || maximum === null ? null : { type: "integer", minimum, maximum };
+  }
+  if (type === "enum") {
+    schemaFields(pack, question, value, /* @__PURE__ */ new Set(["type", "values"]), diagnostics);
+    if (!Array.isArray(value.values) || value.values.length === 0) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "schema.values",
+          "question/schema-invalid-enum",
+          "must be a non-empty array of unique non-empty strings."
+        )
+      );
+      return null;
+    }
+    const values = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let index = 0; index < value.values.length; index++) {
+      const candidate = value.values[index];
+      if (typeof candidate !== "string" || candidate.length === 0) {
+        diagnostics.push(
+          diagnostic(
+            pack,
+            question,
+            `schema.values[${index}]`,
+            "question/schema-invalid-enum-value",
+            "must be a non-empty string."
+          )
+        );
+        continue;
+      }
+      if (seen.has(candidate)) {
+        diagnostics.push(
+          diagnostic(
+            pack,
+            question,
+            `schema.values[${index}]`,
+            "question/schema-duplicate-enum-value",
+            `duplicates enum value \`${candidate}\`.`
+          )
+        );
+        continue;
+      }
+      seen.add(candidate);
+      values.push(candidate);
+    }
+    return values.length === value.values.length ? { type: "enum", values } : null;
+  }
+  diagnostics.push(
+    diagnostic(
+      pack,
+      question,
+      "schema.type",
+      "question/schema-unsupported-type",
+      "must be exactly `string`, `boolean`, `integer`, or `enum`."
+    )
+  );
+  return null;
+}
+function valueFailure(declaration, source, value, code, detail) {
+  return {
+    valid: false,
+    source,
+    value,
+    diagnostics: [diagnostic(declaration.pack, declaration.id, "value", code, detail)]
+  };
+}
+function validateQuestionValue(declaration, source, value) {
+  const schema = declaration.schema;
+  if (schema.type === "string") {
+    if (typeof value !== "string") {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-type",
+        `${source} value must be a string.`
+      );
+    }
+    if (schema.minLength !== void 0 && value.length < schema.minLength) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-min-length",
+        `${source} string is shorter than minLength ${schema.minLength}.`
+      );
+    }
+    if (schema.maxLength !== void 0 && value.length > schema.maxLength) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-max-length",
+        `${source} string is longer than maxLength ${schema.maxLength}.`
+      );
+    }
+    if (schema.pattern !== void 0 && !new RegExp(schema.pattern).test(value)) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-pattern",
+        `${source} string does not match the declared pattern.`
+      );
+    }
+  } else if (schema.type === "boolean") {
+    if (typeof value !== "boolean") {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-type",
+        `${source} value must be a boolean.`
+      );
+    }
+  } else if (schema.type === "integer") {
+    if (!Number.isSafeInteger(value)) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-type",
+        `${source} value must be a safe integer.`
+      );
+    }
+    if (value < schema.minimum || value > schema.maximum) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-range",
+        `${source} integer must be between ${schema.minimum} and ${schema.maximum}, inclusive.`
+      );
+    }
+  } else if (typeof value !== "string" || !schema.values.includes(value)) {
+    return valueFailure(
+      declaration,
+      source,
+      value,
+      "question/value-enum",
+      `${source} value must be one of the declared enum strings.`
+    );
+  }
+  return { valid: true, source, value, diagnostics: [] };
+}
+function parseQuestionDeclarations(pack, rawTemplate) {
+  let parsed;
+  try {
+    parsed = JSON.parse(rawTemplate);
+  } catch (err) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "template",
+          "question/template-unparseable",
+          `must be valid JSON: ${err instanceof Error ? err.message : String(err)}`
+        )
+      ]
+    };
+  }
+  if (!isRecord(parsed)) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "template",
+          "question/template-invalid",
+          "must be a JSON object."
+        )
+      ]
+    };
+  }
+  if (!own(parsed, "ask")) return { ok: true, questions: [], diagnostics: [] };
+  if (!Array.isArray(parsed.ask)) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        diagnostic(
+          pack,
+          null,
+          "ask",
+          "question/ask-invalid",
+          "must be an array."
+        )
+      ]
+    };
+  }
+  const diagnostics = [];
+  const declarations = [];
+  const ids = /* @__PURE__ */ new Set();
+  const destinations = /* @__PURE__ */ new Set();
+  for (let index = 0; index < parsed.ask.length; index++) {
+    const raw = parsed.ask[index];
+    const fallback = `ask[${index}]`;
+    if (!isRecord(raw)) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          fallback,
+          fallback,
+          "question/declaration-invalid",
+          "must be an object."
+        )
+      );
+      continue;
+    }
+    const question = typeof raw.id === "string" && raw.id.length > 0 ? raw.id : fallback;
+    for (const field of Object.keys(raw).filter((key) => !DECLARATION_FIELDS.has(key)).sort()) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          field,
+          "question/declaration-unknown-field",
+          "unknown declaration field."
+        )
+      );
+    }
+    const id = raw.id;
+    if (typeof id !== "string" || !ID_RE.test(id)) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "id",
+          "question/id-invalid",
+          "must be a lowercase hyphenated identifier."
+        )
+      );
+    } else if (ids.has(id)) {
+      diagnostics.push(
+        diagnostic(pack, id, "id", "question/id-duplicate", `duplicates question id \`${id}\`.`)
+      );
+    } else {
+      ids.add(id);
+    }
+    const destination = raw.destination;
+    if (typeof destination !== "string" || !DESTINATION_RE.test(destination) || destination === "ask") {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "destination",
+          "question/destination-invalid",
+          "must be a non-empty profile key/path and must not be `ask`."
+        )
+      );
+    } else if (destinations.has(destination)) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "destination",
+          "question/destination-duplicate",
+          `duplicates destination \`${destination}\`.`
+        )
+      );
+    } else {
+      destinations.add(destination);
+    }
+    const prompt = raw.prompt;
+    if (typeof prompt !== "string" || prompt.trim().length === 0) {
+      diagnostics.push(
+        diagnostic(
+          pack,
+          question,
+          "prompt",
+          "question/prompt-invalid",
+          "must be a non-empty string."
+        )
+      );
+    }
+    const beforeSchema = diagnostics.length;
+    const schema = parseSchema2(pack, question, raw.schema, diagnostics);
+    const structurallyValid = typeof id === "string" && ID_RE.test(id) && typeof destination === "string" && DESTINATION_RE.test(destination) && destination !== "ask" && typeof prompt === "string" && prompt.trim().length > 0 && schema !== null && diagnostics.length === beforeSchema;
+    if (!structurallyValid) continue;
+    const declaration = {
+      pack,
+      id,
+      destination,
+      prompt,
+      schema
+    };
+    if (own(raw, "suggestedDefault")) declaration.suggestedDefault = raw.suggestedDefault;
+    declarations.push(declaration);
+  }
+  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  const questions = [];
+  for (const declaration of declarations) {
+    const suggestions = [];
+    if (own(declaration, "suggestedDefault")) {
+      const checked = validateQuestionValue(
+        declaration,
+        "suggested-default",
+        declaration.suggestedDefault
+      );
+      if (!checked.valid) diagnostics.push(...checked.diagnostics);
+      else suggestions.push({ source: "suggested-default", value: checked.value });
+    }
+    if (own(parsed, declaration.destination)) {
+      const checked = validateQuestionValue(
+        declaration,
+        "pack-default",
+        parsed[declaration.destination]
+      );
+      if (!checked.valid) diagnostics.push(...checked.diagnostics);
+      else suggestions.push({ source: "pack-default", value: checked.value });
+    }
+    questions.push({
+      ...declaration,
+      state: { status: "unresolved", source: null, value: null, suggestions }
+    });
+  }
+  return diagnostics.length > 0 ? { ok: false, questions: [], diagnostics } : { ok: true, questions, diagnostics: [] };
+}
+function applyQuestionValues(questions, inputs) {
+  const diagnostics = [];
+  const resolved = [];
+  for (const question of questions) {
+    const suggestions = [...question.state.suggestions];
+    if (inputs.personal && own(inputs.personal, question.destination)) {
+      const checked = validateQuestionValue(
+        question,
+        "personal",
+        inputs.personal[question.destination]
+      );
+      if (!checked.valid) diagnostics.push(...checked.diagnostics);
+      else suggestions.push({ source: "personal", value: checked.value });
+    }
+    if (inputs.persisted && own(inputs.persisted, question.destination)) {
+      const checked = validateQuestionValue(
+        question,
+        "persisted",
+        inputs.persisted[question.destination]
+      );
+      if (!checked.valid) {
+        diagnostics.push(...checked.diagnostics);
+        resolved.push({
+          ...question,
+          state: { status: "unresolved", source: null, value: null, suggestions }
+        });
+      } else {
+        resolved.push({
+          ...question,
+          state: {
+            status: "resolved",
+            source: "persisted",
+            value: checked.value,
+            suggestions
+          }
+        });
+      }
+    } else {
+      resolved.push({
+        ...question,
+        state: { status: "unresolved", source: null, value: null, suggestions }
+      });
+    }
+  }
+  return diagnostics.length > 0 ? { ok: false, questions: [], diagnostics } : { ok: true, questions: resolved, diagnostics: [] };
+}
+
 // src/resolver/resolve.ts
 function relativize(workspaceRoot, absPath) {
   const abs = normalizeSlashes(absPath);
@@ -21347,6 +21893,20 @@ function toAbsolute3(workspaceRoot, snapshotPath2) {
 function inlineDispatchRel(dispatch) {
   const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
   return m ? m[1].trim() : null;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function appendQuestionDiagnostics(target, questionDiagnostics) {
+  for (const issue2 of questionDiagnostics) {
+    target.push({
+      severity: "error",
+      code: issue2.code,
+      message: issue2.message,
+      category: "registry-invalid",
+      recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
+    });
+  }
 }
 function buildSnapshot(inputs, io) {
   const { workspaceRoot } = inputs;
@@ -21416,6 +21976,7 @@ function buildSnapshot(inputs, io) {
     let requires = [];
     let conflicts = [];
     let profileTemplatePath = null;
+    let questions = [];
     if (resolved.manifestPath) {
       const content = io.readFile(resolved.manifestPath);
       if (content !== null) {
@@ -21429,10 +21990,27 @@ function buildSnapshot(inputs, io) {
         requires = m.requires;
         conflicts = m.conflicts;
         if (m.profileTemplate && resolved.resolvedPath) {
-          profileTemplatePath = relativize(
-            workspaceRoot,
-            joinSlash(resolved.resolvedPath, m.profileTemplate)
+          const profileTemplateAbs = joinSlash(resolved.resolvedPath, m.profileTemplate);
+          profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
+          const profileTemplateRaw = io.readFile(profileTemplateAbs);
+          sources.push(
+            fingerprint("profile-template", profileTemplatePath, profileTemplateRaw)
           );
+          if (profileTemplateRaw === null) {
+            appendQuestionDiagnostics(diagnostics, [
+              {
+                code: "question/template-missing",
+                pack: row.name,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${row.name}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`
+              }
+            ]);
+          } else {
+            const parsedQuestions = parseQuestionDeclarations(row.name, profileTemplateRaw);
+            if (parsedQuestions.ok) questions = parsedQuestions.questions;
+            else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+          }
         }
       }
     }
@@ -21471,6 +22049,7 @@ function buildSnapshot(inputs, io) {
       requires,
       conflicts,
       profileTemplatePath,
+      questions,
       validity
     };
   });
@@ -21561,16 +22140,51 @@ function buildSnapshot(inputs, io) {
       `${cap.name}.profile.json`
     );
     const content = io.readFile(profilePath);
-    if (content === null) continue;
     sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
+    if (content === null) continue;
     try {
-      profiles[cap.name] = JSON.parse(content);
+      const parsedProfile = JSON.parse(content);
+      profiles[cap.name] = parsedProfile;
+      if (cap.questions.length > 0) {
+        if (!isRecord2(parsedProfile)) {
+          cap.questions = [];
+          appendQuestionDiagnostics(diagnostics, [
+            {
+              code: "question/persisted-container-invalid",
+              pack: cap.name,
+              question: null,
+              field: "profile",
+              message: `pack \`${cap.name}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`
+            }
+          ]);
+        } else {
+          const applied = applyQuestionValues(cap.questions, { persisted: parsedProfile });
+          if (applied.ok) cap.questions = applied.questions;
+          else {
+            cap.questions = [];
+            appendQuestionDiagnostics(diagnostics, applied.diagnostics);
+          }
+        }
+      }
     } catch (err) {
-      diagnostics.push({
-        severity: "warning",
-        code: "profile/unparseable",
-        message: `profile for \`${cap.name}\` is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
-      });
+      if (cap.questions.length > 0) {
+        cap.questions = [];
+        appendQuestionDiagnostics(diagnostics, [
+          {
+            code: "question/persisted-unparseable",
+            pack: cap.name,
+            question: null,
+            field: "profile",
+            message: `pack \`${cap.name}\`, field \`profile\`: persisted question answers are not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+          }
+        ]);
+      } else {
+        diagnostics.push({
+          severity: "warning",
+          code: "profile/unparseable",
+          message: `profile for \`${cap.name}\` is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+        });
+      }
     }
   }
   const interfaceRoots = [];
@@ -22285,10 +22899,10 @@ function evaluationProblem(evaluation, inputs) {
   }
   return null;
 }
-function stopDecision(decision, disposition, diagnostic, retainedUnitIds = []) {
-  return { ...decision, status: "stop", disposition, retry: null, retainedUnitIds, diagnostic };
+function stopDecision(decision, disposition, diagnostic2, retainedUnitIds = []) {
+  return { ...decision, status: "stop", disposition, retry: null, retainedUnitIds, diagnostic: diagnostic2 };
 }
-function priorTerminalDecision(current, prior, shape, status, disposition, diagnostic, retainedUnitIds) {
+function priorTerminalDecision(current, prior, shape, status, disposition, diagnostic2, retainedUnitIds) {
   const { actualModel: _currentActualModel, ...withoutCurrentActualModel } = current;
   return {
     ...withoutCurrentActualModel,
@@ -22311,7 +22925,7 @@ function priorTerminalDecision(current, prior, shape, status, disposition, diagn
     disposition,
     retry: null,
     retainedUnitIds,
-    diagnostic
+    diagnostic: diagnostic2
   };
 }
 function baseDecision(project, inputs) {
@@ -23440,10 +24054,10 @@ function ruleSourceErrorVerdict(tool, target, err, opsDocPath) {
 }
 
 // src/resolver/validate-skill-interface.ts
-var ID_RE = /[a-z0-9-]+\.[a-z0-9-]+/;
-var OPEN_RE = new RegExp(`^<!-- wf:slot (${ID_RE.source}) -->$`);
-var CLOSE_RE = new RegExp(`^<!-- wf:slot-end (${ID_RE.source}) -->$`);
-var ID_EXACT_RE = new RegExp(`^${ID_RE.source}$`);
+var ID_RE2 = /[a-z0-9-]+\.[a-z0-9-]+/;
+var OPEN_RE = new RegExp(`^<!-- wf:slot (${ID_RE2.source}) -->$`);
+var CLOSE_RE = new RegExp(`^<!-- wf:slot-end (${ID_RE2.source}) -->$`);
+var ID_EXACT_RE = new RegExp(`^${ID_RE2.source}$`);
 function checkSkillDir(fs, dir, slotPolicies) {
   const out = [];
   const skillDir = toPosix(dir).replace(/\/$/, "");
@@ -24044,7 +24658,8 @@ var ResolverService = class {
         articles: c.articles,
         requires: c.requires,
         conflicts: c.conflicts,
-        profileTemplatePath: c.profileTemplatePath
+        profileTemplatePath: c.profileTemplatePath,
+        questions: c.questions
       }))
     };
   }
@@ -24439,12 +25054,13 @@ var ResolverService = class {
     if (!pack.enabled) base.issues.push(`plugin \`${pluginId}\` is disabled.`);
     const found = this.scanPackCapabilities(pack.installPath, pack.name);
     base.capabilities = found.capabilities;
+    base.issues.push(...found.issues);
     if (found.capabilities.length === 0) {
       base.issues.push(
         `no readable \`capabilities/*/manifest.md\` under \`${pack.installPath}\`.`
       );
     }
-    base.fingerprint = this.packFingerprint(pack, found.manifestContents);
+    base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
     base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
     return base;
   }
@@ -24464,6 +25080,11 @@ var ResolverService = class {
     if (!inspected.installPath || inspected.capabilities.length === 0) {
       return reject(
         `plugin \`${pluginId}\` has no valid pack manifest (path-invalid or manifest-invalid).`
+      );
+    }
+    if (!inspected.valid) {
+      return reject(
+        `plugin \`${pluginId}\` has invalid pack metadata: ${inspected.issues.join(" ")}`
       );
     }
     if (inspected.fingerprint !== expectedFingerprint) {
@@ -24522,7 +25143,8 @@ var ResolverService = class {
   }
   scanPackCapabilities(installPath, pluginName) {
     const capabilities = [];
-    const manifestContents = [];
+    const fingerprintInputs = [];
+    const issues = [];
     const capsDir = joinSlash(installPath, "capabilities");
     const names = [...this.ports.listDirs(capsDir)].sort();
     for (const name of names) {
@@ -24530,26 +25152,54 @@ var ResolverService = class {
       const manifestAbs = joinSlash(installPath, rel, "manifest.md");
       const body = this.ports.readFile(manifestAbs);
       if (body === null) continue;
-      manifestContents.push(body);
+      fingerprintInputs.push({ path: normalizeSlashes(manifestAbs), content: body });
+      const manifest = parseManifest(body);
+      let questions = [];
+      let questionDiagnostics = [];
+      if (manifest.profileTemplate) {
+        const templateAbs = joinSlash(installPath, rel, manifest.profileTemplate);
+        const templateRaw = this.ports.readFile(templateAbs);
+        fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
+        if (templateRaw === null) {
+          questionDiagnostics = [
+            {
+              code: "question/template-missing",
+              pack: name,
+              question: null,
+              field: "profile-template",
+              message: `pack \`${name}\`, field \`profile-template\`: declared template \`${manifest.profileTemplate}\` is not readable.`
+            }
+          ];
+        } else {
+          const parsed = parseQuestionDeclarations(name, templateRaw);
+          if (parsed.ok) questions = parsed.questions;
+          else questionDiagnostics = parsed.diagnostics;
+        }
+      }
+      if (questionDiagnostics.length > 0) {
+        issues.push(...questionDiagnostics.map((issue2) => issue2.message));
+      }
       capabilities.push({
         name,
         path: `plugin:${pluginName}/${rel}`,
         manifestPath: normalizeSlashes(manifestAbs),
-        kind: this.manifestKind(body)
+        kind: manifest.kind,
+        questions,
+        questionDiagnostics
       });
     }
-    return { capabilities, manifestContents };
+    return { capabilities, fingerprintInputs, issues };
   }
-  manifestKind(body) {
-    const m = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/m.exec(body);
-    return m ? m[1] : null;
-  }
-  packFingerprint(pack, manifestContents) {
+  packFingerprint(pack, inputs) {
     return sha256Hex(
       JSON.stringify({
         installPath: pack.installPath,
         version: pack.version,
-        manifests: manifestContents.map((c) => sha256Hex(c))
+        sources: inputs.map((input) => ({
+          path: input.path,
+          present: input.content !== null,
+          sha256: input.content === null ? null : sha256Hex(input.content)
+        }))
       })
     );
   }
@@ -24748,7 +25398,7 @@ var WorkspaceServiceRegistry = class {
 
 // src/index.ts
 var SERVER_NAME = "wf-resolver";
-var SERVER_VERSION = "0.3.0";
+var SERVER_VERSION = "0.4.0";
 function createServer() {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },

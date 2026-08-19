@@ -22,7 +22,7 @@ import { resolveSnapshot } from "../src/resolver/engine.js";
 import { normalizeSlashes } from "../src/resolver/paths.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
 import { previewComposition } from "../src/resolver/preview-composition.js";
-import type { ResolverSnapshot } from "../src/resolver/types.js";
+import { RESOLVER_GENERATOR, type ResolverSnapshot } from "../src/resolver/types.js";
 
 const WS = "/ws";
 
@@ -105,7 +105,7 @@ function makePorts(config: string): ResolverServicePorts & {
         io,
         pluginListRaw: "[]",
         now: () => new Date("2026-07-19T00:00:00.000Z"),
-        generator: { name: "wf-resolver", version: "0.3.0" },
+        generator: RESOLVER_GENERATOR,
       }),
     persist(snap) {
       counts.persist++;
