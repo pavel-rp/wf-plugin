@@ -91,6 +91,83 @@ export interface ArticleRecord {
   value: string;
 }
 
+/** Deterministic declarative schema for one pack-owned project question. */
+export type QuestionSchema =
+  | {
+      type: "string";
+      minLength?: number;
+      maxLength?: number;
+      pattern?: string;
+    }
+  | { type: "boolean" }
+  | { type: "integer"; minimum: number; maximum: number }
+  | { type: "enum"; values: string[] };
+
+/** One validated declaration from a profile template's ordered top-level `ask`
+ * array. `pack` is the capability identity that owns the template. */
+export interface QuestionDeclaration {
+  pack: string;
+  id: string;
+  destination: string;
+  prompt: string;
+  schema: QuestionSchema;
+  suggestedDefault?: unknown;
+}
+
+/** Every value candidate passes through the same schema validator regardless of
+ * provenance. Only `persisted` can make a question resolved. */
+export type QuestionValueSource =
+  | "suggested-default"
+  | "pack-default"
+  | "personal"
+  | "persisted"
+  | "proposed";
+
+export interface QuestionDiagnostic {
+  code: string;
+  pack: string;
+  question: string | null;
+  field: string;
+  message: string;
+}
+
+export type QuestionValueValidation =
+  | { valid: true; source: QuestionValueSource; value: unknown; diagnostics: [] }
+  | {
+      valid: false;
+      source: QuestionValueSource;
+      value: unknown;
+      diagnostics: QuestionDiagnostic[];
+    };
+
+export interface QuestionSuggestion {
+  source: "suggested-default" | "pack-default" | "personal";
+  value: unknown;
+}
+
+export type QuestionResolutionState =
+  | {
+      status: "unresolved";
+      source: null;
+      value: null;
+      suggestions: QuestionSuggestion[];
+    }
+  | {
+      status: "resolved";
+      source: "persisted";
+      value: unknown;
+      suggestions: QuestionSuggestion[];
+    };
+
+/** Body-free resolver metadata for one validated declaration and its value state. */
+export interface QuestionRecord extends QuestionDeclaration {
+  state: QuestionResolutionState;
+}
+
+export type QuestionDeclarationResult =
+  | { ok: true; questions: QuestionRecord[]; diagnostics: [] }
+  | { ok: false; questions: []; diagnostics: QuestionDiagnostic[] };
+
 /** An active registry capability, resolved to metadata. */
 export interface CapabilityRecord {
   /** Registry `Capability` column — identity only. */
