@@ -1,0 +1,11 @@
+{
+  "ask": [
+    {
+      "id": "linear-team",
+      "destination": "linear-team",
+      "prompt": "Linear team key or name for new issues?",
+      "schema": { "type": "string" }
+    }
+  ],
+  "linear-project": "none"
+}

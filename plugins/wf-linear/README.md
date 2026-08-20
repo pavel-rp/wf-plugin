@@ -32,9 +32,23 @@ local-only rather than blocking.
 
 | Item | What it is |
 |---|---|
-| `capabilities/linear/manifest.md` | the `linear` capability's manifest — one `provider` fragment row scoped `tracker` |
+| `capabilities/linear/manifest.md` | the `linear` capability's manifest — one `provider` fragment row scoped `tracker`, seven `slot` fill rows, and one declared profile template |
+| `capabilities/linear/profile.template.json` | project-configuration metadata declaring exactly one string question, Linear Team; `linear-project: none` remains ordinary non-question data |
 | `capabilities/linear/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Linear MCP mechanics, with a completeness coverage table |
-| `/wf-linear:init` | one-command self-registration — records this pack's install root, registers the `linear` capability, and interviews for (or carries forward) the Linear team/project, mirroring `/wf-ado:init` (WF-123), `/wf-git:init` (WF-122) |
+| `/wf-linear:init` | one-command self-registration — records this pack's install root, registers the `linear` capability, interviews for (or carries forward) Linear Team, and carries forward or defaults Linear Project to `none` |
+
+## Declared project questions
+
+The profile template exposes the existing Linear Team interview as capability-owned metadata. It is
+a plain string, has no suggested answer, and remains unresolved until a project explicitly persists
+a value at the declared destination. The optional Linear Project default, `none`, stays outside
+`ask` and cannot resolve the Team question.
+
+This declaration does not yet run or persist the interview. `/wf-linear:init` remains the current
+onboarding path and continues to manage the same `## Linear` config rows until the separate
+init-alias migration. Packs that declare no questions remain silent. In particular, credentials
+collected by `wf-browser-qa` remain a separate pack-specific onboarding concern, outside this
+project-question inventory.
 
 ## Registering wf-linear downstream
 

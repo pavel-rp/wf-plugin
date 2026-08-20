@@ -1,6 +1,6 @@
 # ado capability manifest
 
-**Version:** 1.4.0
+**Version:** 1.5.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** ado (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -14,6 +14,12 @@ tracker operation the capability-registry contract defines (resolve config, crea
 fetch a work item, list a parent's children, comment, move status, attach a link, enumerate
 work items by status, milestones, or cycles, and read a task's blocking predecessors). It carries **zero** delivery-specific
 vocabulary.
+
+profile-template: profile.template.json
+
+The template declares exactly two ordered project questions: `ado-organization` then
+`ado-project`, both plain strings and both unresolved until the project persists an answer at the
+declared destination. `work-item-id-prefix: ADO` remains ordinary non-question profile data.
 
 ## Fragments
 

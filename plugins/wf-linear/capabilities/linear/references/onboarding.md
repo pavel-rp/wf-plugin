@@ -52,17 +52,17 @@ skills:
   - plugins/wf-linear/skills/init/   # /wf-linear:init — self-registering onboarding + Linear interview (mirrors WF-123's /wf-ado:init, WF-122's /wf-git:init)
 ```
 
-## Profile seed template
+## Profile template and declared interview
 
-This capability ships **no** `profile-template:` — the project-tunable Linear values (`Linear
-Team`, `Linear Project`) live in a `## Linear` section of `_local/config.md`, written by
-`/wf-linear:init` Phase 4. That section is **this pack's own** template (carried inline in
-`plugins/wf-linear/skills/init/SKILL.md`), not a section core's own `/wf:init` ships — core's
-config template carries no tracker-product-specific section of any kind (see
-`plugins/wf/skills/init/SKILL.md` Phase 2's "Default content"); each tracker pack is responsible
-for writing and owning its own section, exactly as `/wf-ado:init` owns `## Azure DevOps`. Per
-the contract's seeding convention, a capability that declares no `profile-template:` seeds
-nothing (the no-op path).
+This capability declares `profile-template: profile.template.json`. Its ordered `ask` metadata
+contains exactly the question the current init skill asks: `linear-team`, a plain string persisted
+at the same-named profile destination. The template keeps `linear-project: none` as ordinary
+non-question data; that optional default is not an interview answer.
+
+The declaration is metadata for the shared project-configuration lifecycle. It does **not** replace
+or suppress today's bespoke `/wf-linear:init` interview: that skill still carries forward or writes
+the `## Linear` rows in `_local/config.md` until the separate init-alias migration lands. An absent
+persisted profile answer therefore remains unresolved even though the pack ships this template.
 
 ## Downstream registration
 
@@ -250,3 +250,6 @@ with `tf` first; that is the charter's named failure case.
   Summary/Audit/Tests/Log, marks it Done, and moves the umbrella to In Review. No tracker-contract
   extension — in particular no comment-edit operation was added, which is why the running log is a
   comment thread. The `tf` reconciliation is documented above; `tf` itself required no change.
+- **WF-441** — declare the existing Linear Team interview as one profile-template question while
+  retaining `linear-project: none` as ordinary data and leaving `/wf-linear:init` execution
+  unchanged.
