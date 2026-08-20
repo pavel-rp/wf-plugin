@@ -836,6 +836,60 @@ contract and the runtime own the rest):
   still valid: the capability simply seeds no profile (see the seeding convention
   below). This field is additive and backward-compatible — every pre-existing
   manifest stays conformant.
+
+  A declared JSON profile template may reserve a top-level **`ask` array** for
+  project-configuration questions. Entries are ordered and have this shape:
+
+  ```json
+  {
+    "ask": [
+      {
+        "id": "project-name",
+        "destination": "project.name",
+        "prompt": "Project name?",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "suggestedDefault": "example"
+      }
+    ]
+  }
+  ```
+
+  `id` is a lowercase hyphenated identifier. `destination` must match
+  `^[A-Za-z][A-Za-z0-9_.-]*$`: it starts with an ASCII letter and every later
+  character is an ASCII letter, digit, `_`, `.`, or `-`. The exact reserved
+  destination `ask` is forbidden. IDs and destinations are unique within the
+  template. `prompt` is non-empty metadata (never executable prose).
+  `suggestedDefault` is optional. `schema.type` is exactly one of:
+
+  - `string` — either unbounded with no length/pattern fields, or jointly bounded by
+    non-negative `minLength` and `maxLength`; `pattern` is allowed only on a bounded
+    string. The safe-regex subset accepts at most 256 source characters and values
+    whose `maxLength` is at most 1,024; outside character classes it permits no
+    grouping or alternation, it permits no numeric or named backreferences, and it
+    permits at most one variable quantifier (`*`, `+`, `?`, `{n,}`, or `{n,m}` where
+    `n != m`). Every braced quantifier bound is at most 1,024. Fixed `{n}` and
+    `{n,n}` quantifiers are allowed and do not consume the variable-quantifier
+    allowance;
+  - `boolean` — no additional fields;
+  - `integer` — inclusive safe-integer `minimum` and `maximum`, both required;
+  - `enum` — a non-empty array of unique non-empty string `values`.
+
+  Resource limits are part of the declaration contract: a template is at most
+  262,144 UTF-8 bytes; `ask` carries at most 64 entries; a prompt at most 2,048
+  characters; an enum at most 128 values; a pattern at most 256 characters and
+  matches at most 1,024 input characters; normalized question metadata is at most
+  131,072 UTF-8 bytes. Invalid declaration diagnostics retain at most 256 ordered
+  entries within the same 131,072-byte aggregate and end with a fixed truncation
+  diagnostic when more were omitted. The resolver rejects unknown/type-inappropriate fields,
+  incomplete or reversed bounds, unsafe patterns, invalid defaults, and every
+  over-limit declaration with pack/question/field attribution. One defect rejects
+  the complete declaration set — no partial questions are exposed.
+
+  Suggested defaults and ordinary template values at a declared destination remain
+  attributed suggestions. Personal values are suggestions too. Only a valid,
+  explicitly persisted project value resolves a question; proposed values use the
+  same deterministic validator but are not persisted here. Metadata responses carry
+  the validated declaration (including its prompt), never the raw template body.
 - **`requires:` / `conflicts:`** — optional; resolved at registry validation
   (`requires:` satisfied; `conflicts:` not both active).
 - **`article:`** — **optional, repeatable.** A capability with non-negotiable

@@ -15,7 +15,13 @@
 // hook / a full refresh additionally validate the plugin inventory.
 
 import { fingerprint } from "./fingerprint.js";
-import { joinSlash, normalizeSlashes } from "./paths.js";
+import {
+  joinSlash,
+  normalizeSlashes,
+  resolveContainedCapabilityPath,
+  type ContainedFileReadResult,
+} from "./paths.js";
+import { MAX_PROFILE_TEMPLATE_BYTES } from "./questions.js";
 import { parsePluginList } from "./plugin-list.js";
 import {
   RESOLVER_GENERATOR,
@@ -38,6 +44,13 @@ export interface StaleReason {
  *  plugin inventory into validation (omit it on the cheap per-query path). */
 export interface FreshnessProbe {
   readFile(absPath: string): string | null;
+  /** Re-read a manifest-selected profile template through the same canonical,
+   * bounded security boundary used during discovery. Omission fails closed. */
+  readContainedFile?(
+    capabilityRoot: string,
+    selectedPath: string,
+    maxBytes: number,
+  ): ContainedFileReadResult;
   /** Raw `claude plugin list --json` output to validate the plugin inventory
    *  against. `undefined` = skip inventory validation (file/schema only);
    *  `null` = the CLI was unavailable (a recorded absence to compare). */
@@ -60,6 +73,7 @@ const FILE_SOURCE_KINDS: ReadonlySet<SourceFingerprint["kind"]> = new Set([
   "registry",
   "core-config",
   "manifest",
+  "profile-template",
   "profile",
   // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
   // settings overrides join the re-read set — editing any of them invalidates
@@ -84,6 +98,39 @@ function isAbsolute(p: string): boolean {
 function absOf(workspaceRoot: string, recordedPath: string): string {
   const p = normalizeSlashes(recordedPath);
   return isAbsolute(p) ? p : joinSlash(workspaceRoot, p);
+}
+
+function profileTemplateContent(
+  snapshot: ResolverSnapshot,
+  workspaceRoot: string,
+  source: SourceFingerprint,
+  probe: FreshnessProbe,
+): string | null {
+  if (!probe.readContainedFile) return null;
+  const capability = snapshot.capabilities.find(
+    (candidate) => candidate.profileTemplatePath === source.path,
+  );
+  if (!capability?.resolvedPath) return null;
+
+  const capabilityRoot = absOf(workspaceRoot, capability.resolvedPath);
+  const templatePath = absOf(workspaceRoot, source.path);
+  const normalizedRoot = normalizeSlashes(capabilityRoot).replace(/\/+$/, "");
+  const normalizedTemplate = normalizeSlashes(templatePath);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  if (!normalizedTemplate.startsWith(prefix)) return null;
+
+  const selectedPath = normalizedTemplate.slice(prefix.length);
+  if (
+    resolveContainedCapabilityPath(capabilityRoot, selectedPath) !== normalizedTemplate
+  ) {
+    return null;
+  }
+  const read = probe.readContainedFile(
+    capabilityRoot,
+    selectedPath,
+    MAX_PROFILE_TEMPLATE_BYTES,
+  );
+  return read.status === "ok" ? read.content : null;
 }
 
 /**
@@ -157,7 +204,10 @@ export function evaluateFreshness(
 
   for (const src of snapshot.sources) {
     if (!FILE_SOURCE_KINDS.has(src.kind)) continue;
-    const content = probe.readFile(absOf(workspaceRoot, src.path));
+    const content =
+      src.kind === "profile-template"
+        ? profileTemplateContent(snapshot, workspaceRoot, src, probe)
+        : probe.readFile(absOf(workspaceRoot, src.path));
     const now = fingerprint(src.kind, src.path, content);
     if (now.present !== src.present || now.sha256 !== src.sha256) {
       const change = !now.present ? "was removed" : !src.present ? "appeared" : "changed";

@@ -9978,14 +9978,14 @@ function inputRequiredRoundsExceededMessage(method, maxRounds) {
   return `Multi-round-trip request '${method}' still required input after ${maxRounds} rounds (inputRequired.maxRounds)`;
 }
 function sleep(ms, signal) {
-  return new Promise((resolve3, reject) => {
+  return new Promise((resolve4, reject) => {
     if (signal?.aborted) {
       reject(signal.reason instanceof SdkError ? signal.reason : new SdkError(SdkErrorCode.RequestTimeout, String(signal.reason)));
       return;
     }
     const timer = setTimeout(() => {
       signal?.removeEventListener("abort", onAbort);
-      resolve3();
+      resolve4();
     }, ms);
     const onAbort = () => {
       clearTimeout(timer);
@@ -10778,7 +10778,7 @@ var Protocol = class {
     const flowStartedAt = Date.now();
     let onAbort;
     let cleanupMessageId;
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve4, reject) => {
       const earlyReject = (error2) => {
         reject(error2);
       };
@@ -10846,7 +10846,7 @@ var Protocol = class {
         }
         if (decoded.kind === "invalid") return reject(decoded.error);
         if (decoded.kind === "input_required") {
-          if (options?.allowInputRequired === true) return resolve3(manualInputRequiredValue(decoded));
+          if (options?.allowInputRequired === true) return resolve4(manualInputRequiredValue(decoded));
           const flow = {
             codec,
             request,
@@ -10858,11 +10858,11 @@ var Protocol = class {
               params
             }, resultSchema, legOptions)
           };
-          return resolve3(this._resolveNonCompleteResult(decoded, flow));
+          return resolve4(this._resolveNonCompleteResult(decoded, flow));
         }
         const result = decoded.result;
         validateStandardSchema(resultSchema, result).then((parseResult) => {
-          if (parseResult.success) resolve3(parseResult.data);
+          if (parseResult.success) resolve4(parseResult.data);
           else reject(new SdkError(SdkErrorCode.InvalidResult, `Invalid result for ${request.method}: ${parseResult.error}`));
         }, reject);
       });
@@ -11586,9 +11586,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       const rhs = this.rhs === void 0 ? "" : ` = ${this.rhs}`;
       return `${varKind} ${this.name}${rhs};` + _n;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       if (!names[this.name.str]) return;
-      if (this.rhs) this.rhs = optimizeExpr(this.rhs, names, constants);
+      if (this.rhs) this.rhs = optimizeExpr(this.rhs, names, constants2);
       return this;
     }
     get names() {
@@ -11605,9 +11605,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     render({ _n }) {
       return `${this.lhs} = ${this.rhs};` + _n;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       if (this.lhs instanceof code_1.Name && !names[this.lhs.str] && !this.sideEffects) return;
-      this.rhs = optimizeExpr(this.rhs, names, constants);
+      this.rhs = optimizeExpr(this.rhs, names, constants2);
       return this;
     }
     get names() {
@@ -11666,8 +11666,8 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     optimizeNodes() {
       return `${this.code}` ? this : void 0;
     }
-    optimizeNames(names, constants) {
-      this.code = optimizeExpr(this.code, names, constants);
+    optimizeNames(names, constants2) {
+      this.code = optimizeExpr(this.code, names, constants2);
       return this;
     }
     get names() {
@@ -11693,12 +11693,12 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       }
       return nodes.length > 0 ? this : void 0;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       const { nodes } = this;
       let i = nodes.length;
       while (i--) {
         const n = nodes[i];
-        if (n.optimizeNames(names, constants)) continue;
+        if (n.optimizeNames(names, constants2)) continue;
         subtractNames(names, n.names);
         nodes.splice(i, 1);
       }
@@ -11745,11 +11745,11 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       if (cond === false || !this.nodes.length) return void 0;
       return this;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       var _a3;
-      this.else = (_a3 = this.else) === null || _a3 === void 0 ? void 0 : _a3.optimizeNames(names, constants);
-      if (!(super.optimizeNames(names, constants) || this.else)) return;
-      this.condition = optimizeExpr(this.condition, names, constants);
+      this.else = (_a3 = this.else) === null || _a3 === void 0 ? void 0 : _a3.optimizeNames(names, constants2);
+      if (!(super.optimizeNames(names, constants2) || this.else)) return;
+      this.condition = optimizeExpr(this.condition, names, constants2);
       return this;
     }
     get names() {
@@ -11771,9 +11771,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     render(opts) {
       return `for(${this.iteration})` + super.render(opts);
     }
-    optimizeNames(names, constants) {
-      if (!super.optimizeNames(names, constants)) return;
-      this.iteration = optimizeExpr(this.iteration, names, constants);
+    optimizeNames(names, constants2) {
+      if (!super.optimizeNames(names, constants2)) return;
+      this.iteration = optimizeExpr(this.iteration, names, constants2);
       return this;
     }
     get names() {
@@ -11808,9 +11808,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     render(opts) {
       return `for(${this.varKind} ${this.name} ${this.loop} ${this.iterable})` + super.render(opts);
     }
-    optimizeNames(names, constants) {
-      if (!super.optimizeNames(names, constants)) return;
-      this.iterable = optimizeExpr(this.iterable, names, constants);
+    optimizeNames(names, constants2) {
+      if (!super.optimizeNames(names, constants2)) return;
+      this.iterable = optimizeExpr(this.iterable, names, constants2);
       return this;
     }
     get names() {
@@ -11849,11 +11849,11 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       (_b = this.finally) === null || _b === void 0 || _b.optimizeNodes();
       return this;
     }
-    optimizeNames(names, constants) {
+    optimizeNames(names, constants2) {
       var _a3, _b;
-      super.optimizeNames(names, constants);
-      (_a3 = this.catch) === null || _a3 === void 0 || _a3.optimizeNames(names, constants);
-      (_b = this.finally) === null || _b === void 0 || _b.optimizeNames(names, constants);
+      super.optimizeNames(names, constants2);
+      (_a3 = this.catch) === null || _a3 === void 0 || _a3.optimizeNames(names, constants2);
+      (_b = this.finally) === null || _b === void 0 || _b.optimizeNames(names, constants2);
       return this;
     }
     get names() {
@@ -12102,7 +12102,7 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
   function addExprNames(names, from) {
     return from instanceof code_1._CodeOrName ? addNames(names, from.names) : names;
   }
-  function optimizeExpr(expr, names, constants) {
+  function optimizeExpr(expr, names, constants2) {
     if (expr instanceof code_1.Name) return replaceName(expr);
     if (!canOptimize(expr)) return expr;
     return new code_1._Code(expr._items.reduce((items, c) => {
@@ -12112,13 +12112,13 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
       return items;
     }, []));
     function replaceName(n) {
-      const c = constants[n.str];
+      const c = constants2[n.str];
       if (c === void 0 || names[n.str] !== 1) return n;
       delete names[n.str];
       return c;
     }
     function canOptimize(e) {
-      return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants[c.str] !== void 0);
+      return e instanceof code_1._Code && e._items.some((c) => c instanceof code_1.Name && names[c.str] === 1 && constants2[c.str] !== void 0);
     }
   }
   function subtractNames(names, from) {
@@ -13778,7 +13778,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
     ref = (0, resolve_1.resolveUrl)(this.opts.uriResolver, baseId, ref);
     const schOrFunc = root.refs[ref];
     if (schOrFunc) return schOrFunc;
-    let _sch = resolve3.call(this, root, ref);
+    let _sch = resolve4.call(this, root, ref);
     if (_sch === void 0) {
       const schema = (_a3 = root.localRefs) === null || _a3 === void 0 ? void 0 : _a3[ref];
       const { schemaId } = this.opts;
@@ -13804,7 +13804,7 @@ var require_compile = /* @__PURE__ */ __commonJSMin(((exports) => {
   function sameSchemaEnv(s1, s2) {
     return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
   }
-  function resolve3(root, ref) {
+  function resolve4(root, ref) {
     let sch;
     while (typeof (sch = this.refs[ref]) == "string") ref = sch;
     return sch || this.schemas[ref] || resolveSchema.call(this, root, ref);
@@ -14254,47 +14254,47 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
     else if (typeof uri === "object") uri = parse3(serialize(uri, options), options);
     return uri;
   }
-  function resolve3(baseURI, relativeURI, options) {
+  function resolve4(baseURI, relativeURI, options) {
     const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
     const resolved = resolveComponent(parse3(baseURI, schemelessOptions), parse3(relativeURI, schemelessOptions), schemelessOptions, true);
     schemelessOptions.skipEscape = true;
     return serialize(resolved, schemelessOptions);
   }
-  function resolveComponent(base, relative2, options, skipNormalization) {
+  function resolveComponent(base, relative3, options, skipNormalization) {
     const target = {};
     if (!skipNormalization) {
       base = parse3(serialize(base, options), options);
-      relative2 = parse3(serialize(relative2, options), options);
+      relative3 = parse3(serialize(relative3, options), options);
     }
     options = options || {};
-    if (!options.tolerant && relative2.scheme) {
-      target.scheme = relative2.scheme;
-      target.userinfo = relative2.userinfo;
-      target.host = relative2.host;
-      target.port = relative2.port;
-      target.path = removeDotSegments(relative2.path || "");
-      target.query = relative2.query;
+    if (!options.tolerant && relative3.scheme) {
+      target.scheme = relative3.scheme;
+      target.userinfo = relative3.userinfo;
+      target.host = relative3.host;
+      target.port = relative3.port;
+      target.path = removeDotSegments(relative3.path || "");
+      target.query = relative3.query;
     } else {
-      if (relative2.userinfo !== void 0 || relative2.host !== void 0 || relative2.port !== void 0) {
-        target.userinfo = relative2.userinfo;
-        target.host = relative2.host;
-        target.port = relative2.port;
-        target.path = removeDotSegments(relative2.path || "");
-        target.query = relative2.query;
+      if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
+        target.userinfo = relative3.userinfo;
+        target.host = relative3.host;
+        target.port = relative3.port;
+        target.path = removeDotSegments(relative3.path || "");
+        target.query = relative3.query;
       } else {
-        if (!relative2.path) {
+        if (!relative3.path) {
           target.path = base.path;
-          if (relative2.query !== void 0) target.query = relative2.query;
+          if (relative3.query !== void 0) target.query = relative3.query;
           else target.query = base.query;
         } else {
-          if (relative2.path[0] === "/") target.path = removeDotSegments(relative2.path);
+          if (relative3.path[0] === "/") target.path = removeDotSegments(relative3.path);
           else {
-            if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) target.path = "/" + relative2.path;
-            else if (!base.path) target.path = relative2.path;
-            else target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative2.path;
+            if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) target.path = "/" + relative3.path;
+            else if (!base.path) target.path = relative3.path;
+            else target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
             target.path = removeDotSegments(target.path);
           }
-          target.query = relative2.query;
+          target.query = relative3.query;
         }
         target.userinfo = base.userinfo;
         target.host = base.host;
@@ -14302,7 +14302,7 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
       }
       target.scheme = base.scheme;
     }
-    target.fragment = relative2.fragment;
+    target.fragment = relative3.fragment;
     return target;
   }
   function equal(uriA, uriB, options) {
@@ -14428,7 +14428,7 @@ var require_fast_uri = /* @__PURE__ */ __commonJSMin(((exports, module) => {
   const fastUri = {
     SCHEMES,
     normalize,
-    resolve: resolve3,
+    resolve: resolve4,
     resolveComponent,
     equal,
     serialize,
@@ -19364,7 +19364,7 @@ var StdioServerTransport = class {
   }
   send(message) {
     if (this._closed) return Promise.reject(/* @__PURE__ */ new Error("StdioServerTransport is closed"));
-    return new Promise((resolve3, reject) => {
+    return new Promise((resolve4, reject) => {
       const json = serializeMessage(message);
       let settled = false;
       const onError = (error2) => {
@@ -19379,14 +19379,14 @@ var StdioServerTransport = class {
         settled = true;
         this._stdout.off("error", onError);
         this._stdout.off("drain", onDrain);
-        resolve3();
+        resolve4();
       };
       this._stdout.once("error", onError);
       if (this._stdout.write(json)) {
         if (settled) return;
         settled = true;
         this._stdout.off("error", onError);
-        resolve3();
+        resolve4();
       } else if (!settled) this._stdout.once("drain", onDrain);
     });
   }
@@ -19440,14 +19440,14 @@ var StdioConnectionChannel = class {
   */
   async whenRequestsAnswered(timeoutMs) {
     if (this._closed || this._pendingRequests.size === 0) return true;
-    return await new Promise((resolve3) => {
+    return await new Promise((resolve4) => {
       const waiter = () => {
         clearTimeout(timer);
-        resolve3(true);
+        resolve4(true);
       };
       const timer = setTimeout(() => {
         this._drainWaiters = this._drainWaiters.filter((pending) => pending !== waiter);
-        resolve3(false);
+        resolve4(false);
       }, timeoutMs);
       this._drainWaiters.push(waiter);
     });
@@ -20363,6 +20363,21 @@ function joinSlash(...segments) {
     return seg;
   }).filter((s) => s.length > 0).join("/");
 }
+function resolveContainedCapabilityPath(root, relative3) {
+  if (relative3.length === 0 || relative3.includes("\0") || relative3.includes("\\") || isAbsoluteRoot(relative3)) {
+    return null;
+  }
+  const segments = relative3.split("/");
+  if (segments.some(
+    (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":")
+  )) {
+    return null;
+  }
+  const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
+  const candidate = joinSlash(normalizedRoot, ...segments);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  return candidate.startsWith(prefix) ? candidate : null;
+}
 var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
 function parsePluginAnchor(registryPath) {
   const m = PLUGIN_ANCHOR.exec(registryPath.trim());
@@ -20458,13 +20473,13 @@ function resolveWorkspaceIdentity(directory, label = "workspaceRoot") {
 }
 
 // src/ports.ts
-import { lstatSync, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync2, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2, isAbsolute as isAbsolute3, relative, resolve as resolve2, sep } from "node:path";
+import { lstatSync as lstatSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/resolver/types.ts
-var SNAPSHOT_SCHEMA_VERSION = 3;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" };
+var SNAPSHOT_SCHEMA_VERSION = 4;
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.1" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
 // src/resolver/registry.ts
@@ -20751,12 +20766,793 @@ function fingerprint(kind, path, content) {
   };
 }
 
+// src/resolver/questions.ts
+var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
+  "id",
+  "destination",
+  "prompt",
+  "schema",
+  "suggestedDefault"
+]);
+var ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+var DESTINATION_RE = /^[A-Za-z][A-Za-z0-9_.-]*$/;
+var MAX_PROFILE_TEMPLATE_BYTES = 256 * 1024;
+var MAX_QUESTIONS_PER_TEMPLATE = 64;
+var MAX_ENUM_VALUES = 128;
+var MAX_PROMPT_LENGTH = 2048;
+var MAX_NORMALIZED_QUESTION_BYTES = 128 * 1024;
+var MAX_QUESTION_DIAGNOSTICS = 256;
+var MAX_DIAGNOSTIC_LABEL_LENGTH = 128;
+var MAX_PATTERN_INPUT_LENGTH = 1024;
+var MAX_PATTERN_LENGTH = 256;
+function patternSafetyError(pattern) {
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    return `must be at most ${MAX_PATTERN_LENGTH} characters.`;
+  }
+  let inClass = false;
+  let escaped = false;
+  let variableQuantifiers = 0;
+  for (let index = 0; index < pattern.length; index++) {
+    const char = pattern[index];
+    if (escaped) {
+      if (/[1-9]/.test(char) || char === "k" && pattern[index + 1] === "<") {
+        return "backreferences are not supported.";
+      }
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (inClass) {
+      if (char === "]") inClass = false;
+      continue;
+    }
+    if (char === "[") {
+      inClass = true;
+      continue;
+    }
+    if (char === "(" || char === ")" || char === "|") {
+      return "grouping and alternation are not supported.";
+    }
+    if (char === "*" || char === "+" || char === "?") {
+      variableQuantifiers++;
+    } else if (char === "{") {
+      const quantifier = /^\{(\d+)(?:,(\d*))?\}/.exec(pattern.slice(index));
+      if (quantifier) {
+        const minimum = Number(quantifier[1]);
+        const maximum = quantifier[2] === void 0 ? minimum : quantifier[2] === "" ? null : Number(quantifier[2]);
+        if (minimum > MAX_PATTERN_INPUT_LENGTH || maximum !== null && maximum > MAX_PATTERN_INPUT_LENGTH) {
+          return `quantifier bounds must not exceed ${MAX_PATTERN_INPUT_LENGTH}.`;
+        }
+        if (maximum === null || minimum !== maximum) variableQuantifiers++;
+        index += quantifier[0].length - 1;
+      }
+    }
+    if (variableQuantifiers > 1) {
+      return "at most one variable quantifier is supported.";
+    }
+  }
+  return null;
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function own(record2, key) {
+  return Object.prototype.hasOwnProperty.call(record2, key);
+}
+function safeDiagnosticLabel(value, pattern, fallback) {
+  return value.length <= MAX_DIAGNOSTIC_LABEL_LENGTH && pattern.test(value) ? value : fallback;
+}
+function makeQuestionDiagnostic(pack, question, field, code, detail) {
+  const safePack = safeDiagnosticLabel(
+    pack,
+    /^[a-z0-9][a-z0-9-]*$/,
+    "(invalid-pack)"
+  );
+  const safeQuestion = question === null ? null : safeDiagnosticLabel(
+    question,
+    /^(?:[a-z][a-z0-9]*(?:-[a-z0-9]+)*|ask\[\d+\])$/,
+    "(invalid-question)"
+  );
+  const safeField = safeDiagnosticLabel(
+    field,
+    /^(?:ask|template|profile|profile-template|declaration|id|destination|prompt|schema(?:\.(?:type|minLength|maxLength|pattern|minimum|maximum|values))?|schema\.values\[\d+\]|value)$/,
+    "(invalid-field)"
+  );
+  const owner = safeQuestion === null ? `pack \`${safePack}\`` : `pack \`${safePack}\`, question \`${safeQuestion}\``;
+  return {
+    code,
+    pack: safePack,
+    question: safeQuestion,
+    field: safeField,
+    message: `${owner}, field \`${safeField}\`: ${detail}`
+  };
+}
+function diagnosticBytes(diagnostics) {
+  return Buffer.byteLength(JSON.stringify(diagnostics), "utf8");
+}
+function finalizeDiagnostics(pack, diagnostics) {
+  const retained = [];
+  let truncated = false;
+  for (const issue2 of diagnostics) {
+    if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
+      truncated = true;
+      break;
+    }
+    if (diagnosticBytes([...retained, issue2]) > MAX_NORMALIZED_QUESTION_BYTES) {
+      truncated = true;
+      break;
+    }
+    retained.push(issue2);
+  }
+  if (!truncated) return retained;
+  const sentinel = makeQuestionDiagnostic(
+    pack,
+    null,
+    "ask",
+    "question/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit."
+  );
+  while (retained.length >= MAX_QUESTION_DIAGNOSTICS || diagnosticBytes([...retained, sentinel]) > MAX_NORMALIZED_QUESTION_BYTES) {
+    retained.pop();
+  }
+  return [...retained, sentinel];
+}
+function normalizedMetadataDiagnostic(pack, questions) {
+  if (questions.length > MAX_QUESTIONS_PER_TEMPLATE) {
+    return makeQuestionDiagnostic(
+      pack,
+      null,
+      "ask",
+      "question/ask-too-many",
+      `must contain at most ${MAX_QUESTIONS_PER_TEMPLATE} questions.`
+    );
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(questions), "utf8");
+  return bytes > MAX_NORMALIZED_QUESTION_BYTES ? makeQuestionDiagnostic(
+    pack,
+    null,
+    "ask",
+    "question/metadata-too-large",
+    `normalized question metadata must be at most ${MAX_NORMALIZED_QUESTION_BYTES} UTF-8 bytes.`
+  ) : null;
+}
+function schemaFields(pack, question, raw, allowed, diagnostics) {
+  const unknownFieldCount = Object.keys(raw).filter((key) => !allowed.has(key)).length;
+  for (let index = 0; index < unknownFieldCount; index++) {
+    diagnostics.push(
+      makeQuestionDiagnostic(
+        pack,
+        question,
+        "schema",
+        "question/schema-unknown-field",
+        "unknown schema field."
+      )
+    );
+  }
+}
+function integerField(pack, question, raw, field, diagnostics, options = {}) {
+  const value = raw[field];
+  if (!Number.isSafeInteger(value) || options.nonNegative && value < 0) {
+    diagnostics.push(
+      makeQuestionDiagnostic(
+        pack,
+        question,
+        `schema.${field}`,
+        "question/schema-invalid-bound",
+        options.nonNegative ? "must be a non-negative safe integer." : "must be a safe integer."
+      )
+    );
+    return null;
+  }
+  return value;
+}
+function parseSchema2(pack, question, value, diagnostics) {
+  if (!isRecord(value)) {
+    diagnostics.push(
+      makeQuestionDiagnostic(
+        pack,
+        question,
+        "schema",
+        "question/schema-invalid",
+        "must be an object."
+      )
+    );
+    return null;
+  }
+  const type = value.type;
+  if (type === "string") {
+    const allowed = /* @__PURE__ */ new Set(["type", "minLength", "maxLength", "pattern"]);
+    schemaFields(pack, question, value, allowed, diagnostics);
+    const hasMin = own(value, "minLength");
+    const hasMax = own(value, "maxLength");
+    if (hasMin !== hasMax) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "schema",
+          "question/schema-incomplete-bounds",
+          "string length bounds must declare both `minLength` and `maxLength`."
+        )
+      );
+    }
+    let minLength = null;
+    let maxLength = null;
+    if (hasMin) {
+      minLength = integerField(pack, question, value, "minLength", diagnostics, {
+        nonNegative: true
+      });
+    }
+    if (hasMax) {
+      maxLength = integerField(pack, question, value, "maxLength", diagnostics, {
+        nonNegative: true
+      });
+    }
+    if (minLength !== null && maxLength !== null && minLength > maxLength) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "schema",
+          "question/schema-invalid-range",
+          "`minLength` must be less than or equal to `maxLength`."
+        )
+      );
+    }
+    let pattern;
+    if (own(value, "pattern")) {
+      if (typeof value.pattern !== "string" || value.pattern.length === 0) {
+        diagnostics.push(
+          makeQuestionDiagnostic(
+            pack,
+            question,
+            "schema.pattern",
+            "question/schema-invalid-pattern",
+            "must be a non-empty regular-expression string."
+          )
+        );
+      } else {
+        let patternValid = true;
+        if (!hasMin || !hasMax || minLength === null || maxLength === null) {
+          patternValid = false;
+          diagnostics.push(
+            makeQuestionDiagnostic(
+              pack,
+              question,
+              "schema.pattern",
+              "question/schema-pattern-unbounded",
+              "requires valid `minLength` and `maxLength` bounds."
+            )
+          );
+        } else if (maxLength > MAX_PATTERN_INPUT_LENGTH) {
+          patternValid = false;
+          diagnostics.push(
+            makeQuestionDiagnostic(
+              pack,
+              question,
+              "schema.maxLength",
+              "question/schema-pattern-input-too-large",
+              `must not exceed ${MAX_PATTERN_INPUT_LENGTH} when a pattern is declared.`
+            )
+          );
+        }
+        const safetyIssue = patternSafetyError(value.pattern);
+        if (safetyIssue !== null) {
+          patternValid = false;
+          diagnostics.push(
+            makeQuestionDiagnostic(
+              pack,
+              question,
+              "schema.pattern",
+              "question/schema-unsafe-pattern",
+              safetyIssue
+            )
+          );
+        }
+        try {
+          new RegExp(value.pattern);
+        } catch {
+          patternValid = false;
+          diagnostics.push(
+            makeQuestionDiagnostic(
+              pack,
+              question,
+              "schema.pattern",
+              "question/schema-invalid-pattern",
+              "must compile as a regular expression."
+            )
+          );
+        }
+        if (patternValid) pattern = value.pattern;
+      }
+    }
+    if (hasMin && hasMax && minLength !== null && maxLength !== null) {
+      return pattern === void 0 ? { type: "string", minLength, maxLength } : { type: "string", minLength, maxLength, pattern };
+    }
+    return { type: "string" };
+  }
+  if (type === "boolean") {
+    schemaFields(pack, question, value, /* @__PURE__ */ new Set(["type"]), diagnostics);
+    return { type: "boolean" };
+  }
+  if (type === "integer") {
+    schemaFields(pack, question, value, /* @__PURE__ */ new Set(["type", "minimum", "maximum"]), diagnostics);
+    if (!own(value, "minimum") || !own(value, "maximum")) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "schema",
+          "question/schema-incomplete-bounds",
+          "integer schemas must declare both `minimum` and `maximum`."
+        )
+      );
+    }
+    const minimum = own(value, "minimum") ? integerField(pack, question, value, "minimum", diagnostics) : null;
+    const maximum = own(value, "maximum") ? integerField(pack, question, value, "maximum", diagnostics) : null;
+    if (minimum !== null && maximum !== null && minimum > maximum) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "schema",
+          "question/schema-invalid-range",
+          "`minimum` must be less than or equal to `maximum`."
+        )
+      );
+    }
+    return minimum === null || maximum === null ? null : { type: "integer", minimum, maximum };
+  }
+  if (type === "enum") {
+    schemaFields(pack, question, value, /* @__PURE__ */ new Set(["type", "values"]), diagnostics);
+    if (!Array.isArray(value.values) || value.values.length === 0) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "schema.values",
+          "question/schema-invalid-enum",
+          "must be a non-empty array of unique non-empty strings."
+        )
+      );
+      return null;
+    }
+    if (value.values.length > MAX_ENUM_VALUES) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "schema.values",
+          "question/schema-enum-too-large",
+          `must contain at most ${MAX_ENUM_VALUES} values.`
+        )
+      );
+      return null;
+    }
+    const values = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (let index = 0; index < value.values.length; index++) {
+      const candidate = value.values[index];
+      if (typeof candidate !== "string" || candidate.length === 0) {
+        diagnostics.push(
+          makeQuestionDiagnostic(
+            pack,
+            question,
+            `schema.values[${index}]`,
+            "question/schema-invalid-enum-value",
+            "must be a non-empty string."
+          )
+        );
+        continue;
+      }
+      if (seen.has(candidate)) {
+        diagnostics.push(
+          makeQuestionDiagnostic(
+            pack,
+            question,
+            `schema.values[${index}]`,
+            "question/schema-duplicate-enum-value",
+            "duplicates an earlier enum value."
+          )
+        );
+        continue;
+      }
+      seen.add(candidate);
+      values.push(candidate);
+    }
+    return values.length === value.values.length ? { type: "enum", values } : null;
+  }
+  diagnostics.push(
+    makeQuestionDiagnostic(
+      pack,
+      question,
+      "schema.type",
+      "question/schema-unsupported-type",
+      "must be exactly `string`, `boolean`, `integer`, or `enum`."
+    )
+  );
+  return null;
+}
+function valueFailure(declaration, source, value, code, detail) {
+  return {
+    valid: false,
+    source,
+    value,
+    diagnostics: [makeQuestionDiagnostic(declaration.pack, declaration.id, "value", code, detail)]
+  };
+}
+function validateQuestionValue(declaration, source, value) {
+  const schema = declaration.schema;
+  if (schema.type === "string") {
+    if (typeof value !== "string") {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-type",
+        `${source} value must be a string.`
+      );
+    }
+    if (schema.minLength !== void 0 && value.length < schema.minLength) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-min-length",
+        `${source} string is shorter than minLength ${schema.minLength}.`
+      );
+    }
+    if (schema.maxLength !== void 0 && value.length > schema.maxLength) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-max-length",
+        `${source} string is longer than maxLength ${schema.maxLength}.`
+      );
+    }
+    if (schema.pattern !== void 0 && !new RegExp(schema.pattern).test(value)) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-pattern",
+        `${source} string does not match the declared pattern.`
+      );
+    }
+  } else if (schema.type === "boolean") {
+    if (typeof value !== "boolean") {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-type",
+        `${source} value must be a boolean.`
+      );
+    }
+  } else if (schema.type === "integer") {
+    if (!Number.isSafeInteger(value)) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-type",
+        `${source} value must be a safe integer.`
+      );
+    }
+    if (value < schema.minimum || value > schema.maximum) {
+      return valueFailure(
+        declaration,
+        source,
+        value,
+        "question/value-range",
+        `${source} integer must be between ${schema.minimum} and ${schema.maximum}, inclusive.`
+      );
+    }
+  } else if (typeof value !== "string" || !schema.values.includes(value)) {
+    return valueFailure(
+      declaration,
+      source,
+      value,
+      "question/value-enum",
+      `${source} value must be one of the declared enum strings.`
+    );
+  }
+  return { valid: true, source, value, diagnostics: [] };
+}
+function parseQuestionDeclarations(pack, rawTemplate) {
+  if (Buffer.byteLength(rawTemplate, "utf8") > MAX_PROFILE_TEMPLATE_BYTES) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        makeQuestionDiagnostic(
+          pack,
+          null,
+          "template",
+          "question/template-too-large",
+          `must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+        )
+      ]
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(rawTemplate);
+  } catch {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        makeQuestionDiagnostic(
+          pack,
+          null,
+          "template",
+          "question/template-unparseable",
+          "must be valid JSON."
+        )
+      ]
+    };
+  }
+  if (!isRecord(parsed)) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        makeQuestionDiagnostic(
+          pack,
+          null,
+          "template",
+          "question/template-invalid",
+          "must be a JSON object."
+        )
+      ]
+    };
+  }
+  if (!own(parsed, "ask")) return { ok: true, questions: [], diagnostics: [] };
+  if (!Array.isArray(parsed.ask)) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        makeQuestionDiagnostic(
+          pack,
+          null,
+          "ask",
+          "question/ask-invalid",
+          "must be an array."
+        )
+      ]
+    };
+  }
+  if (parsed.ask.length > MAX_QUESTIONS_PER_TEMPLATE) {
+    return {
+      ok: false,
+      questions: [],
+      diagnostics: [
+        makeQuestionDiagnostic(
+          pack,
+          null,
+          "ask",
+          "question/ask-too-many",
+          `must contain at most ${MAX_QUESTIONS_PER_TEMPLATE} questions.`
+        )
+      ]
+    };
+  }
+  const diagnostics = [];
+  const declarations = [];
+  const suggestedDefaults = /* @__PURE__ */ new Map();
+  const ids = /* @__PURE__ */ new Set();
+  const destinations = /* @__PURE__ */ new Set();
+  for (let index = 0; index < parsed.ask.length; index++) {
+    const raw = parsed.ask[index];
+    const fallback = `ask[${index}]`;
+    if (!isRecord(raw)) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          fallback,
+          "declaration",
+          "question/declaration-invalid",
+          "must be an object."
+        )
+      );
+      continue;
+    }
+    const question = typeof raw.id === "string" && raw.id.length > 0 ? raw.id : fallback;
+    const unknownFieldCount = Object.keys(raw).filter(
+      (key) => !DECLARATION_FIELDS.has(key)
+    ).length;
+    for (let fieldIndex = 0; fieldIndex < unknownFieldCount; fieldIndex++) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "declaration",
+          "question/declaration-unknown-field",
+          "unknown declaration field."
+        )
+      );
+    }
+    const id = raw.id;
+    if (typeof id !== "string" || !ID_RE.test(id)) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "id",
+          "question/id-invalid",
+          "must be a lowercase hyphenated identifier."
+        )
+      );
+    } else if (ids.has(id)) {
+      diagnostics.push(
+        makeQuestionDiagnostic(pack, id, "id", "question/id-duplicate", "duplicates an earlier question id.")
+      );
+    } else {
+      ids.add(id);
+    }
+    const destination = raw.destination;
+    if (typeof destination !== "string" || !DESTINATION_RE.test(destination) || destination === "ask") {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "destination",
+          "question/destination-invalid",
+          "must be a non-empty profile key/path and must not be `ask`."
+        )
+      );
+    } else if (destinations.has(destination)) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "destination",
+          "question/destination-duplicate",
+          "duplicates an earlier destination."
+        )
+      );
+    } else {
+      destinations.add(destination);
+    }
+    const prompt = raw.prompt;
+    if (typeof prompt !== "string" || prompt.trim().length === 0) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "prompt",
+          "question/prompt-invalid",
+          "must be a non-empty string."
+        )
+      );
+    } else if (prompt.length > MAX_PROMPT_LENGTH) {
+      diagnostics.push(
+        makeQuestionDiagnostic(
+          pack,
+          question,
+          "prompt",
+          "question/prompt-too-long",
+          `must be at most ${MAX_PROMPT_LENGTH} characters.`
+        )
+      );
+    }
+    const beforeSchema = diagnostics.length;
+    const schema = parseSchema2(pack, question, raw.schema, diagnostics);
+    const structurallyValid = typeof id === "string" && ID_RE.test(id) && typeof destination === "string" && DESTINATION_RE.test(destination) && destination !== "ask" && typeof prompt === "string" && prompt.trim().length > 0 && prompt.length <= MAX_PROMPT_LENGTH && schema !== null && diagnostics.length === beforeSchema;
+    if (!structurallyValid) continue;
+    const declaration = {
+      pack,
+      id,
+      destination,
+      prompt,
+      schema
+    };
+    if (own(raw, "suggestedDefault")) suggestedDefaults.set(declaration, raw.suggestedDefault);
+    declarations.push(declaration);
+  }
+  if (diagnostics.length > 0) {
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+  }
+  const questions = [];
+  for (const declaration of declarations) {
+    const suggestions = [];
+    if (suggestedDefaults.has(declaration)) {
+      const checked = validateQuestionValue(
+        declaration,
+        "suggested-default",
+        suggestedDefaults.get(declaration)
+      );
+      if (!checked.valid) diagnostics.push(...checked.diagnostics);
+      else {
+        declaration.suggestedDefault = checked.value;
+        suggestions.push({ source: "suggested-default", value: checked.value });
+      }
+    }
+    if (own(parsed, declaration.destination)) {
+      const checked = validateQuestionValue(
+        declaration,
+        "pack-default",
+        parsed[declaration.destination]
+      );
+      if (!checked.valid) diagnostics.push(...checked.diagnostics);
+      else suggestions.push({ source: "pack-default", value: checked.value });
+    }
+    questions.push({
+      ...declaration,
+      state: { status: "unresolved", source: null, value: null, suggestions }
+    });
+  }
+  if (diagnostics.length > 0) {
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+  }
+  const sizeDiagnostic = normalizedMetadataDiagnostic(pack, questions);
+  return sizeDiagnostic === null ? { ok: true, questions, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
+}
+function applyQuestionValues(questions, inputs) {
+  const diagnostics = [];
+  const resolved = [];
+  for (const question of questions) {
+    const suggestions = [...question.state.suggestions];
+    if (inputs.personal && own(inputs.personal, question.destination)) {
+      const checked = validateQuestionValue(
+        question,
+        "personal",
+        inputs.personal[question.destination]
+      );
+      if (!checked.valid) diagnostics.push(...checked.diagnostics);
+      else suggestions.push({ source: "personal", value: checked.value });
+    }
+    if (inputs.persisted && own(inputs.persisted, question.destination)) {
+      const checked = validateQuestionValue(
+        question,
+        "persisted",
+        inputs.persisted[question.destination]
+      );
+      if (!checked.valid) {
+        diagnostics.push(...checked.diagnostics);
+        resolved.push({
+          ...question,
+          state: { status: "unresolved", source: null, value: null, suggestions }
+        });
+      } else {
+        resolved.push({
+          ...question,
+          state: {
+            status: "resolved",
+            source: "persisted",
+            value: checked.value,
+            suggestions
+          }
+        });
+      }
+    } else {
+      resolved.push({
+        ...question,
+        state: { status: "unresolved", source: null, value: null, suggestions }
+      });
+    }
+  }
+  const pack = resolved[0]?.pack ?? questions[0]?.pack ?? "unknown";
+  if (diagnostics.length > 0) {
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+  }
+  const sizeDiagnostic = normalizedMetadataDiagnostic(pack, resolved);
+  return sizeDiagnostic === null ? { ok: true, questions: resolved, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
+}
+
 // src/resolver/freshness.ts
 var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   "wf-config",
   "registry",
   "core-config",
   "manifest",
+  "profile-template",
   "profile",
   // WF-329: slot-contribution bodies, personal slot overrides, and per-skill
   // settings overrides join the re-read set — editing any of them invalidates
@@ -20776,6 +21572,29 @@ function isAbsolute2(p) {
 function absOf(workspaceRoot, recordedPath) {
   const p = normalizeSlashes(recordedPath);
   return isAbsolute2(p) ? p : joinSlash(workspaceRoot, p);
+}
+function profileTemplateContent(snapshot, workspaceRoot, source, probe) {
+  if (!probe.readContainedFile) return null;
+  const capability = snapshot.capabilities.find(
+    (candidate) => candidate.profileTemplatePath === source.path
+  );
+  if (!capability?.resolvedPath) return null;
+  const capabilityRoot = absOf(workspaceRoot, capability.resolvedPath);
+  const templatePath = absOf(workspaceRoot, source.path);
+  const normalizedRoot = normalizeSlashes(capabilityRoot).replace(/\/+$/, "");
+  const normalizedTemplate = normalizeSlashes(templatePath);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  if (!normalizedTemplate.startsWith(prefix)) return null;
+  const selectedPath = normalizedTemplate.slice(prefix.length);
+  if (resolveContainedCapabilityPath(capabilityRoot, selectedPath) !== normalizedTemplate) {
+    return null;
+  }
+  const read = probe.readContainedFile(
+    capabilityRoot,
+    selectedPath,
+    MAX_PROFILE_TEMPLATE_BYTES
+  );
+  return read.status === "ok" ? read.content : null;
 }
 function normalizePluginList(raw) {
   if (raw === null) return null;
@@ -20812,7 +21631,7 @@ function evaluateFreshness(snapshot, workspaceRoot, probe) {
   }
   for (const src of snapshot.sources) {
     if (!FILE_SOURCE_KINDS.has(src.kind)) continue;
-    const content = probe.readFile(absOf(workspaceRoot, src.path));
+    const content = src.kind === "profile-template" ? profileTemplateContent(snapshot, workspaceRoot, src, probe) : probe.readFile(absOf(workspaceRoot, src.path));
     const now = fingerprint(src.kind, src.path, content);
     if (now.present !== src.present || now.sha256 !== src.sha256) {
       const change = !now.present ? "was removed" : !src.present ? "appeared" : "changed";
@@ -21020,10 +21839,35 @@ function resolveProfileTemplate(ref, snapshot, workspaceRoot) {
   if (!cap.profileTemplatePath) {
     return unresolved(cls, `capability \`${capability}\` declares no \`profile-template:\` in its manifest.`);
   }
+  if (!cap.resolvedPath) {
+    return unresolved(
+      cls,
+      `capability \`${capability}\` has no resolved capability root \u2014 its profile template cannot be served.`
+    );
+  }
+  const resolvedRoot = toAbsolute(workspaceRoot, cap.resolvedPath);
+  const capabilityRoot = resolvedRoot === "/" ? "/" : resolvedRoot.replace(/\/+$/, "");
+  const path = toAbsolute(workspaceRoot, cap.profileTemplatePath);
+  const prefix = capabilityRoot === "/" ? "/" : `${capabilityRoot}/`;
+  if (!path.startsWith(prefix)) {
+    return unresolved(
+      cls,
+      `capability \`${capability}\` has a profile template outside its resolved capability root.`
+    );
+  }
+  const selectedPath = path.slice(prefix.length);
+  if (!isSafeRelPath(selectedPath)) {
+    return unresolved(
+      cls,
+      `capability \`${capability}\` has an invalid profile-template path.`
+    );
+  }
   return {
-    kind: "path",
+    kind: "contained",
     refClass: cls,
-    path: toAbsolute(workspaceRoot, cap.profileTemplatePath)
+    path,
+    capabilityRoot,
+    selectedPath
   };
 }
 function resolveCoreDoc(cls, ref, corePluginRoot, subDir) {
@@ -21344,9 +22188,29 @@ function relativize(workspaceRoot, absPath) {
 function toAbsolute3(workspaceRoot, snapshotPath2) {
   return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
 }
+function questionPackName(resolvedPath, fallback) {
+  const normalized = normalizeSlashes(resolvedPath).replace(/\/+$/, "");
+  const separator = normalized.lastIndexOf("/");
+  const name = separator >= 0 ? normalized.slice(separator + 1) : normalized;
+  return name || fallback;
+}
 function inlineDispatchRel(dispatch) {
   const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
   return m ? m[1].trim() : null;
+}
+function isRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function appendQuestionDiagnostics(target, questionDiagnostics) {
+  for (const issue2 of questionDiagnostics) {
+    target.push({
+      severity: "error",
+      code: issue2.code,
+      message: issue2.message,
+      category: "registry-invalid",
+      recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
+    });
+  }
 }
 function buildSnapshot(inputs, io) {
   const { workspaceRoot } = inputs;
@@ -21416,6 +22280,7 @@ function buildSnapshot(inputs, io) {
     let requires = [];
     let conflicts = [];
     let profileTemplatePath = null;
+    let questions = [];
     if (resolved.manifestPath) {
       const content = io.readFile(resolved.manifestPath);
       if (content !== null) {
@@ -21429,10 +22294,72 @@ function buildSnapshot(inputs, io) {
         requires = m.requires;
         conflicts = m.conflicts;
         if (m.profileTemplate && resolved.resolvedPath) {
-          profileTemplatePath = relativize(
-            workspaceRoot,
-            joinSlash(resolved.resolvedPath, m.profileTemplate)
+          const packName = questionPackName(resolved.resolvedPath, row.name);
+          const profileTemplateAbs = resolveContainedCapabilityPath(
+            resolved.resolvedPath,
+            m.profileTemplate
           );
+          if (profileTemplateAbs === null) {
+            appendQuestionDiagnostics(diagnostics, [
+              {
+                code: "question/template-path-invalid",
+                pack: packName,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${packName}\`, field \`profile-template\`: declared template path \`${m.profileTemplate}\` must be a forward-slash relative path contained beneath its capability folder.`
+              }
+            ]);
+          } else {
+            profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
+            const templateRead = io.readContainedFile ? io.readContainedFile(
+              resolved.resolvedPath,
+              m.profileTemplate,
+              MAX_PROFILE_TEMPLATE_BYTES
+            ) : {
+              status: "unsupported",
+              path: profileTemplateAbs,
+              content: null
+            };
+            const profileTemplateRaw = templateRead.status === "ok" ? templateRead.content : null;
+            sources.push(
+              fingerprint("profile-template", profileTemplatePath, profileTemplateRaw)
+            );
+            if (templateRead.status === "missing") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-missing",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`
+                }
+              ]);
+            } else if (templateRead.status === "too-large") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-too-large",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+                }
+              ]);
+            } else if (templateRead.status !== "ok") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-path-invalid",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`
+                }
+              ]);
+            } else {
+              const parsedQuestions = parseQuestionDeclarations(packName, templateRead.content);
+              if (parsedQuestions.ok) questions = parsedQuestions.questions;
+              else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+            }
+          }
         }
       }
     }
@@ -21471,6 +22398,7 @@ function buildSnapshot(inputs, io) {
       requires,
       conflicts,
       profileTemplatePath,
+      questions,
       validity
     };
   });
@@ -21561,16 +22489,53 @@ function buildSnapshot(inputs, io) {
       `${cap.name}.profile.json`
     );
     const content = io.readFile(profilePath);
-    if (content === null) continue;
     sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
+    if (content === null) continue;
     try {
-      profiles[cap.name] = JSON.parse(content);
-    } catch (err) {
-      diagnostics.push({
-        severity: "warning",
-        code: "profile/unparseable",
-        message: `profile for \`${cap.name}\` is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
-      });
+      const parsedProfile = JSON.parse(content);
+      profiles[cap.name] = parsedProfile;
+      if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
+        if (!isRecord2(parsedProfile)) {
+          cap.questions = [];
+          appendQuestionDiagnostics(diagnostics, [
+            {
+              code: "question/persisted-container-invalid",
+              pack: packName,
+              question: null,
+              field: "profile",
+              message: `pack \`${packName}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`
+            }
+          ]);
+        } else {
+          const applied = applyQuestionValues(cap.questions, { persisted: parsedProfile });
+          if (applied.ok) cap.questions = applied.questions;
+          else {
+            cap.questions = [];
+            appendQuestionDiagnostics(diagnostics, applied.diagnostics);
+          }
+        }
+      }
+    } catch {
+      if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
+        cap.questions = [];
+        appendQuestionDiagnostics(diagnostics, [
+          {
+            code: "question/persisted-unparseable",
+            pack: packName,
+            question: null,
+            field: "profile",
+            message: `pack \`${packName}\`, field \`profile\`: persisted question answers must be valid JSON.`
+          }
+        ]);
+      } else {
+        diagnostics.push({
+          severity: "warning",
+          code: "profile/unparseable",
+          message: `profile for \`${cap.name}\` is not valid JSON.`
+        });
+      }
     }
   }
   const interfaceRoots = [];
@@ -21756,8 +22721,19 @@ function buildSnapshot(inputs, io) {
 }
 
 // src/resolver/engine.ts
-import { readFileSync as readFileSync2, readdirSync } from "node:fs";
-import { join as join2 } from "node:path";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync as readFileSync2,
+  readSync,
+  readdirSync,
+  realpathSync as realpathSync2,
+  statSync as statSync2
+} from "node:fs";
+import { isAbsolute as isAbsolute3, join as join2, relative, resolve as resolve2, sep } from "node:path";
 import { execFileSync as execFileSync2 } from "node:child_process";
 
 // src/resolver/snapshot-store.ts
@@ -21830,6 +22806,107 @@ function readOrNull(absPath) {
     throw err;
   }
 }
+function readContainedCapabilityFile(root, selectedPath, maxBytes) {
+  const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
+  if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    return { status: "unsafe", path: lexicalPath, content: null };
+  }
+  const inside = (canonicalRoot, candidate) => {
+    const fromRoot = relative(canonicalRoot, candidate);
+    return fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute3(fromRoot);
+  };
+  const comparable = (path) => {
+    const normalized = normalizeSlashes(path);
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  };
+  const sameIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+  let fd = null;
+  let targetValidated = false;
+  try {
+    const canonicalRoot = realpathSync2(root);
+    const rootStat = statSync2(canonicalRoot, { bigint: true });
+    if (!rootStat.isDirectory()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const segments = selectedPath.split("/");
+    const canonicalCandidate = resolve2(canonicalRoot, ...segments);
+    if (!inside(canonicalRoot, canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    let cursor = canonicalRoot;
+    for (const segment of segments) {
+      cursor = resolve2(cursor, segment);
+      if (lstatSync(cursor).isSymbolicLink()) {
+        return { status: "unsafe", path: lexicalPath, content: null };
+      }
+    }
+    const canonicalTarget = realpathSync2(canonicalCandidate);
+    if (!inside(canonicalRoot, canonicalTarget) || comparable(canonicalTarget) !== comparable(canonicalCandidate)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const expected = statSync2(canonicalTarget, { bigint: true });
+    if (!expected.isFile()) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (expected.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    targetValidated = true;
+    if (typeof constants.O_NOFOLLOW !== "number" || constants.O_NOFOLLOW === 0) {
+      return { status: "unsupported", path: lexicalPath, content: null };
+    }
+    const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
+    fd = openSync(canonicalTarget, constants.O_RDONLY | constants.O_NOFOLLOW | nonBlock);
+    const opened = fstatSync(fd, { bigint: true });
+    if (!opened.isFile() || !sameIdentity(expected, opened)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    if (opened.size > BigInt(maxBytes)) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    const postOpenTarget = realpathSync2(canonicalCandidate);
+    const postOpenStat = statSync2(canonicalCandidate, { bigint: true });
+    const postOpenRoot = statSync2(canonicalRoot, { bigint: true });
+    if (comparable(postOpenTarget) !== comparable(canonicalTarget) || !inside(canonicalRoot, postOpenTarget) || !sameIdentity(opened, postOpenStat) || !sameIdentity(rootStat, postOpenRoot)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    const chunks = [];
+    let total = 0;
+    while (total <= maxBytes) {
+      const remaining = maxBytes + 1 - total;
+      const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remaining));
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, total);
+      if (bytesRead === 0) break;
+      chunks.push(buffer.subarray(0, bytesRead));
+      total += bytesRead;
+    }
+    if (total > maxBytes) {
+      return { status: "too-large", path: lexicalPath, content: null };
+    }
+    const afterRead = fstatSync(fd, { bigint: true });
+    if (!sameIdentity(opened, afterRead) || afterRead.size !== opened.size) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
+    return {
+      status: "ok",
+      path: normalizeSlashes(lexicalPath),
+      content: Buffer.concat(chunks, total).toString("utf8")
+    };
+  } catch (err) {
+    const code = err.code;
+    if (code === "ELOOP") return { status: "unsafe", path: lexicalPath, content: null };
+    if (code === "ENOENT" && !targetValidated) {
+      return { status: "missing", path: lexicalPath, content: null };
+    }
+    return {
+      status: targetValidated ? "unsafe" : "unreadable",
+      path: lexicalPath,
+      content: null
+    };
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
 function listFilesOrEmpty(absDir) {
   try {
     return readdirSync(absDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
@@ -21837,7 +22914,11 @@ function listFilesOrEmpty(absDir) {
     return [];
   }
 }
-var fsIO = { readFile: readOrNull, listFiles: listFilesOrEmpty };
+var fsIO = {
+  readFile: readOrNull,
+  readContainedFile: readContainedCapabilityFile,
+  listFiles: listFilesOrEmpty
+};
 function extractRegistryPathRaw(wfConfig) {
   if (!wfConfig) return DEFAULT_REGISTRY_RELPATH;
   const m = /^\s*registryPath\s*:\s*["']([^"']*)["']/m.exec(wfConfig);
@@ -21890,15 +22971,15 @@ function resolveCorePluginRoot() {
     return normalizeSlashes(process.env.WF_CORE_PLUGIN_ROOT);
   }
   const here = fileURLToPath(import.meta.url);
-  return normalizeSlashes(resolve2(dirname2(here), "..", ".."));
+  return normalizeSlashes(resolve3(dirname2(here), "..", ".."));
 }
 function resolveContainedRegistryWritePath(workspaceRoot, registryRelPath) {
-  const canonicalRoot = realpathSync2(workspaceRoot);
-  const target = resolve2(workspaceRoot, registryRelPath);
+  const canonicalRoot = realpathSync3(workspaceRoot);
+  const target = resolve3(workspaceRoot, registryRelPath);
   let existing = target;
   while (true) {
     try {
-      lstatSync(existing);
+      lstatSync2(existing);
       break;
     } catch (err) {
       if (err.code !== "ENOENT") throw err;
@@ -21907,9 +22988,9 @@ function resolveContainedRegistryWritePath(workspaceRoot, registryRelPath) {
       existing = parent;
     }
   }
-  const canonicalExisting = realpathSync2(existing);
-  const fromRoot = relative(canonicalRoot, canonicalExisting);
-  if (fromRoot === "" || fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute3(fromRoot)) {
+  const canonicalExisting = realpathSync3(existing);
+  const fromRoot = relative2(canonicalRoot, canonicalExisting);
+  if (fromRoot === "" || fromRoot !== ".." && !fromRoot.startsWith(`..${sep2}`) && !isAbsolute4(fromRoot)) {
     return normalizeSlashes(target);
   }
   throw new Error(`resolved path leaves workspace root \`${normalizeSlashes(canonicalRoot)}\`.`);
@@ -21934,6 +23015,7 @@ function createDefaultPorts(workspaceRoot) {
       }
     },
     readFile: (absPath) => fsIO.readFile(absPath),
+    readContainedFile: (capabilityRoot, selectedPath, maxBytes) => fsIO.readContainedFile(capabilityRoot, selectedPath, maxBytes),
     writeFile: (absPath, content) => {
       mkdirSync2(dirname2(absPath), { recursive: true });
       writeFileSync2(absPath, content, { encoding: "utf8" });
@@ -23440,10 +24522,10 @@ function ruleSourceErrorVerdict(tool, target, err, opsDocPath) {
 }
 
 // src/resolver/validate-skill-interface.ts
-var ID_RE = /[a-z0-9-]+\.[a-z0-9-]+/;
-var OPEN_RE = new RegExp(`^<!-- wf:slot (${ID_RE.source}) -->$`);
-var CLOSE_RE = new RegExp(`^<!-- wf:slot-end (${ID_RE.source}) -->$`);
-var ID_EXACT_RE = new RegExp(`^${ID_RE.source}$`);
+var ID_RE2 = /[a-z0-9-]+\.[a-z0-9-]+/;
+var OPEN_RE = new RegExp(`^<!-- wf:slot (${ID_RE2.source}) -->$`);
+var CLOSE_RE = new RegExp(`^<!-- wf:slot-end (${ID_RE2.source}) -->$`);
+var ID_EXACT_RE = new RegExp(`^${ID_RE2.source}$`);
 function checkSkillDir(fs, dir, slotPolicies) {
   const out = [];
   const skillDir = toPosix(dir).replace(/\/$/, "");
@@ -23959,6 +25041,68 @@ function degradationFor(surface, state) {
   if (scope === "engine" || scope === "host") return "engine-block";
   return "bare-core";
 }
+function boundInspectionIssues(issues) {
+  const retained = [];
+  let truncated = false;
+  for (const issue2 of issues) {
+    if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
+      truncated = true;
+      break;
+    }
+    if (Buffer.byteLength(JSON.stringify([...retained, issue2]), "utf8") > MAX_NORMALIZED_QUESTION_BYTES) {
+      truncated = true;
+      break;
+    }
+    retained.push(issue2);
+  }
+  if (!truncated) return retained;
+  const sentinel = "additional question diagnostics omitted after aggregate limit.";
+  while (retained.length >= MAX_QUESTION_DIAGNOSTICS || Buffer.byteLength(JSON.stringify([...retained, sentinel]), "utf8") > MAX_NORMALIZED_QUESTION_BYTES) {
+    retained.pop();
+  }
+  return [...retained, sentinel];
+}
+function boundInspectionQuestionDiagnostics(capabilities) {
+  const retained = [];
+  let truncatedAt = null;
+  outer: for (let capabilityIndex = 0; capabilityIndex < capabilities.length; capabilityIndex++) {
+    for (const diagnostic of capabilities[capabilityIndex].questionDiagnostics) {
+      if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      const candidate = [...retained.map((entry) => entry.diagnostic), diagnostic];
+      if (Buffer.byteLength(JSON.stringify(candidate), "utf8") > MAX_NORMALIZED_QUESTION_BYTES) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      retained.push({ capabilityIndex, diagnostic });
+    }
+  }
+  if (truncatedAt === null) return [...capabilities];
+  const sentinel = makeQuestionDiagnostic(
+    capabilities[truncatedAt]?.name ?? "inspection",
+    null,
+    "ask",
+    "question/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit."
+  );
+  while (retained.length >= MAX_QUESTION_DIAGNOSTICS || Buffer.byteLength(
+    JSON.stringify([...retained.map((entry) => entry.diagnostic), sentinel]),
+    "utf8"
+  ) > MAX_NORMALIZED_QUESTION_BYTES) {
+    retained.pop();
+  }
+  retained.push({ capabilityIndex: truncatedAt, diagnostic: sentinel });
+  const bounded = capabilities.map((capability) => ({
+    ...capability,
+    questionDiagnostics: []
+  }));
+  for (const entry of retained) {
+    bounded[entry.capabilityIndex].questionDiagnostics.push(entry.diagnostic);
+  }
+  return bounded;
+}
 var ResolverService = class {
   constructor(ports) {
     this.ports = ports;
@@ -23974,8 +25118,9 @@ var ResolverService = class {
    *  backstop. Every typed query routes through here; before reusing a cached or
    *  in-memory snapshot it re-validates the recorded input fingerprints and the
    *  schema/resolver version, rebuilding on any mismatch. Validation re-reads
-   *  ONLY the exact source paths the snapshot recorded (via `ports.readFile`) —
-   *  it never lists/walks capability folders, so unchanged inputs are a cheap
+   *  ONLY the exact source paths the snapshot recorded; profile templates use
+   *  the same bounded contained-file port as discovery, while other sources use
+   *  `ports.readFile`. It never lists/walks capability folders, so unchanged inputs are a cheap
    *  hash comparison with no rediscovery. Freshness is fingerprint-driven only;
    *  there is no elapsed-time / TTL path. */
   ensure() {
@@ -23989,6 +25134,7 @@ var ResolverService = class {
     }
     const { fresh, reasons } = evaluateFreshness(candidate, this.ports.workspaceRoot, {
       readFile: (p) => this.ports.readFile(p),
+      readContainedFile: this.ports.readContainedFile ? (root, selectedPath, maxBytes) => this.ports.readContainedFile(root, selectedPath, maxBytes) : void 0,
       generatorVersion: RESOLVER_GENERATOR.version
     });
     if (!fresh) {
@@ -24044,7 +25190,8 @@ var ResolverService = class {
         articles: c.articles,
         requires: c.requires,
         conflicts: c.conflicts,
-        profileTemplatePath: c.profileTemplatePath
+        profileTemplatePath: c.profileTemplatePath,
+        questions: c.questions
       }))
     };
   }
@@ -24209,6 +25356,41 @@ var ResolverService = class {
         reaction: "continue",
         recovery: plan.recovery,
         message: plan.message
+      };
+    }
+    if (plan.kind === "contained") {
+      const result = this.ports.readContainedFile ? this.ports.readContainedFile(
+        plan.capabilityRoot,
+        plan.selectedPath,
+        MAX_PROFILE_TEMPLATE_BYTES
+      ) : {
+        status: "unsupported",
+        path: null,
+        content: null
+      };
+      if (result.status === "ok") {
+        return {
+          status: "served",
+          refClass: plan.refClass,
+          path: result.path,
+          content: result.content,
+          bytes: Buffer.byteLength(result.content, "utf8")
+        };
+      }
+      const messageByStatus = {
+        missing: "the declared profile template is missing.",
+        "too-large": "the declared profile template exceeds the maximum allowed size.",
+        unsafe: "the declared profile template is not one regular, non-symlink file contained beneath its capability root.",
+        unsupported: "contained profile-template reads are unavailable.",
+        unreadable: "the declared profile template could not be read safely."
+      };
+      return {
+        status: "unresolved",
+        refClass: plan.refClass,
+        category: "registry-invalid",
+        reaction: "continue",
+        recovery: recoveryFor("registry-invalid"),
+        message: messageByStatus[result.status]
       };
     }
     const content = this.ports.readFile(plan.path);
@@ -24419,18 +25601,23 @@ var ResolverService = class {
       valid: false,
       issues: []
     };
+    const finish = () => {
+      base.capabilities = boundInspectionQuestionDiagnostics(base.capabilities);
+      base.issues = boundInspectionIssues(base.issues);
+      return base;
+    };
     if (!listing.ok) {
       base.issues.push(
         "`claude plugin list --json` is unavailable; pack state cannot be resolved."
       );
-      return base;
+      return finish();
     }
     const pack = listing.plugins.find(
       (p) => p.id === pluginId || p.name === pluginName
     );
     if (!pack) {
       base.issues.push(`plugin \`${pluginId}\` is not installed.`);
-      return base;
+      return finish();
     }
     base.installed = true;
     base.enabled = pack.enabled;
@@ -24439,14 +25626,15 @@ var ResolverService = class {
     if (!pack.enabled) base.issues.push(`plugin \`${pluginId}\` is disabled.`);
     const found = this.scanPackCapabilities(pack.installPath, pack.name);
     base.capabilities = found.capabilities;
+    base.issues.push(...found.issues);
     if (found.capabilities.length === 0) {
       base.issues.push(
         `no readable \`capabilities/*/manifest.md\` under \`${pack.installPath}\`.`
       );
     }
-    base.fingerprint = this.packFingerprint(pack, found.manifestContents);
+    base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
     base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
-    return base;
+    return finish();
   }
   // --- R6: register_pack (mutating write-path) ---------------------------
   registerPack(pluginId, expectedFingerprint) {
@@ -24464,6 +25652,11 @@ var ResolverService = class {
     if (!inspected.installPath || inspected.capabilities.length === 0) {
       return reject(
         `plugin \`${pluginId}\` has no valid pack manifest (path-invalid or manifest-invalid).`
+      );
+    }
+    if (!inspected.valid) {
+      return reject(
+        `plugin \`${pluginId}\` has invalid pack metadata: ${inspected.issues.join(" ")}`
       );
     }
     if (inspected.fingerprint !== expectedFingerprint) {
@@ -24522,7 +25715,8 @@ var ResolverService = class {
   }
   scanPackCapabilities(installPath, pluginName) {
     const capabilities = [];
-    const manifestContents = [];
+    const fingerprintInputs = [];
+    const issues = [];
     const capsDir = joinSlash(installPath, "capabilities");
     const names = [...this.ports.listDirs(capsDir)].sort();
     for (const name of names) {
@@ -24530,26 +25724,99 @@ var ResolverService = class {
       const manifestAbs = joinSlash(installPath, rel, "manifest.md");
       const body = this.ports.readFile(manifestAbs);
       if (body === null) continue;
-      manifestContents.push(body);
+      fingerprintInputs.push({ path: normalizeSlashes(manifestAbs), content: body });
+      const manifest = parseManifest(body);
+      let questions = [];
+      let questionDiagnostics = [];
+      if (manifest.profileTemplate) {
+        const capabilityRoot = joinSlash(installPath, rel);
+        const templateAbs = resolveContainedCapabilityPath(
+          capabilityRoot,
+          manifest.profileTemplate
+        );
+        if (templateAbs === null) {
+          questionDiagnostics = [
+            makeQuestionDiagnostic(
+              name,
+              null,
+              "profile-template",
+              "question/template-path-invalid",
+              "declared template path must be a forward-slash relative path contained beneath its capability folder."
+            )
+          ];
+        } else {
+          const templateRead = this.ports.readContainedFile ? this.ports.readContainedFile(
+            capabilityRoot,
+            manifest.profileTemplate,
+            MAX_PROFILE_TEMPLATE_BYTES
+          ) : {
+            status: "unsupported",
+            path: templateAbs,
+            content: null
+          };
+          const templateRaw = templateRead.status === "ok" ? templateRead.content : null;
+          fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
+          if (templateRead.status === "missing") {
+            questionDiagnostics = [
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-missing",
+                "declared template is not readable."
+              )
+            ];
+          } else if (templateRead.status === "too-large") {
+            questionDiagnostics = [
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-too-large",
+                `declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+              )
+            ];
+          } else if (templateRead.status !== "ok") {
+            questionDiagnostics = [
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-path-invalid",
+                "declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder."
+              )
+            ];
+          } else {
+            const parsed = parseQuestionDeclarations(name, templateRead.content);
+            if (parsed.ok) questions = parsed.questions;
+            else questionDiagnostics = parsed.diagnostics;
+          }
+        }
+      }
+      if (questionDiagnostics.length > 0) {
+        issues.push(...questionDiagnostics.map((issue2) => issue2.message));
+      }
       capabilities.push({
         name,
         path: `plugin:${pluginName}/${rel}`,
         manifestPath: normalizeSlashes(manifestAbs),
-        kind: this.manifestKind(body)
+        kind: manifest.kind,
+        questions,
+        questionDiagnostics
       });
     }
-    return { capabilities, manifestContents };
+    return { capabilities, fingerprintInputs, issues };
   }
-  manifestKind(body) {
-    const m = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/m.exec(body);
-    return m ? m[1] : null;
-  }
-  packFingerprint(pack, manifestContents) {
+  packFingerprint(pack, inputs) {
     return sha256Hex(
       JSON.stringify({
         installPath: pack.installPath,
         version: pack.version,
-        manifests: manifestContents.map((c) => sha256Hex(c))
+        sources: inputs.map((input) => ({
+          path: input.path,
+          present: input.content !== null,
+          sha256: input.content === null ? null : sha256Hex(input.content)
+        }))
       })
     );
   }
@@ -24748,7 +26015,7 @@ var WorkspaceServiceRegistry = class {
 
 // src/index.ts
 var SERVER_NAME = "wf-resolver";
-var SERVER_VERSION = "0.3.0";
+var SERVER_VERSION = "0.4.1";
 function createServer() {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },

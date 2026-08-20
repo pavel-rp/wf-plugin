@@ -10,21 +10,38 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import {
+  InMemoryTransport,
+  LATEST_PROTOCOL_VERSION,
+  McpServer,
+  type JSONRPCMessage,
+} from "@modelcontextprotocol/server";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveSnapshot } from "../src/resolver/engine.js";
-import { resolveContainedRegistryWritePath } from "../src/ports.js";
-import { normalizeSlashes, joinSlash } from "../src/resolver/paths.js";
+import { createDefaultPorts, resolveContainedRegistryWritePath } from "../src/ports.js";
+import {
+  normalizeSlashes,
+  joinSlash,
+  resolveContainedCapabilityPath,
+} from "../src/resolver/paths.js";
 import { parsePluginList } from "../src/resolver/plugin-list.js";
+import {
+  MAX_NORMALIZED_QUESTION_BYTES,
+  MAX_PROFILE_TEMPLATE_BYTES,
+  MAX_QUESTION_DIAGNOSTICS,
+} from "../src/resolver/questions.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
-import type { ResolverSnapshot } from "../src/resolver/types.js";
+import { registerResolverTools } from "../src/tools.js";
+import { RESOLVER_GENERATOR, type ResolverSnapshot } from "../src/resolver/types.js";
 
 const WS = "/ws";
 const INSTALL = "/ws/packs/wf-demo";
 
 const SECRET_MANIFEST = "SECRET_MANIFEST_PROSE_do_not_leak";
 const SECRET_FRAGMENT = "SECRET_FRAGMENT_BODY_do_not_leak";
+const SECRET_TEMPLATE = "SECRET_PROFILE_TEMPLATE_BODY_do_not_leak";
 
 const DEMO_MANIFEST = `# demo capability
 
@@ -39,9 +56,30 @@ article: demo-rule = required
 | phase | contribution-kind | dispatch | scope |
 |-------|-------------------|----------|-------|
 | implement | provider | \`inline: fragments/thing.ops.md\` | delivery |
+
+profile-template: profile.template.json
 `;
 
 const DEMO_FRAGMENT = `# thing fragment\n\n${SECRET_FRAGMENT} — never read into any response.\n`;
+const DEMO_TEMPLATE = JSON.stringify({
+  ask: [
+    {
+      id: "project-name",
+      destination: "project-name",
+      prompt: "Project name?",
+      schema: { type: "string", minLength: 2, maxLength: 12 },
+      suggestedDefault: "demo",
+    },
+    {
+      id: "mode",
+      destination: "mode",
+      prompt: "Operating mode?",
+      schema: { type: "enum", values: ["safe", "fast"] },
+    },
+  ],
+  mode: "safe",
+  privateNote: SECRET_TEMPLATE,
+});
 
 const BASE_CONFIG = `# Config
 
@@ -80,6 +118,7 @@ function makePorts(opts?: {
   const seed: Record<string, string> = {
     [`${WS}/_local/config.md`]: BASE_CONFIG,
     [`${INSTALL}/capabilities/demo/manifest.md`]: DEMO_MANIFEST,
+    [`${INSTALL}/capabilities/demo/profile.template.json`]: DEMO_TEMPLATE,
     [`${INSTALL}/capabilities/demo/fragments/thing.ops.md`]: DEMO_FRAGMENT,
     ...(opts?.files ?? {}),
   };
@@ -89,7 +128,18 @@ function makePorts(opts?: {
   let cache: ResolverSnapshot | null = null;
   const pluginListRaw = opts?.pluginList === undefined ? PLUGIN_LIST : opts.pluginList;
 
-  const io = { readFile: (p: string) => files.get(normalizeSlashes(p)) ?? null };
+  const readFile = (p: string): string | null => files.get(normalizeSlashes(p)) ?? null;
+  const readContainedFile = (root: string, selectedPath: string, maxBytes: number) => {
+    const path = resolveContainedCapabilityPath(root, selectedPath);
+    if (path === null) return { status: "unsafe" as const, path: null, content: null };
+    const content = readFile(path);
+    if (content === null) return { status: "missing" as const, path, content: null };
+    if (Buffer.byteLength(content, "utf8") > maxBytes) {
+      return { status: "too-large" as const, path, content: null };
+    }
+    return { status: "ok" as const, path, content };
+  };
+  const io = { readFile, readContainedFile };
 
   return {
     counts,
@@ -103,7 +153,7 @@ function makePorts(opts?: {
         io,
         pluginListRaw: pluginListRaw ?? undefined,
         now: () => new Date("2026-07-16T00:00:00.000Z"),
-        generator: { name: "wf-resolver", version: "0.3.0" },
+        generator: RESOLVER_GENERATOR,
       });
     },
     persist(snap) {
@@ -111,7 +161,8 @@ function makePorts(opts?: {
       cache = snap;
     },
     readCache: () => cache,
-    readFile: (p) => files.get(normalizeSlashes(p)) ?? null,
+    readFile,
+    readContainedFile,
     writeFile(p, content) {
       counts.writeFile++;
       files.set(normalizeSlashes(p), content);
@@ -250,8 +301,618 @@ test("no query/inspect response carries a manifest or fragment body", () => {
   ]);
   assert.ok(!blob.includes(SECRET_MANIFEST), "manifest body must not leak");
   assert.ok(!blob.includes(SECRET_FRAGMENT), "fragment body must not leak");
-  // The dispatch PATH (metadata) is allowed and expected.
+  assert.ok(!blob.includes(SECRET_TEMPLATE), "raw profile-template body must not leak");
+  // The normalized declaration prompt is metadata; unrelated template fields are not.
   assert.ok(blob.includes("fragments/thing.ops.md"));
+});
+
+test("inspect_pack exposes complete ordered validated question metadata", () => {
+  const ports = makePorts();
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, true);
+  assert.deepEqual(
+    inspected.capabilities[0].questions.map((question) => question.id),
+    ["project-name", "mode"],
+  );
+  assert.ok(inspected.capabilities[0].questions.every((question) => question.pack === "demo"));
+  assert.deepEqual(inspected.capabilities[0].questionDiagnostics, []);
+  assert.deepEqual(inspected.capabilities[0].questions[1].state.suggestions, [
+    { source: "pack-default", value: "safe" },
+  ]);
+});
+
+test("real MCP tools/call dispatch exposes on-disk question metadata without template bodies", async () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-tools-call-"));
+  const workspace = normalizeSlashes(join(root, "workspace"));
+  const install = normalizeSlashes(join(root, "wf-demo"));
+  const capability = joinSlash(install, "capabilities/demo");
+  mkdirSync(join(workspace, "_local"), { recursive: true });
+  mkdirSync(join(capability, "fragments"), { recursive: true });
+  writeFileSync(
+    join(workspace, "_local", "config.md"),
+    `${BASE_CONFIG}\n## Plugin Roots\n\n| Plugin | Root |\n|---|---|\n| wf-demo | ${install} |\n\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+  );
+  writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+  writeFileSync(join(capability, "profile.template.json"), DEMO_TEMPLATE);
+  writeFileSync(join(capability, "fragments", "thing.ops.md"), DEMO_FRAGMENT);
+
+  const pluginListRaw = JSON.stringify([
+    {
+      id: "wf-demo@local",
+      version: "1.2.3",
+      scope: "user",
+      enabled: true,
+      installPath: install,
+    },
+  ]);
+  const production = createDefaultPorts(workspace);
+  const ports: ResolverServicePorts = {
+    ...production,
+    listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+    resolveFresh: () =>
+      resolveSnapshot({
+        workspaceRoot: workspace,
+        pluginListRaw,
+        now: () => new Date("2026-08-20T00:00:00.000Z"),
+      }),
+  };
+  const service = new ResolverService(ports);
+  const server = new McpServer(
+    { name: "wf-resolver-test", version: "0.0.0" },
+    { capabilities: { tools: {} } },
+  );
+  registerResolverTools(server, (requestedRoot) => {
+    assert.equal(normalizeSlashes(requestedRoot), workspace);
+    return service;
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+  const waiters = new Map<string, (message: JSONRPCMessage) => void>();
+  clientTransport.onmessage = (message) => {
+    if (!("id" in message)) return;
+    const resolve = waiters.get(String(message.id));
+    if (!resolve) return;
+    waiters.delete(String(message.id));
+    resolve(message);
+  };
+  const request = async (
+    id: number,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<JSONRPCMessage> => {
+    const response = new Promise<JSONRPCMessage>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`timed out waiting for MCP response ${id}`)),
+        2_000,
+      );
+      waiters.set(String(id), (message) => {
+        clearTimeout(timeout);
+        resolve(message);
+      });
+    });
+    await clientTransport.send({ jsonrpc: "2.0", id, method, params } as JSONRPCMessage);
+    return response;
+  };
+  const payload = (message: JSONRPCMessage): unknown => {
+    assert.ok("result" in message, "tools/call must return a JSON-RPC result");
+    if (!("result" in message)) return null;
+    const result = message.result as {
+      content?: Array<{ type: string; text?: string }>;
+    };
+    const text = result.content?.find((entry) => entry.type === "text")?.text;
+    assert.equal(typeof text, "string");
+    return JSON.parse(text as string);
+  };
+
+  try {
+    await server.connect(serverTransport);
+    await clientTransport.start();
+    const initialized = await request(1, "initialize", {
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "wf-resolver-test-client", version: "0.0.0" },
+    });
+    assert.ok("result" in initialized);
+    await clientTransport.send({
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    } as JSONRPCMessage);
+
+    const inspected = payload(
+      await request(2, "tools/call", {
+        name: "inspect_pack",
+        arguments: { workspaceRoot: workspace, pluginId: "wf-demo@local" },
+      }),
+    ) as { valid: boolean; capabilities: Array<{ questions: Array<{ id: string }> }> };
+    const registry = payload(
+      await request(3, "tools/call", {
+        name: "resolve_registry",
+        arguments: { workspaceRoot: workspace },
+      }),
+    ) as { capabilities: Array<{ name: string; questions: Array<{ id: string }> }> };
+
+    assert.equal(inspected.valid, true);
+    assert.deepEqual(
+      inspected.capabilities[0].questions.map((question) => question.id),
+      ["project-name", "mode"],
+    );
+    assert.deepEqual(
+      registry.capabilities[0].questions.map((question) => question.id),
+      ["project-name", "mode"],
+    );
+    assert.ok(!JSON.stringify([inspected, registry]).includes(SECRET_TEMPLATE));
+  } finally {
+    await clientTransport.close();
+    await server.close();
+    await serverTransport.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("profile-template paths cannot escape their installed capability folder", () => {
+  const sentinel = "PROFILE_PATH_SECRET_7fd";
+  for (const candidate of [
+    "../outside.json",
+    "/outside.json",
+    "..\\outside.json",
+    `${sentinel}/../outside.json`,
+  ]) {
+    const escapedRead = joinSlash(INSTALL, "capabilities/demo", candidate);
+    const ports = makePorts({
+      files: {
+        [`${INSTALL}/capabilities/demo/manifest.md`]: DEMO_MANIFEST.replace(
+          "profile.template.json",
+          candidate,
+        ),
+        [escapedRead]: DEMO_TEMPLATE,
+      },
+    });
+    const inspected = new ResolverService(ports).inspectPack("wf-demo@local");
+
+    assert.equal(inspected.valid, false, candidate);
+    assert.deepEqual(inspected.capabilities[0].questions, [], candidate);
+    assert.ok(
+      inspected.capabilities[0].questionDiagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-path-invalid",
+      ),
+      candidate,
+    );
+    assert.ok(!JSON.stringify(inspected).includes(sentinel), candidate);
+  }
+});
+
+test("symlinked profile templates fail installed-pack and active discovery", () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-template-link-"));
+  try {
+    const workspace = join(root, "workspace");
+    const install = join(root, "wf-demo");
+    const capability = join(install, "capabilities", "demo");
+    const outside = join(root, "outside.json");
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    mkdirSync(capability, { recursive: true });
+    writeFileSync(
+      join(workspace, "_local", "config.md"),
+      `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+    );
+    writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+    writeFileSync(outside, DEMO_TEMPLATE);
+    symlinkSync(outside, join(capability, "profile.template.json"));
+
+    const pluginListRaw = JSON.stringify([
+      {
+        id: "wf-demo@local",
+        version: "1.2.3",
+        scope: "user",
+        enabled: true,
+        installPath: normalizeSlashes(install),
+      },
+    ]);
+    const production = createDefaultPorts(normalizeSlashes(workspace));
+    const templateLink = normalizeSlashes(join(capability, "profile.template.json"));
+    const ports: ResolverServicePorts = {
+      ...production,
+      readFile: (path) => {
+        assert.notEqual(
+          normalizeSlashes(path),
+          templateLink,
+          "profile-template freshness must not use unrestricted readFile",
+        );
+        return production.readFile(path);
+      },
+      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({
+          workspaceRoot: normalizeSlashes(workspace),
+          pluginListRaw,
+          now: () => new Date("2026-08-19T00:00:00.000Z"),
+        }),
+    };
+    const service = new ResolverService(ports);
+
+    const inspected = service.inspectPack("wf-demo@local");
+    assert.equal(inspected.valid, false);
+    assert.deepEqual(inspected.capabilities[0].questions, []);
+    assert.ok(
+      inspected.capabilities[0].questionDiagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-path-invalid",
+      ),
+    );
+
+    const active = service.resolveRegistry().capabilities.find(
+      (candidate) => candidate.name === "demo",
+    );
+    assert.ok(active);
+    assert.deepEqual(active.questions, []);
+    assert.ok(
+      service.inspect().diagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-path-invalid",
+      ),
+    );
+    const served = service.resolveContent({
+      class: "profile-template",
+      capability: "demo",
+    });
+    assert.equal(served.status, "unresolved");
+    if (served.status === "unresolved") {
+      assert.equal(served.category, "registry-invalid");
+      assert.ok(!("content" in served));
+      assert.ok(!("path" in served));
+    }
+    assert.doesNotThrow(() => service.resolveRegistry());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a non-regular profile-template path is never body-served", () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-template-directory-"));
+  try {
+    const workspace = join(root, "workspace");
+    const install = join(root, "wf-demo");
+    const capability = join(install, "capabilities", "demo");
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    mkdirSync(join(capability, "profile.template.json"), { recursive: true });
+    writeFileSync(
+      join(workspace, "_local", "config.md"),
+      `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+    );
+    writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+
+    const pluginListRaw = JSON.stringify([
+      {
+        id: "wf-demo@local",
+        version: "1.2.3",
+        scope: "user",
+        enabled: true,
+        installPath: normalizeSlashes(install),
+      },
+    ]);
+    const production = createDefaultPorts(normalizeSlashes(workspace));
+    const ports: ResolverServicePorts = {
+      ...production,
+      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({
+          workspaceRoot: normalizeSlashes(workspace),
+          pluginListRaw,
+          now: () => new Date("2026-08-20T00:00:00.000Z"),
+        }),
+    };
+    const served = new ResolverService(ports).resolveContent({
+      class: "profile-template",
+      capability: "demo",
+    });
+    assert.equal(served.status, "unresolved");
+    if (served.status !== "unresolved") return;
+    assert.equal(served.category, "registry-invalid");
+    assert.ok(!("content" in served));
+    assert.ok(!("path" in served));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("oversized profile templates fail before installed-pack and active parsing", () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-template-size-"));
+  try {
+    const workspace = join(root, "workspace");
+    const install = join(root, "wf-demo");
+    const capability = join(install, "capabilities", "demo");
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    mkdirSync(capability, { recursive: true });
+    writeFileSync(
+      join(workspace, "_local", "config.md"),
+      `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+    );
+    writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+    writeFileSync(
+      join(capability, "profile.template.json"),
+      "x".repeat(MAX_PROFILE_TEMPLATE_BYTES + 1),
+    );
+
+    const pluginListRaw = JSON.stringify([
+      {
+        id: "wf-demo@local",
+        version: "1.2.3",
+        scope: "user",
+        enabled: true,
+        installPath: normalizeSlashes(install),
+      },
+    ]);
+    const production = createDefaultPorts(normalizeSlashes(workspace));
+    const ports: ResolverServicePorts = {
+      ...production,
+      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({
+          workspaceRoot: normalizeSlashes(workspace),
+          pluginListRaw,
+          now: () => new Date("2026-08-19T00:00:00.000Z"),
+        }),
+    };
+    const service = new ResolverService(ports);
+
+    const inspected = service.inspectPack("wf-demo@local");
+    assert.equal(inspected.valid, false);
+    assert.ok(
+      inspected.capabilities[0].questionDiagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-too-large",
+      ),
+    );
+
+    assert.deepEqual(
+      service.resolveRegistry().capabilities.find((candidate) => candidate.name === "demo")
+        ?.questions,
+      [],
+    );
+    assert.ok(
+      service.inspect().diagnostics.some(
+        (diagnostic) => diagnostic.code === "question/template-too-large",
+      ),
+    );
+    const served = service.resolveContent({
+      class: "profile-template",
+      capability: "demo",
+    });
+    assert.equal(served.status, "unresolved");
+    if (served.status === "unresolved") {
+      assert.equal(served.category, "registry-invalid");
+      assert.ok(!("content" in served));
+      assert.ok(!("path" in served));
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("active metadata keeps folder provenance when a registry row is aliased", () => {
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/config.md`]: `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| alias | plugin:wf-demo/capabilities/demo |\n`,
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+  const active = svc.resolveRegistry().capabilities.find((capability) => capability.name === "alias");
+
+  assert.ok(active);
+  assert.ok(inspected.capabilities[0].questions.every((question) => question.pack === "demo"));
+  assert.ok(active.questions.every((question) => question.pack === "demo"));
+});
+
+test("active discovery rejects profile-template traversal before reading", () => {
+  const capabilityRoot = `${WS}/capabilities/bad`;
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/config.md`]: `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| bad | capabilities/bad |\n`,
+      [`${capabilityRoot}/manifest.md`]: `# bad\n\n**Kind:** adapter\n\nprofile-template: ../outside.json\n`,
+      [joinSlash(capabilityRoot, "../outside.json")]: DEMO_TEMPLATE,
+    },
+  });
+  const svc = new ResolverService(ports);
+  const active = svc.resolveRegistry().capabilities.find((capability) => capability.name === "bad");
+
+  assert.ok(active);
+  assert.deepEqual(active.questions, []);
+  assert.ok(
+    svc.inspect().diagnostics.some(
+      (diagnostic) => diagnostic.code === "question/template-path-invalid",
+    ),
+  );
+});
+
+test("active registry metadata resolves only valid explicitly persisted profile answers", () => {
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/profiles/demo.profile.json`]: JSON.stringify({
+        "project-name": "omega",
+      }),
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+  assert.equal(inspected.valid, true);
+  assert.equal(svc.registerPack("wf-demo@local", inspected.fingerprint!).status, "registered");
+
+  const active = svc.resolveRegistry().capabilities.find((capability) => capability.name === "demo");
+  assert.ok(active);
+  assert.deepEqual(
+    active.questions.map((question) => question.id),
+    ["project-name", "mode"],
+  );
+  assert.deepEqual(active.questions[0].state, {
+    status: "resolved",
+    source: "persisted",
+    value: "omega",
+    suggestions: [{ source: "suggested-default", value: "demo" }],
+  });
+  assert.equal(active.questions[1].state.status, "unresolved");
+});
+
+test("inspect_pack rejects malformed question metadata with complete attribution", () => {
+  const ports = makePorts({
+    files: {
+      [`${INSTALL}/capabilities/demo/profile.template.json`]: JSON.stringify({
+        ask: [
+          {
+            id: "duplicate",
+            destination: "same",
+            prompt: "First?",
+            schema: { type: "boolean", unexpected: true },
+          },
+          {
+            id: "duplicate",
+            destination: "same",
+            prompt: "Second?",
+            schema: { type: "integer", minimum: 1 },
+          },
+        ],
+      }),
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, false);
+  assert.deepEqual(inspected.capabilities[0].questions, []);
+  assert.ok(inspected.capabilities[0].questionDiagnostics.length >= 3);
+  assert.ok(
+    inspected.capabilities[0].questionDiagnostics.every(
+      (issue) => issue.pack === "demo" && issue.question !== null && issue.field.length > 0,
+    ),
+  );
+  assert.ok(inspected.issues.every((issue) => issue.includes("pack `demo`")));
+  const registered = svc.registerPack("wf-demo@local", inspected.fingerprint!);
+  assert.equal(registered.status, "rejected");
+  assert.match(registered.reason ?? "", /invalid pack metadata/);
+  assert.equal(ports.counts.writeFile, 0);
+});
+
+test("inspect_pack bounds combined question issues after all capabilities", () => {
+  const invalidTemplate = JSON.stringify({
+    ask: [
+      {
+        ...Object.fromEntries(
+          Array.from({ length: 200 }, (_, index) => [`unknown-${index}`, true]),
+        ),
+        id: "name",
+        destination: "name",
+        prompt: "Name?",
+        schema: { type: "string" },
+      },
+    ],
+  });
+  const ports = makePorts({
+    files: {
+      [`${INSTALL}/capabilities/demo/profile.template.json`]: invalidTemplate,
+      [`${INSTALL}/capabilities/other/manifest.md`]: DEMO_MANIFEST,
+      [`${INSTALL}/capabilities/other/profile.template.json`]: invalidTemplate,
+    },
+  });
+  const inspected = new ResolverService(ports).inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, false);
+  assert.equal(
+    inspected.issues.at(-1),
+    "additional question diagnostics omitted after aggregate limit.",
+  );
+  assert.ok(inspected.issues.length <= MAX_QUESTION_DIAGNOSTICS);
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(inspected.issues), "utf8") <=
+      MAX_NORMALIZED_QUESTION_BYTES,
+  );
+
+  const diagnostics = inspected.capabilities.flatMap(
+    (capability) => capability.questionDiagnostics,
+  );
+  assert.equal(diagnostics.at(-1)?.code, "question/diagnostics-truncated");
+  assert.ok(diagnostics.length <= MAX_QUESTION_DIAGNOSTICS);
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(diagnostics), "utf8") <=
+      MAX_NORMALIZED_QUESTION_BYTES,
+  );
+});
+
+test("active invalid persisted values fail metadata exposure without a partial question set", () => {
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/profiles/demo.profile.json`]: JSON.stringify({ mode: "unknown" }),
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+  assert.equal(svc.registerPack("wf-demo@local", inspected.fingerprint!).status, "registered");
+
+  const active = svc.resolveRegistry().capabilities.find((capability) => capability.name === "demo");
+  assert.ok(active);
+  assert.deepEqual(active.questions, []);
+  const lifecycle = svc.inspect();
+  assert.ok(
+    lifecycle.diagnostics.some(
+      (entry) => entry.code === "question/value-enum" && entry.message.includes("question `mode`"),
+    ),
+  );
+});
+
+test("malformed persisted-profile diagnostics never echo parser excerpts", () => {
+  const sentinel = "PERSISTED_SECRET_4e8a";
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/profiles/demo.profile.json`]: `{"mode":"${sentinel}",`,
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+  assert.equal(svc.registerPack("wf-demo@local", inspected.fingerprint!).status, "registered");
+
+  const lifecycle = svc.inspect();
+  const issue = lifecycle.diagnostics.find(
+    (entry) => entry.code === "question/persisted-unparseable",
+  );
+  assert.equal(
+    issue?.message,
+    "pack `demo`, field `profile`: persisted question answers must be valid JSON.",
+  );
+  assert.ok(!JSON.stringify(lifecycle.diagnostics).includes(sentinel));
+  assert.deepEqual(
+    svc.resolveRegistry().capabilities.find((capability) => capability.name === "demo")
+      ?.questions,
+    [],
+  );
+});
+
+test("active malformed template metadata emits pack-attributed resolver diagnostics", () => {
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/config.md`]: `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| bad | capabilities/bad |\n`,
+      [`${WS}/capabilities/bad/manifest.md`]: `# bad\n\n**Kind:** adapter\n\nprofile-template: profile.template.json\n`,
+      [`${WS}/capabilities/bad/profile.template.json`]: JSON.stringify({
+        ask: [
+          {
+            id: "broken",
+            destination: "broken",
+            prompt: "Broken?",
+            schema: { type: "integer", maximum: 2 },
+          },
+        ],
+      }),
+    },
+  });
+  const svc = new ResolverService(ports);
+  svc.refresh();
+
+  const bad = svc.resolveRegistry().capabilities.find((capability) => capability.name === "bad");
+  assert.ok(bad);
+  assert.deepEqual(bad.questions, []);
+  assert.ok(
+    svc.inspect().diagnostics.some(
+      (entry) =>
+        entry.code === "question/schema-incomplete-bounds" &&
+        entry.message.includes("pack `bad`, question `broken`"),
+    ),
+  );
 });
 
 // --- register_pack: success path ------------------------------------------

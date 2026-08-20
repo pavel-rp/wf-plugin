@@ -5,9 +5,10 @@
 // facts ONLY by calling the typed queries here — there is no shell/CLI/plugin-
 // root probe or installed-folder walk on the consumer side; all discovery
 // happens once, inside this service, over the deterministic resolver engine
-// (WF-269). Every response is bounded metadata / normalized paths / enums /
-// small maps — NEVER a capability fragment body, a skill body, or prompt text
-// (the snapshot itself already excludes bodies; these projections only narrow).
+// (WF-269). Every metadata query response is bounded normalized metadata / paths /
+// enums / small maps — NEVER a capability fragment body, skill body, manifest
+// body, or raw profile-template body. A validated interview `prompt` is an
+// intentional declaration field, not an executable prompt/template body.
 //
 // The service owns the snapshot lifecycle for a server session: a lazily built,
 // in-memory-cached resolved view, an `invalidate` flag that forces the next
@@ -53,6 +54,8 @@ import {
   joinSlash,
   normalizeSlashes,
   registryPathShapeError,
+  resolveContainedCapabilityPath,
+  type ContainedFileReadResult,
 } from "./resolver/paths.js";
 import {
   validateManifest,
@@ -66,12 +69,21 @@ import {
   type CompositionPreview,
 } from "./resolver/preview-composition.js";
 import type { ValidationVerdict } from "./resolver/validate-rules.js";
+import { parseManifest } from "./resolver/manifest.js";
+import {
+  MAX_NORMALIZED_QUESTION_BYTES,
+  MAX_PROFILE_TEMPLATE_BYTES,
+  MAX_QUESTION_DIAGNOSTICS,
+  makeQuestionDiagnostic,
+  parseQuestionDeclarations,
+} from "./resolver/questions.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
 import {
   RESOLVER_GENERATOR,
   type CapabilityRecord,
   type Diagnostic,
+  type QuestionDiagnostic,
   type ResolverErrorCategory,
   type ResolverSnapshot,
 } from "./resolver/types.js";
@@ -104,6 +116,13 @@ export interface ResolverServicePorts {
   readCache(): ResolverSnapshot | null;
   /** Read a UTF-8 file (pack manifest reads for inspect/register), or `null`. */
   readFile(absPath: string): string | null;
+  /** Security boundary for a manifest-selected profile template. Omission fails
+   * closed; inspection never falls back to `readFile` for this input. */
+  readContainedFile?(
+    capabilityRoot: string,
+    selectedPath: string,
+    maxBytes: number,
+  ): ContainedFileReadResult;
   /** Write a UTF-8 file (registry edits), creating parent dirs. */
   writeFile(absPath: string, content: string): void;
   /** List immediate subdirectory names of `absDir` (used ONLY on the pack
@@ -148,6 +167,7 @@ export interface RegistryResponse {
     requires: string[];
     conflicts: string[];
     profileTemplatePath: string | null;
+    questions: CapabilityRecord["questions"];
   }>;
 }
 
@@ -308,6 +328,11 @@ export interface PackCapabilitySummary {
   path: string;
   manifestPath: string;
   kind: string | null;
+  /** Ordered validated declarations; empty when absent or when the set is invalid. */
+  questions: CapabilityRecord["questions"];
+  /** Ordered pack/question/field-attributed declaration diagnostics, aggregate-
+   *  bounded across the complete `inspect_pack` response. */
+  questionDiagnostics: QuestionDiagnostic[];
 }
 
 export interface InspectPackResponse {
@@ -321,6 +346,7 @@ export interface InspectPackResponse {
   /** Stable identity of the pack's registerable surface; register_pack revalidates it. */
   fingerprint: string | null;
   valid: boolean;
+  /** Ordered, aggregate-bounded inspection failures. */
   issues: string[];
 }
 
@@ -371,6 +397,90 @@ function degradationFor(surface: string, state: ProviderResponse["state"]): stri
   return "bare-core";
 }
 
+function boundInspectionIssues(issues: readonly string[]): string[] {
+  const retained: string[] = [];
+  let truncated = false;
+  for (const issue of issues) {
+    if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
+      truncated = true;
+      break;
+    }
+    if (
+      Buffer.byteLength(JSON.stringify([...retained, issue]), "utf8") >
+      MAX_NORMALIZED_QUESTION_BYTES
+    ) {
+      truncated = true;
+      break;
+    }
+    retained.push(issue);
+  }
+  if (!truncated) return retained;
+
+  const sentinel = "additional question diagnostics omitted after aggregate limit.";
+  while (
+    retained.length >= MAX_QUESTION_DIAGNOSTICS ||
+    Buffer.byteLength(JSON.stringify([...retained, sentinel]), "utf8") >
+      MAX_NORMALIZED_QUESTION_BYTES
+  ) {
+    retained.pop();
+  }
+  return [...retained, sentinel];
+}
+
+function boundInspectionQuestionDiagnostics(
+  capabilities: readonly PackCapabilitySummary[],
+): PackCapabilitySummary[] {
+  const retained: Array<{ capabilityIndex: number; diagnostic: QuestionDiagnostic }> = [];
+  let truncatedAt: number | null = null;
+
+  outer: for (let capabilityIndex = 0; capabilityIndex < capabilities.length; capabilityIndex++) {
+    for (const diagnostic of capabilities[capabilityIndex].questionDiagnostics) {
+      if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      const candidate = [...retained.map((entry) => entry.diagnostic), diagnostic];
+      if (
+        Buffer.byteLength(JSON.stringify(candidate), "utf8") >
+        MAX_NORMALIZED_QUESTION_BYTES
+      ) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      retained.push({ capabilityIndex, diagnostic });
+    }
+  }
+
+  if (truncatedAt === null) return [...capabilities];
+
+  const sentinel = makeQuestionDiagnostic(
+    capabilities[truncatedAt]?.name ?? "inspection",
+    null,
+    "ask",
+    "question/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit.",
+  );
+  while (
+    retained.length >= MAX_QUESTION_DIAGNOSTICS ||
+    Buffer.byteLength(
+      JSON.stringify([...retained.map((entry) => entry.diagnostic), sentinel]),
+      "utf8",
+    ) > MAX_NORMALIZED_QUESTION_BYTES
+  ) {
+    retained.pop();
+  }
+  retained.push({ capabilityIndex: truncatedAt, diagnostic: sentinel });
+
+  const bounded = capabilities.map((capability) => ({
+    ...capability,
+    questionDiagnostics: [] as QuestionDiagnostic[],
+  }));
+  for (const entry of retained) {
+    bounded[entry.capabilityIndex]!.questionDiagnostics.push(entry.diagnostic);
+  }
+  return bounded;
+}
+
 export class ResolverService {
   private current: ResolverSnapshot | null = null;
   private invalidated = false;
@@ -385,8 +495,9 @@ export class ResolverService {
    *  backstop. Every typed query routes through here; before reusing a cached or
    *  in-memory snapshot it re-validates the recorded input fingerprints and the
    *  schema/resolver version, rebuilding on any mismatch. Validation re-reads
-   *  ONLY the exact source paths the snapshot recorded (via `ports.readFile`) —
-   *  it never lists/walks capability folders, so unchanged inputs are a cheap
+   *  ONLY the exact source paths the snapshot recorded; profile templates use
+   *  the same bounded contained-file port as discovery, while other sources use
+   *  `ports.readFile`. It never lists/walks capability folders, so unchanged inputs are a cheap
    *  hash comparison with no rediscovery. Freshness is fingerprint-driven only;
    *  there is no elapsed-time / TTL path. */
   private ensure(): ResolverSnapshot {
@@ -402,6 +513,10 @@ export class ResolverService {
 
     const { fresh, reasons } = evaluateFreshness(candidate, this.ports.workspaceRoot, {
       readFile: (p) => this.ports.readFile(p),
+      readContainedFile: this.ports.readContainedFile
+        ? (root, selectedPath, maxBytes) =>
+            this.ports.readContainedFile!(root, selectedPath, maxBytes)
+        : undefined,
       generatorVersion: RESOLVER_GENERATOR.version,
     });
     if (!fresh) {
@@ -463,6 +578,7 @@ export class ResolverService {
         requires: c.requires,
         conflicts: c.conflicts,
         profileTemplatePath: c.profileTemplatePath,
+        questions: c.questions,
       })),
     };
   }
@@ -659,6 +775,46 @@ export class ResolverService {
         reaction: "continue",
         recovery: plan.recovery,
         message: plan.message,
+      };
+    }
+
+    if (plan.kind === "contained") {
+      const result = this.ports.readContainedFile
+        ? this.ports.readContainedFile(
+            plan.capabilityRoot,
+            plan.selectedPath,
+            MAX_PROFILE_TEMPLATE_BYTES,
+          )
+        : ({
+            status: "unsupported",
+            path: null,
+            content: null,
+          } satisfies ContainedFileReadResult);
+      if (result.status === "ok") {
+        return {
+          status: "served",
+          refClass: plan.refClass,
+          path: result.path,
+          content: result.content,
+          bytes: Buffer.byteLength(result.content, "utf8"),
+        };
+      }
+
+      const messageByStatus: Record<Exclude<typeof result.status, "ok">, string> = {
+        missing: "the declared profile template is missing.",
+        "too-large": "the declared profile template exceeds the maximum allowed size.",
+        unsafe:
+          "the declared profile template is not one regular, non-symlink file contained beneath its capability root.",
+        unsupported: "contained profile-template reads are unavailable.",
+        unreadable: "the declared profile template could not be read safely.",
+      };
+      return {
+        status: "unresolved",
+        refClass: plan.refClass,
+        category: "registry-invalid",
+        reaction: "continue",
+        recovery: recoveryFor("registry-invalid"),
+        message: messageByStatus[result.status],
       };
     }
 
@@ -903,12 +1059,17 @@ export class ResolverService {
       valid: false,
       issues: [],
     };
+    const finish = (): InspectPackResponse => {
+      base.capabilities = boundInspectionQuestionDiagnostics(base.capabilities);
+      base.issues = boundInspectionIssues(base.issues);
+      return base;
+    };
 
     if (!listing.ok) {
       base.issues.push(
         "`claude plugin list --json` is unavailable; pack state cannot be resolved.",
       );
-      return base;
+      return finish();
     }
 
     const pack = listing.plugins.find(
@@ -916,7 +1077,7 @@ export class ResolverService {
     );
     if (!pack) {
       base.issues.push(`plugin \`${pluginId}\` is not installed.`);
-      return base;
+      return finish();
     }
 
     base.installed = true;
@@ -928,15 +1089,16 @@ export class ResolverService {
 
     const found = this.scanPackCapabilities(pack.installPath, pack.name);
     base.capabilities = found.capabilities;
+    base.issues.push(...found.issues);
     if (found.capabilities.length === 0) {
       base.issues.push(
         `no readable \`capabilities/*/manifest.md\` under \`${pack.installPath}\`.`,
       );
     }
 
-    base.fingerprint = this.packFingerprint(pack, found.manifestContents);
+    base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
     base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
-    return base;
+    return finish();
   }
 
   // --- R6: register_pack (mutating write-path) ---------------------------
@@ -957,6 +1119,11 @@ export class ResolverService {
     if (!inspected.installPath || inspected.capabilities.length === 0) {
       return reject(
         `plugin \`${pluginId}\` has no valid pack manifest (path-invalid or manifest-invalid).`,
+      );
+    }
+    if (!inspected.valid) {
+      return reject(
+        `plugin \`${pluginId}\` has invalid pack metadata: ${inspected.issues.join(" ")}`,
       );
     }
     if (inspected.fingerprint !== expectedFingerprint) {
@@ -1035,9 +1202,14 @@ export class ResolverService {
   private scanPackCapabilities(
     installPath: string,
     pluginName: string,
-  ): { capabilities: PackCapabilitySummary[]; manifestContents: string[] } {
+  ): {
+    capabilities: PackCapabilitySummary[];
+    fingerprintInputs: Array<{ path: string; content: string | null }>;
+    issues: string[];
+  } {
     const capabilities: PackCapabilitySummary[] = [];
-    const manifestContents: string[] = [];
+    const fingerprintInputs: Array<{ path: string; content: string | null }> = [];
+    const issues: string[] = [];
     // Discover the pack's capability folders by listing `<installPath>/
     // capabilities/*` and keeping those with a readable `manifest.md`. This
     // folder listing runs ONLY on the register write-path (init), never on a
@@ -1049,28 +1221,107 @@ export class ResolverService {
       const manifestAbs = joinSlash(installPath, rel, "manifest.md");
       const body = this.ports.readFile(manifestAbs);
       if (body === null) continue;
-      manifestContents.push(body);
+      fingerprintInputs.push({ path: normalizeSlashes(manifestAbs), content: body });
+
+      const manifest = parseManifest(body);
+      let questions: CapabilityRecord["questions"] = [];
+      let questionDiagnostics: QuestionDiagnostic[] = [];
+      if (manifest.profileTemplate) {
+        const capabilityRoot = joinSlash(installPath, rel);
+        const templateAbs = resolveContainedCapabilityPath(
+          capabilityRoot,
+          manifest.profileTemplate,
+        );
+        if (templateAbs === null) {
+          questionDiagnostics = [
+            makeQuestionDiagnostic(
+              name,
+              null,
+              "profile-template",
+              "question/template-path-invalid",
+              "declared template path must be a forward-slash relative path contained beneath its capability folder.",
+            ),
+          ];
+        } else {
+          const templateRead = this.ports.readContainedFile
+            ? this.ports.readContainedFile(
+                capabilityRoot,
+                manifest.profileTemplate,
+                MAX_PROFILE_TEMPLATE_BYTES,
+              )
+            : ({
+                status: "unsupported",
+                path: templateAbs,
+                content: null,
+              } satisfies ContainedFileReadResult);
+          const templateRaw = templateRead.status === "ok" ? templateRead.content : null;
+          fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
+          if (templateRead.status === "missing") {
+            questionDiagnostics = [
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-missing",
+                "declared template is not readable.",
+              ),
+            ];
+          } else if (templateRead.status === "too-large") {
+            questionDiagnostics = [
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-too-large",
+                `declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
+              ),
+            ];
+          } else if (templateRead.status !== "ok") {
+            questionDiagnostics = [
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-path-invalid",
+                "declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.",
+              ),
+            ];
+          } else {
+            const parsed = parseQuestionDeclarations(name, templateRead.content);
+            if (parsed.ok) questions = parsed.questions;
+            else questionDiagnostics = parsed.diagnostics;
+          }
+        }
+      }
+
+      if (questionDiagnostics.length > 0) {
+        issues.push(...questionDiagnostics.map((issue) => issue.message));
+      }
       capabilities.push({
         name,
         path: `plugin:${pluginName}/${rel}`,
         manifestPath: normalizeSlashes(manifestAbs),
-        kind: this.manifestKind(body),
+        kind: manifest.kind,
+        questions,
+        questionDiagnostics,
       });
     }
-    return { capabilities, manifestContents };
+    return { capabilities, fingerprintInputs, issues };
   }
 
-  private manifestKind(body: string): string | null {
-    const m = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/m.exec(body);
-    return m ? m[1] : null;
-  }
-
-  private packFingerprint(pack: InstalledPlugin, manifestContents: string[]): string {
+  private packFingerprint(
+    pack: InstalledPlugin,
+    inputs: Array<{ path: string; content: string | null }>,
+  ): string {
     return sha256Hex(
       JSON.stringify({
         installPath: pack.installPath,
         version: pack.version,
-        manifests: manifestContents.map((c) => sha256Hex(c)),
+        sources: inputs.map((input) => ({
+          path: input.path,
+          present: input.content !== null,
+          sha256: input.content === null ? null : sha256Hex(input.content),
+        })),
       }),
     );
   }

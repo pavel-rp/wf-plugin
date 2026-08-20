@@ -96,6 +96,8 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     },
 
     readFile: (absPath) => fsIO.readFile(absPath),
+    readContainedFile: (capabilityRoot, selectedPath, maxBytes) =>
+      fsIO.readContainedFile!(capabilityRoot, selectedPath, maxBytes),
 
     writeFile: (absPath, content) => {
       mkdirSync(dirname(absPath), { recursive: true });

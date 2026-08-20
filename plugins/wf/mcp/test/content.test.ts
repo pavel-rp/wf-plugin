@@ -19,8 +19,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveSnapshot } from "../src/resolver/engine.js";
-import { normalizeSlashes } from "../src/resolver/paths.js";
+import {
+  joinSlash,
+  normalizeSlashes,
+  type ContainedFileReadResult,
+} from "../src/resolver/paths.js";
 import { parsePluginList } from "../src/resolver/plugin-list.js";
+import { MAX_PROFILE_TEMPLATE_BYTES } from "../src/resolver/questions.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
 import type { ResolverSnapshot } from "../src/resolver/types.js";
 
@@ -84,7 +89,8 @@ const PLUGIN_LIST = JSON.stringify([
 function makePorts(opts?: {
   registry?: string;
   pluginList?: string | null;
-}): ResolverServicePorts & { files: Map<string, string> } {
+  containedStatus?: Exclude<ContainedFileReadResult["status"], "ok">;
+}): ResolverServicePorts & { files: Map<string, string>; readFileCalls: string[] } {
   const files = new Map<string, string>();
   const seed: Record<string, string> = {
     [`${WS}/_local/config.md`]: opts?.registry ?? REGISTRY,
@@ -99,11 +105,34 @@ function makePorts(opts?: {
   for (const [k, v] of Object.entries(seed)) files.set(normalizeSlashes(k), v);
 
   const pluginListRaw = opts?.pluginList === undefined ? PLUGIN_LIST : opts.pluginList;
-  const io = { readFile: (p: string) => files.get(normalizeSlashes(p)) ?? null };
+  const readFileCalls: string[] = [];
+  const readFile = (p: string): string | null => {
+    const normalized = normalizeSlashes(p);
+    readFileCalls.push(normalized);
+    return files.get(normalized) ?? null;
+  };
+  const readContainedFile = (
+    capabilityRoot: string,
+    selectedPath: string,
+    maxBytes: number,
+  ): ContainedFileReadResult => {
+    const path = normalizeSlashes(joinSlash(capabilityRoot, selectedPath));
+    if (opts?.containedStatus) {
+      return { status: opts.containedStatus, path, content: null };
+    }
+    const content = files.get(path);
+    if (content === undefined) return { status: "missing", path, content: null };
+    if (Buffer.byteLength(content, "utf8") > maxBytes) {
+      return { status: "too-large", path, content: null };
+    }
+    return { status: "ok", path, content };
+  };
+  const io = { readFile, readContainedFile };
   let cache: ResolverSnapshot | null = null;
 
   return {
     files,
+    readFileCalls,
     workspaceRoot: WS,
     corePluginRoot: CORE,
     resolveFresh: () =>
@@ -118,7 +147,8 @@ function makePorts(opts?: {
       cache = snap;
     },
     readCache: () => cache,
-    readFile: (p) => files.get(normalizeSlashes(p)) ?? null,
+    readFile,
+    readContainedFile,
     writeFile: (p, content) => files.set(normalizeSlashes(p), content),
     listDirs: () => [],
     listPlugins: () =>
@@ -177,13 +207,59 @@ test("serves a pack skill REFERENCES-TEMPLATE via the resolved plugin root", () 
   assert.match(r.path, /packs\/wf-demo\/skills\/init\/references\/onboard\.md$/);
 });
 
-test("serves a pack PROFILE-TEMPLATE body via the manifest's declared path", () => {
-  const svc = new ResolverService(makePorts());
+test("serves a pack PROFILE-TEMPLATE body through the bounded contained-file port", () => {
+  const ports = makePorts();
+  const svc = new ResolverService(ports);
   const r = svc.resolveContent({ class: "profile-template", capability: "demo" });
   assert.equal(r.status, "served");
   if (r.status !== "served") return;
   assert.equal(r.content, PROFILE_BODY);
   assert.match(r.path, /packs\/wf-demo\/capabilities\/demo\/profile\.template\.json$/);
+  assert.equal(
+    ports.readFileCalls.filter((path) => path.endsWith("/profile.template.json")).length,
+    0,
+    "profile templates must never use unrestricted readFile",
+  );
+});
+
+for (const scenario of ["symlink", "non-regular file"]) {
+  test(`rejects a ${scenario} PROFILE-TEMPLATE body without path or content`, () => {
+    const ports = makePorts({ containedStatus: "unsafe" });
+    const svc = new ResolverService(ports);
+    const r = svc.resolveContent({ class: "profile-template", capability: "demo" });
+    assert.equal(r.status, "unresolved");
+    if (r.status !== "unresolved") return;
+    assert.equal(r.category, "registry-invalid");
+    assert.equal(r.refClass, "profile-template");
+    assert.ok(!("content" in r));
+    assert.ok(!("path" in r));
+    assert.equal(
+      ports.readFileCalls.filter((path) => path.endsWith("/profile.template.json")).length,
+      0,
+      "rejected templates must never fall back to unrestricted readFile",
+    );
+  });
+}
+
+test("rejects a profile template one byte over the body-serving limit", () => {
+  const ports = makePorts();
+  ports.files.set(
+    `${PACK}/capabilities/demo/profile.template.json`,
+    "x".repeat(MAX_PROFILE_TEMPLATE_BYTES + 1),
+  );
+  const svc = new ResolverService(ports);
+  const r = svc.resolveContent({ class: "profile-template", capability: "demo" });
+  assert.equal(r.status, "unresolved");
+  if (r.status !== "unresolved") return;
+  assert.equal(r.category, "registry-invalid");
+  assert.match(r.message, /maximum allowed size/);
+  assert.ok(!("content" in r));
+  assert.ok(!("path" in r));
+  assert.equal(
+    ports.readFileCalls.filter((path) => path.endsWith("/profile.template.json")).length,
+    0,
+    "oversized templates must never fall back to unrestricted readFile",
+  );
 });
 
 // --- dangling / unrecoverable → resolve_gate degradation, no body ----------

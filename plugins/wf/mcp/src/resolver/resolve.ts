@@ -1,21 +1,24 @@
 // wf resolver — the deterministic snapshot builder.
 //
 // `buildSnapshot` is a PURE function of its declared inputs plus an injected
-// read-only IO port (a single `readFile` probe). Given identical inputs it
-// produces an identical snapshot (the persist-time `generatedAt` stamp is the
-// only non-deterministic field, and it is supplied by the caller). This is what
-// makes the engine testable without a real filesystem or the `claude` CLI: a
-// test drives it with synthetic file contents and a fixture plugin-list.
+// read-only IO port. Given identical inputs it produces an identical snapshot
+// (the persist-time `generatedAt` stamp is the only non-deterministic field, and
+// it is supplied by the caller). This makes the engine testable without a real
+// filesystem or the `claude` CLI: a test drives it with synthetic file contents
+// and a fixture plugin-list.
 //
 // It records ONLY paths, normalized metadata, source fingerprints, resolution
-// diagnostics, and provenance. It never reads or stores a fragment/skill/prompt
-// body — it resolves a fragment's DISPATCH path and stops there.
+// diagnostics, and provenance. It never reads or stores a fragment/skill body;
+// a declared profile template is read through a bounded containment-aware port
+// only to normalize its reserved question metadata, and its raw body is discarded.
 
 import {
   isAbsoluteRoot,
   joinSlash,
   normalizeSlashes,
   resolveCapabilityPath,
+  resolveContainedCapabilityPath,
+  type ContainedFileReadResult,
   type InstalledRoot,
   type RecordedRoot,
 } from "./paths.js";
@@ -35,6 +38,11 @@ import {
 } from "./slot.js";
 import { parseRegistry } from "./registry.js";
 import { parseManifest } from "./manifest.js";
+import {
+  MAX_PROFILE_TEMPLATE_BYTES,
+  applyQuestionValues,
+  parseQuestionDeclarations,
+} from "./questions.js";
 import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
 import { parseCoreConfig, parseRoutingConfig } from "./config.js";
 import { fingerprint } from "./fingerprint.js";
@@ -47,6 +55,7 @@ import {
   type PackRecord,
   type PluginRootRecord,
   type ProviderOwnershipRecord,
+  type QuestionDiagnostic,
   type ResolverSnapshot,
   type SlotProvenanceRecord,
   type SourceFingerprint,
@@ -60,6 +69,13 @@ import {
  *  directory is absent. */
 export interface ResolverIO {
   readFile(absPath: string): string | null;
+  /** Security boundary for manifest-selected profile templates. Omission fails
+   * closed for question discovery; core never falls back to an unrestricted read. */
+  readContainedFile?(
+    capabilityRoot: string,
+    selectedPath: string,
+    maxBytes: number,
+  ): ContainedFileReadResult;
   listFiles?(absDir: string): string[];
 }
 
@@ -107,10 +123,39 @@ function toAbsolute(workspaceRoot: string, snapshotPath: string): string {
     : joinSlash(workspaceRoot, snapshotPath);
 }
 
+/** Canonical question provenance is the owning capability folder, which is the
+ *  only stable identity shared by installed-pack inspection and aliased registry rows. */
+function questionPackName(resolvedPath: string, fallback: string): string {
+  const normalized = normalizeSlashes(resolvedPath).replace(/\/+$/, "");
+  const separator = normalized.lastIndexOf("/");
+  const name = separator >= 0 ? normalized.slice(separator + 1) : normalized;
+  return name || fallback;
+}
+
 /** Parse an `inline: <rel>` dispatch to its rel path; `null` for subagent/other. */
 function inlineDispatchRel(dispatch: string): string | null {
   const m = /^inline:\s*(.+)$/.exec(dispatch.trim());
   return m ? m[1].trim() : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function appendQuestionDiagnostics(
+  target: Diagnostic[],
+  questionDiagnostics: readonly QuestionDiagnostic[],
+): void {
+  for (const issue of questionDiagnostics) {
+    target.push({
+      severity: "error",
+      code: issue.code,
+      message: issue.message,
+      category: "registry-invalid",
+      recovery:
+        "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`.",
+    });
+  }
 }
 
 export function buildSnapshot(
@@ -224,6 +269,7 @@ export function buildSnapshot(
     let requires: string[] = [];
     let conflicts: string[] = [];
     let profileTemplatePath: string | null = null;
+    let questions: CapabilityRecord["questions"] = [];
 
     if (resolved.manifestPath) {
       const content = io.readFile(resolved.manifestPath);
@@ -238,10 +284,75 @@ export function buildSnapshot(
         requires = m.requires;
         conflicts = m.conflicts;
         if (m.profileTemplate && resolved.resolvedPath) {
-          profileTemplatePath = relativize(
-            workspaceRoot,
-            joinSlash(resolved.resolvedPath, m.profileTemplate),
+          const packName = questionPackName(resolved.resolvedPath, row.name);
+          const profileTemplateAbs = resolveContainedCapabilityPath(
+            resolved.resolvedPath,
+            m.profileTemplate,
           );
+          if (profileTemplateAbs === null) {
+            appendQuestionDiagnostics(diagnostics, [
+              {
+                code: "question/template-path-invalid",
+                pack: packName,
+                question: null,
+                field: "profile-template",
+                message: `pack \`${packName}\`, field \`profile-template\`: declared template path \`${m.profileTemplate}\` must be a forward-slash relative path contained beneath its capability folder.`,
+              },
+            ]);
+          } else {
+            profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
+            const templateRead = io.readContainedFile
+              ? io.readContainedFile(
+                  resolved.resolvedPath,
+                  m.profileTemplate,
+                  MAX_PROFILE_TEMPLATE_BYTES,
+                )
+              : ({
+                  status: "unsupported",
+                  path: profileTemplateAbs,
+                  content: null,
+                } satisfies ContainedFileReadResult);
+            const profileTemplateRaw =
+              templateRead.status === "ok" ? templateRead.content : null;
+            sources.push(
+              fingerprint("profile-template", profileTemplatePath, profileTemplateRaw),
+            );
+            if (templateRead.status === "missing") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-missing",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template \`${m.profileTemplate}\` is not readable.`,
+                },
+              ]);
+            } else if (templateRead.status === "too-large") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-too-large",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
+                },
+              ]);
+            } else if (templateRead.status !== "ok") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-path-invalid",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`,
+                },
+              ]);
+            } else {
+              const parsedQuestions = parseQuestionDeclarations(packName, templateRead.content);
+              if (parsedQuestions.ok) questions = parsedQuestions.questions;
+              else appendQuestionDiagnostics(diagnostics, parsedQuestions.diagnostics);
+            }
+          }
         }
       }
     }
@@ -291,6 +402,7 @@ export function buildSnapshot(
       requires,
       conflicts,
       profileTemplatePath,
+      questions,
       validity,
     };
   });
@@ -399,18 +511,53 @@ export function buildSnapshot(
       `${cap.name}.profile.json`,
     );
     const content = io.readFile(profilePath);
-    if (content === null) continue;
     sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
+    if (content === null) continue;
     try {
-      profiles[cap.name] = JSON.parse(content);
-    } catch (err) {
-      diagnostics.push({
-        severity: "warning",
-        code: "profile/unparseable",
-        message: `profile for \`${cap.name}\` is not valid JSON: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      });
+      const parsedProfile: unknown = JSON.parse(content);
+      profiles[cap.name] = parsedProfile;
+      if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
+        if (!isRecord(parsedProfile)) {
+          cap.questions = [];
+          appendQuestionDiagnostics(diagnostics, [
+            {
+              code: "question/persisted-container-invalid",
+              pack: packName,
+              question: null,
+              field: "profile",
+              message: `pack \`${packName}\`, field \`profile\`: persisted question answers require a JSON object keyed by declared destination.`,
+            },
+          ]);
+        } else {
+          const applied = applyQuestionValues(cap.questions, { persisted: parsedProfile });
+          if (applied.ok) cap.questions = applied.questions;
+          else {
+            cap.questions = [];
+            appendQuestionDiagnostics(diagnostics, applied.diagnostics);
+          }
+        }
+      }
+    } catch {
+      if (cap.questions.length > 0) {
+        const packName = cap.questions[0]?.pack ?? cap.name;
+        cap.questions = [];
+        appendQuestionDiagnostics(diagnostics, [
+          {
+            code: "question/persisted-unparseable",
+            pack: packName,
+            question: null,
+            field: "profile",
+            message: `pack \`${packName}\`, field \`profile\`: persisted question answers must be valid JSON.`,
+          },
+        ]);
+      } else {
+        diagnostics.push({
+          severity: "warning",
+          code: "profile/unparseable",
+          message: `profile for \`${cap.name}\` is not valid JSON.`,
+        });
+      }
     }
   }
 

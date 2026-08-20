@@ -34,6 +34,41 @@ export function joinSlash(...segments: string[]): string {
     .join("/");
 }
 
+/** Resolve a manifest-controlled file path beneath one capability root.
+ *  Reject absolute anchors, backslashes, empty/dot segments, and traversal before
+ *  joining, then prove the normalized result remains under the normalized root. */
+export function resolveContainedCapabilityPath(root: string, relative: string): string | null {
+  if (
+    relative.length === 0 ||
+    relative.includes("\0") ||
+    relative.includes("\\") ||
+    isAbsoluteRoot(relative)
+  ) {
+    return null;
+  }
+  const segments = relative.split("/");
+  if (
+    segments.some(
+      (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":"),
+    )
+  ) {
+    return null;
+  }
+
+  const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
+  const candidate = joinSlash(normalizedRoot, ...segments);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  return candidate.startsWith(prefix) ? candidate : null;
+}
+
+export type ContainedFileReadResult =
+  | { status: "ok"; path: string; content: string }
+  | {
+      status: "missing" | "unsafe" | "too-large" | "unsupported" | "unreadable";
+      path: string | null;
+      content: null;
+    };
+
 const PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
 
 export interface ParsedAnchor {

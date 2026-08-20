@@ -118,6 +118,8 @@ function refreshIfStale(root: string): void {
   // recorded absence the freshness check compares, never a fake empty inventory.
   const { fresh, reasons } = evaluateFreshness(cached, root, {
     readFile: (p) => fsIO.readFile(p),
+    readContainedFile: (capabilityRoot, selectedPath, maxBytes) =>
+      fsIO.readContainedFile!(capabilityRoot, selectedPath, maxBytes),
     pluginListRaw: runPluginList(),
     generatorVersion: RESOLVER_GENERATOR.version,
   });

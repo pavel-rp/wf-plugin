@@ -19,15 +19,17 @@
  *  Bumped to 3 in WF-334 when `_local/constitution.md` became a fingerprinted
  *  `constitution` source (so a project-clause edit invalidates the snapshot and
  *  the SessionStart hook serves the composed constitution under fingerprint
- *  discipline) — old snapshots lack that source and must rebuild to gain it. */
-export const SNAPSHOT_SCHEMA_VERSION = 3;
+ *  discipline) — old snapshots lack that source and must rebuild to gain it.
+ *  Bumped to 4 in WF-440 when capability records gained validated interview
+ *  question metadata and profile-template source fingerprints. */
+export const SNAPSHOT_SCHEMA_VERSION = 4;
 
 /** Identity of the resolver runtime that stamps a snapshot. `version` is part of
  *  the freshness contract (WF-271): a snapshot built by a different resolver
  *  version is refreshed, so a runtime upgrade never serves a snapshot shaped by
  *  older resolution logic. Bump on any resolution-logic change that should
  *  invalidate previously persisted snapshots. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.3.0" } as const;
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.1" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */
@@ -43,6 +45,9 @@ export interface SourceFingerprint {
     | "registry"
     | "core-config"
     | "manifest"
+    /** A declared capability `profile.template.json` — hashed but never stored raw;
+     * its validated `ask` metadata is normalized into `questions`. */
+    | "profile-template"
     | "profile"
     | "plugin-list"
     /** A pack slot-contribution body (`<cap>/<inline-dispatch>`) — hashed, never
@@ -91,6 +96,92 @@ export interface ArticleRecord {
   value: string;
 }
 
+/** Deterministic declarative schema for one pack-owned project question. */
+export type QuestionSchema =
+  | {
+      type: "string";
+      minLength?: never;
+      maxLength?: never;
+      pattern?: never;
+    }
+  | {
+      type: "string";
+      minLength: number;
+      maxLength: number;
+      pattern?: string;
+    }
+  | { type: "boolean" }
+  | { type: "integer"; minimum: number; maximum: number }
+  | { type: "enum"; values: string[] };
+
+/** Closed value set produced by successful question validation. */
+export type QuestionValue = string | boolean | number;
+
+/** One validated declaration from a profile template's ordered top-level `ask`
+ * array. `pack` is the capability identity that owns the template. */
+export interface QuestionDeclaration {
+  pack: string;
+  id: string;
+  destination: string;
+  prompt: string;
+  schema: QuestionSchema;
+  suggestedDefault?: QuestionValue;
+}
+
+/** Every value candidate passes through the same schema validator regardless of
+ * provenance. Only `persisted` can make a question resolved. */
+export type QuestionValueSource =
+  | "suggested-default"
+  | "pack-default"
+  | "personal"
+  | "persisted"
+  | "proposed";
+
+export interface QuestionDiagnostic {
+  code: string;
+  pack: string;
+  question: string | null;
+  field: string;
+  message: string;
+}
+
+export type QuestionValueValidation =
+  | { valid: true; source: QuestionValueSource; value: QuestionValue; diagnostics: [] }
+  | {
+      valid: false;
+      source: QuestionValueSource;
+      value: unknown;
+      diagnostics: QuestionDiagnostic[];
+    };
+
+export interface QuestionSuggestion {
+  source: "suggested-default" | "pack-default" | "personal";
+  value: QuestionValue;
+}
+
+export type QuestionResolutionState =
+  | {
+      status: "unresolved";
+      source: null;
+      value: null;
+      suggestions: QuestionSuggestion[];
+    }
+  | {
+      status: "resolved";
+      source: "persisted";
+      value: QuestionValue;
+      suggestions: QuestionSuggestion[];
+    };
+
+/** Body-free resolver metadata for one validated declaration and its value state. */
+export interface QuestionRecord extends QuestionDeclaration {
+  state: QuestionResolutionState;
+}
+
+export type QuestionDeclarationResult =
+  | { ok: true; questions: QuestionRecord[]; diagnostics: [] }
+  | { ok: false; questions: []; diagnostics: QuestionDiagnostic[] };
+
 /** An active registry capability, resolved to metadata. */
 export interface CapabilityRecord {
   /** Registry `Capability` column — identity only. */
@@ -112,6 +203,9 @@ export interface CapabilityRecord {
   conflicts: string[];
   /** Normalized path declared by `profile-template:`, or `null`. */
   profileTemplatePath: string | null;
+  /** Ordered, validated declarations plus effective persisted/suggestion state.
+   * Empty when no questions are declared or the complete set failed validation. */
+  questions: QuestionRecord[];
   /** `ok` when the manifest resolved and parsed; `unrecoverable` when the
    *  registered path yields no readable manifest. */
   validity: "ok" | "unrecoverable";

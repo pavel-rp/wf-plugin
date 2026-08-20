@@ -91,8 +91,32 @@ A capability manifest lives at `{path}/manifest.md` and carries:
   manifest key, not a table row.
 - **`requires:` / `conflicts:`** — optional capability names, resolved at validation.
 - **`profile-template:`** — optional, and only when the capability fills contract slots with project
-  values. It names an authoritative default template; a downstream override is seeded only on
-  divergence, with the override winning per key.
+  values. It names one forward-slash path relative to the capability folder (normally
+  `profile.template.json`). The JSON template may reserve an ordered top-level `ask` array; each
+  entry has exactly `id`, `destination`, `prompt`, `schema`, and optional `suggestedDefault`.
+  - `id` is lowercase and hyphenated. `destination` matches
+    `^[A-Za-z][A-Za-z0-9_.-]*$`, is unique, and is not the exact reserved destination `ask`.
+    `prompt` is non-empty metadata, not executable prose.
+  - `schema.type` is exactly `string`, `boolean`, `integer`, or `enum`. A string is either
+    unbounded with no constraint fields or has both non-negative `minLength` and `maxLength`;
+    `pattern` is allowed only on the bounded form. An integer has both inclusive safe-integer
+    `minimum` and `maximum`. An enum has a non-empty array of unique non-empty string `values`.
+  - A pattern is at most 256 characters and its value bound is at most 1,024 characters. Outside
+    character classes the safe subset permits no grouping or alternation, permits no numeric or
+    named backreferences, and permits at most one variable quantifier. Braced bounds are at most
+    1,024; fixed `{n}` and `{n,n}` quantifiers remain allowed.
+  - The template is at most 262,144 UTF-8 bytes, `ask` at most 64 entries, each prompt at most
+    2,048 characters, each enum at most 128 values, and normalized question metadata at most
+    131,072 UTF-8 bytes. Invalid-declaration diagnostics retain at most 256 ordered entries within
+    that byte ceiling and end in a fixed truncation marker when more were omitted. Unknown or
+    type-inappropriate fields, invalid/reversed bounds, invalid defaults, unsafe patterns, or any
+    over-limit declaration reject the complete question set; the resolver never exposes a partial
+    set.
+  - A validated `suggestedDefault`, an ordinary template value at `destination`, and a personal
+    value remain provenance-tagged suggestions. Only a valid explicitly persisted project value
+    resolves the question. The resolver exposes validated metadata (including `prompt`), never the
+    raw template body. A downstream override is seeded only on divergence, with the override
+    winning per key.
 - **`skills:`** — documentation for a `feature` or `both` kind, recording where its skills live.
   Native composition, not this field, is what loads them.
 
