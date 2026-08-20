@@ -26015,7 +26015,7 @@ var WorkspaceServiceRegistry = class {
 
 // src/index.ts
 var SERVER_NAME = "wf-resolver";
-var SERVER_VERSION = "0.4.0";
+var SERVER_VERSION = "0.4.1";
 function createServer() {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },

@@ -15,7 +15,7 @@ import { registerResolverTools } from "./tools.js";
 import { WorkspaceServiceRegistry } from "./workspace-services.js";
 
 const SERVER_NAME = "wf-resolver";
-const SERVER_VERSION = "0.4.0";
+const SERVER_VERSION = "0.4.1";
 
 function createServer(): McpServer {
   const server = new McpServer(
