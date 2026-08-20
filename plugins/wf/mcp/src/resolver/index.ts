@@ -9,6 +9,30 @@
 export * from "./types.js";
 export { parseRegistry } from "./registry.js";
 export { parseManifest } from "./manifest.js";
+export {
+  PAYLOAD_COLUMNS,
+  MAX_PAYLOADS_PER_CAPABILITY,
+  MAX_PAYLOAD_DIAGNOSTICS,
+  MAX_NORMALIZED_PAYLOAD_BYTES,
+  isPayloadRelativePath,
+  makePayloadDiagnostic,
+  validatePayloadDeclarations,
+} from "./payloads.js";
+export {
+  COMMITTED_LEDGER_PATH,
+  LOCAL_LEDGER_PATH,
+  resolveLedgerHome,
+  createPortablePackEvidence,
+  createMachineBindingEvidence,
+  createArtifactEvidence,
+  compareLifecycleEvidence,
+  resolveArtifactAuthority,
+} from "./lifecycle-evidence.js";
+export type {
+  PortablePackEvidenceInputs,
+  MachineBindingEvidenceInputs,
+  ArtifactEvidenceInputs,
+} from "./lifecycle-evidence.js";
 export { parsePluginList } from "./plugin-list.js";
 export { parseCoreConfig } from "./config.js";
 export { fingerprint, sha256Hex } from "./fingerprint.js";
@@ -78,6 +102,8 @@ export {
   resolveAndPersist,
   extractRegistryPath,
   extractRegistryPathRaw,
+  readContainedCapabilityFile,
+  fingerprintContainedCapabilityFile,
   runPluginList,
   fsIO,
 } from "./engine.js";

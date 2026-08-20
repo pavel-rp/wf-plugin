@@ -20,6 +20,7 @@ import {
 } from "node:fs";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   normalizeSlashes,
   resolveContainedCapabilityPath,
@@ -27,7 +28,11 @@ import {
 } from "./paths.js";
 import { buildSnapshot, type BuildSnapshotInputs, type ResolverIO } from "./resolve.js";
 import { writeSnapshot } from "./snapshot-store.js";
-import { RESOLVER_GENERATOR, type ResolverSnapshot } from "./types.js";
+import {
+  RESOLVER_GENERATOR,
+  type ContainedFileFingerprintResult,
+  type ResolverSnapshot,
+} from "./types.js";
 
 const DEFAULT_REGISTRY_RELPATH = "_local/config.md";
 
@@ -44,11 +49,19 @@ function readOrNull(absPath: string): string | null {
 /** Read one manifest-selected capability file through a descriptor after canonical
  * containment and identity checks. The bounded descriptor loop prevents a raced
  * growth from materializing more than `maxBytes + 1` bytes. */
-export function readContainedCapabilityFile(
+type ContainedBytesResult =
+  | { status: "ok"; path: string; content: Buffer }
+  | {
+      status: "missing" | "unsafe" | "too-large" | "unsupported" | "unreadable";
+      path: string | null;
+      content: null;
+    };
+
+function readContainedCapabilityBytes(
   root: string,
   selectedPath: string,
   maxBytes: number,
-): ContainedFileReadResult {
+): ContainedBytesResult {
   const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
   if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
     return { status: "unsafe", path: lexicalPath, content: null };
@@ -56,11 +69,7 @@ export function readContainedCapabilityFile(
 
   const inside = (canonicalRoot: string, candidate: string): boolean => {
     const fromRoot = relative(canonicalRoot, candidate);
-    return (
-      fromRoot !== ".." &&
-      !fromRoot.startsWith(`..${sep}`) &&
-      !isAbsolute(fromRoot)
-    );
+    return fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot);
   };
   const comparable = (path: string): string => {
     const normalized = normalizeSlashes(path);
@@ -157,7 +166,7 @@ export function readContainedCapabilityFile(
     return {
       status: "ok",
       path: normalizeSlashes(lexicalPath),
-      content: Buffer.concat(chunks, total).toString("utf8"),
+      content: Buffer.concat(chunks, total),
     };
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -173,6 +182,35 @@ export function readContainedCapabilityFile(
   } finally {
     if (fd !== null) closeSync(fd);
   }
+}
+
+export function readContainedCapabilityFile(
+  root: string,
+  selectedPath: string,
+  maxBytes: number,
+): ContainedFileReadResult {
+  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
+  return result.status === "ok"
+    ? { status: "ok", path: result.path, content: result.content.toString("utf8") }
+    : { status: result.status, path: result.path, content: null };
+}
+
+/** Fingerprint raw bytes of one contained regular non-symlink source. No source
+ * body is returned or converted through UTF-8. */
+export function fingerprintContainedCapabilityFile(
+  root: string,
+  selectedPath: string,
+  maxBytes: number,
+): ContainedFileFingerprintResult {
+  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
+  return result.status === "ok"
+    ? {
+        status: "ok",
+        path: result.path,
+        sha256: createHash("sha256").update(result.content).digest("hex"),
+        bytes: result.content.length,
+      }
+    : { status: result.status, path: result.path, sha256: null, bytes: null };
 }
 
 /** List immediate file (non-directory) names of a directory, or `[]` when it is

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.138.0",
+  "version": "0.139.0",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-host generic QA host, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature, wf-author-caps authoring toolkit).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -11,7 +11,7 @@
     {
       "name": "wf",
       "source": "./plugins/wf",
-      "version": "0.95.1",
+      "version": "0.96.0",
       "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (browser-qa, angular test-host, node-ts) each ship in their own plugin.",
       "author": {
         "name": "Pavel Kalabin"
@@ -121,7 +121,7 @@
     {
       "name": "wf-author-caps",
       "source": "./plugins/wf-author-caps",
-      "version": "0.7.1",
+      "version": "0.8.0",
       "description": "wf authoring toolkit: the author-caps capability, teaching how to author capabilities, skills, and plugins for this marketplace. Ships two model-invoked reference skills — /wf-author-caps:authoring-guide (core-versus-capability sorting, plugin anatomy, interface-first skill design, skill-versus-subagent, native and registry composition, the registration flow, canonical vocabulary) and /wf-author-caps:authoring-taxonomy (the SDD phase spine, the contribution kinds, aggregate-versus-partition policy, manifest schema v2, the registry row, constitution composition, registry validation) — that load by description auto-selection when an authoring question comes up, no slash command required. Declared kind: both; attaches five inline phase fragments — guidance at spec and implement, two findings at verify (structural validation and reference existence), a scenario at qa-generation — plus constitution article keys, all inert until registered. Ships four scaffolders that emit real, already-linted files — /wf-author-caps:new-skill, /wf-author-caps:new-capability, /wf-author-caps:new-pack (a complete registerable pack skeleton: plugin manifest, capability folder, and an init skill on the pack-onboarding spine) and /wf-author-caps:new-provider (a capability bound to one contract surface, speaking only the abstract operations with binding values in profile slots) — plus /wf-author-caps:init for one-command self-registration.",
       "author": {
         "name": "Pavel Kalabin"

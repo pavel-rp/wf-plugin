@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.14.0 (WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`; WF-327 — filled-slot composition: `resolve_content` gains a `slot` content class that linearizes every contribution to a `<skill>.<point>` under an **ordered tier chain** (personal `_local/slots/<skill>.<point>.md` override > pack contribution > inline default), serving **exactly one** composed body — `replace` = the single highest-precedence body (inline default superseded), `append` = registry-ordered concatenation with the override last (inline default kept as the first, body-supplied part); a typed `unfilled` outcome directs the caller to the inline default; the chain admits a future C020 tier between local override and pack contribution with no contract change; composition is code in the bundled resolver runtime, so the model never arbitrates between fragments; WF-328 — **per-skill settings resolution**: a slotted skill's declared `## Settings` keys resolve through the SAME seeded-override pattern as capability profiles (hybrid precedence override > declared default, seeded only on divergence), re-keyed per skill on the existing `_local/profiles/` store as `_local/profiles/<skill>.settings.json`; a `resolve_settings` query serves the override-merged VALUES (a skill with no override resolves to its declared defaults, a divergent override value wins per key), and refresh-time validation rejects an override carrying a key the skill's `interface.md` does not declare LOUDLY — a `registry-invalid` error naming the key and the skill — homed at snapshot refresh, not `validate-registry.sh`, because it depends on the WF-326 interface declarations the registry validator runs without; settings files are not yet fingerprinted into the snapshot (deferred to WF-329); WF-329 — **fingerprint contributions and overrides, fail orphans loudly, expose per-slot provenance**: slot-contribution bodies, personal `_local/slots/<skill>.<point>.md` overrides, and `_local/profiles/<skill>.settings.json` settings overrides join the snapshot's fingerprinted `sources` (hashed not stored), so editing any invalidates the snapshot on the next query; refresh-time orphan validation fails LOUDLY in **both** directions — an override targeting a `skill.point` no active `## Slots` interface declares (`slot/orphaned-override`, naming the override file + missing slot id) and a registered `slot` manifest row targeting an undeclared `skill.point` (`slot/orphaned-contribution`, naming the capability + missing slot id), each a `registry-invalid` error stating a `/wf:resolve` recovery path, homed at refresh because it depends on the WF-326 interface declarations `validate-registry.sh` runs without; `resolve_inspect` gains per-slot provenance rows (slot id → winning source → tier + override presence) and the per-skill settings-override presence index; the fix reuses the existing `inspect_pack`/snapshot lifecycle exactly (no parallel freshness mechanism), covers id-level orphans only (semantic drift stays watch-list territory), and bumps the snapshot schema to 2 + the resolver generator to 0.3.0)
+**Version:** 2.15.0 (WF-442 — ordered payload declarations and deterministic portable/machine-local/artifact lifecycle evidence policy; WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`; WF-327 — filled-slot composition: `resolve_content` gains a `slot` content class that linearizes every contribution to a `<skill>.<point>` under an **ordered tier chain** (personal `_local/slots/<skill>.<point>.md` override > pack contribution > inline default), serving **exactly one** composed body — `replace` = the single highest-precedence body (inline default superseded), `append` = registry-ordered concatenation with the override last (inline default kept as the first, body-supplied part); a typed `unfilled` outcome directs the caller to the inline default; the chain admits a future C020 tier between local override and pack contribution with no contract change; composition is code in the bundled resolver runtime, so the model never arbitrates between fragments; WF-328 — **per-skill settings resolution**: a slotted skill's declared `## Settings` keys resolve through the SAME seeded-override pattern as capability profiles (hybrid precedence override > declared default, seeded only on divergence), re-keyed per skill on the existing `_local/profiles/` store as `_local/profiles/<skill>.settings.json`; a `resolve_settings` query serves the override-merged VALUES (a skill with no override resolves to its declared defaults, a divergent override value wins per key), and refresh-time validation rejects an override carrying a key the skill's `interface.md` does not declare LOUDLY — a `registry-invalid` error naming the key and the skill — homed at snapshot refresh, not `validate-registry.sh`, because it depends on the WF-326 interface declarations the registry validator runs without; settings files are not yet fingerprinted into the snapshot (deferred to WF-329); WF-329 — **fingerprint contributions and overrides, fail orphans loudly, expose per-slot provenance**: slot-contribution bodies, personal `_local/slots/<skill>.<point>.md` overrides, and `_local/profiles/<skill>.settings.json` settings overrides join the snapshot's fingerprinted `sources` (hashed not stored), so editing any invalidates the snapshot on the next query; refresh-time orphan validation fails LOUDLY in **both** directions — an override targeting a `skill.point` no active `## Slots` interface declares (`slot/orphaned-override`, naming the override file + missing slot id) and a registered `slot` manifest row targeting an undeclared `skill.point` (`slot/orphaned-contribution`, naming the capability + missing slot id), each a `registry-invalid` error stating a `/wf:resolve` recovery path, homed at refresh because it depends on the WF-326 interface declarations `validate-registry.sh` runs without; `resolve_inspect` gains per-slot provenance rows (slot id → winning source → tier + override presence) and the per-skill settings-override presence index; the fix reuses the existing `inspect_pack`/snapshot lifecycle exactly (no parallel freshness mechanism), covers id-level orphans only (semantic drift stays watch-list territory), and bumps the snapshot schema to 2 + the resolver generator to 0.3.0)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -890,6 +890,36 @@ contract and the runtime own the rest):
   explicitly persisted project value resolves a question; proposed values use the
   same deterministic validator but are not persisted here. Metadata responses carry
   the validated declaration (including its prompt), never the raw template body.
+- **Payloads table — optional, ordered.** A capability may declare files managed by
+  the pack beneath an exact `## Payloads` heading. The table has exactly these five
+  columns, in this order:
+
+  ```markdown
+  | Source | Destination | Production | Refresh | Removal |
+  ```
+
+  Each row is normalized with its pack `pluginId` and capability name as provenance,
+  while row order remains declaration order. `Source` names the declared file beneath
+  the capability root. `Destination` names the future workspace-relative target.
+  `Production` is exactly `copy`; `Refresh` is exactly
+  `replace-if-unmodified` or `retain`; `Removal` is exactly
+  `delete-if-unmodified` or `retain`. These are closed tokens: no undeclared field or
+  semantic value is inferred.
+
+  Both declarations must be non-empty, forward-slash relative lexical paths (source
+  relative to the capability root; destination relative to the workspace). They
+  reject an absolute or drive prefix, a backslash, NUL or colon, and every empty, `.`,
+  or `..` segment. Inspection additionally requires `Source` to resolve as a regular,
+  non-symlink file beneath the canonical capability root and fingerprints its raw bytes
+  with SHA-256. `Destination` receives **lexical validation only** at this boundary:
+  inspection neither resolves it against a workspace nor follows a target symlink.
+
+  An absent table or a valid header-only table is inert. Duplicate sections or columns,
+  missing/unknown columns, malformed rows, invalid tokens, unsafe paths, or unreadable
+  sources produce bounded diagnostics attributed to pack, capability, row, and field.
+  One defect rejects the complete inspected pack payload set: no partial declaration
+  set or source-hash set is exposed, and registration performs no write. Inspection
+  returns normalized metadata and hashes only — never source bodies.
 - **`requires:` / `conflicts:`** — optional; resolved at registry validation
   (`requires:` satisfied; `conflicts:` not both active).
 - **`article:`** — **optional, repeatable.** A capability with non-negotiable
@@ -909,6 +939,76 @@ A capability attaches only the fragments it provides; an unattached phase no-ops
 for that capability. Two composition mechanisms stay separate: **features compose
 natively** (install N plugins → their skills are all discoverable, no custom
 machinery), while **phase fragments compose via the registry** at runtime.
+
+---
+
+## Payload lifecycle evidence policy
+
+> **Normative runtime text:** [payload declarations and lifecycle evidence](capability-registry.ops.md#payload-declarations-and-lifecycle-evidence).
+
+The resolver exposes pure, body-free proof records so later discovery and application
+work can distinguish portable pack identity from machine-local installation facts.
+All path/hash arrays and artifact owners are deterministically ordered by stable
+identity; every fingerprint is a lowercase SHA-256 digest. Duplicate identities,
+malformed hashes, or incomplete required values fail closed instead of yielding a
+partial record.
+
+**Ledger home.** The only accepted portable-ledger selector values are `committed` and
+`local`; an absent value defaults to `committed`. `committed` selects
+`.wf/install-state.json`, while `local` selects `_local/install-state.json`.
+Machine-binding evidence always belongs at `_local/install-state.json`, regardless of
+the portable selection. This contract resolves paths only; persistence is downstream.
+
+**Portable pack evidence has exactly five fields:**
+
+- `pluginId`
+- `version`
+- ordered `capabilities`
+- ordered `manifestHashes` (`path`, `sha256`)
+- ordered `declaredSourceHashes` (`path`, `sha256`)
+
+It contains no canonical install root, local path, CLI fact, timestamp, or other
+machine datum. Manifest and source paths are portable pack-relative identities.
+
+**Machine-binding evidence has exactly six fields:**
+
+- `pluginId`
+- `canonicalRoot`
+- `cliScope`
+- `enablement`
+- `observedVersion`
+- ordered `localFingerprints` (`path`, `sha256`)
+
+The local record carries the current installation observation and never substitutes
+for portable identity.
+
+**Comparison precedence.** Comparison first requires complete expected portable,
+observed portable, and observed binding evidence. Missing proof yields
+`evidence-missing`. A portable difference then yields `portable-mismatch` **before**
+any root-movement fact is considered. Only portable equality admits local comparison:
+an absent prior binding yields `binding-seed` with the observed binding as a
+**nonpersisted proposal**; a changed canonical root yields `root-moved`; another local
+change yields `local-mismatch`; exact equality yields `equal`. A seed proposal is not
+stale evidence and this pure comparison never writes it.
+
+**Artifact evidence and authority.** One produced artifact record contains exactly its
+lexical `destination`, the complete deterministically ordered owners (each
+`pluginId`, `capability`, and declared `source`), the
+`declaredSourceFingerprint`, the `producedContentHash`, and the full semantic tuple
+`production`, `refresh`, `removal`. Mutation authority exists only when this complete
+proof is present and the observed destination bytes still hash to the recorded
+produced-content hash. Then persistence is permitted, replacement is permitted only
+for `replace-if-unmodified`, and removal only for `delete-if-unmodified`. Missing,
+incomplete, malformed, or modified proof grants **no** persistence, replacement, or
+deletion authority.
+
+**Hard scope boundary (WF-442).** This declaration/evidence boundary does not discover
+or select payloads into snapshot state; map lifecycle or stale-overlay states; render a
+plan; canonicalize or contain workspace targets; inspect target symlinks; arbitrate
+collisions or owners; produce destination bytes; compose or write `.wf/`; persist a
+ledger or binding; open a transaction or journal; apply, refresh, delete, recover,
+repair, bootstrap, upgrade, or migrate a runner. Those behaviours remain downstream
+consumers of this pure inspection contract.
 
 ---
 

@@ -206,12 +206,15 @@ function parseManifest(markdown) {
   const lines = markdown.split(/\r?\n/).map(stripCr);
   let kind = null;
   const fragments = [];
+  let payloads = null;
   const articles = [];
   const requires = [];
   const conflicts = [];
   let profileTemplate = null;
   let inFragments = false;
   let sawFragHeader = false;
+  let inPayloads = false;
+  let sawPayloadHeader = false;
   for (const line of lines) {
     const trimmed = line.trim();
     if (kind === null) {
@@ -237,15 +240,34 @@ function parseManifest(markdown) {
     if (/^#{1,6}\s+/.test(line)) {
       if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
         inFragments = true;
+        inPayloads = false;
         sawFragHeader = false;
         continue;
       }
-      if (inFragments) inFragments = false;
+      if (/^#{1,6}\s+Payloads\s*$/i.test(trimmed)) {
+        inFragments = false;
+        inPayloads = true;
+        sawPayloadHeader = false;
+        payloads ??= { headers: [], rows: [], sectionCount: 0 };
+        payloads.sectionCount++;
+        continue;
+      }
+      inFragments = false;
+      inPayloads = false;
     }
-    if (!inFragments) continue;
+    if (!inFragments && !inPayloads) continue;
     if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => trimCell(c));
     if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
+    if (inPayloads) {
+      if (!sawPayloadHeader) {
+        sawPayloadHeader = true;
+        if (payloads && payloads.headers.length === 0) payloads.headers = cells;
+        continue;
+      }
+      payloads?.rows.push(cells);
+      continue;
+    }
     if (!sawFragHeader) {
       sawFragHeader = true;
       continue;
@@ -259,12 +281,15 @@ function parseManifest(markdown) {
     fragments.push({
       phase,
       contributionKind,
-      dispatch: (dispatchRaw ?? "").trim().replace(/^`/, "").replace(/`$/, "").trim(),
+      dispatch: trimCell(dispatchRaw ?? ""),
       scope
     });
   }
-  return { kind, fragments, articles, requires, conflicts, profileTemplate };
+  return { kind, fragments, payloads, articles, requires, conflicts, profileTemplate };
 }
+
+// src/resolver/payloads.ts
+var MAX_NORMALIZED_PAYLOAD_BYTES = 256 * 1024;
 
 // src/resolver/plugin-list.ts
 var REQUIRED_FIELDS = [
@@ -2087,7 +2112,7 @@ function readOrNull(absPath) {
     throw err;
   }
 }
-function readContainedCapabilityFile(root, selectedPath, maxBytes) {
+function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
   const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
   if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
     return { status: "unsafe", path: lexicalPath, content: null };
@@ -2171,7 +2196,7 @@ function readContainedCapabilityFile(root, selectedPath, maxBytes) {
     return {
       status: "ok",
       path: normalizeSlashes(lexicalPath),
-      content: Buffer.concat(chunks, total).toString("utf8")
+      content: Buffer.concat(chunks, total)
     };
   } catch (err) {
     const code = err.code;
@@ -2187,6 +2212,10 @@ function readContainedCapabilityFile(root, selectedPath, maxBytes) {
   } finally {
     if (fd !== null) closeSync(fd);
   }
+}
+function readContainedCapabilityFile(root, selectedPath, maxBytes) {
+  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
+  return result.status === "ok" ? { status: "ok", path: result.path, content: result.content.toString("utf8") } : { status: result.status, path: result.path, content: null };
 }
 function listFilesOrEmpty(absDir) {
   try {

@@ -20554,12 +20554,15 @@ function parseManifest(markdown) {
   const lines = markdown.split(/\r?\n/).map(stripCr);
   let kind = null;
   const fragments = [];
+  let payloads = null;
   const articles = [];
   const requires = [];
   const conflicts = [];
   let profileTemplate = null;
   let inFragments = false;
   let sawFragHeader = false;
+  let inPayloads = false;
+  let sawPayloadHeader = false;
   for (const line of lines) {
     const trimmed = line.trim();
     if (kind === null) {
@@ -20585,15 +20588,34 @@ function parseManifest(markdown) {
     if (/^#{1,6}\s+/.test(line)) {
       if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
         inFragments = true;
+        inPayloads = false;
         sawFragHeader = false;
         continue;
       }
-      if (inFragments) inFragments = false;
+      if (/^#{1,6}\s+Payloads\s*$/i.test(trimmed)) {
+        inFragments = false;
+        inPayloads = true;
+        sawPayloadHeader = false;
+        payloads ??= { headers: [], rows: [], sectionCount: 0 };
+        payloads.sectionCount++;
+        continue;
+      }
+      inFragments = false;
+      inPayloads = false;
     }
-    if (!inFragments) continue;
+    if (!inFragments && !inPayloads) continue;
     if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => trimCell(c));
     if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
+    if (inPayloads) {
+      if (!sawPayloadHeader) {
+        sawPayloadHeader = true;
+        if (payloads && payloads.headers.length === 0) payloads.headers = cells;
+        continue;
+      }
+      payloads?.rows.push(cells);
+      continue;
+    }
     if (!sawFragHeader) {
       sawFragHeader = true;
       continue;
@@ -20607,11 +20629,334 @@ function parseManifest(markdown) {
     fragments.push({
       phase,
       contributionKind,
-      dispatch: (dispatchRaw ?? "").trim().replace(/^`/, "").replace(/`$/, "").trim(),
+      dispatch: trimCell(dispatchRaw ?? ""),
       scope
     });
   }
-  return { kind, fragments, articles, requires, conflicts, profileTemplate };
+  return { kind, fragments, payloads, articles, requires, conflicts, profileTemplate };
+}
+
+// src/resolver/payloads.ts
+var PAYLOAD_COLUMNS = [
+  "source",
+  "destination",
+  "production",
+  "refresh",
+  "removal"
+];
+var MAX_PAYLOADS_PER_CAPABILITY = 256;
+var MAX_PAYLOAD_DIAGNOSTICS = 256;
+var MAX_NORMALIZED_PAYLOAD_BYTES = 256 * 1024;
+var MAX_LABEL_LENGTH = 128;
+function safeLabel(value, pattern, fallback) {
+  return value.length <= MAX_LABEL_LENGTH && pattern.test(value) ? value : fallback;
+}
+function makePayloadDiagnostic(pluginId, capability, row, field, code, detail) {
+  const safePlugin = safeLabel(pluginId, /^[A-Za-z0-9][A-Za-z0-9@._-]*$/, "(invalid-plugin)");
+  const safeCapability = safeLabel(
+    capability,
+    /^[a-z0-9][a-z0-9-]*$/,
+    "(invalid-capability)"
+  );
+  const owner = `plugin \`${safePlugin}\`, capability \`${safeCapability}\``;
+  const rowLabel = row === null ? "" : `, payload row ${row}`;
+  return {
+    code,
+    pluginId: safePlugin,
+    capability: safeCapability,
+    row,
+    field,
+    message: `${owner}${rowLabel}, field \`${field}\`: ${detail}`
+  };
+}
+function diagnosticBytes(diagnostics) {
+  return Buffer.byteLength(JSON.stringify(diagnostics), "utf8");
+}
+function finalizeDiagnostics(pluginId, capability, diagnostics) {
+  const retained = [];
+  let truncated = false;
+  for (const diagnostic of diagnostics) {
+    if (retained.length >= MAX_PAYLOAD_DIAGNOSTICS) {
+      truncated = true;
+      break;
+    }
+    if (diagnosticBytes([...retained, diagnostic]) > MAX_NORMALIZED_PAYLOAD_BYTES) {
+      truncated = true;
+      break;
+    }
+    retained.push(diagnostic);
+  }
+  if (!truncated) return retained;
+  const sentinel = makePayloadDiagnostic(
+    pluginId,
+    capability,
+    null,
+    "table",
+    "payload/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit."
+  );
+  while (retained.length >= MAX_PAYLOAD_DIAGNOSTICS || diagnosticBytes([...retained, sentinel]) > MAX_NORMALIZED_PAYLOAD_BYTES) {
+    retained.pop();
+  }
+  return [...retained, sentinel];
+}
+function isPayloadRelativePath(value) {
+  return resolveContainedCapabilityPath("/capability", value) !== null;
+}
+function normalizeHeader(value) {
+  return value.trim().toLowerCase();
+}
+function fieldDiagnostic(diagnostics, pluginId, capability, row, field, code, detail) {
+  diagnostics.push(makePayloadDiagnostic(pluginId, capability, row, field, code, detail));
+}
+function validatePayloadDeclarations(pluginId, capability, table) {
+  if (table === null) return { ok: true, payloads: [], diagnostics: [] };
+  const diagnostics = [];
+  if (table.sectionCount !== 1) {
+    diagnostics.push(
+      makePayloadDiagnostic(
+        pluginId,
+        capability,
+        null,
+        "table",
+        "payload/table-duplicate",
+        "must declare exactly one `## Payloads` section."
+      )
+    );
+  }
+  if (table.rows.length > MAX_PAYLOADS_PER_CAPABILITY) {
+    diagnostics.push(
+      makePayloadDiagnostic(
+        pluginId,
+        capability,
+        null,
+        "table",
+        "payload/table-too-many",
+        `must contain at most ${MAX_PAYLOADS_PER_CAPABILITY} rows.`
+      )
+    );
+  }
+  const headers = table.headers.map(normalizeHeader);
+  const headerSet = new Set(headers);
+  for (const expected of PAYLOAD_COLUMNS) {
+    const count = headers.filter((header) => header === expected).length;
+    if (count === 0) {
+      diagnostics.push(
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          null,
+          "table",
+          "payload/table-missing-column",
+          `missing required \`${expected}\` column.`
+        )
+      );
+    } else if (count > 1) {
+      diagnostics.push(
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          null,
+          "table",
+          "payload/table-duplicate-column",
+          `declares \`${expected}\` more than once.`
+        )
+      );
+    }
+  }
+  for (const header of headerSet) {
+    if (!PAYLOAD_COLUMNS.includes(header)) {
+      diagnostics.push(
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          null,
+          "table",
+          "payload/table-unknown-column",
+          "contains an unknown column."
+        )
+      );
+    }
+  }
+  if (diagnostics.length > 0) {
+    return {
+      ok: false,
+      payloads: [],
+      diagnostics: finalizeDiagnostics(pluginId, capability, diagnostics)
+    };
+  }
+  const indexes = Object.fromEntries(headers.map((header, index) => [header, index]));
+  const payloads = [];
+  for (let index = 0; index < table.rows.length; index++) {
+    const rowNumber = index + 1;
+    const cells = table.rows[index];
+    if (cells.length !== headers.length) {
+      diagnostics.push(
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          rowNumber,
+          "table",
+          "payload/row-width",
+          "must contain exactly one cell for every declared column."
+        )
+      );
+      continue;
+    }
+    const source = cells[indexes.source] ?? "";
+    const destination = cells[indexes.destination] ?? "";
+    const production = cells[indexes.production] ?? "";
+    const refresh = cells[indexes.refresh] ?? "";
+    const removal = cells[indexes.removal] ?? "";
+    const before = diagnostics.length;
+    if (!isPayloadRelativePath(source)) {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "source",
+        "payload/source-invalid",
+        "must be a non-empty forward-slash relative file path with no absolute prefix, drive prefix, backslash, NUL, colon, empty segment, `.` segment, or `..` segment."
+      );
+    }
+    if (!isPayloadRelativePath(destination)) {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "destination",
+        "payload/destination-invalid",
+        "must be a non-empty forward-slash workspace-relative lexical path with no absolute prefix, drive prefix, backslash, NUL, colon, empty segment, `.` segment, or `..` segment."
+      );
+    }
+    if (production !== "copy") {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "production",
+        "payload/production-invalid",
+        "must be exactly `copy`."
+      );
+    }
+    if (refresh !== "replace-if-unmodified" && refresh !== "retain") {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "refresh",
+        "payload/refresh-invalid",
+        "must be exactly `replace-if-unmodified` or `retain`."
+      );
+    }
+    if (removal !== "delete-if-unmodified" && removal !== "retain") {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "removal",
+        "payload/removal-invalid",
+        "must be exactly `delete-if-unmodified` or `retain`."
+      );
+    }
+    if (diagnostics.length === before) {
+      payloads.push({
+        pluginId,
+        capability,
+        source,
+        destination,
+        production,
+        refresh,
+        removal
+      });
+    }
+  }
+  if (diagnostics.length > 0) {
+    return {
+      ok: false,
+      payloads: [],
+      diagnostics: finalizeDiagnostics(pluginId, capability, diagnostics)
+    };
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(payloads), "utf8");
+  if (bytes > MAX_NORMALIZED_PAYLOAD_BYTES) {
+    return {
+      ok: false,
+      payloads: [],
+      diagnostics: [
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          null,
+          "table",
+          "payload/metadata-too-large",
+          `normalized payload metadata must be at most ${MAX_NORMALIZED_PAYLOAD_BYTES} UTF-8 bytes.`
+        )
+      ]
+    };
+  }
+  return { ok: true, payloads, diagnostics: [] };
+}
+
+// src/resolver/lifecycle-evidence.ts
+var SHA256_RE = /^[a-f0-9]{64}$/;
+function nonEmpty(value) {
+  return typeof value === "string" && value.length > 0;
+}
+function uniqueSortedStrings(values) {
+  if (values.some((value) => !nonEmpty(value))) return null;
+  const sorted = [...values].sort((left, right) => left.localeCompare(right));
+  return new Set(sorted).size === sorted.length ? sorted : null;
+}
+function orderedHashes(records) {
+  const normalized = [];
+  const paths = /* @__PURE__ */ new Set();
+  for (const record2 of records) {
+    if (!nonEmpty(record2.path) || !SHA256_RE.test(record2.sha256) || paths.has(record2.path)) {
+      return null;
+    }
+    paths.add(record2.path);
+    normalized.push({ path: record2.path, sha256: record2.sha256 });
+  }
+  return normalized.sort(
+    (left, right) => left.path.localeCompare(right.path) || left.sha256.localeCompare(right.sha256)
+  );
+}
+function createPortablePackEvidence(inputs) {
+  if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.version)) return null;
+  const capabilities = uniqueSortedStrings(inputs.capabilities);
+  const manifestHashes = orderedHashes(inputs.manifestHashes);
+  const declaredSourceHashes = orderedHashes(inputs.declaredSourceHashes);
+  if (capabilities === null || manifestHashes === null || declaredSourceHashes === null) {
+    return null;
+  }
+  return {
+    pluginId: inputs.pluginId,
+    version: inputs.version,
+    capabilities,
+    manifestHashes,
+    declaredSourceHashes
+  };
+}
+function createMachineBindingEvidence(inputs) {
+  if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.canonicalRoot) || inputs.cliScope !== null && !nonEmpty(inputs.cliScope) || inputs.observedVersion !== null && !nonEmpty(inputs.observedVersion)) {
+    return null;
+  }
+  const localFingerprints = orderedHashes(inputs.localFingerprints);
+  if (localFingerprints === null) return null;
+  return {
+    pluginId: inputs.pluginId,
+    canonicalRoot: inputs.canonicalRoot,
+    cliScope: inputs.cliScope,
+    enablement: inputs.enablement,
+    observedVersion: inputs.observedVersion,
+    localFingerprints
+  };
 }
 
 // src/resolver/plugin-list.ts
@@ -20870,10 +21215,10 @@ function makeQuestionDiagnostic(pack, question, field, code, detail) {
     message: `${owner}, field \`${safeField}\`: ${detail}`
   };
 }
-function diagnosticBytes(diagnostics) {
+function diagnosticBytes2(diagnostics) {
   return Buffer.byteLength(JSON.stringify(diagnostics), "utf8");
 }
-function finalizeDiagnostics(pack, diagnostics) {
+function finalizeDiagnostics2(pack, diagnostics) {
   const retained = [];
   let truncated = false;
   for (const issue2 of diagnostics) {
@@ -20881,7 +21226,7 @@ function finalizeDiagnostics(pack, diagnostics) {
       truncated = true;
       break;
     }
-    if (diagnosticBytes([...retained, issue2]) > MAX_NORMALIZED_QUESTION_BYTES) {
+    if (diagnosticBytes2([...retained, issue2]) > MAX_NORMALIZED_QUESTION_BYTES) {
       truncated = true;
       break;
     }
@@ -20895,7 +21240,7 @@ function finalizeDiagnostics(pack, diagnostics) {
     "question/diagnostics-truncated",
     "additional diagnostics omitted after aggregate limit."
   );
-  while (retained.length >= MAX_QUESTION_DIAGNOSTICS || diagnosticBytes([...retained, sentinel]) > MAX_NORMALIZED_QUESTION_BYTES) {
+  while (retained.length >= MAX_QUESTION_DIAGNOSTICS || diagnosticBytes2([...retained, sentinel]) > MAX_NORMALIZED_QUESTION_BYTES) {
     retained.pop();
   }
   return [...retained, sentinel];
@@ -21457,7 +21802,7 @@ function parseQuestionDeclarations(pack, rawTemplate) {
     declarations.push(declaration);
   }
   if (diagnostics.length > 0) {
-    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics2(pack, diagnostics) };
   }
   const questions = [];
   for (const declaration of declarations) {
@@ -21489,7 +21834,7 @@ function parseQuestionDeclarations(pack, rawTemplate) {
     });
   }
   if (diagnostics.length > 0) {
-    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics2(pack, diagnostics) };
   }
   const sizeDiagnostic = normalizedMetadataDiagnostic(pack, questions);
   return sizeDiagnostic === null ? { ok: true, questions, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
@@ -21540,7 +21885,7 @@ function applyQuestionValues(questions, inputs) {
   }
   const pack = resolved[0]?.pack ?? questions[0]?.pack ?? "unknown";
   if (diagnostics.length > 0) {
-    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics2(pack, diagnostics) };
   }
   const sizeDiagnostic = normalizedMetadataDiagnostic(pack, resolved);
   return sizeDiagnostic === null ? { ok: true, questions: resolved, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
@@ -22735,6 +23080,7 @@ import {
 } from "node:fs";
 import { isAbsolute as isAbsolute3, join as join2, relative, resolve as resolve2, sep } from "node:path";
 import { execFileSync as execFileSync2 } from "node:child_process";
+import { createHash as createHash2 } from "node:crypto";
 
 // src/resolver/snapshot-store.ts
 import {
@@ -22806,7 +23152,7 @@ function readOrNull(absPath) {
     throw err;
   }
 }
-function readContainedCapabilityFile(root, selectedPath, maxBytes) {
+function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
   const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
   if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
     return { status: "unsafe", path: lexicalPath, content: null };
@@ -22890,7 +23236,7 @@ function readContainedCapabilityFile(root, selectedPath, maxBytes) {
     return {
       status: "ok",
       path: normalizeSlashes(lexicalPath),
-      content: Buffer.concat(chunks, total).toString("utf8")
+      content: Buffer.concat(chunks, total)
     };
   } catch (err) {
     const code = err.code;
@@ -22906,6 +23252,19 @@ function readContainedCapabilityFile(root, selectedPath, maxBytes) {
   } finally {
     if (fd !== null) closeSync(fd);
   }
+}
+function readContainedCapabilityFile(root, selectedPath, maxBytes) {
+  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
+  return result.status === "ok" ? { status: "ok", path: result.path, content: result.content.toString("utf8") } : { status: result.status, path: result.path, content: null };
+}
+function fingerprintContainedCapabilityFile(root, selectedPath, maxBytes) {
+  const result = readContainedCapabilityBytes(root, selectedPath, maxBytes);
+  return result.status === "ok" ? {
+    status: "ok",
+    path: result.path,
+    sha256: createHash2("sha256").update(result.content).digest("hex"),
+    bytes: result.content.length
+  } : { status: result.status, path: result.path, sha256: null, bytes: null };
 }
 function listFilesOrEmpty(absDir) {
   try {
@@ -23016,6 +23375,14 @@ function createDefaultPorts(workspaceRoot) {
     },
     readFile: (absPath) => fsIO.readFile(absPath),
     readContainedFile: (capabilityRoot, selectedPath, maxBytes) => fsIO.readContainedFile(capabilityRoot, selectedPath, maxBytes),
+    fingerprintContainedFile: (capabilityRoot, selectedPath, maxBytes) => fingerprintContainedCapabilityFile(capabilityRoot, selectedPath, maxBytes),
+    canonicalizeRoot: (root) => {
+      try {
+        return normalizeSlashes(realpathSync3(root));
+      } catch {
+        return null;
+      }
+    },
     writeFile: (absPath, content) => {
       mkdirSync2(dirname2(absPath), { recursive: true });
       writeFileSync2(absPath, content, { encoding: "utf8" });
@@ -25022,6 +25389,7 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
 }
 
 // src/service.ts
+var MAX_DECLARED_SOURCE_BYTES = 16 * 1024 * 1024;
 var KNOWN_SURFACES = /* @__PURE__ */ new Set([
   "engine",
   "host",
@@ -25100,6 +25468,48 @@ function boundInspectionQuestionDiagnostics(capabilities) {
   }));
   for (const entry of retained) {
     bounded[entry.capabilityIndex].questionDiagnostics.push(entry.diagnostic);
+  }
+  return bounded;
+}
+function boundInspectionPayloadDiagnostics(pluginId, capabilities) {
+  const retained = [];
+  let truncatedAt = null;
+  outer: for (let capabilityIndex = 0; capabilityIndex < capabilities.length; capabilityIndex++) {
+    for (const diagnostic of capabilities[capabilityIndex].payloadDiagnostics) {
+      if (retained.length >= MAX_PAYLOAD_DIAGNOSTICS) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      const candidate = [...retained.map((entry) => entry.diagnostic), diagnostic];
+      if (Buffer.byteLength(JSON.stringify(candidate), "utf8") > MAX_NORMALIZED_PAYLOAD_BYTES) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      retained.push({ capabilityIndex, diagnostic });
+    }
+  }
+  if (truncatedAt === null) return [...capabilities];
+  const sentinel = makePayloadDiagnostic(
+    pluginId,
+    capabilities[truncatedAt]?.name ?? "inspection",
+    null,
+    "table",
+    "payload/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit."
+  );
+  while (retained.length >= MAX_PAYLOAD_DIAGNOSTICS || Buffer.byteLength(
+    JSON.stringify([...retained.map((entry) => entry.diagnostic), sentinel]),
+    "utf8"
+  ) > MAX_NORMALIZED_PAYLOAD_BYTES) {
+    retained.pop();
+  }
+  retained.push({ capabilityIndex: truncatedAt, diagnostic: sentinel });
+  const bounded = capabilities.map((capability) => ({
+    ...capability,
+    payloadDiagnostics: []
+  }));
+  for (const entry of retained) {
+    bounded[entry.capabilityIndex].payloadDiagnostics.push(entry.diagnostic);
   }
   return bounded;
 }
@@ -25597,12 +26007,15 @@ var ResolverService = class {
       version: null,
       installPath: null,
       capabilities: [],
+      portableEvidence: null,
+      machineBinding: null,
       fingerprint: null,
       valid: false,
       issues: []
     };
     const finish = () => {
       base.capabilities = boundInspectionQuestionDiagnostics(base.capabilities);
+      base.capabilities = boundInspectionPayloadDiagnostics(pluginId, base.capabilities);
       base.issues = boundInspectionIssues(base.issues);
       return base;
     };
@@ -25624,13 +26037,37 @@ var ResolverService = class {
     base.version = pack.version;
     base.installPath = pack.installPath;
     if (!pack.enabled) base.issues.push(`plugin \`${pluginId}\` is disabled.`);
-    const found = this.scanPackCapabilities(pack.installPath, pack.name);
+    const found = this.scanPackCapabilities(pack.installPath, pack.name, pack.id);
     base.capabilities = found.capabilities;
     base.issues.push(...found.issues);
     if (found.capabilities.length === 0) {
       base.issues.push(
         `no readable \`capabilities/*/manifest.md\` under \`${pack.installPath}\`.`
       );
+    }
+    if (!found.payloadInvalid) {
+      base.portableEvidence = createPortablePackEvidence({
+        pluginId: pack.id,
+        version: pack.version,
+        capabilities: found.capabilities.map((capability) => capability.name),
+        manifestHashes: found.manifestHashes,
+        declaredSourceHashes: found.declaredSourceHashes
+      });
+      if (base.portableEvidence === null) {
+        base.issues.push("portable pack evidence is incomplete or non-deterministic.");
+      }
+    }
+    const canonicalRoot = this.ports.canonicalizeRoot?.(pack.installPath) ?? null;
+    base.machineBinding = canonicalRoot === null ? null : createMachineBindingEvidence({
+      pluginId: pack.id,
+      canonicalRoot,
+      cliScope: pack.scope,
+      enablement: pack.enabled ? "enabled" : "disabled",
+      observedVersion: pack.version,
+      localFingerprints: found.localFingerprints
+    });
+    if (base.machineBinding === null) {
+      base.issues.push("machine-local binding evidence is incomplete or non-deterministic.");
     }
     base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
     base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
@@ -25713,23 +26150,104 @@ var ResolverService = class {
     const at = pluginId.indexOf("@");
     return at > 0 ? pluginId.slice(0, at) : pluginId;
   }
-  scanPackCapabilities(installPath, pluginName) {
+  scanPackCapabilities(installPath, pluginName, pluginId) {
     const capabilities = [];
-    const fingerprintInputs = [];
+    const fingerprintByPath = /* @__PURE__ */ new Map();
+    const manifestHashByPath = /* @__PURE__ */ new Map();
+    const declaredSourceHashByPath = /* @__PURE__ */ new Map();
+    const localFingerprintByPath = /* @__PURE__ */ new Map();
     const issues = [];
+    let payloadInvalid = false;
     const capsDir = joinSlash(installPath, "capabilities");
     const names = [...this.ports.listDirs(capsDir)].sort();
     for (const name of names) {
       const rel = `capabilities/${name}`;
-      const manifestAbs = joinSlash(installPath, rel, "manifest.md");
+      const capabilityRoot = joinSlash(installPath, rel);
+      const manifestAbs = joinSlash(capabilityRoot, "manifest.md");
       const body = this.ports.readFile(manifestAbs);
       if (body === null) continue;
-      fingerprintInputs.push({ path: normalizeSlashes(manifestAbs), content: body });
+      const manifestHash = sha256Hex(body);
+      const normalizedManifestAbs = normalizeSlashes(manifestAbs);
+      fingerprintByPath.set(normalizedManifestAbs, {
+        path: normalizedManifestAbs,
+        present: true,
+        sha256: manifestHash
+      });
+      manifestHashByPath.set(`${rel}/manifest.md`, {
+        path: `${rel}/manifest.md`,
+        sha256: manifestHash
+      });
+      localFingerprintByPath.set(normalizedManifestAbs, {
+        path: normalizedManifestAbs,
+        sha256: manifestHash
+      });
       const manifest = parseManifest(body);
+      const payloadResult = validatePayloadDeclarations(pluginId, name, manifest.payloads);
+      let payloads = [];
+      let payloadDiagnostics = [];
+      if (!payloadResult.ok) {
+        payloadInvalid = true;
+        payloadDiagnostics = payloadResult.diagnostics;
+      } else {
+        payloads = payloadResult.payloads;
+        for (let rowIndex = 0; rowIndex < payloads.length; rowIndex++) {
+          const payload = payloads[rowIndex];
+          const sourceRel = `${rel}/${payload.source}`;
+          const sourceAbs = joinSlash(capabilityRoot, payload.source);
+          const fingerprint2 = this.ports.fingerprintContainedFile ? this.ports.fingerprintContainedFile(
+            capabilityRoot,
+            payload.source,
+            MAX_DECLARED_SOURCE_BYTES
+          ) : {
+            status: "unsupported",
+            path: sourceAbs,
+            sha256: null,
+            bytes: null
+          };
+          if (fingerprint2.status === "ok") {
+            declaredSourceHashByPath.set(sourceRel, {
+              path: sourceRel,
+              sha256: fingerprint2.sha256
+            });
+            localFingerprintByPath.set(fingerprint2.path, {
+              path: fingerprint2.path,
+              sha256: fingerprint2.sha256
+            });
+            fingerprintByPath.set(fingerprint2.path, {
+              path: fingerprint2.path,
+              present: true,
+              sha256: fingerprint2.sha256
+            });
+          } else {
+            payloadInvalid = true;
+            fingerprintByPath.set(normalizeSlashes(sourceAbs), {
+              path: normalizeSlashes(sourceAbs),
+              present: false,
+              sha256: null
+            });
+            const details = {
+              missing: "declared source is missing.",
+              "too-large": `declared source exceeds ${MAX_DECLARED_SOURCE_BYTES} bytes.`,
+              unsafe: "declared source must be one regular, non-symlink file contained beneath its canonical capability root.",
+              unsupported: "contained raw-byte source fingerprinting is unavailable.",
+              unreadable: "declared source could not be fingerprinted safely."
+            };
+            payloadDiagnostics.push(
+              makePayloadDiagnostic(
+                pluginId,
+                name,
+                rowIndex + 1,
+                "source",
+                `payload/source-${fingerprint2.status}`,
+                details[fingerprint2.status]
+              )
+            );
+          }
+        }
+      }
       let questions = [];
       let questionDiagnostics = [];
       if (manifest.profileTemplate) {
-        const capabilityRoot = joinSlash(installPath, rel);
         const templateAbs = resolveContainedCapabilityPath(
           capabilityRoot,
           manifest.profileTemplate
@@ -25755,7 +26273,12 @@ var ResolverService = class {
             content: null
           };
           const templateRaw = templateRead.status === "ok" ? templateRead.content : null;
-          fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
+          const normalizedTemplateAbs = normalizeSlashes(templateAbs);
+          fingerprintByPath.set(normalizedTemplateAbs, {
+            path: normalizedTemplateAbs,
+            present: templateRaw !== null,
+            sha256: templateRaw === null ? null : sha256Hex(templateRaw)
+          });
           if (templateRead.status === "missing") {
             questionDiagnostics = [
               makeQuestionDiagnostic(
@@ -25787,6 +26310,10 @@ var ResolverService = class {
               )
             ];
           } else {
+            localFingerprintByPath.set(normalizedTemplateAbs, {
+              path: normalizedTemplateAbs,
+              sha256: sha256Hex(templateRead.content)
+            });
             const parsed = parseQuestionDeclarations(name, templateRead.content);
             if (parsed.ok) questions = parsed.questions;
             else questionDiagnostics = parsed.diagnostics;
@@ -25796,16 +26323,34 @@ var ResolverService = class {
       if (questionDiagnostics.length > 0) {
         issues.push(...questionDiagnostics.map((issue2) => issue2.message));
       }
+      if (payloadDiagnostics.length > 0) {
+        issues.push(...payloadDiagnostics.map((issue2) => issue2.message));
+      }
       capabilities.push({
         name,
         path: `plugin:${pluginName}/${rel}`,
-        manifestPath: normalizeSlashes(manifestAbs),
+        manifestPath: normalizedManifestAbs,
         kind: manifest.kind,
         questions,
+        payloads,
+        payloadDiagnostics,
         questionDiagnostics
       });
     }
-    return { capabilities, fingerprintInputs, issues };
+    if (payloadInvalid) {
+      for (const capability of capabilities) capability.payloads = [];
+      declaredSourceHashByPath.clear();
+    }
+    const ordered = (values) => [...values].sort((left, right) => left.path.localeCompare(right.path));
+    return {
+      capabilities,
+      fingerprintInputs: ordered(fingerprintByPath.values()),
+      manifestHashes: ordered(manifestHashByPath.values()),
+      declaredSourceHashes: ordered(declaredSourceHashByPath.values()),
+      localFingerprints: ordered(localFingerprintByPath.values()),
+      payloadInvalid,
+      issues
+    };
   }
   packFingerprint(pack, inputs) {
     return sha256Hex(
@@ -25814,8 +26359,8 @@ var ResolverService = class {
         version: pack.version,
         sources: inputs.map((input) => ({
           path: input.path,
-          present: input.content !== null,
-          sha256: input.content === null ? null : sha256Hex(input.content)
+          present: input.present,
+          sha256: input.sha256
         }))
       })
     );
@@ -26015,7 +26560,7 @@ var WorkspaceServiceRegistry = class {
 
 // src/index.ts
 var SERVER_NAME = "wf-resolver";
-var SERVER_VERSION = "0.4.1";
+var SERVER_VERSION = "0.5.0";
 function createServer() {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },

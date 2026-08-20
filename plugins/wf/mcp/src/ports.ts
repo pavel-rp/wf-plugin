@@ -11,6 +11,7 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   extractRegistryPathRaw,
+  fingerprintContainedCapabilityFile,
   fsIO,
   resolveSnapshot,
   readSnapshot,
@@ -98,6 +99,15 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     readFile: (absPath) => fsIO.readFile(absPath),
     readContainedFile: (capabilityRoot, selectedPath, maxBytes) =>
       fsIO.readContainedFile!(capabilityRoot, selectedPath, maxBytes),
+    fingerprintContainedFile: (capabilityRoot, selectedPath, maxBytes) =>
+      fingerprintContainedCapabilityFile(capabilityRoot, selectedPath, maxBytes),
+    canonicalizeRoot: (root) => {
+      try {
+        return normalizeSlashes(realpathSync(root));
+      } catch {
+        return null;
+      }
+    },
 
     writeFile: (absPath, content) => {
       mkdirSync(dirname(absPath), { recursive: true });

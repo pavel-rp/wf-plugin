@@ -20,6 +20,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { resolveSnapshot } from "../src/resolver/engine.js";
+import { sha256Hex } from "../src/resolver/fingerprint.js";
 import { createDefaultPorts, resolveContainedRegistryWritePath } from "../src/ports.js";
 import {
   normalizeSlashes,
@@ -64,6 +65,14 @@ profile-template: profile.template.json
 `;
 
 const DEMO_FRAGMENT = `# thing fragment\n\n${SECRET_FRAGMENT} — never read into any response.\n`;
+const SECRET_PAYLOAD_SOURCE = "SECRET_PAYLOAD_SOURCE_BODY_do_not_leak";
+const PAYLOAD_MANIFEST = `${DEMO_MANIFEST}
+## Payloads
+
+| Source | Destination | Production | Refresh | Removal |
+|--------|-------------|------------|---------|---------|
+| assets/default.bin | .wf/default.bin | copy | replace-if-unmodified | delete-if-unmodified |
+`;
 const DEMO_TEMPLATE = JSON.stringify({
   ask: [
     {
@@ -142,6 +151,17 @@ function makePorts(opts?: {
     }
     return { status: "ok" as const, path, content };
   };
+  const fingerprintContainedFile = (root: string, selectedPath: string, maxBytes: number) => {
+    const path = resolveContainedCapabilityPath(root, selectedPath);
+    if (path === null) return { status: "unsafe" as const, path: null, sha256: null, bytes: null };
+    const content = readFile(path);
+    if (content === null) return { status: "missing" as const, path, sha256: null, bytes: null };
+    const bytes = Buffer.byteLength(content, "utf8");
+    if (bytes > maxBytes) {
+      return { status: "too-large" as const, path, sha256: null, bytes: null };
+    }
+    return { status: "ok" as const, path, sha256: sha256Hex(content), bytes };
+  };
   const io = { readFile, readContainedFile };
 
   return {
@@ -166,6 +186,8 @@ function makePorts(opts?: {
     readCache: () => cache,
     readFile,
     readContainedFile,
+    fingerprintContainedFile,
+    canonicalizeRoot: (root) => normalizeSlashes(root),
     writeFile(p, content) {
       counts.writeFile++;
       files.set(normalizeSlashes(p), content);
@@ -309,6 +331,185 @@ test("no query/inspect response carries a manifest or fragment body", () => {
   assert.ok(blob.includes("fragments/thing.ops.md"));
 });
 
+test("inspect_pack exposes complete ordered validated payload and lifecycle evidence without source bodies", () => {
+  const ports = makePorts({
+    files: {
+      [`${INSTALL}/capabilities/demo/manifest.md`]: PAYLOAD_MANIFEST,
+      [`${INSTALL}/capabilities/demo/assets/default.bin`]: SECRET_PAYLOAD_SOURCE,
+    },
+  });
+  const inspected = new ResolverService(ports).inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, true);
+  assert.deepEqual(inspected.capabilities[0].payloadDiagnostics, []);
+  assert.deepEqual(inspected.capabilities[0].payloads, [
+    {
+      pluginId: "wf-demo@local",
+      capability: "demo",
+      source: "assets/default.bin",
+      destination: ".wf/default.bin",
+      production: "copy",
+      refresh: "replace-if-unmodified",
+      removal: "delete-if-unmodified",
+    },
+  ]);
+  assert.ok(inspected.portableEvidence);
+  assert.deepEqual(Object.keys(inspected.portableEvidence), [
+    "pluginId",
+    "version",
+    "capabilities",
+    "manifestHashes",
+    "declaredSourceHashes",
+  ]);
+  assert.deepEqual(inspected.portableEvidence.declaredSourceHashes.map((record) => record.path), [
+    "capabilities/demo/assets/default.bin",
+  ]);
+  assert.ok(inspected.machineBinding);
+  assert.deepEqual(Object.keys(inspected.machineBinding), [
+    "pluginId",
+    "canonicalRoot",
+    "cliScope",
+    "enablement",
+    "observedVersion",
+    "localFingerprints",
+  ]);
+  assert.ok(!JSON.stringify(inspected).includes(SECRET_PAYLOAD_SOURCE));
+});
+
+test("inspect_pack fails closed when the installed root cannot be canonicalized", () => {
+  const base = makePorts({
+    files: {
+      [`${INSTALL}/capabilities/demo/manifest.md`]: PAYLOAD_MANIFEST,
+      [`${INSTALL}/capabilities/demo/assets/default.bin`]: SECRET_PAYLOAD_SOURCE,
+    },
+  });
+  const inspected = new ResolverService({
+    ...base,
+    canonicalizeRoot: () => null,
+  }).inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, false);
+  assert.equal(inspected.machineBinding, null);
+  assert.ok(
+    inspected.issues.some((issue) =>
+      issue.includes("machine-local binding evidence is incomplete or non-deterministic"),
+    ),
+  );
+});
+
+test("one malformed capability rejects the complete inspected pack payload set and registration", () => {
+  const invalidManifest = `# other\n\n**Kind:** adapter\n\n## Payloads\n\n| Source | Destination | Production | Refresh | Removal |\n|---|---|---|---|---|\n| assets/other.bin | .wf/other.bin | render | retain | retain |\n`;
+  const ports = makePorts({
+    files: {
+      [`${INSTALL}/capabilities/demo/manifest.md`]: PAYLOAD_MANIFEST,
+      [`${INSTALL}/capabilities/demo/assets/default.bin`]: SECRET_PAYLOAD_SOURCE,
+      [`${INSTALL}/capabilities/other/manifest.md`]: invalidManifest,
+      [`${INSTALL}/capabilities/other/assets/other.bin`]: "other",
+    },
+  });
+  const service = new ResolverService(ports);
+  const inspected = service.inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, false);
+  assert.equal(inspected.portableEvidence, null);
+  assert.ok(inspected.capabilities.every((capability) => capability.payloads.length === 0));
+  assert.ok(
+    inspected.capabilities
+      .flatMap((capability) => capability.payloadDiagnostics)
+      .some((diagnostic) => diagnostic.code === "payload/production-invalid"),
+  );
+  assert.equal(service.registerPack("wf-demo@local", inspected.fingerprint!).status, "rejected");
+  assert.equal(ports.counts.writeFile, 0);
+});
+
+test("missing declared source fails closed with attributed diagnostics", () => {
+  const ports = makePorts({
+    files: { [`${INSTALL}/capabilities/demo/manifest.md`]: PAYLOAD_MANIFEST },
+  });
+  const inspected = new ResolverService(ports).inspectPack("wf-demo@local");
+  assert.equal(inspected.valid, false);
+  assert.deepEqual(inspected.capabilities[0].payloads, []);
+  assert.ok(
+    inspected.capabilities[0].payloadDiagnostics.some(
+      (diagnostic) =>
+        diagnostic.code === "payload/source-missing" &&
+        diagnostic.pluginId === "wf-demo@local" &&
+        diagnostic.capability === "demo",
+    ),
+  );
+});
+
+test("declared source bytes participate in the inspect/register stale fingerprint", () => {
+  const sourcePath = `${INSTALL}/capabilities/demo/assets/default.bin`;
+  const ports = makePorts({
+    files: {
+      [`${INSTALL}/capabilities/demo/manifest.md`]: PAYLOAD_MANIFEST,
+      [sourcePath]: "first",
+    },
+  });
+  const service = new ResolverService(ports);
+  const first = service.inspectPack("wf-demo@local");
+  assert.equal(first.valid, true);
+  ports.files.set(sourcePath, "second");
+  const second = service.inspectPack("wf-demo@local");
+  assert.equal(second.valid, true);
+  assert.notEqual(first.fingerprint, second.fingerprint);
+  const rejected = service.registerPack("wf-demo@local", first.fingerprint!);
+  assert.equal(rejected.status, "rejected");
+  assert.match(rejected.reason ?? "", /stale fingerprint/);
+});
+
+test("real contained source fingerprinting hashes raw bytes and rejects symlinks", () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-payload-source-"));
+  try {
+    const workspace = normalizeSlashes(join(root, "workspace"));
+    const install = normalizeSlashes(join(root, "wf-demo"));
+    const capability = joinSlash(install, "capabilities/demo");
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    mkdirSync(join(capability, "assets"), { recursive: true });
+    writeFileSync(join(workspace, "_local/config.md"), BASE_CONFIG);
+    writeFileSync(join(capability, "manifest.md"), PAYLOAD_MANIFEST.replace("profile-template: profile.template.json", ""));
+    const raw = Buffer.from([0x00, 0xff, 0x61, 0x80]);
+    writeFileSync(join(capability, "assets/default.bin"), raw);
+    const pluginListRaw = JSON.stringify([
+      {
+        id: "wf-demo@local",
+        version: "1.2.3",
+        scope: "user",
+        enabled: true,
+        installPath: install,
+      },
+    ]);
+    const production = createDefaultPorts(workspace);
+    const ports: ResolverServicePorts = {
+      ...production,
+      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({ workspaceRoot: workspace, pluginListRaw, now: () => new Date("2026-08-20T00:00:00.000Z") }),
+    };
+    const service = new ResolverService(ports);
+    const inspected = service.inspectPack("wf-demo@local");
+    assert.equal(inspected.valid, true);
+    assert.equal(
+      inspected.portableEvidence?.declaredSourceHashes[0].sha256,
+      "b04d8c327a36f532f52b6c9fa7600c8281f14b2fcd4ba2f522e183e8808cbc6a",
+    );
+
+    rmSync(join(capability, "assets/default.bin"));
+    writeFileSync(join(root, "outside.bin"), raw);
+    symlinkSync(join(root, "outside.bin"), join(capability, "assets/default.bin"));
+    const linked = service.inspectPack("wf-demo@local");
+    assert.equal(linked.valid, false);
+    assert.ok(
+      linked.capabilities[0].payloadDiagnostics.some(
+        (diagnostic) => diagnostic.code === "payload/source-unsafe",
+      ),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("inspect_pack exposes complete ordered validated question metadata", () => {
   const ports = makePorts();
   const svc = new ResolverService(ports);
@@ -446,13 +647,15 @@ test("real MCP tools/call dispatch exposes on-disk question metadata without tem
   const capability = joinSlash(install, "capabilities/demo");
   mkdirSync(join(workspace, "_local"), { recursive: true });
   mkdirSync(join(capability, "fragments"), { recursive: true });
+  mkdirSync(join(capability, "assets"), { recursive: true });
   writeFileSync(
     join(workspace, "_local", "config.md"),
     `${BASE_CONFIG}\n## Plugin Roots\n\n| Plugin | Root |\n|---|---|\n| wf-demo | ${install} |\n\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
   );
-  writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+  writeFileSync(join(capability, "manifest.md"), PAYLOAD_MANIFEST);
   writeFileSync(join(capability, "profile.template.json"), DEMO_TEMPLATE);
   writeFileSync(join(capability, "fragments", "thing.ops.md"), DEMO_FRAGMENT);
+  writeFileSync(join(capability, "assets", "default.bin"), SECRET_PAYLOAD_SOURCE);
 
   const pluginListRaw = JSON.stringify([
     {
@@ -541,7 +744,14 @@ test("real MCP tools/call dispatch exposes on-disk question metadata without tem
         name: "inspect_pack",
         arguments: { workspaceRoot: workspace, pluginId: "wf-demo@local" },
       }),
-    ) as { valid: boolean; capabilities: Array<{ questions: Array<{ id: string }> }> };
+    ) as {
+      valid: boolean;
+      capabilities: Array<{
+        questions: Array<{ id: string }>;
+        payloads: Array<{ destination: string }>;
+      }>;
+      portableEvidence: { declaredSourceHashes: Array<{ path: string }> } | null;
+    };
     const registry = payload(
       await request(3, "tools/call", {
         name: "resolve_registry",
@@ -555,10 +765,18 @@ test("real MCP tools/call dispatch exposes on-disk question metadata without tem
       ["project-name", "mode"],
     );
     assert.deepEqual(
+      inspected.capabilities[0].payloads.map((payload) => payload.destination),
+      [".wf/default.bin"],
+    );
+    assert.deepEqual(inspected.portableEvidence?.declaredSourceHashes.map((record) => record.path), [
+      "capabilities/demo/assets/default.bin",
+    ]);
+    assert.deepEqual(
       registry.capabilities[0].questions.map((question) => question.id),
       ["project-name", "mode"],
     );
     assert.ok(!JSON.stringify([inspected, registry]).includes(SECRET_TEMPLATE));
+    assert.ok(!JSON.stringify(inspected).includes(SECRET_PAYLOAD_SOURCE));
   } finally {
     await clientTransport.close();
     await server.close();
