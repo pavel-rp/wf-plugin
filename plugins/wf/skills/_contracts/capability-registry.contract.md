@@ -942,7 +942,7 @@ machinery), while **phase fragments compose via the registry** at runtime.
 
 ---
 
-## Payload lifecycle evidence policy
+## Payload declarations and lifecycle evidence
 
 > **Normative runtime text:** [payload declarations and lifecycle evidence](capability-registry.ops.md#payload-declarations-and-lifecycle-evidence).
 
