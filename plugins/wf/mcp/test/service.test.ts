@@ -18,7 +18,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { resolveSnapshot } from "../src/resolver/engine.js";
 import { createDefaultPorts, resolveContainedRegistryWritePath } from "../src/ports.js";
 import {
@@ -38,6 +38,9 @@ import { RESOLVER_GENERATOR, type ResolverSnapshot } from "../src/resolver/types
 
 const WS = "/ws";
 const INSTALL = "/ws/packs/wf-demo";
+const MCP_DIR = process.env.WF_MCP_DIR;
+if (!MCP_DIR) throw new Error("WF_MCP_DIR is required");
+const REPO_ROOT = normalizeSlashes(resolve(MCP_DIR, "../../.."));
 
 const SECRET_MANIFEST = "SECRET_MANIFEST_PROSE_do_not_leak";
 const SECRET_FRAGMENT = "SECRET_FRAGMENT_BODY_do_not_leak";
@@ -321,6 +324,119 @@ test("inspect_pack exposes complete ordered validated question metadata", () => 
   assert.deepEqual(inspected.capabilities[0].questions[1].state.suggestions, [
     { source: "pack-default", value: "safe" },
   ]);
+});
+
+test("real tracker manifests expose normalized template paths and complete question records", () => {
+  const fixtures = [
+    {
+      plugin: "wf-ado",
+      capability: "ado",
+      installPath: joinSlash(REPO_ROOT, "plugins/wf-ado"),
+      templateSuffix: "plugins/wf-ado/capabilities/ado/profile.template.json",
+      rawOnlyField: "work-item-id-prefix",
+      expected: [
+        {
+          pack: "ado",
+          id: "ado-organization",
+          destination: "ado-organization",
+          prompt: "Azure DevOps organization slug (the <org> segment in dev.azure.com/<org>)?",
+          schema: { type: "string" },
+        },
+        {
+          pack: "ado",
+          id: "ado-project",
+          destination: "ado-project",
+          prompt: "Azure DevOps project name?",
+          schema: { type: "string" },
+        },
+      ],
+    },
+    {
+      plugin: "wf-linear",
+      capability: "linear",
+      installPath: joinSlash(REPO_ROOT, "plugins/wf-linear"),
+      templateSuffix: "plugins/wf-linear/capabilities/linear/profile.template.json",
+      rawOnlyField: "linear-project",
+      expected: [
+        {
+          pack: "linear",
+          id: "linear-team",
+          destination: "linear-team",
+          prompt: "Linear team key or name for new issues?",
+          schema: { type: "string" },
+        },
+      ],
+    },
+  ] as const;
+
+  for (const fixture of fixtures) {
+    const root = mkdtempSync(join(tmpdir(), `wf-real-${fixture.capability}-`));
+    const workspace = normalizeSlashes(join(root, "workspace"));
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    writeFileSync(
+      join(workspace, "_local", "config.md"),
+      `${BASE_CONFIG}\n## Plugin Roots\n\n| Plugin | Root |\n|---|---|\n| ${fixture.plugin} | ${fixture.installPath} |\n\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| ${fixture.capability} | plugin:${fixture.plugin}/capabilities/${fixture.capability} |\n`,
+    );
+    const pluginListRaw = JSON.stringify([
+      {
+        id: `${fixture.plugin}@local`,
+        version: "0.0.0",
+        scope: "user",
+        enabled: true,
+        installPath: fixture.installPath,
+      },
+    ]);
+    const production = createDefaultPorts(workspace);
+    const ports: ResolverServicePorts = {
+      ...production,
+      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({
+          workspaceRoot: workspace,
+          pluginListRaw,
+          now: () => new Date("2026-08-20T00:00:00.000Z"),
+        }),
+    };
+
+    try {
+      const service = new ResolverService(ports);
+      const inspected = service.inspectPack(`${fixture.plugin}@local`);
+      assert.equal(inspected.valid, true, fixture.plugin);
+      assert.deepEqual(
+        inspected.capabilities[0].questions.map((question) => question.id),
+        fixture.expected.map((question) => question.id),
+      );
+
+      const registry = service.resolveRegistry();
+      assert.equal(registry.capabilities.length, 1, fixture.capability);
+      const active = registry.capabilities[0];
+      assert.equal(active.name, fixture.capability);
+      assert.equal(active.validity, "ok");
+      assert.ok(active.profileTemplatePath?.endsWith(fixture.templateSuffix));
+      assert.deepEqual(
+        active.questions.map(({ pack, id, destination, prompt, schema }) => ({
+          pack,
+          id,
+          destination,
+          prompt,
+          schema,
+        })),
+        fixture.expected,
+      );
+      assert.ok(
+        active.questions.every(
+          (question) =>
+            question.state.status === "unresolved" &&
+            question.state.source === null &&
+            question.state.value === null &&
+            question.state.suggestions.length === 0,
+        ),
+      );
+      assert.ok(!JSON.stringify(active).includes(fixture.rawOnlyField));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
 });
 
 test("real MCP tools/call dispatch exposes on-disk question metadata without template bodies", async () => {

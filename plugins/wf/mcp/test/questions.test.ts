@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   MAX_ENUM_VALUES,
   MAX_NORMALIZED_QUESTION_BYTES,
@@ -16,6 +18,39 @@ import type {
   QuestionValue,
   QuestionValueSource,
 } from "../src/resolver/types.js";
+
+const MCP_DIR = process.env.WF_MCP_DIR;
+if (!MCP_DIR) throw new Error("WF_MCP_DIR is required");
+const PLUGINS_ROOT = resolve(MCP_DIR, "../..");
+const ADO_TEMPLATE_PATH = join(
+  PLUGINS_ROOT,
+  "wf-ado",
+  "capabilities",
+  "ado",
+  "profile.template.json",
+);
+const LINEAR_TEMPLATE_PATH = join(
+  PLUGINS_ROOT,
+  "wf-linear",
+  "capabilities",
+  "linear",
+  "profile.template.json",
+);
+
+function shippedProfileTemplates(): Array<{ pack: string; path: string }> {
+  const templates: Array<{ pack: string; path: string }> = [];
+  for (const plugin of readdirSync(PLUGINS_ROOT, { withFileTypes: true })) {
+    if (!plugin.isDirectory()) continue;
+    const capabilitiesRoot = join(PLUGINS_ROOT, plugin.name, "capabilities");
+    if (!existsSync(capabilitiesRoot)) continue;
+    for (const capability of readdirSync(capabilitiesRoot, { withFileTypes: true })) {
+      if (!capability.isDirectory()) continue;
+      const path = join(capabilitiesRoot, capability.name, "profile.template.json");
+      if (existsSync(path)) templates.push({ pack: capability.name, path });
+    }
+  }
+  return templates.sort((left, right) => left.path.localeCompare(right.path));
+}
 
 const VALID_TEMPLATE = JSON.stringify({
   ask: [
@@ -48,6 +83,168 @@ const VALID_TEMPLATE = JSON.stringify({
   enabled: true,
   replicas: 2,
   "settings.mode": "safe",
+});
+
+test("real tracker templates declare the exact ordered question inventory", () => {
+  const fixtures = [
+    {
+      pack: "ado",
+      path: ADO_TEMPLATE_PATH,
+      ordinary: { key: "work-item-id-prefix", value: "ADO" },
+      expected: [
+        {
+          pack: "ado",
+          id: "ado-organization",
+          destination: "ado-organization",
+          prompt: "Azure DevOps organization slug (the <org> segment in dev.azure.com/<org>)?",
+          schema: { type: "string" },
+        },
+        {
+          pack: "ado",
+          id: "ado-project",
+          destination: "ado-project",
+          prompt: "Azure DevOps project name?",
+          schema: { type: "string" },
+        },
+      ],
+    },
+    {
+      pack: "linear",
+      path: LINEAR_TEMPLATE_PATH,
+      ordinary: { key: "linear-project", value: "none" },
+      expected: [
+        {
+          pack: "linear",
+          id: "linear-team",
+          destination: "linear-team",
+          prompt: "Linear team key or name for new issues?",
+          schema: { type: "string" },
+        },
+      ],
+    },
+  ] as const;
+
+  for (const fixture of fixtures) {
+    const raw = readFileSync(fixture.path, "utf8");
+    const template = JSON.parse(raw) as Record<string, unknown>;
+    assert.equal(template[fixture.ordinary.key], fixture.ordinary.value);
+    assert.ok(
+      fixture.expected.every((expected) => !Object.hasOwn(template, expected.destination)),
+      `${fixture.pack} question destinations must not carry pack defaults`,
+    );
+
+    const parsed = parseQuestionDeclarations(fixture.pack, raw);
+    assert.equal(parsed.ok, true, fixture.pack);
+    if (!parsed.ok) continue;
+    assert.deepEqual(
+      parsed.questions.map(({ pack, id, destination, prompt, schema }) => ({
+        pack,
+        id,
+        destination,
+        prompt,
+        schema,
+      })),
+      fixture.expected,
+    );
+    assert.ok(parsed.questions.every((question) => question.suggestedDefault === undefined));
+    assert.ok(
+      parsed.questions.every(
+        (question) =>
+          question.state.status === "unresolved" &&
+          question.state.source === null &&
+          question.state.value === null &&
+          question.state.suggestions.length === 0,
+      ),
+    );
+  }
+});
+
+test("real tracker questions resolve only from valid persisted values", () => {
+  const fixtures = [
+    {
+      pack: "ado",
+      path: ADO_TEMPLATE_PATH,
+      destination: "ado-organization",
+      packValue: "example-org",
+      personalValue: "personal-org",
+      persistedValue: "persisted-org",
+    },
+    {
+      pack: "linear",
+      path: LINEAR_TEMPLATE_PATH,
+      destination: "linear-team",
+      packValue: "PACK",
+      personalValue: "PERSONAL",
+      persistedValue: "PERSISTED",
+    },
+  ] as const;
+
+  for (const fixture of fixtures) {
+    const template = JSON.parse(readFileSync(fixture.path, "utf8")) as Record<string, unknown>;
+    const parsed = parseQuestionDeclarations(
+      fixture.pack,
+      JSON.stringify({ ...template, [fixture.destination]: fixture.packValue }),
+    );
+    assert.equal(parsed.ok, true, fixture.pack);
+    if (!parsed.ok) continue;
+
+    const suggested = applyQuestionValues(parsed.questions, {
+      personal: { [fixture.destination]: fixture.personalValue },
+    });
+    assert.equal(suggested.ok, true, fixture.pack);
+    if (!suggested.ok) continue;
+    const suggestedQuestion = suggested.questions.find(
+      (question) => question.destination === fixture.destination,
+    );
+    assert.deepEqual(suggestedQuestion?.state, {
+      status: "unresolved",
+      source: null,
+      value: null,
+      suggestions: [
+        { source: "pack-default", value: fixture.packValue },
+        { source: "personal", value: fixture.personalValue },
+      ],
+    });
+
+    const persisted = applyQuestionValues(parsed.questions, {
+      personal: { [fixture.destination]: fixture.personalValue },
+      persisted: { [fixture.destination]: fixture.persistedValue },
+    });
+    assert.equal(persisted.ok, true, fixture.pack);
+    if (!persisted.ok) continue;
+    const persistedQuestion = persisted.questions.find(
+      (question) => question.destination === fixture.destination,
+    );
+    assert.deepEqual(persistedQuestion?.state, {
+      status: "resolved",
+      source: "persisted",
+      value: fixture.persistedValue,
+      suggestions: [
+        { source: "pack-default", value: fixture.packValue },
+        { source: "personal", value: fixture.personalValue },
+      ],
+    });
+  }
+});
+
+test("no other shipped pack contributes lifecycle questions", () => {
+  const inventory: Array<{ pack: string; id: string }> = [];
+  for (const template of shippedProfileTemplates()) {
+    const parsed = parseQuestionDeclarations(template.pack, readFileSync(template.path, "utf8"));
+    assert.equal(parsed.ok, true, template.path);
+    if (!parsed.ok) continue;
+    inventory.push(...parsed.questions.map((question) => ({ pack: question.pack, id: question.id })));
+  }
+  assert.deepEqual(inventory, [
+    { pack: "ado", id: "ado-organization" },
+    { pack: "ado", id: "ado-project" },
+    { pack: "linear", id: "linear-team" },
+  ]);
+
+  const browserCapability = join(PLUGINS_ROOT, "wf-browser-qa", "capabilities", "browser-qa");
+  const browserManifest = readFileSync(join(browserCapability, "manifest.md"), "utf8");
+  assert.doesNotMatch(browserManifest, /^profile-template:/im);
+  assert.equal(existsSync(join(browserCapability, "profile.template.json")), false);
 });
 
 test("parseQuestionDeclarations preserves order, provenance, schemas, and attributed suggestions", () => {

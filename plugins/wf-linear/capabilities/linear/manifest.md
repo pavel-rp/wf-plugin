@@ -1,6 +1,6 @@
 # linear capability manifest
 
-**Version:** 1.6.0
+**Version:** 1.7.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** linear (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -14,6 +14,12 @@ tracker operation the capability-registry contract defines (resolve config, crea
 fetch an issue, list a parent's children, comment, move status, attach a link, enumerate
 work items by status, milestones, or cycles, and read a task's blocking predecessors). It is a **second, independent** binding of the
 same surface `ado` binds. It carries **zero** delivery-specific vocabulary.
+
+profile-template: profile.template.json
+
+The template declares exactly one project question, `linear-team`, as a plain string unresolved
+until the project persists an answer at its declared destination. `linear-project: none` remains
+ordinary non-question profile data.
 
 ## Fragments
 

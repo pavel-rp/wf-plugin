@@ -1,0 +1,17 @@
+{
+  "ask": [
+    {
+      "id": "ado-organization",
+      "destination": "ado-organization",
+      "prompt": "Azure DevOps organization slug (the <org> segment in dev.azure.com/<org>)?",
+      "schema": { "type": "string" }
+    },
+    {
+      "id": "ado-project",
+      "destination": "ado-project",
+      "prompt": "Azure DevOps project name?",
+      "schema": { "type": "string" }
+    }
+  ],
+  "work-item-id-prefix": "ADO"
+}

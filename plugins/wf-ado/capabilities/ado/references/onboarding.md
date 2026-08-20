@@ -50,14 +50,18 @@ skills:
   - plugins/wf-ado/skills/init/   # /wf-ado:init — self-registering onboarding + ADO interview (follows the shared spine in plugins/wf/skills/_contracts/pack-onboarding.ops.md)
 ```
 
-## Profile seed template
+## Profile template and declared interview
 
-This capability ships **no** `profile-template:` — the project-tunable ADO values (`ADO
-Project`, `ADO Organization`, `Work Item ID Prefix`) already live in the existing
-`_local/config.md` `## Azure DevOps` section (written by `/wf:init`, carried forward or
-interviewed for by `/wf-ado:init` Phase 4); there is no new profile file to seed. Per the
-contract's seeding convention, a capability that declares no `profile-template:` seeds nothing
-(the no-op path).
+This capability declares `profile-template: profile.template.json`. Its ordered `ask` metadata
+contains exactly the two questions the current init skill asks: `ado-organization` followed by
+`ado-project`, each a plain string persisted at the same-named profile destination. The template
+keeps `work-item-id-prefix: ADO` as ordinary non-question data; the established prefix is not an
+interview answer.
+
+The declaration is metadata for the shared project-configuration lifecycle. It does **not** replace
+or suppress today's bespoke `/wf-ado:init` interview: that skill still carries forward or writes the
+`## Azure DevOps` rows in `_local/config.md` until the separate init-alias migration lands. An absent
+persisted profile answer therefore remains unresolved even though the pack ships this template.
 
 ## Downstream registration
 
@@ -208,3 +212,6 @@ be flagged on the charter umbrella, never slipped in.
   tracker-contract extension; no genuinely missing operation was found. The two ADO-idiomatic
   adaptations (tags for labels, process-template-aware state names) and the `tf` reconciliation
   are documented above.
+- **WF-441** — declare the existing ADO Organization and ADO Project interview as two ordered
+  profile-template questions while retaining `work-item-id-prefix: ADO` as ordinary data and leaving
+  `/wf-ado:init` execution unchanged.

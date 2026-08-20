@@ -14,10 +14,24 @@ dispatch to.
 
 | Item | What it is |
 |---|---|
-| `capabilities/ado/manifest.md` | the `ado` capability's manifest — one `provider` fragment row scoped `tracker`, plus seven `slot` fill rows |
+| `capabilities/ado/manifest.md` | the `ado` capability's manifest — one `provider` fragment row scoped `tracker`, seven `slot` fill rows, and one declared profile template |
+| `capabilities/ado/profile.template.json` | project-configuration metadata declaring exactly two ordered string questions: ADO Organization, then ADO Project; `work-item-id-prefix: ADO` remains ordinary non-question data |
 | `capabilities/ado/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Azure DevOps mechanics, with a completeness coverage table |
 | seven `capabilities/ado/fragments/*-*.md` slot fills | the conveyor tracker mirror — `spec.questions`, `spec.publish`, `plan.publish`, `tasks.publish`, `implement.start`, `implement.milestone`, `implement.finish` |
 | `/wf-ado:init` | one-command self-registration — records this pack's install root, registers the `ado` capability, and interviews for (or carries forward) ADO organization/project, mirroring `/wf-git:init` (WF-122) |
+
+## Declared project questions
+
+The profile template exposes the existing ADO Organization and ADO Project interview as ordered,
+capability-owned metadata. Both are plain strings, have no suggested answer, and remain unresolved
+until a project explicitly persists a value at the declared destination. The established Work Item
+ID Prefix default, `ADO`, stays outside `ask` and cannot resolve either question.
+
+This declaration does not yet run or persist the interview. `/wf-ado:init` remains the current
+onboarding path and continues to manage the same `## Azure DevOps` config rows until the separate
+init-alias migration. Packs that declare no questions remain silent. In particular, credentials
+collected by `wf-browser-qa` remain a separate pack-specific onboarding concern, outside this
+project-question inventory.
 
 ## The conveyor tracker mirror (seven slot fills)
 
