@@ -45,8 +45,17 @@ function shippedProfileTemplates(): Array<{ pack: string; path: string }> {
     if (!existsSync(capabilitiesRoot)) continue;
     for (const capability of readdirSync(capabilitiesRoot, { withFileTypes: true })) {
       if (!capability.isDirectory()) continue;
-      const path = join(capabilitiesRoot, capability.name, "profile.template.json");
-      if (existsSync(path)) templates.push({ pack: capability.name, path });
+      const capabilityRoot = join(capabilitiesRoot, capability.name);
+      const manifestPath = join(capabilityRoot, "manifest.md");
+      if (!existsSync(manifestPath)) continue;
+      const declaration = readFileSync(manifestPath, "utf8").match(
+        /^profile-template:\s*(\S+)\s*$/m,
+      )?.[1];
+      if (!declaration) continue;
+      templates.push({
+        pack: capability.name,
+        path: resolve(capabilityRoot, declaration),
+      });
     }
   }
   return templates.sort((left, right) => left.path.localeCompare(right.path));
