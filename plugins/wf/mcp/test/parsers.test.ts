@@ -59,6 +59,13 @@ article: commit-signing = required
 |-------|-------------------|----------|-------|
 | implement | provider | \`inline: fragments/delivery.ops.md\` | delivery |
 
+## Payloads
+
+| Source | Destination | Production | Refresh | Removal |
+|--------|-------------|------------|---------|---------|
+| assets/default.json | .wf/default.json | copy | replace-if-unmodified | delete-if-unmodified |
+| assets/keep.txt | docs/keep.txt | copy | retain | retain |
+
 profile-template: profile.template.json
 `;
 
@@ -75,6 +82,14 @@ test("parseManifest extracts metadata but no fragment body", () => {
     contributionKind: "provider",
     dispatch: "inline: fragments/delivery.ops.md",
     scope: "delivery",
+  });
+  assert.deepEqual(m.payloads, {
+    headers: ["Source", "Destination", "Production", "Refresh", "Removal"],
+    rows: [
+      ["assets/default.json", ".wf/default.json", "copy", "replace-if-unmodified", "delete-if-unmodified"],
+      ["assets/keep.txt", "docs/keep.txt", "copy", "retain", "retain"],
+    ],
+    sectionCount: 1,
   });
 });
 

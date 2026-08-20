@@ -77,12 +77,28 @@ import {
   makeQuestionDiagnostic,
   parseQuestionDeclarations,
 } from "./resolver/questions.js";
+import {
+  MAX_NORMALIZED_PAYLOAD_BYTES,
+  MAX_PAYLOAD_DIAGNOSTICS,
+  makePayloadDiagnostic,
+  validatePayloadDeclarations,
+} from "./resolver/payloads.js";
+import {
+  createMachineBindingEvidence,
+  createPortablePackEvidence,
+} from "./resolver/lifecycle-evidence.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type { InstalledPlugin } from "./resolver/plugin-list.js";
 import {
   RESOLVER_GENERATOR,
   type CapabilityRecord,
+  type ContainedFileFingerprintResult,
   type Diagnostic,
+  type MachineBindingEvidence,
+  type PathHashRecord,
+  type PayloadDeclaration,
+  type PayloadDiagnostic,
+  type PortablePackEvidence,
   type QuestionDiagnostic,
   type ResolverErrorCategory,
   type ResolverSnapshot,
@@ -123,6 +139,15 @@ export interface ResolverServicePorts {
     selectedPath: string,
     maxBytes: number,
   ): ContainedFileReadResult;
+  /** Raw-byte fingerprint boundary for declared payload sources. Omission fails
+   * closed; inspection never reads a declared source through `readFile`. */
+  fingerprintContainedFile?(
+    capabilityRoot: string,
+    selectedPath: string,
+    maxBytes: number,
+  ): ContainedFileFingerprintResult;
+  /** Canonicalize the installed root for machine-local binding evidence. */
+  canonicalizeRoot?(root: string): string | null;
   /** Write a UTF-8 file (registry edits), creating parent dirs. */
   writeFile(absPath: string, content: string): void;
   /** List immediate subdirectory names of `absDir` (used ONLY on the pack
@@ -330,6 +355,10 @@ export interface PackCapabilitySummary {
   kind: string | null;
   /** Ordered validated declarations; empty when absent or when the set is invalid. */
   questions: CapabilityRecord["questions"];
+  /** Ordered normalized payload declarations; empty when absent or when any
+   * declaration/source in the inspected pack is invalid. */
+  payloads: PayloadDeclaration[];
+  payloadDiagnostics: PayloadDiagnostic[];
   /** Ordered pack/question/field-attributed declaration diagnostics, aggregate-
    *  bounded across the complete `inspect_pack` response. */
   questionDiagnostics: QuestionDiagnostic[];
@@ -343,6 +372,8 @@ export interface InspectPackResponse {
   version: string | null;
   installPath: string | null;
   capabilities: PackCapabilitySummary[];
+  portableEvidence: PortablePackEvidence | null;
+  machineBinding: MachineBindingEvidence | null;
   /** Stable identity of the pack's registerable surface; register_pack revalidates it. */
   fingerprint: string | null;
   valid: boolean;
@@ -359,6 +390,14 @@ export interface RegisterPackResponse {
   /** Preview of the registry rows the write applied (or would have applied). */
   preview: Array<{ section: string; key: string; value: string }>;
 }
+
+interface PackFingerprintInput {
+  path: string;
+  present: boolean;
+  sha256: string | null;
+}
+
+const MAX_DECLARED_SOURCE_BYTES = 16 * 1024 * 1024;
 
 /** Single source of truth for "is this a recognized surface token" — covers
  *  both the bare scope forms the provider-ownership index is keyed on
@@ -477,6 +516,59 @@ function boundInspectionQuestionDiagnostics(
   }));
   for (const entry of retained) {
     bounded[entry.capabilityIndex]!.questionDiagnostics.push(entry.diagnostic);
+  }
+  return bounded;
+}
+
+function boundInspectionPayloadDiagnostics(
+  pluginId: string,
+  capabilities: readonly PackCapabilitySummary[],
+): PackCapabilitySummary[] {
+  const retained: Array<{ capabilityIndex: number; diagnostic: PayloadDiagnostic }> = [];
+  let truncatedAt: number | null = null;
+
+  outer: for (let capabilityIndex = 0; capabilityIndex < capabilities.length; capabilityIndex++) {
+    for (const diagnostic of capabilities[capabilityIndex].payloadDiagnostics) {
+      if (retained.length >= MAX_PAYLOAD_DIAGNOSTICS) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      const candidate = [...retained.map((entry) => entry.diagnostic), diagnostic];
+      if (Buffer.byteLength(JSON.stringify(candidate), "utf8") > MAX_NORMALIZED_PAYLOAD_BYTES) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      retained.push({ capabilityIndex, diagnostic });
+    }
+  }
+
+  if (truncatedAt === null) return [...capabilities];
+
+  const sentinel = makePayloadDiagnostic(
+    pluginId,
+    capabilities[truncatedAt]?.name ?? "inspection",
+    null,
+    "table",
+    "payload/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit.",
+  );
+  while (
+    retained.length >= MAX_PAYLOAD_DIAGNOSTICS ||
+    Buffer.byteLength(
+      JSON.stringify([...retained.map((entry) => entry.diagnostic), sentinel]),
+      "utf8",
+    ) > MAX_NORMALIZED_PAYLOAD_BYTES
+  ) {
+    retained.pop();
+  }
+  retained.push({ capabilityIndex: truncatedAt, diagnostic: sentinel });
+
+  const bounded = capabilities.map((capability) => ({
+    ...capability,
+    payloadDiagnostics: [] as PayloadDiagnostic[],
+  }));
+  for (const entry of retained) {
+    bounded[entry.capabilityIndex]!.payloadDiagnostics.push(entry.diagnostic);
   }
   return bounded;
 }
@@ -1055,12 +1147,15 @@ export class ResolverService {
       version: null,
       installPath: null,
       capabilities: [],
+      portableEvidence: null,
+      machineBinding: null,
       fingerprint: null,
       valid: false,
       issues: [],
     };
     const finish = (): InspectPackResponse => {
       base.capabilities = boundInspectionQuestionDiagnostics(base.capabilities);
+      base.capabilities = boundInspectionPayloadDiagnostics(pluginId, base.capabilities);
       base.issues = boundInspectionIssues(base.issues);
       return base;
     };
@@ -1087,13 +1182,42 @@ export class ResolverService {
 
     if (!pack.enabled) base.issues.push(`plugin \`${pluginId}\` is disabled.`);
 
-    const found = this.scanPackCapabilities(pack.installPath, pack.name);
+    const found = this.scanPackCapabilities(pack.installPath, pack.name, pack.id);
     base.capabilities = found.capabilities;
     base.issues.push(...found.issues);
     if (found.capabilities.length === 0) {
       base.issues.push(
         `no readable \`capabilities/*/manifest.md\` under \`${pack.installPath}\`.`,
       );
+    }
+
+    if (!found.payloadInvalid) {
+      base.portableEvidence = createPortablePackEvidence({
+        pluginId: pack.id,
+        version: pack.version,
+        capabilities: found.capabilities.map((capability) => capability.name),
+        manifestHashes: found.manifestHashes,
+        declaredSourceHashes: found.declaredSourceHashes,
+      });
+      if (base.portableEvidence === null) {
+        base.issues.push("portable pack evidence is incomplete or non-deterministic.");
+      }
+    }
+
+    const canonicalRoot = this.ports.canonicalizeRoot?.(pack.installPath) ?? null;
+    base.machineBinding =
+      canonicalRoot === null
+        ? null
+        : createMachineBindingEvidence({
+            pluginId: pack.id,
+            canonicalRoot,
+            cliScope: pack.scope,
+            enablement: pack.enabled ? "enabled" : "disabled",
+            observedVersion: pack.version,
+            localFingerprints: found.localFingerprints,
+          });
+    if (base.machineBinding === null) {
+      base.issues.push("machine-local binding evidence is incomplete or non-deterministic.");
     }
 
     base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
@@ -1202,32 +1326,124 @@ export class ResolverService {
   private scanPackCapabilities(
     installPath: string,
     pluginName: string,
+    pluginId: string,
   ): {
     capabilities: PackCapabilitySummary[];
-    fingerprintInputs: Array<{ path: string; content: string | null }>;
+    fingerprintInputs: PackFingerprintInput[];
+    manifestHashes: PathHashRecord[];
+    declaredSourceHashes: PathHashRecord[];
+    localFingerprints: PathHashRecord[];
+    payloadInvalid: boolean;
     issues: string[];
   } {
     const capabilities: PackCapabilitySummary[] = [];
-    const fingerprintInputs: Array<{ path: string; content: string | null }> = [];
+    const fingerprintByPath = new Map<string, PackFingerprintInput>();
+    const manifestHashByPath = new Map<string, PathHashRecord>();
+    const declaredSourceHashByPath = new Map<string, PathHashRecord>();
+    const localFingerprintByPath = new Map<string, PathHashRecord>();
     const issues: string[] = [];
+    let payloadInvalid = false;
     // Discover the pack's capability folders by listing `<installPath>/
     // capabilities/*` and keeping those with a readable `manifest.md`. This
     // folder listing runs ONLY on the register write-path (init), never on a
-    // read-query — normal consumers read the already-resolved snapshot.
+    // normal resolution query.
     const capsDir = joinSlash(installPath, "capabilities");
     const names = [...this.ports.listDirs(capsDir)].sort();
     for (const name of names) {
       const rel = `capabilities/${name}`;
-      const manifestAbs = joinSlash(installPath, rel, "manifest.md");
+      const capabilityRoot = joinSlash(installPath, rel);
+      const manifestAbs = joinSlash(capabilityRoot, "manifest.md");
       const body = this.ports.readFile(manifestAbs);
       if (body === null) continue;
-      fingerprintInputs.push({ path: normalizeSlashes(manifestAbs), content: body });
+
+      const manifestHash = sha256Hex(body);
+      const normalizedManifestAbs = normalizeSlashes(manifestAbs);
+      fingerprintByPath.set(normalizedManifestAbs, {
+        path: normalizedManifestAbs,
+        present: true,
+        sha256: manifestHash,
+      });
+      manifestHashByPath.set(`${rel}/manifest.md`, {
+        path: `${rel}/manifest.md`,
+        sha256: manifestHash,
+      });
+      localFingerprintByPath.set(normalizedManifestAbs, {
+        path: normalizedManifestAbs,
+        sha256: manifestHash,
+      });
 
       const manifest = parseManifest(body);
+      const payloadResult = validatePayloadDeclarations(pluginId, name, manifest.payloads);
+      let payloads: PayloadDeclaration[] = [];
+      let payloadDiagnostics: PayloadDiagnostic[] = [];
+      if (!payloadResult.ok) {
+        payloadInvalid = true;
+        payloadDiagnostics = payloadResult.diagnostics;
+      } else {
+        payloads = payloadResult.payloads;
+        for (let rowIndex = 0; rowIndex < payloads.length; rowIndex++) {
+          const payload = payloads[rowIndex];
+          const sourceRel = `${rel}/${payload.source}`;
+          const sourceAbs = joinSlash(capabilityRoot, payload.source);
+          const fingerprint = this.ports.fingerprintContainedFile
+            ? this.ports.fingerprintContainedFile(
+                capabilityRoot,
+                payload.source,
+                MAX_DECLARED_SOURCE_BYTES,
+              )
+            : ({
+                status: "unsupported",
+                path: sourceAbs,
+                sha256: null,
+                bytes: null,
+              } satisfies ContainedFileFingerprintResult);
+
+          if (fingerprint.status === "ok") {
+            declaredSourceHashByPath.set(sourceRel, {
+              path: sourceRel,
+              sha256: fingerprint.sha256,
+            });
+            localFingerprintByPath.set(fingerprint.path, {
+              path: fingerprint.path,
+              sha256: fingerprint.sha256,
+            });
+            fingerprintByPath.set(fingerprint.path, {
+              path: fingerprint.path,
+              present: true,
+              sha256: fingerprint.sha256,
+            });
+          } else {
+            payloadInvalid = true;
+            fingerprintByPath.set(normalizeSlashes(sourceAbs), {
+              path: normalizeSlashes(sourceAbs),
+              present: false,
+              sha256: null,
+            });
+            const details: Record<Exclude<typeof fingerprint.status, "ok">, string> = {
+              missing: "declared source is missing.",
+              "too-large": `declared source exceeds ${MAX_DECLARED_SOURCE_BYTES} bytes.`,
+              unsafe:
+                "declared source must be one regular, non-symlink file contained beneath its canonical capability root.",
+              unsupported: "contained raw-byte source fingerprinting is unavailable.",
+              unreadable: "declared source could not be fingerprinted safely.",
+            };
+            payloadDiagnostics.push(
+              makePayloadDiagnostic(
+                pluginId,
+                name,
+                rowIndex + 1,
+                "source",
+                `payload/source-${fingerprint.status}`,
+                details[fingerprint.status],
+              ),
+            );
+          }
+        }
+      }
+
       let questions: CapabilityRecord["questions"] = [];
       let questionDiagnostics: QuestionDiagnostic[] = [];
       if (manifest.profileTemplate) {
-        const capabilityRoot = joinSlash(installPath, rel);
         const templateAbs = resolveContainedCapabilityPath(
           capabilityRoot,
           manifest.profileTemplate,
@@ -1255,7 +1471,12 @@ export class ResolverService {
                 content: null,
               } satisfies ContainedFileReadResult);
           const templateRaw = templateRead.status === "ok" ? templateRead.content : null;
-          fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
+          const normalizedTemplateAbs = normalizeSlashes(templateAbs);
+          fingerprintByPath.set(normalizedTemplateAbs, {
+            path: normalizedTemplateAbs,
+            present: templateRaw !== null,
+            sha256: templateRaw === null ? null : sha256Hex(templateRaw),
+          });
           if (templateRead.status === "missing") {
             questionDiagnostics = [
               makeQuestionDiagnostic(
@@ -1287,6 +1508,10 @@ export class ResolverService {
               ),
             ];
           } else {
+            localFingerprintByPath.set(normalizedTemplateAbs, {
+              path: normalizedTemplateAbs,
+              sha256: sha256Hex(templateRead.content),
+            });
             const parsed = parseQuestionDeclarations(name, templateRead.content);
             if (parsed.ok) questions = parsed.questions;
             else questionDiagnostics = parsed.diagnostics;
@@ -1297,21 +1522,42 @@ export class ResolverService {
       if (questionDiagnostics.length > 0) {
         issues.push(...questionDiagnostics.map((issue) => issue.message));
       }
+      if (payloadDiagnostics.length > 0) {
+        issues.push(...payloadDiagnostics.map((issue) => issue.message));
+      }
       capabilities.push({
         name,
         path: `plugin:${pluginName}/${rel}`,
-        manifestPath: normalizeSlashes(manifestAbs),
+        manifestPath: normalizedManifestAbs,
         kind: manifest.kind,
         questions,
+        payloads,
+        payloadDiagnostics,
         questionDiagnostics,
       });
     }
-    return { capabilities, fingerprintInputs, issues };
+
+    if (payloadInvalid) {
+      for (const capability of capabilities) capability.payloads = [];
+      declaredSourceHashByPath.clear();
+    }
+
+    const ordered = <T extends { path: string }>(values: Iterable<T>): T[] =>
+      [...values].sort((left, right) => left.path.localeCompare(right.path));
+    return {
+      capabilities,
+      fingerprintInputs: ordered(fingerprintByPath.values()),
+      manifestHashes: ordered(manifestHashByPath.values()),
+      declaredSourceHashes: ordered(declaredSourceHashByPath.values()),
+      localFingerprints: ordered(localFingerprintByPath.values()),
+      payloadInvalid,
+      issues,
+    };
   }
 
   private packFingerprint(
     pack: InstalledPlugin,
-    inputs: Array<{ path: string; content: string | null }>,
+    inputs: PackFingerprintInput[],
   ): string {
     return sha256Hex(
       JSON.stringify({
@@ -1319,8 +1565,8 @@ export class ResolverService {
         version: pack.version,
         sources: inputs.map((input) => ({
           path: input.path,
-          present: input.content !== null,
-          sha256: input.content === null ? null : sha256Hex(input.content),
+          present: input.present,
+          sha256: input.sha256,
         })),
       }),
     );

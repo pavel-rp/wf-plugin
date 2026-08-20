@@ -1,17 +1,24 @@
 // wf resolver — capability manifest parsing (schema v2, metadata only).
 //
-// Reads the `## Fragments` table and the manifest key lines (`requires:`,
-// `conflicts:`, `article:`, `profile-template:`) plus the `**Kind:**` metadata
-// line. NEVER follows a fragment's `dispatch` target — the fragment body stays
-// out of the snapshot (charter invariant). Conventions match
+// Reads the `## Fragments` and optional ordered `## Payloads` tables plus the
+// manifest key lines (`requires:`, `conflicts:`, `article:`,
+// `profile-template:`) and the `**Kind:**` metadata line. NEVER follows a
+// fragment's `dispatch` target or reads a payload source body. Conventions match
 // plugins/wf/skills/_contracts/validate-registry.sh so the resolver and the
 // validator read the same document identically.
 
 import type { FragmentRecord, ArticleRecord } from "./types.js";
 
+export interface RawManifestTable {
+  headers: string[];
+  rows: string[][];
+  sectionCount: number;
+}
+
 export interface ParsedManifest {
   kind: string | null;
   fragments: FragmentRecord[];
+  payloads: RawManifestTable | null;
   articles: ArticleRecord[];
   requires: string[];
   conflicts: string[];
@@ -40,6 +47,7 @@ export function parseManifest(markdown: string): ParsedManifest {
 
   let kind: string | null = null;
   const fragments: FragmentRecord[] = [];
+  let payloads: RawManifestTable | null = null;
   const articles: ArticleRecord[] = [];
   const requires: string[] = [];
   const conflicts: string[] = [];
@@ -47,6 +55,8 @@ export function parseManifest(markdown: string): ParsedManifest {
 
   let inFragments = false;
   let sawFragHeader = false;
+  let inPayloads = false;
+  let sawPayloadHeader = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -75,28 +85,49 @@ export function parseManifest(markdown: string): ParsedManifest {
       if (v) profileTemplate = v;
     }
 
-    // `## Fragments` table.
+    // Heading-bounded manifest tables.
     if (/^#{1,6}\s+/.test(line)) {
       if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
         inFragments = true;
+        inPayloads = false;
         sawFragHeader = false;
         continue;
       }
-      if (inFragments) inFragments = false; // next heading closes the table
+      if (/^#{1,6}\s+Payloads\s*$/i.test(trimmed)) {
+        inFragments = false;
+        inPayloads = true;
+        sawPayloadHeader = false;
+        payloads ??= { headers: [], rows: [], sectionCount: 0 };
+        payloads.sectionCount++;
+        continue;
+      }
+      inFragments = false;
+      inPayloads = false;
     }
-    if (!inFragments) continue;
+    if (!inFragments && !inPayloads) continue;
     if (!trimmed.startsWith("|")) continue;
 
     const cells = trimmed
       .replace(/^\|/, "")
       .replace(/\|$/, "")
       .split("|")
-      .map((c) => c.trim());
+      .map((c) => trimCell(c));
 
     // Separator row (dashes/colons only).
     if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
+
+    if (inPayloads) {
+      if (!sawPayloadHeader) {
+        sawPayloadHeader = true;
+        if (payloads && payloads.headers.length === 0) payloads.headers = cells;
+        continue;
+      }
+      payloads?.rows.push(cells);
+      continue;
+    }
+
     if (!sawFragHeader) {
-      sawFragHeader = true; // column header row
+      sawFragHeader = true;
       continue;
     }
 
@@ -109,10 +140,10 @@ export function parseManifest(markdown: string): ParsedManifest {
     fragments.push({
       phase,
       contributionKind,
-      dispatch: (dispatchRaw ?? "").trim().replace(/^`/, "").replace(/`$/, "").trim(),
+      dispatch: trimCell(dispatchRaw ?? ""),
       scope,
     });
   }
 
-  return { kind, fragments, articles, requires, conflicts, profileTemplate };
+  return { kind, fragments, payloads, articles, requires, conflicts, profileTemplate };
 }

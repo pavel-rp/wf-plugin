@@ -117,6 +117,29 @@ A capability manifest lives at `{path}/manifest.md` and carries:
     resolves the question. The resolver exposes validated metadata (including `prompt`), never the
     raw template body. A downstream override is seeded only on divergence, with the override
     winning per key.
+- **A payloads table** — optional, ordered, and only when the pack declares files for later
+  lifecycle management. Spell the heading `## Payloads` exactly and use exactly these columns:
+
+  ```markdown
+  | Source | Destination | Production | Refresh | Removal |
+  |--------|-------------|------------|---------|---------|
+  | assets/default.json | .wf/default.json | copy | replace-if-unmodified | delete-if-unmodified |
+  ```
+
+  - `Source` is relative to the capability root. It must inspect as a regular, non-symlink file
+    beneath that root; its raw bytes are SHA-256 fingerprinted. `Destination` is workspace-relative
+    but receives lexical validation only during inspection — no target lookup or canonicalization.
+  - Both path declarations are non-empty and forward-slash only. Do not use an absolute or drive
+    prefix, backslash, NUL or colon, or an empty, `.` or `..` segment.
+  - The semantic vocabulary is closed: `Production` is `copy`; `Refresh` is
+    `replace-if-unmodified` or `retain`; `Removal` is `delete-if-unmodified` or `retain`.
+  - An absent or valid header-only table is inert. One unknown/missing/duplicate column or section,
+    malformed row, unsafe path, invalid token, or unreadable source rejects the complete inspected
+    pack payload set. Fix every attributed pack/capability/row/field diagnostic and reinspect; never
+    treat an omitted partial set as valid. Inspection returns declarations and hashes, never bodies.
+  - These declarations do not select or apply payloads. Target containment, target symlinks,
+    collisions/ownership, produced bytes, ledger persistence, transactions, writes, refresh,
+    deletion, recovery, repair, and migration belong to downstream lifecycle stages.
 - **`skills:`** — documentation for a `feature` or `both` kind, recording where its skills live.
   Native composition, not this field, is what loads them.
 
@@ -147,7 +170,9 @@ Validation fails fast when any of these does not hold:
 - no two active capabilities claim overlapping ownership scopes for a partitioned kind;
 - no two capabilities declare contradictory article clauses;
 - every `requires:` is satisfied and no `conflicts:` pair is both active;
-- every fragment row names a phase **and** a contribution kind that core actually defines.
+- every fragment row names a phase **and** a contribution kind that core actually defines;
+- every payload table has the exact columns and closed tokens, and every declared source is a
+  contained regular non-symlink file; one defect invalidates the complete inspected payload set.
 
 ## Edge Cases
 
@@ -157,6 +182,8 @@ Validation fails fast when any of these does not hold:
   token or deactivate one capability.
 - **A `slot` row rejected for its phase cell:** a slot targets a skill point, not an SDD phase — its
   phase cell must be a dash.
+- **Inspection exposes no payloads after one reported row defect:** rejection is pack-wide by design;
+  correct all attributed diagnostics, including defects in sibling capabilities, then reinspect.
 - **Unsure which kind fits:** ask whether the contribution *audits implemented code* (`finding`) or
   *guides authoring before it exists* (`guidance`). That single question resolves most cases.
 - **A capability with no non-negotiables:** declare no `article:` key at all. An empty clause set is
@@ -167,7 +194,7 @@ Validation fails fast when any of these does not hold:
 ```
 AUTHORING-TAXONOMY — Delivered
 
-Covered: the phase spine · seven contribution kinds · aggregate versus partition policy · manifest schema v2 · the registry row and path shapes · constitution composition · registry validation
+Covered: the phase spine · seven contribution kinds · aggregate versus partition policy · manifest schema v2 and payload declarations · the registry row and path shapes · constitution composition · registry validation
 
 Next: /wf-author-caps:authoring-guide for plugin anatomy, interface-first skill design, and the registration flow
 ```

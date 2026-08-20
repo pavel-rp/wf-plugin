@@ -182,6 +182,118 @@ export type QuestionDeclarationResult =
   | { ok: true; questions: QuestionRecord[]; diagnostics: [] }
   | { ok: false; questions: []; diagnostics: QuestionDiagnostic[] };
 
+/** Closed semantic tuple for one pack-managed payload declaration. */
+export type PayloadProduction = "copy";
+export type PayloadRefresh = "replace-if-unmodified" | "retain";
+export type PayloadRemoval = "delete-if-unmodified" | "retain";
+export interface PayloadSemantics {
+  production: PayloadProduction;
+  refresh: PayloadRefresh;
+  removal: PayloadRemoval;
+}
+
+/** One normalized, ordered payload row. Provenance is explicit and body-free. */
+export interface PayloadDeclaration extends PayloadSemantics {
+  pluginId: string;
+  capability: string;
+  source: string;
+  destination: string;
+}
+
+export interface PayloadDiagnostic {
+  code: string;
+  pluginId: string;
+  capability: string;
+  row: number | null;
+  field: "table" | "source" | "destination" | "production" | "refresh" | "removal";
+  message: string;
+}
+
+export type PayloadDeclarationResult =
+  | { ok: true; payloads: PayloadDeclaration[]; diagnostics: [] }
+  | { ok: false; payloads: []; diagnostics: PayloadDiagnostic[] };
+
+/** Result of descriptor-backed raw-byte fingerprinting beneath a capability root. */
+export type ContainedFileFingerprintResult =
+  | { status: "ok"; path: string; sha256: string; bytes: number }
+  | {
+      status: "missing" | "unsafe" | "too-large" | "unsupported" | "unreadable";
+      path: string | null;
+      sha256: null;
+      bytes: null;
+    };
+
+/** Deterministically ordered path/hash evidence. Paths are pack-relative and hashes
+ * are lowercase SHA-256 hex; neither field contains a source body. */
+export interface PathHashRecord {
+  path: string;
+  sha256: string;
+}
+
+/** Portable identity committed with project lifecycle state. It deliberately has
+ * no machine root, CLI path, timestamp, scope, or enablement field. */
+export interface PortablePackEvidence {
+  pluginId: string;
+  version: string;
+  capabilities: string[];
+  manifestHashes: PathHashRecord[];
+  declaredSourceHashes: PathHashRecord[];
+}
+
+/** Host-local facts. This record is stored only in `_local/install-state.json`. */
+export interface MachineBindingEvidence {
+  pluginId: string;
+  canonicalRoot: string;
+  cliScope: string | null;
+  enablement: "enabled" | "disabled" | "unknown";
+  observedVersion: string | null;
+  localFingerprints: PathHashRecord[];
+}
+
+export interface ArtifactOwner {
+  pluginId: string;
+  capability: string;
+  source: string;
+}
+
+/** Complete proof for one produced workspace artifact. */
+export interface ArtifactEvidence extends PayloadSemantics {
+  destination: string;
+  owners: ArtifactOwner[];
+  declaredSourceFingerprint: string;
+  producedContentHash: string;
+}
+
+export type LedgerHome = "committed" | "local";
+export type LedgerHomeResolution =
+  | {
+      ok: true;
+      home: LedgerHome;
+      portablePath: ".wf/install-state.json" | "_local/install-state.json";
+      bindingPath: "_local/install-state.json";
+    }
+  | {
+      ok: false;
+      home: null;
+      portablePath: null;
+      bindingPath: "_local/install-state.json";
+      diagnostic: string;
+    };
+
+export type LifecycleEvidenceComparison =
+  | { state: "evidence-missing"; seedProposal: null; persisted: false }
+  | { state: "portable-mismatch"; seedProposal: null; persisted: false }
+  | { state: "binding-seed"; seedProposal: MachineBindingEvidence; persisted: false }
+  | { state: "root-moved"; seedProposal: null; persisted: false }
+  | { state: "local-mismatch"; seedProposal: null; persisted: false }
+  | { state: "equal"; seedProposal: null; persisted: true };
+
+export interface ArtifactAuthority {
+  persist: boolean;
+  replace: boolean;
+  remove: boolean;
+}
+
 /** An active registry capability, resolved to metadata. */
 export interface CapabilityRecord {
   /** Registry `Capability` column — identity only. */
