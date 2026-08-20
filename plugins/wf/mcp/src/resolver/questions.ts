@@ -11,6 +11,7 @@ import type {
   QuestionRecord,
   QuestionSchema,
   QuestionSuggestion,
+  QuestionValue,
   QuestionValueSource,
   QuestionValueValidation,
 } from "./types.js";
@@ -29,6 +30,8 @@ export const MAX_QUESTIONS_PER_TEMPLATE = 64;
 export const MAX_ENUM_VALUES = 128;
 export const MAX_PROMPT_LENGTH = 2048;
 export const MAX_NORMALIZED_QUESTION_BYTES = 128 * 1024;
+export const MAX_QUESTION_DIAGNOSTICS = 256;
+const MAX_DIAGNOSTIC_LABEL_LENGTH = 128;
 const MAX_PATTERN_INPUT_LENGTH = 1024;
 const MAX_PATTERN_LENGTH = 256;
 
@@ -104,21 +107,91 @@ function own(record: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
 }
 
-function diagnostic(
+function safeDiagnosticLabel(
+  value: string,
+  pattern: RegExp,
+  fallback: string,
+): string {
+  return value.length <= MAX_DIAGNOSTIC_LABEL_LENGTH && pattern.test(value)
+    ? value
+    : fallback;
+}
+
+export function makeQuestionDiagnostic(
   pack: string,
   question: string | null,
   field: string,
   code: string,
   detail: string,
 ): QuestionDiagnostic {
-  const owner = question === null ? `pack \`${pack}\`` : `pack \`${pack}\`, question \`${question}\``;
+  const safePack = safeDiagnosticLabel(
+    pack,
+    /^[a-z0-9][a-z0-9-]*$/,
+    "(invalid-pack)",
+  );
+  const safeQuestion =
+    question === null
+      ? null
+      : safeDiagnosticLabel(
+          question,
+          /^(?:[a-z][a-z0-9]*(?:-[a-z0-9]+)*|ask\[\d+\])$/,
+          "(invalid-question)",
+        );
+  const safeField = safeDiagnosticLabel(
+    field,
+    /^(?:ask|template|profile|profile-template|declaration|id|destination|prompt|schema(?:\.(?:type|minLength|maxLength|pattern|minimum|maximum|values))?|schema\.values\[\d+\]|value)$/,
+    "(invalid-field)",
+  );
+  const owner =
+    safeQuestion === null
+      ? `pack \`${safePack}\``
+      : `pack \`${safePack}\`, question \`${safeQuestion}\``;
   return {
     code,
-    pack,
-    question,
-    field,
-    message: `${owner}, field \`${field}\`: ${detail}`,
+    pack: safePack,
+    question: safeQuestion,
+    field: safeField,
+    message: `${owner}, field \`${safeField}\`: ${detail}`,
   };
+}
+
+function diagnosticBytes(diagnostics: readonly QuestionDiagnostic[]): number {
+  return Buffer.byteLength(JSON.stringify(diagnostics), "utf8");
+}
+
+function finalizeDiagnostics(
+  pack: string,
+  diagnostics: readonly QuestionDiagnostic[],
+): QuestionDiagnostic[] {
+  const retained: QuestionDiagnostic[] = [];
+  let truncated = false;
+  for (const issue of diagnostics) {
+    if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
+      truncated = true;
+      break;
+    }
+    if (diagnosticBytes([...retained, issue]) > MAX_NORMALIZED_QUESTION_BYTES) {
+      truncated = true;
+      break;
+    }
+    retained.push(issue);
+  }
+  if (!truncated) return retained;
+
+  const sentinel = makeQuestionDiagnostic(
+    pack,
+    null,
+    "ask",
+    "question/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit.",
+  );
+  while (
+    retained.length >= MAX_QUESTION_DIAGNOSTICS ||
+    diagnosticBytes([...retained, sentinel]) > MAX_NORMALIZED_QUESTION_BYTES
+  ) {
+    retained.pop();
+  }
+  return [...retained, sentinel];
 }
 
 function normalizedMetadataDiagnostic(
@@ -126,7 +199,7 @@ function normalizedMetadataDiagnostic(
   questions: readonly QuestionRecord[],
 ): QuestionDiagnostic | null {
   if (questions.length > MAX_QUESTIONS_PER_TEMPLATE) {
-    return diagnostic(
+    return makeQuestionDiagnostic(
       pack,
       null,
       "ask",
@@ -136,7 +209,7 @@ function normalizedMetadataDiagnostic(
   }
   const bytes = Buffer.byteLength(JSON.stringify(questions), "utf8");
   return bytes > MAX_NORMALIZED_QUESTION_BYTES
-    ? diagnostic(
+    ? makeQuestionDiagnostic(
         pack,
         null,
         "ask",
@@ -153,12 +226,13 @@ function schemaFields(
   allowed: ReadonlySet<string>,
   diagnostics: QuestionDiagnostic[],
 ): void {
-  for (const field of Object.keys(raw).filter((key) => !allowed.has(key)).sort()) {
+  const unknownFieldCount = Object.keys(raw).filter((key) => !allowed.has(key)).length;
+  for (let index = 0; index < unknownFieldCount; index++) {
     diagnostics.push(
-      diagnostic(
+      makeQuestionDiagnostic(
         pack,
         question,
-        `schema.${field}`,
+        "schema",
         "question/schema-unknown-field",
         "unknown schema field.",
       ),
@@ -177,7 +251,7 @@ function integerField(
   const value = raw[field];
   if (!Number.isSafeInteger(value) || (options.nonNegative && (value as number) < 0)) {
     diagnostics.push(
-      diagnostic(
+      makeQuestionDiagnostic(
         pack,
         question,
         `schema.${field}`,
@@ -200,7 +274,7 @@ function parseSchema(
 ): QuestionSchema | null {
   if (!isRecord(value)) {
     diagnostics.push(
-      diagnostic(
+      makeQuestionDiagnostic(
         pack,
         question,
         "schema",
@@ -220,7 +294,7 @@ function parseSchema(
     const hasMax = own(value, "maxLength");
     if (hasMin !== hasMax) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "schema",
@@ -244,7 +318,7 @@ function parseSchema(
     }
     if (minLength !== null && maxLength !== null && minLength > maxLength) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "schema",
@@ -258,7 +332,7 @@ function parseSchema(
     if (own(value, "pattern")) {
       if (typeof value.pattern !== "string" || value.pattern.length === 0) {
         diagnostics.push(
-          diagnostic(
+          makeQuestionDiagnostic(
             pack,
             question,
             "schema.pattern",
@@ -271,7 +345,7 @@ function parseSchema(
         if (!hasMin || !hasMax || minLength === null || maxLength === null) {
           patternValid = false;
           diagnostics.push(
-            diagnostic(
+            makeQuestionDiagnostic(
               pack,
               question,
               "schema.pattern",
@@ -282,7 +356,7 @@ function parseSchema(
         } else if (maxLength > MAX_PATTERN_INPUT_LENGTH) {
           patternValid = false;
           diagnostics.push(
-            diagnostic(
+            makeQuestionDiagnostic(
               pack,
               question,
               "schema.maxLength",
@@ -296,7 +370,7 @@ function parseSchema(
         if (safetyIssue !== null) {
           patternValid = false;
           diagnostics.push(
-            diagnostic(
+            makeQuestionDiagnostic(
               pack,
               question,
               "schema.pattern",
@@ -307,17 +381,15 @@ function parseSchema(
         }
         try {
           new RegExp(value.pattern);
-        } catch (err) {
+        } catch {
           patternValid = false;
           diagnostics.push(
-            diagnostic(
+            makeQuestionDiagnostic(
               pack,
               question,
               "schema.pattern",
               "question/schema-invalid-pattern",
-              `must compile as a regular expression: ${
-                err instanceof Error ? err.message : String(err)
-              }`,
+              "must compile as a regular expression.",
             ),
           );
         }
@@ -342,7 +414,7 @@ function parseSchema(
     schemaFields(pack, question, value, new Set(["type", "minimum", "maximum"]), diagnostics);
     if (!own(value, "minimum") || !own(value, "maximum")) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "schema",
@@ -359,7 +431,7 @@ function parseSchema(
       : null;
     if (minimum !== null && maximum !== null && minimum > maximum) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "schema",
@@ -377,7 +449,7 @@ function parseSchema(
     schemaFields(pack, question, value, new Set(["type", "values"]), diagnostics);
     if (!Array.isArray(value.values) || value.values.length === 0) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "schema.values",
@@ -389,7 +461,7 @@ function parseSchema(
     }
     if (value.values.length > MAX_ENUM_VALUES) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "schema.values",
@@ -405,7 +477,7 @@ function parseSchema(
       const candidate = value.values[index];
       if (typeof candidate !== "string" || candidate.length === 0) {
         diagnostics.push(
-          diagnostic(
+          makeQuestionDiagnostic(
             pack,
             question,
             `schema.values[${index}]`,
@@ -417,12 +489,12 @@ function parseSchema(
       }
       if (seen.has(candidate)) {
         diagnostics.push(
-          diagnostic(
+          makeQuestionDiagnostic(
             pack,
             question,
             `schema.values[${index}]`,
             "question/schema-duplicate-enum-value",
-            `duplicates enum value \`${candidate}\`.`,
+            "duplicates an earlier enum value.",
           ),
         );
         continue;
@@ -434,7 +506,7 @@ function parseSchema(
   }
 
   diagnostics.push(
-    diagnostic(
+    makeQuestionDiagnostic(
       pack,
       question,
       "schema.type",
@@ -456,7 +528,7 @@ function valueFailure(
     valid: false,
     source,
     value,
-    diagnostics: [diagnostic(declaration.pack, declaration.id, "value", code, detail)],
+    diagnostics: [makeQuestionDiagnostic(declaration.pack, declaration.id, "value", code, detail)],
   };
 }
 
@@ -544,7 +616,7 @@ export function validateQuestionValue(
     );
   }
 
-  return { valid: true, source, value, diagnostics: [] };
+  return { valid: true, source, value: value as QuestionValue, diagnostics: [] };
 }
 
 /** Parse a raw JSON profile template into ordered, body-free question records.
@@ -559,7 +631,7 @@ export function parseQuestionDeclarations(
       ok: false,
       questions: [],
       diagnostics: [
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           null,
           "template",
@@ -578,7 +650,7 @@ export function parseQuestionDeclarations(
       ok: false,
       questions: [],
       diagnostics: [
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           null,
           "template",
@@ -594,7 +666,7 @@ export function parseQuestionDeclarations(
       ok: false,
       questions: [],
       diagnostics: [
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           null,
           "template",
@@ -611,7 +683,7 @@ export function parseQuestionDeclarations(
       ok: false,
       questions: [],
       diagnostics: [
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           null,
           "ask",
@@ -626,7 +698,7 @@ export function parseQuestionDeclarations(
       ok: false,
       questions: [],
       diagnostics: [
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           null,
           "ask",
@@ -639,6 +711,7 @@ export function parseQuestionDeclarations(
 
   const diagnostics: QuestionDiagnostic[] = [];
   const declarations: QuestionDeclaration[] = [];
+  const suggestedDefaults = new Map<QuestionDeclaration, unknown>();
   const ids = new Set<string>();
   const destinations = new Set<string>();
 
@@ -647,10 +720,10 @@ export function parseQuestionDeclarations(
     const fallback = `ask[${index}]`;
     if (!isRecord(raw)) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           fallback,
-          fallback,
+          "declaration",
           "question/declaration-invalid",
           "must be an object.",
         ),
@@ -659,12 +732,15 @@ export function parseQuestionDeclarations(
     }
 
     const question = typeof raw.id === "string" && raw.id.length > 0 ? raw.id : fallback;
-    for (const field of Object.keys(raw).filter((key) => !DECLARATION_FIELDS.has(key)).sort()) {
+    const unknownFieldCount = Object.keys(raw).filter(
+      (key) => !DECLARATION_FIELDS.has(key),
+    ).length;
+    for (let fieldIndex = 0; fieldIndex < unknownFieldCount; fieldIndex++) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
-          field,
+          "declaration",
           "question/declaration-unknown-field",
           "unknown declaration field.",
         ),
@@ -674,7 +750,7 @@ export function parseQuestionDeclarations(
     const id = raw.id;
     if (typeof id !== "string" || !ID_RE.test(id)) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "id",
@@ -684,7 +760,7 @@ export function parseQuestionDeclarations(
       );
     } else if (ids.has(id)) {
       diagnostics.push(
-        diagnostic(pack, id, "id", "question/id-duplicate", `duplicates question id \`${id}\`.`),
+        makeQuestionDiagnostic(pack, id, "id", "question/id-duplicate", "duplicates an earlier question id."),
       );
     } else {
       ids.add(id);
@@ -697,7 +773,7 @@ export function parseQuestionDeclarations(
       destination === "ask"
     ) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "destination",
@@ -707,12 +783,12 @@ export function parseQuestionDeclarations(
       );
     } else if (destinations.has(destination)) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "destination",
           "question/destination-duplicate",
-          `duplicates destination \`${destination}\`.`,
+          "duplicates an earlier destination.",
         ),
       );
     } else {
@@ -722,7 +798,7 @@ export function parseQuestionDeclarations(
     const prompt = raw.prompt;
     if (typeof prompt !== "string" || prompt.trim().length === 0) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "prompt",
@@ -732,7 +808,7 @@ export function parseQuestionDeclarations(
       );
     } else if (prompt.length > MAX_PROMPT_LENGTH) {
       diagnostics.push(
-        diagnostic(
+        makeQuestionDiagnostic(
           pack,
           question,
           "prompt",
@@ -765,25 +841,30 @@ export function parseQuestionDeclarations(
       prompt,
       schema,
     };
-    if (own(raw, "suggestedDefault")) declaration.suggestedDefault = raw.suggestedDefault;
+    if (own(raw, "suggestedDefault")) suggestedDefaults.set(declaration, raw.suggestedDefault);
     declarations.push(declaration);
   }
 
   // Duplicate diagnostics may have been emitted after an earlier declaration was
   // tentatively accepted; the all-or-nothing return below prevents partial output.
-  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  if (diagnostics.length > 0) {
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+  }
 
   const questions: QuestionRecord[] = [];
   for (const declaration of declarations) {
     const suggestions: QuestionSuggestion[] = [];
-    if (own(declaration as unknown as Record<string, unknown>, "suggestedDefault")) {
+    if (suggestedDefaults.has(declaration)) {
       const checked = validateQuestionValue(
         declaration,
         "suggested-default",
-        declaration.suggestedDefault,
+        suggestedDefaults.get(declaration),
       );
       if (!checked.valid) diagnostics.push(...checked.diagnostics);
-      else suggestions.push({ source: "suggested-default", value: checked.value });
+      else {
+        declaration.suggestedDefault = checked.value;
+        suggestions.push({ source: "suggested-default", value: checked.value });
+      }
     }
     if (own(parsed, declaration.destination)) {
       const checked = validateQuestionValue(
@@ -800,7 +881,9 @@ export function parseQuestionDeclarations(
     });
   }
 
-  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
+  if (diagnostics.length > 0) {
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+  }
   const sizeDiagnostic = normalizedMetadataDiagnostic(pack, questions);
   return sizeDiagnostic === null
     ? { ok: true, questions, diagnostics: [] }
@@ -867,8 +950,10 @@ export function applyQuestionValues(
     }
   }
 
-  if (diagnostics.length > 0) return { ok: false, questions: [], diagnostics };
   const pack = resolved[0]?.pack ?? questions[0]?.pack ?? "unknown";
+  if (diagnostics.length > 0) {
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
+  }
   const sizeDiagnostic = normalizedMetadataDiagnostic(pack, resolved);
   return sizeDiagnostic === null
     ? { ok: true, questions: resolved, diagnostics: [] }

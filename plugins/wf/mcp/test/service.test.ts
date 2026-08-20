@@ -10,6 +10,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import {
+  InMemoryTransport,
+  LATEST_PROTOCOL_VERSION,
+  McpServer,
+  type JSONRPCMessage,
+} from "@modelcontextprotocol/server";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,8 +27,13 @@ import {
   resolveContainedCapabilityPath,
 } from "../src/resolver/paths.js";
 import { parsePluginList } from "../src/resolver/plugin-list.js";
-import { MAX_PROFILE_TEMPLATE_BYTES } from "../src/resolver/questions.js";
+import {
+  MAX_NORMALIZED_QUESTION_BYTES,
+  MAX_PROFILE_TEMPLATE_BYTES,
+  MAX_QUESTION_DIAGNOSTICS,
+} from "../src/resolver/questions.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
+import { registerResolverTools } from "../src/tools.js";
 import { RESOLVER_GENERATOR, type ResolverSnapshot } from "../src/resolver/types.js";
 
 const WS = "/ws";
@@ -312,8 +323,142 @@ test("inspect_pack exposes complete ordered validated question metadata", () => 
   ]);
 });
 
+test("real MCP tools/call dispatch exposes on-disk question metadata without template bodies", async () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-tools-call-"));
+  const workspace = normalizeSlashes(join(root, "workspace"));
+  const install = normalizeSlashes(join(root, "wf-demo"));
+  const capability = joinSlash(install, "capabilities/demo");
+  mkdirSync(join(workspace, "_local"), { recursive: true });
+  mkdirSync(join(capability, "fragments"), { recursive: true });
+  writeFileSync(
+    join(workspace, "_local", "config.md"),
+    `${BASE_CONFIG}\n## Plugin Roots\n\n| Plugin | Root |\n|---|---|\n| wf-demo | ${install} |\n\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+  );
+  writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+  writeFileSync(join(capability, "profile.template.json"), DEMO_TEMPLATE);
+  writeFileSync(join(capability, "fragments", "thing.ops.md"), DEMO_FRAGMENT);
+
+  const pluginListRaw = JSON.stringify([
+    {
+      id: "wf-demo@local",
+      version: "1.2.3",
+      scope: "user",
+      enabled: true,
+      installPath: install,
+    },
+  ]);
+  const production = createDefaultPorts(workspace);
+  const ports: ResolverServicePorts = {
+    ...production,
+    listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+    resolveFresh: () =>
+      resolveSnapshot({
+        workspaceRoot: workspace,
+        pluginListRaw,
+        now: () => new Date("2026-08-20T00:00:00.000Z"),
+      }),
+  };
+  const service = new ResolverService(ports);
+  const server = new McpServer(
+    { name: "wf-resolver-test", version: "0.0.0" },
+    { capabilities: { tools: {} } },
+  );
+  registerResolverTools(server, (requestedRoot) => {
+    assert.equal(normalizeSlashes(requestedRoot), workspace);
+    return service;
+  });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+  const waiters = new Map<string, (message: JSONRPCMessage) => void>();
+  clientTransport.onmessage = (message) => {
+    if (!("id" in message)) return;
+    const resolve = waiters.get(String(message.id));
+    if (!resolve) return;
+    waiters.delete(String(message.id));
+    resolve(message);
+  };
+  const request = async (
+    id: number,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<JSONRPCMessage> => {
+    const response = new Promise<JSONRPCMessage>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error(`timed out waiting for MCP response ${id}`)),
+        2_000,
+      );
+      waiters.set(String(id), (message) => {
+        clearTimeout(timeout);
+        resolve(message);
+      });
+    });
+    await clientTransport.send({ jsonrpc: "2.0", id, method, params } as JSONRPCMessage);
+    return response;
+  };
+  const payload = (message: JSONRPCMessage): unknown => {
+    assert.ok("result" in message, "tools/call must return a JSON-RPC result");
+    if (!("result" in message)) return null;
+    const result = message.result as {
+      content?: Array<{ type: string; text?: string }>;
+    };
+    const text = result.content?.find((entry) => entry.type === "text")?.text;
+    assert.equal(typeof text, "string");
+    return JSON.parse(text as string);
+  };
+
+  try {
+    await server.connect(serverTransport);
+    await clientTransport.start();
+    const initialized = await request(1, "initialize", {
+      protocolVersion: LATEST_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "wf-resolver-test-client", version: "0.0.0" },
+    });
+    assert.ok("result" in initialized);
+    await clientTransport.send({
+      jsonrpc: "2.0",
+      method: "notifications/initialized",
+    } as JSONRPCMessage);
+
+    const inspected = payload(
+      await request(2, "tools/call", {
+        name: "inspect_pack",
+        arguments: { workspaceRoot: workspace, pluginId: "wf-demo@local" },
+      }),
+    ) as { valid: boolean; capabilities: Array<{ questions: Array<{ id: string }> }> };
+    const registry = payload(
+      await request(3, "tools/call", {
+        name: "resolve_registry",
+        arguments: { workspaceRoot: workspace },
+      }),
+    ) as { capabilities: Array<{ name: string; questions: Array<{ id: string }> }> };
+
+    assert.equal(inspected.valid, true);
+    assert.deepEqual(
+      inspected.capabilities[0].questions.map((question) => question.id),
+      ["project-name", "mode"],
+    );
+    assert.deepEqual(
+      registry.capabilities[0].questions.map((question) => question.id),
+      ["project-name", "mode"],
+    );
+    assert.ok(!JSON.stringify([inspected, registry]).includes(SECRET_TEMPLATE));
+  } finally {
+    await clientTransport.close();
+    await server.close();
+    await serverTransport.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("profile-template paths cannot escape their installed capability folder", () => {
-  for (const candidate of ["../outside.json", "/outside.json", "..\\outside.json"]) {
+  const sentinel = "PROFILE_PATH_SECRET_7fd";
+  for (const candidate of [
+    "../outside.json",
+    "/outside.json",
+    "..\\outside.json",
+    `${sentinel}/../outside.json`,
+  ]) {
     const escapedRead = joinSlash(INSTALL, "capabilities/demo", candidate);
     const ports = makePorts({
       files: {
@@ -334,6 +479,7 @@ test("profile-template paths cannot escape their installed capability folder", (
       ),
       candidate,
     );
+    assert.ok(!JSON.stringify(inspected).includes(sentinel), candidate);
   }
 });
 
@@ -404,7 +550,65 @@ test("symlinked profile templates fail installed-pack and active discovery", () 
         (diagnostic) => diagnostic.code === "question/template-path-invalid",
       ),
     );
+    const served = service.resolveContent({
+      class: "profile-template",
+      capability: "demo",
+    });
+    assert.equal(served.status, "unresolved");
+    if (served.status === "unresolved") {
+      assert.equal(served.category, "registry-invalid");
+      assert.ok(!("content" in served));
+      assert.ok(!("path" in served));
+    }
     assert.doesNotThrow(() => service.resolveRegistry());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a non-regular profile-template path is never body-served", () => {
+  const root = mkdtempSync(join(tmpdir(), "wf-template-directory-"));
+  try {
+    const workspace = join(root, "workspace");
+    const install = join(root, "wf-demo");
+    const capability = join(install, "capabilities", "demo");
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    mkdirSync(join(capability, "profile.template.json"), { recursive: true });
+    writeFileSync(
+      join(workspace, "_local", "config.md"),
+      `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+    );
+    writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+
+    const pluginListRaw = JSON.stringify([
+      {
+        id: "wf-demo@local",
+        version: "1.2.3",
+        scope: "user",
+        enabled: true,
+        installPath: normalizeSlashes(install),
+      },
+    ]);
+    const production = createDefaultPorts(normalizeSlashes(workspace));
+    const ports: ResolverServicePorts = {
+      ...production,
+      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({
+          workspaceRoot: normalizeSlashes(workspace),
+          pluginListRaw,
+          now: () => new Date("2026-08-20T00:00:00.000Z"),
+        }),
+    };
+    const served = new ResolverService(ports).resolveContent({
+      class: "profile-template",
+      capability: "demo",
+    });
+    assert.equal(served.status, "unresolved");
+    if (served.status !== "unresolved") return;
+    assert.equal(served.category, "registry-invalid");
+    assert.ok(!("content" in served));
+    assert.ok(!("path" in served));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -468,6 +672,16 @@ test("oversized profile templates fail before installed-pack and active parsing"
         (diagnostic) => diagnostic.code === "question/template-too-large",
       ),
     );
+    const served = service.resolveContent({
+      class: "profile-template",
+      capability: "demo",
+    });
+    assert.equal(served.status, "unresolved");
+    if (served.status === "unresolved") {
+      assert.equal(served.category, "registry-invalid");
+      assert.ok(!("content" in served));
+      assert.ok(!("path" in served));
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -576,6 +790,51 @@ test("inspect_pack rejects malformed question metadata with complete attribution
   assert.equal(ports.counts.writeFile, 0);
 });
 
+test("inspect_pack bounds combined question issues after all capabilities", () => {
+  const invalidTemplate = JSON.stringify({
+    ask: [
+      {
+        ...Object.fromEntries(
+          Array.from({ length: 200 }, (_, index) => [`unknown-${index}`, true]),
+        ),
+        id: "name",
+        destination: "name",
+        prompt: "Name?",
+        schema: { type: "string" },
+      },
+    ],
+  });
+  const ports = makePorts({
+    files: {
+      [`${INSTALL}/capabilities/demo/profile.template.json`]: invalidTemplate,
+      [`${INSTALL}/capabilities/other/manifest.md`]: DEMO_MANIFEST,
+      [`${INSTALL}/capabilities/other/profile.template.json`]: invalidTemplate,
+    },
+  });
+  const inspected = new ResolverService(ports).inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, false);
+  assert.equal(
+    inspected.issues.at(-1),
+    "additional question diagnostics omitted after aggregate limit.",
+  );
+  assert.ok(inspected.issues.length <= MAX_QUESTION_DIAGNOSTICS);
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(inspected.issues), "utf8") <=
+      MAX_NORMALIZED_QUESTION_BYTES,
+  );
+
+  const diagnostics = inspected.capabilities.flatMap(
+    (capability) => capability.questionDiagnostics,
+  );
+  assert.equal(diagnostics.at(-1)?.code, "question/diagnostics-truncated");
+  assert.ok(diagnostics.length <= MAX_QUESTION_DIAGNOSTICS);
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(diagnostics), "utf8") <=
+      MAX_NORMALIZED_QUESTION_BYTES,
+  );
+});
+
 test("active invalid persisted values fail metadata exposure without a partial question set", () => {
   const ports = makePorts({
     files: {
@@ -594,6 +853,33 @@ test("active invalid persisted values fail metadata exposure without a partial q
     lifecycle.diagnostics.some(
       (entry) => entry.code === "question/value-enum" && entry.message.includes("question `mode`"),
     ),
+  );
+});
+
+test("malformed persisted-profile diagnostics never echo parser excerpts", () => {
+  const sentinel = "PERSISTED_SECRET_4e8a";
+  const ports = makePorts({
+    files: {
+      [`${WS}/_local/profiles/demo.profile.json`]: `{"mode":"${sentinel}",`,
+    },
+  });
+  const svc = new ResolverService(ports);
+  const inspected = svc.inspectPack("wf-demo@local");
+  assert.equal(svc.registerPack("wf-demo@local", inspected.fingerprint!).status, "registered");
+
+  const lifecycle = svc.inspect();
+  const issue = lifecycle.diagnostics.find(
+    (entry) => entry.code === "question/persisted-unparseable",
+  );
+  assert.equal(
+    issue?.message,
+    "pack `demo`, field `profile`: persisted question answers must be valid JSON.",
+  );
+  assert.ok(!JSON.stringify(lifecycle.diagnostics).includes(sentinel));
+  assert.deepEqual(
+    svc.resolveRegistry().capabilities.find((capability) => capability.name === "demo")
+      ?.questions,
+    [],
   );
 });
 

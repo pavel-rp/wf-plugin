@@ -5,6 +5,7 @@ import {
   MAX_NORMALIZED_QUESTION_BYTES,
   MAX_PROFILE_TEMPLATE_BYTES,
   MAX_PROMPT_LENGTH,
+  MAX_QUESTION_DIAGNOSTICS,
   MAX_QUESTIONS_PER_TEMPLATE,
   applyQuestionValues,
   parseQuestionDeclarations,
@@ -12,6 +13,7 @@ import {
 } from "../src/resolver/questions.js";
 import type {
   QuestionDeclaration,
+  QuestionValue,
   QuestionValueSource,
 } from "../src/resolver/types.js";
 
@@ -70,6 +72,7 @@ test("parseQuestionDeclarations preserves order, provenance, schemas, and attrib
     value: null,
     suggestions: [{ source: "suggested-default", value: "alpha" }],
   });
+  assert.equal(parsed.questions[0].suggestedDefault, "alpha");
   assert.deepEqual(parsed.questions[1].state.suggestions, [
     { source: "pack-default", value: true },
   ]);
@@ -426,6 +429,89 @@ test("pattern schemas require bounded input and reject backtracking-prone constr
     assert.deepEqual(parsed.questions, []);
     assert.ok(parsed.diagnostics.some((diagnostic) => diagnostic.code === fixture.code));
   }
+});
+
+test("invalid regex diagnostics are fixed and never echo the pattern source", () => {
+  const sentinel = "REGEX_SECRET_7f3b";
+  const parsed = parseQuestionDeclarations(
+    "demo",
+    JSON.stringify({
+      ask: [
+        {
+          id: "name",
+          destination: "name",
+          prompt: "Name?",
+          schema: {
+            type: "string",
+            minLength: 0,
+            maxLength: 32,
+            pattern: `[${sentinel}`,
+          },
+        },
+      ],
+    }),
+  );
+  assert.equal(parsed.ok, false);
+  assert.deepEqual(parsed.questions, []);
+  const issue = parsed.diagnostics.find(
+    (diagnostic) => diagnostic.code === "question/schema-invalid-pattern",
+  );
+  assert.equal(
+    issue?.message,
+    "pack `demo`, question `name`, field `schema.pattern`: must compile as a regular expression.",
+  );
+  assert.ok(!JSON.stringify(parsed.diagnostics).includes(sentinel));
+});
+
+test("invalid declaration diagnostics are count- and byte-bounded without controlled labels", () => {
+  const sentinel = "DECLARATION_SECRET_9c2e";
+  const unknownFields = Object.fromEntries(
+    Array.from({ length: MAX_QUESTION_DIAGNOSTICS + 64 }, (_, index) => [
+      `${sentinel}-${index}`,
+      true,
+    ]),
+  );
+  const parsed = parseQuestionDeclarations(
+    "demo",
+    JSON.stringify({
+      ask: [
+        {
+          ...unknownFields,
+          id: `${sentinel}!`,
+          destination: "name",
+          prompt: "Name?",
+          schema: { type: "string" },
+        },
+      ],
+    }),
+  );
+  assert.equal(parsed.ok, false);
+  assert.deepEqual(parsed.questions, []);
+  assert.ok(parsed.diagnostics.length <= MAX_QUESTION_DIAGNOSTICS);
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(parsed.diagnostics), "utf8") <=
+      MAX_NORMALIZED_QUESTION_BYTES,
+  );
+  assert.equal(
+    parsed.diagnostics.at(-1)?.code,
+    "question/diagnostics-truncated",
+  );
+  assert.ok(!JSON.stringify(parsed.diagnostics).includes(sentinel));
+});
+
+test("successful validation exposes only the closed QuestionValue union", () => {
+  const declaration: QuestionDeclaration = {
+    pack: "demo",
+    id: "count",
+    destination: "count",
+    prompt: "Count?",
+    schema: { type: "integer", minimum: 1, maximum: 3 },
+  };
+  const result = validateQuestionValue(declaration, "proposed", 2);
+  assert.equal(result.valid, true);
+  if (!result.valid) return;
+  const value: QuestionValue = result.value;
+  assert.equal(value, 2);
 });
 
 test("invalid suggested and pack defaults reject the complete declaration set", () => {

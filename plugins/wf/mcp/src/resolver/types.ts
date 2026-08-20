@@ -29,7 +29,7 @@ export const SNAPSHOT_SCHEMA_VERSION = 4;
  *  version is refreshed, so a runtime upgrade never serves a snapshot shaped by
  *  older resolution logic. Bump on any resolution-logic change that should
  *  invalidate previously persisted snapshots. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.0" } as const;
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.1" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */
@@ -114,6 +114,9 @@ export type QuestionSchema =
   | { type: "integer"; minimum: number; maximum: number }
   | { type: "enum"; values: string[] };
 
+/** Closed value set produced by successful question validation. */
+export type QuestionValue = string | boolean | number;
+
 /** One validated declaration from a profile template's ordered top-level `ask`
  * array. `pack` is the capability identity that owns the template. */
 export interface QuestionDeclaration {
@@ -122,7 +125,7 @@ export interface QuestionDeclaration {
   destination: string;
   prompt: string;
   schema: QuestionSchema;
-  suggestedDefault?: unknown;
+  suggestedDefault?: QuestionValue;
 }
 
 /** Every value candidate passes through the same schema validator regardless of
@@ -143,7 +146,7 @@ export interface QuestionDiagnostic {
 }
 
 export type QuestionValueValidation =
-  | { valid: true; source: QuestionValueSource; value: unknown; diagnostics: [] }
+  | { valid: true; source: QuestionValueSource; value: QuestionValue; diagnostics: [] }
   | {
       valid: false;
       source: QuestionValueSource;
@@ -153,7 +156,7 @@ export type QuestionValueValidation =
 
 export interface QuestionSuggestion {
   source: "suggested-default" | "pack-default" | "personal";
-  value: unknown;
+  value: QuestionValue;
 }
 
 export type QuestionResolutionState =
@@ -166,7 +169,7 @@ export type QuestionResolutionState =
   | {
       status: "resolved";
       source: "persisted";
-      value: unknown;
+      value: QuestionValue;
       suggestions: QuestionSuggestion[];
     };
 

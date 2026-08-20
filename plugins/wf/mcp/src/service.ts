@@ -71,7 +71,10 @@ import {
 import type { ValidationVerdict } from "./resolver/validate-rules.js";
 import { parseManifest } from "./resolver/manifest.js";
 import {
+  MAX_NORMALIZED_QUESTION_BYTES,
   MAX_PROFILE_TEMPLATE_BYTES,
+  MAX_QUESTION_DIAGNOSTICS,
+  makeQuestionDiagnostic,
   parseQuestionDeclarations,
 } from "./resolver/questions.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
@@ -327,7 +330,8 @@ export interface PackCapabilitySummary {
   kind: string | null;
   /** Ordered validated declarations; empty when absent or when the set is invalid. */
   questions: CapabilityRecord["questions"];
-  /** Complete pack/question/field-attributed declaration diagnostics. */
+  /** Ordered pack/question/field-attributed declaration diagnostics, aggregate-
+   *  bounded across the complete `inspect_pack` response. */
   questionDiagnostics: QuestionDiagnostic[];
 }
 
@@ -342,6 +346,7 @@ export interface InspectPackResponse {
   /** Stable identity of the pack's registerable surface; register_pack revalidates it. */
   fingerprint: string | null;
   valid: boolean;
+  /** Ordered, aggregate-bounded inspection failures. */
   issues: string[];
 }
 
@@ -390,6 +395,90 @@ function degradationFor(surface: string, state: ProviderResponse["state"]): stri
   if (scope === "tracker") return "tracker-warn";
   if (scope === "engine" || scope === "host") return "engine-block";
   return "bare-core";
+}
+
+function boundInspectionIssues(issues: readonly string[]): string[] {
+  const retained: string[] = [];
+  let truncated = false;
+  for (const issue of issues) {
+    if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
+      truncated = true;
+      break;
+    }
+    if (
+      Buffer.byteLength(JSON.stringify([...retained, issue]), "utf8") >
+      MAX_NORMALIZED_QUESTION_BYTES
+    ) {
+      truncated = true;
+      break;
+    }
+    retained.push(issue);
+  }
+  if (!truncated) return retained;
+
+  const sentinel = "additional question diagnostics omitted after aggregate limit.";
+  while (
+    retained.length >= MAX_QUESTION_DIAGNOSTICS ||
+    Buffer.byteLength(JSON.stringify([...retained, sentinel]), "utf8") >
+      MAX_NORMALIZED_QUESTION_BYTES
+  ) {
+    retained.pop();
+  }
+  return [...retained, sentinel];
+}
+
+function boundInspectionQuestionDiagnostics(
+  capabilities: readonly PackCapabilitySummary[],
+): PackCapabilitySummary[] {
+  const retained: Array<{ capabilityIndex: number; diagnostic: QuestionDiagnostic }> = [];
+  let truncatedAt: number | null = null;
+
+  outer: for (let capabilityIndex = 0; capabilityIndex < capabilities.length; capabilityIndex++) {
+    for (const diagnostic of capabilities[capabilityIndex].questionDiagnostics) {
+      if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      const candidate = [...retained.map((entry) => entry.diagnostic), diagnostic];
+      if (
+        Buffer.byteLength(JSON.stringify(candidate), "utf8") >
+        MAX_NORMALIZED_QUESTION_BYTES
+      ) {
+        truncatedAt = capabilityIndex;
+        break outer;
+      }
+      retained.push({ capabilityIndex, diagnostic });
+    }
+  }
+
+  if (truncatedAt === null) return [...capabilities];
+
+  const sentinel = makeQuestionDiagnostic(
+    capabilities[truncatedAt]?.name ?? "inspection",
+    null,
+    "ask",
+    "question/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit.",
+  );
+  while (
+    retained.length >= MAX_QUESTION_DIAGNOSTICS ||
+    Buffer.byteLength(
+      JSON.stringify([...retained.map((entry) => entry.diagnostic), sentinel]),
+      "utf8",
+    ) > MAX_NORMALIZED_QUESTION_BYTES
+  ) {
+    retained.pop();
+  }
+  retained.push({ capabilityIndex: truncatedAt, diagnostic: sentinel });
+
+  const bounded = capabilities.map((capability) => ({
+    ...capability,
+    questionDiagnostics: [] as QuestionDiagnostic[],
+  }));
+  for (const entry of retained) {
+    bounded[entry.capabilityIndex]!.questionDiagnostics.push(entry.diagnostic);
+  }
+  return bounded;
 }
 
 export class ResolverService {
@@ -689,6 +778,46 @@ export class ResolverService {
       };
     }
 
+    if (plan.kind === "contained") {
+      const result = this.ports.readContainedFile
+        ? this.ports.readContainedFile(
+            plan.capabilityRoot,
+            plan.selectedPath,
+            MAX_PROFILE_TEMPLATE_BYTES,
+          )
+        : ({
+            status: "unsupported",
+            path: null,
+            content: null,
+          } satisfies ContainedFileReadResult);
+      if (result.status === "ok") {
+        return {
+          status: "served",
+          refClass: plan.refClass,
+          path: result.path,
+          content: result.content,
+          bytes: Buffer.byteLength(result.content, "utf8"),
+        };
+      }
+
+      const messageByStatus: Record<Exclude<typeof result.status, "ok">, string> = {
+        missing: "the declared profile template is missing.",
+        "too-large": "the declared profile template exceeds the maximum allowed size.",
+        unsafe:
+          "the declared profile template is not one regular, non-symlink file contained beneath its capability root.",
+        unsupported: "contained profile-template reads are unavailable.",
+        unreadable: "the declared profile template could not be read safely.",
+      };
+      return {
+        status: "unresolved",
+        refClass: plan.refClass,
+        category: "registry-invalid",
+        reaction: "continue",
+        recovery: recoveryFor("registry-invalid"),
+        message: messageByStatus[result.status],
+      };
+    }
+
     // plan.kind === "path": read the resolved body via the server's own fs.
     // A miss here is a caller-input error (the root resolved; the ref's shape
     // didn't) — `ref-not-found`, never the integrity-class `registry-invalid`.
@@ -930,12 +1059,17 @@ export class ResolverService {
       valid: false,
       issues: [],
     };
+    const finish = (): InspectPackResponse => {
+      base.capabilities = boundInspectionQuestionDiagnostics(base.capabilities);
+      base.issues = boundInspectionIssues(base.issues);
+      return base;
+    };
 
     if (!listing.ok) {
       base.issues.push(
         "`claude plugin list --json` is unavailable; pack state cannot be resolved.",
       );
-      return base;
+      return finish();
     }
 
     const pack = listing.plugins.find(
@@ -943,7 +1077,7 @@ export class ResolverService {
     );
     if (!pack) {
       base.issues.push(`plugin \`${pluginId}\` is not installed.`);
-      return base;
+      return finish();
     }
 
     base.installed = true;
@@ -964,7 +1098,7 @@ export class ResolverService {
 
     base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
     base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
-    return base;
+    return finish();
   }
 
   // --- R6: register_pack (mutating write-path) ---------------------------
@@ -1100,13 +1234,13 @@ export class ResolverService {
         );
         if (templateAbs === null) {
           questionDiagnostics = [
-            {
-              code: "question/template-path-invalid",
-              pack: name,
-              question: null,
-              field: "profile-template",
-              message: `pack \`${name}\`, field \`profile-template\`: declared template path \`${manifest.profileTemplate}\` must be a forward-slash relative path contained beneath its capability folder.`,
-            },
+            makeQuestionDiagnostic(
+              name,
+              null,
+              "profile-template",
+              "question/template-path-invalid",
+              "declared template path must be a forward-slash relative path contained beneath its capability folder.",
+            ),
           ];
         } else {
           const templateRead = this.ports.readContainedFile
@@ -1124,33 +1258,33 @@ export class ResolverService {
           fingerprintInputs.push({ path: normalizeSlashes(templateAbs), content: templateRaw });
           if (templateRead.status === "missing") {
             questionDiagnostics = [
-              {
-                code: "question/template-missing",
-                pack: name,
-                question: null,
-                field: "profile-template",
-                message: `pack \`${name}\`, field \`profile-template\`: declared template \`${manifest.profileTemplate}\` is not readable.`,
-              },
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-missing",
+                "declared template is not readable.",
+              ),
             ];
           } else if (templateRead.status === "too-large") {
             questionDiagnostics = [
-              {
-                code: "question/template-too-large",
-                pack: name,
-                question: null,
-                field: "profile-template",
-                message: `pack \`${name}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
-              },
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-too-large",
+                `declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
+              ),
             ];
           } else if (templateRead.status !== "ok") {
             questionDiagnostics = [
-              {
-                code: "question/template-path-invalid",
-                pack: name,
-                question: null,
-                field: "profile-template",
-                message: `pack \`${name}\`, field \`profile-template\`: declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.`,
-              },
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-path-invalid",
+                "declared template must resolve to one regular, non-symlink file contained beneath its canonical capability folder.",
+              ),
             ];
           } else {
             const parsed = parseQuestionDeclarations(name, templateRead.content);

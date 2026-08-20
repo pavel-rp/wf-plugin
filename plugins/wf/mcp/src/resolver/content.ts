@@ -10,8 +10,10 @@
 // PLAN. The service does the actual `fs` read of that plan's path (the snapshot
 // is never touched, so the body-free invariant is untouched).
 //
-// A plan is one of three outcomes, mirroring the C008 resolve_gate posture:
+// A plan is one of four outcomes, mirroring the C008 resolve_gate posture:
 //   - `path`       — a validated absolute path the service reads and serves.
+//   - `contained`  — a manifest-selected template the service re-opens through
+//                    the bounded descriptor-bound containment port.
 //   - `unresolved` — resolution failed (unregistered / dangling / self-heal
 //                    recovered nothing / no declared template) → a typed
 //                    resolver-failure category + `/wf:resolve` recovery. NEVER a
@@ -68,10 +70,18 @@ export interface ContentRef {
   ref?: string;
 }
 
-/** A resolution plan — the service turns a `path` into a read, and maps the
+/** A resolution plan — the service turns a `path` into a read, routes a
+ *  manifest-selected profile template through a contained read, and maps the
  *  other two straight to a typed response. */
 export type ContentPlan =
   | { kind: "path"; refClass: ContentRefClass; path: string }
+  | {
+      kind: "contained";
+      refClass: "profile-template";
+      path: string;
+      capabilityRoot: string;
+      selectedPath: string;
+    }
   | {
       kind: "unresolved";
       refClass: ContentRefClass;
@@ -234,10 +244,36 @@ function resolveProfileTemplate(
   if (!cap.profileTemplatePath) {
     return unresolved(cls, `capability \`${capability}\` declares no \`profile-template:\` in its manifest.`);
   }
+  if (!cap.resolvedPath) {
+    return unresolved(
+      cls,
+      `capability \`${capability}\` has no resolved capability root — its profile template cannot be served.`,
+    );
+  }
+
+  const resolvedRoot = toAbsolute(workspaceRoot, cap.resolvedPath);
+  const capabilityRoot = resolvedRoot === "/" ? "/" : resolvedRoot.replace(/\/+$/, "");
+  const path = toAbsolute(workspaceRoot, cap.profileTemplatePath);
+  const prefix = capabilityRoot === "/" ? "/" : `${capabilityRoot}/`;
+  if (!path.startsWith(prefix)) {
+    return unresolved(
+      cls,
+      `capability \`${capability}\` has a profile template outside its resolved capability root.`,
+    );
+  }
+  const selectedPath = path.slice(prefix.length);
+  if (!isSafeRelPath(selectedPath)) {
+    return unresolved(
+      cls,
+      `capability \`${capability}\` has an invalid profile-template path.`,
+    );
+  }
   return {
-    kind: "path",
+    kind: "contained",
     refClass: cls,
-    path: toAbsolute(workspaceRoot, cap.profileTemplatePath),
+    path,
+    capabilityRoot,
+    selectedPath,
   };
 }
 

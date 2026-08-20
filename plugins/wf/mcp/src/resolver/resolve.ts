@@ -538,7 +538,7 @@ export function buildSnapshot(
           }
         }
       }
-    } catch (err) {
+    } catch {
       if (cap.questions.length > 0) {
         const packName = cap.questions[0]?.pack ?? cap.name;
         cap.questions = [];
@@ -548,18 +548,14 @@ export function buildSnapshot(
             pack: packName,
             question: null,
             field: "profile",
-            message: `pack \`${packName}\`, field \`profile\`: persisted question answers are not valid JSON: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            message: `pack \`${packName}\`, field \`profile\`: persisted question answers must be valid JSON.`,
           },
         ]);
       } else {
         diagnostics.push({
           severity: "warning",
           code: "profile/unparseable",
-          message: `profile for \`${cap.name}\` is not valid JSON: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          message: `profile for \`${cap.name}\` is not valid JSON.`,
         });
       }
     }
