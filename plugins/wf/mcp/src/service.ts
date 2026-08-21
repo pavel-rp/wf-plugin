@@ -2639,7 +2639,11 @@ export class ResolverService {
     // --- committed project overrides (WF-455) --------------------------------
     // Hashed back off disk and compared to the APPROVED source digest, so the
     // check confirms the destination holds the bytes the plan bound rather than
-    // the bytes this process happened to hold in memory. The affected slot is
+    // the bytes this process happened to hold in memory. The two digests are
+    // comparable because the declared source round-trips losslessly through the
+    // contained boundary's UTF-8 decode; a source that does NOT round-trip fails
+    // here and rolls the transaction back, which is the fail-closed direction.
+    // The affected slot is
     // then re-resolved: a file that landed but did not become the winning project
     // tier is a write that did not take effect, which is exactly what a self-check
     // is for.
