@@ -21816,16 +21816,17 @@ function planInstall(input) {
       }
     }
   }
+  const answerKey = (pluginId, questionId) => JSON.stringify([pluginId, questionId]);
   const proposedByKey = /* @__PURE__ */ new Map();
   for (const answer of input.selection.answers) {
-    proposedByKey.set(`${answer.pluginId}\0${answer.questionId}`, answer);
+    proposedByKey.set(answerKey(answer.pluginId, answer.questionId), answer);
   }
   const writes = [];
   const unresolved2 = [];
   for (const pack of byPluginId(actedOn)) {
     for (const question of pack.questions) {
       if (question.state.status === "resolved") continue;
-      const proposed = proposedByKey.get(`${pack.pluginId}\0${question.id}`);
+      const proposed = proposedByKey.get(answerKey(pack.pluginId, question.id));
       const open = (reason) => {
         unresolved2.push({
           pluginId: pack.pluginId,
@@ -22598,13 +22599,13 @@ var applyInstallInput = fromJsonSchema2(withWorkspaceRoot({
           pluginId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
           questionId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
           value: {
-            description: "The proposed answer, carried so the recomputed plan matches the approved one. Answer PERSISTENCE is out of scope for this release \u2014 an answer write in the plan makes the plan unsupported, never silently skipped."
+            description: "The proposed answer, carried so the recomputed plan matches the approved one. REVALIDATED under the lock against the capability's currently-declared question schema before it is persisted; a question that is no longer declared, or a value that no longer satisfies its schema, is `apply/answer-invalid` and nothing is written."
           }
         },
         required: ["pluginId", "questionId", "value"],
         additionalProperties: false
       },
-      description: "The SAME proposed project answers the approved plan was computed from. Never persisted by this operation."
+      description: "The SAME proposed project answers the approved plan was computed from. Persisted (WF-454) as capability profile seeds, inside the same transaction as the registry and the evidence ledger \u2014 all of it or none of it."
     }
   },
   required: ["expectedPlanId"],
@@ -23156,7 +23157,7 @@ function registerResolverTools(server, selectService) {
     "apply_install",
     {
       title: "apply install",
-      description: "The SOLE public mutator for an EXACT registry-only plan (WF-453) \u2014 one guarded, crash-recoverable journaled transaction through refresh, snapshot, and self-check. Returns the versioned envelope `{applyVersion, workspaceRoot, admission, status, reason, transactionId, plan{planId,expectedPlanId,matched,applicability,mode}, applied[], deferred[], rollback, selfCheck, refreshed, recovery{...}, residue{clean,journalRetained,backupsRetained,detail}, diagnostics[]}`. `status` is one of `applied | rejected | rolled-back | halted | invalid-root`. RECOVERY-FIRST AND REPORTED SEPARATELY: before anything is decided it recovers an interrupted transaction through the SAME frozen protocol `discover_packs` and `plan_install` use, and carries that outcome in `recovery`, never folded into `status`; when `recovery.proceeded` is `false` it HALTS with `apply/halted-unrecovered` and mutates nothing. EXACT PLAN ONLY: it takes the exclusive machine-local lock, recomputes the plan UNDER that lock, and requires `identity.planId` to equal the supplied `expectedPlanId` \u2014 a mismatch is `apply/plan-stale`, an applicability other than `applicable` is `apply/plan-not-applicable`, and neither writes. REGISTRY-ONLY, FAILING LOUDLY AND EARLY: the supported action set is exactly `registry-add` and `registry-deregister`; `constitution-recompose` is reported in `deferred[]` with its `/wf:constitution` follow-up, and ANY other mutating action \u2014 an answer write, an evidence seed or repair, a payload or project-override write, an artifact removal, bootstrap or upgrade \u2014 is `apply/unsupported-action` BEFORE a journal exists. Every rejection above, plus a stale identity-bound precondition, a destination that is a symlink or does not resolve inside the admitted workspace, and a journal already present, is decided BEFORE journal creation and BEFORE any mutation, so nothing can be left half-undone. CONCURRENT LIFECYCLE ENTRY IS REFUSED: a lock already held is `apply/lock-held`, and with no lock primitive available it refuses with `apply/lock-unavailable` rather than mutating unserialized. THE TRANSACTION IS CRASH-RECOVERABLE AT EVERY STAGE: the journal (recording the prior existence, type, inode, hash and the exact bytes this transaction will write) is created and durable BEFORE the backup and BEFORE the destination is touched, the backup is verified against the recorded prior hash, the destination's type/inode/hash are RE-CHECKED without following links immediately before the write, the replacement is a create-exclusive fsynced sibling temp file renamed into place, and completion removes the journal BEFORE the backups. An ordinary failure or a process kill at ANY stage therefore restores the exact prior state idempotently \u2014 the same restore runs on a second entry and converges. A FAILED SELF-CHECK IS TRANSACTION FAILURE, NOT A WARNING: after the write it refreshes and re-resolves the registry, asserting BOTH that every added capability resolves `ok` and that every deregistered one is gone; failure rolls back and reports `apply/self-check-failed`. NO SUCCESS IS CLAIMED WHEN ANYTHING IS UNRESOLVED: rollback runs through the frozen recovery decision \u2014 an external edit or a symlink swap is PRESERVED, an unaffected artifact is restored, an unverifiable one is left explicitly UNRESOLVED \u2014 and an incomplete rollback overrides the reported reason with `apply/rollback-incomplete`, retains the journal and backups, and reports `residue.clean:false`. `applied[]` is non-empty ONLY for `status: applied`, where the change is durable and the residue is clean. Works against a non-cwd admitted workspace. Out of scope, and never written by this operation: answers, profiles, `.wf/` overrides, the constitution, payloads, artifact removals, bootstrap, upgrades, and repair.",
+      description: "The SOLE public mutator for an EXACT approved plan (WF-453, widened by WF-454) \u2014 one guarded, crash-recoverable journaled transaction through refresh, snapshot, and self-check. Returns the versioned envelope `{applyVersion, workspaceRoot, admission, status, reason, transactionId, plan{planId,expectedPlanId,matched,applicability,mode}, applied[], deferred[], rollback, selfCheck, refreshed, recovery{...}, residue{clean,journalRetained,backupsRetained,detail}, diagnostics[]}`. `status` is one of `applied | rejected | rolled-back | halted | invalid-root`. RECOVERY-FIRST AND REPORTED SEPARATELY: before anything is decided it recovers an interrupted transaction through the SAME frozen protocol `discover_packs` and `plan_install` use, and carries that outcome in `recovery`, never folded into `status`; when `recovery.proceeded` is `false` it HALTS with `apply/halted-unrecovered` and mutates nothing. EXACT PLAN ONLY: it takes the exclusive machine-local lock, recomputes the plan UNDER that lock, and requires `identity.planId` to equal the supplied `expectedPlanId` \u2014 a mismatch is `apply/plan-stale`, an applicability other than `applicable` is `apply/plan-not-applicable`, and neither writes. A BOUNDED SUPPORTED SET, FAILING LOUDLY AND EARLY: the supported action set is exactly `registry-add`, `registry-deregister`, `evidence-seed`, and `answer-write`, and within `evidence-seed` the only supported seed kind is `binding-seed` \u2014 a `legacy-bootstrap` seed wears a supported action kind and is still refused. `constitution-recompose` is reported in `deferred[]` with its `/wf:constitution` follow-up, and ANY other mutating action \u2014 an evidence repair, a payload or project-override write, an artifact removal, bootstrap or upgrade \u2014 is `apply/unsupported-action` BEFORE a journal exists. THE WHOLE PLAN IS SCREENED BEFORE THE FIRST BYTE IS COMPOSED, so an unsupported action can never follow a supported subset that was already written. WHAT A NEW REGISTRATION PERSISTS, TOGETHER OR NOT AT ALL: the pack's exact observed portable tuple, its initial machine binding, its registry rows, the revalidated project answers as capability profile seeds, the selected evidence ledger, and the refreshed snapshot \u2014 one ordered target set under ONE journal. WHAT AN EXISTING REGISTRATION PERSISTS: an `evidence-seed` seeds ONLY the missing machine binding, and only when the committed portable tuple and the observed one are EXACTLY equal \u2014 not compatible, not a superset. The committed portable half never becomes a target on that path, so committed evidence stays byte-identical down to its inode; a pack that already has a recorded binding, or whose tuple has moved, is `apply/evidence-precondition` and nothing is written. A rendered target whose bytes would not change is DROPPED, and a plan whose every target is a no-op is `apply/plan-not-applicable` rather than an empty transaction. Every rejection above, plus a stale identity-bound precondition, a destination that is a symlink or does not resolve inside the admitted workspace, and a journal already present, is decided BEFORE journal creation and BEFORE any mutation, so nothing can be left half-undone. CONCURRENT LIFECYCLE ENTRY IS REFUSED: a lock already held is `apply/lock-held`, and with no lock primitive available it refuses with `apply/lock-unavailable` rather than mutating unserialized. THE TRANSACTION IS CRASH-RECOVERABLE AT EVERY STAGE: the journal (recording the prior existence, type, inode, hash and the exact bytes this transaction will write) is created and durable BEFORE the backup and BEFORE the destination is touched, the backup is verified against the recorded prior hash, the destination's type/inode/hash are RE-CHECKED without following links immediately before the write, the replacement is a create-exclusive fsynced sibling temp file renamed into place, and completion removes the journal BEFORE the backups. An ordinary failure or a process kill at ANY stage therefore restores the exact prior state idempotently \u2014 the same restore runs on a second entry and converges. A FAILED SELF-CHECK IS TRANSACTION FAILURE, NOT A WARNING: after the write it refreshes and re-resolves the registry, asserting BOTH that every added capability resolves `ok` and that every deregistered one is gone; failure rolls back and reports `apply/self-check-failed`. NO SUCCESS IS CLAIMED WHEN ANYTHING IS UNRESOLVED: rollback runs through the frozen recovery decision \u2014 an external edit or a symlink swap is PRESERVED, an unaffected artifact is restored, an unverifiable one is left explicitly UNRESOLVED \u2014 and an incomplete rollback overrides the reported reason with `apply/rollback-incomplete`, retains the journal and backups, and reports `residue.clean:false`. `applied[]` is non-empty ONLY for `status: applied`, where the change is durable and the residue is clean. Works against a non-cwd admitted workspace. Out of scope, and never written by this operation: `.wf/` project-override tiers, the constitution, payloads, artifact removals, evidence removals (a deregistration deliberately leaves the evidence record standing), legacy portable bootstrap, upgrades, and repair.",
       inputSchema: applyInstallInput
     },
     async (args) => guard(() => {
@@ -24369,6 +24370,11 @@ function resolveReferencesTemplate(ref, ctx) {
 // src/resolver/settings.ts
 var SETTINGS_STORAGE_DIR = "_local/profiles";
 var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
+var PROFILE_STORAGE_DIR = SETTINGS_STORAGE_DIR;
+var PROFILE_SUFFIX = ".profile.json";
+function capabilityProfileRelPath(capability) {
+  return `${PROFILE_STORAGE_DIR}/${capability}${PROFILE_SUFFIX}`;
+}
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
 function isSkillSlug2(s) {
@@ -24753,11 +24759,7 @@ function buildSnapshot(inputs, io) {
   const idShape = trackerOwner ? { source: `tracker:${trackerOwner.owner}`, scheme: null } : { source: "bare-core", scheme: "T<NNN>" };
   const profiles = {};
   for (const cap of capabilities) {
-    const profilePath = joinSlash(
-      workspaceRoot,
-      "_local/profiles",
-      `${cap.name}.profile.json`
-    );
+    const profilePath = joinSlash(workspaceRoot, capabilityProfileRelPath(cap.name));
     const content = io.readFile(profilePath);
     sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
     if (content === null) continue;
@@ -25608,7 +25610,12 @@ function createRecoveryPorts(workspaceRoot) {
     }
   };
 }
-function createApplyPorts(workspaceRoot, registryRelPath, refreshAndSelfCheck) {
+function backupSlug(destination) {
+  const flattened = destination.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+  const digest = sha256Bytes(Buffer.from(destination, "utf8")).slice(0, 16);
+  return `${flattened}.${digest}`;
+}
+function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) {
   const journalPath = joinSlash(workspaceRoot, LIFECYCLE_JOURNAL_PATH);
   const backupRoot = joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR);
   const recoveryPorts = createRecoveryPorts(workspaceRoot);
@@ -25647,11 +25654,15 @@ function createApplyPorts(workspaceRoot, registryRelPath, refreshAndSelfCheck) {
     }
   };
   return {
-    destination: registryRelPath,
-    // Nested per transaction so two transactions can never collide on one backup
-    // file. That nesting is what made the WF-451 root-only tidy reachable, which
-    // is why `pruneEmptyBackupDirs` above now prunes ancestors.
-    backupPathFor: (transactionId) => joinSlash(LIFECYCLE_BACKUP_DIR, transactionId, "registry"),
+    // Nested per transaction AND per destination (WF-454). The transaction
+    // segment stops two transactions colliding on one backup file; the
+    // destination segment stops two TARGETS of the same transaction colliding —
+    // which became possible the moment one transaction could carry the registry,
+    // the ledgers, and the profile seeds at once. The destination is slug-encoded
+    // rather than nested verbatim so a `..` or an absolute-looking segment can
+    // never steer the backup out of the backup root; containment is still
+    // measured independently by `contained(...)` on every use.
+    backupPathFor: (transactionId, destination) => joinSlash(LIFECYCLE_BACKUP_DIR, transactionId, backupSlug(destination)),
     newTransactionId: () => randomBytes2(16).toString("hex"),
     now: () => (/* @__PURE__ */ new Date()).toISOString(),
     journalPresent: () => {
@@ -25672,10 +25683,10 @@ function createApplyPorts(workspaceRoot, registryRelPath, refreshAndSelfCheck) {
     // Delegated to the recovery ports VERBATIM. One observation implementation,
     // one containment decision, one no-follow rule — a second one here would be a
     // divergent answer to a question that already has one.
-    observeDestination: () => recoveryPorts.observeDestination(registryRelPath),
-    destinationInode: () => {
+    observeDestination: (destination) => recoveryPorts.observeDestination(destination),
+    destinationInode: (destination) => {
       try {
-        return lstatSync2(resolve3(realpathSync3(workspaceRoot), registryRelPath)).ino;
+        return lstatSync2(resolve3(realpathSync3(workspaceRoot), destination)).ino;
       } catch {
         return null;
       }
@@ -25686,13 +25697,13 @@ function createApplyPorts(workspaceRoot, registryRelPath, refreshAndSelfCheck) {
     },
     writeJournal: (journal) => atomicWrite(journalPath, Buffer.from(`${JSON.stringify(journal, null, 2)}
 `, "utf8")),
-    writeBackup: (backupPath) => {
-      const source = contained(registryRelPath);
+    writeBackup: (destination, backupPath) => {
+      const source = contained(destination);
       const target = contained(backupPath);
       if (source === null || target === null) {
         return {
           ok: false,
-          diagnostic: `\`${registryRelPath}\` or its backup \`${backupPath}\` does not resolve to a workspace-contained target; nothing was backed up.`
+          diagnostic: `\`${destination}\` or its backup \`${backupPath}\` does not resolve to a workspace-contained target; nothing was backed up.`
         };
       }
       try {
@@ -25700,17 +25711,17 @@ function createApplyPorts(workspaceRoot, registryRelPath, refreshAndSelfCheck) {
       } catch (err) {
         return {
           ok: false,
-          diagnostic: `the prior bytes of \`${registryRelPath}\` could not be read: ${message(err)}`
+          diagnostic: `the prior bytes of \`${destination}\` could not be read: ${message(err)}`
         };
       }
     },
     hashBackup: (backupPath) => recoveryPorts.hashBackup(backupPath),
-    atomicReplace: (content) => {
-      const target = contained(registryRelPath);
+    atomicReplace: (destination, content) => {
+      const target = contained(destination);
       if (target === null) {
         return {
           ok: false,
-          diagnostic: `\`${registryRelPath}\` does not resolve to a workspace-contained target; nothing was written.`
+          diagnostic: `\`${destination}\` does not resolve to a workspace-contained target; nothing was written.`
         };
       }
       return atomicWrite(target, Buffer.from(content, "utf8"));
@@ -28033,8 +28044,10 @@ function removeSectionRow(markdown, heading, key) {
 
 // src/resolver/apply-install.ts
 var APPLY_SUPPORTED_ACTION_KINDS = [
+  "evidence-seed",
   "registry-add",
-  "registry-deregister"
+  "registry-deregister",
+  "answer-write"
 ];
 var APPLY_DEFERRED_ACTION_KINDS = [
   "constitution-recompose"
@@ -28073,6 +28086,7 @@ function screenPlanActions(actions) {
   }
   return screened;
 }
+var APPLY_SUPPORTED_SEED_KINDS = ["binding-seed"];
 function decideApplyGate(input) {
   const screened = screenPlanActions(input.plan.actions);
   if (!input.plan.admission.admitted) {
@@ -28120,7 +28134,20 @@ function decideApplyGate(input) {
     return {
       ok: false,
       reason: "apply/unsupported-action",
-      detail: `the plan carries mutating action kind(s) this mutator does not support: ${kinds.map((kind) => `\`${kind}\``).join(", ")}. Only exact registry-only plans are applied, and an unsupported kind is refused before any journal, backup, or mutation.`,
+      detail: `the plan carries mutating action kind(s) this mutator does not support: ${kinds.map((kind) => `\`${kind}\``).join(", ")}. The whole plan is screened before anything is written, so an unsupported kind is refused before any journal, backup, or mutation \u2014 the supported subset is never applied on its own.`,
+      screened
+    };
+  }
+  const unsupportedSeeds = input.plan.evidenceSeeds.filter(
+    (seed) => !APPLY_SUPPORTED_SEED_KINDS.includes(seed.kind)
+  );
+  if (unsupportedSeeds.length > 0) {
+    const kinds = [...new Set(unsupportedSeeds.map((seed) => seed.kind))].sort();
+    const packs = [...new Set(unsupportedSeeds.map((seed) => seed.pluginId))].sort();
+    return {
+      ok: false,
+      reason: "apply/unsupported-action",
+      detail: `the plan carries evidence seed kind(s) this mutator does not support: ${kinds.map((kind) => `\`${kind}\``).join(", ")} (pack(s) ${packs.map((pack) => `\`${pack}\``).join(", ")}). A legacy portable bootstrap records portable evidence from observed proof and is refused before any journal, backup, or mutation.`,
       screened
     };
   }
@@ -28140,6 +28167,7 @@ function renderRegistryMutation(current, supported, facts) {
   let content = current;
   let changed = false;
   for (const action2 of supported) {
+    if (action2.kind !== "registry-add" && action2.kind !== "registry-deregister") continue;
     const pluginId = action2.pluginId;
     if (pluginId === null) {
       return {
@@ -28211,7 +28239,8 @@ function rejected(reason, message2, residue) {
     selfCheck: "skipped",
     refreshed: false,
     residue,
-    diagnostics: [issue2(reason, message2)]
+    diagnostics: [issue2(reason, message2)],
+    written: []
   };
 }
 function noTransactionResidue() {
@@ -28271,62 +28300,95 @@ function failAfterJournal(ports, transactionId, reason, message2, selfCheck, ref
       ports,
       report.complete ? "the transaction was rolled back and its journal and backups were discarded." : "the transaction could not be fully rolled back; its journal is retained so a later run re-observes and converges."
     ),
-    diagnostics
+    diagnostics,
+    written: []
   };
 }
 function applyTransaction(ports, input) {
-  const observed = ports.observeDestination();
-  const observedInode = ports.destinationInode();
-  if (observed.kind === "not-contained") {
+  if (input.targets.length === 0) {
     return rejected(
       "apply/registry-unresolvable",
-      `\`${ports.destination}\` does not resolve to a workspace-contained target (${observed.rejection}); nothing was journalled and nothing was written.`,
+      "the transaction was handed no destination to write; nothing was journalled and nothing was written.",
       noTransactionResidue()
     );
   }
-  if (observed.kind === "observation-failed") {
-    return rejected(
-      "apply/registry-unresolvable",
-      `\`${ports.destination}\` could not be observed: ${observed.diagnostic}`,
-      noTransactionResidue()
-    );
+  const seen = /* @__PURE__ */ new Set();
+  for (const target of input.targets) {
+    if (seen.has(target.destination)) {
+      return rejected(
+        "apply/registry-unresolvable",
+        `destination \`${target.destination}\` appears twice in one transaction; a single journal cannot record two prior states for one file, so nothing was journalled and nothing was written.`,
+        noTransactionResidue()
+      );
+    }
+    seen.add(target.destination);
   }
-  if (observed.kind === "symlink") {
-    return rejected(
-      "apply/destination-symlink",
-      `\`${ports.destination}\` is a symbolic link; this mutator never writes through a link, so no journal was created and nothing was written.`,
-      noTransactionResidue()
-    );
-  }
-  const willWrite = createLastWrittenIdentity(ports.identify(input.newContent));
-  if (willWrite === null) {
-    return rejected(
-      "apply/registry-unresolvable",
-      "the bytes to be written could not be identified deterministically; nothing was journalled and nothing was written.",
-      noTransactionResidue()
-    );
+  const screened = [];
+  for (const target of input.targets) {
+    const observed = ports.observeDestination(target.destination);
+    const inode = ports.destinationInode(target.destination);
+    if (observed.kind === "not-contained") {
+      return rejected(
+        "apply/registry-unresolvable",
+        `\`${target.destination}\` does not resolve to a workspace-contained target (${observed.rejection}); nothing was journalled and nothing was written.`,
+        noTransactionResidue()
+      );
+    }
+    if (observed.kind === "observation-failed") {
+      return rejected(
+        "apply/registry-unresolvable",
+        `\`${target.destination}\` could not be observed: ${observed.diagnostic}`,
+        noTransactionResidue()
+      );
+    }
+    if (observed.kind === "symlink") {
+      return rejected(
+        "apply/destination-symlink",
+        `\`${target.destination}\` is a symbolic link; this mutator never writes through a link, so no journal was created and nothing was written.`,
+        noTransactionResidue()
+      );
+    }
+    const willWrite = createLastWrittenIdentity(ports.identify(target.newContent));
+    if (willWrite === null) {
+      return rejected(
+        "apply/registry-unresolvable",
+        `the bytes to be written to \`${target.destination}\` could not be identified deterministically; nothing was journalled and nothing was written.`,
+        noTransactionResidue()
+      );
+    }
+    screened.push({
+      destination: target.destination,
+      newContent: target.newContent,
+      observed,
+      inode,
+      willWrite
+    });
   }
   const transactionId = ports.newTransactionId();
-  const backupPath = observed.kind === "file" ? ports.backupPathFor(transactionId) : null;
-  const entry = createJournalEntry({
-    destination: ports.destination,
-    priorExistence: observed.kind === "file" ? "present" : "absent",
-    priorContentHash: observed.kind === "file" ? observed.contentHash : null,
-    priorIsSymlink: false,
-    backupPath,
-    lastWritten: willWrite
-  });
-  if (entry === null) {
-    return rejected(
-      "apply/registry-unresolvable",
-      "the transaction journal entry for the registry destination is incomplete or self-contradictory; nothing was journalled and nothing was written.",
-      noTransactionResidue()
-    );
+  const prepared = [];
+  for (const target of screened) {
+    const backupPath = target.observed.kind === "file" ? ports.backupPathFor(transactionId, target.destination) : null;
+    const entry = createJournalEntry({
+      destination: target.destination,
+      priorExistence: target.observed.kind === "file" ? "present" : "absent",
+      priorContentHash: target.observed.kind === "file" ? target.observed.contentHash : null,
+      priorIsSymlink: false,
+      backupPath,
+      lastWritten: target.willWrite
+    });
+    if (entry === null) {
+      return rejected(
+        "apply/registry-unresolvable",
+        `the transaction journal entry for \`${target.destination}\` is incomplete or self-contradictory; nothing was journalled and nothing was written.`,
+        noTransactionResidue()
+      );
+    }
+    prepared.push({ ...target, backupPath, entry });
   }
   const journal = createTransactionJournal({
     transactionId,
     startedAt: ports.now(),
-    entries: [entry]
+    entries: prepared.map((target) => target.entry)
   });
   if (journal === null) {
     return rejected(
@@ -28343,72 +28405,79 @@ function applyTransaction(ports, input) {
       residueFrom(ports, "the transaction journal could not be written.")
     );
   }
-  if (backupPath !== null) {
-    const backed = ports.writeBackup(backupPath);
+  for (const target of prepared) {
+    if (target.backupPath === null) continue;
+    const backed = ports.writeBackup(target.destination, target.backupPath);
     if (!backed.ok) {
       return failAfterJournal(
         ports,
         transactionId,
         "apply/backup-failed",
-        `the prior bytes of \`${ports.destination}\` could not be backed up: ${backed.diagnostic}`,
+        `the prior bytes of \`${target.destination}\` could not be backed up: ${backed.diagnostic}`,
         "skipped",
         false
       );
     }
-    const proof = ports.hashBackup(backupPath);
+    const proof = ports.hashBackup(target.backupPath);
     if (!proof.ok) {
       return failAfterJournal(
         ports,
         transactionId,
         "apply/backup-failed",
-        `the backup of \`${ports.destination}\` could not be verified (${proof.reason}): ${proof.diagnostic}`,
+        `the backup of \`${target.destination}\` could not be verified (${proof.reason}): ${proof.diagnostic}`,
         "skipped",
         false
       );
     }
-    if (proof.contentHash !== entry.priorContentHash) {
+    if (proof.contentHash !== target.entry.priorContentHash) {
       return failAfterJournal(
         ports,
         transactionId,
         "apply/backup-failed",
-        `the backup of \`${ports.destination}\` does not reproduce its recorded prior bytes; nothing was written.`,
+        `the backup of \`${target.destination}\` does not reproduce its recorded prior bytes; nothing was written.`,
         "skipped",
         false
       );
     }
   }
-  const recheck = ports.observeDestination();
-  const recheckInode = ports.destinationInode();
-  if (!sameObservation(observed, recheck)) {
-    return failAfterJournal(
-      ports,
-      transactionId,
-      "apply/precondition-moved",
-      `\`${ports.destination}\` changed between the observation this transaction recorded and the write (${describe2(observed)} \u2192 ${describe2(recheck)}); nothing was written.`,
-      "skipped",
-      false
-    );
+  for (const target of prepared) {
+    const recheck = ports.observeDestination(target.destination);
+    const recheckInode = ports.destinationInode(target.destination);
+    if (!sameObservation(target.observed, recheck)) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/precondition-moved",
+        `\`${target.destination}\` changed between the observation this transaction recorded and the write (${describe2(target.observed)} \u2192 ${describe2(recheck)}); nothing was written.`,
+        "skipped",
+        false
+      );
+    }
+    if (target.inode !== recheckInode) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/precondition-moved",
+        `\`${target.destination}\` names a different file than the one this transaction validated (inode ${String(target.inode)} \u2192 ${String(recheckInode)}); nothing was written.`,
+        "skipped",
+        false
+      );
+    }
   }
-  if (observedInode !== recheckInode) {
-    return failAfterJournal(
-      ports,
-      transactionId,
-      "apply/precondition-moved",
-      `\`${ports.destination}\` names a different file than the one this transaction validated (inode ${String(observedInode)} \u2192 ${String(recheckInode)}); nothing was written.`,
-      "skipped",
-      false
-    );
-  }
-  const written = ports.atomicReplace(input.newContent);
-  if (!written.ok) {
-    return failAfterJournal(
-      ports,
-      transactionId,
-      "apply/write-failed",
-      `\`${ports.destination}\` could not be replaced: ${written.diagnostic}`,
-      "skipped",
-      false
-    );
+  const written = [];
+  for (const target of prepared) {
+    const result = ports.atomicReplace(target.destination, target.newContent);
+    if (!result.ok) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/write-failed",
+        `\`${target.destination}\` could not be replaced: ${result.diagnostic}`,
+        "skipped",
+        false
+      );
+    }
+    written.push(target.destination);
   }
   const checked = ports.refreshAndSelfCheck(input.expectation);
   if (!checked.ok) {
@@ -28416,7 +28485,7 @@ function applyTransaction(ports, input) {
       ports,
       transactionId,
       "apply/self-check-failed",
-      `the registry was written but the self-check did not confirm the intended state: ${checked.diagnostic}`,
+      `the transaction wrote ${written.length} destination(s) but the self-check did not confirm the intended state: ${checked.diagnostic}`,
       "failed",
       true
     );
@@ -28433,7 +28502,8 @@ function applyTransaction(ports, input) {
       ports,
       "the transaction completed durably: the journal was discarded first, then its backups, then the emptied backup directories were pruned."
     ),
-    diagnostics: []
+    diagnostics: [],
+    written
   };
 }
 function sameObservation(left, right) {
@@ -28456,6 +28526,71 @@ function describe2(observation) {
     default:
       return "unobservable";
   }
+}
+
+// src/resolver/apply-targets.ts
+function stableStringify(value) {
+  const seen = /* @__PURE__ */ new WeakSet();
+  const normalize = (input) => {
+    if (input === null || typeof input !== "object") return input;
+    if (seen.has(input)) return null;
+    seen.add(input);
+    if (Array.isArray(input)) return input.map(normalize);
+    const out = {};
+    for (const key of Object.keys(input).sort()) {
+      out[key] = normalize(input[key]);
+    }
+    return out;
+  };
+  return `${JSON.stringify(normalize(value), null, 2)}
+`;
+}
+function parseDocument(current, label2) {
+  if (current === null || current.trim() === "") return { ok: true, document: {} };
+  let parsed;
+  try {
+    parsed = JSON.parse(current);
+  } catch (err) {
+    return {
+      ok: false,
+      detail: `${label2} does not parse as JSON (${err instanceof Error ? err.message : String(err)}); it is not rewritten, so nothing that is there now is lost.`
+    };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      detail: `${label2} is not a JSON object; it is not rewritten, so nothing that is there now is lost.`
+    };
+  }
+  return { ok: true, document: parsed };
+}
+function asSection(document, name) {
+  const section = document[name];
+  if (typeof section !== "object" || section === null || Array.isArray(section)) return {};
+  return { ...section };
+}
+function renderLedgerMutation(current, updates, label2) {
+  const parsed = parseDocument(current, label2);
+  if (!parsed.ok) return parsed;
+  const document = { ...parsed.document };
+  const portable = asSection(document, "portable");
+  const binding = asSection(document, "binding");
+  for (const update of updates) {
+    if (update.portable !== void 0) portable[update.pluginId] = update.portable;
+    if (update.binding !== void 0) binding[update.pluginId] = update.binding;
+  }
+  if (Object.keys(portable).length > 0) document.portable = portable;
+  if (Object.keys(binding).length > 0) document.binding = binding;
+  const content = stableStringify(document);
+  return { ok: true, content, changed: content !== (current ?? "") };
+}
+function renderProfileMutation(current, updates, label2) {
+  const parsed = parseDocument(current, label2);
+  if (!parsed.ok) return parsed;
+  const document = { ...parsed.document };
+  for (const update of updates) document[update.destination] = update.value;
+  const content = stableStringify(document);
+  return { ok: true, content, changed: content !== (current ?? "") };
 }
 
 // src/service.ts
@@ -29409,7 +29544,8 @@ var ResolverService = class {
     };
   }
   /**
-   * The sole public mutator for an exact registry-only plan (WF-453).
+   * The sole public mutator for an exact approved plan (WF-453, widened by
+   * WF-454 from registry-only to registry + evidence + profile seeds).
    *
    * The whole method is one guarded, crash-recoverable journaled transaction. It
    * recovers BEFORE it decides anything, holds the exclusive lock across both the
@@ -29565,11 +29701,28 @@ var ResolverService = class {
       const present = [];
       const absent = [];
       for (const action2 of gate.screened.supported) {
+        if (action2.kind !== "registry-add" && action2.kind !== "registry-deregister") continue;
         const fact = action2.pluginId === null ? void 0 : facts.get(action2.pluginId);
         if (fact === void 0) continue;
         const names = fact.capabilities.map((c) => c.name);
         if (action2.kind === "registry-add") present.push(...names);
         else absent.push(...names);
+      }
+      const composed = this.composeApplyTargets({
+        plan,
+        inspected,
+        supported: gate.screened.supported,
+        registryRel,
+        registryContent: mutation.content,
+        registryChanged: mutation.changed
+      });
+      if (!composed.ok) {
+        return {
+          ...halted("rejected", composed.reason, recovery, plan, [
+            { code: composed.reason, message: composed.detail }
+          ]),
+          deferred: gate.screened.deferred
+        };
       }
       const applyPorts = this.ports.createApply?.(
         registryRel,
@@ -29587,8 +29740,14 @@ var ResolverService = class {
         };
       }
       const result = applyTransaction(applyPorts, {
-        newContent: mutation.content,
-        expectation: { present, absent }
+        targets: composed.targets,
+        expectation: {
+          present,
+          absent,
+          portableRecorded: composed.portableRecorded,
+          bindingRecorded: composed.bindingRecorded,
+          answersRecorded: composed.answersRecorded
+        }
       });
       const applied = result.status === "applied" ? gate.screened.supported.map((action2) => ({
         kind: action2.kind,
@@ -29646,13 +29805,206 @@ var ResolverService = class {
     }
   }
   /**
-   * The post-write self-check: refresh discovery, then assert the registry view
+   * Compose every target this apply will write, and refuse before the
+   * transaction if any precondition the plan depended on has moved (WF-454).
+   *
+   * ORDERING IS THE POINT. This runs after `decideApplyGate` — so the whole plan
+   * has already been screened for unsupported action kinds and unsupported seed
+   * kinds — and BEFORE `applyTransaction`, so every refusal below is byte-inert.
+   * A precondition that fails here leaves the workspace exactly as the recovered
+   * baseline left it: no journal, no backup, no partial subset of a plan applied.
+   *
+   * WHAT BECOMES A TARGET, AND WHAT DELIBERATELY DOES NOT:
+   *
+   * - `registry-add` records a NEW registration, so it contributes the pack's
+   *   exact observed portable tuple (the ownership evidence) AND its initial
+   *   machine binding.
+   * - `evidence-seed` is the missing-binding case, so it contributes ONLY the
+   *   machine binding. The committed portable half is deliberately not touched,
+   *   which is how "committed evidence stays byte-identical" is guaranteed:
+   *   on this path the committed ledger never becomes a target at all.
+   * - `answer-write` contributes one profile seed per owning capability.
+   * - `registry-deregister` contributes NOTHING to the ledger. Evidence removal
+   *   is a removal, and removals are out of scope for this item; leaving the
+   *   record is also the fail-safe direction, since a stale record re-proposes a
+   *   seed while a wrongly-erased one loses the only proof the pack was ever
+   *   installed.
+   *
+   * A rendered target whose bytes would not change is DROPPED, so an apply never
+   * rewrites a file it has nothing to say about.
+   */
+  composeApplyTargets(input) {
+    const workspaceRoot = this.ports.workspaceRoot;
+    const readRel = (relPath) => this.ports.readFile(joinSlash(workspaceRoot, relPath));
+    const home = resolveLedgerHome();
+    if (!home.ok || home.portablePath === null) {
+      return {
+        ok: false,
+        reason: "apply/ledger-unresolvable",
+        detail: `the declared ledger home is not a legal policy: ${home.diagnostic ?? "unknown"}. Nothing was written.`
+      };
+    }
+    const recordedPortable = parseEvidenceLedger(readRel(home.portablePath)).portable;
+    const recordedBinding = parseEvidenceLedger(readRel(home.bindingPath)).binding;
+    const portableUpdates = [];
+    const bindingUpdates = [];
+    const portableRecorded = [];
+    const bindingRecorded = [];
+    const seedByPluginId = new Map(input.plan.evidenceSeeds.map((seed) => [seed.pluginId, seed]));
+    for (const action2 of input.supported) {
+      const pluginId = action2.pluginId;
+      if (action2.kind === "registry-add") {
+        if (pluginId === null) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: "a `registry-add` action carries no pack attribution, so its lifecycle evidence cannot be recorded."
+          };
+        }
+        const pack = input.inspected.get(pluginId);
+        const portable = pack?.portableEvidence ?? null;
+        const binding = pack?.machineBinding ?? null;
+        if (pack === void 0 || !pack.valid || portable === null || binding === null) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `pack \`${pluginId}\` is being registered but its exact portable evidence and initial machine binding could not both be observed at apply time; the registration is not recorded without the evidence that owns it.`
+          };
+        }
+        portableUpdates.push({ pluginId, portable });
+        bindingUpdates.push({ pluginId, binding });
+        portableRecorded.push(pluginId);
+        bindingRecorded.push(pluginId);
+        continue;
+      }
+      if (action2.kind === "evidence-seed") {
+        if (pluginId === null) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: "an `evidence-seed` action carries no pack attribution, so the binding it would seed cannot be resolved."
+          };
+        }
+        const seed = seedByPluginId.get(pluginId);
+        if (seed === void 0 || seed.kind !== "binding-seed") {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `pack \`${pluginId}\` carries an \`evidence-seed\` action with no matching binding-seed proposal at apply time; nothing was written.`
+          };
+        }
+        const observedPortable = input.inspected.get(pluginId)?.portableEvidence ?? null;
+        const committedPortable = recordedPortable.get(pluginId) ?? null;
+        if (observedPortable === null || committedPortable === null || JSON.stringify(committedPortable) !== JSON.stringify(observedPortable)) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `pack \`${pluginId}\` no longer presents a portable tuple exactly equal to the committed one, so only-the-missing-binding cannot be seeded; nothing was written.`
+          };
+        }
+        if (recordedBinding.has(pluginId)) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `pack \`${pluginId}\` already has a recorded machine binding, so there is no missing binding to seed; nothing was written.`
+          };
+        }
+        bindingUpdates.push({ pluginId, binding: seed.binding });
+        bindingRecorded.push(pluginId);
+        continue;
+      }
+    }
+    const answersByCapability = /* @__PURE__ */ new Map();
+    const answersRecorded = [];
+    for (const write of input.plan.answers.writes) {
+      if (!input.supported.some((a) => a.kind === "answer-write" && a.destination === write.destination && a.pluginId === write.pluginId)) {
+        continue;
+      }
+      const question = input.inspected.get(write.pluginId)?.capabilities.flatMap((capability) => capability.questions).find((candidate) => candidate.id === write.questionId);
+      if (question === void 0) {
+        return {
+          ok: false,
+          reason: "apply/answer-invalid",
+          detail: `question \`${write.questionId}\` of capability \`${write.pack}\` is no longer declared at apply time, so its approved answer is not persisted; nothing was written.`
+        };
+      }
+      const revalidated = validateQuestionValue(question, "proposed", write.value);
+      if (!revalidated.valid) {
+        return {
+          ok: false,
+          reason: "apply/answer-invalid",
+          detail: `the approved answer for question \`${write.questionId}\` of capability \`${write.pack}\` no longer satisfies its declared schema: ${revalidated.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}. Nothing was written.`
+        };
+      }
+      const bucket = answersByCapability.get(write.pack) ?? [];
+      bucket.push({ destination: write.destination, value: revalidated.value });
+      answersByCapability.set(write.pack, bucket);
+      answersRecorded.push({ capability: write.pack, destination: write.destination });
+    }
+    const targets = input.registryChanged ? [{ destination: input.registryRel, newContent: input.registryContent }] : [];
+    const addRendered = (destination, render, reason) => {
+      if (!render.ok) return { ok: false, reason, detail: render.detail };
+      if (!render.changed) return null;
+      if (targets.some((target) => target.destination === destination)) {
+        return {
+          ok: false,
+          reason: "apply/ledger-unresolvable",
+          detail: `destination \`${destination}\` would be written twice in one transaction; nothing was written.`
+        };
+      }
+      targets.push({ destination, newContent: render.content });
+      return null;
+    };
+    const byDestination = /* @__PURE__ */ new Map();
+    if (portableUpdates.length > 0) {
+      byDestination.set(home.portablePath, [
+        ...byDestination.get(home.portablePath) ?? [],
+        ...portableUpdates
+      ]);
+    }
+    if (bindingUpdates.length > 0) {
+      byDestination.set(home.bindingPath, [
+        ...byDestination.get(home.bindingPath) ?? [],
+        ...bindingUpdates
+      ]);
+    }
+    for (const [destination, updates] of byDestination) {
+      const failure2 = addRendered(
+        destination,
+        renderLedgerMutation(readRel(destination), updates, `the evidence ledger \`${destination}\``),
+        "apply/ledger-unresolvable"
+      );
+      if (failure2 !== null) return failure2;
+    }
+    for (const [capability, updates] of answersByCapability) {
+      const destination = capabilityProfileRelPath(capability);
+      const failure2 = addRendered(
+        destination,
+        renderProfileMutation(readRel(destination), updates, `the capability profile \`${destination}\``),
+        "apply/answer-invalid"
+      );
+      if (failure2 !== null) return failure2;
+    }
+    if (targets.length === 0) {
+      return {
+        ok: false,
+        reason: "apply/plan-not-applicable",
+        detail: "every target this plan names already holds exactly the bytes it would be given, so there is nothing to write; no transaction was opened."
+      };
+    }
+    return { ok: true, targets, portableRecorded, bindingRecorded, answersRecorded };
+  }
+  /**
+   * The post-write self-check: refresh discovery, then assert the resolved view
    * agrees with what the transaction claims it wrote.
    *
    * A *failed* self-check is a transaction FAILURE, not a warning — the caller
-   * rolls back on it. So this must assert both halves: every added capability
-   * resolves `ok`, and every deregistered one is gone. Asserting only presence
-   * would let a deregistration that silently changed nothing report success.
+   * rolls back on it. So this must assert every half: every added capability
+   * resolves `ok`, every deregistered one is gone, and — since WF-454 — every
+   * recorded evidence entry and every seeded answer READS BACK. Asserting only
+   * presence would let a deregistration that silently changed nothing report
+   * success; asserting only the registry would let a ledger or profile write that
+   * landed as unreadable bytes report success just as wrongly.
    */
   selfCheckRegistry(expectation) {
     this.refresh();
@@ -29663,10 +30015,42 @@ var ResolverService = class {
     const lingering = expectation.absent.filter(
       (name) => view.capabilities.some((c) => c.name === name)
     );
-    if (missing.length === 0 && lingering.length === 0) return { ok: true };
+    const workspaceRoot = this.ports.workspaceRoot;
+    const readRel = (relPath) => this.ports.readFile(joinSlash(workspaceRoot, relPath));
+    const home = resolveLedgerHome();
+    const portableBack = home.portablePath === null ? /* @__PURE__ */ new Map() : parseEvidenceLedger(readRel(home.portablePath)).portable;
+    const bindingBack = parseEvidenceLedger(readRel(home.bindingPath)).binding;
+    const portableMissing = expectation.portableRecorded.filter((id) => !portableBack.has(id));
+    const bindingMissing = expectation.bindingRecorded.filter((id) => !bindingBack.has(id));
+    const answerMissing = [];
+    for (const answer of expectation.answersRecorded) {
+      const raw = readRel(capabilityProfileRelPath(answer.capability));
+      let ok2 = false;
+      if (raw !== null) {
+        try {
+          const parsed = JSON.parse(raw);
+          ok2 = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) && Object.prototype.hasOwnProperty.call(parsed, answer.destination);
+        } catch {
+          ok2 = false;
+        }
+      }
+      if (!ok2) answerMissing.push(`${answer.capability}:${answer.destination}`);
+    }
+    if (missing.length === 0 && lingering.length === 0 && portableMissing.length === 0 && bindingMissing.length === 0 && answerMissing.length === 0) {
+      return { ok: true };
+    }
     const parts = [];
     if (missing.length > 0) parts.push(`not resolvable after the write: ${missing.join(", ")}`);
     if (lingering.length > 0) parts.push(`still registered after removal: ${lingering.join(", ")}`);
+    if (portableMissing.length > 0) {
+      parts.push(`portable evidence did not read back: ${portableMissing.join(", ")}`);
+    }
+    if (bindingMissing.length > 0) {
+      parts.push(`machine binding did not read back: ${bindingMissing.join(", ")}`);
+    }
+    if (answerMissing.length > 0) {
+      parts.push(`profile seed did not read back: ${answerMissing.join(", ")}`);
+    }
     return { ok: false, diagnostic: parts.join("; ") };
   }
   /**

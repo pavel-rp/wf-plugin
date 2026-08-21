@@ -1,12 +1,21 @@
-// wf resolver — the journaled apply transaction driver (WF-453).
+// wf resolver — the journaled apply transaction driver (WF-453, widened WF-454).
 //
-// The WRITE half of the first public mutator. Every filesystem effect it needs
+// The WRITE half of the sole public mutator. Every filesystem effect it needs
 // is declared on `ApplyPorts` and injected, so the whole driver — journal
 // lifetime, backup proof, the TOCTOU re-observation, the atomic replacement, the
 // self-check, the guarded rollback, and durable completion — is exercised in
 // tests against in-memory doubles, with a separate real-filesystem suite proving
 // the production ports honour the same contract. That is the discipline
 // `lifecycle-recovery.ts` (WF-451) holds, and it is inherited here deliberately.
+//
+// WF-454 WIDENS THE DRIVER FROM ONE DESTINATION TO AN ORDERED SET, and changes
+// nothing else. One registration's registry rows, its lifecycle evidence, and its
+// approved project answers are a SINGLE fact that must become durable together;
+// applying them as three transactions would mean three windows in which a kill
+// leaves the workspace internally inconsistent. So the stage list below is
+// unchanged and every per-destination stage simply became a loop over the target
+// set, under ONE journal carrying N entries. WF-451's recovery driver already
+// restores an N-entry journal, so the guarded rollback composes untouched.
 //
 // THE LOCK IS NOT THIS MODULE'S. The caller acquires the exclusive lifecycle lock
 // before entering and releases it on every exit path, because the lock must also
@@ -20,38 +29,46 @@
 // restores idempotently on re-entry:
 //
 //   S1  caller holds the lock
-//   S2  observe the destination, no-follow (type, inode, size, content hash)
-//   S3  compute the new bytes and their identity UP FRONT
-//   S4  write the journal, with `lastWritten` ALREADY recorded
-//   S5  write the backup, then prove its bytes reproduce the recorded prior hash
-//   S6  re-observe the destination and compare against S2 (the TOCTOU guard)
-//   S7  atomic replacement — sibling temp file, then rename over the destination
+//   S2  observe EVERY destination, no-follow (type, inode, size, content hash)
+//   S3  compute the new bytes and their identity UP FRONT, for every target
+//   S4  write the ONE journal, with every `lastWritten` ALREADY recorded
+//   S5  back EVERY target up, then prove each backup reproduces its prior hash
+//   S6  re-observe EVERY destination and compare against S2 (the TOCTOU guard)
+//   S7  atomic replacement of every target, in the caller's canonical order
 //   S8  refresh, persist the snapshot, self-check
 //   S9  durable completion — discard the JOURNAL FIRST, then the backups
 //
-// WHY THE JOURNAL PRECEDES THE BACKUP (S4 before S5). The inverse order has a
+// WHY EVERY TARGET IS OBSERVED, JOURNALLED, AND BACKED UP BEFORE ANY IS WRITTEN
+// (S2–S5 complete before S7 begins). This is the multi-target restatement of the
+// item's sharpest rule: a plan is never partially interpreted. If target 2 turned
+// out to be a symlink only after target 1 had been replaced, the run would have
+// mutated part of the workspace and then failed — recoverable, but only because
+// the journal happens to exist. Refusing before ANY write is strictly stronger,
+// and it is free: every precondition is knowable up front.
+//
+// WHY THE JOURNAL PRECEDES THE BACKUPS (S4 before S5). The inverse order has a
 // window in which a backup exists with no journal naming it: orphan bytes nothing
-// will ever reclaim. With journal-first, a kill before the destination is touched
-// leaves the destination at its prior state, which `decideEntryRecovery` resolves
-// at step 4 — the idempotence guard, checked BEFORE the ownership test — as
-// `already-prior-content`. The journal is then discarded and the named backup
-// removed even if it was never created; `discardJournal` tolerates absence.
+// will ever reclaim. With journal-first, a kill before any destination is touched
+// leaves every destination at its prior state, which `decideEntryRecovery`
+// resolves at step 4 — the idempotence guard, checked BEFORE the ownership test —
+// as `already-prior-content`. The journal is then discarded and the named backups
+// removed even if they were never created; `discardJournal` tolerates absence.
 //
 // WHY `lastWritten` IS PRE-RECORDED (S3 into S4). Recording it only after the
-// write leaves a window in which the destination holds the new bytes while the
+// write leaves a window in which a destination holds the new bytes while the
 // journal still says `lastWritten: null`. Recovery's step 5 would then classify
 // this transaction's OWN write as an `external-edit` and PRESERVE it — leaving
 // the workspace mutated, the journal retained, and no path back. Pre-recording is
 // sound because the new bytes are computed deterministically before any write,
-// and it is safe because the atomic replacement guarantees the destination is
-// never in a third state.
+// and it is safe because the atomic replacement guarantees no destination is ever
+// in a third state.
 //
 // WHY COMPLETION DISCARDS THE JOURNAL FIRST (S9). Recovery's own `discardJournal`
 // removes backups first, which is safe at ITS call site because every destination
 // is already back at its prior state, so a re-entry re-resolves through step 4.
-// At THIS call site the destination is at its NEW state, so a kill between
+// At THIS call site the destinations are at their NEW state, so a kill between
 // "backups removed" and "journal removed" would leave a journal demanding a
-// restore from a backup that no longer exists — permanently unresolved. Apply
+// restore from backups that no longer exist — permanently unresolved. Apply
 // therefore owns its own journal-first completion and does not change WF-451's.
 
 import {
@@ -75,6 +92,18 @@ import type {
   TransactionJournal,
 } from "./types.js";
 
+/** One destination this transaction replaces, and the exact bytes it will hold.
+ *
+ *  The caller computes the bytes; the driver never renders content. That split is
+ *  what lets the whole multi-target transaction be tested with no filesystem and
+ *  no knowledge of what a registry row or a ledger entry looks like. */
+export interface ApplyTargetWrite {
+  /** The workspace-relative destination. */
+  destination: string;
+  /** The exact bytes it will hold. Computed before entry. */
+  newContent: string;
+}
+
 /** What the self-check must observe once the snapshot has been rebuilt. Stated
  *  as the intended END STATE rather than as "the actions succeeded", so a write
  *  that landed but did not take effect is still a failure. */
@@ -83,6 +112,27 @@ export interface SelfCheckExpectation {
   present: readonly string[];
   /** Capability names that must now be absent from the resolved registry. */
   absent: readonly string[];
+  /** Packs whose PORTABLE evidence must now read back from the ledger (WF-454). */
+  portableRecorded: readonly string[];
+  /** Packs whose MACHINE BINDING must now read back from the ledger (WF-454). */
+  bindingRecorded: readonly string[];
+  /** Project answers that must now resolve from the capability profile (WF-454).
+   *  Checked as capability + declared destination, never as a value, so the
+   *  check cannot pass by asserting a value it just wrote from memory. */
+  answersRecorded: readonly { capability: string; destination: string }[];
+}
+
+/** The empty expectation. Exported so a caller widening only one axis does not
+ *  have to spell out the other three, and so adding an axis later cannot silently
+ *  weaken an existing caller's check. */
+export function emptySelfCheckExpectation(): SelfCheckExpectation {
+  return {
+    present: [],
+    absent: [],
+    portableRecorded: [],
+    bindingRecorded: [],
+    answersRecorded: [],
+  };
 }
 
 export type SelfCheckOutcome = { ok: true } | { ok: false; diagnostic: string };
@@ -94,13 +144,17 @@ export type SelfCheckOutcome = { ok: true } | { ok: false; diagnostic: string };
  * caller (see the module header). `rollbackPorts` supplies the frozen WF-451
  * `RecoveryPorts` so the guarded rollback runs that driver VERBATIM rather than
  * re-implementing its six guards.
+ *
+ * Every per-destination port takes the destination explicitly (WF-454). Before
+ * the widening they were implicitly bound to the one registry path; parameterizing
+ * them is what lets one port implementation serve every target without the driver
+ * knowing which file is which.
  */
 export interface ApplyPorts {
-  /** The workspace-relative destination this transaction mutates. */
-  destination: string;
-  /** The workspace-relative backup path for one transaction. Nested per
-   *  transaction so two transactions can never collide on one backup file. */
-  backupPathFor(transactionId: string): string;
+  /** The workspace-relative backup path for one target in one transaction.
+   *  Nested per transaction AND per destination so neither two transactions nor
+   *  two targets of the same transaction can collide on one backup file. */
+  backupPathFor(transactionId: string, destination: string): string;
   /** A fresh transaction id, and the moment it started. */
   newTransactionId(): string;
   now(): string;
@@ -108,11 +162,11 @@ export interface ApplyPorts {
   journalPresent(): boolean;
   /** `true` when any backup bytes remain on disk. */
   backupsPresent(): boolean;
-  /** Observe the destination now: containment, existence, link-ness, and bytes.
+  /** Observe one destination now: containment, existence, link-ness, and bytes.
    *  Must test containment WITHOUT creating the path, and must NOT follow a
    *  terminal symlink (WF-448 / WF-451). */
-  observeDestination(): DestinationObservation;
-  /** The destination's inode now, or `null` when it does not exist or cannot be
+  observeDestination(destination: string): DestinationObservation;
+  /** One destination's inode now, or `null` when it does not exist or cannot be
    *  stat'd. Read with `lstat` — NEVER followed.
    *
    *  Kept a SEPARATE port rather than widened into `DestinationObservation`,
@@ -121,19 +175,21 @@ export interface ApplyPorts {
    *  (inode / type / hash): type and hash catch a swap that changes what the path
    *  holds, and the inode catches a swap that preserves the bytes while changing
    *  WHICH file the directory entry names. */
-  destinationInode(): number | null;
-  /** The identity the destination would have after being written with `content`.
+  destinationInode(destination: string): number | null;
+  /** The identity a destination would have after being written with `content`.
    *  Pure — no IO. */
   identify(content: string): { contentHash: string; bytes: number };
   /** Persist the journal. */
   writeJournal(journal: TransactionJournal): WriteOutcome;
-  /** Copy the destination's CURRENT bytes to the backup path. */
-  writeBackup(backupPath: string): WriteOutcome;
+  /** Copy one destination's CURRENT bytes to its backup path. */
+  writeBackup(destination: string, backupPath: string): WriteOutcome;
   /** Hash one backup's current bytes. */
   hashBackup(backupPath: string): BackupIdentity;
-  /** Replace the destination ATOMICALLY: a create-exclusive sibling temp file,
-   *  durably flushed, then renamed over the destination. Never a partial write. */
-  atomicReplace(content: string): WriteOutcome;
+  /** Replace one destination ATOMICALLY: a create-exclusive sibling temp file,
+   *  durably flushed, then renamed over the destination. Never a partial write.
+   *  Creates any missing parent directory, since a first-run ledger or profile
+   *  seed lands in a directory that may not exist yet. */
+  atomicReplace(destination: string, content: string): WriteOutcome;
   /** Rebuild + persist the snapshot, then check the intended end state. */
   refreshAndSelfCheck(expectation: SelfCheckExpectation): SelfCheckOutcome;
   /** Durable completion: remove the JOURNAL FIRST, then the named backups, then
@@ -144,8 +200,11 @@ export interface ApplyPorts {
 }
 
 export interface ApplyTransactionInput {
-  /** The exact bytes the registry will hold. Computed before entry. */
-  newContent: string;
+  /** Every destination this transaction replaces, in the caller's canonical
+   *  order. MUST be non-empty and MUST NOT repeat a destination: two entries for
+   *  one path would journal two prior states for the same file and make the
+   *  rollback order-dependent. Both are checked before a journal exists. */
+  targets: readonly ApplyTargetWrite[];
   expectation: SelfCheckExpectation;
 }
 
@@ -160,6 +219,10 @@ export interface ApplyTransactionResult {
   refreshed: boolean;
   residue: ApplyResidueReport;
   diagnostics: DiscoveryIssue[];
+  /** The destinations this transaction actually replaced, in write order. Empty
+   *  on every non-`applied` outcome, so a caller can never read a write set out
+   *  of a run that did not complete. */
+  written: string[];
 }
 
 function issue(code: string, message: string): DiscoveryIssue {
@@ -180,6 +243,7 @@ function rejected(
     refreshed: false,
     residue,
     diagnostics: [issue(reason, message)],
+    written: [],
   };
 }
 
@@ -216,7 +280,8 @@ function residueFrom(ports: ApplyPorts, detail: string): ApplyResidueReport {
  *
  * The façade is the whole adaptation. Not one guard, disposition, reason, or
  * ordering is altered, and `lifecycle-journal.ts` / `lifecycle-recovery.ts` are
- * not touched at all.
+ * not touched at all — including by the WF-454 widening, which only hands that
+ * driver the N-entry journal it already knew how to restore.
  */
 function rollback(ports: ApplyPorts): ApplyRollbackReport {
   const real = ports.rollbackPorts();
@@ -272,16 +337,36 @@ function failAfterJournal(
         : "the transaction could not be fully rolled back; its journal is retained so a later run re-observes and converges.",
     ),
     diagnostics,
+    written: [],
   };
 }
 
+/** One target after the S2/S3 screen: observed, and with the identity of the
+ *  bytes it will receive already computed. Holds no journal entry yet, because
+ *  an entry needs the transaction id and the id is not minted until the WHOLE
+ *  set has passed the screen. */
+interface ScreenedTarget {
+  destination: string;
+  newContent: string;
+  observed: Extract<DestinationObservation, { kind: "file" | "absent" }>;
+  inode: number | null;
+  willWrite: NonNullable<ReturnType<typeof createLastWrittenIdentity>>;
+}
+
+/** A screened target once the transaction id exists: its backup path and its
+ *  journal entry are resolved. */
+interface PreparedTarget extends ScreenedTarget {
+  backupPath: string | null;
+  entry: JournalEntry;
+}
+
 /**
- * Apply one exact registry-only mutation as a journaled transaction.
+ * Apply one exact multi-target mutation as a single journaled transaction.
  *
  * The caller MUST already hold the exclusive lifecycle lock, MUST already have
- * revalidated the plan (`decideApplyGate`), and MUST have computed `newContent`
- * from the screened actions. This driver decides nothing about the plan; it owns
- * only the transaction.
+ * revalidated the plan (`decideApplyGate`), and MUST have computed each target's
+ * `newContent` from the screened actions. This driver decides nothing about the
+ * plan; it owns only the transaction.
  *
  * A throw from a port is NOT caught here. That is deliberate and mirrors
  * `runUnderLock`: the caller classifies it, and a genuinely killed process leaves
@@ -292,67 +377,111 @@ export function applyTransaction(
   ports: ApplyPorts,
   input: ApplyTransactionInput,
 ): ApplyTransactionResult {
-  // --- S2: observe the destination, no-follow -------------------------------
-  const observed = ports.observeDestination();
-  const observedInode = ports.destinationInode();
-
-  if (observed.kind === "not-contained") {
+  // --- S2a: the target set itself, before anything is observed ---------------
+  if (input.targets.length === 0) {
     return rejected(
       "apply/registry-unresolvable",
-      `\`${ports.destination}\` does not resolve to a workspace-contained target (${observed.rejection}); nothing was journalled and nothing was written.`,
+      "the transaction was handed no destination to write; nothing was journalled and nothing was written.",
       noTransactionResidue(),
     );
   }
-  if (observed.kind === "observation-failed") {
-    return rejected(
-      "apply/registry-unresolvable",
-      `\`${ports.destination}\` could not be observed: ${observed.diagnostic}`,
-      noTransactionResidue(),
-    );
-  }
-  if (observed.kind === "symlink") {
-    // Refused BEFORE a journal. A transaction over a link could never be rolled
-    // back either: recovery never follows, replaces, or removes one.
-    return rejected(
-      "apply/destination-symlink",
-      `\`${ports.destination}\` is a symbolic link; this mutator never writes through a link, so no journal was created and nothing was written.`,
-      noTransactionResidue(),
-    );
+  const seen = new Set<string>();
+  for (const target of input.targets) {
+    if (seen.has(target.destination)) {
+      return rejected(
+        "apply/registry-unresolvable",
+        `destination \`${target.destination}\` appears twice in one transaction; a single journal cannot record two prior states for one file, so nothing was journalled and nothing was written.`,
+        noTransactionResidue(),
+      );
+    }
+    seen.add(target.destination);
   }
 
-  // --- S3: compute the identity of what will be written, UP FRONT -----------
-  const willWrite = createLastWrittenIdentity(ports.identify(input.newContent));
-  if (willWrite === null) {
-    return rejected(
-      "apply/registry-unresolvable",
-      "the bytes to be written could not be identified deterministically; nothing was journalled and nothing was written.",
-      noTransactionResidue(),
-    );
+  // --- S2b: observe EVERY destination, no-follow -----------------------------
+  // The whole set is screened before a journal exists, so a bad target anywhere
+  // in the list refuses the whole transaction rather than the prefix of it that
+  // happened to be fine.
+  const screened: ScreenedTarget[] = [];
+  for (const target of input.targets) {
+    const observed = ports.observeDestination(target.destination);
+    const inode = ports.destinationInode(target.destination);
+
+    if (observed.kind === "not-contained") {
+      return rejected(
+        "apply/registry-unresolvable",
+        `\`${target.destination}\` does not resolve to a workspace-contained target (${observed.rejection}); nothing was journalled and nothing was written.`,
+        noTransactionResidue(),
+      );
+    }
+    if (observed.kind === "observation-failed") {
+      return rejected(
+        "apply/registry-unresolvable",
+        `\`${target.destination}\` could not be observed: ${observed.diagnostic}`,
+        noTransactionResidue(),
+      );
+    }
+    if (observed.kind === "symlink") {
+      // Refused BEFORE a journal. A transaction over a link could never be rolled
+      // back either: recovery never follows, replaces, or removes one.
+      return rejected(
+        "apply/destination-symlink",
+        `\`${target.destination}\` is a symbolic link; this mutator never writes through a link, so no journal was created and nothing was written.`,
+        noTransactionResidue(),
+      );
+    }
+
+    // --- S3: compute the identity of what will be written, UP FRONT ----------
+    const willWrite = createLastWrittenIdentity(ports.identify(target.newContent));
+    if (willWrite === null) {
+      return rejected(
+        "apply/registry-unresolvable",
+        `the bytes to be written to \`${target.destination}\` could not be identified deterministically; nothing was journalled and nothing was written.`,
+        noTransactionResidue(),
+      );
+    }
+
+    screened.push({
+      destination: target.destination,
+      newContent: target.newContent,
+      observed,
+      inode,
+      willWrite,
+    });
   }
 
+  // The transaction id is minted only after EVERY target passed the screen, so a
+  // refused run never even consumes one.
   const transactionId = ports.newTransactionId();
-  const backupPath = observed.kind === "file" ? ports.backupPathFor(transactionId) : null;
 
-  const entry = createJournalEntry({
-    destination: ports.destination,
-    priorExistence: observed.kind === "file" ? "present" : "absent",
-    priorContentHash: observed.kind === "file" ? observed.contentHash : null,
-    priorIsSymlink: false,
-    backupPath,
-    lastWritten: willWrite,
-  });
-  if (entry === null) {
-    return rejected(
-      "apply/registry-unresolvable",
-      "the transaction journal entry for the registry destination is incomplete or self-contradictory; nothing was journalled and nothing was written.",
-      noTransactionResidue(),
-    );
+  const prepared: PreparedTarget[] = [];
+  for (const target of screened) {
+    const backupPath =
+      target.observed.kind === "file"
+        ? ports.backupPathFor(transactionId, target.destination)
+        : null;
+
+    const entry = createJournalEntry({
+      destination: target.destination,
+      priorExistence: target.observed.kind === "file" ? "present" : "absent",
+      priorContentHash: target.observed.kind === "file" ? target.observed.contentHash : null,
+      priorIsSymlink: false,
+      backupPath,
+      lastWritten: target.willWrite,
+    });
+    if (entry === null) {
+      return rejected(
+        "apply/registry-unresolvable",
+        `the transaction journal entry for \`${target.destination}\` is incomplete or self-contradictory; nothing was journalled and nothing was written.`,
+        noTransactionResidue(),
+      );
+    }
+    prepared.push({ ...target, backupPath, entry });
   }
 
   const journal = createTransactionJournal({
     transactionId,
     startedAt: ports.now(),
-    entries: [entry],
+    entries: prepared.map((target) => target.entry),
   });
   if (journal === null) {
     return rejected(
@@ -367,7 +496,7 @@ export function applyTransaction(
   if (!journalled.ok) {
     // The journal did not land, so no transaction exists and there is nothing to
     // roll back. A partial journal file is not possible: the port writes it
-    // atomically for the same reason the destination is written atomically.
+    // atomically for the same reason the destinations are written atomically.
     return rejected(
       "apply/write-failed",
       `the transaction journal could not be written: ${journalled.diagnostic}`,
@@ -375,85 +504,95 @@ export function applyTransaction(
     );
   }
 
-  // --- S5: back the prior bytes up, and PROVE the backup ---------------------
-  if (backupPath !== null) {
-    const backed = ports.writeBackup(backupPath);
+  // --- S5: back EVERY prior state up, and PROVE each backup ------------------
+  // All of them before any write at S7, so a backup failure on the last target
+  // still leaves every earlier target untouched.
+  for (const target of prepared) {
+    if (target.backupPath === null) continue;
+    const backed = ports.writeBackup(target.destination, target.backupPath);
     if (!backed.ok) {
       return failAfterJournal(
         ports,
         transactionId,
         "apply/backup-failed",
-        `the prior bytes of \`${ports.destination}\` could not be backed up: ${backed.diagnostic}`,
+        `the prior bytes of \`${target.destination}\` could not be backed up: ${backed.diagnostic}`,
         "skipped",
         false,
       );
     }
     // Proving the backup BEFORE the write, not only at restore time. A backup
     // that cannot reproduce the recorded prior hash is authority to write
-    // nothing, so discovering that after the destination is already replaced
-    // would be discovering it too late.
-    const proof = ports.hashBackup(backupPath);
+    // nothing, so discovering that after a destination is already replaced would
+    // be discovering it too late.
+    const proof = ports.hashBackup(target.backupPath);
     if (!proof.ok) {
       return failAfterJournal(
         ports,
         transactionId,
         "apply/backup-failed",
-        `the backup of \`${ports.destination}\` could not be verified (${proof.reason}): ${proof.diagnostic}`,
+        `the backup of \`${target.destination}\` could not be verified (${proof.reason}): ${proof.diagnostic}`,
         "skipped",
         false,
       );
     }
-    if (proof.contentHash !== entry.priorContentHash) {
+    if (proof.contentHash !== target.entry.priorContentHash) {
       return failAfterJournal(
         ports,
         transactionId,
         "apply/backup-failed",
-        `the backup of \`${ports.destination}\` does not reproduce its recorded prior bytes; nothing was written.`,
+        `the backup of \`${target.destination}\` does not reproduce its recorded prior bytes; nothing was written.`,
         "skipped",
         false,
       );
     }
   }
 
-  // --- S6: the TOCTOU guard -------------------------------------------------
+  // --- S6: the TOCTOU guard, over EVERY target ------------------------------
   // Re-observe and compare against S2. A symlink swapped in, a file replaced, or
-  // a type change between check and write all land here, and all refuse — the
+  // a type change between check and write all land here, and all refuse — every
   // write must land on the thing that was validated, not on whatever now occupies
-  // the path.
-  const recheck = ports.observeDestination();
-  const recheckInode = ports.destinationInode();
-  if (!sameObservation(observed, recheck)) {
-    return failAfterJournal(
-      ports,
-      transactionId,
-      "apply/precondition-moved",
-      `\`${ports.destination}\` changed between the observation this transaction recorded and the write (${describe(observed)} → ${describe(recheck)}); nothing was written.`,
-      "skipped",
-      false,
-    );
-  }
-  if (observedInode !== recheckInode) {
-    return failAfterJournal(
-      ports,
-      transactionId,
-      "apply/precondition-moved",
-      `\`${ports.destination}\` names a different file than the one this transaction validated (inode ${String(observedInode)} → ${String(recheckInode)}); nothing was written.`,
-      "skipped",
-      false,
-    );
+  // the path. Checked for the whole set before the first replacement, so an
+  // interfered-with target never causes a partially-written transaction.
+  for (const target of prepared) {
+    const recheck = ports.observeDestination(target.destination);
+    const recheckInode = ports.destinationInode(target.destination);
+    if (!sameObservation(target.observed, recheck)) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/precondition-moved",
+        `\`${target.destination}\` changed between the observation this transaction recorded and the write (${describe(target.observed)} → ${describe(recheck)}); nothing was written.`,
+        "skipped",
+        false,
+      );
+    }
+    if (target.inode !== recheckInode) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/precondition-moved",
+        `\`${target.destination}\` names a different file than the one this transaction validated (inode ${String(target.inode)} → ${String(recheckInode)}); nothing was written.`,
+        "skipped",
+        false,
+      );
+    }
   }
 
-  // --- S7: atomic replacement -----------------------------------------------
-  const written = ports.atomicReplace(input.newContent);
-  if (!written.ok) {
-    return failAfterJournal(
-      ports,
-      transactionId,
-      "apply/write-failed",
-      `\`${ports.destination}\` could not be replaced: ${written.diagnostic}`,
-      "skipped",
-      false,
-    );
+  // --- S7: atomic replacement, in the caller's canonical order ---------------
+  const written: string[] = [];
+  for (const target of prepared) {
+    const result = ports.atomicReplace(target.destination, target.newContent);
+    if (!result.ok) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/write-failed",
+        `\`${target.destination}\` could not be replaced: ${result.diagnostic}`,
+        "skipped",
+        false,
+      );
+    }
+    written.push(target.destination);
   }
 
   // --- S8: refresh, persist the snapshot, self-check -------------------------
@@ -465,7 +604,7 @@ export function applyTransaction(
       ports,
       transactionId,
       "apply/self-check-failed",
-      `the registry was written but the self-check did not confirm the intended state: ${checked.diagnostic}`,
+      `the transaction wrote ${written.length} destination(s) but the self-check did not confirm the intended state: ${checked.diagnostic}`,
       "failed",
       true,
     );
@@ -486,6 +625,7 @@ export function applyTransaction(
       "the transaction completed durably: the journal was discarded first, then its backups, then the emptied backup directories were pruned.",
     ),
     diagnostics: [],
+    written,
   };
 }
 

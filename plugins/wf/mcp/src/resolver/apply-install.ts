@@ -13,11 +13,15 @@
 //
 // FOUR RULES ARE CORRECTNESS, NOT PREFERENCE:
 //
-//   1. REGISTRY-ONLY, AND EVERYTHING ELSE FAILS LOUDLY AND EARLY. The frozen plan
-//      schema has thirteen action kinds. Exactly two are applied here; one is
-//      DEFERRED with a named follow-up; the rest are refused before entry. A
-//      silently-ignored unsupported action would report success over a
-//      half-applied plan — the worst defect available to this item.
+//   1. A BOUNDED SUPPORTED SET, AND EVERYTHING ELSE FAILS LOUDLY AND EARLY. The
+//      frozen plan schema has thirteen action kinds. Exactly four are applied
+//      here (WF-454 widened WF-453's two); one is DEFERRED with a named
+//      follow-up; the rest are refused before entry. The screen covers the WHOLE
+//      action list AND the whole seed list before the first target is composed,
+//      so an unsupported kind can never follow a supported subset that was
+//      already written. A silently-ignored unsupported action would report
+//      success over a half-applied plan — the worst defect available to this
+//      item.
 //
 //   2. THE PLAN IS REVALIDATED AGAINST CURRENT FACTS, NEVER TRUSTED. The caller
 //      approves a `planId`; this module compares it to one recomputed from the
@@ -42,6 +46,7 @@ import type {
   ApplyReason,
   PlanAction,
   PlanActionKind,
+  PlanEvidenceSeedKind,
   PlanInstallResponse,
 } from "./types.js";
 
@@ -49,12 +54,23 @@ import type {
 // The closed action screen
 // ---------------------------------------------------------------------------
 
-/** The mutating action kinds this mutator APPLIES. Exactly the registry pair —
- *  that is what "registry-only" means, stated as data rather than as a comment
- *  so the contract tests can assert it. */
+/** The mutating action kinds this mutator APPLIES.
+ *
+ *  WF-453 shipped exactly the registry pair. WF-454 widens the set to the four
+ *  kinds that make up ONE lifecycle registration — the registry rows, the
+ *  evidence that records who owns them, and the approved project answers that
+ *  seed the capability profile — because those facts must become durable
+ *  together or not at all.
+ *
+ *  Stated as data rather than as a comment so the contract tests can assert the
+ *  boundary mechanically. EVERY kind absent from this list and from the deferred
+ *  list below is refused, and refused over the WHOLE plan before any of these
+ *  four writes a byte. */
 export const APPLY_SUPPORTED_ACTION_KINDS: readonly PlanActionKind[] = [
+  "evidence-seed",
   "registry-add",
   "registry-deregister",
+  "answer-write",
 ];
 
 /** The mutating action kinds this mutator DEFERS with a named follow-up.
@@ -133,6 +149,20 @@ export function screenPlanActions(actions: readonly PlanAction[]): ScreenedActio
 // ---------------------------------------------------------------------------
 // The pre-journal gate
 // ---------------------------------------------------------------------------
+
+/** The evidence-seed kinds this mutator APPLIES.
+ *
+ *  `binding-seed` only. A `legacy-bootstrap` records portable evidence for a
+ *  pre-ledger registration from OBSERVED proof rather than from evidence the
+ *  project already committed, and that remains out of scope (WF-449 planned it;
+ *  nothing applies it).
+ *
+ *  THIS SCREEN CANNOT BE EXPRESSED AS AN ACTION KIND. Both seed kinds integrate
+ *  into the plan as the single `evidence-seed` action, so screening the action
+ *  list alone would silently admit a legacy bootstrap into a supported plan —
+ *  exactly the half-understood application the ordering rule exists to prevent.
+ *  The gate therefore screens the plan's own `evidenceSeeds` facts as well. */
+export const APPLY_SUPPORTED_SEED_KINDS: readonly PlanEvidenceSeedKind[] = ["binding-seed"];
 
 /** Everything the gate needs. Every member is a fact the caller already
  *  computed — the recomputed plan, the approved identity, and whether a journal
@@ -223,7 +253,31 @@ export function decideApplyGate(input: ApplyGateInput): ApplyGateDecision {
       reason: "apply/unsupported-action",
       detail: `the plan carries mutating action kind(s) this mutator does not support: ${kinds
         .map((kind) => `\`${kind}\``)
-        .join(", ")}. Only exact registry-only plans are applied, and an unsupported kind is refused before any journal, backup, or mutation.`,
+        .join(", ")}. The whole plan is screened before anything is written, so an unsupported kind is refused before any journal, backup, or mutation — the supported subset is never applied on its own.`,
+      screened,
+    };
+  }
+
+  // The SECOND half of the unsupported screen, and it must run here — alongside
+  // the action screen and still before any journal — for the reason
+  // `APPLY_SUPPORTED_SEED_KINDS` states: a legacy bootstrap wears the same
+  // `evidence-seed` action kind as an ordinary binding seed, so the action list
+  // cannot distinguish them. Screening the seed FACTS is the only place the
+  // distinction exists.
+  const unsupportedSeeds = input.plan.evidenceSeeds.filter(
+    (seed) => !APPLY_SUPPORTED_SEED_KINDS.includes(seed.kind),
+  );
+  if (unsupportedSeeds.length > 0) {
+    const kinds = [...new Set(unsupportedSeeds.map((seed) => seed.kind))].sort();
+    const packs = [...new Set(unsupportedSeeds.map((seed) => seed.pluginId))].sort();
+    return {
+      ok: false,
+      reason: "apply/unsupported-action",
+      detail: `the plan carries evidence seed kind(s) this mutator does not support: ${kinds
+        .map((kind) => `\`${kind}\``)
+        .join(", ")} (pack(s) ${packs
+        .map((pack) => `\`${pack}\``)
+        .join(", ")}). A legacy portable bootstrap records portable evidence from observed proof and is refused before any journal, backup, or mutation.`,
       screened,
     };
   }
@@ -283,6 +337,13 @@ const PLUGIN_ROOTS_SECTION = "Plugin Roots";
  * byte-for-byte.
  *
  * Pure: the current bytes go in, the new bytes come out, and nothing is written.
+ *
+ * ONLY THE TWO REGISTRY KINDS ARE ACTED ON, and that guard is load-bearing since
+ * WF-454. The supported set used to BE the registry pair, so "not an add" could
+ * safely mean "a deregistration"; now that `evidence-seed` and `answer-write`
+ * are also supported, an unguarded fall-through would take the deregistration
+ * branch for an answer write and REMOVE the rows the same plan had just added.
+ * Every other supported kind is skipped here and rendered by its own renderer.
  */
 export function renderRegistryMutation(
   current: string,
@@ -293,6 +354,7 @@ export function renderRegistryMutation(
   let changed = false;
 
   for (const action of supported) {
+    if (action.kind !== "registry-add" && action.kind !== "registry-deregister") continue;
     const pluginId = action.pluginId;
     if (pluginId === null) {
       return {

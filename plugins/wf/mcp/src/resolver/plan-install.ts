@@ -622,9 +622,17 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
   // --- project answers ------------------------------------------------------
   // Rule 3. Only a pack the plan acts on needs its questions satisfied: an
   // untouched registration's open question is not this plan's business.
+  // The composite key is built with `JSON.stringify`, NOT a raw separator
+  // character. A literal control byte here makes git classify this whole file as
+  // binary — invisible to `grep` and to every reviewer — and a printable
+  // separator would collide the moment an id contained it. `JSON.stringify`
+  // escapes both hazards and is injective over the pair.
+  const answerKey = (pluginId: string, questionId: string): string =>
+    JSON.stringify([pluginId, questionId]);
+
   const proposedByKey = new Map<string, PlanProposedAnswer>();
   for (const answer of input.selection.answers) {
-    proposedByKey.set(`${answer.pluginId} ${answer.questionId}`, answer);
+    proposedByKey.set(answerKey(answer.pluginId, answer.questionId), answer);
   }
 
   const writes: PlanAnswerWrite[] = [];
@@ -635,7 +643,7 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
       // Already persisted — nothing to write and nothing open.
       if (question.state.status === "resolved") continue;
 
-      const proposed = proposedByKey.get(`${pack.pluginId} ${question.id}`);
+      const proposed = proposedByKey.get(answerKey(pack.pluginId, question.id));
       const open = (reason: PlanUnresolvedQuestion["reason"]): void => {
         unresolved.push({
           pluginId: pack.pluginId,

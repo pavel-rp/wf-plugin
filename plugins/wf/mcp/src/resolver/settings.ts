@@ -35,6 +35,23 @@ export const SETTINGS_STORAGE_DIR = "_local/profiles";
  *  two never collide in the shared `_local/profiles/` folder. */
 export const SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
 
+/** The gitignored storage directory for capability profiles. The SAME folder as
+ *  `SETTINGS_STORAGE_DIR`, named separately because the two are different artifact
+ *  classes that merely share a home — a reader of one should not have to know the
+ *  other exists. */
+export const PROFILE_STORAGE_DIR = SETTINGS_STORAGE_DIR;
+
+/** The filename suffix of a capability profile — `<capability>.profile.json`. */
+export const PROFILE_SUFFIX = ".profile.json";
+
+/** The workspace-relative profile path for one capability. The single source of
+ *  this shape: the resolver READS it here and, since WF-454, the mutator WRITES
+ *  it here, and a drift between those two spellings would mean a seed that lands
+ *  where nothing ever looks for it. */
+export function capabilityProfileRelPath(capability: string): string {
+  return `${PROFILE_STORAGE_DIR}/${capability}${PROFILE_SUFFIX}`;
+}
+
 /** A skill slug / settings-key SEGMENT: lowercase letters, digits, hyphens. */
 const SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 

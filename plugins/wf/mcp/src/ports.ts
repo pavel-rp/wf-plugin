@@ -554,16 +554,40 @@ export function createRecoveryPorts(workspaceRoot: string): RecoveryPorts {
 // against a non-cwd admitted workspace.
 
 /**
- * Build the production apply ports for one ADMITTED workspace root and one
- * registry destination.
+ * Encode one workspace-relative destination as a SINGLE flat backup filename.
+ *
+ * Flat, not nested, and that is the safety property: a destination is untrusted
+ * enough that nesting it verbatim under the backup root would let `..` or an
+ * absolute-looking segment steer the backup somewhere else. Every path separator
+ * and every character outside a conservative allowlist becomes `_`, and a short
+ * content hash of the ORIGINAL destination is appended so two destinations that
+ * flatten to the same slug still get distinct backup files.
+ *
+ * Containment is still measured independently by `contained(...)` at every use —
+ * this encoding is defence in depth, never the only check.
+ */
+export function backupSlug(destination: string): string {
+  const flattened = destination.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
+  const digest = sha256Bytes(Buffer.from(destination, "utf8")).slice(0, 16);
+  return `${flattened}.${digest}`;
+}
+
+/**
+ * Build the production apply ports for one ADMITTED workspace root.
  *
  * `refreshAndSelfCheck` is injected rather than reached for: the snapshot rebuild
  * and the registry self-check belong to the service, and wiring them in here
  * would make this module depend on the thing that depends on it.
+ *
+ * `_registryRelPath` is retained on the signature for source compatibility with
+ * the `createApply` factory contract, but is deliberately unused: since WF-454 a
+ * transaction carries MANY destinations and each per-destination port receives
+ * the one it is acting on, so binding this port set to a single path would be
+ * exactly the assumption the widening removed.
  */
 export function createApplyPorts(
   workspaceRoot: string,
-  registryRelPath: string,
+  _registryRelPath: string,
   refreshAndSelfCheck: (expectation: SelfCheckExpectation) => SelfCheckOutcome,
 ): ApplyPorts {
   const journalPath = joinSlash(workspaceRoot, LIFECYCLE_JOURNAL_PATH);
@@ -617,13 +641,16 @@ export function createApplyPorts(
   };
 
   return {
-    destination: registryRelPath,
-
-    // Nested per transaction so two transactions can never collide on one backup
-    // file. That nesting is what made the WF-451 root-only tidy reachable, which
-    // is why `pruneEmptyBackupDirs` above now prunes ancestors.
-    backupPathFor: (transactionId: string): string =>
-      joinSlash(LIFECYCLE_BACKUP_DIR, transactionId, "registry"),
+    // Nested per transaction AND per destination (WF-454). The transaction
+    // segment stops two transactions colliding on one backup file; the
+    // destination segment stops two TARGETS of the same transaction colliding —
+    // which became possible the moment one transaction could carry the registry,
+    // the ledgers, and the profile seeds at once. The destination is slug-encoded
+    // rather than nested verbatim so a `..` or an absolute-looking segment can
+    // never steer the backup out of the backup root; containment is still
+    // measured independently by `contained(...)` on every use.
+    backupPathFor: (transactionId: string, destination: string): string =>
+      joinSlash(LIFECYCLE_BACKUP_DIR, transactionId, backupSlug(destination)),
 
     newTransactionId: (): string => randomBytes(16).toString("hex"),
     now: (): string => new Date().toISOString(),
@@ -648,14 +675,14 @@ export function createApplyPorts(
     // Delegated to the recovery ports VERBATIM. One observation implementation,
     // one containment decision, one no-follow rule — a second one here would be a
     // divergent answer to a question that already has one.
-    observeDestination: (): DestinationObservation =>
-      recoveryPorts.observeDestination(registryRelPath),
+    observeDestination: (destination: string): DestinationObservation =>
+      recoveryPorts.observeDestination(destination),
 
-    destinationInode: (): number | null => {
+    destinationInode: (destination: string): number | null => {
       try {
         // The LITERAL path and `lstatSync`, so a terminal symlink is stat'd as
         // the link itself and never followed.
-        return lstatSync(resolve(realpathSync(workspaceRoot), registryRelPath)).ino;
+        return lstatSync(resolve(realpathSync(workspaceRoot), destination)).ino;
       } catch {
         return null;
       }
@@ -669,13 +696,13 @@ export function createApplyPorts(
     writeJournal: (journal: TransactionJournal): WriteOutcome =>
       atomicWrite(journalPath, Buffer.from(`${JSON.stringify(journal, null, 2)}\n`, "utf8")),
 
-    writeBackup: (backupPath: string): WriteOutcome => {
-      const source = contained(registryRelPath);
+    writeBackup: (destination: string, backupPath: string): WriteOutcome => {
+      const source = contained(destination);
       const target = contained(backupPath);
       if (source === null || target === null) {
         return {
           ok: false,
-          diagnostic: `\`${registryRelPath}\` or its backup \`${backupPath}\` does not resolve to a workspace-contained target; nothing was backed up.`,
+          diagnostic: `\`${destination}\` or its backup \`${backupPath}\` does not resolve to a workspace-contained target; nothing was backed up.`,
         };
       }
       try {
@@ -683,19 +710,19 @@ export function createApplyPorts(
       } catch (err) {
         return {
           ok: false,
-          diagnostic: `the prior bytes of \`${registryRelPath}\` could not be read: ${message(err)}`,
+          diagnostic: `the prior bytes of \`${destination}\` could not be read: ${message(err)}`,
         };
       }
     },
 
     hashBackup: (backupPath: string): BackupIdentity => recoveryPorts.hashBackup(backupPath),
 
-    atomicReplace: (content: string): WriteOutcome => {
-      const target = contained(registryRelPath);
+    atomicReplace: (destination: string, content: string): WriteOutcome => {
+      const target = contained(destination);
       if (target === null) {
         return {
           ok: false,
-          diagnostic: `\`${registryRelPath}\` does not resolve to a workspace-contained target; nothing was written.`,
+          diagnostic: `\`${destination}\` does not resolve to a workspace-contained target; nothing was written.`,
         };
       }
       return atomicWrite(target, Buffer.from(content, "utf8"));

@@ -23,6 +23,7 @@ import {
   type RecordedRoot,
 } from "./paths.js";
 import {
+  capabilityProfileRelPath,
   SETTINGS_STORAGE_DIR,
   locateInterface,
   mergeSettings,
@@ -506,11 +507,7 @@ export function buildSnapshot(
   // --- profiles (override-merged values; never a template) -----------------
   const profiles: Record<string, unknown> = {};
   for (const cap of capabilities) {
-    const profilePath = joinSlash(
-      workspaceRoot,
-      "_local/profiles",
-      `${cap.name}.profile.json`,
-    );
+    const profilePath = joinSlash(workspaceRoot, capabilityProfileRelPath(cap.name));
     const content = io.readFile(profilePath);
     sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
     if (content === null) continue;

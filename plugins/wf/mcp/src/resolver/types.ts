@@ -1396,7 +1396,11 @@ export interface PlanInstallResponse {
 // ---------------------------------------------------------------------------
 //
 // THE FIRST PUBLIC MUTATOR. `apply_install` is the SOLE public registry mutator
-// and it applies EXACT REGISTRY-ONLY plans only. It extends the WF-447 lineage
+// and it applies EXACT plans only, over a bounded supported action set — the
+// registry pair (WF-453), widened by WF-454 with `evidence-seed` (binding seeds
+// only) and `answer-write`. The ENVELOPE SHAPE IS UNCHANGED by that widening:
+// the added targets ride the same journal and the same `applied[]`, so no
+// consumer of this family has to learn a new field. It extends the WF-447 lineage
 // rather than opening a second response family: it consumes the frozen
 // `PlanInstallResponse` and the frozen WF-451 recovery protocol unchanged, and
 // adds only the shapes below.
@@ -1456,6 +1460,22 @@ export type ApplyReason =
   | "apply/unsupported-action"
   | "apply/registry-unresolvable"
   | "apply/journal-present"
+  /** A lifecycle-evidence precondition no longer holds at apply time (WF-454):
+   *  the portable tuple is not an EXACT match, a machine binding the plan meant
+   *  to seed already exists, or the recorded ownership evidence changed. Its own
+   *  token rather than `plan-stale`: the approved plan may still be current in
+   *  every other respect, and rather than `precondition-moved`, which is the
+   *  post-journal TOCTOU class. Nothing is written on this path. */
+  | "apply/evidence-precondition"
+  /** A proposed answer failed revalidation against its declared schema at apply
+   *  time (WF-454). Distinct from `evidence-precondition`: the failure is in the
+   *  VALUE the plan carries, not in the workspace's evidence. */
+  | "apply/answer-invalid"
+  /** The declared ledger home is not a legal policy, or a ledger destination
+   *  could not be resolved to a workspace-contained path (WF-454). Kept apart
+   *  from `registry-unresolvable` so a maintainer is not sent to the registry
+   *  file when the ledger is what could not be resolved. */
+  | "apply/ledger-unresolvable"
   /** The destination IS a symbolic link. Its own token rather than
    *  `precondition-moved`: nothing moved, the destination simply is not a thing
    *  this mutator may write through. Recovery never follows, replaces, or removes
