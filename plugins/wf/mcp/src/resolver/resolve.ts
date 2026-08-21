@@ -31,6 +31,7 @@ import {
 } from "./settings.js";
 import {
   OVERRIDE_DIR,
+  PROJECT_OVERRIDE_DIR,
   locateSlotInterface,
   parseSlotScope,
   slotPointFromOverrideFilename,
@@ -737,11 +738,42 @@ export function buildSnapshot(
     }
   }
 
+  // 3b) Committed project slot overrides (`.wf/slots/<skill>.<point>.md`, WF-443):
+  //     the same treatment as the personal override, one tier down. Fingerprinted
+  //     so a committed edit invalidates the snapshot, and orphan-validated
+  //     symmetrically so a project override targeting an undeclared point fails
+  //     loudly instead of silently losing to the inline default.
+  const projectOverrideDir = joinSlash(workspaceRoot, PROJECT_OVERRIDE_DIR);
+  const projectOverrideFiles = io.listFiles ? io.listFiles(projectOverrideDir) : [];
+  const projectOverridePresent = new Set<string>();
+  for (const filename of [...projectOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue; // not a well-formed `<skill>.<point>.md`
+    const overridePath = joinSlash(projectOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-project-override", `${PROJECT_OVERRIDE_DIR}/${filename}`, overrideRaw),
+    );
+    projectOverridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-project-override",
+        message: `project slot override \`${PROJECT_OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares — the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY,
+      });
+    }
+  }
+
   // 4) Per-slot provenance: one row per composed `skill.point` (a pack
-  //    contribution and/or a present override), sorted for determinism.
+  //    contribution and/or a present override at either override tier), sorted
+  //    for determinism.
   const slotIds = new Set<string>([
     ...packSlots.map((p) => p.skillPoint),
     ...overridePresent,
+    ...projectOverridePresent,
   ]);
   const slots: SlotProvenanceRecord[] = [...slotIds]
     .sort()
@@ -751,11 +783,18 @@ export function buildSnapshot(
         .map((p) => p.capability);
       const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
       const hasOverride = overridePresent.has(skillPoint);
+      const hasProjectOverride = projectOverridePresent.has(skillPoint);
+      // Descending tier rank — the same ordered chain `planSlot` composes under,
+      // read here as "which tier supplies the winning body": personal override
+      // (30) > committed project override (20) > pack contribution (10).
       let tier: SlotProvenanceRecord["tier"];
       let winningSource: string | null;
       if (hasOverride) {
         tier = "local-override";
         winningSource = "local-override";
+      } else if (hasProjectOverride) {
+        tier = "project-override";
+        winningSource = "project-override";
       } else if (contributors.length > 0) {
         tier = "pack-contribution";
         // The highest-precedence pack contributor (last in registry order — the
@@ -769,6 +808,7 @@ export function buildSnapshot(
         skillPoint,
         policy: policyOwner ? policyOwner.policy : null,
         overridePresent: hasOverride,
+        projectOverridePresent: hasProjectOverride,
         contributors,
         tier,
         winningSource,

@@ -4,7 +4,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/chunk-Br0eD_fh.mjs
 var __create = Object.create;
 var __defProp2 = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   enumerable: true
 }) : target, mod));
 
-// node_modules/zod/v4/core/core.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/core.js
 var _a;
 var NEVER = /* @__PURE__ */ Object.freeze({
   status: "aborted"
@@ -120,7 +120,7 @@ function config(newConfig) {
   return globalConfig;
 }
 
-// node_modules/zod/v4/core/util.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/util.js
 var util_exports = {};
 __export(util_exports, {
   BIGINT_FORMAT_RANGES: () => BIGINT_FORMAT_RANGES,
@@ -816,7 +816,7 @@ var Class = class {
   }
 };
 
-// node_modules/zod/v4/core/errors.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/errors.js
 var initializer = (inst, def) => {
   inst.name = "$ZodError";
   Object.defineProperty(inst, "_zod", {
@@ -885,7 +885,7 @@ function formatError(error2, mapper = (issue2) => issue2.message) {
   return fieldErrors;
 }
 
-// node_modules/zod/v4/core/parse.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/parse.js
 var _parse = (_Err) => (schema, value, _ctx, _params) => {
   const ctx = _ctx ? { ..._ctx, async: false } : { async: false };
   const result = schema._zod.run({ value, issues: [] }, ctx);
@@ -963,7 +963,7 @@ var _safeDecodeAsync = (_Err) => async (schema, value, _ctx) => {
   return _safeParseAsync(_Err)(schema, value, _ctx);
 };
 
-// node_modules/zod/v4/core/regexes.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/regexes.js
 var cuid = /^[cC][0-9a-z]{6,}$/;
 var cuid2 = /^[0-9a-z]+$/;
 var ulid = /^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$/;
@@ -1022,7 +1022,7 @@ var _null = /^null$/i;
 var lowercase = /^[^A-Z]*$/;
 var uppercase = /^[^a-z]*$/;
 
-// node_modules/zod/v4/core/checks.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/checks.js
 var $ZodCheck = /* @__PURE__ */ $constructor("$ZodCheck", (inst, def) => {
   var _a3;
   inst._zod ?? (inst._zod = {});
@@ -1412,7 +1412,7 @@ var $ZodCheckOverwrite = /* @__PURE__ */ $constructor("$ZodCheckOverwrite", (ins
   };
 });
 
-// node_modules/zod/v4/core/doc.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/doc.js
 var Doc = class {
   constructor(args = []) {
     this.content = [];
@@ -1448,14 +1448,14 @@ var Doc = class {
   }
 };
 
-// node_modules/zod/v4/core/versions.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/versions.js
 var version = {
   major: 4,
   minor: 4,
   patch: 3
 };
 
-// node_modules/zod/v4/core/schemas.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/schemas.js
 var $ZodType = /* @__PURE__ */ $constructor("$ZodType", (inst, def) => {
   var _a3;
   inst ?? (inst = {});
@@ -3000,7 +3000,7 @@ function handleRefineResult(result, payload, input, inst) {
   }
 }
 
-// node_modules/zod/v4/locales/en.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/locales/en.js
 var error = () => {
   const Sizable = {
     string: { unit: "characters", verb: "to have" },
@@ -3113,7 +3113,7 @@ function en_default() {
   };
 }
 
-// node_modules/zod/v4/core/registries.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/registries.js
 var _a2;
 var $ZodRegistry = class {
   constructor() {
@@ -3161,7 +3161,7 @@ function registry() {
 (_a2 = globalThis).__zod_globalRegistry ?? (_a2.__zod_globalRegistry = registry());
 var globalRegistry = globalThis.__zod_globalRegistry;
 
-// node_modules/zod/v4/core/api.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/api.js
 // @__NO_SIDE_EFFECTS__
 function _string(Class2, params) {
   return new Class2({
@@ -3724,7 +3724,7 @@ function _check(fn, params) {
   return ch;
 }
 
-// node_modules/zod/v4/core/to-json-schema.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/to-json-schema.js
 function initializeContext(params) {
   let target = params?.target ?? "draft-2020-12";
   if (target === "draft-4")
@@ -4083,7 +4083,7 @@ var createStandardJSONSchemaMethod = (schema, io, processors = {}) => (params) =
   return finalize(ctx, schema);
 };
 
-// node_modules/zod/v4/core/json-schema-processors.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/core/json-schema-processors.js
 var formatMap = {
   guid: "uuid",
   url: "uri",
@@ -4627,7 +4627,7 @@ function toJSONSchema(input, params) {
   return finalize(ctx, input);
 }
 
-// node_modules/zod/v4/classic/iso.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/iso.js
 var iso_exports = {};
 __export(iso_exports, {
   ZodISODate: () => ZodISODate,
@@ -4668,7 +4668,7 @@ function duration2(params) {
   return _isoDuration(ZodISODuration, params);
 }
 
-// node_modules/zod/v4/classic/errors.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/errors.js
 var initializer2 = (inst, issues) => {
   $ZodError.init(inst, issues);
   inst.name = "ZodError";
@@ -4707,7 +4707,7 @@ var ZodRealError = /* @__PURE__ */ $constructor("ZodError", initializer2, {
   Parent: Error
 });
 
-// node_modules/zod/v4/classic/parse.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/parse.js
 var parse2 = /* @__PURE__ */ _parse(ZodRealError);
 var parseAsync2 = /* @__PURE__ */ _parseAsync(ZodRealError);
 var safeParse2 = /* @__PURE__ */ _safeParse(ZodRealError);
@@ -4721,7 +4721,7 @@ var safeDecode = /* @__PURE__ */ _safeDecode(ZodRealError);
 var safeEncodeAsync = /* @__PURE__ */ _safeEncodeAsync(ZodRealError);
 var safeDecodeAsync = /* @__PURE__ */ _safeDecodeAsync(ZodRealError);
 
-// node_modules/zod/v4/classic/schemas.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/schemas.js
 var _installedGroups = /* @__PURE__ */ new WeakMap();
 function _installLazyMethods(inst, group, methods) {
   const proto = Object.getPrototypeOf(inst);
@@ -5618,7 +5618,7 @@ function preprocess(fn, schema) {
   });
 }
 
-// node_modules/zod/v4/classic/compat.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/compat.js
 var ZodIssueCode = {
   invalid_type: "invalid_type",
   too_big: "too_big",
@@ -5636,7 +5636,7 @@ var ZodFirstPartyTypeKind;
 /* @__PURE__ */ (function(ZodFirstPartyTypeKind2) {
 })(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
 
-// node_modules/zod/v4/classic/coerce.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/coerce.js
 var coerce_exports = {};
 __export(coerce_exports, {
   bigint: () => bigint2,
@@ -5661,10 +5661,10 @@ function date3(params) {
   return _coercedDate(ZodDate, params);
 }
 
-// node_modules/zod/v4/classic/external.js
+// ../../../../../../plugins/wf/mcp/node_modules/zod/v4/classic/external.js
 config(en_default());
 
-// node_modules/@modelcontextprotocol/core/dist/auth-DFgbUATV.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/core/dist/auth-DFgbUATV.mjs
 var LATEST_PROTOCOL_VERSION = "2025-11-25";
 var SUPPORTED_PROTOCOL_VERSIONS = [
   LATEST_PROTOCOL_VERSION,
@@ -6599,7 +6599,7 @@ var OAuthTokenRevocationRequestSchema = object({
   token_type_hint: string2().optional()
 }).strip();
 
-// node_modules/@modelcontextprotocol/server/dist/src-D5Nfqtoz.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/src-D5Nfqtoz.mjs
 var BRANDS = /* @__PURE__ */ Symbol.for("mcp.sdk.errorBrands");
 function stampErrorBrands(instance, ctor) {
   const brands = /* @__PURE__ */ new Set();
@@ -11205,7 +11205,7 @@ function fromJsonSchema(schema, validator) {
   } };
 }
 
-// node_modules/@modelcontextprotocol/server/dist/ajvProvider-CplOkyLC.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/ajvProvider-CplOkyLC.mjs
 var require_code$1 = /* @__PURE__ */ __commonJSMin(((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.regexpCode = exports.getEsmExportName = exports.getProperty = exports.safeStringify = exports.stringify = exports.strConcat = exports.addCodeArg = exports.str = exports._ = exports.nil = exports._Code = exports.Name = exports.IDENTIFIER = exports._CodeOrName = void 0;
@@ -17798,10 +17798,10 @@ var AjvJsonSchemaValidator = class {
 };
 var Ajv = import_ajv.Ajv;
 
-// node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/shimsNode.mjs
 import process3 from "node:process";
 
-// node_modules/@modelcontextprotocol/server/dist/mcp-Ctiu4nBa.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/mcp-Ctiu4nBa.mjs
 var COMPLETABLE_SYMBOL = /* @__PURE__ */ Symbol.for("mcp.completable");
 function isCompletable(schema) {
   return !!schema && typeof schema === "object" && COMPLETABLE_SYMBOL in schema;
@@ -19296,13 +19296,13 @@ function unwrapOptionalSchema(schema) {
   return schema.def?.innerType ?? schema;
 }
 
-// node_modules/@modelcontextprotocol/server/dist/index.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/index.mjs
 var _defaultValidator;
 function fromJsonSchema2(schema, validator) {
   return fromJsonSchema(schema, validator ?? (_defaultValidator ??= new AjvJsonSchemaValidator()));
 }
 
-// node_modules/@modelcontextprotocol/server/dist/stdio.mjs
+// ../../../../../../plugins/wf/mcp/node_modules/@modelcontextprotocol/server/dist/stdio.mjs
 var StdioServerTransport = class {
   _readBuffer;
   _started = false;
@@ -22343,7 +22343,9 @@ function locateInterface(skill, roots, readFile, joinSlash2) {
 
 // src/resolver/slot.ts
 var OVERRIDE_DIR = "_local/slots";
+var PROJECT_OVERRIDE_DIR = ".wf/slots";
 var OVERRIDE_TIER_RANK = 30;
+var PROJECT_TIER_RANK = 20;
 var PACK_TIER_RANK = 10;
 var APPEND_SEPARATOR = "\n\n";
 function isSegment(s) {
@@ -22463,7 +22465,26 @@ var LOCAL_OVERRIDE_TIER = {
     ];
   }
 };
-var DEFAULT_TIERS = [PACK_CONTRIBUTION_TIER, LOCAL_OVERRIDE_TIER];
+var PROJECT_OVERRIDE_TIER = {
+  name: "project-override",
+  rank: PROJECT_TIER_RANK,
+  gather(ctx) {
+    return [
+      {
+        tier: "project-override",
+        rank: PROJECT_TIER_RANK,
+        source: "project-override",
+        path: joinSlash(ctx.workspaceRoot, PROJECT_OVERRIDE_DIR, `${ctx.skillPoint}.md`),
+        optional: true
+      }
+    ];
+  }
+};
+var DEFAULT_TIERS = [
+  PACK_CONTRIBUTION_TIER,
+  PROJECT_OVERRIDE_TIER,
+  LOCAL_OVERRIDE_TIER
+];
 function planSlot(ref, snapshot, workspaceRoot, tiers = DEFAULT_TIERS) {
   const skill = ref.skill?.trim();
   const point = ref.point?.trim();
@@ -22999,19 +23020,47 @@ function buildSnapshot(inputs, io) {
       });
     }
   }
+  const projectOverrideDir = joinSlash(workspaceRoot, PROJECT_OVERRIDE_DIR);
+  const projectOverrideFiles = io.listFiles ? io.listFiles(projectOverrideDir) : [];
+  const projectOverridePresent = /* @__PURE__ */ new Set();
+  for (const filename of [...projectOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue;
+    const overridePath = joinSlash(projectOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-project-override", `${PROJECT_OVERRIDE_DIR}/${filename}`, overrideRaw)
+    );
+    projectOverridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-project-override",
+        message: `project slot override \`${PROJECT_OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
   const slotIds = /* @__PURE__ */ new Set([
     ...packSlots.map((p) => p.skillPoint),
-    ...overridePresent
+    ...overridePresent,
+    ...projectOverridePresent
   ]);
   const slots = [...slotIds].sort().map((skillPoint) => {
     const contributors = packSlots.filter((p) => p.skillPoint === skillPoint).map((p) => p.capability);
     const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
     const hasOverride = overridePresent.has(skillPoint);
+    const hasProjectOverride = projectOverridePresent.has(skillPoint);
     let tier;
     let winningSource;
     if (hasOverride) {
       tier = "local-override";
       winningSource = "local-override";
+    } else if (hasProjectOverride) {
+      tier = "project-override";
+      winningSource = "project-override";
     } else if (contributors.length > 0) {
       tier = "pack-contribution";
       winningSource = contributors[contributors.length - 1];
@@ -23023,6 +23072,7 @@ function buildSnapshot(inputs, io) {
       skillPoint,
       policy: policyOwner ? policyOwner.policy : null,
       overridePresent: hasOverride,
+      projectOverridePresent: hasProjectOverride,
       contributors,
       tier,
       winningSource
@@ -25827,9 +25877,12 @@ var ResolverService = class {
    *  the body-free snapshot and yields the ordered candidate list under the
    *  precedence tier chain; this method reads each candidate via the server's own
    *  `fs` port and composes per the slot's merge policy. A present personal
-   *  override always outranks a pack contribution; a `replace` slot serves the
-   *  single highest-precedence body, an `append` slot the concatenation (registry
-   *  order, override last). Zero contributions AND no override → a typed
+   *  `_local/` override always outranks a committed `.wf/` project override, which
+   *  always outranks a pack contribution; a `replace` slot serves the single
+   *  highest-precedence body, an `append` slot the concatenation (registry order
+   *  first, then the project override, the personal override last). This method is
+   *  generic over the chain — a new tier changes nothing here. Zero contributions
+   *  AND no override at either override tier → a typed
    *  `unfilled` outcome directing the caller to the inline default; a contributing
    *  capability that dangles → `unresolved` (registry-invalid); a declared pack
    *  body missing on disk → `unresolved` (ref-not-found). Never a wrong-path body,
@@ -25871,7 +25924,7 @@ var ResolverService = class {
         refClass: "slot",
         skillPoint: plan.skillPoint,
         reaction: "continue",
-        recovery: `Slot \`${plan.skillPoint}\` is unfilled \u2014 no capability contributes to it and no personal \`${OVERRIDE_DIR}/${plan.skillPoint}.md\` override exists. Execute the skill's inline-default region exactly as written (the no-improvisation rule); to fill it, register a contributing capability or add the override file.`,
+        recovery: `Slot \`${plan.skillPoint}\` is unfilled \u2014 no capability contributes to it, no committed \`${PROJECT_OVERRIDE_DIR}/${plan.skillPoint}.md\` project override exists, and no personal \`${OVERRIDE_DIR}/${plan.skillPoint}.md\` override exists. Execute the skill's inline-default region exactly as written (the no-improvisation rule); to fill it, register a contributing capability, commit the project override, or add the personal override file.`,
         message: `no contribution or override for slot \`${plan.skillPoint}\`.`
       };
     }

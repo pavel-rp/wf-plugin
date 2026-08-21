@@ -38,6 +38,7 @@ import {
   composeSlotBody,
   planSlot,
   OVERRIDE_DIR,
+  PROJECT_OVERRIDE_DIR,
   type MergePolicy,
   type PresentPart,
 } from "./resolver/slot.js";
@@ -938,9 +939,12 @@ export class ResolverService {
    *  the body-free snapshot and yields the ordered candidate list under the
    *  precedence tier chain; this method reads each candidate via the server's own
    *  `fs` port and composes per the slot's merge policy. A present personal
-   *  override always outranks a pack contribution; a `replace` slot serves the
-   *  single highest-precedence body, an `append` slot the concatenation (registry
-   *  order, override last). Zero contributions AND no override → a typed
+   *  `_local/` override always outranks a committed `.wf/` project override, which
+   *  always outranks a pack contribution; a `replace` slot serves the single
+   *  highest-precedence body, an `append` slot the concatenation (registry order
+   *  first, then the project override, the personal override last). This method is
+   *  generic over the chain — a new tier changes nothing here. Zero contributions
+   *  AND no override at either override tier → a typed
    *  `unfilled` outcome directing the caller to the inline default; a contributing
    *  capability that dangles → `unresolved` (registry-invalid); a declared pack
    *  body missing on disk → `unresolved` (ref-not-found). Never a wrong-path body,
@@ -988,7 +992,7 @@ export class ResolverService {
         refClass: "slot",
         skillPoint: plan.skillPoint,
         reaction: "continue",
-        recovery: `Slot \`${plan.skillPoint}\` is unfilled — no capability contributes to it and no personal \`${OVERRIDE_DIR}/${plan.skillPoint}.md\` override exists. Execute the skill's inline-default region exactly as written (the no-improvisation rule); to fill it, register a contributing capability or add the override file.`,
+        recovery: `Slot \`${plan.skillPoint}\` is unfilled — no capability contributes to it, no committed \`${PROJECT_OVERRIDE_DIR}/${plan.skillPoint}.md\` project override exists, and no personal \`${OVERRIDE_DIR}/${plan.skillPoint}.md\` override exists. Execute the skill's inline-default region exactly as written (the no-improvisation rule); to fill it, register a contributing capability, commit the project override, or add the personal override file.`,
         message: `no contribution or override for slot \`${plan.skillPoint}\`.`,
       };
     }
