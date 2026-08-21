@@ -532,6 +532,43 @@ test("a payload on a pack the plan does NOT act on is not this plan's business",
   assert.equal(out.applicability, "no-change");
 });
 
+test("a DEREGISTERED pack contributes no previewed write — removal is not a placement", () => {
+  // `acting` is `wanted || removing`, so acted-on alone would preview a write for
+  // a pack the plan is removing. The scope is the post-plan set, matching how a
+  // deregistration already clears a `plan/provider-overlap`.
+  const out = planInstall(
+    input({
+      selection: { desired: [], deregister: ["wf-demo@local"], answers: [] },
+      payloads: [fact()],
+    }),
+  );
+  assert.deepEqual(out.payloads.actions, [], "a removed pack places nothing");
+  assert.deepEqual(out.registryDelta.deregistrations.map((e) => e.pluginId), ["wf-demo@local"]);
+  assert.equal(out.applicability, "applicable");
+});
+
+test("deregistering a pack CLEARS the co-ownership collision it would have caused", () => {
+  const out = planInstall(
+    input({
+      packs: [
+        pack({ pluginId: "keep@local", pluginName: "keep", registeredCapabilities: ["keep"] }),
+        pack({ pluginId: "drop@local", pluginName: "drop", registeredCapabilities: ["drop"] }),
+      ],
+      capabilities: [
+        capability({ pluginId: "keep@local", name: "keep" }),
+        capability({ pluginId: "drop@local", name: "drop" }),
+      ],
+      selection: { desired: ["keep@local"], deregister: ["drop@local"], answers: [] },
+      payloads: [
+        fact({ pluginId: "keep@local", capability: "keep" }),
+        fact({ pluginId: "drop@local", capability: "drop", identity: { ok: true, sha256: DIGEST_B, bytes: 12 } }),
+      ],
+    }),
+  );
+  assert.ok(!codes(out).includes("plan/payload-conflict-bytes"), "the departing owner is gone");
+  assert.deepEqual(out.payloads.actions.map((a) => a.owners.map((o) => o.pluginId)), [["keep@local"]]);
+});
+
 test("a previewed payload write is an EFFECT, so the plan is never no-change", () => {
   const out = planInstall(
     input({ selection: { desired: ["wf-demo@local"], deregister: [], answers: [] }, payloads: [fact()] }),

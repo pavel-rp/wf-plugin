@@ -20983,7 +20983,9 @@ function planInstall(input) {
       });
     }
   }
-  const actedOnIds = new Set(actedOn.map((pack) => pack.pluginId));
+  const actedOnIds = new Set(
+    actedOn.map((pack) => pack.pluginId).filter((pluginId) => postPlanPacks.has(pluginId))
+  );
   const payloadPlan = planPayloads(
     (input.payloads ?? []).filter((fact) => actedOnIds.has(fact.pluginId))
   );

@@ -500,12 +500,19 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
   }
 
   // --- payload safety + co-ownership (WF-448) -------------------------------
-  // Scoped to the ACTED-ON set for the same reason the legacy-proof rule is: a
-  // retained orphan's declaration is not this plan's business. Payload findings
-  // join the ONE findings list, so an unsafe target or a non-identical
-  // co-ownership collision reaches `not-applicable` through the existing
-  // first-match-wins precedence rather than a second code path.
-  const actedOnIds = new Set(actedOn.map((pack) => pack.pluginId));
+  // Scoped to the packs the plan acts on AND that survive it. Acted-on alone is
+  // not enough: `acting` is `wanted || removing`, so a pack named only in
+  // `deregister` would otherwise contribute a previewed WRITE — a placement the
+  // plan is not making, and one that could block a plan by colliding with a pack
+  // that stays. Intersecting with the post-plan set matches how deregistration
+  // already clears a `plan/provider-overlap`. The `actedOn` half still excludes a
+  // retained orphan's declaration, which is not this plan's business either.
+  // Payload findings join the ONE findings list, so an unsafe target or a
+  // non-identical co-ownership collision reaches `not-applicable` through the
+  // existing first-match-wins precedence rather than a second code path.
+  const actedOnIds = new Set(
+    actedOn.map((pack) => pack.pluginId).filter((pluginId) => postPlanPacks.has(pluginId)),
+  );
   const payloadPlan = planPayloads(
     (input.payloads ?? []).filter((fact) => actedOnIds.has(fact.pluginId)),
   );
