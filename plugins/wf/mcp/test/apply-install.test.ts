@@ -13,6 +13,7 @@ import assert from "node:assert/strict";
 import {
   APPLY_DEFERRED_ACTION_KINDS,
   APPLY_SUPPORTED_ACTION_KINDS,
+  APPLY_SUPPORTED_SEED_KINDS,
   decideApplyGate,
   renderRegistryMutation,
   screenPlanActions,
@@ -21,13 +22,49 @@ import {
 import { noRecoveryReport } from "../src/resolver/lifecycle-recovery.js";
 import { PLAN_ACTION_ORDER } from "../src/resolver/plan-complete.js";
 import type {
+  MachineBindingEvidence,
   PlanAction,
   PlanActionKind,
   PlanApplicability,
+  PlanEvidenceSeed,
+  PlanEvidenceSeedKind,
   PlanInstallResponse,
+  PortablePackEvidence,
 } from "../src/resolver/types.js";
 
 const PLAN_ID = "f".repeat(64);
+
+function portable(pluginId: string): PortablePackEvidence {
+  return {
+    pluginId,
+    version: "1.0.0",
+    capabilities: ["one"],
+    manifestHashes: [],
+    declaredSourceHashes: [],
+  };
+}
+
+function binding(pluginId: string): MachineBindingEvidence {
+  return {
+    pluginId,
+    canonicalRoot: "/packs/beta",
+    cliScope: null,
+    enablement: "enabled",
+    observedVersion: "1.0.0",
+    localFingerprints: [],
+  };
+}
+
+function seed(kind: PlanEvidenceSeedKind, pluginId = "pack@1.0.0"): PlanEvidenceSeed {
+  return {
+    pluginId,
+    kind,
+    comparison: kind === "binding-seed" ? "binding-seed" : "evidence-missing",
+    portable: kind === "legacy-bootstrap" ? portable(pluginId) : null,
+    binding: binding(pluginId),
+    persisted: false,
+  };
+}
 
 function action(over: Partial<PlanAction> & { kind: PlanActionKind }): PlanAction {
   return {
@@ -49,6 +86,7 @@ function plan(over: {
   applicability?: PlanApplicability;
   planId?: string;
   admitted?: boolean;
+  evidenceSeeds?: PlanEvidenceSeed[];
 }): PlanInstallResponse {
   const admitted = over.admitted ?? true;
   const applicability = over.applicability ?? "applicable";
@@ -68,7 +106,7 @@ function plan(over: {
     mode: "install",
     registryDelta: { additions: [], retentions: [], deregistrations: [] },
     answers: { writes: [], unresolved: [] },
-    evidenceSeeds: [],
+    evidenceSeeds: over.evidenceSeeds ?? [],
     repairs: [],
     payloads: { actions: [], rejected: [], conflicts: [] },
     artifacts: { deletable: [], retained: [], bootstrap: [], advance: [] },
@@ -96,9 +134,15 @@ function plan(over: {
 // The closed action screen
 // ---------------------------------------------------------------------------
 
-test("the supported set is exactly the registry pair, and the deferred set exactly the constitution", () => {
-  assert.deepEqual([...APPLY_SUPPORTED_ACTION_KINDS], ["registry-add", "registry-deregister"]);
+test("the supported set is exactly one registration's four kinds, and the deferred set exactly the constitution", () => {
+  assert.deepEqual(
+    [...APPLY_SUPPORTED_ACTION_KINDS],
+    ["evidence-seed", "registry-add", "registry-deregister", "answer-write"],
+  );
   assert.deepEqual([...APPLY_DEFERRED_ACTION_KINDS], ["constitution-recompose"]);
+  // The seed screen is the SECOND half of the action screen, because both seed
+  // kinds wear the same `evidence-seed` action kind.
+  assert.deepEqual([...APPLY_SUPPORTED_SEED_KINDS], ["binding-seed"]);
 });
 
 test("every mutating plan action kind outside the supported and deferred sets is unsupported", () => {
@@ -246,6 +290,137 @@ test("an unsupported action refuses the WHOLE plan — a registry action alongsi
   assert.ok(!decision.ok && decision.detail.includes("artifact-delete"));
   // The supported action was screened but the gate refused, so nothing renders.
   assert.ok(!decision.ok && decision.screened.supported.length === 1);
+});
+
+test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY supported kind", () => {
+  // The sharpest requirement on this item, stated at its widest: a plan carrying
+  // all four supported kinds AND one unsupported one is refused as a whole. The
+  // gate is pure, so "no supported subset was applied first" is proved by the
+  // module being structurally incapable of applying anything at all — the refusal
+  // is returned by the same call that would otherwise have authorized the write.
+  const decision = decideApplyGate({
+    plan: plan({
+      actions: [
+        action({ kind: "evidence-seed", order: 0 }),
+        action({ kind: "registry-add", order: 1 }),
+        action({ kind: "registry-deregister", order: 2 }),
+        action({ kind: "answer-write", order: 3, destination: "beta.token" }),
+        action({ kind: "payload-write", order: 4, destination: ".wf/thing.md" }),
+      ],
+      evidenceSeeds: [seed("binding-seed")],
+    }),
+    expectedPlanId: PLAN_ID,
+    journalPresent: false,
+  });
+
+  assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
+  assert.ok(!decision.ok && decision.detail.includes("payload-write"));
+  // All four supported actions WERE screened — and none of them can be applied,
+  // because the gate did not return `ok`.
+  assert.ok(!decision.ok && decision.screened.supported.length === 4);
+});
+
+test("EVERY out-of-scope kind refuses a plan that also carries a full supported set", () => {
+  // Driven off the frozen action order so a kind added upstream is covered the
+  // moment it exists — the same fail-closed posture as the screening test above,
+  // but asserted at the GATE, which is the boundary the write half sits behind.
+  const others = PLAN_ACTION_ORDER.filter(
+    (kind) =>
+      !APPLY_SUPPORTED_ACTION_KINDS.includes(kind) && !APPLY_DEFERRED_ACTION_KINDS.includes(kind),
+  );
+  for (const kind of others) {
+    const decision = decideApplyGate({
+      plan: plan({
+        actions: [
+          action({ kind: "registry-add", order: 0 }),
+          action({ kind: "answer-write", order: 1, destination: "beta.token" }),
+          action({ kind, order: 2 }),
+        ],
+      }),
+      expectedPlanId: PLAN_ID,
+      journalPresent: false,
+    });
+    assert.ok(
+      !decision.ok && decision.reason === "apply/unsupported-action",
+      `\`${kind}\` alongside a supported set must refuse the whole plan`,
+    );
+    assert.ok(!decision.ok && decision.detail.includes(kind));
+  }
+});
+
+test("A LEGACY PORTABLE BOOTSTRAP is refused, though it wears a SUPPORTED action kind", () => {
+  // The screen the action list alone cannot perform: both seed kinds are
+  // integrated as `evidence-seed`, so only the seed FACTS distinguish them.
+  const decision = decideApplyGate({
+    plan: plan({
+      actions: [
+        action({ kind: "evidence-seed", order: 0 }),
+        action({ kind: "registry-add", order: 1 }),
+      ],
+      evidenceSeeds: [seed("legacy-bootstrap")],
+    }),
+    expectedPlanId: PLAN_ID,
+    journalPresent: false,
+  });
+  assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
+  assert.ok(!decision.ok && decision.detail.includes("legacy-bootstrap"));
+  assert.ok(!decision.ok && decision.detail.includes("pack@1.0.0"));
+  // The action screen saw nothing wrong — which is exactly why the seed screen
+  // has to exist.
+  assert.equal(decision.ok, false);
+  assert.ok(!decision.ok && decision.screened.unsupported.length === 0);
+});
+
+test("a legacy bootstrap ANYWHERE in the seed list refuses, even beside an ordinary binding seed", () => {
+  const decision = decideApplyGate({
+    plan: plan({
+      actions: [
+        action({ kind: "evidence-seed", order: 0 }),
+        action({ kind: "registry-add", order: 1 }),
+      ],
+      evidenceSeeds: [seed("binding-seed", "good@1"), seed("legacy-bootstrap", "legacy@1")],
+    }),
+    expectedPlanId: PLAN_ID,
+    journalPresent: false,
+  });
+  assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
+  assert.ok(!decision.ok && decision.detail.includes("legacy@1"));
+  assert.ok(!decision.ok && !decision.detail.includes("good@1"), "only the offender is named");
+});
+
+test("an ordinary binding seed passes the gate", () => {
+  const decision = decideApplyGate({
+    plan: plan({
+      actions: [
+        action({ kind: "evidence-seed", order: 0 }),
+        action({ kind: "registry-add", order: 1 }),
+      ],
+      evidenceSeeds: [seed("binding-seed")],
+    }),
+    expectedPlanId: PLAN_ID,
+    journalPresent: false,
+  });
+  assert.equal(decision.ok, true);
+  assert.ok(decision.ok && decision.screened.supported.length === 2);
+});
+
+test("the ordering rule outranks nothing that is MORE fundamental", () => {
+  // Rule 3 of the module header, re-asserted across the widened screen: a stale
+  // plan carrying an unsupported kind reports STALE, because the moved world is
+  // the story that explains everything else.
+  const decision = decideApplyGate({
+    plan: plan({
+      planId: "1".repeat(64),
+      actions: [
+        action({ kind: "registry-add", order: 0 }),
+        action({ kind: "payload-write", order: 1 }),
+      ],
+      evidenceSeeds: [seed("legacy-bootstrap")],
+    }),
+    expectedPlanId: PLAN_ID,
+    journalPresent: false,
+  });
+  assert.ok(!decision.ok && decision.reason === "apply/plan-stale");
 });
 
 test("a plan whose only mutating action is the deferred one has nothing to apply", () => {

@@ -1426,6 +1426,11 @@ var ALL_CONTENT_CLASSES = [...CONTENT_REF_CLASSES, "slot"];
 // src/resolver/settings.ts
 var SETTINGS_STORAGE_DIR = "_local/profiles";
 var SETTINGS_OVERRIDE_SUFFIX = ".settings.json";
+var PROFILE_STORAGE_DIR = SETTINGS_STORAGE_DIR;
+var PROFILE_SUFFIX = ".profile.json";
+function capabilityProfileRelPath(capability) {
+  return `${PROFILE_STORAGE_DIR}/${capability}${PROFILE_SUFFIX}`;
+}
 var SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
 var SETTINGS_KEY = /^[a-z0-9][a-z0-9-]*(\.[a-z0-9][a-z0-9-]*)*$/;
 function isSkillSlug(s) {
@@ -1866,11 +1871,7 @@ function buildSnapshot(inputs, io) {
   const idShape = trackerOwner ? { source: `tracker:${trackerOwner.owner}`, scheme: null } : { source: "bare-core", scheme: "T<NNN>" };
   const profiles = {};
   for (const cap of capabilities) {
-    const profilePath = joinSlash(
-      workspaceRoot,
-      "_local/profiles",
-      `${cap.name}.profile.json`
-    );
+    const profilePath = joinSlash(workspaceRoot, capabilityProfileRelPath(cap.name));
     const content = io.readFile(profilePath);
     sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
     if (content === null) continue;

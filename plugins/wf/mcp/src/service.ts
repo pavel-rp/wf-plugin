@@ -148,6 +148,7 @@ import {
   type PathHashRecord,
   type PayloadDeclaration,
   type PayloadDiagnostic,
+  type PlanAction,
   type PlanAdmissionState,
   type PlanInstallResponse,
   APPLY_ENVELOPE_VERSION,
