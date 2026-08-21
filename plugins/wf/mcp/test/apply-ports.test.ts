@@ -87,7 +87,7 @@ function expect(present: string[] = []): SelfCheckExpectation {
 }
 
 const REGISTRY_ONLY: readonly ApplyTargetWrite[] = [
-  { destination: REGISTRY_REL, newContent: NEXT },
+  { operation: "write", destination: REGISTRY_REL, newContent: NEXT },
 ];
 
 /** Every path under the backup root, files and directories alike. The evidence
@@ -338,10 +338,10 @@ test("a NEW-REGISTRATION transaction lands registry, ledgers and profile seed to
   const root = makeWorkspace();
   try {
     const targets: ApplyTargetWrite[] = [
-      { destination: REGISTRY_REL, newContent: NEXT },
-      { destination: COMMITTED_LEDGER, newContent: COMMITTED_PRIOR },
-      { destination: LOCAL_LEDGER, newContent: LOCAL_NEW },
-      { destination: PROFILE, newContent: PROFILE_NEW },
+      { operation: "write", destination: REGISTRY_REL, newContent: NEXT },
+      { operation: "write", destination: COMMITTED_LEDGER, newContent: COMMITTED_PRIOR },
+      { operation: "write", destination: LOCAL_LEDGER, newContent: LOCAL_NEW },
+      { operation: "write", destination: PROFILE, newContent: PROFILE_NEW },
     ];
     const result = applyTransaction(ports(root), { targets, expectation: expect(["beta"]) });
 
@@ -375,7 +375,7 @@ test("A FILE THE TRANSACTION DOES NOT NAME IS BYTE-IDENTICAL — same bytes, sam
     const before = fileIdentity(root, COMMITTED_LEDGER);
 
     const result = applyTransaction(ports(root), {
-      targets: [{ destination: LOCAL_LEDGER, newContent: LOCAL_NEW }],
+      targets: [{ operation: "write", destination: LOCAL_LEDGER, newContent: LOCAL_NEW }],
       expectation: expect(),
     });
 
@@ -421,9 +421,9 @@ test("a failed self-check rolls back EVERY real file, and REMOVES the ones it cr
       ports(root, () => ({ ok: false, diagnostic: "the seed did not read back" })),
       {
         targets: [
-          { destination: REGISTRY_REL, newContent: NEXT },
-          { destination: COMMITTED_LEDGER, newContent: '{"portable":{}}\n' },
-          { destination: PROFILE, newContent: PROFILE_NEW },
+          { operation: "write", destination: REGISTRY_REL, newContent: NEXT },
+          { operation: "write", destination: COMMITTED_LEDGER, newContent: '{"portable":{}}\n' },
+          { operation: "write", destination: PROFILE, newContent: PROFILE_NEW },
         ],
         expectation: expect(["beta"]),
       },
@@ -458,9 +458,9 @@ test("a real interrupted MULTI-TARGET transaction is recovered from disk, idempo
       () =>
         applyTransaction(p, {
           targets: [
-            { destination: REGISTRY_REL, newContent: NEXT },
-            { destination: COMMITTED_LEDGER, newContent: '{"portable":{}}\n' },
-            { destination: PROFILE, newContent: PROFILE_NEW },
+            { operation: "write", destination: REGISTRY_REL, newContent: NEXT },
+            { operation: "write", destination: COMMITTED_LEDGER, newContent: '{"portable":{}}\n' },
+            { operation: "write", destination: PROFILE, newContent: PROFILE_NEW },
           ],
           expectation: expect(),
         }),
@@ -552,8 +552,8 @@ test("the transaction applies against a NON-CWD admitted workspace", () => {
     process.chdir(elsewhere);
     const result = applyTransaction(ports(root), {
       targets: [
-        { destination: REGISTRY_REL, newContent: NEXT },
-        { destination: PROFILE, newContent: PROFILE_NEW },
+        { operation: "write", destination: REGISTRY_REL, newContent: NEXT },
+        { operation: "write", destination: PROFILE, newContent: PROFILE_NEW },
       ],
       expectation: expect(),
     });

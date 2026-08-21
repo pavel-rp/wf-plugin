@@ -18,6 +18,7 @@ import {
   renameSync,
   rmSync,
   rmdirSync,
+  unlinkSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
@@ -726,6 +727,30 @@ export function createApplyPorts(
         };
       }
       return atomicWrite(target, Buffer.from(content, "utf8"));
+    },
+
+    // WF-458. `unlinkSync` never follows a terminal symlink, which is what makes
+    // this safe to expose at all — though the driver has already refused a link at
+    // S2b, so reaching here over one is impossible by construction. The parent
+    // directory is deliberately left in place: only `pruneEmptyBackupDirs` decides
+    // a directory is disposable, and it is bounded to the backup root.
+    removeDestination: (destination: string): WriteOutcome => {
+      const target = contained(destination);
+      if (target === null) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` does not resolve to a workspace-contained target; nothing was removed.`,
+        };
+      }
+      try {
+        unlinkSync(target);
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` could not be removed: ${message(err)}`,
+        };
+      }
     },
 
     refreshAndSelfCheck,

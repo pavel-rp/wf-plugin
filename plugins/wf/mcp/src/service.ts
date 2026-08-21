@@ -129,7 +129,7 @@ import {
 import {
   applyTransaction,
   type ApplyPorts,
-  type ApplyTargetWrite,
+  type ApplyTarget,
   type SelfCheckExpectation,
   type SelfCheckOutcome,
 } from "./resolver/apply-transaction.js";
@@ -2096,7 +2096,7 @@ export class ResolverService {
   }):
     | {
         ok: true;
-        targets: ApplyTargetWrite[];
+        targets: ApplyTarget[];
         portableRecorded: string[];
         bindingRecorded: string[];
         answersRecorded: { capability: string; destination: string }[];
@@ -2326,8 +2326,14 @@ export class ResolverService {
     }
 
     // --- render every target --------------------------------------------------
-    const targets: ApplyTargetWrite[] = input.registryChanged
-      ? [{ destination: input.registryRel, newContent: input.registryContent }]
+    const targets: ApplyTarget[] = input.registryChanged
+      ? [
+          {
+            operation: "write",
+            destination: input.registryRel,
+            newContent: input.registryContent,
+          },
+        ]
       : [];
 
     /** Add one rendered target, dropping it when it would change nothing.
@@ -2355,7 +2361,31 @@ export class ResolverService {
           detail: `destination \`${destination}\` would be written twice in one transaction; nothing was written.`,
         };
       }
-      targets.push({ destination, newContent: render.content });
+      targets.push({ operation: "write", destination, newContent: render.content });
+      return null;
+    };
+
+    /** Add one REMOVAL target (WF-458), under the same duplicate-destination gate.
+     *
+     *  Deliberately a SEPARATE function rather than a flag on `addRendered`: a
+     *  removal has no rendered content and no `changed` question, so folding it in
+     *  would mean a shared body with two dead parameters and a branch deciding
+     *  whether a file survives. That is exactly the kind-dispatch shape WF-454's
+     *  defect (A) came from. The gate itself is shared, because a destination that
+     *  is both written and removed in one transaction is incoherent regardless of
+     *  which side proposed it. */
+    const addRemoval = (
+      destination: string,
+      reason: ApplyReason,
+    ): { ok: false; reason: ApplyReason; detail: string } | null => {
+      if (targets.some((target) => target.destination === destination)) {
+        return {
+          ok: false,
+          reason,
+          detail: `destination \`${destination}\` is named by a removal and by another target in the same transaction; nothing was written and nothing was removed.`,
+        };
+      }
+      targets.push({ operation: "delete", destination });
       return null;
     };
 

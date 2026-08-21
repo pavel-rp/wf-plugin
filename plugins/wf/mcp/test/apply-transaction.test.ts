@@ -87,6 +87,7 @@ type Stage =
   | "hashBackup"
   | "recheck"
   | "atomicReplace"
+  | "removeDestination"
   | "refreshAndSelfCheck"
   | "discardTransaction";
 
@@ -287,6 +288,20 @@ function applyPortsFor(ws: Workspace): ApplyPorts {
       return { ok: true };
     },
 
+    removeDestination: (destination): WriteOutcome => {
+      const verdict = stage(ws, "removeDestination", destination);
+      // A kill here happens BEFORE the unlink, exactly as the atomic-replace
+      // double models a kill before the rename: the destination is untouched, and
+      // the interesting crash — killed AFTER the unlink — is modelled by killing
+      // at a LATER stage, where the file is genuinely gone and only the verified
+      // backup can bring it back.
+      if (verdict === "kill") throw new Error("killed at removeDestination");
+      if (verdict === "fail") return { ok: false, diagnostic: "removal refused" };
+      ws.files.delete(destination);
+      ws.inodes.delete(destination);
+      return { ok: true };
+    },
+
     refreshAndSelfCheck: (_expectation: SelfCheckExpectation): SelfCheckOutcome => {
       const verdict = stage(ws, "refreshAndSelfCheck");
       if (verdict === "kill") throw new Error("killed at refreshAndSelfCheck");
@@ -311,11 +326,11 @@ function applyPortsFor(ws: Workspace): ApplyPorts {
 const EXPECTATION: SelfCheckExpectation = { ...emptySelfCheckExpectation(), present: ["beta"] };
 
 const ONE_TARGET: readonly ApplyTargetWrite[] = [
-  { destination: DESTINATION, newContent: NEW_BYTES },
+  { operation: "write", destination: DESTINATION, newContent: NEW_BYTES },
 ];
 const TWO_TARGETS: readonly ApplyTargetWrite[] = [
-  { destination: DESTINATION, newContent: NEW_BYTES },
-  { destination: LEDGER, newContent: LEDGER_NEW },
+  { operation: "write", destination: DESTINATION, newContent: NEW_BYTES },
+  { operation: "write", destination: LEDGER, newContent: LEDGER_NEW },
 ];
 /** The WF-455 width: a configuration-only plan's full target set, registry and
  *  ledger alongside the committed project override and the composed
@@ -323,10 +338,10 @@ const TWO_TARGETS: readonly ApplyTargetWrite[] = [
  *  open a window where a kill leaves the override written and the constitution
  *  not — or, worse, the constitution half-written. */
 const FOUR_TARGETS: readonly ApplyTargetWrite[] = [
-  { destination: DESTINATION, newContent: NEW_BYTES },
-  { destination: LEDGER, newContent: LEDGER_NEW },
-  { destination: OVERRIDE, newContent: OVERRIDE_NEW },
-  { destination: CONSTITUTION, newContent: CONSTITUTION_NEW },
+  { operation: "write", destination: DESTINATION, newContent: NEW_BYTES },
+  { operation: "write", destination: LEDGER, newContent: LEDGER_NEW },
+  { operation: "write", destination: OVERRIDE, newContent: OVERRIDE_NEW },
+  { operation: "write", destination: CONSTITUTION, newContent: CONSTITUTION_NEW },
 ];
 /** The WF-456 width: the same four surfaces plus the pack payload. Run through
  *  the SAME matrix — extended, never rebuilt — so the five surfaces a rollback
@@ -334,7 +349,7 @@ const FOUR_TARGETS: readonly ApplyTargetWrite[] = [
  *  constitution) are each proved at every kill stage rather than argued for. */
 const FIVE_TARGETS: readonly ApplyTargetWrite[] = [
   ...FOUR_TARGETS,
-  { destination: PAYLOAD, newContent: PAYLOAD_NEW },
+  { operation: "write", destination: PAYLOAD, newContent: PAYLOAD_NEW },
 ];
 
 function runTargets(ws: Workspace, targets: readonly ApplyTargetWrite[]) {
@@ -523,8 +538,8 @@ test("an EMPTY target set is refused before a journal", () => {
 test("a DUPLICATE destination is refused before a journal", () => {
   const ws = newWorkspace();
   const result = runTargets(ws, [
-    { destination: DESTINATION, newContent: NEW_BYTES },
-    { destination: DESTINATION, newContent: PRIOR_BYTES },
+    { operation: "write", destination: DESTINATION, newContent: NEW_BYTES },
+    { operation: "write", destination: DESTINATION, newContent: PRIOR_BYTES },
   ]);
   assert.equal(result.status, "rejected");
   assert.equal(result.reason, "apply/registry-unresolvable");

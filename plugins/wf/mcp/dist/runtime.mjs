@@ -22118,6 +22118,13 @@ function createJournalEntry(inputs) {
     return null;
   }
   if (inputs.backupPath !== null && !nonEmpty(inputs.backupPath)) return null;
+  const removesDestination = inputs.removesDestination === true;
+  if (removesDestination) {
+    if (inputs.lastWritten !== null) return null;
+    if (inputs.priorExistence !== "present") return null;
+    if (inputs.priorIsSymlink) return null;
+    if (inputs.backupPath === null) return null;
+  }
   const lastWritten = inputs.lastWritten === null ? null : createLastWrittenIdentity(inputs.lastWritten);
   if (inputs.lastWritten !== null && lastWritten === null) return null;
   return {
@@ -22126,7 +22133,8 @@ function createJournalEntry(inputs) {
     priorContentHash: inputs.priorContentHash,
     priorIsSymlink: inputs.priorIsSymlink,
     backupPath: inputs.backupPath,
-    lastWritten
+    lastWritten,
+    removesDestination
   };
 }
 function createTransactionJournal(inputs) {
@@ -22223,7 +22231,11 @@ function parseTransactionJournal(raw) {
       priorContentHash: typeof row.priorContentHash === "string" ? row.priorContentHash : null,
       priorIsSymlink: row.priorIsSymlink === true,
       backupPath: typeof row.backupPath === "string" ? row.backupPath : null,
-      lastWritten
+      lastWritten,
+      // Read STRICTLY as `=== true`, so an absent field, a missing journal
+      // written before this release, and any non-boolean value all decide
+      // `false` — the pre-WF-458 behaviour, byte for byte.
+      removesDestination: row.removesDestination === true
     });
     if (entry === null) {
       return {
@@ -22298,6 +22310,22 @@ function decideEntryRecovery(entry, observation) {
       "already-restored",
       "already-prior-content",
       `\`${entry.destination}\` already holds its prior bytes.`
+    );
+  }
+  if (entry.removesDestination && entry.priorExistence === "present" && observation.kind === "absent") {
+    if (entry.backupPath === null || entry.priorContentHash === null) {
+      return decision(
+        "none",
+        "unresolved",
+        "backup-missing",
+        `\`${entry.destination}\` was removed by the interrupted transaction but records no backup to restore its prior bytes from.`
+      );
+    }
+    return decision(
+      "restore-content",
+      "restored",
+      "restored-content",
+      `\`${entry.destination}\` was removed by the interrupted transaction and is restored from its verified backup.`
     );
   }
   if (entry.lastWritten === null) {
@@ -28363,7 +28391,8 @@ function rejected(reason, message2, residue) {
     refreshed: false,
     residue,
     diagnostics: [issue2(reason, message2)],
-    written: []
+    written: [],
+    removed: []
   };
 }
 function noTransactionResidue() {
@@ -28424,7 +28453,8 @@ function failAfterJournal(ports, transactionId, reason, message2, selfCheck, ref
       report.complete ? "the transaction was rolled back and its journal and backups were discarded." : "the transaction could not be fully rolled back; its journal is retained so a later run re-observes and converges."
     ),
     diagnostics,
-    written: []
+    written: [],
+    removed: []
   };
 }
 function applyTransaction(ports, input) {
@@ -28471,6 +28501,24 @@ function applyTransaction(ports, input) {
         noTransactionResidue()
       );
     }
+    if (target.operation === "delete") {
+      if (observed.kind !== "file") {
+        return rejected(
+          "apply/precondition-moved",
+          `\`${target.destination}\` is named by a removal but is not a regular file right now (${describe2(observed)}); nothing was journalled and nothing was removed.`,
+          noTransactionResidue()
+        );
+      }
+      screened.push({
+        destination: target.destination,
+        newContent: null,
+        operation: "delete",
+        observed,
+        inode,
+        willWrite: null
+      });
+      continue;
+    }
     const willWrite = createLastWrittenIdentity(ports.identify(target.newContent));
     if (willWrite === null) {
       return rejected(
@@ -28482,6 +28530,7 @@ function applyTransaction(ports, input) {
     screened.push({
       destination: target.destination,
       newContent: target.newContent,
+      operation: "write",
       observed,
       inode,
       willWrite
@@ -28497,7 +28546,14 @@ function applyTransaction(ports, input) {
       priorContentHash: target.observed.kind === "file" ? target.observed.contentHash : null,
       priorIsSymlink: false,
       backupPath,
-      lastWritten: target.willWrite
+      lastWritten: target.willWrite,
+      // The removal's END STATE, recorded BEFORE the removal happens — the same
+      // pre-recording discipline `lastWritten` obeys, and for the same reason:
+      // recording it afterwards leaves a window in which the destination is
+      // already gone while the journal still describes an ordinary write, and
+      // recovery would then classify this transaction's own removal as an
+      // external edit and preserve the deletion forever.
+      removesDestination: target.operation === "delete"
     });
     if (entry === null) {
       return rejected(
@@ -28588,7 +28644,33 @@ function applyTransaction(ports, input) {
     }
   }
   const written = [];
+  const removed = [];
   for (const target of prepared) {
+    if (target.operation === "delete") {
+      const result2 = ports.removeDestination(target.destination);
+      if (!result2.ok) {
+        return failAfterJournal(
+          ports,
+          transactionId,
+          "apply/write-failed",
+          `\`${target.destination}\` could not be removed: ${result2.diagnostic}`,
+          "skipped",
+          false
+        );
+      }
+      removed.push(target.destination);
+      continue;
+    }
+    if (target.newContent === null) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/write-failed",
+        `\`${target.destination}\` is a write target carrying no bytes; nothing further was written.`,
+        "skipped",
+        false
+      );
+    }
     const result = ports.atomicReplace(target.destination, target.newContent);
     if (!result.ok) {
       return failAfterJournal(
@@ -28608,7 +28690,7 @@ function applyTransaction(ports, input) {
       ports,
       transactionId,
       "apply/self-check-failed",
-      `the transaction wrote ${written.length} destination(s) but the self-check did not confirm the intended state: ${checked.diagnostic}`,
+      `the transaction wrote ${written.length} and removed ${removed.length} destination(s) but the self-check did not confirm the intended state: ${checked.diagnostic}`,
       "failed",
       true
     );
@@ -28626,7 +28708,8 @@ function applyTransaction(ports, input) {
       "the transaction completed durably: the journal was discarded first, then its backups, then the emptied backup directories were pruned."
     ),
     diagnostics: [],
-    written
+    written,
+    removed
   };
 }
 function sameObservation(left, right) {
