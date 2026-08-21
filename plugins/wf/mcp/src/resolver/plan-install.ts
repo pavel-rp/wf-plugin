@@ -47,6 +47,7 @@ import {
   planPayloads,
   type PlanPayloadFact,
 } from "./payload-plan.js";
+import { completePlan, type PlanCompletionInput } from "./plan-complete.js";
 import { validateQuestionValue } from "./questions.js";
 import type {
   ArtifactOwner,
@@ -61,6 +62,7 @@ import type {
   PlanRegistryDelta,
   PlanRegistryEntry,
   PlanRegistryReason,
+  PlanRepairAction,
   PlanUnresolvedQuestion,
   QuestionRecord,
 } from "./types.js";
@@ -195,16 +197,40 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
   // envelope is still the ordinary envelope — an inadmissible root is an
   // explicit, typed, byte-inert outcome, not an error channel.
   if (!input.admission.admitted) {
+    // The completion pass runs on THIS path too. An inadmissible root is a real
+    // plan with a real identity — one that says "nothing may be done, and here is
+    // why" — so a reviewer approving it approves the same schema they approve
+    // everywhere else. The admission verdict is folded into the identity, so two
+    // different inadmissible roots never collide on one `planId`.
+    const completion = completePlan({
+      planVersion: PLAN_ENVELOPE_VERSION,
+      admission: input.admission,
+      workspaceRoot: null,
+      applicability: "invalid-root",
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      repairs: [],
+      payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
+      findings: [],
+      inventory: UNOBSERVED_INVENTORY,
+    });
     return {
       planVersion: PLAN_ENVELOPE_VERSION,
       workspaceRoot: null,
       admission: input.admission,
       applicability: "invalid-root",
+      mode: completion.mode,
       registryDelta: { additions: [], retentions: [], deregistrations: [] },
       answers: { writes: [], unresolved: [] },
       evidenceSeeds: [],
+      repairs: [],
       payloads: emptyPayloadPreview(),
       artifacts: emptyArtifactPreview(),
+      actions: completion.actions,
+      applicabilityBasis: completion.applicabilityBasis,
+      identity: completion.identity,
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
       byteInert: true,
@@ -256,6 +282,8 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
   const retentions: PlanRegistryEntry[] = [];
   const deregistrations: PlanRegistryEntry[] = [];
   const evidenceSeeds: PlanEvidenceSeed[] = [];
+  /** Drifted-evidence repairs (WF-450) — what makes the plan repair-CAPABLE. */
+  const repairs: PlanRepairAction[] = [];
   /** Packs the plan ACTS ON — the only ones whose legacy proof must be complete. */
   const actedOn: DiscoveredPack[] = [];
   /** Packs whose capabilities are in the post-plan active set. */
@@ -302,7 +330,11 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
     // --- lifecycle evidence for an acted-on pack ---------------------------
     // Rule 2. `proofComplete` is the whole gate: a bootstrap is previewable only
     // when BOTH observed halves exist.
-    let proofIncomplete = false;
+    //
+    // `proofIncomplete` carries the RETENTION REASON rather than a boolean,
+    // because two distinct proof failures now reach this path and a reader of the
+    // retained entry must be able to tell them apart (WF-450).
+    let proofIncomplete: PlanRegistryReason | null = null;
     if (acting) {
       const comparison = pack.evidence.comparison;
       if (comparison === "binding-seed" && pack.seedProposal !== null) {
@@ -314,6 +346,22 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
           binding: pack.seedProposal,
           persisted: false,
         });
+      } else if (comparison === "binding-seed") {
+        // THE MISSING-BINDING PREDICATE (WF-450). `comparison` and `seedProposal`
+        // are typed independently, so a `binding-seed` comparison with no proposal
+        // is representable — and it used to fall through with no seed, no finding,
+        // and no bucket change: a silent omission, which is exactly what the
+        // schema forbids. The seed action is APPLICABLE ONLY UNDER ITS EXACT
+        // PROOF PREDICATE, so a failed predicate produces an explicit
+        // non-applicable result on the same fail-safe shape rule 2 uses: the
+        // registration is preserved and the whole plan is not applicable.
+        proofIncomplete = "retained-binding-proof-incomplete";
+        finding(
+          "plan/binding-proof-incomplete",
+          "error",
+          pack.pluginId,
+          "needs a machine-binding seed but no binding proposal was observed; planning is not applicable and its registration is preserved.",
+        );
       } else if (comparison === "evidence-missing") {
         const observedPortable = pack.evidence.portable;
         const observedBinding = pack.evidence.binding;
@@ -333,7 +381,7 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
             "has no recorded lifecycle evidence; complete observed proof makes a bootstrap seed reviewable.",
           );
         } else {
-          proofIncomplete = true;
+          proofIncomplete = "retained-legacy-proof-incomplete";
           finding(
             "plan/legacy-proof-incomplete",
             "error",
@@ -352,15 +400,31 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
             pack.overlay === null ? "" : `; overlay \`${pack.overlay}\``
           }.`,
         );
+        // THIS IS WHAT MAKES THE PLAN REPAIR-CAPABLE (WF-450). A drifted
+        // comparison previously produced a warning and NOTHING ELSE — the plan
+        // reported the drift and then carried no effect that would ever resolve
+        // it. The repair is a previewed action on the same byte-inert footing as
+        // every other: it is emitted here from a comparison the discovery join
+        // already made, never from a fresh diagnosis, which is why this stays
+        // inside the slice's scope. `portable-mismatch` drifts the portable half;
+        // `root-moved` and `local-mismatch` drift the machine-binding half.
+        repairs.push({
+          pluginId: pack.pluginId,
+          comparison,
+          scope: comparison === "portable-mismatch" ? "portable" : "binding",
+          overlay: pack.overlay,
+          persisted: false,
+        });
       }
     }
 
     // --- bucket the pack ---------------------------------------------------
-    // Incomplete legacy proof always wins: the registration is PRESERVED, which
-    // means retention, even for an explicit deregistration.
-    if (proofIncomplete) {
+    // Incomplete proof always wins: the registration is PRESERVED, which means
+    // retention, even for an explicit deregistration. The reason distinguishes
+    // the legacy-bootstrap failure from the missing-binding failure.
+    if (proofIncomplete !== null) {
       if (registered) {
-        retentions.push(entryFor(pack, "retained-legacy-proof-incomplete", pack.registeredCapabilities));
+        retentions.push(entryFor(pack, proofIncomplete, pack.registeredCapabilities));
         postPlanPacks.add(pack.pluginId);
       }
       continue;
@@ -579,6 +643,11 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
           registryDelta.deregistrations.length === 0 &&
           writes.length === 0 &&
           evidenceSeeds.length === 0 &&
+          // A previewed repair is a previewed EFFECT. Without this conjunct a
+          // `mode: "repair"` plan could report `no-change`, which is
+          // self-contradictory — and it would break the schema's own invariant
+          // that `no-change` implies no mutating action.
+          repairs.length === 0 &&
           // A previewed payload write is a previewed EFFECT, so a plan carrying
           // one is never `no-change`. Whether that write would be a no-op against
           // the target's current bytes is an eligibility question this slice
@@ -592,19 +661,45 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
         ? "no-change"
         : "applicable";
 
+  // --- complete the plan (WF-450) -------------------------------------------
+  // Integration runs LAST, over the finished facts, and every collection it reads
+  // is already in its final sorted order — which is what lets the identity be a
+  // function of the facts rather than of the order they were discovered in.
+  const answers = {
+    writes: sortQuestionRows(writes),
+    unresolved: sortQuestionRows(unresolved),
+  };
+  const completionInput: PlanCompletionInput = {
+    planVersion: PLAN_ENVELOPE_VERSION,
+    admission: input.admission,
+    workspaceRoot: input.admission.root,
+    applicability,
+    registryDelta,
+    answers,
+    evidenceSeeds: byPluginId(evidenceSeeds),
+    repairs: byPluginId(repairs),
+    payloads: payloadPlan.preview,
+    artifacts: artifactPlan.preview,
+    findings: sortFindings(findings),
+    inventory: input.inventory,
+  };
+  const completion = completePlan(completionInput);
+
   return {
     planVersion: PLAN_ENVELOPE_VERSION,
     workspaceRoot: input.admission.root,
     admission: input.admission,
     applicability,
+    mode: completion.mode,
     registryDelta,
-    answers: {
-      writes: sortQuestionRows(writes),
-      unresolved: sortQuestionRows(unresolved),
-    },
+    answers,
     evidenceSeeds: byPluginId(evidenceSeeds),
+    repairs: byPluginId(repairs),
     payloads: payloadPlan.preview,
     artifacts: artifactPlan.preview,
+    actions: completion.actions,
+    applicabilityBasis: completion.applicabilityBasis,
+    identity: completion.identity,
     findings: sortFindings(findings),
     inventory: input.inventory,
     byteInert: true,

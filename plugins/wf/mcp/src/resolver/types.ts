@@ -548,6 +548,12 @@ export type PlanRegistryReason =
   /** Acted on with incomplete legacy proof — registration is PRESERVED, even
    *  when the pack was explicitly deregistered. */
   | "retained-legacy-proof-incomplete"
+  /** Acted on with a fresh-machine-binding comparison but NO binding proposal,
+   *  so the missing-binding action's proof predicate is not satisfied.
+   *  Registration is PRESERVED, exactly as for incomplete legacy proof — the
+   *  same fail-safe direction, stated explicitly instead of degrading into a
+   *  staleness warning that produced no action at all. */
+  | "retained-binding-proof-incomplete"
   /** Named in the explicit deregistration set. The only removal path. */
   | "explicit-deregistration";
 
@@ -627,6 +633,9 @@ export type PlanFindingCode =
   | "plan/legacy-proof-incomplete"
   /** A legacy bootstrap seed is previewable from complete proof. */
   | "plan/legacy-bootstrap-previewed"
+  /** An acted-on pack compares as a fresh machine binding but carries no binding
+   *  proposal, so the missing-binding action's exact proof predicate fails. */
+  | "plan/binding-proof-incomplete"
   /** A proposed answer failed its declared schema. */
   | "plan/answer-invalid"
   /** A declared question has no persisted and no proposed answer. */
@@ -897,6 +906,240 @@ export interface PlanArtifactPreview {
   advance: PlanArtifactDecision[];
 }
 
+// ---------------------------------------------------------------------------
+// The complete-plan integration slice of the planner envelope (WF-450)
+// ---------------------------------------------------------------------------
+//
+// THE CAPSTONE. It closes the envelope the WF-447 header opened and freezes the
+// approved-plan identity every later mutator will trust as its sole authority.
+// It adds fields; it does NOT fork the response family, it does NOT introduce a
+// second schema, and it does NOT re-version the envelope — all eight lifecycle
+// modes ride the same `planVersion: 1`.
+//
+// FOUR RULES ARE CORRECTNESS, NOT PREFERENCE:
+//
+//   1. ONE SCHEMA, ONE IDENTITY. Install, reconcile, bootstrap, deregistration,
+//      deletion, upgrade, retained-divergence, and repair are MODES of this one
+//      envelope, not response families. A reader switches on `mode`; it never
+//      has to ask which shape it received.
+//
+//   2. THIS SLICE SOLELY OWNS THE SCHEMA. Neither the resolver's service layer
+//      nor a downstream host may fill a missing field or arbitrate a finding.
+//      Every field that can be absent states what absent MEANS in its own type:
+//      `mode` is `null` on the `invalid-root` path and nowhere else, exactly as
+//      `PlanArtifactDecision.reason` is `null` on the `deletable` form and
+//      nowhere else.
+//
+//   3. NO BLOCKING CONDITION IS EVER A SILENT OMISSION. Every finding that
+//      forces a non-applicable result, and every question that blocks, is
+//      enumerated in `applicabilityBasis`. A reader never re-derives which input
+//      did the blocking, and a predicate that fails says so with a finding
+//      rather than by quietly producing no action.
+//
+//   4. IDENTITY IS A FUNCTION OF THE MUTATION-RELEVANT FACTS AND NOTHING ELSE.
+//      It changes when any enumerated hash, semantic tuple, machine binding,
+//      owner set, answer, destination, containment verdict, symlink rejection,
+//      registry fact, or evidence fact changes — and it does NOT change when a
+//      finding's human-readable message is reworded, because a reworded
+//      diagnostic must never invalidate an already-approved plan. A no-change
+//      plan therefore has a stable identity and zero mutating actions.
+
+/** Which lifecycle shape one plan takes. All eight ride the SAME versioned
+ *  envelope — there is deliberately no second schema and no `planVersion: 2`.
+ *
+ *  Derived from the plan's OWN content, never from a caller input, so a caller
+ *  cannot assert a mode the facts do not support. FIRST MATCH WINS in the
+ *  declaration order below, which is destructive-effect-first so the most
+ *  review-worthy effect is the one that names the plan:
+ *
+ *    `deletion` → `deregistration` → `repair` → `bootstrap` → `upgrade`
+ *      → `install` → `retained-divergence` → `reconcile`
+ *
+ *  `retained-divergence` deliberately sits below every effect-bearing mode: it
+ *  describes a plan whose notable content IS the divergent retention, so a plan
+ *  that also installs something is an `install`, not a divergence report. */
+export type PlanMode =
+  /** At least one managed artifact is eligible for removal. */
+  | "deletion"
+  /** At least one pack would be deregistered. */
+  | "deregistration"
+  /** At least one drifted lifecycle-evidence record would be re-established. */
+  | "repair"
+  /** At least one evidence seed or artifact bootstrap is previewed. */
+  | "bootstrap"
+  /** At least one managed artifact advances to a newer declared source. */
+  | "upgrade"
+  /** At least one pack would be registered. */
+  | "install"
+  /** Nothing above applies and at least one artifact is retained as divergent. */
+  | "retained-divergence"
+  /** The residual: the plan reconciles the workspace and nothing above applies. */
+  | "reconcile";
+
+/** Every action class one complete plan integrates. A closed vocabulary — a
+ *  reader may switch on it exhaustively.
+ *
+ *  RETENTIONS APPEAR HERE TOO, as non-mutating actions. Retention is the
+ *  fail-safe default of both the registry slice (omission never removes) and the
+ *  destructive slice (missing evidence never infers permission), so a COMPLETE
+ *  plan must show it. Modelling it as an action with `mutating: false`
+ *  integrates it for review without ever making it executable. */
+export type PlanActionKind =
+  /** Re-establish a drifted lifecycle-evidence record. */
+  | "evidence-repair"
+  /** Record a binding seed or a legacy bootstrap for a pack. */
+  | "evidence-seed"
+  /** Register a selected pack's capabilities. */
+  | "registry-add"
+  /** Deregister an explicitly deselected pack's capabilities. */
+  | "registry-deregister"
+  /** Write a declared payload to a workspace-contained destination. */
+  | "payload-write"
+  /** Write a payload landing in the committed project-override tier. */
+  | "override-write"
+  /** Advance a managed artifact to its newer declared source. */
+  | "artifact-advance"
+  /** Persist future authority over a missing-ledger managed artifact. */
+  | "artifact-bootstrap"
+  /** Delete a managed artifact that met every conjunctive removal condition. */
+  | "artifact-delete"
+  /** Persist a validated proposed project answer. */
+  | "answer-write"
+  /** Recompose the project constitution because the capability set changes. */
+  | "constitution-recompose"
+  /** A registry entry that is retained. Changes nothing. */
+  | "registry-retain"
+  /** A managed artifact that is retained. Changes nothing. */
+  | "artifact-retain";
+
+/** One integrated action in the complete plan. Previewed only — `persisted` is
+ *  the literal `false`, so a future writer cannot satisfy the shape by flipping
+ *  a boolean. */
+export interface PlanAction {
+  kind: PlanActionKind;
+  /** Dense 0-based ordinal assigned AFTER the canonical sort. Two runs over
+   *  identical facts assign identical ordinals, and permuting the input facts
+   *  cannot change one. */
+  order: number;
+  /** The pack this action is attributed to, or `null` for a plan-level action
+   *  (the constitution recomposition is the only such action today). */
+  pluginId: string | null;
+  /** The workspace-relative destination this action would touch, or `null` when
+   *  the action touches no single destination (a registry or evidence action). */
+  destination: string | null;
+  /** `true` when a mutator would change bytes or registry state. A retention is
+   *  `false`: it is integrated for review and changes nothing. */
+  mutating: boolean;
+  /** A deterministic one-line summary. Never a body. */
+  summary: string;
+  persisted: false;
+}
+
+/** Which half of the lifecycle-evidence record a repair would re-establish. */
+export type PlanRepairScope =
+  /** The committed portable evidence disagrees with what is installed. */
+  | "portable"
+  /** The machine-local binding disagrees — the root moved, or the local
+   *  fingerprints drifted. The committed portable half is untouched. */
+  | "binding";
+
+/** One previewed re-establishment of a DRIFTED lifecycle-evidence record.
+ *
+ *  Distinct from an evidence SEED: a seed records evidence where there is none,
+ *  a repair corrects evidence that exists and disagrees. Before this slice a
+ *  drifted comparison produced a `plan/stale-evidence` warning and no action at
+ *  all, which is precisely what made the plan not repair-capable.
+ *
+ *  This is the repair ACTION as it appears in a plan. It is deliberately NOT a
+ *  repair diagnosis entry point, which is a separate concern owned elsewhere. */
+export interface PlanRepairAction {
+  pluginId: string;
+  comparison: LifecycleEvidenceComparison["state"];
+  scope: PlanRepairScope;
+  /** The staleness overlay discovery attributed to the pack, carried verbatim. */
+  overlay: PackStaleOverlay | null;
+  /** Always the literal `false`: planning is byte-inert and persists nothing. */
+  persisted: false;
+}
+
+/** The EXPLICIT basis for the plan's applicability. No blocking condition is
+ *  ever a silent omission: every finding that forced a non-applicable result and
+ *  every question that blocked is enumerated here, so a reader never re-derives
+ *  which input did the blocking and a downstream host never arbitrates. */
+export interface PlanApplicabilityBasis {
+  /** The same token the response's `applicability` carries, repeated so the
+   *  basis is self-contained for a consumer that stores it alone. */
+  applicability: PlanApplicability;
+  /** Every `severity: "error"` finding, in the response's own finding order.
+   *  Non-empty IMPLIES `applicability === "not-applicable"`. */
+  blockingFindings: PlanFinding[];
+  /** Every unresolved question, in the response's own question order. Non-empty
+   *  alongside an empty `blockingFindings` IMPLIES `applicability === "blocked"`. */
+  blockingQuestions: PlanUnresolvedQuestion[];
+  /** `true` exactly when at least one of the two collections above is non-empty,
+   *  so a reader never has to infer "blocked" from an empty array. */
+  blocked: boolean;
+}
+
+/** The closed enumeration of fact classes the approved-plan identity is derived
+ *  from. NOTHING outside this set may influence `planId`, and every member names
+ *  a mutation-relevant fact a later mutator could act on. */
+export type PlanIdentityFactClass =
+  /** The frozen envelope version. */
+  | "envelope-version"
+  /** The admitted workspace root and its admission verdict — a plan for another
+   *  root, or one that was never admitted, is another plan. */
+  | "workspace-root"
+  /** The derived lifecycle mode. */
+  | "mode"
+  /** The applicability token. */
+  | "applicability"
+  /** Whether discovery's inventory may establish absence (WF-446). */
+  | "inventory-trust"
+  /** Each registry entry: pack, capability set, bucket reason, and snapshot facts. */
+  | "registry-delta"
+  /** Each bound answer: question, destination, and value. */
+  | "answer-write"
+  /** Each still-open question and why it is open. */
+  | "answer-unresolved"
+  /** Each evidence seed: kind, comparison, and the portable/binding identity. */
+  | "evidence-seed"
+  /** Each drifted-evidence repair: comparison, scope, and overlay. */
+  | "evidence-repair"
+  /** Each previewed payload write: destination, containment, digest, tuple, owners. */
+  | "payload-action"
+  /** Each refused destination and its closed rejection token — traversal,
+   *  absolute, malformed, symlink-escape, out-of-workspace, and the rest. */
+  | "payload-rejection"
+  /** Each blocking co-ownership collision and the axis it failed on. */
+  | "payload-conflict"
+  /** Each artifact decision: form, reason, owners, hashes, and authority. */
+  | "artifact-decision"
+  /** Each integrated action's kind, target, and mutating flag. */
+  | "action"
+  /** Each finding's code, severity, and pack — deliberately NOT its message, so
+   *  rewording a diagnostic can never invalidate an approved plan. */
+  | "finding";
+
+/** The sole approved-plan identity. A later mutator consumes THIS and nothing
+ *  else as its authority: approving a plan means approving this `planId`.
+ *
+ *  STABLE — re-planning an unchanged workspace reproduces it byte-for-byte, and
+ *  permuting the input facts cannot change it. SENSITIVE — it changes when any
+ *  fact in `coveredFactClasses` changes. */
+export interface PlanIdentity {
+  /** Lowercase SHA-256 hex over the canonical serialization of the covered facts. */
+  planId: string;
+  algorithm: "sha256";
+  /** The fact classes folded into `planId`. Always the complete closed set — the
+   *  coverage claim is a property of the derivation, not of one plan's data — so
+   *  a reviewer verifies coverage from this list rather than from a hash they
+   *  cannot read. */
+  coveredFactClasses: PlanIdentityFactClass[];
+  /** How many canonical fact tokens were folded in. */
+  factCount: number;
+}
+
 /** The `plan_install` response — the frozen public planner envelope.
  *
  *  Deterministic: identical inputs always produce a deep-equal response. Every
@@ -910,9 +1153,17 @@ export interface PlanInstallResponse {
   workspaceRoot: string | null;
   admission: PlanAdmissionState;
   applicability: PlanApplicability;
+  /** The dominant lifecycle effect this plan describes (WF-450). `null` on the
+   *  `invalid-root` path and NOWHERE else: admission failed before anything was
+   *  read, so no lifecycle shape was observed and claiming one would be a lie. */
+  mode: PlanMode | null;
   registryDelta: PlanRegistryDelta;
   answers: { writes: PlanAnswerWrite[]; unresolved: PlanUnresolvedQuestion[] };
   evidenceSeeds: PlanEvidenceSeed[];
+  /** Previewed re-establishments of drifted lifecycle evidence (WF-450). Empty
+   *  on the `invalid-root` path and whenever no acted-on pack's evidence has
+   *  drifted — a plan over exact evidence is unchanged by this slice. */
+  repairs: PlanRepairAction[];
   /** The previewed payload effect (WF-448). Empty on the `invalid-root` path and
    *  whenever no acted-on capability declares a payload — registration-only
    *  planning is unchanged by this slice. */
@@ -921,7 +1172,23 @@ export interface PlanInstallResponse {
    *  `invalid-root` path and whenever no managed artifact is in scope — planning
    *  that touches no ledger-managed destination is unchanged by this slice. */
   artifacts: PlanArtifactPreview;
+  /** Every action class integrated into ONE deterministically ordered list
+   *  (WF-450) — selected-set, registration, deregistration, retention, answer,
+   *  evidence seed, evidence repair, payload, override, constitution, artifact
+   *  removal, bootstrap, and upgrade. Empty on the `invalid-root` path.
+   *
+   *  INVARIANT: `applicability === "no-change"` implies no action here is
+   *  `mutating`, and `applicability === "applicable"` implies at least one is. */
+  actions: PlanAction[];
   findings: PlanFinding[];
+  /** The explicit basis for `applicability` (WF-450), enumerating every blocking
+   *  finding and every blocking question so no blocking condition is ever a
+   *  silent omission. */
+  applicabilityBasis: PlanApplicabilityBasis;
+  /** The sole approved-plan identity (WF-450). Never absent: even the
+   *  `invalid-root` path carries one, so a consumer never has to special-case a
+   *  missing authority value. */
+  identity: PlanIdentity;
   /** The inventory confidence this plan was computed against, carried verbatim
    *  from discovery so a reader never re-derives whether absence was
    *  establishable. Zeroed on the `invalid-root` path (nothing was read). */
