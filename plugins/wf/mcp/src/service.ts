@@ -1943,14 +1943,33 @@ export class ResolverService {
         diagnostics: result.diagnostics,
       };
     } catch (err) {
-      // An unexpected throw is reported as a halt, never as a success. The next
-      // entry's pre-entry recovery is what resolves whatever state was left.
-      return halted("halted", "apply/write-failed", recovery, null, [
-        {
-          code: "apply-threw",
-          message: err instanceof Error ? err.message : String(err),
+      // An unexpected throw is reported as a halt, never as a success. A throw can
+      // land AFTER the journal exists, so the residue is OBSERVED here rather than
+      // assumed clean: claiming "nothing was left behind" over a surviving journal
+      // would be exactly the unearned reassurance this operation must never give.
+      // The next entry's pre-entry recovery is what resolves whatever state is
+      // left, and a retained journal is what makes that entry converge.
+      const journalRetained = recoveryPorts.readJournal() !== null;
+      return {
+        ...halted("halted", "apply/write-failed", recovery, null, [
+          {
+            code: "apply-threw",
+            message: err instanceof Error ? err.message : String(err),
+          },
+        ]),
+        // `backupsRetained` tracks the journal because a backup is only ever
+        // NAMED by one: the journal is written before any backup and discarded
+        // before them, so a surviving journal is the operative fact and an orphan
+        // backup without one is inert and reclaimed by the next prune.
+        residue: {
+          clean: !journalRetained,
+          journalRetained,
+          backupsRetained: journalRetained,
+          detail: journalRetained
+            ? "the transaction was interrupted and its journal is retained, along with the backups that journal names; the next entry's pre-entry recovery restores the prior state."
+            : "no journal survives, so nothing is left that a later run must resolve.",
         },
-      ]);
+      };
     } finally {
       recoveryPorts.releaseLock();
     }

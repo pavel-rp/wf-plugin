@@ -29622,12 +29622,25 @@ var ResolverService = class {
         diagnostics: result.diagnostics
       };
     } catch (err) {
-      return halted("halted", "apply/write-failed", recovery, null, [
-        {
-          code: "apply-threw",
-          message: err instanceof Error ? err.message : String(err)
+      const journalRetained = recoveryPorts.readJournal() !== null;
+      return {
+        ...halted("halted", "apply/write-failed", recovery, null, [
+          {
+            code: "apply-threw",
+            message: err instanceof Error ? err.message : String(err)
+          }
+        ]),
+        // `backupsRetained` tracks the journal because a backup is only ever
+        // NAMED by one: the journal is written before any backup and discarded
+        // before them, so a surviving journal is the operative fact and an orphan
+        // backup without one is inert and reclaimed by the next prune.
+        residue: {
+          clean: !journalRetained,
+          journalRetained,
+          backupsRetained: journalRetained,
+          detail: journalRetained ? "the transaction was interrupted and its journal is retained, along with the backups that journal names; the next entry's pre-entry recovery restores the prior state." : "no journal survives, so nothing is left that a later run must resolve."
         }
-      ]);
+      };
     } finally {
       recoveryPorts.releaseLock();
     }
