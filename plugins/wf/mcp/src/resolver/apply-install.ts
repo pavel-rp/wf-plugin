@@ -14,15 +14,26 @@
 // FOUR RULES ARE CORRECTNESS, NOT PREFERENCE:
 //
 //   1. A BOUNDED SUPPORTED SET, AND EVERYTHING ELSE FAILS LOUDLY AND EARLY. The
-//      frozen plan schema has thirteen action kinds. Five are applied
-//      unconditionally (WF-453's two, widened by WF-454 and again by WF-455's
-//      committed project override); one more is applied when its enabling fact
-//      holds and NAMED with a follow-up when it does not; the rest are refused
-//      before entry. The screen covers the WHOLE action list AND the whole seed
-//      list before the first target is composed, so an unsupported kind can never
-//      follow a supported subset that was already written. A silently-ignored
-//      unsupported action would report success over a half-applied plan — the
-//      worst defect available to this family.
+//      frozen plan schema has thirteen action kinds. Six are applied
+//      unconditionally (WF-453's registry pair, widened by WF-454, again by
+//      WF-455's committed project override, and again by WF-456's pack payload);
+//      one more is applied when its enabling fact holds and NAMED with a
+//      follow-up when it does not; the rest are refused before entry. The screen
+//      covers the WHOLE action list AND the whole seed list before the first
+//      target is composed, so an unsupported kind can never follow a supported
+//      subset that was already written. A silently-ignored unsupported action
+//      would report success over a half-applied plan — the worst defect
+//      available to this family.
+//
+//      THE OUT-OF-SCOPE MODES ARE REFUSED BY THIS SAME SCREEN, NOT BY A SECOND
+//      ONE. Deletion (`artifact-delete`), upgrade (`artifact-advance`),
+//      evidence bootstrap (`artifact-bootstrap`, and the `legacy-bootstrap` seed
+//      kind) and repair (`evidence-repair`) are simply absent from both lists
+//      below, so a plan carrying any of them is `apply/unsupported-action`
+//      BEFORE `composeApplyTargets` runs and therefore before a single target is
+//      composed. That is why the screen must stay a whole-plan gate rather than
+//      a per-action early return inside the compose loop: an early return would
+//      already have written the actions it walked past.
 //
 //   2. THE PLAN IS REVALIDATED AGAINST CURRENT FACTS, NEVER TRUSTED. The caller
 //      approves a `planId`; this module compares it to one recomputed from the
@@ -66,10 +77,16 @@ import type {
  *  the rows without the override would leave the project registered against
  *  content it has not received.
  *
- *  `payload-write` is deliberately NOT here. The planner already separates the two
- *  (`isProjectOverrideDestination`), and general payloads remain Out of scope; the
- *  committed-override half is admitted precisely because it lands in a DECLARED
- *  committed lifecycle artifact class and nowhere else.
+ *  WF-456 adds `payload-write`, the general pack payload. The planner still
+ *  separates the two (`isProjectOverrideDestination`) because they carry different
+ *  review weight, but both are now applied by the same transaction: a pack whose
+ *  runtime support files are part of its activation must receive them through the
+ *  SAME confirmed transaction as its registration, or the project ends up
+ *  registered against a capability whose payload never arrived.
+ *
+ *  The widening is exactly one kind. Deletion, upgrade, bootstrap, and repair
+ *  stay absent from both lists, so a plan carrying one is refused before any
+ *  target is composed — see rule 1 in the module header.
  *
  *  Stated as data rather than as a comment so the contract tests can assert the
  *  boundary mechanically. EVERY kind absent from this list and from the
@@ -79,6 +96,7 @@ export const APPLY_SUPPORTED_ACTION_KINDS: readonly PlanActionKind[] = [
   "evidence-seed",
   "registry-add",
   "registry-deregister",
+  "payload-write",
   "answer-write",
   "override-write",
 ];
