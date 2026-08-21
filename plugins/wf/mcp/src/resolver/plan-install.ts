@@ -37,12 +37,19 @@
 //      exist yet. A missing or invalid answer blocks.
 
 import {
+  emptyArtifactPreview,
+  hasPreviewedArtifactEffect,
+  planArtifacts,
+  type PlanArtifactFact,
+} from "./artifact-plan.js";
+import {
   emptyPayloadPreview,
   planPayloads,
   type PlanPayloadFact,
 } from "./payload-plan.js";
 import { validateQuestionValue } from "./questions.js";
 import type {
+  ArtifactOwner,
   DiscoveredPack,
   DiscoveryInventory,
   PlanAdmissionState,
@@ -101,7 +108,18 @@ export interface PlanInstallInput {
    *  to make every plan non-applicable. Omitted entirely by a caller that does
    *  not preview payloads, which leaves registration-only planning unchanged. */
   payloads?: readonly PlanPayloadFact[];
+  /** Managed-artifact facts with every filesystem question already answered
+   *  (WF-449), MINUS the deselection half. `deselectedOwners` is deliberately not
+   *  a caller input: explicit deselection is a property of THIS plan's own
+   *  registry delta, so the join below derives it and a caller cannot assert
+   *  deletion authority by handing one in. Omitted entirely by a caller that does
+   *  not preview artifacts, which leaves registration-only planning unchanged. */
+  artifacts?: readonly PlanArtifactFactInput[];
 }
+
+/** A managed-artifact fact as a CALLER supplies it — the pure join's fact without
+ *  the deselection half, which only the plan itself may determine. */
+export type PlanArtifactFactInput = Omit<PlanArtifactFact, "deselectedOwners">;
 
 /** The zeroed inventory the `invalid-root` path reports: admission failed before
  *  anything was read, so claiming any observation would be a lie. */
@@ -186,6 +204,7 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
       answers: { writes: [], unresolved: [] },
       evidenceSeeds: [],
       payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
       byteInert: true,
@@ -518,6 +537,33 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
   );
   for (const payloadFinding of payloadPlan.findings) findings.push(payloadFinding);
 
+  // --- evidence-safe removals and upgrades (WF-449) -------------------------
+  // The destructive slice. Unlike payloads, artifact facts are NOT narrowed to
+  // the surviving set: deregistration is precisely what makes a removal
+  // reviewable, so intersecting it away would delete the deletion case. The
+  // narrowing that matters here is the DESELECTION half, derived from this
+  // plan's own delta rather than accepted from the caller.
+  //
+  // `deregistrations` already excludes a pack whose legacy proof was incomplete
+  // — rule 2 pushed that pack back into retentions — so an unprovable
+  // registration can never contribute deletion authority. That composition is
+  // the fail-safe direction and is deliberate.
+  const deregisteredIds = new Set(deregistrations.map((entry) => entry.pluginId));
+  const isDeselected = (owner: ArtifactOwner): boolean =>
+    deregisteredIds.has(owner.pluginId) && !postPlanPacks.has(owner.pluginId);
+
+  const artifactPlan = planArtifacts(
+    (input.artifacts ?? []).map((fact) => ({
+      ...fact,
+      deselectedOwners: [
+        ...(fact.recorded?.owners ?? []),
+        ...(fact.declared?.owners ?? []),
+      ].filter(isDeselected),
+    })),
+    { inventoryTrustworthy: input.inventory.mayEstablishAbsence },
+  );
+  for (const artifactFinding of artifactPlan.findings) findings.push(artifactFinding);
+
   // --- applicability, first match wins -------------------------------------
   const registryDelta: PlanRegistryDelta = {
     additions: byPluginId(additions),
@@ -537,7 +583,12 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
           // one is never `no-change`. Whether that write would be a no-op against
           // the target's current bytes is an eligibility question this slice
           // deliberately does not answer.
-          payloadPlan.preview.actions.length === 0
+          payloadPlan.preview.actions.length === 0 &&
+          // A previewed removal, bootstrap, or advance is a previewed EFFECT, so
+          // a plan carrying one is never `no-change`. A plan whose only artifact
+          // entries are RETENTIONS still is — retaining changes nothing, which is
+          // exactly why retention is the fail-safe default.
+          !hasPreviewedArtifactEffect(artifactPlan.preview)
         ? "no-change"
         : "applicable";
 
@@ -553,6 +604,7 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
     },
     evidenceSeeds: byPluginId(evidenceSeeds),
     payloads: payloadPlan.preview,
+    artifacts: artifactPlan.preview,
     findings: sortFindings(findings),
     inventory: input.inventory,
     byteInert: true,

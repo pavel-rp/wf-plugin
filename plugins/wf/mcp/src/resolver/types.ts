@@ -638,7 +638,17 @@ export type PlanFindingCode =
   /** Co-owners of one target would produce different bytes. */
   | "plan/payload-conflict-bytes"
   /** Co-owners of one target declare different lifecycle semantics. */
-  | "plan/payload-conflict-semantics";
+  | "plan/payload-conflict-semantics"
+  /** A managed artifact met every conjunctive condition for removal (WF-449). */
+  | "plan/artifact-deletable"
+  /** A managed artifact is retained; the message names the closed reason token. */
+  | "plan/artifact-retained"
+  /** A missing-ledger artifact's bootstrap is previewable from complete proof. */
+  | "plan/artifact-bootstrap-previewed"
+  /** A source-changed artifact advances — current bytes match the prior hash. */
+  | "plan/artifact-advance"
+  /** A source-changed artifact was locally edited, so it stays divergent. */
+  | "plan/artifact-divergent";
 
 /** One planning finding. `pluginId` is `null` for a plan-level finding. */
 export interface PlanFinding {
@@ -768,6 +778,125 @@ export interface PlanPayloadPreview {
   conflicts: PlanPayloadConflict[];
 }
 
+// ---------------------------------------------------------------------------
+// The evidence-safe removal/upgrade slice of the planner envelope (WF-449)
+// ---------------------------------------------------------------------------
+//
+// The additive artifact extension the WF-447 header anticipated ("artifact
+// eligibility"). It adds fields; it does NOT fork the response family and it
+// does NOT re-version the envelope.
+//
+// THIS IS THE DESTRUCTIVE-AUTHORITY SLICE — it decides what may be DELETED.
+// FOUR RULES ARE CORRECTNESS, NOT PREFERENCE:
+//
+//   1. DELETION ELIGIBILITY IS CONJUNCTIVE AND FAIL-SAFE. An artifact is
+//      `deletable` only when explicit deselection AND a current-byte match
+//      against the PRIOR LEDGER HASH AND exclusive recorded ownership all hold,
+//      and the declared removal semantics permit it. Every missing, conflicting,
+//      ambiguous, shared-incomplete, mismatching, or non-reproducible proof class
+//      RETAINS the artifact and grants no deletion authority. Missing evidence
+//      never infers permission.
+//
+//   2. BOOTSTRAP PERSISTS FUTURE AUTHORITY BUT NEVER DELETES IN THE SAME PLAN.
+//      Proving ownership now does not license removing in the same breath, so a
+//      deselected-and-bootstrappable artifact yields `bootstrap`, never
+//      `deletable`. The two-step is deliberate.
+//
+//   3. UPGRADE IS HASH-GATED. A source-changed artifact advances only when the
+//      current bytes still match the prior ledger hash. A locally edited file
+//      stays `divergent` and NOT fully upgraded — never silently overwritten.
+//
+//   4. OWNERLESS PAYLOADS FOLLOW THE SAME RULES. An empty recorded owner set is
+//      not "exclusive" ownership; it is incomplete ownership, and it grants
+//      nothing. There is deliberately no special case that quietly confers
+//      authority on an artifact nobody claims.
+
+/** Which of the four decision forms one managed artifact takes. */
+export type PlanArtifactForm = "deletable" | "retained" | "bootstrap" | "advance";
+
+/** Why an artifact was NOT deleted. A closed vocabulary — a reader may switch on
+ *  it exhaustively, and every non-deletable decision carries one, so a retention
+ *  always states its reason. `null` only on the `deletable` form. */
+export type PlanArtifactRetentionReason =
+  /** The artifact's owners were not explicitly deselected. Omission never removes. */
+  | "not-deselected"
+  /** A recorded owner survives the plan — ownership is not exclusive. */
+  | "shared-ownership"
+  /** The recorded owner set is empty or not fully resolvable (ownerless payload). */
+  | "ownership-incomplete"
+  /** Current bytes differ from the prior ledger hash — the file was edited. */
+  | "current-bytes-mismatch"
+  /** Current bytes could not be observed at all. */
+  | "current-bytes-unreadable"
+  /** A recorded or observed digest is not a well-formed SHA-256. A "match"
+   *  between two malformed digests is not evidence, so it never supports a
+   *  removal or an upgrade — the destructive path is held to at least the
+   *  strictness of the bootstrap path. */
+  | "digest-malformed"
+  /** The destination failed the no-create workspace-containment test (WF-448). */
+  | "destination-unsafe"
+  /** The ledger has no entry for this destination and bootstrap is not applicable. */
+  | "no-recorded-proof"
+  /** Bootstrap blocked: the inventory may not establish absence (WF-446). */
+  | "inventory-untrustworthy"
+  /** Bootstrap blocked: observed bytes are not reproducible from the declaration. */
+  | "not-reproducible"
+  /** Bootstrap blocked: no valid declared-source fingerprint. */
+  | "source-fingerprint-missing"
+  /** Bootstrap blocked: the `{production, refresh, removal}` tuple is incomplete. */
+  | "semantics-incomplete"
+  /** The declared tuple says `removal: retain` — deletion is never authorized. */
+  | "removal-semantics-retain"
+  /** The declared tuple says `refresh: retain` — an upgrade is never authorized. */
+  | "refresh-semantics-retain"
+  /** Bootstrap and deselection coincided; bootstrap never deletes in the same plan. */
+  | "bootstrap-defers-deletion"
+  /** Upgrade path: the source changed but the file was locally edited. */
+  | "divergent";
+
+/** One managed artifact's previewed decision. Previewed only — nothing is
+ *  written, which `persisted: false` states in the type system. */
+export interface PlanArtifactDecision {
+  /** The declared workspace-relative destination, verbatim. */
+  destination: string;
+  /** The canonical absolute target, or `null` when the destination was refused. */
+  canonicalTarget: string | null;
+  form: PlanArtifactForm;
+  /** Why this artifact was not deleted. `null` IFF `form === "deletable"`. */
+  reason: PlanArtifactRetentionReason | null;
+  /** The RECORDED owner set, sorted. May be empty — an ownerless payload. */
+  owners: ArtifactOwner[];
+  /** The complete recorded (or, on the bootstrap path, declared) semantic tuple. */
+  semantics: PayloadSemantics | null;
+  /** The PRIOR ledger hash — the produced-content hash the ledger recorded. */
+  recordedContentHash: string | null;
+  /** The bytes observed at the canonical target right now. */
+  currentContentHash: string | null;
+  /** Whether the current bytes equal the prior ledger hash. */
+  bytesMatchLedger: boolean;
+  /** Deletion authority. The literal `false` on every form but `deletable`, so a
+   *  future writer cannot satisfy the shape by flipping a boolean. */
+  deletionAuthority: boolean;
+  /** Whether an advance fully upgrades the artifact. `false` whenever divergent. */
+  fullyUpgraded: boolean;
+  /** Node-runner candidacy, surfaced in the SAME public plan rather than through a
+   *  separate API: `true` exactly when this decision leaves the runner something
+   *  to act on later (delete, bootstrap-persist, or advance). A pure retention is
+   *  never a candidate. */
+  runnerCandidate: boolean;
+  /** Always the literal `false`: planning is byte-inert and persists nothing. */
+  persisted: false;
+}
+
+/** The previewed artifact effect, bucketed by form. Every collection sorts on a
+ *  stable key, so permuting the input facts cannot change the response. */
+export interface PlanArtifactPreview {
+  deletable: PlanArtifactDecision[];
+  retained: PlanArtifactDecision[];
+  bootstrap: PlanArtifactDecision[];
+  advance: PlanArtifactDecision[];
+}
+
 /** The `plan_install` response — the frozen public planner envelope.
  *
  *  Deterministic: identical inputs always produce a deep-equal response. Every
@@ -788,6 +917,10 @@ export interface PlanInstallResponse {
    *  whenever no acted-on capability declares a payload — registration-only
    *  planning is unchanged by this slice. */
   payloads: PlanPayloadPreview;
+  /** The previewed evidence-safe removal/upgrade effect (WF-449). Empty on the
+   *  `invalid-root` path and whenever no managed artifact is in scope — planning
+   *  that touches no ledger-managed destination is unchanged by this slice. */
+  artifacts: PlanArtifactPreview;
   findings: PlanFinding[];
   /** The inventory confidence this plan was computed against, carried verbatim
    *  from discovery so a reader never re-derives whether absence was
