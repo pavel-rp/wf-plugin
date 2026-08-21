@@ -24,6 +24,9 @@
 # the core copies and shedding their three `registry-fixtures/run.sh`
 # invocations — and appended their basenames below. WF-370 (SUB-9) completed the
 # five-block shed with the glossary pair, which register below as selftest-only.
+# WF-444 appended `check-lifecycle-write-scope.sh` — the committed-lifecycle
+# write-scope gate — as the first check registered here by the documented
+# extension point above rather than migrated into it.
 #
 # --- WHY EVERY CHECK RUNS ITS SELFTEST FIRST ---
 # A lint that scans a real tree and finds nothing is indistinguishable from a lint
@@ -57,6 +60,7 @@ check-skill-description.sh
 check-skill-body-length.sh
 check-ops-docs.sh
 skill-slot-marker-lint.sh
+check-lifecycle-write-scope.sh
 "
 
 # --- SELFTEST-ONLY CHECKS (WF-370) -------------------------------------------

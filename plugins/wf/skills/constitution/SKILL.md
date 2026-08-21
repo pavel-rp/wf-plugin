@@ -130,7 +130,11 @@ constitution regardless of the registry:
    overrides the spec; conformance is judged against the spec.
 2. **No phase skips its gate.** Every phase is a human-approved artifact that feeds the
    next; nothing advances past an unapproved gate.
-3. **Nothing writes outside `_local/`** except the designated source-mutating skills.
+3. **Nothing writes outside `_local/`** except the designated source-mutating skills, and
+   except the declared committed lifecycle artifacts the resolver runtime owns and manages
+   under `.wf/`. That home is not a general writable one: an artifact is admitted only when it
+   is both resolver-managed and of a declared class, and every other component reads it
+   through the resolver while writing only inside `_local/`.
 4. **Every artifact carries model attribution.** A `**Model:** <id>` line (or a verb-shaped
    variant) records which model produced each artifact.
 5. **No AI attribution in commits.** Commit messages and PR descriptions carry no
