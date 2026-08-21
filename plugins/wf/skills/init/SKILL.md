@@ -24,8 +24,8 @@ establish the constitution.
 
 Idempotent. Re-running against an already-set-up repo produces no diff unless
 `--force` is passed and nothing was selected to change. Rationale for the
-journey's shape lives in `references/fresh-init-journey.md`, **never read at
-runtime**.
+journey's shape lives in this skill's paired `fresh-init-journey.md` reference,
+**never read at runtime**.
 
 ---
 
@@ -395,16 +395,15 @@ the resolved registry and key on the presence of a declared field.
 
 ## Phase 10: Establish the constitution
 
-Route this fixed sibling-Skill edge immediately before work: call
-`resolve_routing` with `workspaceRoot: <the admitted root>`,
-`role: "constitution"`, `unitIds: ["init:constitution"]`,
-`shapeEvidence: { workSurface:
-"caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
-ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical",
-contextIsolation: "none", independentReview: false, returnContract:
-"mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector:
-false`, and `supportsEffortSelector: false`. Include `actualModel` only when the
-host exposes it; emit the compact operational record; pass no selector.
+Route this fixed sibling-Skill edge immediately before work: call `resolve_routing`
+with `workspaceRoot: <the admitted root>`, `role: "constitution"`, `unitIds: ["init:constitution"]`,
+`shapeEvidence: { workSurface: "caller-context", atomicity: "atomic",
+unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low",
+toolWork: "none", validation: "mechanical", contextIsolation: "none",
+independentReview: false, returnContract: "mechanically-judgeable",
+requestedParallelism: 1 }`, `supportsModelSelector: false`, and
+`supportsEffortSelector: false`. Include `actualModel` only when the host
+exposes it; emit the compact operational record; pass no selector.
 
 On `status: stop` or a non-null `diagnostic`, keep this phase non-fatal: skip the
 constitution refresh, record the resolver's reason, and finish the run.
