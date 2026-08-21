@@ -479,6 +479,211 @@ export interface DiscoverPacksResponse {
   diagnostics: DiscoveryDiagnostic[];
 }
 
+// ---------------------------------------------------------------------------
+// The public planner envelope (WF-447)
+// ---------------------------------------------------------------------------
+//
+// THIS IS THE SOLE PUBLIC PLAN-RESPONSE LINEAGE. Every later planning slice —
+// payload safety, evidence-safe removal/upgrade, complete-plan review, and the
+// apply path that consumes a plan — extends the shapes below rather than
+// introducing a second response family. Adding a field is additive and does NOT
+// re-version; `PLAN_ENVELOPE_VERSION` bumps only when an existing field's shape
+// or meaning breaks.
+//
+// Only the slots this slice needs are pinned. Deliberately absent (and owned by
+// later items): payload safety, artifact eligibility, repair identity, apply
+// results, lock/transaction state.
+
+/** Frozen version of the public planner envelope. */
+export const PLAN_ENVELOPE_VERSION = 1;
+
+/** Why a plan is or is not executable. FIRST MATCH WINS in this precedence:
+ *
+ *    `invalid-root` → `not-applicable` → `blocked` → `no-change` → `applicable`
+ *
+ *  - `invalid-root`   — the declared workspace root was not admitted; nothing
+ *                       was read and nothing was classified.
+ *  - `not-applicable` — a structural error finding (unsatisfied dependency,
+ *                       capability conflict, provider overlap, contradictory or
+ *                       unknown selection, or incomplete legacy proof). The plan
+ *                       cannot be made executable by supplying an answer.
+ *  - `blocked`        — every structural condition holds but at least one
+ *                       required project answer is missing or invalid.
+ *  - `no-change`      — the selection is already satisfied: nothing would be
+ *                       added, deregistered, answered, or seeded.
+ *  - `applicable`     — the delta is executable once a mutator exists. */
+export type PlanApplicability =
+  | "applicable"
+  | "no-change"
+  | "blocked"
+  | "not-applicable"
+  | "invalid-root";
+
+/** The admitted-root state, carrying WF-445's closed reason token verbatim on
+ *  failure. Planning binds to that one canonical value and never re-derives a
+ *  root of its own. `source` and `reason` are typed as plain strings here to keep
+ *  this module the dependency-free schema surface it has always been; the values
+ *  are exactly `WorkspaceRootSource` / `WorkspaceAdmissionReason`. */
+export type PlanAdmissionState =
+  | { admitted: true; root: string; source: string; reason: null; diagnostic: null }
+  | { admitted: false; root: null; source: string; reason: string; diagnostic: string };
+
+/** Why one pack lands in the delta bucket it does.
+ *
+ *  Note there is NO implicit-removal reason. Omission from the desired set is a
+ *  retention (`retained-by-omission`), which is what makes "an orphaned or
+ *  disabled registration can never become an implicit removal" mechanically true
+ *  rather than a convention: removal has its own explicit input. */
+export type PlanRegistryReason =
+  /** Selected and not yet registered — the plan would register it. */
+  | "selected-addition"
+  /** Selected and already registered — no registry change. */
+  | "selected-retention"
+  /** Registered, not selected, and not explicitly deregistered. */
+  | "retained-by-omission"
+  /** Registered but absent from a trustworthy inventory. Stays visible. */
+  | "retained-orphaned"
+  /** Registered and not listed, but the inventory could not establish absence. */
+  | "retained-absence-indeterminate"
+  /** Acted on with incomplete legacy proof — registration is PRESERVED, even
+   *  when the pack was explicitly deregistered. */
+  | "retained-legacy-proof-incomplete"
+  /** Named in the explicit deregistration set. The only removal path. */
+  | "explicit-deregistration";
+
+/** One pack's position in the previewed registry delta. The pack's own snapshot
+ *  facts (`state`, `enablement`, `presence`, `overlay`) are carried verbatim from
+ *  the discovery join and never re-derived. */
+export interface PlanRegistryEntry {
+  pluginId: string;
+  pluginName: string;
+  /** Registered capability names for a retention/deregistration; the pack's
+   *  declared capability names for an addition. Sorted. */
+  capabilities: string[];
+  reason: PlanRegistryReason;
+  presence: PackPresence;
+  state: PackState;
+  enablement: PackRecord["enablement"];
+  overlay: PackStaleOverlay | null;
+}
+
+/** The previewed registry delta. Each array is sorted by ascending `pluginId`. */
+export interface PlanRegistryDelta {
+  additions: PlanRegistryEntry[];
+  retentions: PlanRegistryEntry[];
+  deregistrations: PlanRegistryEntry[];
+}
+
+/** One project answer the plan WOULD write. `status` is always `pending`: a
+ *  proposed answer is not persisted evidence, and planning never writes it. */
+export interface PlanAnswerWrite {
+  pluginId: string;
+  /** The capability that declared the question. */
+  pack: string;
+  questionId: string;
+  destination: string;
+  value: QuestionValue;
+  source: "proposed";
+  status: "pending";
+}
+
+/** Why a declared question is still open. Both reasons block the plan. */
+export type PlanUnresolvedReason = "missing-answer" | "invalid-proposed-answer";
+
+/** One declared question the plan cannot satisfy, with the suggestions the
+ *  resolver already computed. A suggestion is NOT a resolution — only a persisted
+ *  value resolves a question — so a suggested default still leaves it open. */
+export interface PlanUnresolvedQuestion {
+  pluginId: string;
+  pack: string;
+  questionId: string;
+  destination: string;
+  prompt: string;
+  reason: PlanUnresolvedReason;
+  suggestions: QuestionSuggestion[];
+}
+
+/** The closed finding vocabulary for this slice. */
+export type PlanFindingCode =
+  /** A post-plan capability `requires` a capability the post-plan set lacks. */
+  | "plan/dependency-unsatisfied"
+  /** Two post-plan capabilities declare a conflict with each other. */
+  | "plan/capability-conflict"
+  /** Two post-plan capabilities claim the same partitioned provider surface. */
+  | "plan/provider-overlap"
+  /** A plugin id appears in both the desired and the deregistration set. */
+  | "plan/contradictory-selection"
+  /** A selected plugin id matches no pack the resolver knows about. */
+  | "plan/unknown-selection"
+  /** A selected pack is disabled, so it cannot be registered. */
+  | "plan/not-selectable"
+  /** A registered pack is absent from a trustworthy inventory. */
+  | "plan/orphaned-registration"
+  /** A registered pack is not listed, but absence could not be established. */
+  | "plan/absence-indeterminate"
+  /** An acted-on pack's lifecycle evidence compares as drifted. */
+  | "plan/stale-evidence"
+  /** An acted-on pack has no recorded evidence AND incomplete observed proof. */
+  | "plan/legacy-proof-incomplete"
+  /** A legacy bootstrap seed is previewable from complete proof. */
+  | "plan/legacy-bootstrap-previewed"
+  /** A proposed answer failed its declared schema. */
+  | "plan/answer-invalid"
+  /** A declared question has no persisted and no proposed answer. */
+  | "plan/answer-missing";
+
+/** One planning finding. `pluginId` is `null` for a plan-level finding. */
+export interface PlanFinding {
+  code: PlanFindingCode;
+  severity: "error" | "warning" | "info";
+  pluginId: string | null;
+  message: string;
+}
+
+/** What a seed proposal would establish. `binding-seed` is the ordinary
+ *  first-run case (portable evidence matches, no machine binding recorded);
+ *  `legacy-bootstrap` is the pre-ledger registration, previewable ONLY from
+ *  complete observed proof. */
+export type PlanEvidenceSeedKind = "binding-seed" | "legacy-bootstrap";
+
+/** A reviewable seed proposal. `persisted` is the literal `false`: this record is
+ *  RETURNED for review and never written, and typing the literal means a future
+ *  writer cannot satisfy the shape by flipping a boolean. */
+export interface PlanEvidenceSeed {
+  pluginId: string;
+  kind: PlanEvidenceSeedKind;
+  comparison: LifecycleEvidenceComparison["state"];
+  /** Observed portable evidence a bootstrap would record; `null` for a plain
+   *  binding seed, whose portable evidence is already recorded. */
+  portable: PortablePackEvidence | null;
+  binding: MachineBindingEvidence;
+  persisted: false;
+}
+
+/** The `plan_install` response — the frozen public planner envelope.
+ *
+ *  Deterministic: identical inputs always produce a deep-equal response. Every
+ *  collection sorts on a stable key under `localeCompare`.
+ *
+ *  BYTE-INERT: `byteInert` is the literal `true`. Nothing on the planning path
+ *  writes a ledger, a seed, an answer, an enablement change, or any other byte. */
+export interface PlanInstallResponse {
+  planVersion: number;
+  /** The admitted root, or `null` when admission failed. */
+  workspaceRoot: string | null;
+  admission: PlanAdmissionState;
+  applicability: PlanApplicability;
+  registryDelta: PlanRegistryDelta;
+  answers: { writes: PlanAnswerWrite[]; unresolved: PlanUnresolvedQuestion[] };
+  evidenceSeeds: PlanEvidenceSeed[];
+  findings: PlanFinding[];
+  /** The inventory confidence this plan was computed against, carried verbatim
+   *  from discovery so a reader never re-derives whether absence was
+   *  establishable. Zeroed on the `invalid-root` path (nothing was read). */
+  inventory: DiscoveryInventory;
+  byteInert: true;
+}
+
 /** The fixed taxonomy of resolver-failure categories (WF-272). A broken
  *  resolver state is one of these typed, diagnosable categories — never an
  *  opaque throw. Each maps a diagnostic/throw to a surface-specific reaction and
