@@ -630,7 +630,15 @@ export type PlanFindingCode =
   /** A proposed answer failed its declared schema. */
   | "plan/answer-invalid"
   /** A declared question has no persisted and no proposed answer. */
-  | "plan/answer-missing";
+  | "plan/answer-missing"
+  /** A declared payload destination is not a safe workspace-contained target. */
+  | "plan/payload-unsafe-target"
+  /** A declared payload source could not be fingerprinted, so no bytes exist. */
+  | "plan/payload-source-unreadable"
+  /** Co-owners of one target would produce different bytes. */
+  | "plan/payload-conflict-bytes"
+  /** Co-owners of one target declare different lifecycle semantics. */
+  | "plan/payload-conflict-semantics";
 
 /** One planning finding. `pluginId` is `null` for a plan-level finding. */
 export interface PlanFinding {
@@ -660,6 +668,106 @@ export interface PlanEvidenceSeed {
   persisted: false;
 }
 
+// ---------------------------------------------------------------------------
+// The payload slice of the planner envelope (WF-448)
+// ---------------------------------------------------------------------------
+//
+// The additive payload extension the WF-447 header anticipated. It adds fields;
+// it does NOT fork the response family and it does NOT re-version the envelope.
+//
+// TWO RULES ARE CORRECTNESS, NOT PREFERENCE:
+//
+//   1. CANONICALIZE BEFORE DECIDING, AND CREATE NOTHING WHILE DECIDING. A
+//      destination is judged on its canonical form measured against the ONE
+//      admitted workspace root (WF-445). Traversal, an absolute path, an
+//      escaping symlink, and an out-of-workspace canonical target are each a
+//      refusal — never a followed link, never a probe that materializes the very
+//      path it is testing. Workspace containment is a DIFFERENT question from
+//      plugin-root validation and never stands in for it.
+//
+//   2. CO-OWNERSHIP IS EXACT-EQUALITY-ONLY. Two capabilities may share one
+//      target if and only if their produced bytes are identical AND their
+//      generation, refresh, and removal semantics are field-for-field equal.
+//      Any other difference blocks. There is deliberately no first-writer rule,
+//      no registry-order tiebreak, and no model judgment: the outcome is a
+//      function of the inputs alone, so permuting the declarations cannot
+//      change it.
+
+/** Why a declared payload destination is not a usable workspace target. A closed
+ *  vocabulary — a reader may switch on it exhaustively. */
+export type PlanPayloadRejection =
+  /** A `..` segment. Rejected lexically, before any filesystem access. */
+  | "traversal"
+  /** A leading `/` or a drive prefix. Rejected lexically. */
+  | "absolute"
+  /** Empty, NUL, backslash, colon, or an empty / `.` segment. Rejected lexically. */
+  | "malformed"
+  /** Canonicalization traversed a symlink that leaves the admitted root. */
+  | "symlink-escape"
+  /** The canonical target is simply not beneath the admitted root. */
+  | "out-of-workspace"
+  /** The canonical target already exists and is not a regular file. */
+  | "target-not-a-file"
+  /** The containment probe could not reach a decision. Fails closed. */
+  | "unresolvable";
+
+/** One capability's claim on a payload destination. */
+export interface PlanPayloadOwner {
+  pluginId: string;
+  capability: string;
+  /** The capability-relative source the produced bytes come from. */
+  source: string;
+}
+
+/** Byte identity of the produced payload. Never a body. */
+export interface PlanPayloadIdentity {
+  /** Lowercase SHA-256 hex of the bytes that would be written. */
+  sha256: string;
+  bytes: number;
+}
+
+/** One previewed payload write. Previewed only — nothing is written. */
+export interface PlanPayloadAction {
+  /** The declared workspace-relative destination, verbatim. */
+  destination: string;
+  /** The canonical absolute target, proven contained by the admitted root. */
+  canonicalTarget: string;
+  identity: PlanPayloadIdentity;
+  /** The complete declared tuple: generation, refresh, and removal semantics. */
+  semantics: PayloadSemantics;
+  /** EVERY capability declaring this target, sorted. Never a first writer. */
+  owners: PlanPayloadOwner[];
+  /** What the write would do to the canonical target. */
+  write: "create" | "overwrite";
+}
+
+/** One destination refused before any action could be formed. */
+export interface PlanPayloadRejectedTarget {
+  pluginId: string;
+  capability: string;
+  destination: string;
+  rejection: PlanPayloadRejection;
+}
+
+/** Which axis of the exact-equality test a co-ownership collision failed. Both
+ *  are reported independently, so a collision differing on both says so. */
+export type PlanPayloadConflictKind = "bytes" | "semantics";
+
+/** One blocking co-ownership collision. */
+export interface PlanPayloadConflict {
+  canonicalTarget: string;
+  destination: string;
+  kind: PlanPayloadConflictKind;
+  owners: PlanPayloadOwner[];
+}
+
+/** The previewed payload effect. Every collection sorts on a stable key. */
+export interface PlanPayloadPreview {
+  actions: PlanPayloadAction[];
+  rejected: PlanPayloadRejectedTarget[];
+  conflicts: PlanPayloadConflict[];
+}
+
 /** The `plan_install` response — the frozen public planner envelope.
  *
  *  Deterministic: identical inputs always produce a deep-equal response. Every
@@ -676,6 +784,10 @@ export interface PlanInstallResponse {
   registryDelta: PlanRegistryDelta;
   answers: { writes: PlanAnswerWrite[]; unresolved: PlanUnresolvedQuestion[] };
   evidenceSeeds: PlanEvidenceSeed[];
+  /** The previewed payload effect (WF-448). Empty on the `invalid-root` path and
+   *  whenever no acted-on capability declares a payload — registration-only
+   *  planning is unchanged by this slice. */
+  payloads: PlanPayloadPreview;
   findings: PlanFinding[];
   /** The inventory confidence this plan was computed against, carried verbatim
    *  from discovery so a reader never re-derives whether absence was

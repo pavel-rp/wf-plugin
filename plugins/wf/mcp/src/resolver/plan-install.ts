@@ -36,6 +36,11 @@
 //      satisfies planning — but it stays `pending` until an apply that does not
 //      exist yet. A missing or invalid answer blocks.
 
+import {
+  emptyPayloadPreview,
+  planPayloads,
+  type PlanPayloadFact,
+} from "./payload-plan.js";
 import { validateQuestionValue } from "./questions.js";
 import type {
   DiscoveredPack,
@@ -89,6 +94,13 @@ export interface PlanInstallInput {
   packs: readonly DiscoveredPack[];
   capabilities: readonly PlanCapabilityInput[];
   selection: PlanSelectionInput;
+  /** Declared payload rows with every filesystem question already answered
+   *  (WF-448). Supplied for every inspectable pack; the join itself narrows them
+   *  to the ACTED-ON set, for the same reason rule 2 is scoped that way — an
+   *  orphaned registration that must stay retained and visible cannot be allowed
+   *  to make every plan non-applicable. Omitted entirely by a caller that does
+   *  not preview payloads, which leaves registration-only planning unchanged. */
+  payloads?: readonly PlanPayloadFact[];
 }
 
 /** The zeroed inventory the `invalid-root` path reports: admission failed before
@@ -173,6 +185,7 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
       registryDelta: { additions: [], retentions: [], deregistrations: [] },
       answers: { writes: [], unresolved: [] },
       evidenceSeeds: [],
+      payloads: emptyPayloadPreview(),
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
       byteInert: true,
@@ -486,6 +499,25 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
     }
   }
 
+  // --- payload safety + co-ownership (WF-448) -------------------------------
+  // Scoped to the packs the plan acts on AND that survive it. Acted-on alone is
+  // not enough: `acting` is `wanted || removing`, so a pack named only in
+  // `deregister` would otherwise contribute a previewed WRITE — a placement the
+  // plan is not making, and one that could block a plan by colliding with a pack
+  // that stays. Intersecting with the post-plan set matches how deregistration
+  // already clears a `plan/provider-overlap`. The `actedOn` half still excludes a
+  // retained orphan's declaration, which is not this plan's business either.
+  // Payload findings join the ONE findings list, so an unsafe target or a
+  // non-identical co-ownership collision reaches `not-applicable` through the
+  // existing first-match-wins precedence rather than a second code path.
+  const actedOnIds = new Set(
+    actedOn.map((pack) => pack.pluginId).filter((pluginId) => postPlanPacks.has(pluginId)),
+  );
+  const payloadPlan = planPayloads(
+    (input.payloads ?? []).filter((fact) => actedOnIds.has(fact.pluginId)),
+  );
+  for (const payloadFinding of payloadPlan.findings) findings.push(payloadFinding);
+
   // --- applicability, first match wins -------------------------------------
   const registryDelta: PlanRegistryDelta = {
     additions: byPluginId(additions),
@@ -500,7 +532,12 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
       : registryDelta.additions.length === 0 &&
           registryDelta.deregistrations.length === 0 &&
           writes.length === 0 &&
-          evidenceSeeds.length === 0
+          evidenceSeeds.length === 0 &&
+          // A previewed payload write is a previewed EFFECT, so a plan carrying
+          // one is never `no-change`. Whether that write would be a no-op against
+          // the target's current bytes is an eligibility question this slice
+          // deliberately does not answer.
+          payloadPlan.preview.actions.length === 0
         ? "no-change"
         : "applicable";
 
@@ -515,6 +552,7 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
       unresolved: sortQuestionRows(unresolved),
     },
     evidenceSeeds: byPluginId(evidenceSeeds),
+    payloads: payloadPlan.preview,
     findings: sortFindings(findings),
     inventory: input.inventory,
     byteInert: true,

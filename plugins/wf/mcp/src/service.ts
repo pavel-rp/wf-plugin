@@ -51,6 +51,7 @@ import {
   settingsOverrideRelPath,
 } from "./resolver/settings.js";
 import {
+  dirnameSlash,
   isAbsoluteRoot,
   joinSlash,
   normalizeSlashes,
@@ -99,6 +100,10 @@ import {
   type PlanCapabilityInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
+import type {
+  PayloadTargetResolution,
+  PlanPayloadFact,
+} from "./resolver/payload-plan.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type {
   InstalledPlugin,
@@ -184,6 +189,14 @@ export interface ResolverServicePorts {
   ): ContainedFileFingerprintResult;
   /** Canonicalize the installed root for machine-local binding evidence. */
   canonicalizeRoot?(root: string): string | null;
+  /** No-create containment boundary for a declared payload destination (WF-448),
+   *  measured against the ADMITTED workspace root the caller passes in — never a
+   *  root this port re-derives, and never plugin-root validation. Omission fails
+   *  closed: payload preview yields no actions rather than a guessed target. */
+  resolvePayloadTarget?(
+    admittedRoot: string,
+    destination: string,
+  ): PayloadTargetResolution;
   /** Write a UTF-8 file (registry edits), creating parent dirs. */
   writeFile(absPath: string, content: string): void;
   /** List immediate subdirectory names of `absDir` (used ONLY on the pack
@@ -1494,7 +1507,61 @@ export class ResolverService {
       packs: response.packs,
       capabilities,
       selection,
+      payloads: this.collectPayloadFacts(admission.root, inspected),
     });
+  }
+
+  /**
+   * Answer every filesystem question one declared payload row raises, so the
+   * pure join can decide without any IO of its own (WF-448).
+   *
+   * Collected for every INSPECTABLE pack; the join narrows to the acted-on set.
+   * Nothing here writes or creates: the source is read through the existing
+   * contained raw-byte fingerprint boundary (no body crosses), and the
+   * destination is resolved through the no-create containment port bound to the
+   * ADMITTED root. When either port is absent the preview yields nothing rather
+   * than a fabricated digest or a guessed target.
+   */
+  private collectPayloadFacts(
+    admittedRoot: string,
+    inspected: Map<string, InspectPackResponse>,
+  ): PlanPayloadFact[] {
+    const resolveTarget = this.ports.resolvePayloadTarget;
+    const fingerprint = this.ports.fingerprintContainedFile;
+    if (resolveTarget === undefined || fingerprint === undefined) return [];
+
+    const facts: PlanPayloadFact[] = [];
+    for (const [pluginId, record] of inspected) {
+      for (const capability of record.capabilities) {
+        // The capability folder is the manifest's own parent — the same anchor
+        // inspection fingerprinted the declared sources against.
+        const capabilityRoot = dirnameSlash(capability.manifestPath);
+        for (const payload of capability.payloads) {
+          const observed = fingerprint(
+            capabilityRoot,
+            payload.source,
+            MAX_DECLARED_SOURCE_BYTES,
+          );
+          facts.push({
+            pluginId,
+            capability: capability.name,
+            source: payload.source,
+            destination: payload.destination,
+            semantics: {
+              production: payload.production,
+              refresh: payload.refresh,
+              removal: payload.removal,
+            },
+            target: resolveTarget(admittedRoot, payload.destination),
+            identity:
+              observed.status === "ok"
+                ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }
+                : { ok: false, status: observed.status },
+          });
+        }
+      }
+    }
+    return facts;
   }
 
   // --- R6: register_pack (mutating write-path) ---------------------------

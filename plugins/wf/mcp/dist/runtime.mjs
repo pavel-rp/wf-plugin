@@ -19786,6 +19786,125 @@ function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
 
+// src/resolver/payload-plan.ts
+function emptyPayloadPreview() {
+  return { actions: [], rejected: [], conflicts: [] };
+}
+var REJECTION_DETAIL = {
+  traversal: "contains a `..` segment",
+  absolute: "is an absolute or drive-prefixed path",
+  malformed: "is not a well-formed forward-slash workspace-relative path",
+  "symlink-escape": "resolves through a symlink that leaves the workspace root",
+  "out-of-workspace": "canonicalizes outside the admitted workspace root",
+  "target-not-a-file": "already exists and is not a regular file",
+  unresolvable: "could not be canonicalized, so containment could not be established"
+};
+function ownerOf(fact) {
+  return { pluginId: fact.pluginId, capability: fact.capability, source: fact.source };
+}
+function compareOwners(left, right) {
+  return left.pluginId.localeCompare(right.pluginId) || left.capability.localeCompare(right.capability) || left.source.localeCompare(right.source);
+}
+function ownerLabel(owner) {
+  return `\`${owner.pluginId}\`/\`${owner.capability}\``;
+}
+function semanticsEqual(left, right) {
+  return left.production === right.production && left.refresh === right.refresh && left.removal === right.removal;
+}
+function planPayloads(facts) {
+  const findings = [];
+  const rejected = [];
+  const conflicts = [];
+  const actions = [];
+  const groups = /* @__PURE__ */ new Map();
+  for (const fact of facts) {
+    if (!fact.target.ok) {
+      const rejection2 = fact.target.rejection;
+      rejected.push({
+        pluginId: fact.pluginId,
+        capability: fact.capability,
+        destination: fact.destination,
+        rejection: rejection2
+      });
+      findings.push({
+        code: "plan/payload-unsafe-target",
+        severity: "error",
+        pluginId: fact.pluginId,
+        message: `capability \`${fact.capability}\` declares payload destination \`${fact.destination}\`, which ${REJECTION_DETAIL[rejection2]}; the plan is not applicable and nothing was created while checking.`
+      });
+      continue;
+    }
+    if (!fact.identity.ok) {
+      findings.push({
+        code: "plan/payload-source-unreadable",
+        severity: "error",
+        pluginId: fact.pluginId,
+        message: `capability \`${fact.capability}\` declares payload source \`${fact.source}\`, whose bytes could not be observed (\`${fact.identity.status}\`); no target write can be previewed for it.`
+      });
+      continue;
+    }
+    const existing = groups.get(fact.target.canonicalTarget);
+    if (existing === void 0) groups.set(fact.target.canonicalTarget, [fact]);
+    else existing.push(fact);
+  }
+  for (const canonicalTarget of [...groups.keys()].sort(
+    (left, right) => left.localeCompare(right)
+  )) {
+    const members = [...groups.get(canonicalTarget)].sort(
+      (left, right) => compareOwners(ownerOf(left), ownerOf(right))
+    );
+    const owners = members.map(ownerOf);
+    const first = members[0];
+    const destination = [...members].map((member) => member.destination).sort((left, right) => left.localeCompare(right))[0];
+    const bytesEqual = members.every(
+      (member) => member.identity.ok && first.identity.ok && member.identity.sha256 === first.identity.sha256 && member.identity.bytes === first.identity.bytes
+    );
+    const tupleEqual = members.every((member) => semanticsEqual(member.semantics, first.semantics));
+    if (bytesEqual && tupleEqual) {
+      if (!first.identity.ok || !first.target.ok) continue;
+      actions.push({
+        destination,
+        canonicalTarget,
+        identity: { sha256: first.identity.sha256, bytes: first.identity.bytes },
+        semantics: {
+          production: first.semantics.production,
+          refresh: first.semantics.refresh,
+          removal: first.semantics.removal
+        },
+        owners,
+        write: first.target.exists ? "overwrite" : "create"
+      });
+      continue;
+    }
+    const named = owners.map(ownerLabel).join(", ");
+    if (!bytesEqual) {
+      conflicts.push({ canonicalTarget, destination, kind: "bytes", owners });
+      findings.push({
+        code: "plan/payload-conflict-bytes",
+        severity: "error",
+        pluginId: first.pluginId,
+        message: `payload target \`${canonicalTarget}\` is claimed by ${named}, which would not produce byte-identical output; co-ownership is accepted only for identical bytes, so the plan is not applicable.`
+      });
+    }
+    if (!tupleEqual) {
+      conflicts.push({ canonicalTarget, destination, kind: "semantics", owners });
+      findings.push({
+        code: "plan/payload-conflict-semantics",
+        severity: "error",
+        pluginId: first.pluginId,
+        message: `payload target \`${canonicalTarget}\` is claimed by ${named}, whose generation, refresh, and removal semantics are not field-for-field equal; co-ownership is accepted only for identical semantics, so the plan is not applicable.`
+      });
+    }
+  }
+  rejected.sort(
+    (left, right) => left.pluginId.localeCompare(right.pluginId) || left.capability.localeCompare(right.capability) || left.destination.localeCompare(right.destination) || left.rejection.localeCompare(right.rejection)
+  );
+  conflicts.sort(
+    (left, right) => left.canonicalTarget.localeCompare(right.canonicalTarget) || left.kind.localeCompare(right.kind)
+  );
+  return { preview: { actions, rejected, conflicts }, findings };
+}
+
 // src/resolver/questions.ts
 var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
   "id",
@@ -20620,6 +20739,7 @@ function planInstall(input) {
       registryDelta: { additions: [], retentions: [], deregistrations: [] },
       answers: { writes: [], unresolved: [] },
       evidenceSeeds: [],
+      payloads: emptyPayloadPreview(),
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
       byteInert: true
@@ -20863,12 +20983,23 @@ function planInstall(input) {
       });
     }
   }
+  const actedOnIds = new Set(
+    actedOn.map((pack) => pack.pluginId).filter((pluginId) => postPlanPacks.has(pluginId))
+  );
+  const payloadPlan = planPayloads(
+    (input.payloads ?? []).filter((fact) => actedOnIds.has(fact.pluginId))
+  );
+  for (const payloadFinding of payloadPlan.findings) findings.push(payloadFinding);
   const registryDelta = {
     additions: byPluginId(additions),
     retentions: byPluginId(retentions),
     deregistrations: byPluginId(deregistrations)
   };
-  const applicability = findings.some((f) => f.severity === "error") ? "not-applicable" : unresolved2.length > 0 ? "blocked" : registryDelta.additions.length === 0 && registryDelta.deregistrations.length === 0 && writes.length === 0 && evidenceSeeds.length === 0 ? "no-change" : "applicable";
+  const applicability = findings.some((f) => f.severity === "error") ? "not-applicable" : unresolved2.length > 0 ? "blocked" : registryDelta.additions.length === 0 && registryDelta.deregistrations.length === 0 && writes.length === 0 && evidenceSeeds.length === 0 && // A previewed payload write is a previewed EFFECT, so a plan carrying
+  // one is never `no-change`. Whether that write would be a no-op against
+  // the target's current bytes is an eligibility question this slice
+  // deliberately does not answer.
+  payloadPlan.preview.actions.length === 0 ? "no-change" : "applicable";
   return {
     planVersion: PLAN_ENVELOPE_VERSION,
     workspaceRoot: input.admission.root,
@@ -20880,6 +21011,7 @@ function planInstall(input) {
       unresolved: sortQuestionRows(unresolved2)
     },
     evidenceSeeds: byPluginId(evidenceSeeds),
+    payloads: payloadPlan.preview,
     findings: sortFindings(findings),
     inventory: input.inventory,
     byteInert: true
@@ -20909,6 +21041,13 @@ function joinSlash(...segments) {
     if (i < segments.length - 1) seg = seg.replace(/\/+$/, "");
     return seg;
   }).filter((s) => s.length > 0).join("/");
+}
+function dirnameSlash(p) {
+  const normalized = normalizeSlashes(p).replace(/\/+$/, "");
+  const cut = normalized.lastIndexOf("/");
+  if (cut < 0) return normalized;
+  if (cut === 0) return "/";
+  return normalized.slice(0, cut);
 }
 function resolveContainedCapabilityPath(root, relative3) {
   if (relative3.length === 0 || relative3.includes("\0") || relative3.includes("\\") || isAbsoluteRoot(relative3)) {
@@ -21623,7 +21762,7 @@ function registerResolverTools(server, selectService) {
     "plan_install",
     {
       title: "plan install",
-      description: "Read-only, byte-inert preview of one explicit selected set (WF-447) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], findings[], inventory, byteInert}`. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
+      description: "Read-only, byte-inert preview of one explicit selected set (WF-447/WF-448) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], payloads{actions,rejected,conflicts}, findings[], inventory, byteInert}`. PAYLOADS: every acted-on capability's declared `## Payloads` row is previewed as an action carrying the declared destination, the canonical workspace-contained target, the produced-byte SHA-256 and length, the complete `{production, refresh, removal}` tuple, the FULL owner set, and whether the write would create or overwrite. Containment is measured against the admitted workspace root and canonicalized BEFORE the decision, without creating the path being tested \u2014 traversal, an absolute path, a symlink that escapes the root, and an out-of-workspace target each make the plan not applicable. Co-ownership of one target is accepted ONLY for byte-identical output AND field-for-field equal generation, refresh and removal semantics; any byte or semantic mismatch blocks deterministically, with no first-writer, registry-order, or model arbitration. Payload workspace containment is distinct from plugin-root validation, which this never performs. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
       inputSchema: planInstallInput
     },
     async (args) => guard(() => {
@@ -21750,7 +21889,7 @@ function registerResolverTools(server, selectService) {
 
 // src/ports.ts
 import { lstatSync as lstatSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync3, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
+import { basename, dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // src/resolver/registry.ts
@@ -23948,6 +24087,73 @@ function resolveContainedRegistryWritePath(workspaceRoot, registryRelPath) {
   }
   throw new Error(`resolved path leaves workspace root \`${normalizeSlashes(canonicalRoot)}\`.`);
 }
+function lexicalPayloadRejection(destination) {
+  if (destination.length === 0 || destination.includes("\0") || destination.includes("\\")) {
+    return { ok: false, rejection: "malformed" };
+  }
+  if (destination.startsWith("/") || /^[A-Za-z]:/.test(destination)) {
+    return { ok: false, rejection: "absolute" };
+  }
+  const segments = destination.split("/");
+  if (segments.some((segment) => segment === "..")) {
+    return { ok: false, rejection: "traversal" };
+  }
+  if (segments.some((segment) => segment === "" || segment === "." || segment.includes(":"))) {
+    return { ok: false, rejection: "malformed" };
+  }
+  return null;
+}
+function resolveContainedPayloadTarget(workspaceRoot, destination) {
+  const lexical = lexicalPayloadRejection(destination);
+  if (lexical !== null) return lexical;
+  let canonicalRoot;
+  try {
+    canonicalRoot = realpathSync3(workspaceRoot);
+  } catch {
+    return { ok: false, rejection: "unresolvable" };
+  }
+  const target = resolve3(canonicalRoot, destination);
+  let existing = target;
+  const trailing = [];
+  while (true) {
+    try {
+      lstatSync2(existing);
+      break;
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        return { ok: false, rejection: "unresolvable" };
+      }
+      const parent = dirname2(existing);
+      if (parent === existing) return { ok: false, rejection: "unresolvable" };
+      trailing.unshift(basename(existing));
+      existing = parent;
+    }
+  }
+  let canonicalExisting;
+  try {
+    canonicalExisting = realpathSync3(existing);
+  } catch {
+    return { ok: false, rejection: "symlink-escape" };
+  }
+  const fromRoot = relative2(canonicalRoot, canonicalExisting);
+  const contained = fromRoot === "" || fromRoot !== ".." && !fromRoot.startsWith(`..${sep2}`) && !isAbsolute4(fromRoot);
+  if (!contained) {
+    return {
+      ok: false,
+      rejection: canonicalExisting === existing ? "out-of-workspace" : "symlink-escape"
+    };
+  }
+  const exists = trailing.length === 0;
+  if (exists && !lstatSync2(canonicalExisting).isFile()) {
+    return { ok: false, rejection: "target-not-a-file" };
+  }
+  const canonicalTarget = joinSlash(normalizeSlashes(canonicalExisting), ...trailing);
+  const rootPrefix = normalizeSlashes(canonicalRoot).replace(/\/+$/, "");
+  if (canonicalTarget !== rootPrefix && !canonicalTarget.startsWith(rootPrefix === "/" ? "/" : `${rootPrefix}/`)) {
+    return { ok: false, rejection: "out-of-workspace" };
+  }
+  return { ok: true, canonicalTarget, exists };
+}
 function createDefaultPorts(workspaceRoot) {
   const registryRelPath = () => {
     const wfConfig = fsIO.readFile(joinSlash(workspaceRoot, "wf.config.js"));
@@ -23970,6 +24176,7 @@ function createDefaultPorts(workspaceRoot) {
     readFile: (absPath) => fsIO.readFile(absPath),
     readContainedFile: (capabilityRoot, selectedPath, maxBytes) => fsIO.readContainedFile(capabilityRoot, selectedPath, maxBytes),
     fingerprintContainedFile: (capabilityRoot, selectedPath, maxBytes) => fingerprintContainedCapabilityFile(capabilityRoot, selectedPath, maxBytes),
+    resolvePayloadTarget: (admittedRoot, destination) => resolveContainedPayloadTarget(admittedRoot, destination),
     canonicalizeRoot: (root) => {
       try {
         return normalizeSlashes(realpathSync3(root));
@@ -27064,8 +27271,52 @@ var ResolverService = class {
       inventory: response.inventory,
       packs: response.packs,
       capabilities,
-      selection
+      selection,
+      payloads: this.collectPayloadFacts(admission.root, inspected)
     });
+  }
+  /**
+   * Answer every filesystem question one declared payload row raises, so the
+   * pure join can decide without any IO of its own (WF-448).
+   *
+   * Collected for every INSPECTABLE pack; the join narrows to the acted-on set.
+   * Nothing here writes or creates: the source is read through the existing
+   * contained raw-byte fingerprint boundary (no body crosses), and the
+   * destination is resolved through the no-create containment port bound to the
+   * ADMITTED root. When either port is absent the preview yields nothing rather
+   * than a fabricated digest or a guessed target.
+   */
+  collectPayloadFacts(admittedRoot, inspected) {
+    const resolveTarget = this.ports.resolvePayloadTarget;
+    const fingerprint2 = this.ports.fingerprintContainedFile;
+    if (resolveTarget === void 0 || fingerprint2 === void 0) return [];
+    const facts = [];
+    for (const [pluginId, record2] of inspected) {
+      for (const capability of record2.capabilities) {
+        const capabilityRoot = dirnameSlash(capability.manifestPath);
+        for (const payload of capability.payloads) {
+          const observed = fingerprint2(
+            capabilityRoot,
+            payload.source,
+            MAX_DECLARED_SOURCE_BYTES
+          );
+          facts.push({
+            pluginId,
+            capability: capability.name,
+            source: payload.source,
+            destination: payload.destination,
+            semantics: {
+              production: payload.production,
+              refresh: payload.refresh,
+              removal: payload.removal
+            },
+            target: resolveTarget(admittedRoot, payload.destination),
+            identity: observed.status === "ok" ? { ok: true, sha256: observed.sha256, bytes: observed.bytes } : { ok: false, status: observed.status }
+          });
+        }
+      }
+    }
+    return facts;
   }
   // --- R6: register_pack (mutating write-path) ---------------------------
   registerPack(pluginId, expectedFingerprint) {
