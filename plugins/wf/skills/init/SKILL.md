@@ -1,22 +1,31 @@
 ---
 name: init
-description: Initializes the current repository for the wf:* skill suite by creating the _local/ task folder, writing a default _local/config.md, gitignoring _local/, and optionally adding project-specific git excludes. Use once per new repository before running /wf:spec — idempotent on subsequent runs.
-allowed-tools: [Read, Write, Edit, Glob, Bash, ToolSearch]
+description: Sets up a repository for the wf:* skill suite in one journey — admitting the workspace root, discovering installed capability packs, scaffolding the _local/ task folder and default config, taking an explicit pack selection, asking every unresolved setup question once, confirming one plan, and applying it in a single transaction. Use once per new repository before running /wf:spec; idempotent on subsequent runs.
+allowed-tools: [Read, Write, Edit, Glob, Bash, AskUserQuestion, Skill, ToolSearch]
 ---
 
-# /wf:init — Bootstrap a repo for the wf:* skill suite
+# /wf:init — Set up a repo in one batched journey
 
-Bootstrap the current repository for the wf:* skill suite. Creates and/or updates:
+Bootstrap the current repository for the wf:* skill suite as **one coherent
+interaction** rather than a scaffold command followed by N per-pack setup
+commands. Ten phases run in a fixed order: **1** admit the workspace root, **2**
+discover installed packs (recovery, inventory confidence, relayed per-pack
+state), **3** scaffold the bare core idempotently outside the pack transaction,
+**4** take an explicit selection, **5** ask every unresolved question once, **6**
+re-plan with those answers, **7** confirm one plan identity, **8** apply one
+transaction, **9** settle the registry-derived scaffolding and inspect, **10**
+establish the constitution.
 
-- `_local/` — task root (per-ticket artifacts)
-- `_local/config.md` — project-specific values consumed by every wf:* skill
-- `_local/README.md` — short note explaining the folder's purpose
-- `.gitignore` — ensures `_local/` is never committed
-- `.git/info/exclude` — adds a `_page-tests/` path when a registered capability's test-host root exists in the checkout
+> **The two rules that make this safe.** **Relay, never infer** — every
+> lifecycle fact shown to the user is read out of a typed envelope, never
+> derived by this skill. **One mutation** — `apply_install` in Phase 8 is the
+> only lifecycle write, it runs at most once, and it carries the id of the exact
+> plan the user confirmed.
 
-> Plugin agents (the `*.md` companions in the plugin's `agents/` folder) are auto-discovered by Claude Code once the `wf` plugin is installed — no per-machine setup is needed, and nested subagent delegation (e.g. `wf:run`→`wf:phase-runner`) works out of the box.
-
-Idempotent. Re-running against an already-initialized repo produces no diff unless `--force` is passed.
+Idempotent. Re-running against an already-set-up repo produces no diff unless
+`--force` is passed and nothing was selected to change. Rationale for the
+journey's shape lives in `references/fresh-init-journey.md`, **never read at
+runtime**.
 
 ---
 
@@ -26,11 +35,15 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 /wf:init [--force]
 ```
 
-### Arguments
-
 | Argument  | Required | Description                                                        |
 | --------- | -------- | ------------------------------------------------------------------ |
 | `--force` | NO       | Overwrite `_local/config.md` and `_local/README.md` if they exist. |
+
+Selection, answers, and confirmation are taken interactively — no flag
+pre-selects a pack, pre-answers a question, or skips the confirmation. The
+declared externally-bindable surface (invocation shape, terminal-block status
+set, slots, settings) is `interface.md` beside this file: it is the contract,
+this body is its implementation.
 
 ---
 
@@ -38,242 +51,412 @@ Idempotent. Re-running against an already-initialized repo produces no diff unle
 
 **Allowed:**
 
-- Read/write files under `_local/`
-- Append (not rewrite) `.gitignore`
-- Append (not rewrite) `.git/info/exclude`
-- Write the `## Capabilities` registry table to a **configured `registryPath`** location when `wf.config.js` sets one (a repo-relative file path that passes the Phase 0 defensive check) — this is the one sanctioned write outside `_local/`, since relocating the registry is the feature's whole purpose
-- Read-only resolution via the bundled `wf-resolver` MCP service (`resolve_config({ workspaceRoot: resolverWorkspaceRoot, ... })`, `resolve_registry({ workspaceRoot: resolverWorkspaceRoot, ... })`, `resolve_profile({ workspaceRoot: resolverWorkspaceRoot, ... })`), plus one explicit `resolve_refresh({ workspaceRoot: resolverWorkspaceRoot, ... })` call after Phase 2/2.5 write the config, registry, and profile seeds — never any other resolver write
+- Read and write files under `_local/`.
+- Append (never rewrite) `.gitignore` and `.git/info/exclude`.
+- Write the `## Capabilities` registry table to a **configured `registryPath`**
+  location that passes the Phase 3 defensive check — the one sanctioned scaffold
+  write outside `_local/`, since relocating the registry is that key's purpose.
+- Read-only resolution through the bundled `wf-resolver` MCP service:
+  `resolve_config`, `resolve_registry`, `resolve_profile`, `resolve_content`,
+  `discover_packs`, `plan_install`, `resolve_inspect`, plus one explicit
+  `resolve_refresh` after the scaffold writes.
+- **One** `apply_install` call per run, carrying the `expectedPlanId` of the plan
+  the user confirmed — the sole lifecycle mutation this skill performs.
+- Invoke `/wf:constitution` through the **Skill** tool.
 
 **Forbidden:**
 
-- Modify any source file **except** the writes named in the Allowed list above — i.e. anything other than files under `_local/`, the two exclude files (`.gitignore`, `.git/info/exclude`), and a configured `registryPath` registry location, all of which are explicitly permitted
-- Run builds, tests, linters, installs
-- Invoke a delivery write operation (`branch-create`, `commit`, `push-upstream`, `pr-create`) — init obtains the workspace root as a resolved fact from `resolve_config({ workspaceRoot: resolverWorkspaceRoot, ... })` (Phase 0), never by dispatching the delivery provider directly, and it never writes through the delivery provider
-- Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive a plugin's install root, a capability's manifest path, or a profile's override-merged values by hand — `resolve_config({ workspaceRoot: resolverWorkspaceRoot, ... })`/`resolve_registry({ workspaceRoot: resolverWorkspaceRoot, ... })`/`resolve_profile({ workspaceRoot: resolverWorkspaceRoot, ... })` already resolve them; if a fact is needed, call the tool with `workspaceRoot: resolverWorkspaceRoot` and its other required arguments
-- Call `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })` — that call registers one pack's own capability under a stable plugin id; `init` establishes the substrate those calls attach to, not a capability of its own
+- Write or edit any file outside the scaffold writes named above.
+- Mutate lifecycle state by any path other than that single `apply_install` —
+  no hand-written ledger, no registry row written on a pack's behalf, no
+  enablement flipped, no answer persisted directly.
+- Call `apply_install` without a confirmation, more than once per run, or with a
+  plan id other than the one confirmed.
+- Call `register_pack` — a pack registers its own capability; `init` establishes
+  the substrate those registrations attach to.
+- **Infer** any lifecycle fact: presence, state, enablement, availability,
+  recovery, and whether a question is answered are relayed verbatim from the
+  envelope, never derived from a heuristic, a file probe, or a `selectable` flag
+  read as eligibility.
+- Treat a suggested, personal-tier, or pack-tier value as an answer, or suppress
+  a question because such a value exists; or re-ask a question the envelope
+  already reports resolved.
+- Hold a lock across host phases, or nest one inside another.
+- Run builds, tests, linters, or installs.
+- Invoke a delivery write op (`branch-create`, `commit`, `push-upstream`,
+  `pr-create`) or any destructive version-control operation.
+- Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive a plugin root, manifest path,
+  or override-merged profile value by hand.
+- Name any concrete pack, capability, stack, or project noun in this behaviour.
 
 ---
 
-## Phase 0: Preconditions
+## Phase 1: Admit the workspace root
 
-1. **Derive `resolverWorkspaceRoot`** by running `pwd -P` in this Agent/session; use its absolute current workspace directory for `workspaceRoot` in **every** bundled resolver MCP call in this run. If this Agent is in a linked worktree, derive that worktree's own root; never reuse a parent Agent's root. Omitting `workspaceRoot` is a hard schema error — resolver MCP calls have no default or fallback root.
+Nothing is written, and no lifecycle state is read, until a root is admitted.
 
-2. **Call `resolve_config({ workspaceRoot: resolverWorkspaceRoot })`** on the bundled `wf-resolver` MCP service. It returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }` in one typed query — the resolver's `R1` operation. It never depends on `_local/config.md` already existing: on a fresh repo `coreConfig`'s fields simply come back unset, which is exactly the state Phase 2 below fills in. `init` performs **no** direct `wf.config.js` parse, no `${CLAUDE_PLUGIN_ROOT}` probe, and no manual `## Capabilities`/manifest/fragment read to derive either fact — the resolver already did that work, the same way `plan`/`tasks`/`run` obtain it.
+1. **Derive the candidate root** by running `pwd -P` in this Agent/session. In a
+   linked worktree, that is the worktree's own root — never a parent Agent's.
+   Pass it as `workspaceRoot` on **every** resolver call in this run; omitting it
+   is a hard schema error, and the resolver has no default or fallback root.
 
-   - **`workspaceRoot`** is the resolver's already-normalized `workspace-root-resolve` fact — a plain-directory value when no delivery provider is registered, since the resolver never dispatches a provider to compute it (it is a fixed, environment-supplied input to every snapshot, not derived per query). All paths below are relative to it.
-   - **If the `wf-resolver` service is unavailable** (the tool call errors, or the MCP server isn't loaded), **stop**: "The `wf-resolver` service is not available — restart Claude Code so the bundled resolver MCP server loads." Never fall back to hand-parsing `wf.config.js` or the registry as a substitute (WF-272 diagnostics/recovery) — a broken resolver is a stop condition here, not a silent fallback.
+2. **Call `resolve_config({ workspaceRoot })`.** It returns `{ workspaceRoot,
+   registryPath, coreConfig{ taskRoot, … }, idShape }` in one typed query and
+   never requires `_local/config.md` to exist — on a fresh repo `coreConfig`'s
+   fields come back unset, the state Phase 3 fills. Perform **no** direct config
+   parse, plugin-root probe, or manual registry/manifest read.
 
-3. **Resolve the registry location from the returned `registryPath`.** Use this resolved location everywhere this skill writes or reads the registry — the Phase 2 table write and the Phase 2.5 seeding iteration below. When no `registryPath` override is configured, the resolver's own default is `_local/config.md`, so default behaviour is byte-identical to before this key existed. Record the registry-location state for the Final Output — `default` (no key), `configured` (a key that passed the defensive check below), or `rejected → fell back to default` (a key that failed it).
+3. **Relay the admission verdict.** Every lifecycle envelope carries an
+   `admission` block: `{ admitted, root, source, reason, diagnostic }`. Read it,
+   never re-derive it.
+   - `admitted: true` ⇒ carry `admission.root` — **the admitted root, not the
+     candidate** — into every later call, and report the `source` that produced
+     it so a non-cwd root is visible rather than silent.
+   - `admitted: false` ⇒ **hard stop before any scaffold write.** Emit
+     `INIT — stopped`, quoting `reason` and `diagnostic` verbatim. An
+     inadmissible declaration never reaches Phase 3; a repo is not scaffolded on
+     a root the resolver refused.
 
-   **Defensive `registryPath` check (fallback).** The resolver extracts the raw `registryPath` string from `wf.config.js` but does not itself enforce its shape. Before resolving a write location from a non-default `registryPath`, confirm it is a **repo-relative, forward-slash file path** with **no** `..` segment and **no** absolute/drive prefix (no leading `/`, no `C:`-style prefix) — the shape the contract requires. Then canonicalize the target if it exists, or its nearest existing ancestor if it does not, and require that canonical path to remain under the canonical `resolverWorkspaceRoot`; this catches a repo-relative path that escapes through a symlink. If either check fails, do **not** resolve or write to it: fall back to the default `_local/config.md`, record the `rejected → fell back to default` state, and flag the rejected value loudly in the chat summary. Registry validation (WF-2's registry pass / WF-28) should reject a bad lexical shape upstream; these checks are the defensive fallback that prevents a configured `registryPath` from making `init` write outside the resolved workspace root even when validation has not run — mirroring the Phase 2.5 defensive token check. (A passing `registryPath` may resolve outside `_local/` but remains inside the workspace — that relocated registry write is the sanctioned exception in the Safety Rules above.)
-
----
-
-## Phase 1: Create `_local/`
-
-- If the directory is missing, create it.
-- If it already exists as a directory, canonicalize it and require that it remains under canonical `resolverWorkspaceRoot`; if `_local` is a symlink to a directory outside the workspace, stop before any write and report the escape.
-- If `_local` exists as a regular file (not a directory), stop and report the conflict.
-
----
-
-## Phase 2: Write `_local/config.md`
-
-> The config template below carries the `## Capabilities` registry table. Its destination is the **Phase 0 resolved registry location** (§Phase 0 step 3), not whether `registryPath` is set. Two named cases, reused below: the **same-file case** — resolved location **is** `_local/config.md` (the `default`, `rejected → fell back to default`, and a `configured` value that points back at `_local/config.md`) — where the table rides inside the config template; and the **relocated case** — resolved location is a **different** file — where the `## Capabilities` table is written there instead, and the rest of the config template still goes to `_local/config.md`. **Same-file case ⇒ the registry stays there, byte-identical to before.**
-
-> **The two writes skip independently**, each guarded by its **own** skip-if-present check keyed on its own resolved destination — so re-running after the registry was pointed elsewhere still creates the registry where it now belongs:
-> - **Same-file case:** the table rides inside the config template, so the single `_local/config.md` skip below covers it.
-> - **Relocated case:** the registry table is written to the resolved location guarded by its own skip-if-present check on that file — independent of whether `_local/config.md` exists. Absent (or `--force` set) ⇒ write/refresh it there even when `_local/config.md` already exists; present and no `--force` ⇒ skip it and report "registry already present at `<resolved location>` — left untouched."
-
-- If `_local/config.md` exists and `--force` is not set, skip the config-template write (this also covers the registry table in the **same-file case**). Report "config.md already present — left untouched." The **relocated case** is guarded separately, per the note above.
-- **One registry, never two.** The `## Capabilities` section in the "Default content" template below belongs to **exactly one** destination. **Same-file case** ⇒ keep `## Capabilities` inside `_local/config.md`. **Relocated case** ⇒ **omit the `## Capabilities` section from the `_local/config.md` write entirely** and write that section **only** to the resolved registry file — never emit it in both places, so a user can't edit the wrong copy (runtime reads only the resolved location).
-- **Strip the authoring aid.** The `<!-- … -->` HTML comment above the `## Capabilities` table in the template is a build-time directive **for `init` only** — it must **never** reach a written file. Drop it in both branches: write only the `## Capabilities` heading, table, and explanatory prose to the Phase 0 resolved registry location (`_local/config.md` itself in the same-file case). Every "write the template" instruction below means the template **minus** this comment.
-- Otherwise:
-  1. **Infer the Verify Command** from the project's actual config (see "Detecting Verify Command" below). Do not write a hardcoded default — every repo's command differs, and a wrong default (e.g., `tsc --noEmit` on a framework project needing template/metadata checks) misses the very errors the skills exist to catch.
-  2. Write the template below, substituting the detected command into the `Verify Command` row and the current model id (§9 model attribution) into the `**Model:**` line. If Verify Command falls back to a placeholder, flag it prominently in the chat summary so the user fixes it before running any other skill.
-
-### Default content
-
-The verbatim `_local/config.md` default content — the `## Task Folders`, `## Build / Verify`, `## QA`, `## Seed`, `## Standup`, and `## Capabilities` sections — lives at `config-template.md`, obtained via `resolve_content({ workspaceRoot: resolverWorkspaceRoot, class: "references-template", skill: "init", ref: "config-template.md" })`, never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 2), so it stays out of the boot body. Follow it, then write it substituting the detected Verify Command and the current model id. **Strip the `<!-- init directive … -->` HTML comment before writing** (per "Strip the authoring aid" above), and apply the "One registry, never two" rule to where the `## Capabilities` section lands.
-
-After writing, tell the user to review `_local/config.md` — especially the detected `Verify Command` — and edit values for the current project if they differ from the defaults. The keys must not change — only the values.
-
-### Detecting Verify Command
-
-The goal is a single shell command that exits 0 when the whole project typechecks. Detect in this order — stop at the first rule that produces a concrete command:
-
-1. **Find project roots.** `Glob` for `**/package.json` plus any framework project manifests (skip `node_modules/`, `.git/`, `dist/`, `bin/`, `obj/`). Record each containing directory, relative to repo root.
-
-2. **Prefer explicit scripts.** For each `package.json`, parse `scripts` and look for a verification-ish script in this priority: `typecheck` > `check` > `verify` > `build:check` > `lint:types`. First hit wins:
-   ```
-   npm --prefix <dir> run <script>
-   ```
-
-3. **Framework AoT build.** If no script matched but the candidate dir's `package.json` lists a framework CLI under `devDependencies` whose canonical verification is an ahead-of-time / production build, use that CLI's AoT/production build — it's the canonical way to catch template, metadata, and TS errors together. Derive the exact command from the detected CLI at runtime (its AoT/production build invocation, e.g. a development-configuration build with output hashing disabled):
-   ```
-   npm --prefix <dir> exec -- <framework CLI's AoT/production build command>
-   ```
-
-4. **Generic `build` script.** If a `build` script exists in `package.json`, use it as a last resort — it almost always includes typechecking as a side effect:
-   ```
-   npm --prefix <dir> run build
-   ```
-
-5. **Plain TypeScript.** If the dir has `tsconfig.json` but nothing better matched:
-   ```
-   npm --prefix <dir> exec -- tsc --noEmit
-   ```
-   Warn in the chat summary that this catches only plain-TS errors; it's fine for pure-TS libraries, not for framework projects.
-
-6. **Multi-candidate tie-break.** If multiple dirs produce different commands, pick in this order: any framework-build one > any with an explicit typecheck/check script > the shallowest dir. List the others in the chat summary so the user can override.
-
-7. **Nothing found.** Write:
-   ```
-   TODO: replace with the command that typechecks this project (must exit non-zero on any type or template error)
-   ```
-   and flag it loudly in the chat summary. Do not silently substitute a generic guess — a skill running a bogus verify is worse than one that stops with a clear error.
-
-Record the chosen rule (and the rejected candidates, if any) in the chat summary so the user can see the reasoning without reading config.md.
-
-> Registry location (`registryPath`) is resolved once in Phase 0 step 3 — see there for the rule.
+4. **Resolver unavailable** (the call errors, or the MCP server is not loaded) ⇒
+   stop with `INIT — stopped`: "The `wf-resolver` service is not available —
+   restart Claude Code so the bundled resolver MCP server loads." A broken
+   resolver is a stop condition, not a silent fallback.
 
 ---
 
-## Phase 2.5: Seed capability profiles
+## Phase 2: Discover installed packs
 
-After the `## Capabilities` registry table exists (Phase 2) and before the constitution is established (Phase 6), execute the **profile-seeding convention** defined in `plugins/wf/skills/_contracts/capability-registry.contract.md` (§"The profile-seeding convention"). Do **not** re-derive its rules here — follow the convention **by name**; this phase only invokes it for every registered capability, obtained from the `wf-resolver` MCP service rather than a hand-rolled registry/manifest/plugin-root read.
+**One** `discover_packs({ workspaceRoot })` call. Discovery is byte-inert from
+the recovered baseline; it never registers, enables, or writes anything.
 
-1. **Call `resolve_registry({ workspaceRoot: resolverWorkspaceRoot })`** on the `wf-resolver` service. It returns the ordered active `capabilities[]`, each already resolved from the registry and its `manifest.md` — **including plugin-anchored self-heal** — as `{ name, kind, resolvedPath, manifestPath, validity, profileTemplatePath, … }`. No manual `## Capabilities` read, no `## Plugin Roots` lookup, no manifest `Read`: the resolver already performed the registry iteration, the per-capability manifest read, and the plugin-root resolution.
-   - **Empty `capabilities[]` ⇒ seed nothing** — no destination is created. This is the inert no-op; report "none" in the Final Output. (Matches the contract's no-op-when-absent rule.)
+1. **Read `recovery` first** — it is the one field that can describe a write, and
+   it is reported on its own channel precisely so a recovery write is never
+   mistaken for a discovery write.
+   - `recovery.proceeded: false` ⇒ **halt.** No lifecycle state was read, so
+     nothing may be shown or acted on. Emit `INIT — stopped`, relaying
+     `recovery.state` and its diagnostics, and direct the user to
+     `/wf:resolve` for the recovery path.
+   - `recovery.wroteBytes: true` ⇒ say so plainly: recovery restored an
+     interrupted transaction, and everything below is asserted from that
+     recovered baseline.
 
-2. **Per capability, read `validity` and `profileTemplatePath`.**
-   - `validity: "unrecoverable"` (no readable manifest — either an unmapped plugin root, or a missing/unreadable `manifest.md` at a repo-relative path) ⇒ **no-op** for this capability (skip — no destination, no placeholder) and record `skipped — unreadable manifest`.
-   - `validity: "ok"` but `profileTemplatePath: null` (the manifest declares no `profile-template:`) ⇒ **no-op** and record `skipped — no template`.
-   - Otherwise `profileTemplatePath` points to the capability's default template — read it directly, but **guard the join first**. `profileTemplatePath` is workspace-root-*relative* only when the template lives inside the workspace; for a plugin-anchored capability whose install root is outside the workspace (e.g. a plugin cache), the resolver returns an **absolute** path. So: if `profileTemplatePath` is absolute (a leading `/` or a `C:`-style drive prefix), `Read` it **verbatim**; otherwise `Read <workspaceRoot>/<profileTemplatePath>`. Never blindly join `workspaceRoot` — prefixing an already-absolute path yields an invalid location. (The resolver returns paths and metadata only, never the template body itself, so this one file read stays with the consuming skill.)
+2. **Relay `inventory`** — `confidence`, `observedCount`, and
+   `mayEstablishAbsence`. When `mayEstablishAbsence` is false, absence is
+   **unknown, not established**: never report a pack as missing or orphaned on a
+   non-trustworthy inventory.
 
-3. **Per declaring capability, derive the deterministic destination**, keyed on the registry `name` field (its stable identity — never `resolvedPath` or `manifestPath`):
+3. **Relay each entry of `packs[]` as reported** — its `state`, `enablement`,
+   `presence`, `registeredCapabilities`, `overlay`, and its declared `questions`.
+   Do not recompute any of them, and do not collapse the three `presence` values
+   into a two-way present/absent split.
 
+4. **`selectable` is not the eligibility filter.** It reports whether a pack is
+   **already operational**, so on a fresh workspace it is false for every pack —
+   including every pack the user is about to choose. Never key the Phase 4 offer
+   on it.
+
+---
+
+## Phase 3: Scaffold the bare core
+
+The scaffold is an **idempotent prerequisite that sits outside the pack
+transaction**: it runs before anything is selected, and a later decline or
+rollback never un-scaffolds it.
+
+1. **`_local/`** — create if missing. If it exists as a directory, canonicalize
+   it and require that it stays under the canonical admitted root; a symlink
+   escaping the workspace is a stop before any write. If `_local` exists as a
+   regular file, stop and report the conflict.
+
+2. **Resolve the registry location** from `registryPath`. When no override is
+   configured the resolver's default is `_local/config.md`, so default behaviour
+   is byte-identical to a workspace that never set the key. Record the state for
+   the Final Output: `default`, `configured`, or `rejected → fell back to
+   default`.
+
+   **Defensive check.** Before writing to a non-default `registryPath`, confirm
+   it is a repo-relative, forward-slash file path with no `..` segment and no
+   absolute or drive prefix; then canonicalize the target (or its nearest
+   existing ancestor) and require it to stay under the canonical admitted root,
+   which catches a relative path escaping through a symlink. On failure, do not
+   write there: fall back to `_local/config.md`, record `rejected → fell back to
+   default`, and flag the rejected value loudly.
+
+3. **Write `_local/config.md`.** Skip if it exists and `--force` is not set
+   ("config.md already present — left untouched").
+
+   **One registry, never two.** The `## Capabilities` section belongs to exactly
+   one destination. **Same-file case** (the resolved location *is*
+   `_local/config.md`) ⇒ the table rides inside the config template. **Relocated
+   case** ⇒ omit `## Capabilities` from the `_local/config.md` write entirely and
+   write that section only to the resolved location. The two writes skip
+   independently, each guarded on its own destination, so re-running after the
+   registry moved still creates it where it now belongs.
+
+   The verbatim default content lives at `config-template.md`, obtained via
+   `resolve_content({ workspaceRoot, class: "references-template", skill:
+   "init", ref: "config-template.md" })` — never a raw read of a plugin-cache
+   path. **Strip the `<!-- init directive … -->` HTML comment before writing**:
+   it is a build-time aid for this skill and must never reach a written file.
+
+4. **Infer the Verify Command** and substitute it into the template, along with
+   the current model id on the `**Model:**` line. The detection procedure lives
+   at `verify-command-detection.md`, obtained via `resolve_content({
+   workspaceRoot, class: "references-template", skill: "init", ref:
+   "verify-command-detection.md" })` on this write path only. Never write a
+   hardcoded default; when detection falls back to its TODO placeholder, flag it
+   prominently so the user fixes it before running any other skill.
+
+5. **Write `_local/README.md`** — skip if present and `--force` is unset.
+   Substitute the current model id:
+
+   ```markdown
+   # _local/
+
+   **Model:** <current model id>
+
+   Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
+
+   - `T<NNN>/` — task folders (requirements, spec, plan, research, artifacts)
+   - `config.md` — project-specific values consumed by every wf:* skill
+
+   Safe to nuke if you want a clean slate. Nothing here is version-controlled.
    ```
-   _local/profiles/<name>.profile.json
-   ```
 
-   The `name` value is used verbatim as the filename stem; the convention requires it to be a filesystem-safe token (lowercase letters, digits, hyphens — no separators or `..`), which registry validation enforces before this phase runs.
+6. **Gitignore `_local/`.** Create `.gitignore` with the single line `_local/`
+   if absent; otherwise append `_local/` only when no line already matches
+   `_local` or `_local/` exactly. Never rewrite, reorder, or deduplicate existing
+   entries.
 
-   **Defensive token check (fallback).** Before deriving the destination, confirm `name` is a filesystem-safe token — lowercase letters, digits, and hyphens only, with **no** path separator (`/` or `\`), **no** `..` segment, and **no** whitespace. If it is not, **skip this row** (write nothing, derive no path) and record `skipped — unsafe capability name`. Registry validation (WF-2's registry pass / WF-28) should reject such a name upstream; this check is a defensive fallback so the path can never traverse outside `_local/profiles/` even if that validation has not run. Create `_local/profiles/` on demand.
-
-4. **Seed an override only on divergence; never overwrite.** The capability ships its `profile-template:` as the **authoritative default template** — the baseline shape (which may carry angle-bracketed placeholder slots) a project overrides; seed a downstream **override** at the destination **only when the project's values diverge** from that template. Precedence is **downstream override > capability default**. State that hybrid precedence in the seeded file, and use the convention's angle-bracketed placeholder syntax for every divergent (unfilled) slot. **Idempotent — if the destination already exists, leave it untouched** (skip-if-present; never clobber a partially- or fully-filled override). Record `seeded override` when written, or `default in use` when no override was needed.
-
-5. **Model attribution.** Every seeded file carries the model-attribution convention **where its data format provides a place for it** — include a `**Model:** <current model id>` line for a prose/markdown profile, or, for a comment-forbidding format like JSON, an angle-bracketed model token in a **schema-permitted** note slot, per the convention's placeholder rule. **A JSON schema that forbids extra fields (`additionalProperties: false`) and defines no dedicated metadata/note slot for attribution has no place to carry it** — do **not** add a non-schema field (that would make the seeded file fail its own validator). In that case **omit** the in-file attribution and instead record the seeding model on the Phase 2.5 outcome line (the Final Output "Capability profiles" row), so attribution is preserved without breaking schema conformance. (`init` is project-level and has no task context, so there is no per-task `index.md` to record it in.) (The migration profile's schema is `additionalProperties: false` with no metadata slot, so its seed omits the in-file token.)
-
-**Domain-free guard:** this phase names **no** concrete capability — capability names appear only as the path-deriving `name` value read from the resolved registry. Core iterates and derives; it never tests for or hardcodes a specific capability.
-
----
-
-## Phase 2.6: Inform the resolver
-
-Phase 2 and Phase 2.5 are the writes that mutate the resolution substrate the `wf-resolver` snapshot models — `_local/config.md`, the `## Capabilities` registry (in the same-file or relocated case), and any seeded `_local/profiles/*.profile.json` overrides. Every typed resolver query already re-validates its recorded input fingerprints and rebuilds on a mismatch, so the very next `resolve_*` call would pick these writes up regardless of this step — but `init` informs the resolver explicitly anyway, the same way a pack's own `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })` call folds a refresh into its own registration write, so Phase 5 and Phase 6 (and any skill run afterward) never rely on incidental fingerprint recomputation.
-
-1. **Call `resolve_refresh({ workspaceRoot: resolverWorkspaceRoot, reasons: ["/wf:init wrote _local/config.md, the capability registry, and profile seeds"] })`.** It rebuilds the snapshot from the now-current files and returns the fresh lifecycle state — `{ valid, counts{ capabilities, packs, providers }, diagnostics[] }`.
-2. **On success**, note the returned `counts.capabilities` for the chat summary.
-3. **On a "no such tool", fetch and retry once before degrading.** `resolve_refresh` is **deferred**: its schema loads on demand, so that error on first reach means *not yet fetched*, not *not installed*. Fetch it through the host's tool-search surface and repeat step 1 once; only a second failure degrades to step 4.
-4. **On failure, or when the service is unavailable, do not stop `init`** — the writes already landed on disk, and the resolver's own fingerprint-driven freshness rebuilds on the next natural query even without this call. Flag in the chat summary that the explicit refresh didn't confirm and suggest `/wf:resolve refresh` (WF-272 diagnostics/recovery) — never fall back to re-deriving the registry by hand to "confirm" it.
-
-This is `init`'s only resolver **write-adjacent** call. It never calls `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })`: that call registers one pack's own capability under a stable plugin id, whereas `init` establishes the substrate those calls attach to — the empty (or project-clause-only) registry a pack's own init later registers into.
+7. **Inform the resolver.** Call `resolve_refresh({ workspaceRoot, reasons:
+   ["/wf:init wrote the bare-core scaffold"] })` so later phases do not rely on
+   incidental fingerprint recomputation. A "no such tool" error means the tool is
+   **deferred, not missing** — fetch its schema through the host's tool-search
+   surface and retry once. A second failure does **not** stop the run (the writes
+   landed, and every typed query re-validates its own fingerprints); note that
+   the explicit refresh did not confirm.
 
 ---
 
-## Phase 3: Ensure `_local/` is gitignored
+## Phase 4: Take an explicit selection
 
-1. If `.gitignore` doesn't exist at the repo root, create it with a single line: `_local/`.
-2. If it exists, check for a line matching either `_local` or `_local/` (with or without trailing slash, exact match on its own line).
-3. If absent, append `_local/` on a new line. Leave existing entries alone.
-4. Never rewrite, reorder, or deduplicate existing `.gitignore` entries.
+Present the relayed inventory and ask which packs to set up. Nothing is selected
+by default and nothing is selected automatically.
 
----
+1. **Offer every pack discovery reported**, each shown with its relayed `state`,
+   `presence`, and `enablement`.
+2. **Availability is keyed on the relayed `enablement` and `presence`**, never on
+   `selectable` (Phase 2 step 4). A pack that is present and not disabled can be
+   chosen.
+3. **A disabled pack is visible but unavailable.** Show it with its own state,
+   do not offer it as a choice, and never flip `enablement` — re-enabling is the
+   user's action, outside this run. Selecting one anyway is the planner's error
+   to raise, not this skill's to silently correct.
+4. **Zero selection is a first-class outcome**, not a degenerate one: the run
+   continues, the plan comes back with nothing to do, and the workspace is left
+   carrying the bare-core scaffold and nothing else.
 
-## Phase 4: Write `_local/README.md`
-
-If the file already exists and `--force` is not set, skip. Otherwise write, substituting the current model id (§9) into the `**Model:**` line:
-
-```markdown
-# _local/
-
-**Model:** <current model id>
-
-Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
-
-- `T<NNN>/` — task folders (requirements, spec, plan, research, artifacts)
-- `config.md` — project-specific values consumed by every wf:* skill
-
-Safe to nuke if you want a clean slate. Nothing here is version-controlled.
-```
+Hold the chosen set as `desired`.
 
 ---
 
-## Phase 5: Append the page-test exclude (conditional)
+## Phase 5: Ask every unresolved question, once
 
-A capability may ship a page-test harness that writes its `_page-tests/` files under a
-project-specific **test-host root**. That root comes from the capability's profile
-(`test-host-root`), not from core. This phase derives the exclude **generically from the
-resolved registry + capability profiles** — it **keys on the presence of the
-`test-host-root` profile field, never on any capability name.** Model the loop shape and
-the no-name discipline on Phase 2.5 above and `verify-spec`'s registry iteration.
+1. **Call `plan_install({ workspaceRoot, desired })` with no `answers`.** This
+   probing plan is byte-inert; its purpose is to learn what is still unanswered.
+2. **Ask exactly `answers.unresolved[]`** — every entry, in one batch, in the
+   order given. Each carries `pluginId`, `questionId`, `prompt`, `reason`, and
+   `suggestions[]`.
+3. **Pre-fill from `suggestions[]` without treating one as an answer.** A
+   suggestion — a shipped default, a pack-tier value, or a personal-tier value —
+   makes accepting cheap; it never makes the question disappear. Only a valid
+   **persisted** value at the question's declared destination resolves it, and
+   that is a fact the envelope reports, not one to judge here.
+4. **Never re-ask what the envelope already resolved.** A question absent from
+   `answers.unresolved[]` is answered; asking it again is a defect.
+5. **One round.** Collect every answer before moving on. Do not ask, plan, and
+   ask again.
 
-1. **Call `resolve_registry({ workspaceRoot: resolverWorkspaceRoot })`** on the `wf-resolver` service and iterate the returned
-   `capabilities[]` **in order**. **Empty `capabilities[]` ⇒ skip silently** (the inert
-   no-op — nothing is appended). No manual `## Capabilities` read.
-2. **Per capability, call `resolve_profile({ workspaceRoot: resolverWorkspaceRoot, capability: <name> })`.** It returns the override-merged
-   profile **values** directly — override `_local/profiles/<name>.profile.json` > the
-   capability's default template, the resolver already applying that precedence. No manual
-   manifest read, no `## Plugin Roots` lookup, no hand-merge.
-3. **For any capability whose resolved profile declares a `test-host-root`**, resolve
-   `{test-host-root}` and check whether the conventional sandbox module-test folder under it
-   exists in the checkout. (A capability whose profile declares no `test-host-root`
-   contributes nothing here — skip it.)
-4. **If the folder exists**, ensure `.git/info/exclude` contains a line matching that
-   capability's `_page-tests/` path under `{test-host-root}` (the capability's page-test
-   skill defines the exact sandbox folder). Append only if missing — idempotent,
-   skip-if-present, append-only, so a clean re-run produces no diff.
-5. **If no registered capability declares a `test-host-root`, or the folder is absent, skip
-   silently** — this isn't a checkout of that project. The capability's page-test skill
-   bootstraps the same entry on its own first run anyway.
-
-**Domain-free guard:** this phase names **no** concrete capability. It iterates the registry
-and keys the exclude on the *presence of the `test-host-root` profile field*, so onboarding a
-different stack's test-host needs no core edit.
+Hold the collected answers as `answers[]` of `{ pluginId, questionId, value }`.
 
 ---
 
-## Phase 6: Establish the constitution
+## Phase 6: Re-plan with the answers
 
-After `_local/config.md` exists (Phase 2) and the registry table is in place, route this fixed sibling-Skill edge immediately before work: call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "constitution"`, `unitIds: ["init:constitution"]`, `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical", contextIsolation: "none", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it; emit the compact operational record; and pass no selector. On `status: stop` or non-null `diagnostic`, preserve this phase's existing non-fatal behavior: skip the constitution refresh, record the resolver reason in the summary, and continue init. Otherwise obey the selected `inline` shape and **unconditionally** invoke `/wf:constitution` through the Skill tool with no arguments so a fresh repo gets a
-constitution record — the same slash-invocation `plan`/`spec`/`lite` use for `/wf:classify`.
-`init` carries **no existence check of its own**: the skill's **establish-or-update default**
-handles both cases — it establishes when `_local/constitution.md` is absent (writing a
-core-only constitution when the `## Capabilities` registry is empty, the inert path) and
-updates idempotently when the file already exists (an unchanged project produces no diff, so
-re-running `init` is safe). If invocation is unavailable, skip with a one-line note in the
-chat summary telling the user to run `/wf:constitution` manually — never STOP `init` on it.
+Call `plan_install({ workspaceRoot, desired, answers })`. This is the plan the
+user will confirm and the plan that will be applied — recomputed over the
+answers, not patched from the Phase 5 probe.
+
+Relay from the envelope, without recomputing any of it: `applicability` with its
+`applicabilityBasis` (the explicit enumeration of every blocking finding and
+every blocking question, so no blocking condition is a silent omission); `mode`,
+the dominant lifecycle effect; `actions[]`, every action class in one
+deterministic order, saying which are mutating; `registryDelta`, `payloads`,
+`artifacts`, `repairs`, `evidenceSeeds`, and `answers.writes[]` — what would
+change and what would be retained; `findings[]` with each code and severity; and
+`recovery` / `inventory` on their own channels as in Phase 2.
+
+Branch on `applicability`:
+
+- `applicable` ⇒ continue to Phase 7.
+- `no-change` ⇒ there is nothing to apply. Skip Phases 7 and 8 entirely and go to
+  Phase 9; the run ends `already-initialized` when the scaffold was also
+  unchanged, `initialized` otherwise.
+- `blocked` / `not-applicable` ⇒ relay `applicabilityBasis` and stop at
+  `INIT — partial`: the scaffold stands, no lifecycle mutation was performed.
+- `unrecovered` / `invalid-root` ⇒ `INIT — stopped`, relaying the reason.
+
+---
+
+## Phase 7: Confirm exactly this plan
+
+One confirmation, over one plan.
+
+1. **Show the plan and its `identity.planId`**, with `identity.factCount` and
+   `identity.coveredFactClasses` — the coverage claim is verifiable from that
+   list rather than from a hash nobody can read.
+2. **Ask once** whether to apply it.
+3. **Declined ⇒ `INIT — declined`.** No `apply_install` call is made, and no
+   lifecycle byte is written. Say plainly that the bare-core scaffold remains
+   valid and re-running is safe.
+4. **Confirmed ⇒ carry that exact `planId`** into Phase 8 as `expectedPlanId`.
+   Do not re-plan between the confirmation and the apply; state can change
+   between host phases, and the id check is what turns that into a clean refusal
+   instead of a stale application.
+
+---
+
+## Phase 8: Apply, once
+
+Call `apply_install({ workspaceRoot, desired, answers, expectedPlanId })` —
+**exactly once**, with the confirmed id. This is the only lifecycle mutation in
+the run. Locks are taken and released inside the call; never hold one across a
+host phase.
+
+Relay the envelope: `status` — `applied`, `rejected`, `rolled-back`, `halted`, or
+`invalid-root` — with its single closed `reason` token on every non-`applied`
+outcome, reported verbatim and never translated into a plausible neighbouring
+class; `applied[]`, what changed, and `deferred[]`, what was deliberately not
+changed, each with its own reason; `rollback`, how far a guarded rollback got;
+`selfCheck`, `refreshed`, and `residue`, where `residue.clean` is the observable
+statement that no journal, backup, or empty backup directory was left behind; and
+`recovery` on its own channel as always.
+
+Outcomes: `applied` continues to Phase 9. `rejected` (including
+`apply/plan-stale`, the id check doing its job) and `halted` continue to Phase 9
+as well, but the run ends `partial` — relay the reason and say the workspace is
+unchanged except for the scaffold. `rolled-back` likewise, adding the rollback
+disposition. `invalid-root` ends `stopped`.
+
+---
+
+## Phase 9: Settle the resolved view
+
+The registry is now current, so the registry-derived scaffolding runs here — not
+in Phase 3, which is bare-core only. This phase always runs, including after a
+`no-change` plan and after a rejected apply.
+
+1. **Seed capability profiles.** Execute the profile-seeding convention defined
+   in `plugins/wf/skills/_contracts/capability-registry.contract.md`
+   (§"The profile-seeding convention") — follow it **by name**; do not re-derive
+   its rules. Call `resolve_registry({ workspaceRoot })` and iterate the returned
+   `capabilities[]`. Empty ⇒ seed nothing (the inert no-op; report "none").
+   Per capability, read `validity` and `profileTemplatePath`:
+   `unrecoverable` ⇒ skip, record `skipped — unreadable manifest`; `ok` with a
+   null template ⇒ skip, record `skipped — no template`; otherwise read the
+   template — **verbatim when the path is absolute** (a plugin-anchored root
+   outside the workspace), joined to the workspace root only when it is relative.
+   Derive the destination `_local/profiles/<name>.profile.json` from the registry
+   `name` field, after confirming it is a filesystem-safe token (lowercase
+   letters, digits, hyphens; no separator, no `..`, no whitespace) — otherwise
+   skip the row and record `skipped — unsafe capability name`. **Seed an override
+   only on divergence, never overwrite an existing destination**; precedence is
+   downstream override > capability default, stated in the seeded file, with the
+   convention's angle-bracketed placeholders for divergent slots. Carry model
+   attribution where the format has a schema-permitted place for it; where it has
+   none, omit it in-file and record the seeding model on the Final Output row.
+
+2. **Append the page-test exclude (conditional).** Per capability, call
+   `resolve_profile({ workspaceRoot, capability: <name> })` — it returns the
+   override-merged values, so there is no hand-merge here. For any resolved
+   profile declaring a `test-host-root`, check whether the conventional sandbox
+   module-test folder under it exists in this checkout; if it does, ensure
+   `.git/info/exclude` contains that capability's `_page-tests/` path under the
+   root, appending only when missing. If no profile declares the field, or the
+   folder is absent, skip silently.
+
+3. **Inspect.** Call `resolve_inspect({ workspaceRoot })` and relay `validity`,
+   `counts`, and `diagnostics[]` as the run's closing state of the world. When
+   Phase 8 reported `refreshed: false`, or no apply ran, call `resolve_refresh`
+   once first so the inspect reads a current snapshot.
+
+**Domain-free guard:** both loops name **no** concrete capability — they iterate
+the resolved registry and key on the presence of a declared field.
+
+---
+
+## Phase 10: Establish the constitution
+
+Route this fixed sibling-Skill edge immediately before work: call
+`resolve_routing` with `workspaceRoot: <the admitted root>`, `role:
+"constitution"`, `unitIds: ["init:constitution"]`, `shapeEvidence: { workSurface:
+"caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
+ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical",
+contextIsolation: "none", independentReview: false, returnContract:
+"mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector:
+false`, and `supportsEffortSelector: false`. Include `actualModel` only when the
+host exposes it; emit the compact operational record; pass no selector.
+
+On `status: stop` or a non-null `diagnostic`, keep this phase non-fatal: skip the
+constitution refresh, record the resolver's reason, and finish the run.
+Otherwise obey the selected `inline` shape and **unconditionally** invoke
+`/wf:constitution` through the Skill tool with no arguments. This skill carries
+**no existence check of its own** — `constitution`'s establish-or-update default
+handles both cases, writing a core-only record when the registry is empty and
+updating idempotently when the file exists. If invocation is unavailable, skip
+with a one-line note telling the user to run `/wf:constitution` manually — never
+stop the run on it.
 
 ---
 
 ## Edge Cases
 
-- **`wf-resolver` MCP service unavailable:** Stop in Phase 0 (or, for the informational Phase 2.6 refresh, degrade without stopping — see there). Never hand-parse `wf.config.js` or the registry as a substitute; direct the user to restart Claude Code so the bundled resolver MCP server loads (WF-272 diagnostics/recovery).
-- **`_local/` is a regular file, not a directory:** Stop and report the conflict. Do not delete.
-- **`.gitignore` or `.git/info/exclude` is read-only:** Stop and report. Don't attempt to chmod.
-- **`--force` passed but nothing needs rewriting:** Continue; produce no diff on clean runs.
-- **Repo appears already initialized by an older version of this skill:** Fill in any missing pieces idempotently; leave existing files alone unless `--force`.
-- **Config values don't match the current repo:** Don't guess. Write defaults and tell the user to edit.
+- **Inadmissible workspace declaration:** stop in Phase 1 with `INIT — stopped`,
+  before any scaffold write. Never scaffold a root the resolver refused.
+- **`wf-resolver` service unavailable:** stop in Phase 1. For the Phase 3
+  informational refresh only, degrade without stopping. Never hand-parse config
+  or the registry as a substitute.
+- **`recovery.proceeded: false` at discovery:** halt with `INIT — stopped` —
+  nothing may be read or shown from an unrecovered baseline.
+- **Non-trustworthy inventory:** absence is unknown, not established — report
+  confidence and never call a pack orphaned.
+- **Every pack reports `selectable: false`:** the normal fresh-workspace state,
+  not an empty offer. Key availability on `enablement`/`presence`.
+- **Zero packs selected:** a valid outcome. The plan comes back `no-change`,
+  Phases 7 and 8 are skipped, and the workspace carries the scaffold and nothing
+  else — no registry row, no payload, no seeded profile, no runner.
+- **Plan declined:** `INIT — declined`. The scaffold may remain; no lifecycle
+  mutation was performed.
+- **`apply/plan-stale`:** the workspace moved between the confirmation and the
+  apply. Report it as the id check working, and tell the user to re-run.
+- **`_local/` is a regular file, not a directory:** stop and report. Do not
+  delete.
+- **`.gitignore` or `.git/info/exclude` is read-only:** stop and report. Do not
+  chmod.
+- **`--force` passed but nothing needs rewriting:** continue; produce no diff.
+- **Repo already set up by an older version:** fill in missing pieces
+  idempotently; leave existing files alone unless `--force` is set.
+- **Config values do not match the repo:** do not guess — write defaults and tell
+  the user to edit.
 
 ---
 
 ## Final Output
 
 ```
-INIT — <initialized | already-initialized | partial>
+INIT — <initialized | already-initialized | declined | stopped | partial>
 
-Repo: <repo root path>
+Repo: <admitted root> (source: <admission source>)
 Actions:
 - _local/ — <created | kept>
 - _local/config.md — <created | kept | overwritten>
@@ -283,19 +466,31 @@ Actions:
 - .git/info/exclude entry for _page-tests/ — <appended | already present | skipped>
 
 Registry: <resolved registry location> (<default | configured | rejected → fell back to default>)
+
+Discovery: <inventory confidence>, <n> pack(s) observed; recovery <recovery state>
+Packs:
+- <pluginId> — <relayed state> · <presence> · <enablement> · <selected | not selected | unavailable — disabled>
+  (repeat one line per discovered pack; "none" when none was discovered)
+
+Questions: <n> asked, <n> already resolved, <n> answered this run
+Plan: <applicability> · mode <mode> · <n> action(s) · planId <planId> (<factCount> facts)
+Apply: <applied | rejected | rolled-back | halted | not run — declined | not run — no change>
+  Reason: <closed reason token, or "—">
+  Applied: <n> · Deferred: <n> · Residue: <clean | retained — detail>
+
 Capability profiles:
 - <capability-name> — <seeded override [seeded by <model id>] | default in use | skipped — no template | skipped — unsafe capability name | skipped — unreadable manifest>
-  (repeat one line per registered capability; "none" when the registry is empty. Append `seeded by <model id>` **only** to a `seeded override` row whose profile format has no schema-permitted attribution slot — see Phase 2.5 step 5; every other outcome carries no separate seeding-model stamp (a seeded markdown/prose profile records its model in its own in-file `**Model:**` line).)
+  (one line per registered capability; "none" when the registry is empty. Append `seeded by <model id>` **only** to a `seeded override` row whose profile format has no schema-permitted attribution slot — Phase 9 step 1.)
 
 Verify Command: <detected command>
   Rule: <which detection rule matched — e.g. "rule 2: typecheck script in web/package.json">
   Rejected candidates: <list any other project roots that could have been picked, or "none">
 
 Next: review `_local/config.md` — confirm the Verify Command matches what you actually run to typecheck the project. Then `/wf:spec <task-id>`.
-  Need a tracker? Install and run the active tracker capability's own init for tracker-specific config (see the capability pack's own docs for the exact command).
 ```
 
-If detection fell back to rule 7 (TODO placeholder), replace the `Verify Command` line with:
+If detection fell back to the TODO placeholder, replace the `Verify Command` line with:
+
 ```
 Verify Command: ⚠ NOT DETECTED — edit _local/config.md before running any other wf:* skill
   Scanned: <list of package.json / framework-manifest paths found, or "none">
