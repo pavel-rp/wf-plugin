@@ -1691,7 +1691,8 @@ export class ResolverService {
   }
 
   /**
-   * The sole public mutator for an exact registry-only plan (WF-453).
+   * The sole public mutator for an exact approved plan (WF-453, widened by
+   * WF-454 from registry-only to registry + evidence + profile seeds).
    *
    * The whole method is one guarded, crash-recoverable journaled transaction. It
    * recovers BEFORE it decides anything, holds the exclusive lock across both the

@@ -1396,7 +1396,11 @@ export interface PlanInstallResponse {
 // ---------------------------------------------------------------------------
 //
 // THE FIRST PUBLIC MUTATOR. `apply_install` is the SOLE public registry mutator
-// and it applies EXACT REGISTRY-ONLY plans only. It extends the WF-447 lineage
+// and it applies EXACT plans only, over a bounded supported action set — the
+// registry pair (WF-453), widened by WF-454 with `evidence-seed` (binding seeds
+// only) and `answer-write`. The ENVELOPE SHAPE IS UNCHANGED by that widening:
+// the added targets ride the same journal and the same `applied[]`, so no
+// consumer of this family has to learn a new field. It extends the WF-447 lineage
 // rather than opening a second response family: it consumes the frozen
 // `PlanInstallResponse` and the frozen WF-451 recovery protocol unchanged, and
 // adds only the shapes below.

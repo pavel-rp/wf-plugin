@@ -13,11 +13,15 @@
 //
 // FOUR RULES ARE CORRECTNESS, NOT PREFERENCE:
 //
-//   1. REGISTRY-ONLY, AND EVERYTHING ELSE FAILS LOUDLY AND EARLY. The frozen plan
-//      schema has thirteen action kinds. Exactly two are applied here; one is
-//      DEFERRED with a named follow-up; the rest are refused before entry. A
-//      silently-ignored unsupported action would report success over a
-//      half-applied plan — the worst defect available to this item.
+//   1. A BOUNDED SUPPORTED SET, AND EVERYTHING ELSE FAILS LOUDLY AND EARLY. The
+//      frozen plan schema has thirteen action kinds. Exactly four are applied
+//      here (WF-454 widened WF-453's two); one is DEFERRED with a named
+//      follow-up; the rest are refused before entry. The screen covers the WHOLE
+//      action list AND the whole seed list before the first target is composed,
+//      so an unsupported kind can never follow a supported subset that was
+//      already written. A silently-ignored unsupported action would report
+//      success over a half-applied plan — the worst defect available to this
+//      item.
 //
 //   2. THE PLAN IS REVALIDATED AGAINST CURRENT FACTS, NEVER TRUSTED. The caller
 //      approves a `planId`; this module compares it to one recomputed from the
