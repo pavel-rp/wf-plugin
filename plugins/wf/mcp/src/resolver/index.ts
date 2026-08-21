@@ -89,11 +89,20 @@ export {
   composeSlotBody,
   planSlot,
   OVERRIDE_DIR,
+  PROJECT_OVERRIDE_DIR,
+  PACK_TIER_RANK,
+  PROJECT_TIER_RANK,
+  OVERRIDE_TIER_RANK,
+  PACK_CONTRIBUTION_TIER,
+  PROJECT_OVERRIDE_TIER,
+  LOCAL_OVERRIDE_TIER,
+  DEFAULT_TIERS,
 } from "./slot.js";
 export type {
   MergePolicy,
   SlotPlan,
   LocatedSlotInterface,
+  Tier,
 } from "./slot.js";
 export { buildSnapshot } from "./resolve.js";
 export type { ResolverIO, BuildSnapshotInputs } from "./resolve.js";

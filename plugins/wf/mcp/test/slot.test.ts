@@ -16,6 +16,17 @@
 //   - a declared pack body missing on disk → `unresolved` (ref-not-found);
 //   - tier insertion: a synthetic tier registered between local override and
 //     pack contribution resolves every pre-existing slot to the SAME winner.
+//
+// WF-443 adds the committed `.wf/` project-override tier at rank 20 and its own
+// matrix, driven through the PRODUCTION chain (`DEFAULT_TIERS`):
+//   - replace: project override beats the pack contribution, with project-tier
+//     provenance on the winning part;
+//   - replace: the personal `_local/` override still beats the project override;
+//   - append : pack parts (registry order) → project override → personal override;
+//   - a project override alone fills a slot with no pack contributor;
+//   - with NO project override present, every winner/part is byte-identical to
+//     the pre-WF-443 two-tier chain;
+//   - the rank interval invariant and the shipped chain's sorted composition.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -29,6 +40,9 @@ import {
   type SlotPlan,
   type Tier,
   DEFAULT_TIERS,
+  PACK_TIER_RANK,
+  PROJECT_TIER_RANK,
+  OVERRIDE_TIER_RANK,
 } from "../src/resolver/slot.js";
 import type { ResolverSnapshot } from "../src/resolver/types.js";
 
@@ -41,7 +55,9 @@ const NOTES_ALPHA = "NOTES_ALPHA_body";
 const NOTES_BETA = "NOTES_BETA_body";
 const OVERRIDE_REVIEW = "OVERRIDE_REVIEW_body";
 const OVERRIDE_NOTES = "OVERRIDE_NOTES_body";
-const SYNTH_MID = "SYNTHETIC_C020_body";
+const PROJECT_REVIEW = "PROJECT_REVIEW_body";
+const PROJECT_NOTES = "PROJECT_NOTES_body";
+const SYNTH_MID = "SYNTHETIC_FUTURE_body";
 
 // alpha: owns `ship.review` (replace) + contributes to `plan.notes` (append).
 const MANIFEST_ALPHA = `# alpha capability
@@ -325,14 +341,16 @@ function readAndCompose(
   };
 }
 
-/** A synthetic C020-style tier at rank 20 (strictly between pack 10 and override
- *  30). Contributes `_local/synthetic/<id>.md` when present, else nothing. */
+/** A synthetic further tier at rank 25 — strictly between the committed project
+ *  override (20) and the personal override (30), proving the chain still admits a
+ *  new tier now that WF-443 has taken rank 20. Contributes
+ *  `_local/synthetic/<id>.md` when present, else nothing. */
 const SYNTHETIC_TIER: Tier = {
-  name: "synthetic-c020",
-  rank: 20,
+  name: "synthetic-future",
+  rank: 25,
   gather(ctx): SlotContribution[] {
     const path = normalizeSlashes(joinSlash(ctx.workspaceRoot, "_local/synthetic", `${ctx.skillPoint}.md`));
-    return [{ tier: "synthetic-c020", rank: 20, source: "synthetic-c020", path, optional: true }];
+    return [{ tier: "synthetic-future", rank: 25, source: "synthetic-future", path, optional: true }];
   },
 };
 
@@ -365,9 +383,9 @@ test("a synthetic tier WITH content lands between the pack contributions and the
   const withSynthetic: Tier[] = [...DEFAULT_TIERS, SYNTHETIC_TIER];
   const composed = readAndCompose(planSlot({ skill: "plan", point: "notes" }, snapshot, WS, withSynthetic), files);
   assert.equal(composed.status, "composed");
-  // pack contributions (registry order) → synthetic (rank 20) → override (rank 30, last).
+  // pack contributions (registry order) → synthetic (rank 25) → override (rank 30, last).
   assert.equal(composed.content, [NOTES_ALPHA, NOTES_BETA, SYNTH_MID, OVERRIDE_NOTES].join("\n\n"));
-  assert.deepEqual(composed.sources, ["alpha", "beta", "synthetic-c020", "local-override"]);
+  assert.deepEqual(composed.sources, ["alpha", "beta", "synthetic-future", "local-override"]);
 });
 
 test("with a synthetic tier present, a replace override still outranks it", () => {
@@ -379,5 +397,141 @@ test("with a synthetic tier present, a replace override still outranks it", () =
   const withSynthetic: Tier[] = [...DEFAULT_TIERS, SYNTHETIC_TIER];
   const composed = readAndCompose(planSlot({ skill: "ship", point: "review" }, snapshot, WS, withSynthetic), files);
   assert.equal(composed.status, "composed");
-  assert.equal(composed.content, OVERRIDE_REVIEW, "override (rank 30) beats the synthetic tier (rank 20)");
+  assert.equal(composed.content, OVERRIDE_REVIEW, "override (rank 30) beats the synthetic tier (rank 25)");
+});
+
+// --- WF-443: the committed `.wf/` project-override tier ---------------------
+//
+// The tier sits at rank 20, strictly between pack contribution (10) and the
+// personal `_local/` override (30). These tests drive the PRODUCTION chain
+// (`DEFAULT_TIERS`, via ResolverService) — not an injected synthetic one — so they
+// assert the shipped precedence, not a hypothetical.
+
+function projectOverridePath(skillPoint: string): string {
+  return normalizeSlashes(joinSlash(WS, ".wf/slots", `${skillPoint}.md`));
+}
+
+test("the project tier's rank sits strictly between the pack and personal-override ranks", () => {
+  assert.ok(
+    PACK_TIER_RANK < PROJECT_TIER_RANK && PROJECT_TIER_RANK < OVERRIDE_TIER_RANK,
+    "the committed project tier must rank above every pack contribution and below the personal override",
+  );
+  // The shipped chain is exactly the three served tiers, and sorting it by rank
+  // is what produces the composition order — no pairwise special case anywhere.
+  assert.deepEqual(
+    [...DEFAULT_TIERS].sort((a, b) => a.rank - b.rank).map((t) => t.name),
+    ["pack-contribution", "project-override", "local-override"],
+  );
+});
+
+test("replace slot: a committed project override beats the pack contribution", () => {
+  const files = baseFiles();
+  files.set(projectOverridePath("ship.review"), PROJECT_REVIEW);
+  const svc = new ResolverService(makePorts(files));
+  const r = svc.resolveContent({ class: "slot", skill: "ship", point: "review" });
+  assert.equal(r.status, "composed");
+  if (r.status !== "composed") return;
+  assert.equal(r.policy, "replace");
+  assert.equal(r.content, PROJECT_REVIEW, "project content wins over pack content");
+  // Provenance: the winning part is attributed to the project tier, not the pack.
+  const winner = r.parts[r.parts.length - 1];
+  assert.equal(winner.tier, "project-override");
+  assert.equal(winner.source, "project-override");
+  assert.equal(winner.path, projectOverridePath("ship.review"));
+});
+
+test("replace slot: a personal override still beats a committed project override", () => {
+  const files = baseFiles();
+  files.set(projectOverridePath("ship.review"), PROJECT_REVIEW);
+  files.set(overridePath("ship.review"), OVERRIDE_REVIEW);
+  const svc = new ResolverService(makePorts(files));
+  const r = svc.resolveContent({ class: "slot", skill: "ship", point: "review" });
+  assert.equal(r.status, "composed");
+  if (r.status !== "composed") return;
+  assert.equal(r.content, OVERRIDE_REVIEW, "personal content remains highest precedence");
+  assert.deepEqual(
+    r.parts.map((p) => p.tier),
+    ["pack-contribution", "project-override", "local-override"],
+  );
+});
+
+test("append slot: the project override composes after the pack parts and before the personal one", () => {
+  const files = baseFiles();
+  files.set(projectOverridePath("plan.notes"), PROJECT_NOTES);
+  files.set(overridePath("plan.notes"), OVERRIDE_NOTES);
+  const svc = new ResolverService(makePorts(files));
+  const r = svc.resolveContent({ class: "slot", skill: "plan", point: "notes" });
+  assert.equal(r.status, "composed");
+  if (r.status !== "composed") return;
+  assert.equal(r.policy, "append");
+  assert.equal(
+    r.content,
+    [NOTES_ALPHA, NOTES_BETA, PROJECT_NOTES, OVERRIDE_NOTES].join("\n\n"),
+    "registry-ordered pack parts, then the committed project part, then the personal override",
+  );
+  assert.deepEqual(
+    r.parts.map((p) => p.source),
+    ["alpha", "beta", "project-override", "local-override"],
+  );
+});
+
+test("append slot: a project override with no personal override composes last", () => {
+  const files = baseFiles();
+  files.set(projectOverridePath("plan.notes"), PROJECT_NOTES);
+  const svc = new ResolverService(makePorts(files));
+  const r = svc.resolveContent({ class: "slot", skill: "plan", point: "notes" });
+  assert.equal(r.status, "composed");
+  if (r.status !== "composed") return;
+  assert.equal(r.content, [NOTES_ALPHA, NOTES_BETA, PROJECT_NOTES].join("\n\n"));
+  assert.deepEqual(
+    r.parts.map((p) => p.source),
+    ["alpha", "beta", "project-override"],
+  );
+});
+
+test("a project override alone fills a slot no capability contributes to", () => {
+  const files = baseFiles();
+  files.set(projectOverridePath("solo.point"), PROJECT_REVIEW);
+  const svc = new ResolverService(makePorts(files));
+  const r = svc.resolveContent({ class: "slot", skill: "solo", point: "point" });
+  assert.equal(r.status, "composed");
+  if (r.status !== "composed") return;
+  assert.equal(r.content, PROJECT_REVIEW);
+  assert.equal(r.parts.length, 1);
+  assert.equal(r.parts[0].tier, "project-override");
+});
+
+test("with NO project override present, every winner and part is byte-identical to before the tier existed", () => {
+  // The pre-WF-443 chain, reconstructed exactly.
+  const legacyChain: Tier[] = [...DEFAULT_TIERS].filter((t) => t.name !== "project-override");
+  assert.equal(legacyChain.length, 2, "the legacy chain is the two original tiers");
+
+  const files = baseFiles();
+  files.set(overridePath("ship.review"), OVERRIDE_REVIEW);
+  files.set(overridePath("plan.notes"), OVERRIDE_NOTES);
+  const snapshot = buildSnapshot(files);
+
+  for (const ref of [
+    { skill: "ship", point: "review" },
+    { skill: "plan", point: "notes" },
+    { skill: "nobody", point: "here" },
+  ]) {
+    const legacy = readAndCompose(planSlot(ref, snapshot, WS, legacyChain), files);
+    const shipped = readAndCompose(planSlot(ref, snapshot, WS), files);
+    assert.deepEqual(
+      shipped,
+      legacy,
+      `adding the project tier changed ${ref.skill}.${ref.point} with no project override present`,
+    );
+  }
+});
+
+test("the unfilled recovery names all three fill locations", () => {
+  const svc = new ResolverService(makePorts(baseFiles()));
+  const r = svc.resolveContent({ class: "slot", skill: "nobody", point: "here" });
+  assert.equal(r.status, "unfilled");
+  if (r.status !== "unfilled") return;
+  assert.match(r.recovery, /\.wf\/slots\/nobody\.here\.md/, "names the committed project override");
+  assert.match(r.recovery, /_local\/slots\/nobody\.here\.md/, "names the personal override");
+  assert.match(r.recovery, /contributing capability/, "names the pack contribution");
 });

@@ -55,6 +55,10 @@ export interface SourceFingerprint {
     | "slot-contribution"
     /** A personal `_local/slots/<skill>.<point>.md` slot override (WF-329). */
     | "slot-override"
+    /** A committed `.wf/slots/<skill>.<point>.md` project slot override (WF-443)
+     *  — hashed, never stored, so a committed project customization invalidates
+     *  the snapshot exactly as a personal override does. */
+    | "slot-project-override"
     /** A per-skill `_local/profiles/<skill>.settings.json` override (WF-329). */
     | "settings-override"
     /** The composed constitution record `_local/constitution.md` (WF-334) —
@@ -479,13 +483,18 @@ export interface SlotProvenanceRecord {
   policy: string | null;
   /** True when a personal `_local/slots/<skill>.<point>.md` override is present. */
   overridePresent: boolean;
+  /** True when a committed `.wf/slots/<skill>.<point>.md` project override is
+   *  present (WF-443). Reported separately from `overridePresent` so a reader can
+   *  tell a shared, checked-in customization from a personal, machine-local one. */
+  projectOverridePresent: boolean;
   /** The capabilities contributing a pack slot fragment, in registry order. */
   contributors: string[];
   /** The tier the winning body comes from. */
-  tier: "local-override" | "pack-contribution" | "unfilled";
-  /** The winning source: `local-override`, the winning capability name, or
-   *  `null` when unfilled. For `append`, the highest-precedence pack contributor
-   *  (last in registry order) when no override is present. */
+  tier: "local-override" | "project-override" | "pack-contribution" | "unfilled";
+  /** The winning source: `local-override`, `project-override`, the winning
+   *  capability name, or `null` when unfilled. For `append`, the
+   *  highest-precedence present tier's source — the personal override, else the
+   *  project override, else the last pack contributor in registry order. */
   winningSource: string | null;
 }
 

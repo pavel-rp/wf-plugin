@@ -1236,6 +1236,10 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   // the snapshot on the next query (recorded by their exact path, never a walk).
   "slot-contribution",
   "slot-override",
+  // WF-443: the committed `.wf/` project slot override joins the same re-read
+  // set, so a checked-in customization invalidates the snapshot on the next
+  // query exactly as a personal override does.
+  "slot-project-override",
   "settings-override",
   // WF-334: the composed constitution record joins the re-read set — editing a
   // project clause (or re-composing capability articles into it) invalidates the
@@ -1427,6 +1431,7 @@ function locateInterface(skill, roots, readFile, joinSlash2) {
 
 // src/resolver/slot.ts
 var OVERRIDE_DIR = "_local/slots";
+var PROJECT_OVERRIDE_DIR = ".wf/slots";
 function isSegment(s) {
   return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
 }
@@ -1960,19 +1965,47 @@ function buildSnapshot(inputs, io) {
       });
     }
   }
+  const projectOverrideDir = joinSlash(workspaceRoot2, PROJECT_OVERRIDE_DIR);
+  const projectOverrideFiles = io.listFiles ? io.listFiles(projectOverrideDir) : [];
+  const projectOverridePresent = /* @__PURE__ */ new Set();
+  for (const filename of [...projectOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue;
+    const overridePath = joinSlash(projectOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-project-override", `${PROJECT_OVERRIDE_DIR}/${filename}`, overrideRaw)
+    );
+    projectOverridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-project-override",
+        message: `project slot override \`${PROJECT_OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
   const slotIds = /* @__PURE__ */ new Set([
     ...packSlots.map((p) => p.skillPoint),
-    ...overridePresent
+    ...overridePresent,
+    ...projectOverridePresent
   ]);
   const slots = [...slotIds].sort().map((skillPoint) => {
     const contributors = packSlots.filter((p) => p.skillPoint === skillPoint).map((p) => p.capability);
     const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
     const hasOverride = overridePresent.has(skillPoint);
+    const hasProjectOverride = projectOverridePresent.has(skillPoint);
     let tier;
     let winningSource;
     if (hasOverride) {
       tier = "local-override";
       winningSource = "local-override";
+    } else if (hasProjectOverride) {
+      tier = "project-override";
+      winningSource = "project-override";
     } else if (contributors.length > 0) {
       tier = "pack-contribution";
       winningSource = contributors[contributors.length - 1];
@@ -1984,6 +2017,7 @@ function buildSnapshot(inputs, io) {
       skillPoint,
       policy: policyOwner ? policyOwner.policy : null,
       overridePresent: hasOverride,
+      projectOverridePresent: hasProjectOverride,
       contributors,
       tier,
       winningSource

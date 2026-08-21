@@ -1,6 +1,6 @@
 # Capability registry + SDD phases + contribution taxonomy (the v2 port)
 
-**Version:** 2.15.0 (WF-442 — ordered payload declarations and deterministic portable/machine-local/artifact lifecycle evidence policy; WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`; WF-327 — filled-slot composition: `resolve_content` gains a `slot` content class that linearizes every contribution to a `<skill>.<point>` under an **ordered tier chain** (personal `_local/slots/<skill>.<point>.md` override > pack contribution > inline default), serving **exactly one** composed body — `replace` = the single highest-precedence body (inline default superseded), `append` = registry-ordered concatenation with the override last (inline default kept as the first, body-supplied part); a typed `unfilled` outcome directs the caller to the inline default; the chain admits a future C020 tier between local override and pack contribution with no contract change; composition is code in the bundled resolver runtime, so the model never arbitrates between fragments; WF-328 — **per-skill settings resolution**: a slotted skill's declared `## Settings` keys resolve through the SAME seeded-override pattern as capability profiles (hybrid precedence override > declared default, seeded only on divergence), re-keyed per skill on the existing `_local/profiles/` store as `_local/profiles/<skill>.settings.json`; a `resolve_settings` query serves the override-merged VALUES (a skill with no override resolves to its declared defaults, a divergent override value wins per key), and refresh-time validation rejects an override carrying a key the skill's `interface.md` does not declare LOUDLY — a `registry-invalid` error naming the key and the skill — homed at snapshot refresh, not `validate-registry.sh`, because it depends on the WF-326 interface declarations the registry validator runs without; settings files are not yet fingerprinted into the snapshot (deferred to WF-329); WF-329 — **fingerprint contributions and overrides, fail orphans loudly, expose per-slot provenance**: slot-contribution bodies, personal `_local/slots/<skill>.<point>.md` overrides, and `_local/profiles/<skill>.settings.json` settings overrides join the snapshot's fingerprinted `sources` (hashed not stored), so editing any invalidates the snapshot on the next query; refresh-time orphan validation fails LOUDLY in **both** directions — an override targeting a `skill.point` no active `## Slots` interface declares (`slot/orphaned-override`, naming the override file + missing slot id) and a registered `slot` manifest row targeting an undeclared `skill.point` (`slot/orphaned-contribution`, naming the capability + missing slot id), each a `registry-invalid` error stating a `/wf:resolve` recovery path, homed at refresh because it depends on the WF-326 interface declarations `validate-registry.sh` runs without; `resolve_inspect` gains per-slot provenance rows (slot id → winning source → tier + override presence) and the per-skill settings-override presence index; the fix reuses the existing `inspect_pack`/snapshot lifecycle exactly (no parallel freshness mechanism), covers id-level orphans only (semantic drift stays watch-list territory), and bumps the snapshot schema to 2 + the resolver generator to 0.3.0)
+**Version:** 2.16.0 (WF-443 — the committed `.wf/` project-override slot tier: `resolve_content`'s `slot` class gains a third served tier at rank 20, strictly between the pack contribution (10) and the personal `_local/` override (30), realizing the interval the WF-327 chain reserved — project content wins over pack content for both `replace` and `append` with its own `project-override` provenance, personal content remains highest precedence, and a project shipping no `.wf/slots/` override resolves byte-identically to before; `.wf/slots/<skill>.<point>.md` bodies join the fingerprinted `sources` as a `slot-project-override` kind and gain a symmetric `slot/orphaned-project-override` refresh validation; `SlotProvenanceRecord` widens its `tier` union and adds `projectOverridePresent`; added as ONE new ranked `Tier` with no contract change and no change to any existing tier, contribution, or override file, leaving the interval open on both sides for a further tier; WF-442 — ordered payload declarations and deterministic portable/machine-local/artifact lifecycle evidence policy; WF-21; WF-99 — the plugin-anchored `Path` shape is now runtime-resolved via the `## Plugin Roots` mapping; WF-120 — the delivery provider surface; WF-121 — the tracker provider surface; WF-179 — the last-commit-timestamp-query read operation; WF-199 — recorded-root-first plugin-root resolution with install-manifest self-heal fallback and the hedged registered-but-unrecoverable residual diagnosis; WF-208 — ops/reference split: the runtime-followed text is extracted to `capability-registry.ops.md` (v1.0.0), leaving this contract as the reference half; WF-157 — the delivery provider surface gains six operations: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-158 — the tracker provider surface gains three read-only query operations: `list_by_status`, `list_milestones`, `list_cycles`; WF-176 — the delivery provider surface gains one read operation: `branch-changes-read` (branch-changes enumeration); WF-154 — the `pre-commit` self-review seam: a new operation-time injection point fired by the commit path immediately before a commit is recorded, reusing the `finding` contribution kind; WF-239 — `article` removed from the contribution taxonomy (a constitution clause is the `article:` manifest KEY, not a fragments-table row): the taxonomy is now six kinds and the manifest schema documents the `article:` key; WF-315 — the tracker provider surface gains one read-only query operation: `list_blockers` (the set of task ids that block a given task, read from the tracker's own dependency relations); WF-323 — `slot` added as the **seventh** contribution kind: a per-skill composition-surface contribution scoped by a `skill.point` token with a declared per-slot merge policy (`replace` default = single-owner/partition-like, `append` = list-like/aggregate); a slot targets a skill point, not an SDD phase, so its Fragments row carries `—` in the phase column; WF-324 — the delivery provider surface gains two review-thread operations: `review-threads-read` (a HEAD_SHA-scoped read of review threads — thread node id, file/line anchor, resolved/unresolved state, body — degrading to a **typed degraded-empty** that can never be presented as a performed HEAD_SHA read-back) and `review-thread-reply` (a per-thread reply write keyed by the thread node id), complementing the existing `pr-comments-read` / `review-thread-resolve` / `pr-comment-post` ops; WF-326 — the **skill interface declaration** (`skills/<name>/interface.md`) formalizes a skill's externally-bindable surface (invocation shape, terminal block, declared slots + merge policies, declared settings keys, safety rules) as a machine-readable sidecar a resolver reads without touching the SKILL.md body, and defines the grep-validatable `<!-- wf:slot … -->` body-marker syntax — inline-default region + no-improvisation rule — CI-enforced by `skill-slot-marker-lint.sh`; WF-327 — filled-slot composition: `resolve_content` gains a `slot` content class that linearizes every contribution to a `<skill>.<point>` under an **ordered tier chain** (personal `_local/slots/<skill>.<point>.md` override > pack contribution > inline default), serving **exactly one** composed body — `replace` = the single highest-precedence body (inline default superseded), `append` = registry-ordered concatenation with the override last (inline default kept as the first, body-supplied part); a typed `unfilled` outcome directs the caller to the inline default; the chain admits a future C020 tier between local override and pack contribution with no contract change; composition is code in the bundled resolver runtime, so the model never arbitrates between fragments; WF-328 — **per-skill settings resolution**: a slotted skill's declared `## Settings` keys resolve through the SAME seeded-override pattern as capability profiles (hybrid precedence override > declared default, seeded only on divergence), re-keyed per skill on the existing `_local/profiles/` store as `_local/profiles/<skill>.settings.json`; a `resolve_settings` query serves the override-merged VALUES (a skill with no override resolves to its declared defaults, a divergent override value wins per key), and refresh-time validation rejects an override carrying a key the skill's `interface.md` does not declare LOUDLY — a `registry-invalid` error naming the key and the skill — homed at snapshot refresh, not `validate-registry.sh`, because it depends on the WF-326 interface declarations the registry validator runs without; settings files are not yet fingerprinted into the snapshot (deferred to WF-329); WF-329 — **fingerprint contributions and overrides, fail orphans loudly, expose per-slot provenance**: slot-contribution bodies, personal `_local/slots/<skill>.<point>.md` overrides, and `_local/profiles/<skill>.settings.json` settings overrides join the snapshot's fingerprinted `sources` (hashed not stored), so editing any invalidates the snapshot on the next query; refresh-time orphan validation fails LOUDLY in **both** directions — an override targeting a `skill.point` no active `## Slots` interface declares (`slot/orphaned-override`, naming the override file + missing slot id) and a registered `slot` manifest row targeting an undeclared `skill.point` (`slot/orphaned-contribution`, naming the capability + missing slot id), each a `registry-invalid` error stating a `/wf:resolve` recovery path, homed at refresh because it depends on the WF-326 interface declarations `validate-registry.sh` runs without; `resolve_inspect` gains per-slot provenance rows (slot id → winning source → tier + override presence) and the per-skill settings-override presence index; the fix reuses the existing `inspect_pack`/snapshot lifecycle exactly (no parallel freshness mechanism), covers id-level orphans only (semantic drift stays watch-list territory), and bumps the snapshot schema to 2 + the resolver generator to 0.3.0)
 **Status:** reference half of the port — rationale, history, authoring guidance, validation detail; **never read at boot**. The runtime-read half — every runtime-followed schema, guard, error path, outcome mapping, and degradation rule — is `capability-registry.ops.md` (v1.0.0), the normative home a boot follows
 **Supersedes:** `core-extension.contract.md` (v1.0.0, WF-1) — the single-selector, three-named-seam port, kept as the frozen N=1 base
 **Runtime half:** generalised separately by WF-22 in `invocation-runtime.contract.md` (v2.5.0) — which supersedes `invocation-mechanism.contract.md` (v1.0.0/WF-10, kept as the N=1 substrate)
@@ -1110,25 +1110,36 @@ never a set of competing fragments (locked decision 2 — the model never choose
 between fragments).
 
 - **The precedence is an ordered tier chain, not hardcoded pairwise rules.** The
-  committed tiers, highest precedence first, are: the **personal `_local/` override**
-  > the **pack contribution(s)** > the **inline default** (which lives in the body
-  and is never read by the resolver — `resolve_content` refuses skill-body reads).
-  The chain is authored as a list of ranked tiers so a **future tier (C020's
-  committed tier) inserts strictly between the local override and the pack
-  contribution with no contract change and no change to any existing contribution
-  or override file** — the tier-insertion test proves every pre-existing slot
-  resolves to the same winner after a synthetic intermediate tier is registered.
+  tiers, highest precedence first, are: the **personal `_local/` override** > the
+  **committed `.wf/` project override** (WF-443) > the **pack contribution(s)** >
+  the **inline default** (which lives in the body and is never read by the
+  resolver — `resolve_content` refuses skill-body reads). The chain is authored as
+  a list of ranked tiers (pack 10, project 20, personal 30), which is exactly how
+  WF-443's project tier was added: **one new `Tier` at a free rank, with no
+  contract change and no change to any existing tier, contribution, or override
+  file**. The tier-insertion test proves every pre-existing slot resolves to the
+  same winner after a further intermediate tier is registered, and the interval
+  remains open on both sides for any tier after it.
 - **The personal override** is a gitignored, per-machine file, **one per point at
   `_local/slots/<skill>.<point>.md`** (`_local/` stays gitignored wholesale, per
-  charter Assumption #1 — nothing override-related is ever committed downstream).
-  Its presence fills the slot at the highest precedence; its absence is simply "no
+  charter Assumption #1 — nothing *personal* is ever committed downstream). Its
+  presence fills the slot at the highest precedence; its absence is simply "no
   override".
+- **The project override** (WF-443) is a **committed** file, one per point at
+  **`.wf/slots/<skill>.<point>.md`** — the same checked-in `.wf/` home the
+  install-state ledger already uses, reused rather than a second convention. It is
+  how a maintainer commits shared workflow customization the whole team receives on
+  checkout, while every teammate keeps personal override authority above it. It is
+  a **read** home for the resolver: the tier grants no skill a write scope outside
+  `_local/`. Its absence is simply "no project override", which is why a project
+  that ships none resolves exactly as it did before the tier existed.
 - **Linearization by merge policy.** A **`replace`** slot serves the **single
-  highest-precedence present** contribution — the override when present, else the
-  lone pack contribution. An **`append`** slot serves **one** composed body:
-  every present contribution concatenated in ascending tier rank — pack
-  contributions in **registry order** first, the local override **last** — joined
-  by exactly one blank line. Either way, exactly one body is served.
+  highest-precedence present** contribution — the personal override when present,
+  else the project override, else the lone pack contribution. An **`append`** slot
+  serves **one** composed body: every present contribution concatenated in
+  ascending tier rank — pack contributions in **registry order** first, then the
+  project override, the personal override **last** — joined by exactly one blank
+  line. Either way, exactly one body is served.
 - **The inline default's fate in a filled composition (the bounded spec-phase
   decision).** For **`replace`**, the inline default is **superseded wholesale** —
   the served body replaces the marker region. For **`append`**, the inline default
@@ -1140,8 +1151,11 @@ between fragments).
   function of registry + overrides), exactly one served body, and an **unfilled**
   slot still executing *exactly* the inline default.
 - **Typed outcomes preserve the content surface's degradation discipline.** A
-  filled slot returns `{status: composed, content, policy, parts}`; a slot with no
-  contribution **and** no override returns the typed `{status: unfilled}` (no body,
+  filled slot returns `{status: composed, content, policy, parts}`, each part
+  carrying the `tier` it came from (`pack-contribution` / `project-override` /
+  `local-override`) and its `source`; a slot with no
+  contribution **and** no override at either override tier returns the typed
+  `{status: unfilled}` (no body,
   no wrong-path fall-through) directing the caller to run the inline-default region
   unchanged; a dangling contributor or a declared pack body missing on disk returns
   `{status: unresolved}` (registry-invalid / ref-not-found) with a `/wf:resolve`
@@ -1158,16 +1172,20 @@ the default. WF-329 closes both gaps on the **existing** fingerprint/snapshot
 lifecycle (no parallel freshness mechanism):
 
 - **Fingerprinted inputs.** Every pack slot-contribution body (a `slot-contribution`
-  source) and every personal `_local/slots/<skill>.<point>.md` override (a
-  `slot-override` source) join the snapshot's `sources`, hashed not stored (the
-  body-free invariant holds). Editing either invalidates the snapshot on the next
+  source), every personal `_local/slots/<skill>.<point>.md` override (a
+  `slot-override` source), and every committed `.wf/slots/<skill>.<point>.md`
+  project override (a `slot-project-override` source, WF-443) join the snapshot's
+  `sources`, hashed not stored (the
+  body-free invariant holds). Editing any invalidates the snapshot on the next
   query, exactly as editing a manifest or profile does.
 - **Orphan validation at refresh, both directions.** A slot is *declared* only by a
   skill's `## Slots` interface table (WF-326). The refresh fails **loudly** — a
   `registry-invalid` error stating a `/wf:resolve` recovery path — when either side
-  targets a `skill.point` no active skill interface declares: **(a)** an override
-  file whose slot no interface declares (`slot/orphaned-override`, naming the
+  targets a `skill.point` no active skill interface declares: **(a)** a personal
+  override file whose slot no interface declares (`slot/orphaned-override`, naming the
   override file + the missing slot id — it would silently lose to the default);
+  **(a2)** a committed project override whose slot no interface declares
+  (`slot/orphaned-project-override`, symmetric with (a) — WF-443);
   **(b)** a registered `slot` manifest row whose slot no interface declares
   (`slot/orphaned-contribution`, naming the contributing capability + the missing
   slot id — it would silently never fire). Both checks home at **refresh**, not
@@ -1178,8 +1196,11 @@ lifecycle (no parallel freshness mechanism):
   solved here.
 - **Per-slot provenance.** `resolve_inspect`, called with
   `workspaceRoot: <current Agent/session absolute workspace directory>`, lists each composed slot with its
-  **winning source** and the **tier** it won from (`local-override` / `pack-contribution`
-  / `unfilled`), the override-presence flag, and the ordered contributors — full
+  **winning source** and the **tier** it won from (`local-override` /
+  `project-override` / `pack-contribution`
+  / `unfilled`), a presence flag for **each** override tier (`overridePresent` and
+  `projectOverridePresent`, so a reader can see when a project override was masked
+  by a personal one), and the ordered contributors — full
   composition provenance for anyone debugging what a slot resolved to — plus the
   per-skill settings-override presence index.
 

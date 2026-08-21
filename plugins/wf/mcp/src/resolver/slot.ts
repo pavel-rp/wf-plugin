@@ -11,12 +11,15 @@
 //
 // Precedence is an ORDERED TIER CHAIN, not a set of hardcoded pairwise rules:
 //   personal `_local/` override  (rank 30, highest)
+//   > committed `.wf/` project override (rank 20 — WF-443)
 //   > pack contribution          (rank 10)
 //   > inline default             (in the SKILL.md body; NOT served here)
-// A future tier (C020's committed tier) inserts between local override and pack
-// contribution at a rank strictly between 10 and 30 with NO contract change and
-// NO change to existing contributions/overrides or their files (proven by the
-// tier-insertion test). The inline default is never read by the resolver
+// The committed project tier (WF-443) is the realization of the interval this
+// chain reserved: it was added by appending ONE `Tier` at a rank strictly between
+// 10 and 30, with NO contract change and NO change to either pre-existing tier,
+// to any contribution or override, or to their files (proven by the
+// tier-insertion test). The interval remains open on both sides for any further
+// tier. The inline default is never read by the resolver
 // (`resolve_content` refuses skill-body reads): the resolver serves only the
 // pack/override contributions, and the body's inline-default region is what runs
 // when the slot is UNFILLED (a typed "unfilled" outcome directs the caller there)
@@ -28,9 +31,10 @@
 //   - `replace` : the single highest-precedence present contribution is served;
 //                 the inline default is SUPERSEDED wholesale.
 //   - `append`  : all present contributions are concatenated in ascending tier
-//                 rank (pack contributions in registry order first, the local
-//                 override LAST), joined by one blank line; the body's inline
-//                 default remains the FIRST part and runs before this served body.
+//                 rank (pack contributions in registry order first, then the
+//                 committed project override, the personal local override LAST),
+//                 joined by one blank line; the body's inline default remains the
+//                 FIRST part and runs before this served body.
 //
 // This module is pure: `planSlot` reads only the body-free snapshot + the ref and
 // yields a resolution PLAN (candidate paths per tier). The service reads those
@@ -49,8 +53,23 @@ export type MergePolicy = "replace" | "append";
  *  `_local/slots/<skill>.<point>.md`. */
 export const OVERRIDE_DIR = "_local/slots";
 
+/** The COMMITTED, per-project location of a shared slot override, relative to the
+ *  workspace root (WF-443). Unlike `_local/` — gitignored wholesale, so personal
+ *  and per-machine — `.wf/` is checked in, so a maintainer's customization travels
+ *  with the repository and the whole team receives it on checkout. This is the
+ *  same committed home the install-state ledger already uses (`.wf/`), reused
+ *  rather than a second convention. One file per point:
+ *  `.wf/slots/<skill>.<point>.md`. Read-only to the resolver: adding this tier
+ *  grants no skill a write scope outside `_local/`. */
+export const PROJECT_OVERRIDE_DIR = ".wf/slots";
+
 /** The rank of the personal-override tier — the highest precedence tier. */
 export const OVERRIDE_TIER_RANK = 30;
+/** The rank of the committed project-override tier (WF-443) — strictly between
+ *  {@link PACK_TIER_RANK} and {@link OVERRIDE_TIER_RANK}, so project content wins
+ *  over pack content while a personal override still wins over both. The interval
+ *  stays open on both sides for any further tier. */
+export const PROJECT_TIER_RANK = 20;
 /** The rank of the pack-contribution tier — the lowest served tier. */
 export const PACK_TIER_RANK = 10;
 
@@ -305,11 +324,38 @@ export const LOCAL_OVERRIDE_TIER: Tier = {
   },
 };
 
-/** The default ordered tier chain (WF-327's committed three-tier precedence,
- *  minus the never-served inline default). C020 inserts its tier between these
- *  two at a rank strictly between {@link PACK_TIER_RANK} and
- *  {@link OVERRIDE_TIER_RANK}. */
-export const DEFAULT_TIERS: readonly Tier[] = [PACK_CONTRIBUTION_TIER, LOCAL_OVERRIDE_TIER];
+/** The committed project-override tier (WF-443): the single `.wf/slots/<id>.md`
+ *  candidate, checked in so the whole team receives it. Ranks above every pack
+ *  contribution and below the personal override. Optional — absence means "no
+ *  project override", which is why a project that ships none resolves exactly as
+ *  it did before this tier existed. */
+export const PROJECT_OVERRIDE_TIER: Tier = {
+  name: "project-override",
+  rank: PROJECT_TIER_RANK,
+  gather(ctx) {
+    return [
+      {
+        tier: "project-override",
+        rank: PROJECT_TIER_RANK,
+        source: "project-override",
+        path: joinSlash(ctx.workspaceRoot, PROJECT_OVERRIDE_DIR, `${ctx.skillPoint}.md`),
+        optional: true,
+      },
+    ];
+  },
+};
+
+/** The default ordered tier chain (the served precedence, minus the never-served
+ *  inline default): pack contribution < committed project override < personal
+ *  local override. Array order is cosmetic — {@link planSlot} sorts by rank — but
+ *  it is written in ascending precedence to match the composition order. A further
+ *  tier is added the same way WF-443's was: append one `Tier` at a free rank, with
+ *  no change to any existing tier, contribution, or override file. */
+export const DEFAULT_TIERS: readonly Tier[] = [
+  PACK_CONTRIBUTION_TIER,
+  PROJECT_OVERRIDE_TIER,
+  LOCAL_OVERRIDE_TIER,
+];
 
 /** Resolve a slot ref to a composition plan. Pure — reads only the body-free
  *  snapshot. The `tiers` chain is injectable so the tier-insertion test can prove
@@ -397,10 +443,13 @@ export interface PresentPart {
  * Compose the single served body from the present parts, under the merge policy.
  * The parts arrive in ascending tier rank (the plan's order).
  *   - `replace`: the highest-rank present part (the last in the list) — the
- *     override when present, else the single pack contribution.
+ *     personal `_local/` override when present, else the committed `.wf/` project
+ *     override, else the single pack contribution.
  *   - `append` : every present part concatenated in order, joined by one blank
- *     line — pack contributions (registry order) first, the override last.
- * Pure and deterministic: the body is a function of the parts alone.
+ *     line — pack contributions (registry order) first, then the committed
+ *     project override, the personal override last.
+ * Pure and deterministic: the body is a function of the parts alone, and it stays
+ * generic over the chain — a further tier changes no line of this function.
  */
 export function composeSlotBody(policy: MergePolicy, present: PresentPart[]): string {
   if (present.length === 0) return "";

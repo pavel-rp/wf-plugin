@@ -21904,6 +21904,10 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   // the snapshot on the next query (recorded by their exact path, never a walk).
   "slot-contribution",
   "slot-override",
+  // WF-443: the committed `.wf/` project slot override joins the same re-read
+  // set, so a checked-in customization invalidates the snapshot on the next
+  // query exactly as a personal override does.
+  "slot-project-override",
   "settings-override",
   // WF-334: the composed constitution record joins the re-read set — editing a
   // project clause (or re-composing capability articles into it) invalidates the
@@ -22343,7 +22347,9 @@ function locateInterface(skill, roots, readFile, joinSlash2) {
 
 // src/resolver/slot.ts
 var OVERRIDE_DIR = "_local/slots";
+var PROJECT_OVERRIDE_DIR = ".wf/slots";
 var OVERRIDE_TIER_RANK = 30;
+var PROJECT_TIER_RANK = 20;
 var PACK_TIER_RANK = 10;
 var APPEND_SEPARATOR = "\n\n";
 function isSegment(s) {
@@ -22463,7 +22469,26 @@ var LOCAL_OVERRIDE_TIER = {
     ];
   }
 };
-var DEFAULT_TIERS = [PACK_CONTRIBUTION_TIER, LOCAL_OVERRIDE_TIER];
+var PROJECT_OVERRIDE_TIER = {
+  name: "project-override",
+  rank: PROJECT_TIER_RANK,
+  gather(ctx) {
+    return [
+      {
+        tier: "project-override",
+        rank: PROJECT_TIER_RANK,
+        source: "project-override",
+        path: joinSlash(ctx.workspaceRoot, PROJECT_OVERRIDE_DIR, `${ctx.skillPoint}.md`),
+        optional: true
+      }
+    ];
+  }
+};
+var DEFAULT_TIERS = [
+  PACK_CONTRIBUTION_TIER,
+  PROJECT_OVERRIDE_TIER,
+  LOCAL_OVERRIDE_TIER
+];
 function planSlot(ref, snapshot, workspaceRoot, tiers = DEFAULT_TIERS) {
   const skill = ref.skill?.trim();
   const point = ref.point?.trim();
@@ -22999,19 +23024,47 @@ function buildSnapshot(inputs, io) {
       });
     }
   }
+  const projectOverrideDir = joinSlash(workspaceRoot, PROJECT_OVERRIDE_DIR);
+  const projectOverrideFiles = io.listFiles ? io.listFiles(projectOverrideDir) : [];
+  const projectOverridePresent = /* @__PURE__ */ new Set();
+  for (const filename of [...projectOverrideFiles].sort()) {
+    const parsedName = slotPointFromOverrideFilename(filename);
+    if (!parsedName) continue;
+    const overridePath = joinSlash(projectOverrideDir, filename);
+    const overrideRaw = io.readFile(overridePath);
+    if (overrideRaw === null) continue;
+    sources.push(
+      fingerprint("slot-project-override", `${PROJECT_OVERRIDE_DIR}/${filename}`, overrideRaw)
+    );
+    projectOverridePresent.add(parsedName.skillPoint);
+    if (!isDeclared(parsedName.skillPoint, parsedName.skill)) {
+      diagnostics.push({
+        severity: "error",
+        code: "slot/orphaned-project-override",
+        message: `project slot override \`${PROJECT_OVERRIDE_DIR}/${filename}\` targets slot \`${parsedName.skillPoint}\`, which no active skill interface declares \u2014 the override would silently lose to the default. Remove the override or restore the slot declaration in the skill's \`## Slots\` interface table.`,
+        category: "registry-invalid",
+        recovery: SLOT_RECOVERY
+      });
+    }
+  }
   const slotIds = /* @__PURE__ */ new Set([
     ...packSlots.map((p) => p.skillPoint),
-    ...overridePresent
+    ...overridePresent,
+    ...projectOverridePresent
   ]);
   const slots = [...slotIds].sort().map((skillPoint) => {
     const contributors = packSlots.filter((p) => p.skillPoint === skillPoint).map((p) => p.capability);
     const policyOwner = packSlots.find((p) => p.skillPoint === skillPoint);
     const hasOverride = overridePresent.has(skillPoint);
+    const hasProjectOverride = projectOverridePresent.has(skillPoint);
     let tier;
     let winningSource;
     if (hasOverride) {
       tier = "local-override";
       winningSource = "local-override";
+    } else if (hasProjectOverride) {
+      tier = "project-override";
+      winningSource = "project-override";
     } else if (contributors.length > 0) {
       tier = "pack-contribution";
       winningSource = contributors[contributors.length - 1];
@@ -23023,6 +23076,7 @@ function buildSnapshot(inputs, io) {
       skillPoint,
       policy: policyOwner ? policyOwner.policy : null,
       overridePresent: hasOverride,
+      projectOverridePresent: hasProjectOverride,
       contributors,
       tier,
       winningSource
@@ -25827,9 +25881,12 @@ var ResolverService = class {
    *  the body-free snapshot and yields the ordered candidate list under the
    *  precedence tier chain; this method reads each candidate via the server's own
    *  `fs` port and composes per the slot's merge policy. A present personal
-   *  override always outranks a pack contribution; a `replace` slot serves the
-   *  single highest-precedence body, an `append` slot the concatenation (registry
-   *  order, override last). Zero contributions AND no override → a typed
+   *  `_local/` override always outranks a committed `.wf/` project override, which
+   *  always outranks a pack contribution; a `replace` slot serves the single
+   *  highest-precedence body, an `append` slot the concatenation (registry order
+   *  first, then the project override, the personal override last). This method is
+   *  generic over the chain — a new tier changes nothing here. Zero contributions
+   *  AND no override at either override tier → a typed
    *  `unfilled` outcome directing the caller to the inline default; a contributing
    *  capability that dangles → `unresolved` (registry-invalid); a declared pack
    *  body missing on disk → `unresolved` (ref-not-found). Never a wrong-path body,
@@ -25871,7 +25928,7 @@ var ResolverService = class {
         refClass: "slot",
         skillPoint: plan.skillPoint,
         reaction: "continue",
-        recovery: `Slot \`${plan.skillPoint}\` is unfilled \u2014 no capability contributes to it and no personal \`${OVERRIDE_DIR}/${plan.skillPoint}.md\` override exists. Execute the skill's inline-default region exactly as written (the no-improvisation rule); to fill it, register a contributing capability or add the override file.`,
+        recovery: `Slot \`${plan.skillPoint}\` is unfilled \u2014 no capability contributes to it, no committed \`${PROJECT_OVERRIDE_DIR}/${plan.skillPoint}.md\` project override exists, and no personal \`${OVERRIDE_DIR}/${plan.skillPoint}.md\` override exists. Execute the skill's inline-default region exactly as written (the no-improvisation rule); to fill it, register a contributing capability, commit the project override, or add the personal override file.`,
         message: `no contribution or override for slot \`${plan.skillPoint}\`.`
       };
     }
