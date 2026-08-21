@@ -23,7 +23,7 @@ Some skills delegate work to **subagents** (the `*.md` files in this plugin's `a
 /wf:init
 ```
 
-Creates `_local/` for per-task artifacts, writes default config, gitignores itself, and scaffolds the Node test runner. Idempotent — safe to re-run.
+Sets the repo up in one journey: it admits the workspace root, discovers the installed capability packs, scaffolds `_local/` with a default config and gitignores it, then takes an explicit pack selection, asks every unresolved setup question **once** in a single batch, and confirms **one** plan before applying it in **one** transaction. Selecting nothing is a valid outcome and leaves the bare-core scaffold and nothing else. Declining the plan leaves that scaffold intact and performs no lifecycle change. Idempotent — safe to re-run.
 
 ### Configure child routing (optional)
 
