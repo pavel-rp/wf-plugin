@@ -157,7 +157,7 @@ function admit(source, candidate, launch) {
     identity = resolveWorkspaceIdentity(candidate, label(source));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    const classifiable = message.split(candidate).join("");
+    const classifiable = message.split(": ")[0] ?? message;
     const diagnostic = message.includes(candidate) ? message : `${message} Received: \`${candidate}\`.`;
     return failure(source, reasonFromThrow(classifiable), diagnostic);
   }

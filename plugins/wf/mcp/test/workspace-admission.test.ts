@@ -240,6 +240,15 @@ test("the reason token is derived from the wording, never from the rejected path
     assert.equal(notDirectory.ok, false);
     assert.equal(notDirectory.ok === false && notDirectory.reason, "not-a-directory");
 
+    // The mirror hazard: a candidate whose own text is a SUBSTRING OF THE
+    // WORDING must not erase the wording either. Each of these is relative, so
+    // each is `not-absolute` — never the `not-found` default.
+    for (const candidate of ["must", "a directory", "does not exist", "be an absolute path"]) {
+      const spoofWording = selectWorkspaceRoot({ explicit: candidate, cwd: fixture.main }, launch);
+      assert.equal(spoofWording.ok, false);
+      assert.equal(spoofWording.ok === false && spoofWording.reason, "not-absolute");
+    }
+
     // A rejected candidate is always recoverable from the diagnostic — the
     // absolute-path check names the label but not the value, so the boundary
     // echoes it rather than leaving the caller without the offending input.

@@ -125,11 +125,15 @@ function admit(
     identity = resolveWorkspaceIdentity(candidate, label(source));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // Classify on the message with the CANDIDATE ELIDED. The raised messages
-    // interpolate the rejected path, so a path that literally contains another
-    // failure's wording (`/tmp/must be a directory`) would otherwise spoof the
-    // reason token — and 21 downstream surfaces branch on that token.
-    const classifiable = message.split(candidate).join("");
+    // Classify on the WORDING ONLY, never on the rejected path. Every raised
+    // message is `<label> <wording>` or `<label> <wording>: <path>`, and no
+    // label contains a colon — so the segment before the first `": "` is the
+    // wording and nothing else. Matching the whole message would let a path
+    // that reads like another failure (`/tmp/must be a directory`) spoof the
+    // token; eliding the candidate's text instead would let a path that is a
+    // substring of the wording (`must`) erase it. Splitting is immune to both,
+    // and 21 downstream surfaces branch on this token.
+    const classifiable = message.split(": ")[0] ?? message;
     // Echo the rejected candidate when the raised message omits it (the
     // absolute-path check names the label but not the value), so a diagnostic
     // is actionable on its own.
