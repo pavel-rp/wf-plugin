@@ -132,10 +132,11 @@ function makePorts(opts?: { pluginList?: string | null; files?: Record<string, s
       }
       return [...names];
     },
-    listPlugins: () =>
-      pluginListRaw === null
-        ? { plugins: [], ok: false }
-        : { plugins: parsePluginList(pluginListRaw).plugins, ok: true },
+    listPlugins: () => {
+      if (pluginListRaw === null) return { plugins: [], ok: false, contractOk: true, issues: [] };
+      const parsed = parsePluginList(pluginListRaw);
+      return { plugins: parsed.plugins, ok: true, contractOk: parsed.contractOk, issues: parsed.issues };
+    },
     registryRelPath: () => "_local/config.md",
   };
   return ports;

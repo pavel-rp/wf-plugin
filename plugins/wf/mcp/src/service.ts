@@ -89,7 +89,10 @@ import {
   createPortablePackEvidence,
 } from "./resolver/lifecycle-evidence.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
-import type { InstalledPlugin } from "./resolver/plugin-list.js";
+import type {
+  InstalledPlugin,
+  PluginListContractIssue,
+} from "./resolver/plugin-list.js";
 import {
   RESOLVER_GENERATOR,
   type CapabilityRecord,
@@ -105,11 +108,29 @@ import {
   type ResolverSnapshot,
 } from "./resolver/types.js";
 
-/** Result of a plugin-list resolution: `ok:false` = the `claude` CLI was
- *  unavailable/errored (distinct from a genuine empty install set). */
+/** Result of a plugin-list resolution.
+ *
+ *  The three verdict fields are INDEPENDENT and answer different questions:
+ *  - `ok: false`      — the `claude` CLI was unavailable or errored, so nothing
+ *                       was observed at all. Distinct from a genuine empty
+ *                       install set, which is `ok: true` with `plugins: []`.
+ *  - `contractOk`     — whether every record the CLI returned matched the
+ *                       CLI-output contract.
+ *  - `issues`         — the contract findings behind `contractOk`, which
+ *                       distinguish a whole-output failure (zero records) from
+ *                       per-record rejection (some records survived).
+ *
+ *  `contractOk`/`issues` were previously discarded here; pack discovery (WF-446)
+ *  derives its inventory-confidence token from exactly that distinction, so they
+ *  are carried through. The widening is additive — `plugins`/`ok` are unchanged,
+ *  and a caller that reads only those two is unaffected. When `ok` is `false`
+ *  nothing was parsed, so `contractOk` is `true` and `issues` is empty: absence
+ *  of output is not a contract violation. */
 export interface PluginListResult {
   plugins: InstalledPlugin[];
   ok: boolean;
+  contractOk: boolean;
+  issues: PluginListContractIssue[];
 }
 
 /**

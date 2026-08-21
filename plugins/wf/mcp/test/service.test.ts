@@ -203,10 +203,11 @@ function makePorts(opts?: {
       }
       return [...names];
     },
-    listPlugins: () =>
-      pluginListRaw === null
-        ? { plugins: [], ok: false }
-        : { plugins: parsePluginList(pluginListRaw).plugins, ok: true },
+    listPlugins: () => {
+      if (pluginListRaw === null) return { plugins: [], ok: false, contractOk: true, issues: [] };
+      const parsed = parsePluginList(pluginListRaw);
+      return { plugins: parsed.plugins, ok: true, contractOk: parsed.contractOk, issues: parsed.issues };
+    },
     registryRelPath: () => opts?.registryPath ?? "_local/config.md",
   };
 }
@@ -483,7 +484,7 @@ test("real contained source fingerprinting hashes raw bytes and rejects symlinks
     const production = createDefaultPorts(workspace);
     const ports: ResolverServicePorts = {
       ...production,
-      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      listPlugins: () => ({ ...parsePluginList(pluginListRaw), ok: true }),
       resolveFresh: () =>
         resolveSnapshot({ workspaceRoot: workspace, pluginListRaw, now: () => new Date("2026-08-20T00:00:00.000Z") }),
     };
@@ -590,7 +591,7 @@ test("real tracker manifests expose normalized template paths and complete quest
     const production = createDefaultPorts(workspace);
     const ports: ResolverServicePorts = {
       ...production,
-      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      listPlugins: () => ({ ...parsePluginList(pluginListRaw), ok: true }),
       resolveFresh: () =>
         resolveSnapshot({
           workspaceRoot: workspace,
@@ -669,7 +670,7 @@ test("real MCP tools/call dispatch exposes on-disk question metadata without tem
   const production = createDefaultPorts(workspace);
   const ports: ResolverServicePorts = {
     ...production,
-    listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+    listPlugins: () => ({ ...parsePluginList(pluginListRaw), ok: true }),
     resolveFresh: () =>
       resolveSnapshot({
         workspaceRoot: workspace,
@@ -855,7 +856,7 @@ test("symlinked profile templates fail installed-pack and active discovery", () 
         );
         return production.readFile(path);
       },
-      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      listPlugins: () => ({ ...parsePluginList(pluginListRaw), ok: true }),
       resolveFresh: () =>
         resolveSnapshot({
           workspaceRoot: normalizeSlashes(workspace),
@@ -926,7 +927,7 @@ test("a non-regular profile-template path is never body-served", () => {
     const production = createDefaultPorts(normalizeSlashes(workspace));
     const ports: ResolverServicePorts = {
       ...production,
-      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      listPlugins: () => ({ ...parsePluginList(pluginListRaw), ok: true }),
       resolveFresh: () =>
         resolveSnapshot({
           workspaceRoot: normalizeSlashes(workspace),
@@ -978,7 +979,7 @@ test("oversized profile templates fail before installed-pack and active parsing"
     const production = createDefaultPorts(normalizeSlashes(workspace));
     const ports: ResolverServicePorts = {
       ...production,
-      listPlugins: () => ({ plugins: parsePluginList(pluginListRaw).plugins, ok: true }),
+      listPlugins: () => ({ ...parsePluginList(pluginListRaw), ok: true }),
       resolveFresh: () =>
         resolveSnapshot({
           workspaceRoot: normalizeSlashes(workspace),

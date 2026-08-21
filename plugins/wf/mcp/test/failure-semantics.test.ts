@@ -102,9 +102,9 @@ function makePorts(opts: {
     },
     listPlugins() {
       counts.listPlugins++;
-      return pluginListRaw === null
-        ? { plugins: [], ok: false }
-        : { plugins: parsePluginList(pluginListRaw).plugins, ok: true };
+      if (pluginListRaw === null) return { plugins: [], ok: false, contractOk: true, issues: [] };
+      const parsed = parsePluginList(pluginListRaw);
+      return { plugins: parsed.plugins, ok: true, contractOk: parsed.contractOk, issues: parsed.issues };
     },
     registryRelPath: () => "_local/config.md",
   };

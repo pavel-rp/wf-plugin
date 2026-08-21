@@ -23457,8 +23457,14 @@ function createDefaultPorts(workspaceRoot) {
     },
     listPlugins: () => {
       const raw = runPluginList();
-      if (raw === null) return { plugins: [], ok: false };
-      return { plugins: parsePluginList(raw).plugins, ok: true };
+      if (raw === null) return { plugins: [], ok: false, contractOk: true, issues: [] };
+      const parsed = parsePluginList(raw);
+      return {
+        plugins: parsed.plugins,
+        ok: true,
+        contractOk: parsed.contractOk,
+        issues: parsed.issues
+      };
     },
     registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH2,
     resolveRegistryWritePath: (registryRelPath2) => resolveContainedRegistryWritePath(workspaceRoot, registryRelPath2)

@@ -135,7 +135,7 @@ function makePorts(files: Map<string, string>): ResolverServicePorts {
     readFile: (p) => files.get(normalizeSlashes(p)) ?? null,
     writeFile: (p, content) => files.set(normalizeSlashes(p), content),
     listDirs: () => [],
-    listPlugins: () => ({ plugins: [], ok: true }),
+    listPlugins: () => ({ plugins: [], ok: true, contractOk: true, issues: [] }),
     registryRelPath: () => "_local/config.md",
   };
 }

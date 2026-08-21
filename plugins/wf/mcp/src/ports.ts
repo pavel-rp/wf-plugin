@@ -136,8 +136,17 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
 
     listPlugins: (): PluginListResult => {
       const raw = runPluginList();
-      if (raw === null) return { plugins: [], ok: false };
-      return { plugins: parsePluginList(raw).plugins, ok: true };
+      // The CLI never ran (or errored). Nothing was parsed, so there is no
+      // contract verdict to report — `contractOk: true` with no issues means
+      // "no drift observed", not "the output was fine".
+      if (raw === null) return { plugins: [], ok: false, contractOk: true, issues: [] };
+      const parsed = parsePluginList(raw);
+      return {
+        plugins: parsed.plugins,
+        ok: true,
+        contractOk: parsed.contractOk,
+        issues: parsed.issues,
+      };
     },
 
     registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH,

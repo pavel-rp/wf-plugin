@@ -128,7 +128,7 @@ function makePorts(config: string): ResolverServicePorts & {
       }
       return [...names];
     },
-    listPlugins: () => ({ plugins: [], ok: true }),
+    listPlugins: () => ({ plugins: [], ok: true, contractOk: true, issues: [] }),
     registryRelPath: () => "_local/config.md",
   };
 }

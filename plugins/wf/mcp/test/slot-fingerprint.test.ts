@@ -381,7 +381,7 @@ test("resolve_inspect surfaces per-slot provenance + settings-override presence"
     readFile: (p) => map.get(normalizeSlashes(p)) ?? null,
     writeFile: () => {},
     listDirs: () => [],
-    listPlugins: () => ({ plugins: parsePluginList("[]").plugins, ok: true }),
+    listPlugins: () => ({ ...parsePluginList("[]"), ok: true }),
     registryRelPath: () => "_local/config.md",
   };
   const svc = new ResolverService(ports);
