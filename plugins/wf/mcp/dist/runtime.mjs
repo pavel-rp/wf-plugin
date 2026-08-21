@@ -11624,9 +11624,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     }
   };
   var Label = class extends Node {
-    constructor(label) {
+    constructor(label2) {
       super();
-      this.label = label;
+      this.label = label2;
       this.names = {};
     }
     render({ _n }) {
@@ -11634,9 +11634,9 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     }
   };
   var Break = class extends Node {
-    constructor(label) {
+    constructor(label2) {
       super();
-      this.label = label;
+      this.label = label2;
       this.names = {};
     }
     render({ _n }) {
@@ -12001,11 +12001,11 @@ var require_codegen = /* @__PURE__ */ __commonJSMin(((exports) => {
     endFor() {
       return this._endBlockNode(For);
     }
-    label(label) {
-      return this._leafNode(new Label(label));
+    label(label2) {
+      return this._leafNode(new Label(label2));
     }
-    break(label) {
-      return this._leafNode(new Break(label));
+    break(label2) {
+      return this._leafNode(new Break(label2));
     }
     return(value) {
       const node = new Return();
@@ -19786,1389 +19786,6 @@ function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
 
-// src/tools.ts
-function ok(payload) {
-  return {
-    content: [{ type: "text", text: JSON.stringify(payload) }],
-    structuredContent: payload
-  };
-}
-var safeTerminalStringPattern = "^[^\\u0000-\\u001F\\u007F-\\u009F]*$";
-function terminalSafeDiagnostic(value) {
-  const message = value instanceof Error ? value.message : String(value);
-  return message.replace(new RegExp("\\p{C}", "gu"), "?").slice(0, 512);
-}
-function guard(fn) {
-  try {
-    return ok(fn());
-  } catch (err) {
-    const message = terminalSafeDiagnostic(err);
-    return {
-      content: [{ type: "text", text: `resolver error: ${message}` }],
-      isError: true
-    };
-  }
-}
-var workspaceRootProperty = {
-  type: "string",
-  minLength: 1,
-  maxLength: 4096,
-  pattern: safeTerminalStringPattern,
-  description: "Absolute path to a directory in the launch repository's main/linked worktree family."
-};
-function withWorkspaceRoot(schema) {
-  return {
-    ...schema,
-    properties: { workspaceRoot: workspaceRootProperty, ...schema.properties ?? {} },
-    required: ["workspaceRoot", ...schema.required ?? []]
-  };
-}
-var workspaceOnlyInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {},
-  additionalProperties: false
-}));
-var surfaceInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    surface: {
-      type: "string",
-      description: 'Provider surface to resolve: `delivery`, `tracker`, `engine`, `host`, or the composite `qa-execution:engine` / `qa-execution:host` (equivalent to the bare `engine` / `host` forms \u2014 both resolve to the same ownership record). An unrecognized token is an invalid argument and returns an MCP error result, distinct from a genuine `state: "unconfigured"` response.'
-    }
-  },
-  required: ["surface"],
-  additionalProperties: false
-}));
-var surfaceClassInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    surface: {
-      type: "string",
-      enum: ["local-read", "tracker-write", "delivery-write"],
-      description: "The surface class about to act: `local-read` (best-effort read), `tracker-write`, or `delivery-write`."
-    }
-  },
-  required: ["surface"],
-  additionalProperties: false
-}));
-var safeRoutingStringPattern = safeTerminalStringPattern;
-var unitIdPattern = "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$";
-var routingSignalValues = [
-  "low-confidence",
-  "failed-validation",
-  "conflicting-or-incomplete-evidence",
-  "repeated-failure",
-  "increased-risk-or-scope",
-  "high-severity-review-uncertainty"
-];
-var routingShapeProperties = {
-  workSurface: { type: "string", enum: ["caller-context", "external-context"] },
-  atomicity: { type: "string", enum: ["atomic", "composite"] },
-  unitCount: { type: "integer", minimum: 1, maximum: 4 },
-  unitsIndependent: { type: "boolean" },
-  ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
-  risk: { type: "string", enum: ["low", "elevated"] },
-  toolWork: { type: "string", enum: ["none", "bounded", "material"] },
-  validation: { type: "string", enum: ["mechanical", "judgment"] },
-  contextIsolation: { type: "string", enum: ["none", "useful", "required"] },
-  independentReview: { type: "boolean" },
-  returnContract: { type: "string", enum: ["mechanically-judgeable", "judgment"] },
-  requestedParallelism: { type: "integer", minimum: 1 }
-};
-var routingShapeRequired = Object.keys(routingShapeProperties);
-var routingChoiceSchema = (maxLength) => ({
-  type: "object",
-  properties: {
-    value: { type: ["string", "null"], maxLength, pattern: safeRoutingStringPattern },
-    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
-    requested: { type: ["string", "null"], maxLength, pattern: safeRoutingStringPattern },
-    requestedSource: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
-    masked: { type: "boolean" },
-    fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] }
-  },
-  required: ["value", "source", "requested", "requestedSource", "masked", "fallback"],
-  additionalProperties: false
-});
-var routingInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
-    shapeEvidence: {
-      type: "object",
-      properties: routingShapeProperties,
-      additionalProperties: false
-    },
-    unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
-    invocationModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
-    invocationEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
-    requireModel: { type: "boolean" },
-    requireEffort: { type: "boolean" },
-    supportsModelSelector: { type: "boolean" },
-    supportsEffortSelector: { type: "boolean" },
-    hostModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
-    hostEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
-    availableModels: { type: ["array", "null"], maxItems: 64, items: { type: "string", minLength: 1, maxLength: 128, pattern: safeRoutingStringPattern }, uniqueItems: true },
-    basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
-    attempt: { type: "integer", minimum: 1, maximum: 3 },
-    escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
-    actualModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
-    postAttempt: {
-      type: "object",
-      properties: {
-        sufficient: { type: "boolean" },
-        signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
-        units: {
-          type: "array",
-          minItems: 1,
-          maxItems: 4,
-          items: {
-            type: "object",
-            properties: {
-              unitId: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern },
-              sufficient: { type: "boolean" },
-              signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true }
-            },
-            required: ["unitId", "sufficient", "signals"],
-            additionalProperties: false
-          }
-        },
-        prior: {
-          type: "object",
-          properties: {
-            role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
-            attempt: { type: "integer", minimum: 1, maximum: 3 },
-            executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
-            shapeEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
-            unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
-            model: routingChoiceSchema(128),
-            effort: routingChoiceSchema(16),
-            basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
-            escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
-            actualModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern }
-          },
-          required: ["role", "attempt", "executionShape", "shapeEvidence", "unitIds", "model", "effort", "basis", "escalationOrigin"],
-          additionalProperties: false
-        }
-      },
-      required: ["sufficient", "signals", "prior"],
-      additionalProperties: false
-    }
-  },
-  // NOTE: the "no postAttempt ⇒ attempt===1 and escalationOrigin===null" invariant is
-  // enforced in resolveRouting() (resolver/routing.ts), which returns an `invalid-stop`
-  // decision on violation. It is deliberately NOT expressed as a top-level `allOf`/`if`
-  // here: the Anthropic Messages API rejects a tool `input_schema` that uses top-level
-  // allOf/anyOf/oneOf, which makes Claude Code silently skip this tool at registration.
-  required: ["role", "shapeEvidence", "supportsModelSelector", "supportsEffortSelector"],
-  additionalProperties: false
-}));
-var routingOutput = fromJsonSchema2({
-  type: "object",
-  properties: {
-    role: { type: "string", maxLength: 64 },
-    executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
-    normalizedEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
-    unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
-    shapeReason: { type: "string", enum: ["atomic-caller-context", "single-isolation-worthy-unit", "dependent-or-nonmaterial-units", "nonmaterial-units-inline", "independent-material-units"] },
-    effectiveParallelism: { type: "integer", minimum: 1, maximum: 4 },
-    model: routingChoiceSchema(128),
-    effort: routingChoiceSchema(16),
-    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
-    basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
-    attempt: { type: "integer", minimum: 1, maximum: 3 },
-    escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
-    fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] },
-    masked: { type: "boolean" },
-    actualModel: { type: "string", maxLength: 128, pattern: safeRoutingStringPattern },
-    status: { type: "string", enum: ["dispatch", "retain", "stop"] },
-    disposition: { type: "string", enum: ["dispatch", "retain", "retry", "exhausted", "invalid-stop"] },
-    retry: {
-      anyOf: [
-        { type: "null" },
-        {
-          type: "object",
-          properties: {
-            attempt: { type: "integer", minimum: 2, maximum: 3 },
-            signals: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
-            unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
-            priorTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
-            nextTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
-            escalationOrigin: { type: "string", minLength: 1, maxLength: 256, pattern: safeRoutingStringPattern },
-            priorExecutionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
-            shapeChanged: { type: "boolean" }
-          },
-          required: ["attempt", "signals", "unitIds", "priorTier", "nextTier", "escalationOrigin", "priorExecutionShape", "shapeChanged"],
-          additionalProperties: false
-        }
-      ]
-    },
-    retainedUnitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
-    diagnostic: { type: ["string", "null"] }
-  },
-  required: ["role", "executionShape", "normalizedEvidence", "unitIds", "shapeReason", "effectiveParallelism", "model", "effort", "source", "basis", "attempt", "escalationOrigin", "fallback", "masked", "status", "disposition", "retry", "retainedUnitIds", "diagnostic"],
-  additionalProperties: false
-});
-var capabilityInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    capability: { type: "string", description: "Registered capability name." }
-  },
-  required: ["capability"],
-  additionalProperties: false
-}));
-var pluginInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    plugin: { type: "string", description: "Plugin name (left of `@`)." }
-  },
-  required: ["plugin"],
-  additionalProperties: false
-}));
-var pluginIdInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    pluginId: {
-      type: "string",
-      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
-    }
-  },
-  required: ["pluginId"],
-  additionalProperties: false
-}));
-var skillInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    skill: {
-      type: "string",
-      description: "Slotted skill slug whose declared settings keys to resolve (lowercase, hyphenated)."
-    }
-  },
-  required: ["skill"],
-  additionalProperties: false
-}));
-var contentInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    class: {
-      type: "string",
-      enum: ["fragment", "contract", "shared", "references-template", "profile-template", "slot"],
-      description: "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), `profile-template` (a pack's `profile.template.json` body), or `slot` (the single composed body for a per-skill composition point \u2014 see `skill`+`point`). Skill bodies and CI-only fixtures are not served."
-    },
-    capability: {
-      type: "string",
-      description: "Registered capability name \u2014 required for `fragment` and `profile-template`."
-    },
-    plugin: {
-      type: "string",
-      description: "Plugin name for a pack-owned `references-template`; omit (or use `wf`/`core`) for a core-plugin skill."
-    },
-    skill: {
-      type: "string",
-      description: "Skill slug \u2014 required for `references-template`; the `<skill>` segment for `slot`."
-    },
-    point: {
-      type: "string",
-      description: "The `<point>` segment for a `slot` ref \u2014 the composition point inside the named skill (the pair forms the `<skill>.<point>` id, e.g. skill `ship` + point `review`)."
-    },
-    ref: {
-      type: "string",
-      description: "The relative doc ref: within the capability folder, subfolder included \u2014 e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template` / `slot`."
-    }
-  },
-  required: ["class"],
-  additionalProperties: false
-}));
-var validateManifestInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "A capability folder or a `manifest.md` path (absolute, or relative to the workspace root). Omit to check every active registry capability's manifest."
-    }
-  },
-  additionalProperties: false
-}));
-var validateSkillInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    plugin: {
-      type: "string",
-      description: "Plugin name to scope the scan to (e.g. `wf`). Omit to scan every plugin."
-    },
-    skill: {
-      type: "string",
-      description: "Skill slug to scope the scan to. Omit to scan every skill in scope."
-    }
-  },
-  additionalProperties: false
-}));
-var validateReferencesInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    path: {
-      type: "string",
-      description: "A skill body, an agent file, or a folder to scan (absolute, or relative to the workspace root). Omit to scan every plugin's `skills/` and `agents/`."
-    }
-  },
-  additionalProperties: false
-}));
-var previewCompositionInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    phase: {
-      type: "string",
-      description: "SDD phase to preview (e.g. `verify`, `qa-execution`). Omit to preview every phase."
-    }
-  },
-  additionalProperties: false
-}));
-var registerInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    pluginId: {
-      type: "string",
-      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
-    },
-    expectedFingerprint: {
-      type: "string",
-      description: "The pack fingerprint returned by a prior inspect_pack; a mismatch rejects the write."
-    }
-  },
-  required: ["pluginId", "expectedFingerprint"],
-  additionalProperties: false
-}));
-var reasonsInput = fromJsonSchema2(withWorkspaceRoot({
-  type: "object",
-  properties: {
-    reasons: {
-      type: "array",
-      items: { type: "string" },
-      description: "Optional typed suspected-stale reasons (one short message each) recorded as diagnostics on the resulting lifecycle state."
-    }
-  },
-  additionalProperties: false
-}));
-function toReasons(reasons, code) {
-  return (reasons ?? []).filter((r) => typeof r === "string" && r.trim().length > 0).map((message) => ({ code, message: message.trim() }));
-}
-var RESIDENT = { "anthropic/alwaysLoad": true };
-function registerResolverTools(server, selectService) {
-  const selected = (args, fn) => guard(() => fn(selectService(args.workspaceRoot)));
-  server.registerTool(
-    "resolve_config",
-    {
-      title: "resolve config",
-      inputSchema: workspaceOnlyInput,
-      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
-      _meta: RESIDENT
-    },
-    async (args) => selected(args, (service) => service.resolveConfig())
-  );
-  server.registerTool(
-    "resolve_registry",
-    {
-      title: "resolve registry",
-      inputSchema: workspaceOnlyInput,
-      description: "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body.",
-      _meta: RESIDENT
-    },
-    async (args) => selected(args, (service) => service.resolveRegistry())
-  );
-  server.registerTool(
-    "resolve_provider",
-    {
-      title: "resolve provider",
-      description: "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
-      inputSchema: surfaceInput,
-      _meta: RESIDENT
-    },
-    async (args) => selected(args, (service) => service.resolveProvider(args.surface))
-  );
-  server.registerTool(
-    "resolve_profile",
-    {
-      title: "resolve profile",
-      description: "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
-      inputSchema: capabilityInput
-    },
-    async (args) => selected(args, (service) => service.resolveProfile(args.capability))
-  );
-  server.registerTool(
-    "resolve_settings",
-    {
-      title: "resolve settings",
-      description: "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default \u2014 the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
-      inputSchema: skillInput
-    },
-    async (args) => selected(args, (service) => service.resolveSettings(args.skill))
-  );
-  server.registerTool(
-    "resolve_routing",
-    {
-      title: "resolve routing",
-      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. Body-free.",
-      inputSchema: routingInput,
-      outputSchema: routingOutput,
-      _meta: RESIDENT
-    },
-    async (args) => {
-      const { workspaceRoot, ...inputs } = args;
-      return selected({ workspaceRoot }, (service) => service.resolveRouting(inputs));
-    }
-  );
-  server.registerTool(
-    "resolve_plugin_root",
-    {
-      title: "resolve plugin root",
-      description: "A plugin's resolved install root + provenance, post-self-heal (R5). One path record.",
-      inputSchema: pluginInput
-    },
-    async (args) => selected(args, (service) => service.resolvePluginRoot(args.plugin))
-  );
-  server.registerTool(
-    "resolve_content",
-    {
-      title: "resolve content",
-      description: "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path \u2014 the metadata queries stay body-free.",
-      inputSchema: contentInput,
-      _meta: RESIDENT
-    },
-    async (args) => {
-      const { workspaceRoot, ...ref } = args;
-      return selected({ workspaceRoot }, (service) => service.resolveContent(ref));
-    }
-  );
-  server.registerTool(
-    "inspect_pack",
-    {
-      title: "inspect pack",
-      description: "Read-only pack inspection (R6): resolves a plugin id via `claude plugin list --json`, validates enabled state / version / installPath and the pack manifest(s), and returns a fingerprint. Writes nothing.",
-      inputSchema: pluginIdInput
-    },
-    async (args) => selected(args, (service) => service.inspectPack(args.pluginId))
-  );
-  server.registerTool(
-    "discover_packs",
-    {
-      title: "discover packs",
-      description: "Read-only, byte-inert pack discovery (R6). Joins the authoritative `claude plugin list --json` inventory, registry attribution, each pack's existing snapshot state, recorded-vs-observed lifecycle evidence, and declared questions into one deterministic inventory a maintainer inspects before choosing a lifecycle change. Returns `{workspaceRoot, inventory{confidence, mayEstablishAbsence, observedCount, issues}, packs[], diagnostics[]}`. `confidence` is one of `trustworthy | unavailable | malformed | partial | invalid`, and ONLY `trustworthy` may establish that a registered pack is orphaned \u2014 every other value reports `absence-indeterminate` instead. A duplicate plugin id or name invalidates the whole inventory and classifies nothing. Each pack carries its unchanged `PackState` plus a separate nullable staleness `overlay`, a non-persisted `seedProposal`, and its declared questions. Writes nothing: no ledger, no seed, no enablement change.",
-      inputSchema: workspaceOnlyInput
-    },
-    async (args) => selected(args, (service) => service.discoverPacks())
-  );
-  server.registerTool(
-    "register_pack",
-    {
-      title: "register pack",
-      description: "Mutating pack registration (R6). Rejects a missing / disabled / stale-fingerprint / path-invalid / manifest-invalid request WITHOUT writing; on success owns the registry write, refreshes the snapshot, and self-checks. Core does not infer skill provenance.",
-      inputSchema: registerInput
-    },
-    async (args) => selected(args, (service) => service.registerPack(args.pluginId, args.expectedFingerprint))
-  );
-  server.registerTool(
-    "resolve_gate",
-    {
-      title: "resolve gate",
-      description: "Surface-specific resolver-failure gate (WF-272). Given the current resolver health and the acting surface (`local-read` | `tracker-write` | `delivery-write`), returns the reaction (continue | warn | block), the failure categories, categorized diagnostics with a `/wf:resolve` recovery path, and a marker proving the failure path never re-walks folders or probes the environment. A local read continues best-effort, a tracker write warns and continues, a delivery write blocks before any mutation.",
-      inputSchema: surfaceClassInput
-    },
-    async (args) => selected(args, (service) => service.assessSurface(args.surface))
-  );
-  server.registerTool(
-    "validate_manifest",
-    {
-      title: "validate manifest",
-      description: 'Check a capability `manifest.md` against manifest schema v2 (WF-352). Returns the frozen ValidationVerdict `{tool, status: pass|fail|error, target, findings[{rule, severity, file, line, message}], ruleSources[], summary}`. Rule ids mirror `validate-registry.sh` (`CHECK-6` phase/kind tokens, `CHECK-6b` dispatch, `CHECK-6c` slot scope + merge policy, `CHECK-HEADING` heading typos). The phase spine, contribution kinds, and merge policies are derived LIVE from `capability-registry.ops.md` on every call \u2014 no rule is transcribed. A syntactically broken manifest returns `status: "error"` with rule `input-unparseable`; an unreadable rule source returns `rule-source-unresolvable` \u2014 never a crash, never a silent pass. Omit `path` to check every active capability.',
-      inputSchema: validateManifestInput
-    },
-    async (args) => selected(args, (service) => service.validateManifest(args.path))
-  );
-  server.registerTool(
-    "validate_registry",
-    {
-      title: "validate registry",
-      inputSchema: workspaceOnlyInput,
-      description: "Check the resolved capability registry (WF-352): the `## Capabilities` and `## Plugin Roots` tables plus every resolvable capability manifest \u2014 the same set `validate-registry.sh` folds into one exit code, and it agrees with that guard's verdict. Returns the frozen ValidationVerdict. Rule ids are the guard's own: `CHECK-1` registryPath shape, `CHECK-2` duplicate names, `CHECK-3` filesystem-safe names, `CHECK-4` path resolves + carries a manifest, `CHECK-4a`/`CHECK-4b` plugin-root shape/uniqueness, `CHECK-5` overlapping partitioned ownership (naming both offenders), `CHECK-6`/`6b`/`6c` fragment-row rules, `CHECK-7` requires satisfied, `CHECK-8` co-active conflicts, `CHECK-9` contradictory article clauses. Takes no arguments \u2014 it validates the registry the resolver already resolved."
-    },
-    async (args) => selected(args, (service) => service.validateRegistry())
-  );
-  server.registerTool(
-    "validate_skill_interface",
-    {
-      title: "validate skill interface",
-      description: "Check skill slot markers against their `interface.md` `## Slots` declarations (WF-352), agreeing with `skill-slot-marker-lint.sh` and reusing its defect ids: `D1` malformed declaration, `D2` malformed marker, `D3` undeclared marker, `D4` unbalanced/duplicate marker, `D5` declared-but-unmarked. Returns the frozen ValidationVerdict with file/line diagnostics only \u2014 never any skill-body content (the `resolve_content` body-serving refusal is unchanged). A skill declaring no slots and carrying no markers passes clean (the inert case). Omit both arguments to scan every skill under `plugins/*/skills/*/`.",
-      inputSchema: validateSkillInput
-    },
-    async (args) => selected(args, (service) => service.validateSkillInterface(args.plugin, args.skill))
-  );
-  server.registerTool(
-    "validate_references",
-    {
-      title: "validate references",
-      description: "Resolve every cross-reference in skill bodies and agent files against the real tree (WF-354) \u2014 the dead-reference class no structural validator catches (a body instructing invocation of a removed skill). Checks `/wf:<skill>`, `/wf-<pack>:<skill>`, `subagent_type: wf:<agent>`, and `${CLAUDE_PLUGIN_ROOT}` path tokens, but ONLY on invocation-instruction lines: the instruction-vs-prose classifier is DERIVED at call time by parsing the `p1`/`p2` assignments out of `out4-skill-read-guard.sh` (recorded in `ruleSources`), so a bare prose mention \u2014 a README skill table, a cited call shape \u2014 never turns red. Returns the frozen ValidationVerdict with rule ids `REF-1` (unresolvable skill/agent invocation reference) and `REF-2` (unresolvable `${CLAUDE_PLUGIN_ROOT}` path token), alongside `input-unparseable` / `rule-source-unresolvable`. A reference whose owning plugin root is not resolvable in this workspace is indeterminate, not dead: it is excluded from `findings` and counted in `summary`. Omit `path` to scan every plugin's skills and agents.",
-      inputSchema: validateReferencesInput
-    },
-    async (args) => selected(args, (service) => service.validateReferences(args.path))
-  );
-  server.registerTool(
-    "preview_composition",
-    {
-      title: "preview composition",
-      description: "Dry-run preview of what the capability registry would compose (WF-354): every fragment that would fire at a phase, in registry order, each carrying its provenance (owning capability, resolved dispatch target, scope, resolved/manifest paths, how the path resolved). Rendered purely off the already-resolved snapshot \u2014 no manifest is re-parsed, no path re-resolved, and no fragment BODY is ever read or returned (follow the named `dispatch` for that). Read-only: it neither refreshes nor invalidates the snapshot. NOT a ValidationVerdict \u2014 a preview has no pass/fail semantics \u2014 so it returns its own narrow record, and zero entries is a first-class inert outcome (an empty registry composes nothing, which is the contract's designed behaviour, not an error). Omit `phase` to preview every phase.",
-      inputSchema: previewCompositionInput
-    },
-    async (args) => selected(args, (service) => service.previewComposition(args.phase))
-  );
-  server.registerTool(
-    "resolve_inspect",
-    {
-      title: "resolve inspect",
-      inputSchema: workspaceOnlyInput,
-      description: "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, per-slot composition provenance (each composed `skill.point` \u2192 winning source \u2192 tier, plus override presence), the per-skill settings-override presence index, and diagnostics. Does not rebuild."
-    },
-    async (args) => selected(args, (service) => service.inspect())
-  );
-  server.registerTool(
-    "resolve_refresh",
-    {
-      title: "resolve refresh",
-      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state. Optional `reasons` are recorded as diagnostics explaining the refresh.",
-      inputSchema: reasonsInput
-    },
-    async (args) => selected(args, (service) => service.refresh(toReasons(args.reasons, "explicit-request")))
-  );
-  server.registerTool(
-    "resolve_invalidate",
-    {
-      title: "resolve invalidate",
-      description: "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Typed consumers may pass `reasons` (suspected-stale messages) which surface as diagnostics. Returns the lifecycle state.",
-      inputSchema: reasonsInput
-    },
-    async (args) => selected(args, (service) => service.invalidate(toReasons(args.reasons, "suspected-stale")))
-  );
-}
-
-// src/git-workspace.ts
-import { execFileSync } from "node:child_process";
-import { realpathSync, statSync } from "node:fs";
-import { isAbsolute, resolve } from "node:path";
-
-// src/resolver/paths.ts
-function registryPathShapeError(path) {
-  if (path.includes("\\")) return "contains a backslash (must use forward slashes)";
-  if (/^\//.test(path)) return "absolute path (leading '/')";
-  if (/^[A-Za-z]:/.test(path)) return "drive-prefixed path";
-  if (`/${path}/`.includes("/../")) return "contains a '..' segment";
-  return null;
-}
-function normalizeSlashes(p) {
-  return p.replace(/\\/g, "/");
-}
-function joinSlash(...segments) {
-  return segments.map((s, i) => {
-    let seg = normalizeSlashes(s);
-    if (i > 0) seg = seg.replace(/^\/+/, "");
-    if (i < segments.length - 1) seg = seg.replace(/\/+$/, "");
-    return seg;
-  }).filter((s) => s.length > 0).join("/");
-}
-function resolveContainedCapabilityPath(root, relative3) {
-  if (relative3.length === 0 || relative3.includes("\0") || relative3.includes("\\") || isAbsoluteRoot(relative3)) {
-    return null;
-  }
-  const segments = relative3.split("/");
-  if (segments.some(
-    (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":")
-  )) {
-    return null;
-  }
-  const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
-  const candidate = joinSlash(normalizedRoot, ...segments);
-  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
-  return candidate.startsWith(prefix) ? candidate : null;
-}
-var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
-function parsePluginAnchor(registryPath) {
-  const m = PLUGIN_ANCHOR.exec(registryPath.trim());
-  if (!m) return null;
-  return { pluginName: m[1], relPath: m[2] };
-}
-function resolveCapabilityPath(registryPath, opts) {
-  const anchor = parsePluginAnchor(registryPath);
-  if (!anchor) {
-    const folder = joinSlash(opts.workspaceRoot, registryPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
-    }
-    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
-  }
-  const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
-  if (recorded) {
-    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
-    }
-  }
-  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
-  if (installed) {
-    const root = normalizeSlashes(installed.installPath);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
-    }
-  }
-  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
-}
-function isAbsoluteRoot(root) {
-  const n = normalizeSlashes(root);
-  return n.startsWith("/") || /^[A-Za-z]:/.test(n);
-}
-
-// src/git-workspace.ts
-function canonicalDirectory(path, label) {
-  if (!isAbsolute(path)) {
-    throw new Error(`${label} must be an absolute path.`);
-  }
-  let stat;
-  try {
-    stat = statSync(path);
-  } catch {
-    throw new Error(`${label} does not exist: ${path}`);
-  }
-  if (!stat.isDirectory()) {
-    throw new Error(`${label} must be a directory: ${path}`);
-  }
-  return normalizeSlashes(realpathSync(path));
-}
-function gitOutput(directory, ...args) {
-  try {
-    return execFileSync("git", ["-C", directory, "rev-parse", ...args], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"]
-    }).trim();
-  } catch {
-    throw new Error(`workspaceRoot is not inside a Git worktree: ${directory}`);
-  }
-}
-function resolveGitIdentity(directory, label = "workspaceRoot") {
-  const canonicalInput = canonicalDirectory(directory, label);
-  const topLevel = gitOutput(canonicalInput, "--show-toplevel");
-  const canonicalTopLevel = canonicalDirectory(
-    isAbsolute(topLevel) ? topLevel : resolve(canonicalInput, topLevel),
-    "Git worktree root"
-  );
-  const commonDir = gitOutput(canonicalInput, "--git-common-dir");
-  const canonicalCommonDir = canonicalDirectory(
-    isAbsolute(commonDir) ? commonDir : resolve(canonicalInput, commonDir),
-    "Git common directory"
-  );
-  return { worktreeRoot: canonicalTopLevel, commonDir: canonicalCommonDir };
-}
-function resolveWorkspaceIdentity(directory, label = "workspaceRoot") {
-  const canonicalInput = canonicalDirectory(directory, label);
-  try {
-    const git = resolveGitIdentity(canonicalInput, label);
-    return { kind: "git", root: git.worktreeRoot, commonDir: git.commonDir };
-  } catch (err) {
-    if (!(err instanceof Error) || !err.message.startsWith("workspaceRoot is not inside a Git worktree:")) {
-      throw err;
-    }
-    return { kind: "plain", root: canonicalInput };
-  }
-}
-
-// src/ports.ts
-import { lstatSync as lstatSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync3, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// src/resolver/types.ts
-var SNAPSHOT_SCHEMA_VERSION = 4;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.1" };
-var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
-
-// src/resolver/registry.ts
-function splitRow(line) {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith("|")) return null;
-  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-  return cells;
-}
-function isSeparatorRow(cells) {
-  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
-}
-function tableRowsUnderHeading(markdown, heading) {
-  const lines = markdown.split(/\r?\n/);
-  const rows = [];
-  let inSection = false;
-  let sawHeader = false;
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
-  for (const line of lines) {
-    if (/^#{1,6}\s+/.test(line)) {
-      if (headingRe.test(line)) {
-        inSection = true;
-        sawHeader = false;
-        continue;
-      }
-      if (inSection) break;
-      continue;
-    }
-    if (!inSection) continue;
-    const cells = splitRow(line);
-    if (!cells) {
-      if (sawHeader && rows.length > 0 && line.trim() === "") break;
-      continue;
-    }
-    if (!sawHeader) {
-      sawHeader = true;
-      continue;
-    }
-    if (isSeparatorRow(cells)) continue;
-    rows.push(cells);
-  }
-  return rows;
-}
-function escapeRegex2(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-function parseRegistry(markdown) {
-  const capabilities = [];
-  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
-    const [name, path] = cells;
-    if (name && path) capabilities.push({ name, path });
-  }
-  const pluginRoots = [];
-  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
-    const [plugin, root] = cells;
-    if (plugin && root) pluginRoots.push({ plugin, root });
-  }
-  return { capabilities, pluginRoots };
-}
-
-// src/resolver/manifest.ts
-function stripCr(line) {
-  return line.replace(/\r$/, "");
-}
-function trimCell(cell) {
-  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
-}
-function splitCommaList(rest) {
-  return rest.split(",").map((v) => v.trim()).filter((v) => v.length > 0);
-}
-function parseManifest(markdown) {
-  const lines = markdown.split(/\r?\n/).map(stripCr);
-  let kind = null;
-  const fragments = [];
-  let payloads = null;
-  const articles = [];
-  const requires = [];
-  const conflicts = [];
-  let profileTemplate = null;
-  let inFragments = false;
-  let sawFragHeader = false;
-  let inPayloads = false;
-  let sawPayloadHeader = false;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (kind === null) {
-      const km = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/.exec(trimmed);
-      if (km) kind = km[1];
-    }
-    if (/^requires:/i.test(trimmed)) {
-      requires.push(...splitCommaList(trimmed.replace(/^requires:/i, "")));
-    } else if (/^conflicts:/i.test(trimmed)) {
-      conflicts.push(...splitCommaList(trimmed.replace(/^conflicts:/i, "")));
-    } else if (/^article:/i.test(trimmed)) {
-      const decl = trimmed.replace(/^article:/i, "").trim();
-      const eq = decl.indexOf("=");
-      if (eq > 0) {
-        const key = decl.slice(0, eq).trim();
-        const value = decl.slice(eq + 1).trim();
-        if (key) articles.push({ key, value });
-      }
-    } else if (/^profile-template:/i.test(trimmed)) {
-      const v = trimmed.replace(/^profile-template:/i, "").trim();
-      if (v) profileTemplate = v;
-    }
-    if (/^#{1,6}\s+/.test(line)) {
-      if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
-        inFragments = true;
-        inPayloads = false;
-        sawFragHeader = false;
-        continue;
-      }
-      if (/^#{1,6}\s+Payloads\s*$/i.test(trimmed)) {
-        inFragments = false;
-        inPayloads = true;
-        sawPayloadHeader = false;
-        payloads ??= { headers: [], rows: [], sectionCount: 0 };
-        payloads.sectionCount++;
-        continue;
-      }
-      inFragments = false;
-      inPayloads = false;
-    }
-    if (!inFragments && !inPayloads) continue;
-    if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => trimCell(c));
-    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
-    if (inPayloads) {
-      if (!sawPayloadHeader) {
-        sawPayloadHeader = true;
-        if (payloads && payloads.headers.length === 0) payloads.headers = cells;
-        continue;
-      }
-      payloads?.rows.push(cells);
-      continue;
-    }
-    if (!sawFragHeader) {
-      sawFragHeader = true;
-      continue;
-    }
-    const [phaseRaw, kindRaw, dispatchRaw, scopeRaw] = cells;
-    const phase = trimCell(phaseRaw ?? "");
-    const contributionKind = trimCell(kindRaw ?? "");
-    if (!phase || phase === "phase") continue;
-    let scope = trimCell(scopeRaw ?? "");
-    if (scope === "" || scope === "\u2014" || scope === "-") scope = null;
-    fragments.push({
-      phase,
-      contributionKind,
-      dispatch: trimCell(dispatchRaw ?? ""),
-      scope
-    });
-  }
-  return { kind, fragments, payloads, articles, requires, conflicts, profileTemplate };
-}
-
-// src/resolver/payloads.ts
-var PAYLOAD_COLUMNS = [
-  "source",
-  "destination",
-  "production",
-  "refresh",
-  "removal"
-];
-var MAX_PAYLOADS_PER_CAPABILITY = 256;
-var MAX_PAYLOAD_DIAGNOSTICS = 256;
-var MAX_NORMALIZED_PAYLOAD_BYTES = 256 * 1024;
-var MAX_LABEL_LENGTH = 128;
-function safeLabel(value, pattern, fallback) {
-  return value.length <= MAX_LABEL_LENGTH && pattern.test(value) ? value : fallback;
-}
-function makePayloadDiagnostic(pluginId, capability, row, field, code, detail) {
-  const safePlugin = safeLabel(pluginId, /^[A-Za-z0-9][A-Za-z0-9@._-]*$/, "(invalid-plugin)");
-  const safeCapability = safeLabel(
-    capability,
-    /^[a-z0-9][a-z0-9-]*$/,
-    "(invalid-capability)"
-  );
-  const owner = `plugin \`${safePlugin}\`, capability \`${safeCapability}\``;
-  const rowLabel = row === null ? "" : `, payload row ${row}`;
-  return {
-    code,
-    pluginId: safePlugin,
-    capability: safeCapability,
-    row,
-    field,
-    message: `${owner}${rowLabel}, field \`${field}\`: ${detail}`
-  };
-}
-function diagnosticBytes(diagnostics) {
-  return Buffer.byteLength(JSON.stringify(diagnostics), "utf8");
-}
-function finalizeDiagnostics(pluginId, capability, diagnostics) {
-  const retained = [];
-  let truncated = false;
-  for (const diagnostic of diagnostics) {
-    if (retained.length >= MAX_PAYLOAD_DIAGNOSTICS) {
-      truncated = true;
-      break;
-    }
-    if (diagnosticBytes([...retained, diagnostic]) > MAX_NORMALIZED_PAYLOAD_BYTES) {
-      truncated = true;
-      break;
-    }
-    retained.push(diagnostic);
-  }
-  if (!truncated) return retained;
-  const sentinel = makePayloadDiagnostic(
-    pluginId,
-    capability,
-    null,
-    "table",
-    "payload/diagnostics-truncated",
-    "additional diagnostics omitted after aggregate limit."
-  );
-  while (retained.length >= MAX_PAYLOAD_DIAGNOSTICS || diagnosticBytes([...retained, sentinel]) > MAX_NORMALIZED_PAYLOAD_BYTES) {
-    retained.pop();
-  }
-  return [...retained, sentinel];
-}
-function isPayloadRelativePath(value) {
-  return resolveContainedCapabilityPath("/capability", value) !== null;
-}
-function normalizeHeader(value) {
-  return value.trim().toLowerCase();
-}
-function fieldDiagnostic(diagnostics, pluginId, capability, row, field, code, detail) {
-  diagnostics.push(makePayloadDiagnostic(pluginId, capability, row, field, code, detail));
-}
-function validatePayloadDeclarations(pluginId, capability, table) {
-  if (table === null) return { ok: true, payloads: [], diagnostics: [] };
-  const diagnostics = [];
-  if (table.sectionCount !== 1) {
-    diagnostics.push(
-      makePayloadDiagnostic(
-        pluginId,
-        capability,
-        null,
-        "table",
-        "payload/table-duplicate",
-        "must declare exactly one `## Payloads` section."
-      )
-    );
-  }
-  if (table.rows.length > MAX_PAYLOADS_PER_CAPABILITY) {
-    diagnostics.push(
-      makePayloadDiagnostic(
-        pluginId,
-        capability,
-        null,
-        "table",
-        "payload/table-too-many",
-        `must contain at most ${MAX_PAYLOADS_PER_CAPABILITY} rows.`
-      )
-    );
-  }
-  const headers = table.headers.map(normalizeHeader);
-  const headerSet = new Set(headers);
-  for (const expected of PAYLOAD_COLUMNS) {
-    const count = headers.filter((header) => header === expected).length;
-    if (count === 0) {
-      diagnostics.push(
-        makePayloadDiagnostic(
-          pluginId,
-          capability,
-          null,
-          "table",
-          "payload/table-missing-column",
-          `missing required \`${expected}\` column.`
-        )
-      );
-    } else if (count > 1) {
-      diagnostics.push(
-        makePayloadDiagnostic(
-          pluginId,
-          capability,
-          null,
-          "table",
-          "payload/table-duplicate-column",
-          `declares \`${expected}\` more than once.`
-        )
-      );
-    }
-  }
-  for (const header of headerSet) {
-    if (!PAYLOAD_COLUMNS.includes(header)) {
-      diagnostics.push(
-        makePayloadDiagnostic(
-          pluginId,
-          capability,
-          null,
-          "table",
-          "payload/table-unknown-column",
-          "contains an unknown column."
-        )
-      );
-    }
-  }
-  if (diagnostics.length > 0) {
-    return {
-      ok: false,
-      payloads: [],
-      diagnostics: finalizeDiagnostics(pluginId, capability, diagnostics)
-    };
-  }
-  const indexes = Object.fromEntries(headers.map((header, index) => [header, index]));
-  const payloads = [];
-  for (let index = 0; index < table.rows.length; index++) {
-    const rowNumber = index + 1;
-    const cells = table.rows[index];
-    if (cells.length !== headers.length) {
-      diagnostics.push(
-        makePayloadDiagnostic(
-          pluginId,
-          capability,
-          rowNumber,
-          "table",
-          "payload/row-width",
-          "must contain exactly one cell for every declared column."
-        )
-      );
-      continue;
-    }
-    const source = cells[indexes.source] ?? "";
-    const destination = cells[indexes.destination] ?? "";
-    const production = cells[indexes.production] ?? "";
-    const refresh = cells[indexes.refresh] ?? "";
-    const removal = cells[indexes.removal] ?? "";
-    const before = diagnostics.length;
-    if (!isPayloadRelativePath(source)) {
-      fieldDiagnostic(
-        diagnostics,
-        pluginId,
-        capability,
-        rowNumber,
-        "source",
-        "payload/source-invalid",
-        "must be a non-empty forward-slash relative file path with no absolute prefix, drive prefix, backslash, NUL, colon, empty segment, `.` segment, or `..` segment."
-      );
-    }
-    if (!isPayloadRelativePath(destination)) {
-      fieldDiagnostic(
-        diagnostics,
-        pluginId,
-        capability,
-        rowNumber,
-        "destination",
-        "payload/destination-invalid",
-        "must be a non-empty forward-slash workspace-relative lexical path with no absolute prefix, drive prefix, backslash, NUL, colon, empty segment, `.` segment, or `..` segment."
-      );
-    }
-    if (production !== "copy") {
-      fieldDiagnostic(
-        diagnostics,
-        pluginId,
-        capability,
-        rowNumber,
-        "production",
-        "payload/production-invalid",
-        "must be exactly `copy`."
-      );
-    }
-    if (refresh !== "replace-if-unmodified" && refresh !== "retain") {
-      fieldDiagnostic(
-        diagnostics,
-        pluginId,
-        capability,
-        rowNumber,
-        "refresh",
-        "payload/refresh-invalid",
-        "must be exactly `replace-if-unmodified` or `retain`."
-      );
-    }
-    if (removal !== "delete-if-unmodified" && removal !== "retain") {
-      fieldDiagnostic(
-        diagnostics,
-        pluginId,
-        capability,
-        rowNumber,
-        "removal",
-        "payload/removal-invalid",
-        "must be exactly `delete-if-unmodified` or `retain`."
-      );
-    }
-    if (diagnostics.length === before) {
-      payloads.push({
-        pluginId,
-        capability,
-        source,
-        destination,
-        production,
-        refresh,
-        removal
-      });
-    }
-  }
-  if (diagnostics.length > 0) {
-    return {
-      ok: false,
-      payloads: [],
-      diagnostics: finalizeDiagnostics(pluginId, capability, diagnostics)
-    };
-  }
-  const bytes = Buffer.byteLength(JSON.stringify(payloads), "utf8");
-  if (bytes > MAX_NORMALIZED_PAYLOAD_BYTES) {
-    return {
-      ok: false,
-      payloads: [],
-      diagnostics: [
-        makePayloadDiagnostic(
-          pluginId,
-          capability,
-          null,
-          "table",
-          "payload/metadata-too-large",
-          `normalized payload metadata must be at most ${MAX_NORMALIZED_PAYLOAD_BYTES} UTF-8 bytes.`
-        )
-      ]
-    };
-  }
-  return { ok: true, payloads, diagnostics: [] };
-}
-
-// src/resolver/lifecycle-evidence.ts
-var COMMITTED_LEDGER_PATH = ".wf/install-state.json";
-var LOCAL_LEDGER_PATH = "_local/install-state.json";
-var SHA256_RE = /^[a-f0-9]{64}$/;
-function nonEmpty(value) {
-  return typeof value === "string" && value.length > 0;
-}
-function uniqueSortedStrings(values) {
-  if (values.some((value) => !nonEmpty(value))) return null;
-  const sorted = [...values].sort((left, right) => left.localeCompare(right));
-  return new Set(sorted).size === sorted.length ? sorted : null;
-}
-function orderedHashes(records) {
-  const normalized = [];
-  const paths = /* @__PURE__ */ new Set();
-  for (const record2 of records) {
-    if (!nonEmpty(record2.path) || !SHA256_RE.test(record2.sha256) || paths.has(record2.path)) {
-      return null;
-    }
-    paths.add(record2.path);
-    normalized.push({ path: record2.path, sha256: record2.sha256 });
-  }
-  return normalized.sort(
-    (left, right) => left.path.localeCompare(right.path) || left.sha256.localeCompare(right.sha256)
-  );
-}
-function resolveLedgerHome(value) {
-  const selected = value === void 0 || value === null || value === "" ? "committed" : value;
-  if (selected === "committed") {
-    return {
-      ok: true,
-      home: "committed",
-      portablePath: COMMITTED_LEDGER_PATH,
-      bindingPath: LOCAL_LEDGER_PATH
-    };
-  }
-  if (selected === "local") {
-    return {
-      ok: true,
-      home: "local",
-      portablePath: LOCAL_LEDGER_PATH,
-      bindingPath: LOCAL_LEDGER_PATH
-    };
-  }
-  return {
-    ok: false,
-    home: null,
-    portablePath: null,
-    bindingPath: LOCAL_LEDGER_PATH,
-    diagnostic: "ledger home must be exactly `committed` or `local`."
-  };
-}
-function createPortablePackEvidence(inputs) {
-  if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.version)) return null;
-  const capabilities = uniqueSortedStrings(inputs.capabilities);
-  const manifestHashes = orderedHashes(inputs.manifestHashes);
-  const declaredSourceHashes = orderedHashes(inputs.declaredSourceHashes);
-  if (capabilities === null || manifestHashes === null || declaredSourceHashes === null) {
-    return null;
-  }
-  return {
-    pluginId: inputs.pluginId,
-    version: inputs.version,
-    capabilities,
-    manifestHashes,
-    declaredSourceHashes
-  };
-}
-function createMachineBindingEvidence(inputs) {
-  if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.canonicalRoot) || inputs.cliScope !== null && !nonEmpty(inputs.cliScope) || inputs.observedVersion !== null && !nonEmpty(inputs.observedVersion)) {
-    return null;
-  }
-  const localFingerprints = orderedHashes(inputs.localFingerprints);
-  if (localFingerprints === null) return null;
-  return {
-    pluginId: inputs.pluginId,
-    canonicalRoot: inputs.canonicalRoot,
-    cliScope: inputs.cliScope,
-    enablement: inputs.enablement,
-    observedVersion: inputs.observedVersion,
-    localFingerprints
-  };
-}
-function evidenceEqual(left, right) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-function compareLifecycleEvidence(expectedPortable, observedPortable, priorBinding, observedBinding) {
-  if (expectedPortable === null || observedPortable === null || observedBinding === null) {
-    return { state: "evidence-missing", seedProposal: null, persisted: false };
-  }
-  if (!evidenceEqual(expectedPortable, observedPortable)) {
-    return { state: "portable-mismatch", seedProposal: null, persisted: false };
-  }
-  if (priorBinding === null) {
-    return { state: "binding-seed", seedProposal: observedBinding, persisted: false };
-  }
-  if (priorBinding.canonicalRoot !== observedBinding.canonicalRoot) {
-    return { state: "root-moved", seedProposal: null, persisted: false };
-  }
-  if (!evidenceEqual(priorBinding, observedBinding)) {
-    return { state: "local-mismatch", seedProposal: null, persisted: false };
-  }
-  return { state: "equal", seedProposal: null, persisted: true };
-}
-
-// src/resolver/plugin-list.ts
-var REQUIRED_FIELDS = [
-  { field: "id", type: "string" },
-  { field: "version", type: "string" },
-  { field: "scope", type: "string" },
-  { field: "enabled", type: "boolean" },
-  { field: "installPath", type: "string" }
-];
-function parsePluginList(raw) {
-  const issues = [];
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (err) {
-    return {
-      plugins: [],
-      contractOk: false,
-      issues: [
-        {
-          code: "plugin-list/unparseable",
-          message: `\`claude plugin list --json\` output is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
-        }
-      ]
-    };
-  }
-  if (!Array.isArray(data)) {
-    return {
-      plugins: [],
-      contractOk: false,
-      issues: [
-        {
-          code: "plugin-list/not-an-array",
-          message: `\`claude plugin list --json\` must return a JSON array of plugin records; got ${data === null ? "null" : typeof data} \u2014 incompatible CLI output schema.`
-        }
-      ]
-    };
-  }
-  const plugins = [];
-  data.forEach((entry, i) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      issues.push({
-        code: "plugin-list/record-not-an-object",
-        message: `plugin record ${i} is not an object \u2014 incompatible CLI output schema.`
-      });
-      return;
-    }
-    const rec = entry;
-    let recOk = true;
-    for (const { field, type } of REQUIRED_FIELDS) {
-      if (!(field in rec)) {
-        issues.push({
-          code: "plugin-list/missing-field",
-          message: `plugin record ${i} is missing required field \`${field}\` \u2014 incompatible CLI output schema.`
-        });
-        recOk = false;
-      } else if (typeof rec[field] !== type) {
-        issues.push({
-          code: "plugin-list/wrong-type",
-          message: `plugin record ${i} field \`${field}\` should be a ${type}, got ${typeof rec[field]} \u2014 incompatible CLI output schema.`
-        });
-        recOk = false;
-      }
-    }
-    if (!recOk) return;
-    const id = rec.id;
-    const atIndex = id.indexOf("@");
-    const name = atIndex > 0 ? id.slice(0, atIndex) : id;
-    plugins.push({
-      id,
-      name,
-      version: rec.version,
-      scope: rec.scope,
-      enabled: rec.enabled,
-      installPath: normalizeSlashes(rec.installPath)
-    });
-  });
-  return { plugins, contractOk: issues.length === 0, issues };
-}
-
-// src/resolver/config.ts
-function extractKeyValues(markdown) {
-  const map = /* @__PURE__ */ new Map();
-  for (const rawLine of markdown.split(/\r?\n/)) {
-    const line = rawLine.replace(/\r$/, "").trim();
-    if (!line.startsWith("|")) continue;
-    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-    if (cells.length < 2) continue;
-    const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
-    if (!keyMatch) continue;
-    const key = keyMatch[1].trim().toLowerCase();
-    map.set(key, cells[1]);
-  }
-  return map;
-}
-function normalizeValue(raw) {
-  if (raw === void 0) return null;
-  let v = raw.trim();
-  const bt = /^`(.*)`$/.exec(v);
-  if (bt) v = bt[1].trim();
-  if (v === "" || v === "\u2014") return null;
-  if (/^<.*>$/.test(v)) return null;
-  return v;
-}
-function parseRoutingConfig(markdown) {
-  const lines = markdown.split(/\r?\n/);
-  const start = lines.findIndex((line) => /^##\s+Routing\s*$/.test(line.trim()));
-  if (start < 0) return {};
-  const out = {};
-  for (const raw of lines.slice(start + 1)) {
-    const line = raw.trim();
-    if (/^##\s+/.test(line)) break;
-    if (!line.startsWith("|")) continue;
-    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((v) => v.trim());
-    if (cells.length < 3 || /^(role|-+)$/i.test(cells[0])) continue;
-    const role = cells[0].replace(/^`|`$/g, "").trim();
-    if (!/^[a-z][a-z0-9-]*$/.test(role)) continue;
-    out[role] = { model: normalizeValue(cells[1]), effort: normalizeValue(cells[2]) };
-  }
-  return out;
-}
-function parseCoreConfig(markdown) {
-  const kv = extractKeyValues(markdown);
-  return {
-    taskRoot: normalizeValue(kv.get("task root")),
-    verifyCommand: normalizeValue(kv.get("verify command")),
-    qaRules: normalizeValue(kv.get("qa rules")),
-    qaBaselineIgnore: normalizeValue(kv.get("qa baseline ignore")),
-    seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
-    seedBacklogPath: normalizeValue(kv.get("backlog path")),
-    standupStatuses: normalizeValue(kv.get("standup statuses")),
-    contextCeiling: normalizeValue(kv.get("context ceiling"))
-  };
-}
-
-// src/resolver/fingerprint.ts
-import { createHash } from "node:crypto";
-function sha256Hex(content) {
-  return createHash("sha256").update(content, "utf8").digest("hex");
-}
-function fingerprint(kind, path, content) {
-  if (content === null) {
-    return { kind, path, sha256: null, bytes: null, present: false };
-  }
-  return {
-    kind,
-    path,
-    sha256: sha256Hex(content),
-    bytes: Buffer.byteLength(content, "utf8"),
-    present: true
-  };
-}
-
 // src/resolver/questions.ts
 var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
   "id",
@@ -21273,10 +19890,10 @@ function makeQuestionDiagnostic(pack, question, field, code, detail) {
     message: `${owner}, field \`${safeField}\`: ${detail}`
   };
 }
-function diagnosticBytes2(diagnostics) {
+function diagnosticBytes(diagnostics) {
   return Buffer.byteLength(JSON.stringify(diagnostics), "utf8");
 }
-function finalizeDiagnostics2(pack, diagnostics) {
+function finalizeDiagnostics(pack, diagnostics) {
   const retained = [];
   let truncated = false;
   for (const issue2 of diagnostics) {
@@ -21284,7 +19901,7 @@ function finalizeDiagnostics2(pack, diagnostics) {
       truncated = true;
       break;
     }
-    if (diagnosticBytes2([...retained, issue2]) > MAX_NORMALIZED_QUESTION_BYTES) {
+    if (diagnosticBytes([...retained, issue2]) > MAX_NORMALIZED_QUESTION_BYTES) {
       truncated = true;
       break;
     }
@@ -21298,7 +19915,7 @@ function finalizeDiagnostics2(pack, diagnostics) {
     "question/diagnostics-truncated",
     "additional diagnostics omitted after aggregate limit."
   );
-  while (retained.length >= MAX_QUESTION_DIAGNOSTICS || diagnosticBytes2([...retained, sentinel]) > MAX_NORMALIZED_QUESTION_BYTES) {
+  while (retained.length >= MAX_QUESTION_DIAGNOSTICS || diagnosticBytes([...retained, sentinel]) > MAX_NORMALIZED_QUESTION_BYTES) {
     retained.pop();
   }
   return [...retained, sentinel];
@@ -21860,7 +20477,7 @@ function parseQuestionDeclarations(pack, rawTemplate) {
     declarations.push(declaration);
   }
   if (diagnostics.length > 0) {
-    return { ok: false, questions: [], diagnostics: finalizeDiagnostics2(pack, diagnostics) };
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
   }
   const questions = [];
   for (const declaration of declarations) {
@@ -21892,7 +20509,7 @@ function parseQuestionDeclarations(pack, rawTemplate) {
     });
   }
   if (diagnostics.length > 0) {
-    return { ok: false, questions: [], diagnostics: finalizeDiagnostics2(pack, diagnostics) };
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
   }
   const sizeDiagnostic = normalizedMetadataDiagnostic(pack, questions);
   return sizeDiagnostic === null ? { ok: true, questions, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
@@ -21943,10 +20560,1875 @@ function applyQuestionValues(questions, inputs) {
   }
   const pack = resolved[0]?.pack ?? questions[0]?.pack ?? "unknown";
   if (diagnostics.length > 0) {
-    return { ok: false, questions: [], diagnostics: finalizeDiagnostics2(pack, diagnostics) };
+    return { ok: false, questions: [], diagnostics: finalizeDiagnostics(pack, diagnostics) };
   }
   const sizeDiagnostic = normalizedMetadataDiagnostic(pack, resolved);
   return sizeDiagnostic === null ? { ok: true, questions: resolved, diagnostics: [] } : { ok: false, questions: [], diagnostics: [sizeDiagnostic] };
+}
+
+// src/resolver/types.ts
+var SNAPSHOT_SCHEMA_VERSION = 4;
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.1" };
+var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
+var PLAN_ENVELOPE_VERSION = 1;
+
+// src/resolver/plan-install.ts
+var UNOBSERVED_INVENTORY = {
+  confidence: "unavailable",
+  mayEstablishAbsence: false,
+  observedCount: 0,
+  issues: []
+};
+function byPluginId(rows) {
+  return [...rows].sort((left, right) => left.pluginId.localeCompare(right.pluginId));
+}
+function sortFindings(findings) {
+  return [...findings].sort(
+    (left, right) => (left.pluginId ?? "").localeCompare(right.pluginId ?? "") || left.code.localeCompare(right.code) || left.message.localeCompare(right.message)
+  );
+}
+function sortQuestionRows(rows) {
+  return [...rows].sort(
+    (left, right) => left.pluginId.localeCompare(right.pluginId) || left.pack.localeCompare(right.pack) || left.questionId.localeCompare(right.questionId)
+  );
+}
+function sortedNames(values) {
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+function isRegistered(pack) {
+  return pack.registeredCapabilities.length > 0;
+}
+function entryFor(pack, reason, capabilities) {
+  return {
+    pluginId: pack.pluginId,
+    pluginName: pack.pluginName,
+    capabilities: sortedNames(capabilities),
+    reason,
+    presence: pack.presence,
+    state: pack.state,
+    enablement: pack.enablement,
+    overlay: pack.overlay
+  };
+}
+function planInstall(input) {
+  if (!input.admission.admitted) {
+    return {
+      planVersion: PLAN_ENVELOPE_VERSION,
+      workspaceRoot: null,
+      admission: input.admission,
+      applicability: "invalid-root",
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      findings: [],
+      inventory: UNOBSERVED_INVENTORY,
+      byteInert: true
+    };
+  }
+  const findings = [];
+  const finding2 = (code, severity, pluginId, message) => {
+    findings.push({ code, severity, pluginId, message });
+  };
+  const byId = new Map(input.packs.map((pack) => [pack.pluginId, pack]));
+  const desired = new Set(input.selection.desired);
+  const deregister = new Set(input.selection.deregister);
+  const contradictory = /* @__PURE__ */ new Set();
+  for (const pluginId of desired) {
+    if (deregister.has(pluginId)) {
+      contradictory.add(pluginId);
+      finding2(
+        "plan/contradictory-selection",
+        "error",
+        pluginId,
+        "appears in both the desired and the deregistration set; the selection is ambiguous and neither registers nor removes it."
+      );
+    }
+  }
+  for (const pluginId of [...desired, ...deregister].sort((l, r) => l.localeCompare(r))) {
+    if (!byId.has(pluginId)) {
+      finding2(
+        "plan/unknown-selection",
+        "error",
+        pluginId,
+        "is not a pack the resolver knows about; it is neither installed nor registered."
+      );
+    }
+  }
+  const additions = [];
+  const retentions = [];
+  const deregistrations = [];
+  const evidenceSeeds = [];
+  const actedOn = [];
+  const postPlanPacks = /* @__PURE__ */ new Set();
+  for (const pack of byPluginId([...input.packs])) {
+    const registered = isRegistered(pack);
+    const wanted = desired.has(pack.pluginId) && !contradictory.has(pack.pluginId);
+    const removing = deregister.has(pack.pluginId) && !contradictory.has(pack.pluginId);
+    if (registered && pack.presence === "orphaned") {
+      finding2(
+        "plan/orphaned-registration",
+        "warning",
+        pack.pluginId,
+        "is registered but absent from a trustworthy inventory; it stays visible and retained by default."
+      );
+    }
+    if (registered && pack.presence === "absence-indeterminate") {
+      finding2(
+        "plan/absence-indeterminate",
+        "warning",
+        pack.pluginId,
+        "is registered and not listed, but the inventory was not trustworthy enough to establish absence."
+      );
+    }
+    if (wanted && !registered && pack.enablement === "disabled") {
+      finding2(
+        "plan/not-selectable",
+        "error",
+        pack.pluginId,
+        "is disabled, so it cannot be registered; enable it before selecting it."
+      );
+    }
+    const acting = (wanted || removing) && byId.has(pack.pluginId);
+    if (acting) actedOn.push(pack);
+    let proofIncomplete = false;
+    if (acting) {
+      const comparison = pack.evidence.comparison;
+      if (comparison === "binding-seed" && pack.seedProposal !== null) {
+        evidenceSeeds.push({
+          pluginId: pack.pluginId,
+          kind: "binding-seed",
+          comparison,
+          portable: null,
+          binding: pack.seedProposal,
+          persisted: false
+        });
+      } else if (comparison === "evidence-missing") {
+        const observedPortable = pack.evidence.portable;
+        const observedBinding = pack.evidence.binding;
+        if (observedPortable !== null && observedBinding !== null) {
+          evidenceSeeds.push({
+            pluginId: pack.pluginId,
+            kind: "legacy-bootstrap",
+            comparison,
+            portable: observedPortable,
+            binding: observedBinding,
+            persisted: false
+          });
+          finding2(
+            "plan/legacy-bootstrap-previewed",
+            "info",
+            pack.pluginId,
+            "has no recorded lifecycle evidence; complete observed proof makes a bootstrap seed reviewable."
+          );
+        } else {
+          proofIncomplete = true;
+          finding2(
+            "plan/legacy-proof-incomplete",
+            "error",
+            pack.pluginId,
+            "has no recorded lifecycle evidence and incomplete observed proof; planning is not applicable and its registration is preserved."
+          );
+        }
+      } else if (comparison !== "equal") {
+        finding2(
+          "plan/stale-evidence",
+          "warning",
+          pack.pluginId,
+          `lifecycle evidence compares as \`${comparison}\`${pack.overlay === null ? "" : `; overlay \`${pack.overlay}\``}.`
+        );
+      }
+    }
+    if (proofIncomplete) {
+      if (registered) {
+        retentions.push(entryFor(pack, "retained-legacy-proof-incomplete", pack.registeredCapabilities));
+        postPlanPacks.add(pack.pluginId);
+      }
+      continue;
+    }
+    if (wanted && !registered) {
+      if (pack.enablement !== "disabled") {
+        additions.push(
+          entryFor(
+            pack,
+            "selected-addition",
+            input.capabilities.filter((capability) => capability.pluginId === pack.pluginId).map((capability) => capability.name)
+          )
+        );
+        postPlanPacks.add(pack.pluginId);
+      }
+      continue;
+    }
+    if (!registered) continue;
+    if (removing) {
+      deregistrations.push(entryFor(pack, "explicit-deregistration", pack.registeredCapabilities));
+      continue;
+    }
+    const reason = wanted ? "selected-retention" : pack.presence === "orphaned" ? "retained-orphaned" : pack.presence === "absence-indeterminate" ? "retained-absence-indeterminate" : "retained-by-omission";
+    retentions.push(entryFor(pack, reason, pack.registeredCapabilities));
+    postPlanPacks.add(pack.pluginId);
+  }
+  const postPlan = input.capabilities.filter(
+    (capability) => postPlanPacks.has(capability.pluginId)
+  );
+  const active = new Set(postPlan.map((capability) => capability.name));
+  for (const capability of postPlan) {
+    for (const needed of sortedNames(capability.requires)) {
+      if (!active.has(needed)) {
+        finding2(
+          "plan/dependency-unsatisfied",
+          "error",
+          capability.pluginId,
+          `capability \`${capability.name}\` requires \`${needed}\`, which the post-plan capability set does not provide.`
+        );
+      }
+    }
+    for (const foe of sortedNames(capability.conflicts)) {
+      if (active.has(foe) && foe !== capability.name) {
+        finding2(
+          "plan/capability-conflict",
+          "error",
+          capability.pluginId,
+          `capability \`${capability.name}\` declares a conflict with \`${foe}\`, which the post-plan capability set also activates.`
+        );
+      }
+    }
+  }
+  const claims = postPlan.flatMap(
+    (capability) => sortedNames(capability.providerScopes).map((scope) => ({ capability, scope }))
+  );
+  for (let i = 0; i < claims.length; i++) {
+    for (let j = i + 1; j < claims.length; j++) {
+      const left = claims[i];
+      const right = claims[j];
+      if (left.scope === right.scope && left.capability.name !== right.capability.name) {
+        finding2(
+          "plan/provider-overlap",
+          "error",
+          left.capability.pluginId,
+          `capabilities \`${left.capability.name}\` and \`${right.capability.name}\` both claim the provider surface \`${left.scope}\` \u2014 partitioned ownership must not overlap.`
+        );
+      }
+    }
+  }
+  const proposedByKey = /* @__PURE__ */ new Map();
+  for (const answer of input.selection.answers) {
+    proposedByKey.set(`${answer.pluginId}\0${answer.questionId}`, answer);
+  }
+  const writes = [];
+  const unresolved2 = [];
+  for (const pack of byPluginId(actedOn)) {
+    for (const question of pack.questions) {
+      if (question.state.status === "resolved") continue;
+      const proposed = proposedByKey.get(`${pack.pluginId}\0${question.id}`);
+      const open = (reason) => {
+        unresolved2.push({
+          pluginId: pack.pluginId,
+          pack: question.pack,
+          questionId: question.id,
+          destination: question.destination,
+          prompt: question.prompt,
+          reason,
+          suggestions: question.state.suggestions
+        });
+      };
+      if (proposed === void 0) {
+        finding2(
+          "plan/answer-missing",
+          "warning",
+          pack.pluginId,
+          `question \`${question.id}\` has no persisted and no proposed answer.`
+        );
+        open("missing-answer");
+        continue;
+      }
+      const validation = validateQuestionValue(question, "proposed", proposed.value);
+      if (!validation.valid) {
+        finding2(
+          "plan/answer-invalid",
+          "warning",
+          pack.pluginId,
+          `proposed answer for question \`${question.id}\` failed its declared schema: ${validation.diagnostics.map((diagnostic) => diagnostic.message).join(" ")}`
+        );
+        open("invalid-proposed-answer");
+        continue;
+      }
+      writes.push({
+        pluginId: pack.pluginId,
+        pack: question.pack,
+        questionId: question.id,
+        destination: question.destination,
+        value: validation.value,
+        source: "proposed",
+        status: "pending"
+      });
+    }
+  }
+  const registryDelta = {
+    additions: byPluginId(additions),
+    retentions: byPluginId(retentions),
+    deregistrations: byPluginId(deregistrations)
+  };
+  const applicability = findings.some((f) => f.severity === "error") ? "not-applicable" : unresolved2.length > 0 ? "blocked" : registryDelta.additions.length === 0 && registryDelta.deregistrations.length === 0 && writes.length === 0 && evidenceSeeds.length === 0 ? "no-change" : "applicable";
+  return {
+    planVersion: PLAN_ENVELOPE_VERSION,
+    workspaceRoot: input.admission.root,
+    admission: input.admission,
+    applicability,
+    registryDelta,
+    answers: {
+      writes: sortQuestionRows(writes),
+      unresolved: sortQuestionRows(unresolved2)
+    },
+    evidenceSeeds: byPluginId(evidenceSeeds),
+    findings: sortFindings(findings),
+    inventory: input.inventory,
+    byteInert: true
+  };
+}
+
+// src/git-workspace.ts
+import { execFileSync } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
+import { isAbsolute, resolve } from "node:path";
+
+// src/resolver/paths.ts
+function registryPathShapeError(path) {
+  if (path.includes("\\")) return "contains a backslash (must use forward slashes)";
+  if (/^\//.test(path)) return "absolute path (leading '/')";
+  if (/^[A-Za-z]:/.test(path)) return "drive-prefixed path";
+  if (`/${path}/`.includes("/../")) return "contains a '..' segment";
+  return null;
+}
+function normalizeSlashes(p) {
+  return p.replace(/\\/g, "/");
+}
+function joinSlash(...segments) {
+  return segments.map((s, i) => {
+    let seg = normalizeSlashes(s);
+    if (i > 0) seg = seg.replace(/^\/+/, "");
+    if (i < segments.length - 1) seg = seg.replace(/\/+$/, "");
+    return seg;
+  }).filter((s) => s.length > 0).join("/");
+}
+function resolveContainedCapabilityPath(root, relative3) {
+  if (relative3.length === 0 || relative3.includes("\0") || relative3.includes("\\") || isAbsoluteRoot(relative3)) {
+    return null;
+  }
+  const segments = relative3.split("/");
+  if (segments.some(
+    (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":")
+  )) {
+    return null;
+  }
+  const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
+  const candidate = joinSlash(normalizedRoot, ...segments);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  return candidate.startsWith(prefix) ? candidate : null;
+}
+var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
+function parsePluginAnchor(registryPath) {
+  const m = PLUGIN_ANCHOR.exec(registryPath.trim());
+  if (!m) return null;
+  return { pluginName: m[1], relPath: m[2] };
+}
+function resolveCapabilityPath(registryPath, opts) {
+  const anchor = parsePluginAnchor(registryPath);
+  if (!anchor) {
+    const folder = joinSlash(opts.workspaceRoot, registryPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+    }
+    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
+  }
+  const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
+  if (recorded) {
+    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
+    const folder = joinSlash(root, anchor.relPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+    }
+  }
+  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
+  if (installed) {
+    const root = normalizeSlashes(installed.installPath);
+    const folder = joinSlash(root, anchor.relPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
+    }
+  }
+  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
+}
+function isAbsoluteRoot(root) {
+  const n = normalizeSlashes(root);
+  return n.startsWith("/") || /^[A-Za-z]:/.test(n);
+}
+
+// src/git-workspace.ts
+function canonicalDirectory(path, label2) {
+  if (!isAbsolute(path)) {
+    throw new Error(`${label2} must be an absolute path.`);
+  }
+  let stat;
+  try {
+    stat = statSync(path);
+  } catch {
+    throw new Error(`${label2} does not exist: ${path}`);
+  }
+  if (!stat.isDirectory()) {
+    throw new Error(`${label2} must be a directory: ${path}`);
+  }
+  return normalizeSlashes(realpathSync(path));
+}
+function gitOutput(directory, ...args) {
+  try {
+    return execFileSync("git", ["-C", directory, "rev-parse", ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"]
+    }).trim();
+  } catch {
+    throw new Error(`workspaceRoot is not inside a Git worktree: ${directory}`);
+  }
+}
+function resolveGitIdentity(directory, label2 = "workspaceRoot") {
+  const canonicalInput = canonicalDirectory(directory, label2);
+  const topLevel = gitOutput(canonicalInput, "--show-toplevel");
+  const canonicalTopLevel = canonicalDirectory(
+    isAbsolute(topLevel) ? topLevel : resolve(canonicalInput, topLevel),
+    "Git worktree root"
+  );
+  const commonDir = gitOutput(canonicalInput, "--git-common-dir");
+  const canonicalCommonDir = canonicalDirectory(
+    isAbsolute(commonDir) ? commonDir : resolve(canonicalInput, commonDir),
+    "Git common directory"
+  );
+  return { worktreeRoot: canonicalTopLevel, commonDir: canonicalCommonDir };
+}
+function resolveWorkspaceIdentity(directory, label2 = "workspaceRoot") {
+  const canonicalInput = canonicalDirectory(directory, label2);
+  try {
+    const git = resolveGitIdentity(canonicalInput, label2);
+    return { kind: "git", root: git.worktreeRoot, commonDir: git.commonDir };
+  } catch (err) {
+    if (!(err instanceof Error) || !err.message.startsWith("workspaceRoot is not inside a Git worktree:")) {
+      throw err;
+    }
+    return { kind: "plain", root: canonicalInput };
+  }
+}
+
+// src/workspace-admission.ts
+function label(source) {
+  if (source === "explicit") return "explicit workspace root";
+  if (source === "environment") return "WF_WORKSPACE_ROOT";
+  return "current working directory";
+}
+function failure(source, reason, diagnostic) {
+  return { ok: false, root: null, source, reason, diagnostic };
+}
+function reasonFromThrow(message) {
+  if (message.includes("must be an absolute path")) return "not-absolute";
+  if (message.includes("must be a directory")) return "not-a-directory";
+  if (message.includes("does not exist")) return "not-found";
+  return "not-found";
+}
+function admittedByFamily(identity, launch) {
+  if (launch === null) return true;
+  if (launch.kind === "git") {
+    return identity.kind === "git" && identity.commonDir === launch.commonDir;
+  }
+  return identity.root === launch.root;
+}
+function admit(source, candidate, launch) {
+  let identity;
+  try {
+    identity = resolveWorkspaceIdentity(candidate, label(source));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const classifiable = message.split(": ")[0] ?? message;
+    const diagnostic = message.includes(candidate) ? message : `${message} Received: \`${candidate}\`.`;
+    return failure(source, reasonFromThrow(classifiable), diagnostic);
+  }
+  if (!admittedByFamily(identity, launch)) {
+    return failure(
+      source,
+      "out-of-family",
+      `${label(source)} resolves to \`${identity.root}\`, which is outside the launch workspace family.`
+    );
+  }
+  return { ok: true, root: identity.root, source, identity };
+}
+function selectWorkspaceRoot(declaration, launch) {
+  const tiers = [
+    { source: "explicit", value: declaration.explicit },
+    { source: "environment", value: declaration.environment },
+    { source: "cwd", value: declaration.cwd }
+  ];
+  for (const tier of tiers) {
+    if (tier.value === null || tier.value === void 0) continue;
+    if (typeof tier.value !== "string") {
+      return failure(
+        tier.source,
+        "not-absolute",
+        `${label(tier.source)} is declared as a ${typeof tier.value}, not a string path; a declared workspace root is never replaced by a lower-precedence source.`
+      );
+    }
+    if (tier.value.trim().length === 0) {
+      return failure(
+        tier.source,
+        "declaration-empty",
+        `${label(tier.source)} is declared but blank; a declared workspace root is never replaced by a lower-precedence source.`
+      );
+    }
+    return admit(tier.source, tier.value, launch);
+  }
+  return failure(
+    "cwd",
+    "declaration-empty",
+    `${label("cwd")} is undeclared, so no workspace root could be selected.`
+  );
+}
+
+// src/tools.ts
+function ok(payload) {
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    structuredContent: payload
+  };
+}
+var safeTerminalStringPattern = "^[^\\u0000-\\u001F\\u007F-\\u009F]*$";
+function terminalSafeDiagnostic(value) {
+  const message = value instanceof Error ? value.message : String(value);
+  return message.replace(new RegExp("\\p{C}", "gu"), "?").slice(0, 512);
+}
+function guard(fn) {
+  try {
+    return ok(fn());
+  } catch (err) {
+    const message = terminalSafeDiagnostic(err);
+    return {
+      content: [{ type: "text", text: `resolver error: ${message}` }],
+      isError: true
+    };
+  }
+}
+var workspaceRootProperty = {
+  type: "string",
+  minLength: 1,
+  maxLength: 4096,
+  pattern: safeTerminalStringPattern,
+  description: "Absolute path to a directory in the launch repository's main/linked worktree family."
+};
+function withWorkspaceRoot(schema) {
+  return {
+    ...schema,
+    properties: { workspaceRoot: workspaceRootProperty, ...schema.properties ?? {} },
+    required: ["workspaceRoot", ...schema.required ?? []]
+  };
+}
+var workspaceOnlyInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {},
+  additionalProperties: false
+}));
+var surfaceInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    surface: {
+      type: "string",
+      description: 'Provider surface to resolve: `delivery`, `tracker`, `engine`, `host`, or the composite `qa-execution:engine` / `qa-execution:host` (equivalent to the bare `engine` / `host` forms \u2014 both resolve to the same ownership record). An unrecognized token is an invalid argument and returns an MCP error result, distinct from a genuine `state: "unconfigured"` response.'
+    }
+  },
+  required: ["surface"],
+  additionalProperties: false
+}));
+var PLAN_MAX_SELECTION = 256;
+var PLAN_MAX_ANSWERS = 512;
+var pluginIdListProperty = (description) => ({
+  type: "array",
+  maxItems: PLAN_MAX_SELECTION,
+  uniqueItems: true,
+  items: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+  description
+});
+var planInstallInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    desired: pluginIdListProperty(
+      "The explicit desired selected set, as plugin ids. A registered pack ABSENT from this list is retained, never removed."
+    ),
+    deregister: pluginIdListProperty(
+      "The explicit deregistration set, as plugin ids. The only removal path \u2014 omission from `desired` never implies removal, so an orphaned or disabled registration cannot become an implicit removal."
+    ),
+    answers: {
+      type: "array",
+      maxItems: PLAN_MAX_ANSWERS,
+      items: {
+        type: "object",
+        properties: {
+          pluginId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+          questionId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+          value: {
+            description: "The proposed answer, validated against the question's declared schema. Not persisted evidence \u2014 a valid value is reported as a PENDING write."
+          }
+        },
+        required: ["pluginId", "questionId", "value"],
+        additionalProperties: false
+      },
+      description: "Proposed project answers. Validated through the same declared-schema path a persisted value takes; never written."
+    }
+  },
+  additionalProperties: false
+}));
+function toPlanSelection(args) {
+  return {
+    desired: args.desired ?? [],
+    deregister: args.deregister ?? [],
+    answers: (args.answers ?? []).map((answer) => ({
+      pluginId: answer.pluginId,
+      questionId: answer.questionId,
+      value: answer.value
+    }))
+  };
+}
+function planInstallEnvelopeForRejection(source, reason, diagnostic, args) {
+  return planInstall({
+    admission: { admitted: false, root: null, source, reason, diagnostic },
+    inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+    packs: [],
+    capabilities: [],
+    selection: toPlanSelection(args)
+  });
+}
+var surfaceClassInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    surface: {
+      type: "string",
+      enum: ["local-read", "tracker-write", "delivery-write"],
+      description: "The surface class about to act: `local-read` (best-effort read), `tracker-write`, or `delivery-write`."
+    }
+  },
+  required: ["surface"],
+  additionalProperties: false
+}));
+var safeRoutingStringPattern = safeTerminalStringPattern;
+var unitIdPattern = "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$";
+var routingSignalValues = [
+  "low-confidence",
+  "failed-validation",
+  "conflicting-or-incomplete-evidence",
+  "repeated-failure",
+  "increased-risk-or-scope",
+  "high-severity-review-uncertainty"
+];
+var routingShapeProperties = {
+  workSurface: { type: "string", enum: ["caller-context", "external-context"] },
+  atomicity: { type: "string", enum: ["atomic", "composite"] },
+  unitCount: { type: "integer", minimum: 1, maximum: 4 },
+  unitsIndependent: { type: "boolean" },
+  ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
+  risk: { type: "string", enum: ["low", "elevated"] },
+  toolWork: { type: "string", enum: ["none", "bounded", "material"] },
+  validation: { type: "string", enum: ["mechanical", "judgment"] },
+  contextIsolation: { type: "string", enum: ["none", "useful", "required"] },
+  independentReview: { type: "boolean" },
+  returnContract: { type: "string", enum: ["mechanically-judgeable", "judgment"] },
+  requestedParallelism: { type: "integer", minimum: 1 }
+};
+var routingShapeRequired = Object.keys(routingShapeProperties);
+var routingChoiceSchema = (maxLength) => ({
+  type: "object",
+  properties: {
+    value: { type: ["string", "null"], maxLength, pattern: safeRoutingStringPattern },
+    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    requested: { type: ["string", "null"], maxLength, pattern: safeRoutingStringPattern },
+    requestedSource: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    masked: { type: "boolean" },
+    fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] }
+  },
+  required: ["value", "source", "requested", "requestedSource", "masked", "fallback"],
+  additionalProperties: false
+});
+var routingInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
+    shapeEvidence: {
+      type: "object",
+      properties: routingShapeProperties,
+      additionalProperties: false
+    },
+    unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
+    invocationModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
+    invocationEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
+    requireModel: { type: "boolean" },
+    requireEffort: { type: "boolean" },
+    supportsModelSelector: { type: "boolean" },
+    supportsEffortSelector: { type: "boolean" },
+    hostModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
+    hostEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
+    availableModels: { type: ["array", "null"], maxItems: 64, items: { type: "string", minLength: 1, maxLength: 128, pattern: safeRoutingStringPattern }, uniqueItems: true },
+    basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+    attempt: { type: "integer", minimum: 1, maximum: 3 },
+    escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+    actualModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
+    postAttempt: {
+      type: "object",
+      properties: {
+        sufficient: { type: "boolean" },
+        signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+        units: {
+          type: "array",
+          minItems: 1,
+          maxItems: 4,
+          items: {
+            type: "object",
+            properties: {
+              unitId: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern },
+              sufficient: { type: "boolean" },
+              signals: { type: "array", maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true }
+            },
+            required: ["unitId", "sufficient", "signals"],
+            additionalProperties: false
+          }
+        },
+        prior: {
+          type: "object",
+          properties: {
+            role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
+            attempt: { type: "integer", minimum: 1, maximum: 3 },
+            executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
+            shapeEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
+            unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
+            model: routingChoiceSchema(128),
+            effort: routingChoiceSchema(16),
+            basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+            escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+            actualModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern }
+          },
+          required: ["role", "attempt", "executionShape", "shapeEvidence", "unitIds", "model", "effort", "basis", "escalationOrigin"],
+          additionalProperties: false
+        }
+      },
+      required: ["sufficient", "signals", "prior"],
+      additionalProperties: false
+    }
+  },
+  // NOTE: the "no postAttempt ⇒ attempt===1 and escalationOrigin===null" invariant is
+  // enforced in resolveRouting() (resolver/routing.ts), which returns an `invalid-stop`
+  // decision on violation. It is deliberately NOT expressed as a top-level `allOf`/`if`
+  // here: the Anthropic Messages API rejects a tool `input_schema` that uses top-level
+  // allOf/anyOf/oneOf, which makes Claude Code silently skip this tool at registration.
+  required: ["role", "shapeEvidence", "supportsModelSelector", "supportsEffortSelector"],
+  additionalProperties: false
+}));
+var routingOutput = fromJsonSchema2({
+  type: "object",
+  properties: {
+    role: { type: "string", maxLength: 64 },
+    executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
+    normalizedEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
+    unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
+    shapeReason: { type: "string", enum: ["atomic-caller-context", "single-isolation-worthy-unit", "dependent-or-nonmaterial-units", "nonmaterial-units-inline", "independent-material-units"] },
+    effectiveParallelism: { type: "integer", minimum: 1, maximum: 4 },
+    model: routingChoiceSchema(128),
+    effort: routingChoiceSchema(16),
+    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+    attempt: { type: "integer", minimum: 1, maximum: 3 },
+    escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+    fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] },
+    masked: { type: "boolean" },
+    actualModel: { type: "string", maxLength: 128, pattern: safeRoutingStringPattern },
+    status: { type: "string", enum: ["dispatch", "retain", "stop"] },
+    disposition: { type: "string", enum: ["dispatch", "retain", "retry", "exhausted", "invalid-stop"] },
+    retry: {
+      anyOf: [
+        { type: "null" },
+        {
+          type: "object",
+          properties: {
+            attempt: { type: "integer", minimum: 2, maximum: 3 },
+            signals: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
+            unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
+            priorTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
+            nextTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
+            escalationOrigin: { type: "string", minLength: 1, maxLength: 256, pattern: safeRoutingStringPattern },
+            priorExecutionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
+            shapeChanged: { type: "boolean" }
+          },
+          required: ["attempt", "signals", "unitIds", "priorTier", "nextTier", "escalationOrigin", "priorExecutionShape", "shapeChanged"],
+          additionalProperties: false
+        }
+      ]
+    },
+    retainedUnitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
+    diagnostic: { type: ["string", "null"] }
+  },
+  required: ["role", "executionShape", "normalizedEvidence", "unitIds", "shapeReason", "effectiveParallelism", "model", "effort", "source", "basis", "attempt", "escalationOrigin", "fallback", "masked", "status", "disposition", "retry", "retainedUnitIds", "diagnostic"],
+  additionalProperties: false
+});
+var capabilityInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    capability: { type: "string", description: "Registered capability name." }
+  },
+  required: ["capability"],
+  additionalProperties: false
+}));
+var pluginInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    plugin: { type: "string", description: "Plugin name (left of `@`)." }
+  },
+  required: ["plugin"],
+  additionalProperties: false
+}));
+var pluginIdInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    pluginId: {
+      type: "string",
+      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
+    }
+  },
+  required: ["pluginId"],
+  additionalProperties: false
+}));
+var skillInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    skill: {
+      type: "string",
+      description: "Slotted skill slug whose declared settings keys to resolve (lowercase, hyphenated)."
+    }
+  },
+  required: ["skill"],
+  additionalProperties: false
+}));
+var contentInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    class: {
+      type: "string",
+      enum: ["fragment", "contract", "shared", "references-template", "profile-template", "slot"],
+      description: "The logical content-ref class: `fragment` (a capability fragment body), `contract` (a `_contracts/*` ops doc), `shared` (a `_shared/*` convention doc), `references-template` (a skill `references/*` template), `profile-template` (a pack's `profile.template.json` body), or `slot` (the single composed body for a per-skill composition point \u2014 see `skill`+`point`). Skill bodies and CI-only fixtures are not served."
+    },
+    capability: {
+      type: "string",
+      description: "Registered capability name \u2014 required for `fragment` and `profile-template`."
+    },
+    plugin: {
+      type: "string",
+      description: "Plugin name for a pack-owned `references-template`; omit (or use `wf`/`core`) for a core-plugin skill."
+    },
+    skill: {
+      type: "string",
+      description: "Skill slug \u2014 required for `references-template`; the `<skill>` segment for `slot`."
+    },
+    point: {
+      type: "string",
+      description: "The `<point>` segment for a `slot` ref \u2014 the composition point inside the named skill (the pair forms the `<skill>.<point>` id, e.g. skill `ship` + point `review`)."
+    },
+    ref: {
+      type: "string",
+      description: "The relative doc ref: within the capability folder, subfolder included \u2014 e.g. `fragments/tracker.ops.md`, never the bare filename (`fragment`); a bare filename (`contract` / `shared`); or within the skill's `references/` folder (`references-template`). Unused by `profile-template` / `slot`."
+    }
+  },
+  required: ["class"],
+  additionalProperties: false
+}));
+var validateManifestInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "A capability folder or a `manifest.md` path (absolute, or relative to the workspace root). Omit to check every active registry capability's manifest."
+    }
+  },
+  additionalProperties: false
+}));
+var validateSkillInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    plugin: {
+      type: "string",
+      description: "Plugin name to scope the scan to (e.g. `wf`). Omit to scan every plugin."
+    },
+    skill: {
+      type: "string",
+      description: "Skill slug to scope the scan to. Omit to scan every skill in scope."
+    }
+  },
+  additionalProperties: false
+}));
+var validateReferencesInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    path: {
+      type: "string",
+      description: "A skill body, an agent file, or a folder to scan (absolute, or relative to the workspace root). Omit to scan every plugin's `skills/` and `agents/`."
+    }
+  },
+  additionalProperties: false
+}));
+var previewCompositionInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    phase: {
+      type: "string",
+      description: "SDD phase to preview (e.g. `verify`, `qa-execution`). Omit to preview every phase."
+    }
+  },
+  additionalProperties: false
+}));
+var registerInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    pluginId: {
+      type: "string",
+      description: "Stable plugin id (`<name>@<marketplace>` or bare `<name>`)."
+    },
+    expectedFingerprint: {
+      type: "string",
+      description: "The pack fingerprint returned by a prior inspect_pack; a mismatch rejects the write."
+    }
+  },
+  required: ["pluginId", "expectedFingerprint"],
+  additionalProperties: false
+}));
+var reasonsInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    reasons: {
+      type: "array",
+      items: { type: "string" },
+      description: "Optional typed suspected-stale reasons (one short message each) recorded as diagnostics on the resulting lifecycle state."
+    }
+  },
+  additionalProperties: false
+}));
+function toReasons(reasons, code) {
+  return (reasons ?? []).filter((r) => typeof r === "string" && r.trim().length > 0).map((message) => ({ code, message: message.trim() }));
+}
+var RESIDENT = { "anthropic/alwaysLoad": true };
+function registerResolverTools(server, selectService) {
+  const selected = (args, fn) => guard(() => fn(selectService(args.workspaceRoot)));
+  server.registerTool(
+    "resolve_config",
+    {
+      title: "resolve config",
+      inputSchema: workspaceOnlyInput,
+      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
+      _meta: RESIDENT
+    },
+    async (args) => selected(args, (service) => service.resolveConfig())
+  );
+  server.registerTool(
+    "resolve_registry",
+    {
+      title: "resolve registry",
+      inputSchema: workspaceOnlyInput,
+      description: "The ordered active capability registry as metadata (R2): name, kind, resolved/manifest paths, provenance, validity, fragment dispatch metadata, articles, requires/conflicts. Never a fragment body.",
+      _meta: RESIDENT
+    },
+    async (args) => selected(args, (service) => service.resolveRegistry())
+  );
+  server.registerTool(
+    "resolve_provider",
+    {
+      title: "resolve provider",
+      description: "One provider surface's resolution record (R3): owner, dispatch fragment path, state, and the degradation class a consumer reproduces. No fragment body.",
+      inputSchema: surfaceInput,
+      _meta: RESIDENT
+    },
+    async (args) => selected(args, (service) => service.resolveProvider(args.surface))
+  );
+  server.registerTool(
+    "resolve_profile",
+    {
+      title: "resolve profile",
+      description: "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
+      inputSchema: capabilityInput
+    },
+    async (args) => selected(args, (service) => service.resolveProfile(args.capability))
+  );
+  server.registerTool(
+    "resolve_settings",
+    {
+      title: "resolve settings",
+      description: "Override-merged per-skill SETTINGS values (WF-328). Resolves a slotted skill's declared settings keys under the hybrid precedence override > declared default \u2014 the same seeded-override pattern as capability profiles, re-keyed per skill on `_local/profiles/<skill>.settings.json`. A skill with no override resolves to its declared defaults (no override seeded); a divergent override value wins per key; an override carrying a key the skill's `interface.md` does not declare is rejected loudly (`registry-invalid`, naming the key and the skill). Values only; never a skill body or interface prose.",
+      inputSchema: skillInput
+    },
+    async (args) => selected(args, (service) => service.resolveSettings(args.skill))
+  );
+  server.registerTool(
+    "resolve_routing",
+    {
+      title: "resolve routing",
+      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. Body-free.",
+      inputSchema: routingInput,
+      outputSchema: routingOutput,
+      _meta: RESIDENT
+    },
+    async (args) => {
+      const { workspaceRoot, ...inputs } = args;
+      return selected({ workspaceRoot }, (service) => service.resolveRouting(inputs));
+    }
+  );
+  server.registerTool(
+    "resolve_plugin_root",
+    {
+      title: "resolve plugin root",
+      description: "A plugin's resolved install root + provenance, post-self-heal (R5). One path record.",
+      inputSchema: pluginInput
+    },
+    async (args) => selected(args, (service) => service.resolvePluginRoot(args.plugin))
+  );
+  server.registerTool(
+    "resolve_content",
+    {
+      title: "resolve content",
+      description: "Resolve + read a bundled-doc BODY, read by the server's own Node fs. Five single-path classes (fragment | contract | shared | references-template | profile-template) return `{status: served, path, content}`. The `slot` class composes a per-skill composition point (`skill`+`point`) into exactly ONE body under the precedence personal `_local/` override > pack contribution, returning `{status: composed, content, policy, parts}` (`replace` = single winner; `append` = registry-ordered concatenation, override last); a slot with no contribution and no override returns `{status: unfilled}` directing the caller to the inline default. On an unresolvable/unrecoverable ref: `{status: unresolved}` with the matching resolve_gate degradation class + a `/wf:resolve` recovery path (never a wrong-path body, never a raw-read fall-through); an out-of-class ref (skill body, CI-only fixture) returns `{status: refused}`. The distinct body-serving path \u2014 the metadata queries stay body-free.",
+      inputSchema: contentInput,
+      _meta: RESIDENT
+    },
+    async (args) => {
+      const { workspaceRoot, ...ref } = args;
+      return selected({ workspaceRoot }, (service) => service.resolveContent(ref));
+    }
+  );
+  server.registerTool(
+    "inspect_pack",
+    {
+      title: "inspect pack",
+      description: "Read-only pack inspection (R6): resolves a plugin id via `claude plugin list --json`, validates enabled state / version / installPath and the pack manifest(s), and returns a fingerprint. Writes nothing.",
+      inputSchema: pluginIdInput
+    },
+    async (args) => selected(args, (service) => service.inspectPack(args.pluginId))
+  );
+  server.registerTool(
+    "discover_packs",
+    {
+      title: "discover packs",
+      description: "Read-only, byte-inert pack discovery (R6). Joins the authoritative `claude plugin list --json` inventory, registry attribution, each pack's existing snapshot state, recorded-vs-observed lifecycle evidence, and declared questions into one deterministic inventory a maintainer inspects before choosing a lifecycle change. Returns `{workspaceRoot, inventory{confidence, mayEstablishAbsence, observedCount, issues}, packs[], diagnostics[]}`. `confidence` is one of `trustworthy | unavailable | malformed | partial | invalid`, and ONLY `trustworthy` may establish that a registered pack is orphaned \u2014 every other value reports `absence-indeterminate` instead. A duplicate plugin id or name invalidates the whole inventory and classifies nothing. Each pack carries its unchanged `PackState` plus a separate nullable staleness `overlay`, a non-persisted `seedProposal`, and its declared questions. Writes nothing: no ledger, no seed, no enablement change.",
+      inputSchema: workspaceOnlyInput
+    },
+    async (args) => selected(args, (service) => service.discoverPacks())
+  );
+  server.registerTool(
+    "plan_install",
+    {
+      title: "plan install",
+      description: "Read-only, byte-inert preview of one explicit selected set (WF-447) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], findings[], inventory, byteInert}`. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
+      inputSchema: planInstallInput
+    },
+    async (args) => guard(() => {
+      const declared = selectWorkspaceRoot(
+        { explicit: args.workspaceRoot, cwd: args.workspaceRoot },
+        null
+      );
+      if (!declared.ok) {
+        return planInstallEnvelopeForRejection(
+          declared.source,
+          declared.reason,
+          declared.diagnostic,
+          args
+        );
+      }
+      let service;
+      try {
+        service = selectService(args.workspaceRoot);
+      } catch (err) {
+        return planInstallEnvelopeForRejection(
+          declared.source,
+          "out-of-family",
+          terminalSafeDiagnostic(err),
+          args
+        );
+      }
+      return service.planInstall(
+        { admitted: true, root: declared.root, source: declared.source, reason: null, diagnostic: null },
+        toPlanSelection(args)
+      );
+    })
+  );
+  server.registerTool(
+    "register_pack",
+    {
+      title: "register pack",
+      description: "Mutating pack registration (R6). Rejects a missing / disabled / stale-fingerprint / path-invalid / manifest-invalid request WITHOUT writing; on success owns the registry write, refreshes the snapshot, and self-checks. Core does not infer skill provenance.",
+      inputSchema: registerInput
+    },
+    async (args) => selected(args, (service) => service.registerPack(args.pluginId, args.expectedFingerprint))
+  );
+  server.registerTool(
+    "resolve_gate",
+    {
+      title: "resolve gate",
+      description: "Surface-specific resolver-failure gate (WF-272). Given the current resolver health and the acting surface (`local-read` | `tracker-write` | `delivery-write`), returns the reaction (continue | warn | block), the failure categories, categorized diagnostics with a `/wf:resolve` recovery path, and a marker proving the failure path never re-walks folders or probes the environment. A local read continues best-effort, a tracker write warns and continues, a delivery write blocks before any mutation.",
+      inputSchema: surfaceClassInput
+    },
+    async (args) => selected(args, (service) => service.assessSurface(args.surface))
+  );
+  server.registerTool(
+    "validate_manifest",
+    {
+      title: "validate manifest",
+      description: 'Check a capability `manifest.md` against manifest schema v2 (WF-352). Returns the frozen ValidationVerdict `{tool, status: pass|fail|error, target, findings[{rule, severity, file, line, message}], ruleSources[], summary}`. Rule ids mirror `validate-registry.sh` (`CHECK-6` phase/kind tokens, `CHECK-6b` dispatch, `CHECK-6c` slot scope + merge policy, `CHECK-HEADING` heading typos). The phase spine, contribution kinds, and merge policies are derived LIVE from `capability-registry.ops.md` on every call \u2014 no rule is transcribed. A syntactically broken manifest returns `status: "error"` with rule `input-unparseable`; an unreadable rule source returns `rule-source-unresolvable` \u2014 never a crash, never a silent pass. Omit `path` to check every active capability.',
+      inputSchema: validateManifestInput
+    },
+    async (args) => selected(args, (service) => service.validateManifest(args.path))
+  );
+  server.registerTool(
+    "validate_registry",
+    {
+      title: "validate registry",
+      inputSchema: workspaceOnlyInput,
+      description: "Check the resolved capability registry (WF-352): the `## Capabilities` and `## Plugin Roots` tables plus every resolvable capability manifest \u2014 the same set `validate-registry.sh` folds into one exit code, and it agrees with that guard's verdict. Returns the frozen ValidationVerdict. Rule ids are the guard's own: `CHECK-1` registryPath shape, `CHECK-2` duplicate names, `CHECK-3` filesystem-safe names, `CHECK-4` path resolves + carries a manifest, `CHECK-4a`/`CHECK-4b` plugin-root shape/uniqueness, `CHECK-5` overlapping partitioned ownership (naming both offenders), `CHECK-6`/`6b`/`6c` fragment-row rules, `CHECK-7` requires satisfied, `CHECK-8` co-active conflicts, `CHECK-9` contradictory article clauses. Takes no arguments \u2014 it validates the registry the resolver already resolved."
+    },
+    async (args) => selected(args, (service) => service.validateRegistry())
+  );
+  server.registerTool(
+    "validate_skill_interface",
+    {
+      title: "validate skill interface",
+      description: "Check skill slot markers against their `interface.md` `## Slots` declarations (WF-352), agreeing with `skill-slot-marker-lint.sh` and reusing its defect ids: `D1` malformed declaration, `D2` malformed marker, `D3` undeclared marker, `D4` unbalanced/duplicate marker, `D5` declared-but-unmarked. Returns the frozen ValidationVerdict with file/line diagnostics only \u2014 never any skill-body content (the `resolve_content` body-serving refusal is unchanged). A skill declaring no slots and carrying no markers passes clean (the inert case). Omit both arguments to scan every skill under `plugins/*/skills/*/`.",
+      inputSchema: validateSkillInput
+    },
+    async (args) => selected(args, (service) => service.validateSkillInterface(args.plugin, args.skill))
+  );
+  server.registerTool(
+    "validate_references",
+    {
+      title: "validate references",
+      description: "Resolve every cross-reference in skill bodies and agent files against the real tree (WF-354) \u2014 the dead-reference class no structural validator catches (a body instructing invocation of a removed skill). Checks `/wf:<skill>`, `/wf-<pack>:<skill>`, `subagent_type: wf:<agent>`, and `${CLAUDE_PLUGIN_ROOT}` path tokens, but ONLY on invocation-instruction lines: the instruction-vs-prose classifier is DERIVED at call time by parsing the `p1`/`p2` assignments out of `out4-skill-read-guard.sh` (recorded in `ruleSources`), so a bare prose mention \u2014 a README skill table, a cited call shape \u2014 never turns red. Returns the frozen ValidationVerdict with rule ids `REF-1` (unresolvable skill/agent invocation reference) and `REF-2` (unresolvable `${CLAUDE_PLUGIN_ROOT}` path token), alongside `input-unparseable` / `rule-source-unresolvable`. A reference whose owning plugin root is not resolvable in this workspace is indeterminate, not dead: it is excluded from `findings` and counted in `summary`. Omit `path` to scan every plugin's skills and agents.",
+      inputSchema: validateReferencesInput
+    },
+    async (args) => selected(args, (service) => service.validateReferences(args.path))
+  );
+  server.registerTool(
+    "preview_composition",
+    {
+      title: "preview composition",
+      description: "Dry-run preview of what the capability registry would compose (WF-354): every fragment that would fire at a phase, in registry order, each carrying its provenance (owning capability, resolved dispatch target, scope, resolved/manifest paths, how the path resolved). Rendered purely off the already-resolved snapshot \u2014 no manifest is re-parsed, no path re-resolved, and no fragment BODY is ever read or returned (follow the named `dispatch` for that). Read-only: it neither refreshes nor invalidates the snapshot. NOT a ValidationVerdict \u2014 a preview has no pass/fail semantics \u2014 so it returns its own narrow record, and zero entries is a first-class inert outcome (an empty registry composes nothing, which is the contract's designed behaviour, not an error). Omit `phase` to preview every phase.",
+      inputSchema: previewCompositionInput
+    },
+    async (args) => selected(args, (service) => service.previewComposition(args.phase))
+  );
+  server.registerTool(
+    "resolve_inspect",
+    {
+      title: "resolve inspect",
+      inputSchema: workspaceOnlyInput,
+      description: "Lifecycle state of the resolved view: validity, cache presence, generatedAt, counts, per-slot composition provenance (each composed `skill.point` \u2192 winning source \u2192 tier, plus override presence), the per-skill settings-override presence index, and diagnostics. Does not rebuild."
+    },
+    async (args) => selected(args, (service) => service.inspect())
+  );
+  server.registerTool(
+    "resolve_refresh",
+    {
+      title: "resolve refresh",
+      description: "Rebuild the resolved view from current inputs and persist it. Returns the fresh lifecycle state. Optional `reasons` are recorded as diagnostics explaining the refresh.",
+      inputSchema: reasonsInput
+    },
+    async (args) => selected(args, (service) => service.refresh(toReasons(args.reasons, "explicit-request")))
+  );
+  server.registerTool(
+    "resolve_invalidate",
+    {
+      title: "resolve invalidate",
+      description: "Mark the resolved view invalid so the next query (or an explicit refresh) rebuilds it. Typed consumers may pass `reasons` (suspected-stale messages) which surface as diagnostics. Returns the lifecycle state.",
+      inputSchema: reasonsInput
+    },
+    async (args) => selected(args, (service) => service.invalidate(toReasons(args.reasons, "suspected-stale")))
+  );
+}
+
+// src/ports.ts
+import { lstatSync as lstatSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// src/resolver/registry.ts
+function splitRow(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|")) return null;
+  const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  return cells;
+}
+function isSeparatorRow(cells) {
+  return cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "");
+}
+function tableRowsUnderHeading(markdown, heading) {
+  const lines = markdown.split(/\r?\n/);
+  const rows = [];
+  let inSection = false;
+  let sawHeader = false;
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex2(heading)}\\s*$`, "i");
+  for (const line of lines) {
+    if (/^#{1,6}\s+/.test(line)) {
+      if (headingRe.test(line)) {
+        inSection = true;
+        sawHeader = false;
+        continue;
+      }
+      if (inSection) break;
+      continue;
+    }
+    if (!inSection) continue;
+    const cells = splitRow(line);
+    if (!cells) {
+      if (sawHeader && rows.length > 0 && line.trim() === "") break;
+      continue;
+    }
+    if (!sawHeader) {
+      sawHeader = true;
+      continue;
+    }
+    if (isSeparatorRow(cells)) continue;
+    rows.push(cells);
+  }
+  return rows;
+}
+function escapeRegex2(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function parseRegistry(markdown) {
+  const capabilities = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Capabilities")) {
+    const [name, path] = cells;
+    if (name && path) capabilities.push({ name, path });
+  }
+  const pluginRoots = [];
+  for (const cells of tableRowsUnderHeading(markdown, "Plugin Roots")) {
+    const [plugin, root] = cells;
+    if (plugin && root) pluginRoots.push({ plugin, root });
+  }
+  return { capabilities, pluginRoots };
+}
+
+// src/resolver/manifest.ts
+function stripCr(line) {
+  return line.replace(/\r$/, "");
+}
+function trimCell(cell) {
+  return cell.trim().replace(/^`/, "").replace(/`$/, "").trim();
+}
+function splitCommaList(rest) {
+  return rest.split(",").map((v) => v.trim()).filter((v) => v.length > 0);
+}
+function parseManifest(markdown) {
+  const lines = markdown.split(/\r?\n/).map(stripCr);
+  let kind = null;
+  const fragments = [];
+  let payloads = null;
+  const articles = [];
+  const requires = [];
+  const conflicts = [];
+  let profileTemplate = null;
+  let inFragments = false;
+  let sawFragHeader = false;
+  let inPayloads = false;
+  let sawPayloadHeader = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (kind === null) {
+      const km = /^\*\*Kind:\*\*\s*([A-Za-z-]+)/.exec(trimmed);
+      if (km) kind = km[1];
+    }
+    if (/^requires:/i.test(trimmed)) {
+      requires.push(...splitCommaList(trimmed.replace(/^requires:/i, "")));
+    } else if (/^conflicts:/i.test(trimmed)) {
+      conflicts.push(...splitCommaList(trimmed.replace(/^conflicts:/i, "")));
+    } else if (/^article:/i.test(trimmed)) {
+      const decl = trimmed.replace(/^article:/i, "").trim();
+      const eq = decl.indexOf("=");
+      if (eq > 0) {
+        const key = decl.slice(0, eq).trim();
+        const value = decl.slice(eq + 1).trim();
+        if (key) articles.push({ key, value });
+      }
+    } else if (/^profile-template:/i.test(trimmed)) {
+      const v = trimmed.replace(/^profile-template:/i, "").trim();
+      if (v) profileTemplate = v;
+    }
+    if (/^#{1,6}\s+/.test(line)) {
+      if (/^#{1,6}\s+Fragments\s*$/i.test(trimmed)) {
+        inFragments = true;
+        inPayloads = false;
+        sawFragHeader = false;
+        continue;
+      }
+      if (/^#{1,6}\s+Payloads\s*$/i.test(trimmed)) {
+        inFragments = false;
+        inPayloads = true;
+        sawPayloadHeader = false;
+        payloads ??= { headers: [], rows: [], sectionCount: 0 };
+        payloads.sectionCount++;
+        continue;
+      }
+      inFragments = false;
+      inPayloads = false;
+    }
+    if (!inFragments && !inPayloads) continue;
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => trimCell(c));
+    if (cells.every((c) => /^:?-{1,}:?$/.test(c) || c === "")) continue;
+    if (inPayloads) {
+      if (!sawPayloadHeader) {
+        sawPayloadHeader = true;
+        if (payloads && payloads.headers.length === 0) payloads.headers = cells;
+        continue;
+      }
+      payloads?.rows.push(cells);
+      continue;
+    }
+    if (!sawFragHeader) {
+      sawFragHeader = true;
+      continue;
+    }
+    const [phaseRaw, kindRaw, dispatchRaw, scopeRaw] = cells;
+    const phase = trimCell(phaseRaw ?? "");
+    const contributionKind = trimCell(kindRaw ?? "");
+    if (!phase || phase === "phase") continue;
+    let scope = trimCell(scopeRaw ?? "");
+    if (scope === "" || scope === "\u2014" || scope === "-") scope = null;
+    fragments.push({
+      phase,
+      contributionKind,
+      dispatch: trimCell(dispatchRaw ?? ""),
+      scope
+    });
+  }
+  return { kind, fragments, payloads, articles, requires, conflicts, profileTemplate };
+}
+
+// src/resolver/payloads.ts
+var PAYLOAD_COLUMNS = [
+  "source",
+  "destination",
+  "production",
+  "refresh",
+  "removal"
+];
+var MAX_PAYLOADS_PER_CAPABILITY = 256;
+var MAX_PAYLOAD_DIAGNOSTICS = 256;
+var MAX_NORMALIZED_PAYLOAD_BYTES = 256 * 1024;
+var MAX_LABEL_LENGTH = 128;
+function safeLabel(value, pattern, fallback) {
+  return value.length <= MAX_LABEL_LENGTH && pattern.test(value) ? value : fallback;
+}
+function makePayloadDiagnostic(pluginId, capability, row, field, code, detail) {
+  const safePlugin = safeLabel(pluginId, /^[A-Za-z0-9][A-Za-z0-9@._-]*$/, "(invalid-plugin)");
+  const safeCapability = safeLabel(
+    capability,
+    /^[a-z0-9][a-z0-9-]*$/,
+    "(invalid-capability)"
+  );
+  const owner = `plugin \`${safePlugin}\`, capability \`${safeCapability}\``;
+  const rowLabel = row === null ? "" : `, payload row ${row}`;
+  return {
+    code,
+    pluginId: safePlugin,
+    capability: safeCapability,
+    row,
+    field,
+    message: `${owner}${rowLabel}, field \`${field}\`: ${detail}`
+  };
+}
+function diagnosticBytes2(diagnostics) {
+  return Buffer.byteLength(JSON.stringify(diagnostics), "utf8");
+}
+function finalizeDiagnostics2(pluginId, capability, diagnostics) {
+  const retained = [];
+  let truncated = false;
+  for (const diagnostic of diagnostics) {
+    if (retained.length >= MAX_PAYLOAD_DIAGNOSTICS) {
+      truncated = true;
+      break;
+    }
+    if (diagnosticBytes2([...retained, diagnostic]) > MAX_NORMALIZED_PAYLOAD_BYTES) {
+      truncated = true;
+      break;
+    }
+    retained.push(diagnostic);
+  }
+  if (!truncated) return retained;
+  const sentinel = makePayloadDiagnostic(
+    pluginId,
+    capability,
+    null,
+    "table",
+    "payload/diagnostics-truncated",
+    "additional diagnostics omitted after aggregate limit."
+  );
+  while (retained.length >= MAX_PAYLOAD_DIAGNOSTICS || diagnosticBytes2([...retained, sentinel]) > MAX_NORMALIZED_PAYLOAD_BYTES) {
+    retained.pop();
+  }
+  return [...retained, sentinel];
+}
+function isPayloadRelativePath(value) {
+  return resolveContainedCapabilityPath("/capability", value) !== null;
+}
+function normalizeHeader(value) {
+  return value.trim().toLowerCase();
+}
+function fieldDiagnostic(diagnostics, pluginId, capability, row, field, code, detail) {
+  diagnostics.push(makePayloadDiagnostic(pluginId, capability, row, field, code, detail));
+}
+function validatePayloadDeclarations(pluginId, capability, table) {
+  if (table === null) return { ok: true, payloads: [], diagnostics: [] };
+  const diagnostics = [];
+  if (table.sectionCount !== 1) {
+    diagnostics.push(
+      makePayloadDiagnostic(
+        pluginId,
+        capability,
+        null,
+        "table",
+        "payload/table-duplicate",
+        "must declare exactly one `## Payloads` section."
+      )
+    );
+  }
+  if (table.rows.length > MAX_PAYLOADS_PER_CAPABILITY) {
+    diagnostics.push(
+      makePayloadDiagnostic(
+        pluginId,
+        capability,
+        null,
+        "table",
+        "payload/table-too-many",
+        `must contain at most ${MAX_PAYLOADS_PER_CAPABILITY} rows.`
+      )
+    );
+  }
+  const headers = table.headers.map(normalizeHeader);
+  const headerSet = new Set(headers);
+  for (const expected of PAYLOAD_COLUMNS) {
+    const count = headers.filter((header) => header === expected).length;
+    if (count === 0) {
+      diagnostics.push(
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          null,
+          "table",
+          "payload/table-missing-column",
+          `missing required \`${expected}\` column.`
+        )
+      );
+    } else if (count > 1) {
+      diagnostics.push(
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          null,
+          "table",
+          "payload/table-duplicate-column",
+          `declares \`${expected}\` more than once.`
+        )
+      );
+    }
+  }
+  for (const header of headerSet) {
+    if (!PAYLOAD_COLUMNS.includes(header)) {
+      diagnostics.push(
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          null,
+          "table",
+          "payload/table-unknown-column",
+          "contains an unknown column."
+        )
+      );
+    }
+  }
+  if (diagnostics.length > 0) {
+    return {
+      ok: false,
+      payloads: [],
+      diagnostics: finalizeDiagnostics2(pluginId, capability, diagnostics)
+    };
+  }
+  const indexes = Object.fromEntries(headers.map((header, index) => [header, index]));
+  const payloads = [];
+  for (let index = 0; index < table.rows.length; index++) {
+    const rowNumber = index + 1;
+    const cells = table.rows[index];
+    if (cells.length !== headers.length) {
+      diagnostics.push(
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          rowNumber,
+          "table",
+          "payload/row-width",
+          "must contain exactly one cell for every declared column."
+        )
+      );
+      continue;
+    }
+    const source = cells[indexes.source] ?? "";
+    const destination = cells[indexes.destination] ?? "";
+    const production = cells[indexes.production] ?? "";
+    const refresh = cells[indexes.refresh] ?? "";
+    const removal = cells[indexes.removal] ?? "";
+    const before = diagnostics.length;
+    if (!isPayloadRelativePath(source)) {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "source",
+        "payload/source-invalid",
+        "must be a non-empty forward-slash relative file path with no absolute prefix, drive prefix, backslash, NUL, colon, empty segment, `.` segment, or `..` segment."
+      );
+    }
+    if (!isPayloadRelativePath(destination)) {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "destination",
+        "payload/destination-invalid",
+        "must be a non-empty forward-slash workspace-relative lexical path with no absolute prefix, drive prefix, backslash, NUL, colon, empty segment, `.` segment, or `..` segment."
+      );
+    }
+    if (production !== "copy") {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "production",
+        "payload/production-invalid",
+        "must be exactly `copy`."
+      );
+    }
+    if (refresh !== "replace-if-unmodified" && refresh !== "retain") {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "refresh",
+        "payload/refresh-invalid",
+        "must be exactly `replace-if-unmodified` or `retain`."
+      );
+    }
+    if (removal !== "delete-if-unmodified" && removal !== "retain") {
+      fieldDiagnostic(
+        diagnostics,
+        pluginId,
+        capability,
+        rowNumber,
+        "removal",
+        "payload/removal-invalid",
+        "must be exactly `delete-if-unmodified` or `retain`."
+      );
+    }
+    if (diagnostics.length === before) {
+      payloads.push({
+        pluginId,
+        capability,
+        source,
+        destination,
+        production,
+        refresh,
+        removal
+      });
+    }
+  }
+  if (diagnostics.length > 0) {
+    return {
+      ok: false,
+      payloads: [],
+      diagnostics: finalizeDiagnostics2(pluginId, capability, diagnostics)
+    };
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(payloads), "utf8");
+  if (bytes > MAX_NORMALIZED_PAYLOAD_BYTES) {
+    return {
+      ok: false,
+      payloads: [],
+      diagnostics: [
+        makePayloadDiagnostic(
+          pluginId,
+          capability,
+          null,
+          "table",
+          "payload/metadata-too-large",
+          `normalized payload metadata must be at most ${MAX_NORMALIZED_PAYLOAD_BYTES} UTF-8 bytes.`
+        )
+      ]
+    };
+  }
+  return { ok: true, payloads, diagnostics: [] };
+}
+
+// src/resolver/lifecycle-evidence.ts
+var COMMITTED_LEDGER_PATH = ".wf/install-state.json";
+var LOCAL_LEDGER_PATH = "_local/install-state.json";
+var SHA256_RE = /^[a-f0-9]{64}$/;
+function nonEmpty(value) {
+  return typeof value === "string" && value.length > 0;
+}
+function uniqueSortedStrings(values) {
+  if (values.some((value) => !nonEmpty(value))) return null;
+  const sorted = [...values].sort((left, right) => left.localeCompare(right));
+  return new Set(sorted).size === sorted.length ? sorted : null;
+}
+function orderedHashes(records) {
+  const normalized = [];
+  const paths = /* @__PURE__ */ new Set();
+  for (const record2 of records) {
+    if (!nonEmpty(record2.path) || !SHA256_RE.test(record2.sha256) || paths.has(record2.path)) {
+      return null;
+    }
+    paths.add(record2.path);
+    normalized.push({ path: record2.path, sha256: record2.sha256 });
+  }
+  return normalized.sort(
+    (left, right) => left.path.localeCompare(right.path) || left.sha256.localeCompare(right.sha256)
+  );
+}
+function resolveLedgerHome(value) {
+  const selected = value === void 0 || value === null || value === "" ? "committed" : value;
+  if (selected === "committed") {
+    return {
+      ok: true,
+      home: "committed",
+      portablePath: COMMITTED_LEDGER_PATH,
+      bindingPath: LOCAL_LEDGER_PATH
+    };
+  }
+  if (selected === "local") {
+    return {
+      ok: true,
+      home: "local",
+      portablePath: LOCAL_LEDGER_PATH,
+      bindingPath: LOCAL_LEDGER_PATH
+    };
+  }
+  return {
+    ok: false,
+    home: null,
+    portablePath: null,
+    bindingPath: LOCAL_LEDGER_PATH,
+    diagnostic: "ledger home must be exactly `committed` or `local`."
+  };
+}
+function createPortablePackEvidence(inputs) {
+  if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.version)) return null;
+  const capabilities = uniqueSortedStrings(inputs.capabilities);
+  const manifestHashes = orderedHashes(inputs.manifestHashes);
+  const declaredSourceHashes = orderedHashes(inputs.declaredSourceHashes);
+  if (capabilities === null || manifestHashes === null || declaredSourceHashes === null) {
+    return null;
+  }
+  return {
+    pluginId: inputs.pluginId,
+    version: inputs.version,
+    capabilities,
+    manifestHashes,
+    declaredSourceHashes
+  };
+}
+function createMachineBindingEvidence(inputs) {
+  if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.canonicalRoot) || inputs.cliScope !== null && !nonEmpty(inputs.cliScope) || inputs.observedVersion !== null && !nonEmpty(inputs.observedVersion)) {
+    return null;
+  }
+  const localFingerprints = orderedHashes(inputs.localFingerprints);
+  if (localFingerprints === null) return null;
+  return {
+    pluginId: inputs.pluginId,
+    canonicalRoot: inputs.canonicalRoot,
+    cliScope: inputs.cliScope,
+    enablement: inputs.enablement,
+    observedVersion: inputs.observedVersion,
+    localFingerprints
+  };
+}
+function evidenceEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+function compareLifecycleEvidence(expectedPortable, observedPortable, priorBinding, observedBinding) {
+  if (expectedPortable === null || observedPortable === null || observedBinding === null) {
+    return { state: "evidence-missing", seedProposal: null, persisted: false };
+  }
+  if (!evidenceEqual(expectedPortable, observedPortable)) {
+    return { state: "portable-mismatch", seedProposal: null, persisted: false };
+  }
+  if (priorBinding === null) {
+    return { state: "binding-seed", seedProposal: observedBinding, persisted: false };
+  }
+  if (priorBinding.canonicalRoot !== observedBinding.canonicalRoot) {
+    return { state: "root-moved", seedProposal: null, persisted: false };
+  }
+  if (!evidenceEqual(priorBinding, observedBinding)) {
+    return { state: "local-mismatch", seedProposal: null, persisted: false };
+  }
+  return { state: "equal", seedProposal: null, persisted: true };
+}
+
+// src/resolver/plugin-list.ts
+var REQUIRED_FIELDS = [
+  { field: "id", type: "string" },
+  { field: "version", type: "string" },
+  { field: "scope", type: "string" },
+  { field: "enabled", type: "boolean" },
+  { field: "installPath", type: "string" }
+];
+function parsePluginList(raw) {
+  const issues = [];
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch (err) {
+    return {
+      plugins: [],
+      contractOk: false,
+      issues: [
+        {
+          code: "plugin-list/unparseable",
+          message: `\`claude plugin list --json\` output is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+        }
+      ]
+    };
+  }
+  if (!Array.isArray(data)) {
+    return {
+      plugins: [],
+      contractOk: false,
+      issues: [
+        {
+          code: "plugin-list/not-an-array",
+          message: `\`claude plugin list --json\` must return a JSON array of plugin records; got ${data === null ? "null" : typeof data} \u2014 incompatible CLI output schema.`
+        }
+      ]
+    };
+  }
+  const plugins = [];
+  data.forEach((entry, i) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      issues.push({
+        code: "plugin-list/record-not-an-object",
+        message: `plugin record ${i} is not an object \u2014 incompatible CLI output schema.`
+      });
+      return;
+    }
+    const rec = entry;
+    let recOk = true;
+    for (const { field, type } of REQUIRED_FIELDS) {
+      if (!(field in rec)) {
+        issues.push({
+          code: "plugin-list/missing-field",
+          message: `plugin record ${i} is missing required field \`${field}\` \u2014 incompatible CLI output schema.`
+        });
+        recOk = false;
+      } else if (typeof rec[field] !== type) {
+        issues.push({
+          code: "plugin-list/wrong-type",
+          message: `plugin record ${i} field \`${field}\` should be a ${type}, got ${typeof rec[field]} \u2014 incompatible CLI output schema.`
+        });
+        recOk = false;
+      }
+    }
+    if (!recOk) return;
+    const id = rec.id;
+    const atIndex = id.indexOf("@");
+    const name = atIndex > 0 ? id.slice(0, atIndex) : id;
+    plugins.push({
+      id,
+      name,
+      version: rec.version,
+      scope: rec.scope,
+      enabled: rec.enabled,
+      installPath: normalizeSlashes(rec.installPath)
+    });
+  });
+  return { plugins, contractOk: issues.length === 0, issues };
+}
+
+// src/resolver/config.ts
+function extractKeyValues(markdown) {
+  const map = /* @__PURE__ */ new Map();
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.replace(/\r$/, "").trim();
+    if (!line.startsWith("|")) continue;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+    if (cells.length < 2) continue;
+    const keyMatch = /^\*\*(.+?)\*\*$/.exec(cells[0]);
+    if (!keyMatch) continue;
+    const key = keyMatch[1].trim().toLowerCase();
+    map.set(key, cells[1]);
+  }
+  return map;
+}
+function normalizeValue(raw) {
+  if (raw === void 0) return null;
+  let v = raw.trim();
+  const bt = /^`(.*)`$/.exec(v);
+  if (bt) v = bt[1].trim();
+  if (v === "" || v === "\u2014") return null;
+  if (/^<.*>$/.test(v)) return null;
+  return v;
+}
+function parseRoutingConfig(markdown) {
+  const lines = markdown.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^##\s+Routing\s*$/.test(line.trim()));
+  if (start < 0) return {};
+  const out = {};
+  for (const raw of lines.slice(start + 1)) {
+    const line = raw.trim();
+    if (/^##\s+/.test(line)) break;
+    if (!line.startsWith("|")) continue;
+    const cells = line.replace(/^\|/, "").replace(/\|$/, "").split("|").map((v) => v.trim());
+    if (cells.length < 3 || /^(role|-+)$/i.test(cells[0])) continue;
+    const role = cells[0].replace(/^`|`$/g, "").trim();
+    if (!/^[a-z][a-z0-9-]*$/.test(role)) continue;
+    out[role] = { model: normalizeValue(cells[1]), effort: normalizeValue(cells[2]) };
+  }
+  return out;
+}
+function parseCoreConfig(markdown) {
+  const kv = extractKeyValues(markdown);
+  return {
+    taskRoot: normalizeValue(kv.get("task root")),
+    verifyCommand: normalizeValue(kv.get("verify command")),
+    qaRules: normalizeValue(kv.get("qa rules")),
+    qaBaselineIgnore: normalizeValue(kv.get("qa baseline ignore")),
+    seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
+    seedBacklogPath: normalizeValue(kv.get("backlog path")),
+    standupStatuses: normalizeValue(kv.get("standup statuses")),
+    contextCeiling: normalizeValue(kv.get("context ceiling"))
+  };
+}
+
+// src/resolver/fingerprint.ts
+import { createHash } from "node:crypto";
+function sha256Hex(content) {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+function fingerprint(kind, path, content) {
+  if (content === null) {
+    return { kind, path, sha256: null, bytes: null, present: false };
+  }
+  return {
+    kind,
+    path,
+    sha256: sha256Hex(content),
+    bytes: Buffer.byteLength(content, "utf8"),
+    present: true
+  };
 }
 
 // src/resolver/freshness.ts
@@ -24261,7 +24743,7 @@ var CANONICAL_HEADINGS = [
   "## Plugin Roots",
   "## Fragments"
 ];
-function checkHeadingTypos(file, content, label) {
+function checkHeadingTypos(file, content, label2) {
   const out = [];
   const canonicalNorms = /* @__PURE__ */ new Map();
   for (const h of CANONICAL_HEADINGS) {
@@ -24283,7 +24765,7 @@ function checkHeadingTypos(file, content, label) {
           "CHECK-HEADING",
           file,
           i + 1,
-          `${label} heading \`${line}\` looks like a typo of \`${canonical}\` \u2014 the exact heading is required, or the block parses to zero rows (a silent pass).`
+          `${label2} heading \`${line}\` looks like a typo of \`${canonical}\` \u2014 the exact heading is required, or the block parses to zero rows (a silent pass).`
         )
       );
     }
@@ -26070,14 +26552,14 @@ var ResolverService = class {
     try {
       snapshot = this.ensure();
     } catch (err) {
-      const failure = classifyThrow(err);
+      const failure2 = classifyThrow(err);
       return {
         status: "unresolved",
         refClass: null,
-        category: failure.category,
+        category: failure2.category,
         reaction: "continue",
-        recovery: recoveryFor(failure.category),
-        message: `${failure.message} (failed input: ${failure.failedInput})`
+        recovery: recoveryFor(failure2.category),
+        message: `${failure2.message} (failed input: ${failure2.failedInput})`
       };
     }
     if (typeof ref.class === "string" && ref.class.trim() === "slot") {
@@ -26300,20 +26782,20 @@ var ResolverService = class {
    *  probing (C008): every fact comes from the already-collected snapshot
    *  diagnostics / the classified build failure. */
   assessSurface(surface) {
-    const { snapshot, failure } = this.safeEnsure();
+    const { snapshot, failure: failure2 } = this.safeEnsure();
     const diagnostics = [];
     if (snapshot) {
       for (const d of snapshot.diagnostics) {
         if (isFailureSignal(d)) diagnostics.push(annotate(d));
       }
     }
-    if (failure) {
+    if (failure2) {
       diagnostics.push({
         severity: "error",
-        code: `resolver/${failure.category}`,
-        message: `${failure.message} (failed input: ${failure.failedInput})`,
-        category: failure.category,
-        recovery: recoveryFor(failure.category)
+        code: `resolver/${failure2.category}`,
+        message: `${failure2.message} (failed input: ${failure2.failedInput})`,
+        category: failure2.category,
+        recovery: recoveryFor(failure2.category)
       });
     }
     const healthy = diagnostics.length === 0 && snapshot !== null;
@@ -26462,6 +26944,21 @@ var ResolverService = class {
    * that value IS the admitted root; discovery never re-derives one.
    */
   discoverPacks() {
+    return this.discoverPacksWithInspection().response;
+  }
+  /**
+   * The discovery join PLUS the per-pack inspection results it already computed.
+   *
+   * `discoverPacks()` deliberately returns only the body-free response, but the
+   * planner (WF-447) needs one more fact discovery does not surface: the resolved
+   * `manifestPath` of a pack that is installed but NOT yet registered, so its
+   * `requires` / `conflicts` / provider scopes can join the post-plan capability
+   * set. Re-inspecting through `inspectPack()` would re-run the `claude` CLI once
+   * per pack and let the inventory shift mid-run — the exact cost
+   * `inspectListedPack` was split out to avoid — so the inspections are handed
+   * back from the single run instead.
+   */
+  discoverPacksWithInspection() {
     const snapshot = this.ensure();
     const workspaceRoot = this.ports.workspaceRoot;
     const listing = this.ports.listPlugins();
@@ -26471,9 +26968,11 @@ var ResolverService = class {
     const recordedBinding = readLedger(home.bindingPath).binding;
     const byId = new Map(listing.plugins.map((plugin) => [plugin.id, plugin]));
     const byName = new Map(listing.plugins.map((plugin) => [plugin.name, plugin]));
+    const inspectedByPluginId = /* @__PURE__ */ new Map();
     const packs = snapshot.packs.map((record2) => {
       const listed = byId.get(record2.pluginId) ?? byName.get(record2.pluginName) ?? null;
       const inspected = listed === null ? null : this.inspectListedPack(listed);
+      if (inspected !== null) inspectedByPluginId.set(record2.pluginId, inspected);
       return {
         record: record2,
         expectedPortable: recordedPortable.get(record2.pluginId) ?? null,
@@ -26485,15 +26984,87 @@ var ResolverService = class {
         inspectionIssues: inspected?.issues ?? []
       };
     });
-    return discoverPacks({
-      workspaceRoot,
-      inventory: {
-        ok: listing.ok,
-        contractOk: listing.contractOk,
-        issues: listing.issues,
-        plugins: listing.plugins
-      },
-      packs
+    return {
+      response: discoverPacks({
+        workspaceRoot,
+        inventory: {
+          ok: listing.ok,
+          contractOk: listing.contractOk,
+          issues: listing.issues,
+          plugins: listing.plugins
+        },
+        packs
+      }),
+      inspected: inspectedByPluginId,
+      snapshot
+    };
+  }
+  // --- WF-447: plan_install (read-only, byte-inert) -----------------------
+  /**
+   * Preview the effect of one explicit selected set.
+   *
+   * BYTE-INERT on every path. The inputs are the WF-446 discovery join (which is
+   * itself byte-inert), the already-resolved snapshot, and — for a pack that is
+   * installed but not yet registered — one `readFile` of its capability manifest
+   * so the post-plan capability set is complete. Nothing here writes a ledger, a
+   * seed, a project answer, an enablement flag, or any other byte, and the join
+   * that produces the response is a pure function with no write capability at all.
+   *
+   * `admission` is supplied by the caller so the typed `invalid-root` envelope is
+   * produced without this method ever being reached on an inadmissible root.
+   */
+  planInstall(admission, selection) {
+    if (!admission.admitted) {
+      return planInstall({
+        admission,
+        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+        packs: [],
+        capabilities: [],
+        selection
+      });
+    }
+    const { response, inspected, snapshot } = this.discoverPacksWithInspection();
+    const ownerOfCapability = /* @__PURE__ */ new Map();
+    for (const pack of snapshot.packs) {
+      for (const name of pack.registeredCapabilities) ownerOfCapability.set(name, pack.pluginId);
+    }
+    const capabilities = [];
+    const seenCapabilities = /* @__PURE__ */ new Set();
+    for (const capability of snapshot.capabilities) {
+      const pluginId = ownerOfCapability.get(capability.name);
+      if (pluginId === void 0) continue;
+      seenCapabilities.add(capability.name);
+      capabilities.push({
+        pluginId,
+        name: capability.name,
+        requires: [...capability.requires],
+        conflicts: [...capability.conflicts],
+        providerScopes: capability.fragments.filter((fragment) => fragment.contributionKind === "provider" && fragment.scope !== null).map((fragment) => fragment.scope)
+      });
+    }
+    for (const pluginId of new Set(selection.desired)) {
+      const pack = response.packs.find((candidate) => candidate.pluginId === pluginId);
+      if (pack === void 0 || pack.registeredCapabilities.length > 0) continue;
+      for (const summary of inspected.get(pluginId)?.capabilities ?? []) {
+        if (seenCapabilities.has(summary.name)) continue;
+        seenCapabilities.add(summary.name);
+        const raw = this.ports.readFile(summary.manifestPath);
+        const parsed = raw === null ? null : parseManifest(raw);
+        capabilities.push({
+          pluginId,
+          name: summary.name,
+          requires: parsed?.requires ?? [],
+          conflicts: parsed?.conflicts ?? [],
+          providerScopes: (parsed?.fragments ?? []).filter((fragment) => fragment.contributionKind === "provider" && fragment.scope !== null).map((fragment) => fragment.scope)
+        });
+      }
+    }
+    return planInstall({
+      admission,
+      inventory: response.inventory,
+      packs: response.packs,
+      capabilities,
+      selection
     });
   }
   // --- R6: register_pack (mutating write-path) ---------------------------
