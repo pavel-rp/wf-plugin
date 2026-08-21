@@ -477,6 +477,157 @@ export interface DiscoverPacksResponse {
   inventory: DiscoveryInventory;
   packs: DiscoveredPack[];
   diagnostics: DiscoveryDiagnostic[];
+  /** Crash recovery, reported SEPARATELY from everything above (WF-451).
+   *
+   *  This is the one field in the response that can describe a WRITE. Discovery
+   *  itself remains byte-inert; when `recovery.wroteBytes` is `true` it was
+   *  RECOVERY that wrote, and discovery's byte-inertness is asserted from the
+   *  recovered baseline onward — never from process start. Keeping it a distinct
+   *  block rather than folding it into `diagnostics` is what stops a later reader
+   *  mistaking a recovery write for a discovery write. */
+  recovery: RecoveryReport;
+}
+
+// ---------------------------------------------------------------------------
+// The shared lifecycle transaction protocol (WF-451)
+// ---------------------------------------------------------------------------
+//
+// WF-451 SOLELY OWNS these shapes: the lock, the versioned machine-local
+// journal, its backups, the last-written identity, and the recovery report.
+// Later lifecycle items (planning recovery, the first journaled transaction,
+// apply, repair) CONSUME them and must not fill a gap by inventing a parallel
+// shape. The journal is versioned from day one precisely so a later release can
+// widen it without a reader ever best-effort-parsing a version it predates.
+
+/** Whether a destination existed before the interrupted transaction touched it. */
+export type PriorExistence = "present" | "absent";
+
+/** The identity of the bytes an interrupted transaction LAST WROTE to one
+ *  destination. It is what separates "these are our bytes, still untouched" from
+ *  "someone edited this after us" — the single fact that makes a fail-safe
+ *  restore decidable without ever comparing against a guess. */
+export interface LastWrittenIdentity {
+  /** SHA-256, lowercase hex, of the bytes the transaction wrote. */
+  contentHash: string;
+  /** Byte length of those bytes. Compared alongside the digest so a length
+   *  mismatch is caught even in the impossible-collision case. */
+  bytes: number;
+}
+
+/** One destination inside one interrupted transaction. */
+export interface JournalEntry {
+  /** The declared workspace-relative destination, verbatim. */
+  destination: string;
+  priorExistence: PriorExistence;
+  /** SHA-256 of the prior bytes. `null` IF AND ONLY IF `priorExistence` is
+   *  `absent` — there are no prior bytes to hash. */
+  priorContentHash: string | null;
+  /** Whether the prior path was a symbolic link. A link's identity is not its
+   *  content, so recovery never restores one; it preserves it. */
+  priorIsSymlink: boolean;
+  /** Workspace-relative path of the machine-local backup holding the prior
+   *  bytes, or `null` when there were none to back up. */
+  backupPath: string | null;
+  /** What the transaction last wrote here, or `null` when it never got that far. */
+  lastWritten: LastWrittenIdentity | null;
+}
+
+/** One interrupted transaction, as the machine-local journal records it. */
+export interface TransactionJournal {
+  /** The only value this release understands is `1`. Any other value is
+   *  `unsupported` — a STOP, never a best-effort parse. */
+  journalVersion: number;
+  transactionId: string;
+  startedAt: string;
+  entries: JournalEntry[];
+}
+
+/** The four journal-parse outcomes. `unsupported` and `malformed` are BOTH
+ *  fail-safe stops that write nothing; they are separate tokens because they
+ *  point a maintainer at different remedies. */
+export type JournalParseResult =
+  | { status: "absent" }
+  | { status: "ok"; journal: TransactionJournal }
+  | { status: "malformed"; diagnostic: string }
+  | { status: "unsupported"; observedVersion: number | null; diagnostic: string };
+
+/** What recovery decided for one destination. `restored` and `alreadyRestored`
+ *  are the only two dispositions that resolve an entry; `preserved` and
+ *  `unresolved` both leave work outstanding, which retains the journal and stops
+ *  discovery. */
+export type RecoveryDisposition =
+  | "restored"
+  | "already-restored"
+  | "preserved"
+  | "unresolved";
+
+/** The CLOSED reason vocabulary. Every entry carries exactly one token, so a
+ *  report is machine-readable and no outcome is explained only in prose. */
+export type RecoveryReason =
+  // restored
+  | "restored-content"
+  | "restored-absence"
+  // already-restored (the idempotence guard observed prior state in place)
+  | "already-prior-content"
+  | "already-prior-absence"
+  // preserved — ambiguity RETAINS; it never grants authority to write
+  | "external-edit"
+  | "symlink-conflict"
+  // unresolved — recovery could not prove what to write, so it wrote nothing
+  | "target-not-contained"
+  | "backup-missing"
+  | "backup-mismatch"
+  | "observation-failed"
+  | "restore-failed";
+
+/** One destination's recovery outcome. */
+export interface RecoveryEntryOutcome {
+  destination: string;
+  disposition: RecoveryDisposition;
+  reason: RecoveryReason;
+  /** Human-readable detail. Never load-bearing: every decision is carried by
+   *  `disposition` + `reason`. */
+  detail: string;
+}
+
+/** The overall state of one recovery attempt.
+ *
+ *  - `no-journal`       — nothing to recover; the run is byte-inert.
+ *  - `recovered`        — every entry resolved; the journal was discarded.
+ *  - `incomplete`       — something was preserved or unresolved; the journal is
+ *                         RETAINED and discovery does not proceed.
+ *  - `unsupported`      — a journal version this release does not understand.
+ *  - `malformed`        — a journal that could not be read as this schema.
+ *  - `lock-unavailable` — another holder has the exclusive lock.
+ *  - `invalid-root`     — the workspace root was not admitted (WF-445). */
+export type RecoveryState =
+  | "no-journal"
+  | "recovered"
+  | "incomplete"
+  | "unsupported"
+  | "malformed"
+  | "lock-unavailable"
+  | "invalid-root";
+
+/** The recovery report — the separate channel every recovery write is reported
+ *  through. */
+export interface RecoveryReport {
+  state: RecoveryState;
+  /** Whether the caller may go on to READ lifecycle state. `true` only for
+   *  `no-journal` and `recovered`; every other state stops the caller before it
+   *  reads anything inconsistent. */
+  proceeded: boolean;
+  /** The explicit statement that RECOVERY wrote. Byte-inertness is asserted from
+   *  the recovered baseline, so this flag is how a reader knows the baseline
+   *  moved. `false` on every fail-safe stop. */
+  wroteBytes: boolean;
+  journalVersion: number | null;
+  transactionId: string | null;
+  restored: RecoveryEntryOutcome[];
+  alreadyRestored: RecoveryEntryOutcome[];
+  preserved: RecoveryEntryOutcome[];
+  unresolved: RecoveryEntryOutcome[];
+  diagnostics: DiscoveryIssue[];
 }
 
 // ---------------------------------------------------------------------------
