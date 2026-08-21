@@ -7,7 +7,7 @@
 // of its ports and can be tested with in-memory doubles.
 
 import { lstatSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   extractRegistryPathRaw,
@@ -20,6 +20,7 @@ import {
 } from "./resolver/index.js";
 import { parsePluginList } from "./resolver/plugin-list.js";
 import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
+import type { PayloadTargetResolution } from "./resolver/payload-plan.js";
 import type { ResolverServicePorts, PluginListResult } from "./service.js";
 
 const DEFAULT_REGISTRY_RELPATH = "_local/config.md";
@@ -69,6 +70,118 @@ export function resolveContainedRegistryWritePath(
   throw new Error(`resolved path leaves workspace root \`${normalizeSlashes(canonicalRoot)}\`.`);
 }
 
+/** Lexical rejection of a declared payload destination, applied BEFORE any
+ *  filesystem access. Mirrors the declaration-time grammar `payloads.ts` already
+ *  enforces, so a destination that somehow reached here unvalidated is still
+ *  refused rather than probed. */
+function lexicalPayloadRejection(
+  destination: string,
+): PayloadTargetResolution | null {
+  if (destination.length === 0 || destination.includes("\0") || destination.includes("\\")) {
+    return { ok: false, rejection: "malformed" };
+  }
+  if (destination.startsWith("/") || /^[A-Za-z]:/.test(destination)) {
+    return { ok: false, rejection: "absolute" };
+  }
+  const segments = destination.split("/");
+  if (segments.some((segment) => segment === "..")) {
+    return { ok: false, rejection: "traversal" };
+  }
+  if (segments.some((segment) => segment === "" || segment === "." || segment.includes(":"))) {
+    return { ok: false, rejection: "malformed" };
+  }
+  return null;
+}
+
+/**
+ * Resolve one declared payload destination to a canonical workspace-contained
+ * target — WITHOUT creating anything.
+ *
+ * The probe walks up to the deepest ancestor that already exists and
+ * canonicalizes THAT, so it never has to materialize the path it is testing.
+ * Canonicalization happens before the containment decision, which is what makes
+ * an escaping symlink caught rather than followed: `realpathSync` resolves the
+ * link and the resolved location is then measured against the canonical root.
+ *
+ * The root is passed in rather than closed over, because containment is measured
+ * against the ONE admitted workspace root (WF-445) — a different question from
+ * plugin-root validation, which this never performs.
+ */
+export function resolveContainedPayloadTarget(
+  workspaceRoot: string,
+  destination: string,
+): PayloadTargetResolution {
+  const lexical = lexicalPayloadRejection(destination);
+  if (lexical !== null) return lexical;
+
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = realpathSync(workspaceRoot);
+  } catch {
+    return { ok: false, rejection: "unresolvable" };
+  }
+
+  const target = resolve(canonicalRoot, destination);
+
+  // Walk up to the deepest EXISTING node. `lstatSync` does not follow a terminal
+  // symlink, so a dangling link is still "existing" and is canonicalized below.
+  let existing = target;
+  const trailing: string[] = [];
+  while (true) {
+    try {
+      lstatSync(existing);
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        return { ok: false, rejection: "unresolvable" };
+      }
+      const parent = dirname(existing);
+      if (parent === existing) return { ok: false, rejection: "unresolvable" };
+      trailing.unshift(basename(existing));
+      existing = parent;
+    }
+  }
+
+  let canonicalExisting: string;
+  try {
+    canonicalExisting = realpathSync(existing);
+  } catch {
+    // A dangling symlink cannot be canonicalized, so containment of whatever it
+    // points at cannot be established. Fail closed rather than guess.
+    return { ok: false, rejection: "symlink-escape" };
+  }
+
+  const fromRoot = relative(canonicalRoot, canonicalExisting);
+  const contained =
+    fromRoot === "" ||
+    (fromRoot !== ".." && !fromRoot.startsWith(`..${sep}`) && !isAbsolute(fromRoot));
+  if (!contained) {
+    // A link was resolved iff canonicalization moved the path. That distinction
+    // is what separates "escaped through a symlink" from "was simply outside".
+    return {
+      ok: false,
+      rejection: canonicalExisting === existing ? "out-of-workspace" : "symlink-escape",
+    };
+  }
+
+  const exists = trailing.length === 0;
+  if (exists && !lstatSync(canonicalExisting).isFile()) {
+    return { ok: false, rejection: "target-not-a-file" };
+  }
+
+  const canonicalTarget = joinSlash(normalizeSlashes(canonicalExisting), ...trailing);
+  // Belt and braces: the composed target must still sit under the canonical root.
+  const rootPrefix = normalizeSlashes(canonicalRoot).replace(/\/+$/, "");
+  if (
+    canonicalTarget !== rootPrefix &&
+    !canonicalTarget.startsWith(rootPrefix === "/" ? "/" : `${rootPrefix}/`)
+  ) {
+    return { ok: false, rejection: "out-of-workspace" };
+  }
+
+  return { ok: true, canonicalTarget, exists };
+}
+
 export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts {
   const registryRelPath = (): string => {
     const wfConfig = fsIO.readFile(joinSlash(workspaceRoot, "wf.config.js"));
@@ -101,6 +214,8 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
       fsIO.readContainedFile!(capabilityRoot, selectedPath, maxBytes),
     fingerprintContainedFile: (capabilityRoot, selectedPath, maxBytes) =>
       fingerprintContainedCapabilityFile(capabilityRoot, selectedPath, maxBytes),
+    resolvePayloadTarget: (admittedRoot, destination) =>
+      resolveContainedPayloadTarget(admittedRoot, destination),
     canonicalizeRoot: (root) => {
       try {
         return normalizeSlashes(realpathSync(root));

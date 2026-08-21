@@ -34,6 +34,17 @@ export function joinSlash(...segments: string[]): string {
     .join("/");
 }
 
+/** The parent of a normalized forward-slash path, with no trailing slash. Returns
+ *  the input unchanged when it has no parent segment. Purely lexical — it never
+ *  touches the filesystem, so it is safe on a path that does not exist. */
+export function dirnameSlash(p: string): string {
+  const normalized = normalizeSlashes(p).replace(/\/+$/, "");
+  const cut = normalized.lastIndexOf("/");
+  if (cut < 0) return normalized;
+  if (cut === 0) return "/";
+  return normalized.slice(0, cut);
+}
+
 /** Resolve a manifest-controlled file path beneath one capability root.
  *  Reject absolute anchors, backslashes, empty/dot segments, and traversal before
  *  joining, then prove the normalized result remains under the normalized root. */
