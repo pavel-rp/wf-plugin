@@ -1456,6 +1456,22 @@ export type ApplyReason =
   | "apply/unsupported-action"
   | "apply/registry-unresolvable"
   | "apply/journal-present"
+  /** A lifecycle-evidence precondition no longer holds at apply time (WF-454):
+   *  the portable tuple is not an EXACT match, a machine binding the plan meant
+   *  to seed already exists, or the recorded ownership evidence changed. Its own
+   *  token rather than `plan-stale`: the approved plan may still be current in
+   *  every other respect, and rather than `precondition-moved`, which is the
+   *  post-journal TOCTOU class. Nothing is written on this path. */
+  | "apply/evidence-precondition"
+  /** A proposed answer failed revalidation against its declared schema at apply
+   *  time (WF-454). Distinct from `evidence-precondition`: the failure is in the
+   *  VALUE the plan carries, not in the workspace's evidence. */
+  | "apply/answer-invalid"
+  /** The declared ledger home is not a legal policy, or a ledger destination
+   *  could not be resolved to a workspace-contained path (WF-454). Kept apart
+   *  from `registry-unresolvable` so a maintainer is not sent to the registry
+   *  file when the ledger is what could not be resolved. */
+  | "apply/ledger-unresolvable"
   /** The destination IS a symbolic link. Its own token rather than
    *  `precondition-moved`: nothing moved, the destination simply is not a thing
    *  this mutator may write through. Recovery never follows, replaces, or removes
