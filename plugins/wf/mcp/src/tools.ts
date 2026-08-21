@@ -573,6 +573,21 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     async (args: WorkspaceArgs & { pluginId: string }) => selected(args, (service) => service.inspectPack(args.pluginId)),
   );
 
+  // Deliberately NOT `RESIDENT`. No skill body names `discover_packs` as a
+  // mandatory pre-step — it is a maintainer-initiated inventory, so it defers
+  // behind the host's tool-search surface like every other non-gating op and
+  // costs no schema tokens in the contexts that never reach it.
+  server.registerTool(
+    "discover_packs",
+    {
+      title: "discover packs",
+      description:
+        "Read-only, byte-inert pack discovery (R6). Joins the authoritative `claude plugin list --json` inventory, registry attribution, each pack's existing snapshot state, recorded-vs-observed lifecycle evidence, and declared questions into one deterministic inventory a maintainer inspects before choosing a lifecycle change. Returns `{workspaceRoot, inventory{confidence, mayEstablishAbsence, observedCount, issues}, packs[], diagnostics[]}`. `confidence` is one of `trustworthy | unavailable | malformed | partial | invalid`, and ONLY `trustworthy` may establish that a registered pack is orphaned — every other value reports `absence-indeterminate` instead. A duplicate plugin id or name invalidates the whole inventory and classifies nothing. Each pack carries its unchanged `PackState` plus a separate nullable staleness `overlay`, a non-persisted `seedProposal`, and its declared questions. Writes nothing: no ledger, no seed, no enablement change.",
+      inputSchema: workspaceOnlyInput,
+    },
+    async (args: WorkspaceArgs) => selected(args, (service) => service.discoverPacks()),
+  );
+
   server.registerTool(
     "register_pack",
     {

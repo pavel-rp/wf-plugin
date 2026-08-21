@@ -224,7 +224,7 @@ function makeService(files: FileMap): ResolverService {
     readFile: (p) => map.get(normalizeSlashes(p)) ?? null,
     writeFile: () => {},
     listDirs: () => [],
-    listPlugins: () => ({ plugins: [], ok: true }),
+    listPlugins: () => ({ plugins: [], ok: true, contractOk: true, issues: [] }),
     registryRelPath: () => "_local/config.md",
   };
   return new ResolverService(ports);

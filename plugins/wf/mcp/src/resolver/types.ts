@@ -366,6 +366,119 @@ export interface PackRecord {
   diagnostics: string | null;
 }
 
+/** The closed set of evidence-gated staleness overlays pack discovery may layer
+ *  on top of an existing `PackState` (WF-446).
+ *
+ *  THIS IS NOT A FIFTH `PackState`. `PackState` keeps exactly its four members;
+ *  the overlay is a SEPARATE nullable field, so a stale pack still reports the
+ *  state it already had (`active`, `installed/disabled`, …) and staleness is
+ *  additional information rather than a replacement classification. Collapsing
+ *  the two would make "stale" mutually exclusive with "disabled", which it is
+ *  not. */
+export type PackStaleOverlay =
+  | "pack/stale(source-changed)"
+  | "pack/stale(root-moved)"
+  | "pack/stale(evidence-missing)"
+  | "pack/stale(binding-changed)";
+
+/** How far the authoritative CLI inventory may be trusted for one discovery run.
+ *  Derived FIRST-MATCH-WINS in this documented precedence:
+ *
+ *    `unavailable` → `malformed` → `invalid` → `partial` → `trustworthy`
+ *
+ *  - `unavailable`  — the CLI could not be run or errored; nothing was observed.
+ *  - `malformed`    — whole-output contract failure (unparseable / not an array);
+ *                     zero records, so the inventory says nothing at all.
+ *  - `invalid`      — the output was readable but self-inconsistent: a duplicate
+ *                     stable id or name, or a non-empty array in which every
+ *                     record was rejected.
+ *  - `partial`      — some records were rejected but at least one was accepted.
+ *  - `trustworthy`  — read cleanly with no duplicates. A VALID EMPTY ARRAY is
+ *                     trustworthy: "nothing is installed" is a real observation. */
+export type DiscoveryConfidence =
+  | "trustworthy"
+  | "unavailable"
+  | "malformed"
+  | "partial"
+  | "invalid";
+
+/** One coded discovery finding. Structurally identical to (and assignable from)
+ *  `PluginListContractIssue`, restated rather than imported so this module stays
+ *  the dependency-free schema surface it has always been. */
+export interface DiscoveryIssue {
+  code: string;
+  message: string;
+}
+
+/** One inventory-level or pack-level discovery finding. `pluginId` is `null` for
+ *  a finding about the inventory as a whole rather than about one pack. */
+export interface DiscoveryDiagnostic extends DiscoveryIssue {
+  pluginId: string | null;
+}
+
+/** What the run observed about the authoritative inventory itself. */
+export interface DiscoveryInventory {
+  confidence: DiscoveryConfidence;
+  /** True IF AND ONLY IF `confidence === "trustworthy"`. Only a trustworthy
+   *  inventory may turn "this pack is not listed" into "this pack is orphaned";
+   *  every other confidence means absence is unknown, not established. */
+  mayEstablishAbsence: boolean;
+  /** How many inventory records passed the CLI-output contract. */
+  observedCount: number;
+  /** The contract issues the inventory parse reported, in reported order. */
+  issues: DiscoveryIssue[];
+}
+
+/** Whether a registered pack was seen in the inventory. `absence-indeterminate`
+ *  is the explicit third state: the pack was not listed, but the inventory was
+ *  not trustworthy enough for that silence to mean anything. */
+export type PackPresence = "installed" | "orphaned" | "absence-indeterminate";
+
+/** The lifecycle evidence discovery observed for one pack, alongside the
+ *  comparison state it produced. Both fields are the OBSERVED values; the
+ *  recorded values they were compared against live in the ledger. */
+export interface DiscoveredPackEvidence {
+  comparison: LifecycleEvidenceComparison["state"];
+  portable: PortablePackEvidence | null;
+  binding: MachineBindingEvidence | null;
+}
+
+/** One pack as discovery reports it: the existing `PackRecord` verbatim (its
+ *  `state`, `enablement`, `registeredCapabilities`, and `diagnostics` are
+ *  consumed, never re-derived) plus the discovery-only fields below.
+ *
+ *  Note `diagnostics` is INHERITED from `PackRecord` and keeps its existing
+ *  meaning (diagnosis text for a `registered/unrecoverable` record). Discovery's
+ *  own per-pack findings are not squeezed in here — they appear in the
+ *  response-level `diagnostics` array, attributed by `pluginId`, so every
+ *  finding sorts under one deterministic order. */
+export interface DiscoveredPack extends PackRecord {
+  /** The staleness overlay, or `null` when evidence is `equal` or a fresh
+   *  binding seed. A total function of `evidence.comparison`. */
+  overlay: PackStaleOverlay | null;
+  presence: PackPresence;
+  evidence: DiscoveredPackEvidence;
+  /** A binding this run WOULD record, offered for a later mutator to persist.
+   *  Discovery returns it and never writes it. */
+  seedProposal: MachineBindingEvidence | null;
+  /** The pack's declared questions across its capabilities, in declared order. */
+  questions: QuestionRecord[];
+  /** Whether the pack is available to act on. A staleness overlay does NOT
+   *  clear this: a legacy registration stays selected and operational. */
+  selectable: boolean;
+}
+
+/** The `discover_packs` response. Deterministic: `packs` is ordered by ascending
+ *  `pluginId` and `diagnostics` by `(pluginId, code, message)`, both under
+ *  `localeCompare`, so two runs over identical inputs are deep-equal. */
+export interface DiscoverPacksResponse {
+  /** The admitted workspace root, consumed as given — never re-derived. */
+  workspaceRoot: string;
+  inventory: DiscoveryInventory;
+  packs: DiscoveredPack[];
+  diagnostics: DiscoveryDiagnostic[];
+}
+
 /** The fixed taxonomy of resolver-failure categories (WF-272). A broken
  *  resolver state is one of these typed, diagnosable categories — never an
  *  opaque throw. Each maps a diagnostic/throw to a surface-specific reaction and
