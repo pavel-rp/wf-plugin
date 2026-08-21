@@ -343,10 +343,11 @@ export function applicabilityBasis(input: PlanCompletionInput): PlanApplicabilit
   };
 }
 
-/** Key-sorted, order-stable canonicalization. Object key order is normalized
- *  recursively so a record built with a different field order cannot change the
- *  hash, and an array's own order is preserved because every collection reaching
- *  here has already been sorted on a stable key by the slice that produced it. */
+/** Key-sorted canonicalization. Object key order is normalized recursively so a
+ *  record built with a different field order cannot change the hash. Array order
+ *  is preserved HERE — it is normalized one level up, where the fact tokens of
+ *  each class are sorted before folding — because a nested array (an owner list,
+ *  a fingerprint list) is itself a fact whose order its producing slice fixed. */
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value !== null && typeof value === "object") {
@@ -378,12 +379,22 @@ function token(factClass: PlanIdentityFactClass, value: unknown): string {
  * never be silently skipped. `coveredFactClasses` is therefore the complete
  * closed set on every plan — coverage is a property of this derivation, not of
  * one plan's data.
+ *
+ * A class's member tokens are SORTED before folding, which makes the identity a
+ * function of the fact MULTISET rather than of the order the facts happened to
+ * arrive in. The count token still pins cardinality, so sorting loses nothing:
+ * two plans agree on a `planId` exactly when they carry the same facts, never
+ * merely when they carry them in the same sequence. Presentation order remains
+ * fixed and deterministic in the response itself; it is simply not a
+ * mutation-relevant fact, and an approved plan must not be invalidated by one.
  */
 export function planIdentity(input: PlanCompletionInput, actions: readonly PlanAction[]): PlanIdentity {
   const tokens: string[] = [];
   const emit = (factClass: PlanIdentityFactClass, values: readonly unknown[]): void => {
     tokens.push(JSON.stringify([factClass, "count", values.length]));
-    for (const value of values) tokens.push(token(factClass, value));
+    const members = values.map((value) => token(factClass, value));
+    members.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+    for (const member of members) tokens.push(member);
   };
 
   emit("envelope-version", [input.planVersion]);

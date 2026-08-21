@@ -20628,7 +20628,9 @@ function planIdentity(input, actions) {
   const tokens = [];
   const emit = (factClass, values) => {
     tokens.push(JSON.stringify([factClass, "count", values.length]));
-    for (const value of values) tokens.push(token(factClass, value));
+    const members = values.map((value) => token(factClass, value));
+    members.sort((left, right) => left < right ? -1 : left > right ? 1 : 0);
+    for (const member of members) tokens.push(member);
   };
   emit("envelope-version", [input.planVersion]);
   emit("workspace-root", [
