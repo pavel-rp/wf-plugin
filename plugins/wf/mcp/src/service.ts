@@ -44,6 +44,7 @@ import {
 } from "./resolver/slot.js";
 import {
   SETTINGS_STORAGE_DIR,
+  capabilityProfileRelPath,
   isSkillSlug,
   locateInterface,
   mergeSettings,
@@ -78,6 +79,7 @@ import {
   MAX_QUESTION_DIAGNOSTICS,
   makeQuestionDiagnostic,
   parseQuestionDeclarations,
+  validateQuestionValue,
 } from "./resolver/questions.js";
 import {
   MAX_NORMALIZED_PAYLOAD_BYTES,
@@ -115,9 +117,17 @@ import {
 import {
   applyTransaction,
   type ApplyPorts,
+  type ApplyTargetWrite,
   type SelfCheckExpectation,
   type SelfCheckOutcome,
 } from "./resolver/apply-transaction.js";
+import {
+  renderLedgerMutation,
+  renderProfileMutation,
+  type LedgerEvidenceUpdate,
+  type ProfileAnswerUpdate,
+  type TargetRender,
+} from "./resolver/apply-targets.js";
 import type {
   PayloadTargetResolution,
   PlanPayloadFact,
@@ -1874,14 +1884,41 @@ export class ResolverService {
       // What the post-write self-check must observe. Derived from the actions
       // that were actually rendered, so a self-check can never pass by asserting
       // nothing.
+      //
+      // The registry half switches on the action kind EXPLICITLY. Before WF-454
+      // the supported set was exactly the registry pair, so "not an add" could
+      // safely mean "a deregistration"; now that `evidence-seed` and
+      // `answer-write` are also supported, that `else` would assert a pack's
+      // capabilities are ABSENT because its binding was seeded — a self-check
+      // that would fail the transaction for succeeding.
       const present: string[] = [];
       const absent: string[] = [];
       for (const action of gate.screened.supported) {
+        if (action.kind !== "registry-add" && action.kind !== "registry-deregister") continue;
         const fact = action.pluginId === null ? undefined : facts.get(action.pluginId);
         if (fact === undefined) continue;
         const names = fact.capabilities.map((c) => c.name);
         if (action.kind === "registry-add") present.push(...names);
         else absent.push(...names);
+      }
+
+      // Step 3b — the WF-454 targets: lifecycle evidence and profile seeds.
+      // Every refusal below still happens before `applyTransaction` is called, so
+      // it is byte-inert from the recovered baseline exactly like step 3.
+      const composed = this.composeApplyTargets({
+        plan,
+        inspected,
+        supported: gate.screened.supported,
+        registryRel,
+        registryContent: mutation.content,
+      });
+      if (!composed.ok) {
+        return {
+          ...halted("rejected", composed.reason, recovery, plan, [
+            { code: composed.reason, message: composed.detail },
+          ]),
+          deferred: gate.screened.deferred,
+        };
       }
 
       const applyPorts = this.ports.createApply?.(registryRel, (expectation) =>
@@ -1903,8 +1940,14 @@ export class ResolverService {
       // the driver (a kill has no catch block either); the outer handler below
       // turns one into an explicit halted envelope rather than a thrown MCP error.
       const result = applyTransaction(applyPorts, {
-        newContent: mutation.content,
-        expectation: { present, absent },
+        targets: composed.targets,
+        expectation: {
+          present,
+          absent,
+          portableRecorded: composed.portableRecorded,
+          bindingRecorded: composed.bindingRecorded,
+          answersRecorded: composed.answersRecorded,
+        },
       });
 
       const applied: ApplyAppliedAction[] =
@@ -1976,13 +2019,271 @@ export class ResolverService {
   }
 
   /**
-   * The post-write self-check: refresh discovery, then assert the registry view
+   * Compose every target this apply will write, and refuse before the
+   * transaction if any precondition the plan depended on has moved (WF-454).
+   *
+   * ORDERING IS THE POINT. This runs after `decideApplyGate` — so the whole plan
+   * has already been screened for unsupported action kinds and unsupported seed
+   * kinds — and BEFORE `applyTransaction`, so every refusal below is byte-inert.
+   * A precondition that fails here leaves the workspace exactly as the recovered
+   * baseline left it: no journal, no backup, no partial subset of a plan applied.
+   *
+   * WHAT BECOMES A TARGET, AND WHAT DELIBERATELY DOES NOT:
+   *
+   * - `registry-add` records a NEW registration, so it contributes the pack's
+   *   exact observed portable tuple (the ownership evidence) AND its initial
+   *   machine binding.
+   * - `evidence-seed` is the missing-binding case, so it contributes ONLY the
+   *   machine binding. The committed portable half is deliberately not touched,
+   *   which is how "committed evidence stays byte-identical" is guaranteed:
+   *   on this path the committed ledger never becomes a target at all.
+   * - `answer-write` contributes one profile seed per owning capability.
+   * - `registry-deregister` contributes NOTHING to the ledger. Evidence removal
+   *   is a removal, and removals are out of scope for this item; leaving the
+   *   record is also the fail-safe direction, since a stale record re-proposes a
+   *   seed while a wrongly-erased one loses the only proof the pack was ever
+   *   installed.
+   *
+   * A rendered target whose bytes would not change is DROPPED, so an apply never
+   * rewrites a file it has nothing to say about.
+   */
+  private composeApplyTargets(input: {
+    plan: PlanInstallResponse;
+    inspected: Map<string, InspectPackResponse>;
+    supported: readonly PlanAction[];
+    registryRel: string;
+    registryContent: string;
+  }):
+    | {
+        ok: true;
+        targets: ApplyTargetWrite[];
+        portableRecorded: string[];
+        bindingRecorded: string[];
+        answersRecorded: { capability: string; destination: string }[];
+      }
+    | { ok: false; reason: ApplyReason; detail: string } {
+    const workspaceRoot = this.ports.workspaceRoot;
+    const readRel = (relPath: string): string | null =>
+      this.ports.readFile(joinSlash(workspaceRoot, relPath));
+
+    // The declared ledger policy. Re-resolved HERE rather than trusted from the
+    // plan, because a changed ledger home is exactly the kind of stale
+    // precondition this item must reject before mutating.
+    const home = resolveLedgerHome();
+    if (!home.ok || home.portablePath === null) {
+      return {
+        ok: false,
+        reason: "apply/ledger-unresolvable",
+        detail: `the declared ledger home is not a legal policy: ${
+          home.diagnostic ?? "unknown"
+        }. Nothing was written.`,
+      };
+    }
+
+    const recordedPortable = parseEvidenceLedger(readRel(home.portablePath)).portable;
+    const recordedBinding = parseEvidenceLedger(readRel(home.bindingPath)).binding;
+
+    const portableUpdates: LedgerEvidenceUpdate[] = [];
+    const bindingUpdates: LedgerEvidenceUpdate[] = [];
+    const portableRecorded: string[] = [];
+    const bindingRecorded: string[] = [];
+
+    const seedByPluginId = new Map(input.plan.evidenceSeeds.map((seed) => [seed.pluginId, seed]));
+
+    for (const action of input.supported) {
+      const pluginId = action.pluginId;
+
+      if (action.kind === "registry-add") {
+        if (pluginId === null) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: "a `registry-add` action carries no pack attribution, so its lifecycle evidence cannot be recorded.",
+          };
+        }
+        const pack = input.inspected.get(pluginId);
+        const portable = pack?.portableEvidence ?? null;
+        const binding = pack?.machineBinding ?? null;
+        if (pack === undefined || !pack.valid || portable === null || binding === null) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `pack \`${pluginId}\` is being registered but its exact portable evidence and initial machine binding could not both be observed at apply time; the registration is not recorded without the evidence that owns it.`,
+          };
+        }
+        portableUpdates.push({ pluginId, portable });
+        bindingUpdates.push({ pluginId, binding });
+        portableRecorded.push(pluginId);
+        bindingRecorded.push(pluginId);
+        continue;
+      }
+
+      if (action.kind === "evidence-seed") {
+        if (pluginId === null) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: "an `evidence-seed` action carries no pack attribution, so the binding it would seed cannot be resolved.",
+          };
+        }
+        const seed = seedByPluginId.get(pluginId);
+        if (seed === undefined || seed.kind !== "binding-seed") {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `pack \`${pluginId}\` carries an \`evidence-seed\` action with no matching binding-seed proposal at apply time; nothing was written.`,
+          };
+        }
+        // THE EXACTNESS RULE, restated at apply time rather than inherited. A
+        // missing-binding seed is legitimate ONLY when the committed portable
+        // tuple and the observed one are exactly equal — not compatible, not a
+        // superset. `compareLifecycleEvidence` already decided that when it
+        // produced `binding-seed`, and re-deriving it here is what turns "the
+        // plan said so" into "the workspace says so, now, under the lock".
+        const observedPortable = input.inspected.get(pluginId)?.portableEvidence ?? null;
+        const committedPortable = recordedPortable.get(pluginId) ?? null;
+        if (
+          observedPortable === null ||
+          committedPortable === null ||
+          JSON.stringify(committedPortable) !== JSON.stringify(observedPortable)
+        ) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `pack \`${pluginId}\` no longer presents a portable tuple exactly equal to the committed one, so only-the-missing-binding cannot be seeded; nothing was written.`,
+          };
+        }
+        // An already-recorded binding means this is not a missing-binding case at
+        // all. Refusing is what stops an apply from overwriting a binding the
+        // plan never proposed to change.
+        if (recordedBinding.has(pluginId)) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `pack \`${pluginId}\` already has a recorded machine binding, so there is no missing binding to seed; nothing was written.`,
+          };
+        }
+        bindingUpdates.push({ pluginId, binding: seed.binding });
+        bindingRecorded.push(pluginId);
+        continue;
+      }
+    }
+
+    // --- project answers -> capability profile seeds --------------------------
+    const answersByCapability = new Map<string, ProfileAnswerUpdate[]>();
+    const answersRecorded: { capability: string; destination: string }[] = [];
+
+    for (const write of input.plan.answers.writes) {
+      // Only answers belonging to an action this run actually applies.
+      if (!input.supported.some((a) => a.kind === "answer-write" && a.destination === write.destination && a.pluginId === write.pluginId)) {
+        continue;
+      }
+      // REVALIDATED at apply time through the SAME declared-schema path a
+      // persisted value takes. The plan validated it too, but a plan is an
+      // approval, not evidence, and this mutator trusts current facts only.
+      const question = input.inspected
+        .get(write.pluginId)
+        ?.capabilities.flatMap((capability) => capability.questions)
+        .find((candidate) => candidate.id === write.questionId);
+      if (question === undefined) {
+        return {
+          ok: false,
+          reason: "apply/answer-invalid",
+          detail: `question \`${write.questionId}\` of capability \`${write.pack}\` is no longer declared at apply time, so its approved answer is not persisted; nothing was written.`,
+        };
+      }
+      const revalidated = validateQuestionValue(question, "proposed", write.value);
+      if (!revalidated.valid) {
+        return {
+          ok: false,
+          reason: "apply/answer-invalid",
+          detail: `the approved answer for question \`${write.questionId}\` of capability \`${write.pack}\` no longer satisfies its declared schema: ${revalidated.diagnostics
+            .map((diagnostic) => diagnostic.message)
+            .join(" ")}. Nothing was written.`,
+        };
+      }
+      const bucket = answersByCapability.get(write.pack) ?? [];
+      bucket.push({ destination: write.destination, value: revalidated.value });
+      answersByCapability.set(write.pack, bucket);
+      answersRecorded.push({ capability: write.pack, destination: write.destination });
+    }
+
+    // --- render every target --------------------------------------------------
+    const targets: ApplyTargetWrite[] = [{ destination: input.registryRel, newContent: input.registryContent }];
+
+    /** Add one rendered target, dropping it when it would change nothing. */
+    const addRendered = (
+      destination: string,
+      render: TargetRender,
+    ): { ok: false; reason: ApplyReason; detail: string } | null => {
+      if (!render.ok) {
+        return {
+          ok: false,
+          reason: destination.endsWith(".profile.json")
+            ? "apply/answer-invalid"
+            : "apply/ledger-unresolvable",
+          detail: render.detail,
+        };
+      }
+      if (!render.changed) return null;
+      if (targets.some((target) => target.destination === destination)) {
+        return {
+          ok: false,
+          reason: "apply/ledger-unresolvable",
+          detail: `destination \`${destination}\` would be written twice in one transaction; nothing was written.`,
+        };
+      }
+      targets.push({ destination, newContent: render.content });
+      return null;
+    };
+
+    // The portable half and the binding half may land in the SAME file when the
+    // declared home is `local`, so they are grouped by destination first — a
+    // single document rendered once, never two writes racing over one path.
+    const byDestination = new Map<string, LedgerEvidenceUpdate[]>();
+    if (portableUpdates.length > 0) {
+      byDestination.set(home.portablePath, [
+        ...(byDestination.get(home.portablePath) ?? []),
+        ...portableUpdates,
+      ]);
+    }
+    if (bindingUpdates.length > 0) {
+      byDestination.set(home.bindingPath, [
+        ...(byDestination.get(home.bindingPath) ?? []),
+        ...bindingUpdates,
+      ]);
+    }
+    for (const [destination, updates] of byDestination) {
+      const failure = addRendered(
+        destination,
+        renderLedgerMutation(readRel(destination), updates, `the evidence ledger \`${destination}\``),
+      );
+      if (failure !== null) return failure;
+    }
+
+    for (const [capability, updates] of answersByCapability) {
+      const destination = capabilityProfileRelPath(capability);
+      const failure = addRendered(
+        destination,
+        renderProfileMutation(readRel(destination), updates, `the capability profile \`${destination}\``),
+      );
+      if (failure !== null) return failure;
+    }
+
+    return { ok: true, targets, portableRecorded, bindingRecorded, answersRecorded };
+  }
+
+  /**
+   * The post-write self-check: refresh discovery, then assert the resolved view
    * agrees with what the transaction claims it wrote.
    *
    * A *failed* self-check is a transaction FAILURE, not a warning — the caller
-   * rolls back on it. So this must assert both halves: every added capability
-   * resolves `ok`, and every deregistered one is gone. Asserting only presence
-   * would let a deregistration that silently changed nothing report success.
+   * rolls back on it. So this must assert every half: every added capability
+   * resolves `ok`, every deregistered one is gone, and — since WF-454 — every
+   * recorded evidence entry and every seeded answer READS BACK. Asserting only
+   * presence would let a deregistration that silently changed nothing report
+   * success; asserting only the registry would let a ledger or profile write that
+   * landed as unreadable bytes report success just as wrongly.
    */
   private selfCheckRegistry(expectation: SelfCheckExpectation): SelfCheckOutcome {
     this.refresh();
@@ -1993,10 +2294,64 @@ export class ResolverService {
     const lingering = expectation.absent.filter((name) =>
       view.capabilities.some((c) => c.name === name),
     );
-    if (missing.length === 0 && lingering.length === 0) return { ok: true };
+
+    // Read the evidence and the profiles back from disk, through the same
+    // parsers the ordinary read path uses. Re-reading rather than trusting the
+    // in-memory value is the whole point: it catches a write that landed as bytes
+    // the resolver cannot understand.
+    const workspaceRoot = this.ports.workspaceRoot;
+    const readRel = (relPath: string): string | null =>
+      this.ports.readFile(joinSlash(workspaceRoot, relPath));
+    const home = resolveLedgerHome();
+    const portableBack =
+      home.portablePath === null
+        ? new Map<string, unknown>()
+        : parseEvidenceLedger(readRel(home.portablePath)).portable;
+    const bindingBack = parseEvidenceLedger(readRel(home.bindingPath)).binding;
+
+    const portableMissing = expectation.portableRecorded.filter((id) => !portableBack.has(id));
+    const bindingMissing = expectation.bindingRecorded.filter((id) => !bindingBack.has(id));
+
+    const answerMissing: string[] = [];
+    for (const answer of expectation.answersRecorded) {
+      const raw = readRel(capabilityProfileRelPath(answer.capability));
+      let ok = false;
+      if (raw !== null) {
+        try {
+          const parsed: unknown = JSON.parse(raw);
+          ok =
+            typeof parsed === "object" &&
+            parsed !== null &&
+            !Array.isArray(parsed) &&
+            Object.prototype.hasOwnProperty.call(parsed, answer.destination);
+        } catch {
+          ok = false;
+        }
+      }
+      if (!ok) answerMissing.push(`${answer.capability}:${answer.destination}`);
+    }
+
+    if (
+      missing.length === 0 &&
+      lingering.length === 0 &&
+      portableMissing.length === 0 &&
+      bindingMissing.length === 0 &&
+      answerMissing.length === 0
+    ) {
+      return { ok: true };
+    }
     const parts: string[] = [];
     if (missing.length > 0) parts.push(`not resolvable after the write: ${missing.join(", ")}`);
     if (lingering.length > 0) parts.push(`still registered after removal: ${lingering.join(", ")}`);
+    if (portableMissing.length > 0) {
+      parts.push(`portable evidence did not read back: ${portableMissing.join(", ")}`);
+    }
+    if (bindingMissing.length > 0) {
+      parts.push(`machine binding did not read back: ${bindingMissing.join(", ")}`);
+    }
+    if (answerMissing.length > 0) {
+      parts.push(`profile seed did not read back: ${answerMissing.join(", ")}`);
+    }
     return { ok: false, diagnostic: parts.join("; ") };
   }
 
