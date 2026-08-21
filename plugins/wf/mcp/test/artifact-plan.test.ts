@@ -347,6 +347,89 @@ test("an ownerless recorded artifact is never deletable — empty is not exclusi
   assert.deepEqual(decision.owners, [], "the empty owner set is reported honestly");
 });
 
+// --- regression (verify run 1, Finding 1): malformed digests are not evidence -
+//
+// The bootstrap path already gated on digest well-formedness before trusting
+// reproduced bytes; the removal path did not, so two MATCHING MALFORMED digests
+// satisfied the byte-match conjunct and granted deletion authority over a file
+// whose identity was never established. The destructive path must be at least as
+// strict as the non-destructive one.
+
+for (const digest of ["", "not-a-digest", "abc123", "A".repeat(64)]) {
+  test(`matching but MALFORMED digests (\`${digest}\`) never grant deletion authority`, () => {
+    const decision = only(
+      planArtifacts(
+        [
+          fact({
+            recorded: recorded({ producedContentHash: digest }),
+            current: { ok: true, sha256: digest, bytes: 10 },
+            deselectedOwners: [OWNER_A],
+          }),
+        ],
+        TRUST,
+      ),
+    );
+    assert.equal(decision.form, "retained", "a malformed pair is never deletable");
+    assert.equal(decision.reason, "digest-malformed");
+    assert.equal(decision.deletionAuthority, false);
+    assert.equal(
+      decision.bytesMatchLedger,
+      false,
+      "a match between malformed digests is not reported as a ledger match",
+    );
+  });
+}
+
+test("malformed digests block the UPGRADE path too, not just removal", () => {
+  const decision = only(
+    planArtifacts(
+      [
+        fact({
+          recorded: recorded({ producedContentHash: "short" }),
+          current: { ok: true, sha256: "short", bytes: 10 },
+          declared: declared({ declaredSourceFingerprint: SRC_NEW }),
+        }),
+      ],
+      TRUST,
+    ),
+  );
+  assert.equal(decision.reason, "digest-malformed");
+  assert.equal(decision.fullyUpgraded, false);
+  assert.equal(decision.runnerCandidate, false);
+});
+
+test("the removal path is at least as strict as the bootstrap path on digests", () => {
+  // Same malformed digest, once through bootstrap and once through removal.
+  const viaBootstrap = only(
+    planArtifacts(
+      [
+        fact({
+          recorded: null,
+          declared: declared({ producedContentHash: "bad" }),
+          current: { ok: true, sha256: "bad", bytes: 10 },
+        }),
+      ],
+      TRUST,
+    ),
+  );
+  const viaRemoval = only(
+    planArtifacts(
+      [
+        fact({
+          recorded: recorded({ producedContentHash: "bad" }),
+          current: { ok: true, sha256: "bad", bytes: 10 },
+          deselectedOwners: [OWNER_A],
+        }),
+      ],
+      TRUST,
+    ),
+  );
+  assert.equal(viaBootstrap.form, "retained");
+  assert.equal(viaRemoval.form, "retained", "the destructive path is never the laxer one");
+  assert.equal(viaBootstrap.deletionAuthority, false);
+  assert.equal(viaRemoval.deletionAuthority, false);
+});
+
 // --- SC5: EVERY retention reason grants no deletion authority ----------------
 
 const EVERY_REASON: Array<[PlanArtifactRetentionReason, Partial<PlanArtifactFact>, boolean]> = [
@@ -359,6 +442,11 @@ const EVERY_REASON: Array<[PlanArtifactRetentionReason, Partial<PlanArtifactFact
     true,
   ],
   ["current-bytes-unreadable", { current: { ok: false, status: "unreadable" } }, true],
+  [
+    "digest-malformed",
+    { recorded: recorded({ producedContentHash: "bad" }), current: { ok: true, sha256: "bad", bytes: 10 } },
+    true,
+  ],
   ["destination-unsafe", { target: { ok: false, rejection: "symlink-escape" } }, true],
   ["no-recorded-proof", { recorded: null, declared: null }, true],
   ["inventory-untrustworthy", { recorded: null, declared: declared() }, false],
@@ -403,7 +491,7 @@ test("every retention reason in the closed vocabulary is reachable and grants no
   }
   // `bootstrap-defers-deletion` is the one non-retention reason; it is covered by
   // its own SC6 test and is deliberately absent from this retention walk.
-  assert.equal(seen.size, 14, "all 14 retention reasons are exercised");
+  assert.equal(seen.size, 15, "all 15 retention reasons are exercised");
 });
 
 // --- SC9 / SC11: byte-inert and order-independent ----------------------------

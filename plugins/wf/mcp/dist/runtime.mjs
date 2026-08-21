@@ -19795,7 +19795,7 @@ function hasPreviewedArtifactEffect(preview) {
   return preview.deletable.length > 0 || preview.bootstrap.length > 0 || preview.advance.length > 0;
 }
 function ownerKey(owner) {
-  return `${owner.pluginId}\0${owner.capability}\0${owner.source}`;
+  return JSON.stringify([owner.pluginId, owner.capability, owner.source]);
 }
 function sortOwners(owners) {
   return owners.map((owner) => ({
@@ -19827,7 +19827,8 @@ function classify(fact, inventoryTrustworthy) {
   const recordedOwners = recorded === null ? [] : sortOwners(recorded.owners);
   const recordedContentHash = recorded === null ? null : recorded.producedContentHash;
   const recordedSemantics = recorded === null ? null : tupleOf(recorded);
-  const bytesMatchLedger = recordedContentHash !== null && currentContentHash !== null && currentContentHash === recordedContentHash;
+  const digestsWellFormed = recordedContentHash !== null && currentContentHash !== null && SHA256_RE.test(recordedContentHash) && SHA256_RE.test(currentContentHash);
+  const bytesMatchLedger = digestsWellFormed && currentContentHash === recordedContentHash;
   const retain = (reason, owners, semantics) => ({
     destination: fact.destination,
     canonicalTarget,
@@ -19888,6 +19889,9 @@ function classify(fact, inventoryTrustworthy) {
   }
   if (recordedOwners.length === 0) {
     return retain("ownership-incomplete", recordedOwners, recordedSemantics);
+  }
+  if (!digestsWellFormed) {
+    return retain("digest-malformed", recordedOwners, recordedSemantics);
   }
   const deselectedCount = recordedOwners.filter(
     (owner) => includesOwner(fact.deselectedOwners, owner)

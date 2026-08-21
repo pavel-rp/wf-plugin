@@ -828,6 +828,11 @@ export type PlanArtifactRetentionReason =
   | "current-bytes-mismatch"
   /** Current bytes could not be observed at all. */
   | "current-bytes-unreadable"
+  /** A recorded or observed digest is not a well-formed SHA-256. A "match"
+   *  between two malformed digests is not evidence, so it never supports a
+   *  removal or an upgrade — the destructive path is held to at least the
+   *  strictness of the bootstrap path. */
+  | "digest-malformed"
   /** The destination failed the no-create workspace-containment test (WF-448). */
   | "destination-unsafe"
   /** The ledger has no entry for this destination and bootstrap is not applicable. */
