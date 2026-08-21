@@ -220,6 +220,40 @@ test("invalid declared roots map onto the closed reason set without throwing", (
   }
 });
 
+test("the reason token is derived from the wording, never from the rejected path's own text", () => {
+  const fixture = makeRepositoryFixture();
+  try {
+    const launch = resolveWorkspaceIdentity(fixture.main);
+
+    // A MISSING path whose own name reads like the non-directory failure. The
+    // raised message interpolates the path, so classifying the raw message would
+    // report `not-a-directory` for something that simply is not there.
+    const spoofMissing = join(fixture.root, "must be a directory");
+    const missing = selectWorkspaceRoot({ explicit: spoofMissing, cwd: fixture.main }, launch);
+    assert.equal(missing.ok, false);
+    assert.equal(missing.ok === false && missing.reason, "not-found");
+
+    // And the mirror: a FILE whose own name reads like the missing-path failure.
+    const spoofFile = join(fixture.root, "does not exist");
+    writeFileSync(spoofFile, "not a directory\n");
+    const notDirectory = selectWorkspaceRoot({ explicit: spoofFile, cwd: fixture.main }, launch);
+    assert.equal(notDirectory.ok, false);
+    assert.equal(notDirectory.ok === false && notDirectory.reason, "not-a-directory");
+
+    // A rejected candidate is always recoverable from the diagnostic — the
+    // absolute-path check names the label but not the value, so the boundary
+    // echoes it rather than leaving the caller without the offending input.
+    const relative = selectWorkspaceRoot({ explicit: "relative/path", cwd: fixture.main }, launch);
+    assert.equal(relative.ok, false);
+    assert.ok(relative.ok === false && relative.diagnostic.includes("relative/path"));
+    for (const failed of [missing, notDirectory]) {
+      assert.ok(failed.ok === false && failed.diagnostic.length > 0);
+    }
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("out-of-family: a Git launch admits its worktree family and rejects everything else", () => {
   const fixture = makeRepositoryFixture();
   try {

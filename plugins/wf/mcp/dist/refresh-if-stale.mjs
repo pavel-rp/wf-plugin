@@ -138,8 +138,7 @@ function label(source) {
 function failure(source, reason, diagnostic) {
   return { ok: false, root: null, source, reason, diagnostic };
 }
-function reasonFromThrow(err) {
-  const message = err instanceof Error ? err.message : String(err);
+function reasonFromThrow(message) {
   if (message.includes("must be an absolute path")) return "not-absolute";
   if (message.includes("must be a directory")) return "not-a-directory";
   if (message.includes("does not exist")) return "not-found";
@@ -158,7 +157,9 @@ function admit(source, candidate, launch) {
     identity = resolveWorkspaceIdentity(candidate, label(source));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return failure(source, reasonFromThrow(err), message);
+    const classifiable = message.split(candidate).join("");
+    const diagnostic = message.includes(candidate) ? message : `${message} Received: \`${candidate}\`.`;
+    return failure(source, reasonFromThrow(classifiable), diagnostic);
   }
   if (!admittedByFamily(identity, launch)) {
     return failure(

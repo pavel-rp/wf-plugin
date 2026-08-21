@@ -1044,8 +1044,8 @@ closed reason token distinguishing a blank declaration, a non-absolute path, a m
 path, a non-directory path, and an out-of-family root; an unrecognized canonicalization
 error still resolves to a closed token rather than escaping.
 
-**Hard scope boundary (WF-445).** Project workspace admission and **plugin installation
--root validation are distinct** and share no code path: inventory-supplied plugin roots
+**Hard scope boundary (WF-445).** Project workspace admission and **plugin
+installation-root validation are distinct** and share no code path: inventory-supplied plugin roots
 remain governed by the recorded-root-first plugin-root resolution described above, and
 nothing in this boundary consults or reuses it. This boundary also does not integrate
 the admitted root into any downstream lifecycle surface, admit unrelated roots, define

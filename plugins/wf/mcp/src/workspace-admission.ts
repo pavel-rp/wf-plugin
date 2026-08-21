@@ -89,8 +89,7 @@ function failure(
  * could not be resolved to an admissible directory) rather than propagating.
  * A throw escaping this boundary would defeat the typed-result contract.
  */
-function reasonFromThrow(err: unknown): WorkspaceAdmissionReason {
-  const message = err instanceof Error ? err.message : String(err);
+function reasonFromThrow(message: string): WorkspaceAdmissionReason {
   if (message.includes("must be an absolute path")) return "not-absolute";
   if (message.includes("must be a directory")) return "not-a-directory";
   if (message.includes("does not exist")) return "not-found";
@@ -126,7 +125,18 @@ function admit(
     identity = resolveWorkspaceIdentity(candidate, label(source));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return failure(source, reasonFromThrow(err), message);
+    // Classify on the message with the CANDIDATE ELIDED. The raised messages
+    // interpolate the rejected path, so a path that literally contains another
+    // failure's wording (`/tmp/must be a directory`) would otherwise spoof the
+    // reason token — and 21 downstream surfaces branch on that token.
+    const classifiable = message.split(candidate).join("");
+    // Echo the rejected candidate when the raised message omits it (the
+    // absolute-path check names the label but not the value), so a diagnostic
+    // is actionable on its own.
+    const diagnostic = message.includes(candidate)
+      ? message
+      : `${message} Received: \`${candidate}\`.`;
+    return failure(source, reasonFromThrow(classifiable), diagnostic);
   }
 
   if (!admittedByFamily(identity, launch)) {
