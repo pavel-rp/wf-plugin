@@ -105,7 +105,7 @@ Each tracker read consumes an already-resolved status name or scope and performs
 
 Independently of any provider, scan `{task-root}` for in-flight task folders — the local artifacts that are always the source of truth, and the whole briefing in bare-core.
 
-1. **Discover task folders.** Glob the immediate child directories of `{task-root}` whose names look like a task id (a tracker-shaped id or the local `T<NNN>` scheme — any folder carrying a 3+-digit run). Skip `_archive/`, `_testkit/`, `profiles/`, `standup/`, and any non-task folder.
+1. **Discover task folders.** Glob the immediate child directories of `{task-root}` whose names look like a task id (a tracker-shaped id or the local `T<NNN>` scheme — any folder carrying a 3+-digit run). Skip `_archive/`, `profiles/`, `standup/`, and any non-task folder.
 
 2. **Read each folder's state.** For each task folder, determine its **latest phase** from the highest-numbered artifact present (e.g. `06_qa.md` outranks `02_plan.md`) and read its `index.md` one-line summaries when present. Record the task id, its title (from `00_reqs.md` / `01_spec.md` when present, else the folder name), and its latest phase.
 

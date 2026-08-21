@@ -1,6 +1,6 @@
 ---
 name: init
-description: Initializes the current repository for the wf:* skill suite by creating the _local/ task folder, writing a default _local/config.md, gitignoring _local/, scaffolding the _testkit test runner, and optionally adding project-specific git excludes. Use once per new repository before running /wf:spec — idempotent on subsequent runs.
+description: Initializes the current repository for the wf:* skill suite by creating the _local/ task folder, writing a default _local/config.md, gitignoring _local/, and optionally adding project-specific git excludes. Use once per new repository before running /wf:spec — idempotent on subsequent runs.
 allowed-tools: [Read, Write, Edit, Glob, Bash, ToolSearch]
 ---
 
@@ -11,7 +11,6 @@ Bootstrap the current repository for the wf:* skill suite. Creates and/or update
 - `_local/` — task root (per-ticket artifacts)
 - `_local/config.md` — project-specific values consumed by every wf:* skill
 - `_local/README.md` — short note explaining the folder's purpose
-- `_local/_testkit/run.mjs` — Node test runner used by a registered unit-test-authoring capability
 - `.gitignore` — ensures `_local/` is never committed
 - `.git/info/exclude` — adds a `_page-tests/` path when a registered capability's test-host root exists in the checkout
 
@@ -142,7 +141,7 @@ Record the chosen rule (and the rejected candidates, if any) in the chat summary
 
 ## Phase 2.5: Seed capability profiles
 
-After the `## Capabilities` registry table exists (Phase 2) and before the constitution is established (Phase 7), execute the **profile-seeding convention** defined in `plugins/wf/skills/_contracts/capability-registry.contract.md` (§"The profile-seeding convention"). Do **not** re-derive its rules here — follow the convention **by name**; this phase only invokes it for every registered capability, obtained from the `wf-resolver` MCP service rather than a hand-rolled registry/manifest/plugin-root read.
+After the `## Capabilities` registry table exists (Phase 2) and before the constitution is established (Phase 6), execute the **profile-seeding convention** defined in `plugins/wf/skills/_contracts/capability-registry.contract.md` (§"The profile-seeding convention"). Do **not** re-derive its rules here — follow the convention **by name**; this phase only invokes it for every registered capability, obtained from the `wf-resolver` MCP service rather than a hand-rolled registry/manifest/plugin-root read.
 
 1. **Call `resolve_registry({ workspaceRoot: resolverWorkspaceRoot })`** on the `wf-resolver` service. It returns the ordered active `capabilities[]`, each already resolved from the registry and its `manifest.md` — **including plugin-anchored self-heal** — as `{ name, kind, resolvedPath, manifestPath, validity, profileTemplatePath, … }`. No manual `## Capabilities` read, no `## Plugin Roots` lookup, no manifest `Read`: the resolver already performed the registry iteration, the per-capability manifest read, and the plugin-root resolution.
    - **Empty `capabilities[]` ⇒ seed nothing** — no destination is created. This is the inert no-op; report "none" in the Final Output. (Matches the contract's no-op-when-absent rule.)
@@ -172,7 +171,7 @@ After the `## Capabilities` registry table exists (Phase 2) and before the const
 
 ## Phase 2.6: Inform the resolver
 
-Phase 2 and Phase 2.5 are the writes that mutate the resolution substrate the `wf-resolver` snapshot models — `_local/config.md`, the `## Capabilities` registry (in the same-file or relocated case), and any seeded `_local/profiles/*.profile.json` overrides. Every typed resolver query already re-validates its recorded input fingerprints and rebuilds on a mismatch, so the very next `resolve_*` call would pick these writes up regardless of this step — but `init` informs the resolver explicitly anyway, the same way a pack's own `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })` call folds a refresh into its own registration write, so Phase 6 and Phase 7 (and any skill run afterward) never rely on incidental fingerprint recomputation.
+Phase 2 and Phase 2.5 are the writes that mutate the resolution substrate the `wf-resolver` snapshot models — `_local/config.md`, the `## Capabilities` registry (in the same-file or relocated case), and any seeded `_local/profiles/*.profile.json` overrides. Every typed resolver query already re-validates its recorded input fingerprints and rebuilds on a mismatch, so the very next `resolve_*` call would pick these writes up regardless of this step — but `init` informs the resolver explicitly anyway, the same way a pack's own `register_pack({ workspaceRoot: resolverWorkspaceRoot, ... })` call folds a refresh into its own registration write, so Phase 5 and Phase 6 (and any skill run afterward) never rely on incidental fingerprint recomputation.
 
 1. **Call `resolve_refresh({ workspaceRoot: resolverWorkspaceRoot, reasons: ["/wf:init wrote _local/config.md, the capability registry, and profile seeds"] })`.** It rebuilds the snapshot from the now-current files and returns the fresh lifecycle state — `{ valid, counts{ capabilities, packs, providers }, diagnostics[] }`.
 2. **On success**, note the returned `counts.capabilities` for the chat summary.
@@ -192,26 +191,7 @@ This is `init`'s only resolver **write-adjacent** call. It never calls `register
 
 ---
 
-## Phase 4: Scaffold `_local/_testkit/run.mjs`
-
-If the file already exists, skip (regardless of `--force` — the runner is stable and tests may depend on its behavior). Otherwise:
-
-Create `_local/_testkit/` and write `run.mjs` — a dependency-free Node script that:
-
-- Recursively discovers `*.test.ts` under `_local/` (skip `node_modules`, `.git`).
-- Accepts an optional path argument (file or directory; resolve relative to repo root).
-- Spawns `node --test --test-reporter=spec --no-warnings=MODULE_TYPELESS_PACKAGE_JSON <files...>` with `cwd: repoRoot`, stdio inherited.
-- Exits with the child's exit code.
-
-Constraints:
-
-- Only `node:*` imports — no npm packages.
-- Do NOT create a `package.json` under `_local/` — it forces a module-type decision Node doesn't need for type-stripped TS under `node --test`.
-- Require Node 23.6+ (type stripping is stable from that version). If `node --version` reports an older runtime, warn the user but still write the file.
-
----
-
-## Phase 5: Write `_local/README.md`
+## Phase 4: Write `_local/README.md`
 
 If the file already exists and `--force` is not set, skip. Otherwise write, substituting the current model id (§9) into the `**Model:**` line:
 
@@ -223,7 +203,6 @@ If the file already exists and `--force` is not set, skip. Otherwise write, subs
 Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
 
 - `T<NNN>/` — task folders (requirements, spec, plan, research, artifacts)
-- `_testkit/` — Node test runner for a registered unit-test-authoring capability
 - `config.md` — project-specific values consumed by every wf:* skill
 
 Safe to nuke if you want a clean slate. Nothing here is version-controlled.
@@ -231,7 +210,7 @@ Safe to nuke if you want a clean slate. Nothing here is version-controlled.
 
 ---
 
-## Phase 6: Append the page-test exclude (conditional)
+## Phase 5: Append the page-test exclude (conditional)
 
 A capability may ship a page-test harness that writes its `_page-tests/` files under a
 project-specific **test-host root**. That root comes from the capability's profile
@@ -265,7 +244,7 @@ different stack's test-host needs no core edit.
 
 ---
 
-## Phase 7: Establish the constitution
+## Phase 6: Establish the constitution
 
 After `_local/config.md` exists (Phase 2) and the registry table is in place, route this fixed sibling-Skill edge immediately before work: call `resolve_routing` with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "constitution"`, `unitIds: ["init:constitution"]`, `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical", contextIsolation: "none", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: false`, and `supportsEffortSelector: false`. Include `actualModel` only when the host exposes it; emit the compact operational record; and pass no selector. On `status: stop` or non-null `diagnostic`, preserve this phase's existing non-fatal behavior: skip the constitution refresh, record the resolver reason in the summary, and continue init. Otherwise obey the selected `inline` shape and **unconditionally** invoke `/wf:constitution` through the Skill tool with no arguments so a fresh repo gets a
 constitution record — the same slash-invocation `plan`/`spec`/`lite` use for `/wf:classify`.
@@ -299,7 +278,6 @@ Actions:
 - _local/ — <created | kept>
 - _local/config.md — <created | kept | overwritten>
 - _local/README.md — <created | kept | overwritten>
-- _local/_testkit/run.mjs — <created | kept>
 - _local/constitution.md — <established | updated | unchanged | skipped — run /wf:constitution>
 - .gitignore entry for _local/ — <appended | already present>
 - .git/info/exclude entry for _page-tests/ — <appended | already present | skipped>

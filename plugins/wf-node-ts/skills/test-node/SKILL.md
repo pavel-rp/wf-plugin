@@ -8,10 +8,16 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 
 Scaffold and run lightweight Node-based unit tests for pure TypeScript helpers in this repo, using the `_local/_testkit` harness. Use when the user asks to "test this helper locally", "add a local test for X", "run the local tests", or wants to exercise a pure function without spinning up Karma/Angular. Not for code that needs the Angular runtime (DI, zone.js, templates, RxJS-with-NgZone).
 
-This repo has an ad-hoc test runner at `_local/_testkit/run.mjs` that executes
-`*.test.ts` files anywhere under `_local/` using Node's built-in test runner
-(`node --test`) and native TypeScript stripping. No npm deps, no Karma, no
-Angular — pure Node 23.6+ / 24.
+The runner at `_local/_testkit/run.mjs` executes `*.test.ts` files anywhere
+under `_local/` using Node's built-in test runner (`node --test`) and native
+TypeScript stripping. No npm deps, no Karma, no Angular — pure Node 23.6+ / 24.
+
+**This pack owns the runner.** It is installed from this pack's own
+`node-ts` capability, declared in its manifest's `## Payloads` table
+(`payloads/testkit-run.mjs` → `_local/_testkit/run.mjs`) and written by the
+resolver when the capability is selected. A project that never selects
+`node-ts` gets no runner and no `_testkit` directory — which is the point:
+core ships no Node/TypeScript knowledge.
 
 Everything lives under `_local/` which is **gitignored**, so tests and the
 runner never enter commits.
@@ -95,18 +101,18 @@ locate the function, find the most relevant task folder (or fall back to
 
 ## Bootstrap (if `_local/_testkit/run.mjs` is missing)
 
-Only needed on a fresh clone or if someone wiped `_local/`. Create:
+Only needed on a fresh clone or if someone wiped `_local/`. **Do not author a
+replacement script.** The runner's bytes are owned by this pack's `node-ts`
+capability, declared in its manifest's `## Payloads` table; re-authoring them
+here would create a second, silently-divergent copy of the same file.
 
-**`_local/_testkit/run.mjs`** — Node script that:
-- Recursively finds `*.test.ts` under `_local/` (skipping `node_modules`, `.git`).
-- Accepts an optional path argument (file or directory).
-- Spawns `node --test --test-reporter=spec --no-warnings=MODULE_TYPELESS_PACKAGE_JSON <files...>`
-  with `cwd: repoRoot`, stdio inherited.
-- Exits with the child's exit code.
+Re-run this pack's installer (`/wf-node-ts:init`) so the resolver reinstalls the
+declared payload from the capability's own source. If the install reports the
+payload as unavailable, report that and stop — a missing pack source is a
+packaging defect, not something to paper over with a hand-written stand-in.
 
-Keep it dependency-free (only `node:*` imports). Do not add a `package.json`
-under `_local/` — it would pull Node into a module-type decision we don't
-need.
+Do not add a `package.json` under `_local/` — it would pull Node into a
+module-type decision we don't need.
 
 ---
 

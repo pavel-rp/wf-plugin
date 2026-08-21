@@ -252,7 +252,7 @@ test("an approved committed project override is SUPPORTED, and does not depend o
 test("an approved pack payload is SUPPORTED, and does not depend on the constitution's presence (WF-456)", () => {
   for (const facts of [NO_CONSTITUTION, HAS_CONSTITUTION]) {
     const screened = screenPlanActions(
-      [action({ kind: "payload-write", destination: "_local/_testkit/run.mjs" })],
+      [action({ kind: "payload-write", destination: "_local/tooling/helper.mjs" })],
       facts,
     );
     assert.deepEqual(screened.supported.map((a) => a.kind), ["payload-write"]);
@@ -397,9 +397,9 @@ test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY suppo
         action({ kind: "registry-deregister", order: 2 }),
         action({ kind: "answer-write", order: 3, destination: "beta.token" }),
         action({ kind: "override-write", order: 4, destination: ".wf/slots/ship.review.md" }),
-        action({ kind: "payload-write", order: 5, destination: "_local/_testkit/run.mjs" }),
+        action({ kind: "payload-write", order: 5, destination: "_local/tooling/helper.mjs" }),
         action({ kind: "constitution-recompose", order: 6, pluginId: null }),
-        action({ kind: "artifact-delete", order: 7, destination: "_local/_testkit/run.mjs" }),
+        action({ kind: "artifact-delete", order: 7, destination: "_local/tooling/helper.mjs" }),
       ],
       evidenceSeeds: [seed("binding-seed")],
     }),
@@ -431,8 +431,8 @@ test("SC-4: deletion, upgrade, bootstrap and repair each refuse a plan that ALSO
       ...HAS_CONSTITUTION,
       plan: plan({
         actions: [
-          action({ kind: "payload-write", order: 0, destination: "_local/_testkit/run.mjs" }),
-          action({ kind, order: 1, destination: "_local/_testkit/run.mjs" }),
+          action({ kind: "payload-write", order: 0, destination: "_local/tooling/helper.mjs" }),
+          action({ kind, order: 1, destination: "_local/tooling/helper.mjs" }),
         ],
       }),
       expectedPlanId: PLAN_ID,

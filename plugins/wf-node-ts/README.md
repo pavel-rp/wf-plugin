@@ -11,8 +11,9 @@ Angular surface: the Node runtime, not the browser/DI runtime.
 
 | Item | What it is |
 |---|---|
-| `capabilities/node-ts/manifest.md` | the `node-ts` capability's manifest — one `implement \| guidance` fragment row, `requires: git` |
+| `capabilities/node-ts/manifest.md` | the `node-ts` capability's manifest — one `implement \| guidance` fragment row, one `## Payloads` row, `requires: git` |
 | `capabilities/node-ts/fragments/test-authoring.md` | the test-authoring idioms guidance fragment |
+| `capabilities/node-ts/payloads/testkit-run.mjs` | the dependency-free Node test runner, installed to `_local/_testkit/run.mjs` **only when this capability is selected** |
 | `skills/test-node/SKILL.md` | the `/wf-node-ts:test-node` Node unit-test harness for pure TS helpers, via the `_local/_testkit/run.mjs` runner |
 | `/wf-node-ts:init` | one-command self-registration — records this pack's install root and registers the `node-ts` capability, mirroring `/wf-git:init` |
 
