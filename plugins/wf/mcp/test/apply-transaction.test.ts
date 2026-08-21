@@ -51,6 +51,19 @@ const LEDGER = "_local/install-state.json";
 const LEDGER_PRIOR = '{\n  "portable": {}\n}\n';
 const LEDGER_NEW = '{\n  "portable": {\n    "beta": 1\n  }\n}\n';
 
+/** The two targets WF-455 adds, chosen to cover BOTH shapes a kill can find:
+ *  the committed project override is ABSENT beforehand (a first write, whose
+ *  correct restoration is removal), and the composed constitution is PRESENT
+ *  (a replacement, whose correct restoration is the exact prior bytes —
+ *  including the project's own clause section, which no backup elsewhere holds). */
+const OVERRIDE = ".wf/slots/ship.review.md";
+const OVERRIDE_NEW = "Drive the registered reviewer.\n";
+const CONSTITUTION = "_local/constitution.md";
+const CONSTITUTION_PRIOR =
+  "# Project Constitution\n\n## Capability articles (provenance: each capability)\n\nNo registered capability declares a constitution article.\n\n## Project clauses (provenance: project)\n\n1. **no-vendored-forks:** upgraded, never forked.\n";
+const CONSTITUTION_NEW =
+  "# Project Constitution\n\n## Capability articles (provenance: each capability)\n\n### beta\n\n- **k:** v\n\n## Project clauses (provenance: project)\n\n1. **no-vendored-forks:** upgraded, never forked.\n";
+
 function sha256(text: string): string {
   return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
@@ -101,6 +114,7 @@ function newWorkspace(over: Partial<Workspace> = {}): Workspace {
   const files = new Map<string, string>([
     [DESTINATION, PRIOR_BYTES],
     [LEDGER, LEDGER_PRIOR],
+    [CONSTITUTION, CONSTITUTION_PRIOR],
   ]);
   return {
     files,
@@ -108,8 +122,9 @@ function newWorkspace(over: Partial<Workspace> = {}): Workspace {
     inodes: new Map([
       [DESTINATION, 1],
       [LEDGER, 2],
+      [CONSTITUTION, 3],
     ]),
-    nextInode: 3,
+    nextInode: 4,
     journal: null,
     killAt: null,
     failAt: null,
@@ -292,6 +307,17 @@ const ONE_TARGET: readonly ApplyTargetWrite[] = [
 const TWO_TARGETS: readonly ApplyTargetWrite[] = [
   { destination: DESTINATION, newContent: NEW_BYTES },
   { destination: LEDGER, newContent: LEDGER_NEW },
+];
+/** The WF-455 width: a configuration-only plan's full target set, registry and
+ *  ledger alongside the committed project override and the composed
+ *  constitution. Run through the same matrix so the widening is proved not to
+ *  open a window where a kill leaves the override written and the constitution
+ *  not — or, worse, the constitution half-written. */
+const FOUR_TARGETS: readonly ApplyTargetWrite[] = [
+  { destination: DESTINATION, newContent: NEW_BYTES },
+  { destination: LEDGER, newContent: LEDGER_NEW },
+  { destination: OVERRIDE, newContent: OVERRIDE_NEW },
+  { destination: CONSTITUTION, newContent: CONSTITUTION_NEW },
 ];
 
 function runTargets(ws: Workspace, targets: readonly ApplyTargetWrite[]) {
@@ -756,9 +782,13 @@ const CRASH_STAGES: Stage[] = [
  *  a failure says WHICH width broke; `prior` is the byte-exact state every named
  *  destination must be restored to. */
 function crashMatrix(label: string, targets: readonly ApplyTargetWrite[]) {
+  // `OVERRIDE` is deliberately absent from this map: its correct restoration is
+  // "not there", and `Map.get` yields `undefined` for both sides of that
+  // comparison, so the same assertion covers a created file and a replaced one.
   const prior = new Map<string, string>([
     [DESTINATION, PRIOR_BYTES],
     [LEDGER, LEDGER_PRIOR],
+    [CONSTITUTION, CONSTITUTION_PRIOR],
   ]);
 
   for (const killAt of CRASH_STAGES) {
@@ -848,3 +878,25 @@ function crashMatrix(label: string, targets: readonly ApplyTargetWrite[]) {
 
 crashMatrix("one target", ONE_TARGET);
 crashMatrix("two targets", TWO_TARGETS);
+crashMatrix("four targets, with the committed override and the constitution", FOUR_TARGETS);
+
+test("a rolled-back four-target transaction leaves the project's clause section exactly as it was", () => {
+  // The single most damaging loss this item could cause, asserted at the widest
+  // width and on the failure path: the clause section is human-authored, no second
+  // copy exists, and a rollback that restored "most of" the record would still have
+  // destroyed it.
+  const ws = newWorkspace({ selfCheck: { ok: false, diagnostic: "beta did not resolve" } });
+  const result = applyTransaction(applyPortsFor(ws), {
+    targets: FOUR_TARGETS,
+    expectation: EXPECTATION,
+  });
+
+  assert.equal(result.status, "rolled-back");
+  assert.equal(ws.files.get(CONSTITUTION), CONSTITUTION_PRIOR);
+  assert.ok(ws.files.get(CONSTITUTION)?.includes("no-vendored-forks"));
+  assert.equal(ws.files.has(OVERRIDE), false, "a created override is REMOVED, not left behind");
+  assert.equal(ws.files.get(DESTINATION), PRIOR_BYTES);
+  assert.equal(ws.files.get(LEDGER), LEDGER_PRIOR);
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), []);
+});
