@@ -45,7 +45,7 @@
 // found nothing to recover.
 
 import { sha256Hex } from "./fingerprint.js";
-import { PROJECT_OVERRIDE_DIR } from "./slot.js";
+import { PROJECT_OVERRIDE_DIR, slotPointFromOverrideFilename } from "./slot.js";
 import { CONSTITUTION_RELPATH } from "./constitution.js";
 import type {
   DiscoveryInventory,
@@ -147,6 +147,29 @@ const OVERRIDE_PREFIX = `${PROJECT_OVERRIDE_DIR}/`;
  *  out here, so the two can never drift apart. */
 export function isProjectOverrideDestination(destination: string): boolean {
   return destination.startsWith(OVERRIDE_PREFIX) && destination.length > OVERRIDE_PREFIX.length;
+}
+
+/**
+ * The TWO-PART committed-lifecycle authority test (WF-444), as one decision
+ * (WF-455).
+ *
+ * Authority to write a committed lifecycle artifact comes from the resolver's
+ * lifecycle ownership PLUS a declared artifact class — never from the `.wf/`
+ * path prefix. So the tier prefix alone is not enough: the remainder must also
+ * be a well-formed `<skill>.<point>.md` name directly inside the tier, with no
+ * nested path. `.wf/anything.md`, `.wf/slots/deep/ship.review.md`, and
+ * `.wf/slots/ship.md` are all outside the declared class and all refused.
+ *
+ * Exported as its own function so the authority boundary is asserted directly
+ * rather than only through the surfaces that consume it: a widening here would
+ * widen the admitted artifact set everywhere at once, which is exactly the kind
+ * of change that must be impossible to make silently.
+ */
+export function isDeclaredProjectOverrideArtifact(destination: string): boolean {
+  if (!isProjectOverrideDestination(destination)) return false;
+  const filename = destination.slice(OVERRIDE_PREFIX.length);
+  if (filename.includes("/")) return false;
+  return slotPointFromOverrideFilename(filename) !== null;
 }
 
 /** True when the previewed effect leaves a mutator something to do. Retentions

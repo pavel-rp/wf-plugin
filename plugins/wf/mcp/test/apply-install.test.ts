@@ -11,12 +11,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  APPLY_DEFERRED_ACTION_KINDS,
+  APPLY_CONDITIONAL_ACTION_KINDS,
   APPLY_SUPPORTED_ACTION_KINDS,
   APPLY_SUPPORTED_SEED_KINDS,
   decideApplyGate,
   renderRegistryMutation,
   screenPlanActions,
+  type ApplyGateInput,
   type ApplyRegistryFact,
 } from "../src/resolver/apply-install.js";
 import { noRecoveryReport } from "../src/resolver/lifecycle-recovery.js";
@@ -130,45 +131,65 @@ function plan(over: {
   };
 }
 
+/** The screening facts a test does not care about. The default is the BASELINE
+ *  world — no composed constitution record on disk, which is the state of a
+ *  project that has never run `/wf:constitution`, and the state whose behaviour
+ *  WF-455 must leave exactly as it was. A test exercising the recomposition path
+ *  passes the fact explicitly. */
+const NO_CONSTITUTION = { constitutionRecordPresent: false } as const;
+const HAS_CONSTITUTION = { constitutionRecordPresent: true } as const;
+
+/** Gate calls funnel through here so the same default applies, and so a test
+ *  that DOES depend on the record's presence has to say so in its own body. */
+function gate(
+  input: Omit<ApplyGateInput, "constitutionRecordPresent"> & { constitutionRecordPresent?: boolean },
+) {
+  return decideApplyGate({ ...NO_CONSTITUTION, ...input });
+}
+
 // ---------------------------------------------------------------------------
 // The closed action screen
 // ---------------------------------------------------------------------------
 
-test("the supported set is exactly one registration's four kinds, and the deferred set exactly the constitution", () => {
+test("the supported set is exactly the five unconditional kinds, and the conditional set exactly the constitution", () => {
   assert.deepEqual(
     [...APPLY_SUPPORTED_ACTION_KINDS],
-    ["evidence-seed", "registry-add", "registry-deregister", "answer-write"],
+    ["evidence-seed", "registry-add", "registry-deregister", "answer-write", "override-write"],
   );
-  assert.deepEqual([...APPLY_DEFERRED_ACTION_KINDS], ["constitution-recompose"]);
+  assert.deepEqual([...APPLY_CONDITIONAL_ACTION_KINDS], ["constitution-recompose"]);
   // The seed screen is the SECOND half of the action screen, because both seed
   // kinds wear the same `evidence-seed` action kind.
   assert.deepEqual([...APPLY_SUPPORTED_SEED_KINDS], ["binding-seed"]);
 });
 
-test("every mutating plan action kind outside the supported and deferred sets is unsupported", () => {
+test("every mutating plan action kind outside the supported and conditional sets is unsupported", () => {
   // Driven off the FROZEN action order rather than a hand-listed set, so a kind
   // added upstream is screened by this test the moment it exists.
   const others = PLAN_ACTION_ORDER.filter(
     (kind) =>
-      !APPLY_SUPPORTED_ACTION_KINDS.includes(kind) && !APPLY_DEFERRED_ACTION_KINDS.includes(kind),
+      !APPLY_SUPPORTED_ACTION_KINDS.includes(kind) && !APPLY_CONDITIONAL_ACTION_KINDS.includes(kind),
   );
   assert.ok(others.length > 0, "the frozen action order must carry out-of-scope kinds");
 
-  for (const kind of others) {
-    const screened = screenPlanActions([action({ kind })]);
-    assert.deepEqual(
-      screened.unsupported.map((a) => a.kind),
-      [kind],
-      `\`${kind}\` must be screened as unsupported`,
-    );
-    assert.equal(screened.supported.length, 0);
-    assert.equal(screened.deferred.length, 0);
+  // Screened under BOTH worlds: widening the screen with a condition must not
+  // give any other kind a second, condition-dependent way in.
+  for (const facts of [NO_CONSTITUTION, HAS_CONSTITUTION]) {
+    for (const kind of others) {
+      const screened = screenPlanActions([action({ kind })], facts);
+      assert.deepEqual(
+        screened.unsupported.map((a) => a.kind),
+        [kind],
+        `\`${kind}\` must be screened as unsupported`,
+      );
+      assert.equal(screened.supported.length, 0);
+      assert.equal(screened.deferred.length, 0);
+    }
   }
 });
 
 test("a NON-mutating action of any kind is retained, never applied and never refused", () => {
   for (const kind of PLAN_ACTION_ORDER) {
-    const screened = screenPlanActions([action({ kind, mutating: false })]);
+    const screened = screenPlanActions([action({ kind, mutating: false })], NO_CONSTITUTION);
     assert.equal(screened.retained.length, 1, `\`${kind}\` retention`);
     assert.equal(screened.supported.length, 0);
     assert.equal(screened.unsupported.length, 0);
@@ -176,26 +197,71 @@ test("a NON-mutating action of any kind is retained, never applied and never ref
   }
 });
 
-test("the constitution recomposition is DEFERRED with a named follow-up, neither applied nor dropped", () => {
-  const screened = screenPlanActions([
-    action({ kind: "registry-add", order: 0 }),
-    action({ kind: "constitution-recompose", order: 1, pluginId: null }),
-  ]);
+test("with NO composed record the recomposition is DEFERRED with a named follow-up — the prior behaviour, unchanged", () => {
+  const screened = screenPlanActions(
+    [
+      action({ kind: "registry-add", order: 0 }),
+      action({ kind: "constitution-recompose", order: 1, pluginId: null }),
+    ],
+    NO_CONSTITUTION,
+  );
   assert.deepEqual(screened.supported.map((a) => a.kind), ["registry-add"]);
   assert.equal(screened.unsupported.length, 0);
   assert.equal(screened.deferred.length, 1);
   assert.equal(screened.deferred[0].kind, "constitution-recompose");
-  assert.equal(screened.deferred[0].reason, "out-of-scope-constitution");
+  assert.equal(screened.deferred[0].reason, "no-constitution-record");
   assert.equal(screened.deferred[0].followUp, "/wf:constitution");
   assert.ok(screened.deferred[0].detail.length > 0);
 });
 
+test("with a composed record present the recomposition is SUPPORTED, and nothing is deferred", () => {
+  const screened = screenPlanActions(
+    [
+      action({ kind: "registry-add", order: 0 }),
+      action({ kind: "constitution-recompose", order: 1, pluginId: null }),
+    ],
+    HAS_CONSTITUTION,
+  );
+  assert.deepEqual(
+    screened.supported.map((a) => a.kind),
+    ["registry-add", "constitution-recompose"],
+  );
+  assert.equal(screened.deferred.length, 0);
+  assert.equal(screened.unsupported.length, 0);
+});
+
+test("an approved committed project override is SUPPORTED, and does not depend on the constitution's presence", () => {
+  for (const facts of [NO_CONSTITUTION, HAS_CONSTITUTION]) {
+    const screened = screenPlanActions(
+      [action({ kind: "override-write", destination: ".wf/slots/ship.review.md" })],
+      facts,
+    );
+    assert.deepEqual(screened.supported.map((a) => a.kind), ["override-write"]);
+    assert.equal(screened.unsupported.length, 0);
+    assert.equal(screened.deferred.length, 0);
+  }
+});
+
+test("a payload write stays UNSUPPORTED, though it shares the override's destination root", () => {
+  // The `.wf/` prefix is not the authority — the declared artifact class is. A
+  // payload destination under the same root must not ride in on the override's
+  // admission.
+  const screened = screenPlanActions(
+    [action({ kind: "payload-write", destination: ".wf/anything.md" })],
+    HAS_CONSTITUTION,
+  );
+  assert.deepEqual(screened.unsupported.map((a) => a.kind), ["payload-write"]);
+});
+
 test("screening preserves the plan's own canonical order", () => {
-  const screened = screenPlanActions([
-    action({ kind: "registry-add", order: 0, pluginId: "a@1" }),
-    action({ kind: "registry-add", order: 1, pluginId: "b@1" }),
-    action({ kind: "registry-deregister", order: 2, pluginId: "c@1" }),
-  ]);
+  const screened = screenPlanActions(
+    [
+      action({ kind: "registry-add", order: 0, pluginId: "a@1" }),
+      action({ kind: "registry-add", order: 1, pluginId: "b@1" }),
+      action({ kind: "registry-deregister", order: 2, pluginId: "c@1" }),
+    ],
+    NO_CONSTITUTION,
+  );
   assert.deepEqual(screened.supported.map((a) => a.order), [0, 1, 2]);
 });
 
@@ -204,7 +270,7 @@ test("screening preserves the plan's own canonical order", () => {
 // ---------------------------------------------------------------------------
 
 test("an exact, applicable, registry-only plan passes the gate", () => {
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({}),
     expectedPlanId: PLAN_ID,
     journalPresent: false,
@@ -216,7 +282,7 @@ test("an exact, applicable, registry-only plan passes the gate", () => {
 test("an inadmissible root outranks every other refusal", () => {
   // Stale id AND not-applicable AND an unsupported action AND a journal — the
   // most fundamental refusal must still win.
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({
       admitted: false,
       applicability: "invalid-root",
@@ -231,7 +297,7 @@ test("an inadmissible root outranks every other refusal", () => {
 });
 
 test("an unrecovered plan outranks the stale-identity and applicability refusals", () => {
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({ applicability: "unrecovered", planId: "0".repeat(64) }),
     expectedPlanId: PLAN_ID,
     journalPresent: false,
@@ -240,7 +306,7 @@ test("an unrecovered plan outranks the stale-identity and applicability refusals
 });
 
 test("a journal surviving recovery refuses a second transaction over it", () => {
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({}),
     expectedPlanId: PLAN_ID,
     journalPresent: true,
@@ -251,7 +317,7 @@ test("a journal surviving recovery refuses a second transaction over it", () => 
 test("a stale identity-bound precondition is refused as STALE, not as inapplicable", () => {
   // Both conditions hold. The stale plan is the story that explains the other, so
   // reporting the neighbour would send a maintainer chasing the wrong world.
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({ applicability: "not-applicable", planId: "1".repeat(64) }),
     expectedPlanId: PLAN_ID,
     journalPresent: false,
@@ -263,7 +329,7 @@ test("a stale identity-bound precondition is refused as STALE, not as inapplicab
 
 test("every non-applicable applicability is refused, exact identity notwithstanding", () => {
   for (const applicability of ["no-change", "blocked", "not-applicable"] as const) {
-    const decision = decideApplyGate({
+    const decision = gate({
       plan: plan({ applicability }),
       expectedPlanId: PLAN_ID,
       journalPresent: false,
@@ -276,7 +342,7 @@ test("every non-applicable applicability is refused, exact identity notwithstand
 });
 
 test("an unsupported action refuses the WHOLE plan — a registry action alongside it is not applied", () => {
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({
       actions: [
         action({ kind: "registry-add", order: 0 }),
@@ -294,18 +360,22 @@ test("an unsupported action refuses the WHOLE plan — a registry action alongsi
 
 test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY supported kind", () => {
   // The sharpest requirement on this item, stated at its widest: a plan carrying
-  // all four supported kinds AND one unsupported one is refused as a whole. The
-  // gate is pure, so "no supported subset was applied first" is proved by the
-  // module being structurally incapable of applying anything at all — the refusal
-  // is returned by the same call that would otherwise have authorized the write.
-  const decision = decideApplyGate({
+  // every supported kind — including the conditional one, in the world where its
+  // condition holds — AND one unsupported one is refused as a whole. The gate is
+  // pure, so "no supported subset was applied first" is proved by the module being
+  // structurally incapable of applying anything at all: the refusal is returned by
+  // the same call that would otherwise have authorized the write.
+  const decision = gate({
+    ...HAS_CONSTITUTION,
     plan: plan({
       actions: [
         action({ kind: "evidence-seed", order: 0 }),
         action({ kind: "registry-add", order: 1 }),
         action({ kind: "registry-deregister", order: 2 }),
         action({ kind: "answer-write", order: 3, destination: "beta.token" }),
-        action({ kind: "payload-write", order: 4, destination: ".wf/thing.md" }),
+        action({ kind: "override-write", order: 4, destination: ".wf/slots/ship.review.md" }),
+        action({ kind: "constitution-recompose", order: 5, pluginId: null }),
+        action({ kind: "payload-write", order: 6, destination: ".wf/thing.md" }),
       ],
       evidenceSeeds: [seed("binding-seed")],
     }),
@@ -315,9 +385,9 @@ test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY suppo
 
   assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
   assert.ok(!decision.ok && decision.detail.includes("payload-write"));
-  // All four supported actions WERE screened — and none of them can be applied,
+  // All six supported actions WERE screened — and none of them can be applied,
   // because the gate did not return `ok`.
-  assert.ok(!decision.ok && decision.screened.supported.length === 4);
+  assert.ok(!decision.ok && decision.screened.supported.length === 6);
 });
 
 test("EVERY out-of-scope kind refuses a plan that also carries a full supported set", () => {
@@ -326,10 +396,10 @@ test("EVERY out-of-scope kind refuses a plan that also carries a full supported 
   // but asserted at the GATE, which is the boundary the write half sits behind.
   const others = PLAN_ACTION_ORDER.filter(
     (kind) =>
-      !APPLY_SUPPORTED_ACTION_KINDS.includes(kind) && !APPLY_DEFERRED_ACTION_KINDS.includes(kind),
+      !APPLY_SUPPORTED_ACTION_KINDS.includes(kind) && !APPLY_CONDITIONAL_ACTION_KINDS.includes(kind),
   );
   for (const kind of others) {
-    const decision = decideApplyGate({
+    const decision = gate({
       plan: plan({
         actions: [
           action({ kind: "registry-add", order: 0 }),
@@ -351,7 +421,7 @@ test("EVERY out-of-scope kind refuses a plan that also carries a full supported 
 test("A LEGACY PORTABLE BOOTSTRAP is refused, though it wears a SUPPORTED action kind", () => {
   // The screen the action list alone cannot perform: both seed kinds are
   // integrated as `evidence-seed`, so only the seed FACTS distinguish them.
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({
       actions: [
         action({ kind: "evidence-seed", order: 0 }),
@@ -372,7 +442,7 @@ test("A LEGACY PORTABLE BOOTSTRAP is refused, though it wears a SUPPORTED action
 });
 
 test("a legacy bootstrap ANYWHERE in the seed list refuses, even beside an ordinary binding seed", () => {
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({
       actions: [
         action({ kind: "evidence-seed", order: 0 }),
@@ -389,7 +459,7 @@ test("a legacy bootstrap ANYWHERE in the seed list refuses, even beside an ordin
 });
 
 test("an ordinary binding seed passes the gate", () => {
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({
       actions: [
         action({ kind: "evidence-seed", order: 0 }),
@@ -408,7 +478,7 @@ test("the ordering rule outranks nothing that is MORE fundamental", () => {
   // Rule 3 of the module header, re-asserted across the widened screen: a stale
   // plan carrying an unsupported kind reports STALE, because the moved world is
   // the story that explains everything else.
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({
       planId: "1".repeat(64),
       actions: [
@@ -423,8 +493,8 @@ test("the ordering rule outranks nothing that is MORE fundamental", () => {
   assert.ok(!decision.ok && decision.reason === "apply/plan-stale");
 });
 
-test("a plan whose only mutating action is the deferred one has nothing to apply", () => {
-  const decision = decideApplyGate({
+test("a plan whose only mutating action is the DEFERRED one has nothing to apply", () => {
+  const decision = gate({
     plan: plan({ actions: [action({ kind: "constitution-recompose", pluginId: null })] }),
     expectedPlanId: PLAN_ID,
     journalPresent: false,
@@ -432,8 +502,35 @@ test("a plan whose only mutating action is the deferred one has nothing to apply
   assert.ok(!decision.ok && decision.reason === "apply/plan-not-applicable");
 });
 
+test("the SAME plan passes the gate once the composed record exists — the condition is the only difference", () => {
+  // The pair proves the condition is load-bearing and nothing else moved: one
+  // fixture, two worlds, two outcomes.
+  const only = { actions: [action({ kind: "constitution-recompose", pluginId: null })] };
+  const decision = gate({
+    ...HAS_CONSTITUTION,
+    plan: plan(only),
+    expectedPlanId: PLAN_ID,
+    journalPresent: false,
+  });
+  assert.equal(decision.ok, true);
+  assert.ok(decision.ok && decision.screened.supported.length === 1);
+  assert.ok(decision.ok && decision.screened.deferred.length === 0);
+});
+
+test("an approved override alone is enough to open a transaction", () => {
+  const decision = gate({
+    plan: plan({
+      actions: [action({ kind: "override-write", destination: ".wf/slots/ship.review.md" })],
+    }),
+    expectedPlanId: PLAN_ID,
+    journalPresent: false,
+  });
+  assert.equal(decision.ok, true);
+  assert.ok(decision.ok && decision.screened.supported.length === 1);
+});
+
 test("the gate carries the screening buckets on every path, so a refusal still names its deferrals", () => {
-  const decision = decideApplyGate({
+  const decision = gate({
     plan: plan({
       applicability: "blocked",
       actions: [

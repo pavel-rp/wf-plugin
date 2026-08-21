@@ -120,10 +120,19 @@ export interface SelfCheckExpectation {
    *  Checked as capability + declared destination, never as a value, so the
    *  check cannot pass by asserting a value it just wrote from memory. */
   answersRecorded: readonly { capability: string; destination: string }[];
+  /** Committed project overrides that must now hold the APPROVED source bytes
+   *  (WF-455). Carries the digest the plan approved rather than the content this
+   *  run happened to compute, so the check is against an independently-derived
+   *  fact and cannot pass by comparing memory with itself. */
+  overridesRecorded: readonly { destination: string; sha256: string }[];
+  /** `true` when the composed constitution was recomposed by this transaction
+   *  (WF-455). The check asserts the record reads back AND that the project's own
+   *  clause section survived — the one property whose loss is unrecoverable. */
+  constitutionRecomposed: boolean;
 }
 
 /** The empty expectation. Exported so a caller widening only one axis does not
- *  have to spell out the other three, and so adding an axis later cannot silently
+ *  have to spell out the others, and so adding an axis later cannot silently
  *  weaken an existing caller's check. */
 export function emptySelfCheckExpectation(): SelfCheckExpectation {
   return {
@@ -132,6 +141,8 @@ export function emptySelfCheckExpectation(): SelfCheckExpectation {
     portableRecorded: [],
     bindingRecorded: [],
     answersRecorded: [],
+    overridesRecorded: [],
+    constitutionRecomposed: false,
   };
 }
 

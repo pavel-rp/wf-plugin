@@ -20475,6 +20475,12 @@ var OVERRIDE_PREFIX = `${PROJECT_OVERRIDE_DIR}/`;
 function isProjectOverrideDestination(destination) {
   return destination.startsWith(OVERRIDE_PREFIX) && destination.length > OVERRIDE_PREFIX.length;
 }
+function isDeclaredProjectOverrideArtifact(destination) {
+  if (!isProjectOverrideDestination(destination)) return false;
+  const filename = destination.slice(OVERRIDE_PREFIX.length);
+  if (filename.includes("/")) return false;
+  return slotPointFromOverrideFilename(filename) !== null;
+}
 function action(kind, pluginId, destination, mutating, summary) {
   return { kind, pluginId, destination, mutating, summary, persisted: false };
 }
@@ -23157,7 +23163,7 @@ function registerResolverTools(server, selectService) {
     "apply_install",
     {
       title: "apply install",
-      description: "The SOLE public mutator for an EXACT approved plan (WF-453, widened by WF-454) \u2014 one guarded, crash-recoverable journaled transaction through refresh, snapshot, and self-check. Returns the versioned envelope `{applyVersion, workspaceRoot, admission, status, reason, transactionId, plan{planId,expectedPlanId,matched,applicability,mode}, applied[], deferred[], rollback, selfCheck, refreshed, recovery{...}, residue{clean,journalRetained,backupsRetained,detail}, diagnostics[]}`. `status` is one of `applied | rejected | rolled-back | halted | invalid-root`. RECOVERY-FIRST AND REPORTED SEPARATELY: before anything is decided it recovers an interrupted transaction through the SAME frozen protocol `discover_packs` and `plan_install` use, and carries that outcome in `recovery`, never folded into `status`; when `recovery.proceeded` is `false` it HALTS with `apply/halted-unrecovered` and mutates nothing. EXACT PLAN ONLY: it takes the exclusive machine-local lock, recomputes the plan UNDER that lock, and requires `identity.planId` to equal the supplied `expectedPlanId` \u2014 a mismatch is `apply/plan-stale`, an applicability other than `applicable` is `apply/plan-not-applicable`, and neither writes. A BOUNDED SUPPORTED SET, FAILING LOUDLY AND EARLY: the supported action set is exactly `registry-add`, `registry-deregister`, `evidence-seed`, and `answer-write`, and within `evidence-seed` the only supported seed kind is `binding-seed` \u2014 a `legacy-bootstrap` seed wears a supported action kind and is still refused. `constitution-recompose` is reported in `deferred[]` with its `/wf:constitution` follow-up, and ANY other mutating action \u2014 an evidence repair, a payload or project-override write, an artifact removal, bootstrap or upgrade \u2014 is `apply/unsupported-action` BEFORE a journal exists. THE WHOLE PLAN IS SCREENED BEFORE THE FIRST BYTE IS COMPOSED, so an unsupported action can never follow a supported subset that was already written. WHAT A NEW REGISTRATION PERSISTS, TOGETHER OR NOT AT ALL: the pack's exact observed portable tuple, its initial machine binding, its registry rows, the revalidated project answers as capability profile seeds, the selected evidence ledger, and the refreshed snapshot \u2014 one ordered target set under ONE journal. WHAT AN EXISTING REGISTRATION PERSISTS: an `evidence-seed` seeds ONLY the missing machine binding, and only when the committed portable tuple and the observed one are EXACTLY equal \u2014 not compatible, not a superset. The committed portable half never becomes a target on that path, so committed evidence stays byte-identical down to its inode; a pack that already has a recorded binding, or whose tuple has moved, is `apply/evidence-precondition` and nothing is written. A rendered target whose bytes would not change is DROPPED, and a plan whose every target is a no-op is `apply/plan-not-applicable` rather than an empty transaction. Every rejection above, plus a stale identity-bound precondition, a destination that is a symlink or does not resolve inside the admitted workspace, and a journal already present, is decided BEFORE journal creation and BEFORE any mutation, so nothing can be left half-undone. CONCURRENT LIFECYCLE ENTRY IS REFUSED: a lock already held is `apply/lock-held`, and with no lock primitive available it refuses with `apply/lock-unavailable` rather than mutating unserialized. THE TRANSACTION IS CRASH-RECOVERABLE AT EVERY STAGE: the journal (recording the prior existence, type, inode, hash and the exact bytes this transaction will write) is created and durable BEFORE the backup and BEFORE the destination is touched, the backup is verified against the recorded prior hash, the destination's type/inode/hash are RE-CHECKED without following links immediately before the write, the replacement is a create-exclusive fsynced sibling temp file renamed into place, and completion removes the journal BEFORE the backups. An ordinary failure or a process kill at ANY stage therefore restores the exact prior state idempotently \u2014 the same restore runs on a second entry and converges. A FAILED SELF-CHECK IS TRANSACTION FAILURE, NOT A WARNING: after the write it refreshes and re-resolves the registry, asserting BOTH that every added capability resolves `ok` and that every deregistered one is gone; failure rolls back and reports `apply/self-check-failed`. NO SUCCESS IS CLAIMED WHEN ANYTHING IS UNRESOLVED: rollback runs through the frozen recovery decision \u2014 an external edit or a symlink swap is PRESERVED, an unaffected artifact is restored, an unverifiable one is left explicitly UNRESOLVED \u2014 and an incomplete rollback overrides the reported reason with `apply/rollback-incomplete`, retains the journal and backups, and reports `residue.clean:false`. `applied[]` is non-empty ONLY for `status: applied`, where the change is durable and the residue is clean. Works against a non-cwd admitted workspace. Out of scope, and never written by this operation: `.wf/` project-override tiers, the constitution, payloads, artifact removals, evidence removals (a deregistration deliberately leaves the evidence record standing), legacy portable bootstrap, upgrades, and repair.",
+      description: "The SOLE public mutator for an EXACT approved plan (WF-453, widened by WF-454) \u2014 one guarded, crash-recoverable journaled transaction through refresh, snapshot, and self-check. Returns the versioned envelope `{applyVersion, workspaceRoot, admission, status, reason, transactionId, plan{planId,expectedPlanId,matched,applicability,mode}, applied[], deferred[], rollback, selfCheck, refreshed, recovery{...}, residue{clean,journalRetained,backupsRetained,detail}, diagnostics[]}`. `status` is one of `applied | rejected | rolled-back | halted | invalid-root`. RECOVERY-FIRST AND REPORTED SEPARATELY: before anything is decided it recovers an interrupted transaction through the SAME frozen protocol `discover_packs` and `plan_install` use, and carries that outcome in `recovery`, never folded into `status`; when `recovery.proceeded` is `false` it HALTS with `apply/halted-unrecovered` and mutates nothing. EXACT PLAN ONLY: it takes the exclusive machine-local lock, recomputes the plan UNDER that lock, and requires `identity.planId` to equal the supplied `expectedPlanId` \u2014 a mismatch is `apply/plan-stale`, an applicability other than `applicable` is `apply/plan-not-applicable`, and neither writes. A BOUNDED SUPPORTED SET, FAILING LOUDLY AND EARLY: the supported action set is exactly `registry-add`, `registry-deregister`, `evidence-seed`, `answer-write`, and \u2014 since WF-455 \u2014 `override-write`, and within `evidence-seed` the only supported seed kind is `binding-seed` \u2014 a `legacy-bootstrap` seed wears a supported action kind and is still refused. `constitution-recompose` is CONDITIONALLY supported (WF-455): it is applied when the composed constitution record is already present, and reported in `deferred[]` with reason `no-constitution-record` plus its `/wf:constitution` follow-up when it is not \u2014 so a project that has never composed the record behaves exactly as it did before. ANY other mutating action \u2014 an evidence repair, a payload write, an artifact removal, bootstrap or upgrade \u2014 is `apply/unsupported-action` BEFORE a journal exists. THE WHOLE PLAN IS SCREENED BEFORE THE FIRST BYTE IS COMPOSED, so an unsupported action can never follow a supported subset that was already written. WHAT A NEW REGISTRATION PERSISTS, TOGETHER OR NOT AT ALL: the pack's exact observed portable tuple, its initial machine binding, its registry rows, the revalidated project answers as capability profile seeds, the selected evidence ledger, and the refreshed snapshot \u2014 one ordered target set under ONE journal. WHAT AN EXISTING REGISTRATION PERSISTS: an `evidence-seed` seeds ONLY the missing machine binding, and only when the committed portable tuple and the observed one are EXACTLY equal \u2014 not compatible, not a superset. The committed portable half never becomes a target on that path, so committed evidence stays byte-identical down to its inode; a pack that already has a recorded binding, or whose tuple has moved, is `apply/evidence-precondition` and nothing is written. WHAT AN APPROVED OVERRIDE PERSISTS: an `override-write` composes ONLY a declared committed project-override artifact \u2014 `.wf/slots/<skill>.<point>.md` \u2014 whose authority comes from the resolver's lifecycle ownership PLUS that declared artifact class, never from the `.wf/` path prefix; every owner's declared source is re-fingerprinted under the lock against the approved `identity.sha256`/`bytes`, and any drift is `apply/override-precondition` with nothing written. WHAT A RECOMPOSITION PERSISTS: only the composed constitution's derived capability-articles section is re-rendered \u2014 the preamble, the core articles, and the project's own clause section are carried across BYTE-FOR-BYTE \u2014 and a record whose structure the composer does not recognize is `apply/constitution-precondition` rather than a silent reset. A rendered target whose bytes would not change is DROPPED, and a plan whose every target is a no-op is `apply/plan-not-applicable` rather than an empty transaction. Every rejection above, plus a stale identity-bound precondition, a destination that is a symlink or does not resolve inside the admitted workspace, and a journal already present, is decided BEFORE journal creation and BEFORE any mutation, so nothing can be left half-undone. CONCURRENT LIFECYCLE ENTRY IS REFUSED: a lock already held is `apply/lock-held`, and with no lock primitive available it refuses with `apply/lock-unavailable` rather than mutating unserialized. THE TRANSACTION IS CRASH-RECOVERABLE AT EVERY STAGE: the journal (recording the prior existence, type, inode, hash and the exact bytes this transaction will write) is created and durable BEFORE the backup and BEFORE the destination is touched, the backup is verified against the recorded prior hash, the destination's type/inode/hash are RE-CHECKED without following links immediately before the write, the replacement is a create-exclusive fsynced sibling temp file renamed into place, and completion removes the journal BEFORE the backups. An ordinary failure or a process kill at ANY stage therefore restores the exact prior state idempotently \u2014 the same restore runs on a second entry and converges. A FAILED SELF-CHECK IS TRANSACTION FAILURE, NOT A WARNING: after the write it refreshes and re-resolves the registry, asserting that every added capability resolves `ok`, that every deregistered one is gone, that every written override hashes back to its approved digest AND is seen as the committed project tier for its slot, and that a recomposed constitution reads back still carrying its project-clause section; failure rolls back and reports `apply/self-check-failed`. NO SUCCESS IS CLAIMED WHEN ANYTHING IS UNRESOLVED: rollback runs through the frozen recovery decision \u2014 an external edit or a symlink swap is PRESERVED, an unaffected artifact is restored, an unverifiable one is left explicitly UNRESOLVED \u2014 and an incomplete rollback overrides the reported reason with `apply/rollback-incomplete`, retains the journal and backups, and reports `residue.clean:false`. `applied[]` is non-empty ONLY for `status: applied`, where the change is durable and the residue is clean. Works against a non-cwd admitted workspace. Out of scope, and never written by this operation: payloads, artifact removals, evidence removals (a deregistration deliberately leaves the evidence record standing), legacy portable bootstrap, upgrades, and repair. Slot precedence is unchanged \u2014 personal `_local/` override over committed project override over pack contribution over inline default.",
       inputSchema: applyInstallInput
     },
     async (args) => guard(() => {
@@ -26320,6 +26326,107 @@ function resolveRouting(project, inputs) {
   };
 }
 
+// src/resolver/constitution-compose.ts
+var CAPABILITY_ARTICLES_HEADING = "## Capability articles (provenance: each capability)";
+var PROJECT_CLAUSES_HEADING = "## Project clauses (provenance: project)";
+var REGISTRY_LINE_PREFIX = "**Registry:** ";
+function locateHeading(lines, heading) {
+  const found = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].trimEnd() === heading) found.push(index);
+  }
+  if (found.length === 0) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries no \`${heading}\` section, so this composer does not recognize its structure; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  if (found.length > 1) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  return { ok: true, index: found[0] };
+}
+function nextTopLevelHeading(lines, from) {
+  for (let index = from; index < lines.length; index += 1) {
+    if (lines[index].startsWith("## ")) return index;
+  }
+  return lines.length;
+}
+function renderArticleBody(capabilities) {
+  const contributing = capabilities.filter((entry) => entry.articles.length > 0);
+  if (contributing.length === 0) {
+    return ["", "No registered capability declares a constitution article.", ""];
+  }
+  const out = [];
+  for (const entry of contributing) {
+    out.push("", `### ${entry.capability}`, "");
+    for (const article of entry.articles) {
+      out.push(`- **${article.key}:** ${article.value}`);
+    }
+  }
+  out.push("");
+  return out;
+}
+function refreshRegistryLine(preamble, registryNames) {
+  const hits = [];
+  for (let index = 0; index < preamble.length; index += 1) {
+    if (preamble[index].startsWith(REGISTRY_LINE_PREFIX)) hits.push(index);
+  }
+  if (hits.length !== 1) return [...preamble];
+  const out = [...preamble];
+  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}`;
+  return out;
+}
+function composeConstitutionRecord(input) {
+  const lines = input.current.split("\n");
+  const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
+  if (!articles.ok) return articles;
+  const clauses = locateHeading(lines, PROJECT_CLAUSES_HEADING);
+  if (!clauses.ok) return clauses;
+  if (clauses.index <= articles.index) {
+    return {
+      ok: false,
+      detail: `the composed constitution record places \`${PROJECT_CLAUSES_HEADING}\` before \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  const articleSectionEnd = nextTopLevelHeading(lines, articles.index + 1);
+  if (articleSectionEnd !== clauses.index) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  const preamble = refreshRegistryLine(lines.slice(0, articles.index), input.registryNames);
+  const preservedClauses = lines.slice(clauses.index);
+  const content = [
+    ...preamble,
+    lines[articles.index].trimEnd(),
+    ...renderArticleBody(input.capabilities),
+    ...preservedClauses
+  ].join("\n");
+  return { ok: true, content, changed: content !== input.current };
+}
+function articlesByCapability(inputs) {
+  const order = [];
+  const byCapability = /* @__PURE__ */ new Map();
+  for (const input of inputs) {
+    const bucket = byCapability.get(input.capability);
+    if (bucket === void 0) {
+      order.push(input.capability);
+      byCapability.set(input.capability, [{ key: input.key, value: input.value }]);
+      continue;
+    }
+    bucket.push({ key: input.key, value: input.value });
+  }
+  return order.map((capability) => ({
+    capability,
+    articles: byCapability.get(capability) ?? []
+  }));
+}
+
 // src/resolver/validate-rules.ts
 function toPosix(p) {
   return p.replace(/\\/g, "/");
@@ -28047,20 +28154,29 @@ var APPLY_SUPPORTED_ACTION_KINDS = [
   "evidence-seed",
   "registry-add",
   "registry-deregister",
-  "answer-write"
+  "answer-write",
+  "override-write"
 ];
-var APPLY_DEFERRED_ACTION_KINDS = [
+var APPLY_CONDITIONAL_ACTION_KINDS = [
   "constitution-recompose"
 ];
 var DEFERRED_FOLLOW_UP = {
   "constitution-recompose": "/wf:constitution"
 };
-function screenPlanActions(actions) {
+function screenPlanActions(actions, facts) {
   const screened = {
     supported: [],
     deferred: [],
     unsupported: [],
     retained: []
+  };
+  const conditionMet = (kind) => {
+    switch (kind) {
+      case "constitution-recompose":
+        return facts.constitutionRecordPresent;
+      default:
+        return false;
+    }
   };
   for (const action2 of actions) {
     if (!action2.mutating) {
@@ -28071,14 +28187,18 @@ function screenPlanActions(actions) {
       screened.supported.push(action2);
       continue;
     }
-    if (APPLY_DEFERRED_ACTION_KINDS.includes(action2.kind)) {
+    if (APPLY_CONDITIONAL_ACTION_KINDS.includes(action2.kind)) {
+      if (conditionMet(action2.kind)) {
+        screened.supported.push(action2);
+        continue;
+      }
       screened.deferred.push({
         kind: action2.kind,
         order: action2.order,
         destination: action2.destination,
-        reason: "out-of-scope-constitution",
+        reason: "no-constitution-record",
         followUp: DEFERRED_FOLLOW_UP[action2.kind] ?? "",
-        detail: `\`${action2.kind}\` is derived from the registered capability set and is Out of scope for this mutator; the registry transaction below does not perform it.`
+        detail: `\`${action2.kind}\` replaces a derived section of the composed constitution record and preserves the rest, but this workspace has no record to compose from; the transaction below does not create one.`
       });
       continue;
     }
@@ -28088,7 +28208,9 @@ function screenPlanActions(actions) {
 }
 var APPLY_SUPPORTED_SEED_KINDS = ["binding-seed"];
 function decideApplyGate(input) {
-  const screened = screenPlanActions(input.plan.actions);
+  const screened = screenPlanActions(input.plan.actions, {
+    constitutionRecordPresent: input.constitutionRecordPresent
+  });
   if (!input.plan.admission.admitted) {
     return {
       ok: false,
@@ -28155,7 +28277,7 @@ function decideApplyGate(input) {
     return {
       ok: false,
       reason: "apply/plan-not-applicable",
-      detail: "the plan carries no supported registry action, so there is nothing for this mutator to apply.",
+      detail: "the plan carries no supported mutating action, so there is nothing for this mutator to apply.",
       screened
     };
   }
@@ -29631,10 +29753,12 @@ var ResolverService = class {
     }
     try {
       const { plan, inspected } = this.planFrom(admission, selection, recovery);
+      const constitutionAbs = joinSlash(this.ports.workspaceRoot, CONSTITUTION_RELPATH);
       const gate = decideApplyGate({
         plan,
         expectedPlanId,
-        journalPresent: recoveryPorts.readJournal() !== null
+        journalPresent: recoveryPorts.readJournal() !== null,
+        constitutionRecordPresent: this.ports.readFile(constitutionAbs) !== null
       });
       if (!gate.ok) {
         const refused2 = halted("rejected", gate.reason, recovery, plan, [
@@ -29746,7 +29870,9 @@ var ResolverService = class {
           absent,
           portableRecorded: composed.portableRecorded,
           bindingRecorded: composed.bindingRecorded,
-          answersRecorded: composed.answersRecorded
+          answersRecorded: composed.answersRecorded,
+          overridesRecorded: composed.overridesRecorded,
+          constitutionRecomposed: composed.constitutionRecomposed
         }
       });
       const applied = result.status === "applied" ? gate.screened.supported.map((action2) => ({
@@ -29851,6 +29977,8 @@ var ResolverService = class {
     const portableRecorded = [];
     const bindingRecorded = [];
     const seedByPluginId = new Map(input.plan.evidenceSeeds.map((seed) => [seed.pluginId, seed]));
+    const overrideWrites = [];
+    let recomposeConstitution = false;
     for (const action2 of input.supported) {
       const pluginId = action2.pluginId;
       if (action2.kind === "registry-add") {
@@ -29911,6 +30039,18 @@ var ResolverService = class {
         }
         bindingUpdates.push({ pluginId, binding: seed.binding });
         bindingRecorded.push(pluginId);
+        continue;
+      }
+      if (action2.kind === "override-write") {
+        const rendered = this.renderOverrideWrite(input.plan, input.inspected, action2);
+        if (!rendered.ok) {
+          return { ok: false, reason: "apply/override-precondition", detail: rendered.detail };
+        }
+        overrideWrites.push(rendered);
+        continue;
+      }
+      if (action2.kind === "constitution-recompose") {
+        recomposeConstitution = true;
         continue;
       }
     }
@@ -29985,6 +30125,34 @@ var ResolverService = class {
       );
       if (failure2 !== null) return failure2;
     }
+    const overridesRecorded = [];
+    for (const override of overrideWrites) {
+      const failure2 = addRendered(
+        override.destination,
+        {
+          ok: true,
+          content: override.content,
+          changed: override.content !== (readRel(override.destination) ?? "")
+        },
+        "apply/override-precondition"
+      );
+      if (failure2 !== null) return failure2;
+      overridesRecorded.push({ destination: override.destination, sha256: override.sha256 });
+    }
+    let constitutionRecomposed = false;
+    if (recomposeConstitution) {
+      const composed = this.composeConstitutionTarget(input.plan, input.inspected);
+      if (!composed.ok) {
+        return { ok: false, reason: "apply/constitution-precondition", detail: composed.detail };
+      }
+      const failure2 = addRendered(
+        CONSTITUTION_RELPATH,
+        composed.render,
+        "apply/constitution-precondition"
+      );
+      if (failure2 !== null) return failure2;
+      constitutionRecomposed = true;
+    }
     if (targets.length === 0) {
       return {
         ok: false,
@@ -29992,7 +30160,162 @@ var ResolverService = class {
         detail: "every target this plan names already holds exactly the bytes it would be given, so there is nothing to write; no transaction was opened."
       };
     }
-    return { ok: true, targets, portableRecorded, bindingRecorded, answersRecorded };
+    return {
+      ok: true,
+      targets,
+      portableRecorded,
+      bindingRecorded,
+      answersRecorded,
+      overridesRecorded,
+      constitutionRecomposed
+    };
+  }
+  /**
+   * Bind one `override-write` action to the exact bytes the approved plan
+   * previewed, and refuse before mutation if anything it depended on has moved
+   * (WF-455).
+   *
+   * THE `.wf/` AUTHORITY TEST IS TWO-PART AND RE-DERIVED HERE (WF-444). Authority
+   * to write a committed lifecycle artifact comes from the resolver's lifecycle
+   * ownership PLUS a declared artifact class — never from the `.wf/` path prefix.
+   * So a destination is admitted only when it lands in the committed
+   * project-override tier AND spells a well-formed `<skill>.<point>.md` inside it,
+   * with no nested path. `.wf/slots/deep/ship.review.md` and `.wf/anything-else`
+   * are both refused, and refused BEFORE the transaction. This widens the admitted
+   * artifact set by nothing: it is exactly the class WF-443 established.
+   *
+   * THE SOURCE IS RE-OBSERVED, NEVER TRUSTED. The plan's payload action carries
+   * the `{sha256, bytes}` identity the reviewer approved; this re-fingerprints
+   * every owner's declared source through the same contained boundary the planner
+   * used and requires exact equality. A source edited between plan and apply is
+   * `apply/override-precondition` — the same posture the evidence exactness rule
+   * takes, restated at apply time rather than inherited.
+   */
+  renderOverrideWrite(plan, inspected, action2) {
+    const destination = action2.destination;
+    if (destination === null) {
+      return {
+        ok: false,
+        detail: "an `override-write` action carries no destination, so the committed project override it would write cannot be resolved."
+      };
+    }
+    if (!isDeclaredProjectOverrideArtifact(destination)) {
+      return {
+        ok: false,
+        detail: `\`${destination}\` is not a declared committed project-override artifact (\`${PROJECT_OVERRIDE_DIR}/<skill>.<point>.md\`); the resolver's lifecycle ownership does not widen the admitted artifact set, so nothing was written.`
+      };
+    }
+    const previewed = plan.payloads.actions.filter((entry) => entry.destination === destination);
+    if (previewed.length !== 1) {
+      return {
+        ok: false,
+        detail: `the approved plan carries ${previewed.length} previewed payload action(s) for \`${destination}\`; exactly one is required to bind the bytes this override would receive, so nothing was written.`
+      };
+    }
+    const approved = previewed[0];
+    const fingerprint2 = this.ports.fingerprintContainedFile;
+    const read = this.ports.readContainedFile;
+    if (fingerprint2 === void 0 || read === void 0) {
+      return {
+        ok: false,
+        detail: `the contained-source boundary is not configured, so the declared source of \`${destination}\` cannot be re-observed; nothing was written.`
+      };
+    }
+    let content = null;
+    for (const owner of approved.owners) {
+      const capability = inspected.get(owner.pluginId)?.capabilities.find((candidate) => candidate.name === owner.capability);
+      if (capability === void 0) {
+        return {
+          ok: false,
+          detail: `capability \`${owner.capability}\` of pack \`${owner.pluginId}\` declares the override \`${destination}\` but was not inspectable at apply time; nothing was written.`
+        };
+      }
+      const capabilityRoot = dirnameSlash(capability.manifestPath);
+      const observed = fingerprint2(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (observed.status !== "ok" || observed.sha256 !== approved.identity.sha256 || observed.bytes !== approved.identity.bytes) {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` no longer reproduces the approved bytes for \`${destination}\` (approved sha256 ${approved.identity.sha256}, ${approved.identity.bytes} bytes; observed ${observed.status === "ok" ? `sha256 ${observed.sha256}, ${observed.bytes} bytes` : observed.status}); nothing was written.`
+        };
+      }
+      if (content !== null) continue;
+      const body = read(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (body.status !== "ok") {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` could not be read (\`${body.status}\`), so the bytes for \`${destination}\` are not available; nothing was written.`
+        };
+      }
+      content = body.content;
+    }
+    if (content === null) {
+      return {
+        ok: false,
+        detail: `the approved payload action for \`${destination}\` names no owner, so the bytes it would receive cannot be resolved; nothing was written.`
+      };
+    }
+    return { ok: true, destination, content, sha256: approved.identity.sha256 };
+  }
+  /**
+   * Compose the constitution record this transaction will write (WF-455).
+   *
+   * COMPOSED FROM THE FINAL CAPABILITY SET, NOT THE CURRENT ONE. The recomposition
+   * exists precisely because this same plan changes the registered set, so
+   * composing from the pre-write registry would persist the set the transaction is
+   * about to leave behind. The final order is derived the same way the registry
+   * write produces it: existing rows keep their positions, deregistered ones are
+   * removed, and additions append in the plan's own canonical action order.
+   *
+   * THE RESOLVER RENDERS ONLY THE DERIVED SECTION. Everything else in the record —
+   * the preamble, the core articles, and above all the project's own
+   * `## Project clauses (provenance: project)` section — is preserved
+   * byte-for-byte by `composeConstitutionRecord`. That section is human-authored
+   * content no other copy exists of; a composition that regenerated the document
+   * would destroy it.
+   */
+  composeConstitutionTarget(plan, inspected) {
+    const current = this.ports.readFile(
+      joinSlash(this.ports.workspaceRoot, CONSTITUTION_RELPATH)
+    );
+    if (current === null) {
+      return {
+        ok: false,
+        detail: `the composed constitution record \`${CONSTITUTION_RELPATH}\` is no longer present; it is not created here, so nothing was written.`
+      };
+    }
+    const removed = /* @__PURE__ */ new Set();
+    for (const entry of plan.registryDelta.deregistrations) {
+      for (const name of entry.capabilities) removed.add(name);
+    }
+    const inputs = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const capability of this.resolveRegistry().capabilities) {
+      if (removed.has(capability.name)) continue;
+      seen.add(capability.name);
+      for (const article of capability.articles) {
+        inputs.push({ capability: capability.name, key: article.key, value: article.value });
+      }
+    }
+    const registryNames = [...seen];
+    for (const entry of plan.registryDelta.additions) {
+      for (const capability of inspected.get(entry.pluginId)?.capabilities ?? []) {
+        if (seen.has(capability.name)) continue;
+        seen.add(capability.name);
+        registryNames.push(capability.name);
+        const raw = this.ports.readFile(capability.manifestPath);
+        const parsed = raw === null ? null : parseManifest(raw);
+        for (const article of parsed?.articles ?? []) {
+          inputs.push({ capability: capability.name, key: article.key, value: article.value });
+        }
+      }
+    }
+    const composed = composeConstitutionRecord({
+      current,
+      capabilities: articlesByCapability(inputs),
+      registryNames
+    });
+    if (!composed.ok) return { ok: false, detail: composed.detail };
+    return { ok: true, render: composed };
   }
   /**
    * The post-write self-check: refresh discovery, then assert the resolved view
@@ -30036,7 +30359,38 @@ var ResolverService = class {
       }
       if (!ok2) answerMissing.push(`${answer.capability}:${answer.destination}`);
     }
-    if (missing.length === 0 && lingering.length === 0 && portableMissing.length === 0 && bindingMissing.length === 0 && answerMissing.length === 0) {
+    const overrideMissing = [];
+    const slotProvenance = expectation.overridesRecorded.length === 0 ? [] : this.ensure().slots;
+    for (const override of expectation.overridesRecorded) {
+      const back = readRel(override.destination);
+      if (back === null || sha256Hex(back) !== override.sha256) {
+        overrideMissing.push(`${override.destination} (bytes)`);
+        continue;
+      }
+      const filename = override.destination.slice(PROJECT_OVERRIDE_DIR.length + 1);
+      const point = slotPointFromOverrideFilename(filename);
+      if (point === null) {
+        overrideMissing.push(`${override.destination} (slot id)`);
+        continue;
+      }
+      if (!slotProvenance.some(
+        (slot) => slot.skillPoint === point.skillPoint && slot.projectOverridePresent
+      )) {
+        overrideMissing.push(`${override.destination} (not seen as a committed project override)`);
+      }
+    }
+    const constitutionMissing = [];
+    if (expectation.constitutionRecomposed) {
+      const back = readRel(CONSTITUTION_RELPATH);
+      if (back === null) {
+        constitutionMissing.push(`${CONSTITUTION_RELPATH} did not read back`);
+      } else if (!back.split("\n").some((line) => line.trimEnd() === PROJECT_CLAUSES_HEADING)) {
+        constitutionMissing.push(
+          `${CONSTITUTION_RELPATH} no longer carries its \`${PROJECT_CLAUSES_HEADING}\` section`
+        );
+      }
+    }
+    if (missing.length === 0 && lingering.length === 0 && portableMissing.length === 0 && bindingMissing.length === 0 && answerMissing.length === 0 && overrideMissing.length === 0 && constitutionMissing.length === 0) {
       return { ok: true };
     }
     const parts = [];
@@ -30050,6 +30404,12 @@ var ResolverService = class {
     }
     if (answerMissing.length > 0) {
       parts.push(`profile seed did not read back: ${answerMissing.join(", ")}`);
+    }
+    if (overrideMissing.length > 0) {
+      parts.push(`committed project override did not read back: ${overrideMissing.join(", ")}`);
+    }
+    if (constitutionMissing.length > 0) {
+      parts.push(`composed constitution did not read back: ${constitutionMissing.join(", ")}`);
     }
     return { ok: false, diagnostic: parts.join("; ") };
   }

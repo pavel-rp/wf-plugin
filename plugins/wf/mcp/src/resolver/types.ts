@@ -1476,6 +1476,23 @@ export type ApplyReason =
    *  from `registry-unresolvable` so a maintainer is not sent to the registry
    *  file when the ledger is what could not be resolved. */
   | "apply/ledger-unresolvable"
+  /** A committed project-override precondition no longer holds at apply time
+   *  (WF-455): the action's destination does not re-derive as a DECLARED
+   *  committed project-override artifact, the approved plan names no single
+   *  payload action for it, or the declared source's bytes no longer reproduce
+   *  the approved `{sha256, bytes}` identity. Its own token rather than
+   *  `plan-stale`, because the approved plan may still be current in every other
+   *  respect, and rather than `precondition-moved`, which is the post-journal
+   *  TOCTOU class. Nothing is written on this path. */
+  | "apply/override-precondition"
+  /** The composed constitution record cannot be recomposed without risking the
+   *  project's own writing (WF-455): a section heading this composer needs is
+   *  absent, duplicated, or out of order, or the record could not be read back
+   *  under the lock. Its own token so a maintainer is sent to the constitution
+   *  record rather than to the registry or the ledger. Nothing is written on this
+   *  path — in particular the record is NOT re-emitted, so nothing that is in it
+   *  now is lost. */
+  | "apply/constitution-precondition"
   /** The destination IS a symbolic link. Its own token rather than
    *  `precondition-moved`: nothing moved, the destination simply is not a thing
    *  this mutator may write through. Recovery never follows, replaces, or removes
@@ -1508,15 +1525,16 @@ export interface ApplyAppliedAction {
 
 /** Why a mutating action the plan carries was NOT applied by this mutator.
  *
- *  Today there is exactly one member, and it is deliberate rather than a gap:
- *  `constitution-recompose` is DERIVED by the planner whenever the registered
- *  capability set changes, so every registry-only plan carries one. The resolver
- *  has never composed the constitution — `/wf:constitution` does — and the
- *  constitution is explicitly Out of scope for this item. Rejecting on it would
- *  make NO registry plan ever appliable; silently dropping it would be the
- *  half-applied success this item exists to prevent. Naming it is the third
+ *  Today there is exactly one member, and it is deliberate rather than a gap.
+ *  Since WF-455 the mutator DOES compose the constitution — but composition
+ *  replaces a derived section of an existing record and preserves the rest, so it
+ *  is only possible where a record exists. A workspace that has never run
+ *  `/wf:constitution` has none, and the resolver will not fabricate the core
+ *  articles and project clauses it did not author. Rejecting on it would make no
+ *  registry plan appliable on such a workspace; silently dropping it would be the
+ *  half-applied success this family exists to prevent. Naming it is the third
  *  option, and the only honest one. */
-export type ApplyDeferredReason = "out-of-scope-constitution";
+export type ApplyDeferredReason = "no-constitution-record";
 
 /** One mutating action the plan carries that this mutator's scope does not
  *  perform, reported explicitly with the follow-up that does perform it. */

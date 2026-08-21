@@ -39,9 +39,16 @@ import {
   planSlot,
   OVERRIDE_DIR,
   PROJECT_OVERRIDE_DIR,
+  slotPointFromOverrideFilename,
   type MergePolicy,
   type PresentPart,
 } from "./resolver/slot.js";
+import { CONSTITUTION_RELPATH } from "./resolver/constitution.js";
+import {
+  PROJECT_CLAUSES_HEADING,
+  articlesByCapability,
+  composeConstitutionRecord,
+} from "./resolver/constitution-compose.js";
 import {
   SETTINGS_STORAGE_DIR,
   capabilityProfileRelPath,
@@ -109,6 +116,7 @@ import {
   type PlanCapabilityInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
+import { isDeclaredProjectOverrideArtifact } from "./resolver/plan-complete.js";
 import {
   decideApplyGate,
   renderRegistryMutation,
@@ -141,6 +149,7 @@ import {
   RESOLVER_GENERATOR,
   type ArtifactEvidence,
   type CapabilityRecord,
+  type ConstitutionInput,
   type ContainedFileFingerprintResult,
   type Diagnostic,
   type DiscoverPacksResponse,
@@ -1801,10 +1810,18 @@ export class ResolverService {
       const { plan, inspected } = this.planFrom(admission, selection, recovery);
 
       // Step 3 — screen and gate, all of it before any journal exists.
+      //
+      // The constitution record's presence is read HERE, under the lock, and
+      // handed to the pure screen (WF-455). Reading it before the lock would let
+      // it appear or vanish between the screen and the compose, and the screen
+      // itself must stay filesystem-free for the pre-journal guarantee to remain
+      // provable without one.
+      const constitutionAbs = joinSlash(this.ports.workspaceRoot, CONSTITUTION_RELPATH);
       const gate = decideApplyGate({
         plan,
         expectedPlanId,
         journalPresent: recoveryPorts.readJournal() !== null,
+        constitutionRecordPresent: this.ports.readFile(constitutionAbs) !== null,
       });
       if (!gate.ok) {
         const refused = halted("rejected", gate.reason, recovery, plan, [
@@ -1950,6 +1967,8 @@ export class ResolverService {
           portableRecorded: composed.portableRecorded,
           bindingRecorded: composed.bindingRecorded,
           answersRecorded: composed.answersRecorded,
+          overridesRecorded: composed.overridesRecorded,
+          constitutionRecomposed: composed.constitutionRecomposed,
         },
       });
 
@@ -2068,6 +2087,8 @@ export class ResolverService {
         portableRecorded: string[];
         bindingRecorded: string[];
         answersRecorded: { capability: string; destination: string }[];
+        overridesRecorded: { destination: string; sha256: string }[];
+        constitutionRecomposed: boolean;
       }
     | { ok: false; reason: ApplyReason; detail: string } {
     const workspaceRoot = this.ports.workspaceRoot;
@@ -2097,6 +2118,17 @@ export class ResolverService {
     const bindingRecorded: string[] = [];
 
     const seedByPluginId = new Map(input.plan.evidenceSeeds.map((seed) => [seed.pluginId, seed]));
+
+    /** The committed project overrides this run will write, in the plan's own
+     *  canonical action order (WF-455). Collected in the loop and rendered below
+     *  alongside every other target, so one `addRendered` gate decides
+     *  drop-if-unchanged and duplicate-destination for ALL of them. */
+    const overrideWrites: { destination: string; content: string; sha256: string }[] = [];
+    /** Whether a `constitution-recompose` action reached the compose step. The
+     *  record is composed AFTER the loop, because its content is a function of the
+     *  FINAL capability set — which every registry action in this same plan
+     *  contributes to. */
+    let recomposeConstitution = false;
 
     for (const action of input.supported) {
       const pluginId = action.pluginId;
@@ -2173,6 +2205,20 @@ export class ResolverService {
         }
         bindingUpdates.push({ pluginId, binding: seed.binding });
         bindingRecorded.push(pluginId);
+        continue;
+      }
+
+      if (action.kind === "override-write") {
+        const rendered = this.renderOverrideWrite(input.plan, input.inspected, action);
+        if (!rendered.ok) {
+          return { ok: false, reason: "apply/override-precondition", detail: rendered.detail };
+        }
+        overrideWrites.push(rendered);
+        continue;
+      }
+
+      if (action.kind === "constitution-recompose") {
+        recomposeConstitution = true;
         continue;
       }
     }
@@ -2280,6 +2326,45 @@ export class ResolverService {
       if (failure !== null) return failure;
     }
 
+    // --- committed project overrides (WF-455) ---------------------------------
+    // Rendered through the SAME `addRendered` gate as every other target, so an
+    // override whose declared source already equals the committed bytes is
+    // dropped and `.wf/slots/<skill>.<point>.md` is not rewritten at all.
+    const overridesRecorded: { destination: string; sha256: string }[] = [];
+    for (const override of overrideWrites) {
+      const failure = addRendered(
+        override.destination,
+        {
+          ok: true,
+          content: override.content,
+          changed: override.content !== (readRel(override.destination) ?? ""),
+        },
+        "apply/override-precondition",
+      );
+      if (failure !== null) return failure;
+      // Recorded for the self-check whether or not the bytes changed: the intended
+      // END STATE is "this destination holds the approved source", and a target
+      // that was dropped because it already held them satisfies that state and
+      // must still be asserted to.
+      overridesRecorded.push({ destination: override.destination, sha256: override.sha256 });
+    }
+
+    // --- the composed constitution (WF-455) -----------------------------------
+    let constitutionRecomposed = false;
+    if (recomposeConstitution) {
+      const composed = this.composeConstitutionTarget(input.plan, input.inspected);
+      if (!composed.ok) {
+        return { ok: false, reason: "apply/constitution-precondition", detail: composed.detail };
+      }
+      const failure = addRendered(
+        CONSTITUTION_RELPATH,
+        composed.render,
+        "apply/constitution-precondition",
+      );
+      if (failure !== null) return failure;
+      constitutionRecomposed = true;
+    }
+
     // An `applicable` plan that would change nothing is a contradiction the
     // planner's own invariant forbids, but the mutator states it rather than
     // discovering it: opening a transaction that writes nothing would take a
@@ -2293,7 +2378,199 @@ export class ResolverService {
       };
     }
 
-    return { ok: true, targets, portableRecorded, bindingRecorded, answersRecorded };
+    return {
+      ok: true,
+      targets,
+      portableRecorded,
+      bindingRecorded,
+      answersRecorded,
+      overridesRecorded,
+      constitutionRecomposed,
+    };
+  }
+
+  /**
+   * Bind one `override-write` action to the exact bytes the approved plan
+   * previewed, and refuse before mutation if anything it depended on has moved
+   * (WF-455).
+   *
+   * THE `.wf/` AUTHORITY TEST IS TWO-PART AND RE-DERIVED HERE (WF-444). Authority
+   * to write a committed lifecycle artifact comes from the resolver's lifecycle
+   * ownership PLUS a declared artifact class — never from the `.wf/` path prefix.
+   * So a destination is admitted only when it lands in the committed
+   * project-override tier AND spells a well-formed `<skill>.<point>.md` inside it,
+   * with no nested path. `.wf/slots/deep/ship.review.md` and `.wf/anything-else`
+   * are both refused, and refused BEFORE the transaction. This widens the admitted
+   * artifact set by nothing: it is exactly the class WF-443 established.
+   *
+   * THE SOURCE IS RE-OBSERVED, NEVER TRUSTED. The plan's payload action carries
+   * the `{sha256, bytes}` identity the reviewer approved; this re-fingerprints
+   * every owner's declared source through the same contained boundary the planner
+   * used and requires exact equality. A source edited between plan and apply is
+   * `apply/override-precondition` — the same posture the evidence exactness rule
+   * takes, restated at apply time rather than inherited.
+   */
+  private renderOverrideWrite(
+    plan: PlanInstallResponse,
+    inspected: Map<string, InspectPackResponse>,
+    action: PlanAction,
+  ):
+    | { ok: true; destination: string; content: string; sha256: string }
+    | { ok: false; detail: string } {
+    const destination = action.destination;
+    if (destination === null) {
+      return {
+        ok: false,
+        detail:
+          "an `override-write` action carries no destination, so the committed project override it would write cannot be resolved.",
+      };
+    }
+
+    // --- the two-part authority test ----------------------------------------
+    if (!isDeclaredProjectOverrideArtifact(destination)) {
+      return {
+        ok: false,
+        detail: `\`${destination}\` is not a declared committed project-override artifact (\`${PROJECT_OVERRIDE_DIR}/<skill>.<point>.md\`); the resolver's lifecycle ownership does not widen the admitted artifact set, so nothing was written.`,
+      };
+    }
+
+    // --- exactly one approved payload action names it -------------------------
+    const previewed = plan.payloads.actions.filter((entry) => entry.destination === destination);
+    if (previewed.length !== 1) {
+      return {
+        ok: false,
+        detail: `the approved plan carries ${previewed.length} previewed payload action(s) for \`${destination}\`; exactly one is required to bind the bytes this override would receive, so nothing was written.`,
+      };
+    }
+    const approved = previewed[0];
+
+    const fingerprint = this.ports.fingerprintContainedFile;
+    const read = this.ports.readContainedFile;
+    if (fingerprint === undefined || read === undefined) {
+      return {
+        ok: false,
+        detail: `the contained-source boundary is not configured, so the declared source of \`${destination}\` cannot be re-observed; nothing was written.`,
+      };
+    }
+
+    // --- every owner's source still reproduces the approved identity ----------
+    // Co-ownership is exact-equality-only (WF-448), and that equality is a fact
+    // about the world rather than about the plan, so it is re-derived here under
+    // the lock instead of inherited from the approval.
+    let content: string | null = null;
+    for (const owner of approved.owners) {
+      const capability = inspected
+        .get(owner.pluginId)
+        ?.capabilities.find((candidate) => candidate.name === owner.capability);
+      if (capability === undefined) {
+        return {
+          ok: false,
+          detail: `capability \`${owner.capability}\` of pack \`${owner.pluginId}\` declares the override \`${destination}\` but was not inspectable at apply time; nothing was written.`,
+        };
+      }
+      const capabilityRoot = dirnameSlash(capability.manifestPath);
+      const observed = fingerprint(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (
+        observed.status !== "ok" ||
+        observed.sha256 !== approved.identity.sha256 ||
+        observed.bytes !== approved.identity.bytes
+      ) {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` no longer reproduces the approved bytes for \`${destination}\` (approved sha256 ${approved.identity.sha256}, ${approved.identity.bytes} bytes; observed ${observed.status === "ok" ? `sha256 ${observed.sha256}, ${observed.bytes} bytes` : observed.status}); nothing was written.`,
+        };
+      }
+      if (content !== null) continue;
+      const body = read(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (body.status !== "ok") {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` could not be read (\`${body.status}\`), so the bytes for \`${destination}\` are not available; nothing was written.`,
+        };
+      }
+      content = body.content;
+    }
+
+    if (content === null) {
+      return {
+        ok: false,
+        detail: `the approved payload action for \`${destination}\` names no owner, so the bytes it would receive cannot be resolved; nothing was written.`,
+      };
+    }
+
+    return { ok: true, destination, content, sha256: approved.identity.sha256 };
+  }
+
+  /**
+   * Compose the constitution record this transaction will write (WF-455).
+   *
+   * COMPOSED FROM THE FINAL CAPABILITY SET, NOT THE CURRENT ONE. The recomposition
+   * exists precisely because this same plan changes the registered set, so
+   * composing from the pre-write registry would persist the set the transaction is
+   * about to leave behind. The final order is derived the same way the registry
+   * write produces it: existing rows keep their positions, deregistered ones are
+   * removed, and additions append in the plan's own canonical action order.
+   *
+   * THE RESOLVER RENDERS ONLY THE DERIVED SECTION. Everything else in the record —
+   * the preamble, the core articles, and above all the project's own
+   * `## Project clauses (provenance: project)` section — is preserved
+   * byte-for-byte by `composeConstitutionRecord`. That section is human-authored
+   * content no other copy exists of; a composition that regenerated the document
+   * would destroy it.
+   */
+  private composeConstitutionTarget(
+    plan: PlanInstallResponse,
+    inspected: Map<string, InspectPackResponse>,
+  ): { ok: true; render: TargetRender } | { ok: false; detail: string } {
+    const current = this.ports.readFile(
+      joinSlash(this.ports.workspaceRoot, CONSTITUTION_RELPATH),
+    );
+    if (current === null) {
+      // Screened out at the gate, which defers rather than applies when the record
+      // is absent. Reaching here means it vanished between the screen and the
+      // compose, and composing a record that is not there would mean authoring one.
+      return {
+        ok: false,
+        detail: `the composed constitution record \`${CONSTITUTION_RELPATH}\` is no longer present; it is not created here, so nothing was written.`,
+      };
+    }
+
+    const removed = new Set<string>();
+    for (const entry of plan.registryDelta.deregistrations) {
+      for (const name of entry.capabilities) removed.add(name);
+    }
+
+    const inputs: ConstitutionInput[] = [];
+    const seen = new Set<string>();
+    for (const capability of this.resolveRegistry().capabilities) {
+      if (removed.has(capability.name)) continue;
+      seen.add(capability.name);
+      for (const article of capability.articles) {
+        inputs.push({ capability: capability.name, key: article.key, value: article.value });
+      }
+    }
+    const registryNames = [...seen];
+
+    for (const entry of plan.registryDelta.additions) {
+      for (const capability of inspected.get(entry.pluginId)?.capabilities ?? []) {
+        if (seen.has(capability.name)) continue;
+        seen.add(capability.name);
+        registryNames.push(capability.name);
+        const raw = this.ports.readFile(capability.manifestPath);
+        const parsed = raw === null ? null : parseManifest(raw);
+        for (const article of parsed?.articles ?? []) {
+          inputs.push({ capability: capability.name, key: article.key, value: article.value });
+        }
+      }
+    }
+
+    const composed = composeConstitutionRecord({
+      current,
+      capabilities: articlesByCapability(inputs),
+      registryNames,
+    });
+    if (!composed.ok) return { ok: false, detail: composed.detail };
+    return { ok: true, render: composed };
   }
 
   /**
@@ -2354,12 +2631,64 @@ export class ResolverService {
       if (!ok) answerMissing.push(`${answer.capability}:${answer.destination}`);
     }
 
+    // --- committed project overrides (WF-455) --------------------------------
+    // Hashed back off disk and compared to the APPROVED source digest, so the
+    // check confirms the destination holds the bytes the plan bound rather than
+    // the bytes this process happened to hold in memory. The two digests are
+    // comparable because the declared source round-trips losslessly through the
+    // contained boundary's UTF-8 decode; a source that does NOT round-trip fails
+    // here and rolls the transaction back, which is the fail-closed direction.
+    // The affected slot is
+    // then re-resolved: a file that landed but did not become the winning project
+    // tier is a write that did not take effect, which is exactly what a self-check
+    // is for.
+    const overrideMissing: string[] = [];
+    const slotProvenance = expectation.overridesRecorded.length === 0 ? [] : this.ensure().slots;
+    for (const override of expectation.overridesRecorded) {
+      const back = readRel(override.destination);
+      if (back === null || sha256Hex(back) !== override.sha256) {
+        overrideMissing.push(`${override.destination} (bytes)`);
+        continue;
+      }
+      const filename = override.destination.slice(PROJECT_OVERRIDE_DIR.length + 1);
+      const point = slotPointFromOverrideFilename(filename);
+      if (point === null) {
+        overrideMissing.push(`${override.destination} (slot id)`);
+        continue;
+      }
+      if (
+        !slotProvenance.some(
+          (slot) => slot.skillPoint === point.skillPoint && slot.projectOverridePresent,
+        )
+      ) {
+        overrideMissing.push(`${override.destination} (not seen as a committed project override)`);
+      }
+    }
+
+    // --- the composed constitution (WF-455) ----------------------------------
+    // The project's own clause section is the one property whose loss is
+    // unrecoverable, so it is asserted directly rather than inferred from the
+    // record merely being readable.
+    const constitutionMissing: string[] = [];
+    if (expectation.constitutionRecomposed) {
+      const back = readRel(CONSTITUTION_RELPATH);
+      if (back === null) {
+        constitutionMissing.push(`${CONSTITUTION_RELPATH} did not read back`);
+      } else if (!back.split("\n").some((line) => line.trimEnd() === PROJECT_CLAUSES_HEADING)) {
+        constitutionMissing.push(
+          `${CONSTITUTION_RELPATH} no longer carries its \`${PROJECT_CLAUSES_HEADING}\` section`,
+        );
+      }
+    }
+
     if (
       missing.length === 0 &&
       lingering.length === 0 &&
       portableMissing.length === 0 &&
       bindingMissing.length === 0 &&
-      answerMissing.length === 0
+      answerMissing.length === 0 &&
+      overrideMissing.length === 0 &&
+      constitutionMissing.length === 0
     ) {
       return { ok: true };
     }
@@ -2374,6 +2703,12 @@ export class ResolverService {
     }
     if (answerMissing.length > 0) {
       parts.push(`profile seed did not read back: ${answerMissing.join(", ")}`);
+    }
+    if (overrideMissing.length > 0) {
+      parts.push(`committed project override did not read back: ${overrideMissing.join(", ")}`);
+    }
+    if (constitutionMissing.length > 0) {
+      parts.push(`composed constitution did not read back: ${constitutionMissing.join(", ")}`);
     }
     return { ok: false, diagnostic: parts.join("; ") };
   }

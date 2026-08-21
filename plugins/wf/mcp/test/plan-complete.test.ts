@@ -25,6 +25,7 @@ import {
   PLAN_IDENTITY_FACT_CLASSES,
   completePlan,
   hasMutatingAction,
+  isDeclaredProjectOverrideArtifact,
   isProjectOverrideDestination,
   planMode,
   type PlanCompletionInput,
@@ -429,6 +430,31 @@ test("integration is order-insensitive: permuting the input collections is deep-
 
   assert.deepEqual(completePlan(permuted).actions, completePlan(base).actions);
   assert.equal(completePlan(permuted).identity.planId, completePlan(base).identity.planId);
+});
+
+test("THE `.wf/` AUTHORITY TEST IS TWO-PART: the tier prefix alone admits nothing", () => {
+  // The narrowness of this boundary is the whole reason `.wf/` is safe to write
+  // into at all (WF-444). Each rejection below is a destination that IS under the
+  // committed tier and is STILL outside the declared artifact class.
+  assert.equal(isDeclaredProjectOverrideArtifact(`${PROJECT_OVERRIDE_DIR}/ship.review.md`), true);
+
+  for (const outside of [
+    PROJECT_OVERRIDE_DIR, // the bare tier
+    ".wf/install-state.json", // a DIFFERENT declared class, not this one
+    ".wf/anything.md", // the prefix without the tier
+    `${PROJECT_OVERRIDE_DIR}/deep/ship.review.md`, // nested, so not "in" the tier
+    `${PROJECT_OVERRIDE_DIR}/ship.md`, // no `<point>` segment
+    `${PROJECT_OVERRIDE_DIR}/ship.review.extra.md`, // three segments
+    `${PROJECT_OVERRIDE_DIR}/ship.review.txt`, // not the declared extension
+    `${PROJECT_OVERRIDE_DIR}/Ship.Review.md`, // not a lowercase-hyphenated segment
+    `${PROJECT_OVERRIDE_DIR}/.md`, // empty segments
+  ]) {
+    assert.equal(
+      isDeclaredProjectOverrideArtifact(outside),
+      false,
+      `\`${outside}\` must NOT be admitted as a declared project-override artifact`,
+    );
+  }
 });
 
 test("a project-override destination is classified as an override write, not a plain payload write", () => {
