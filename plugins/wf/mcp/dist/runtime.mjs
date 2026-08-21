@@ -22352,7 +22352,7 @@ function runUnderLock(ports) {
         outcome = {
           destination: entry.destination,
           disposition: "unresolved",
-          reason: backup.reason === "missing" ? "backup-missing" : "backup-mismatch",
+          reason: backup.reason === "missing" ? "backup-missing" : backup.reason === "not-contained" ? "target-not-contained" : "backup-mismatch",
           detail: backup.diagnostic
         };
       } else if (backup.contentHash !== entry.priorContentHash) {
@@ -23113,6 +23113,7 @@ import {
   readdirSync as readdirSync2,
   realpathSync as realpathSync3,
   rmSync as rmSync2,
+  rmdirSync,
   writeFileSync as writeFileSync2
 } from "node:fs";
 import { createHash as createHash3 } from "node:crypto";
@@ -25339,7 +25340,7 @@ function createRecoveryPorts(workspaceRoot) {
       if (!target.ok) {
         return {
           ok: false,
-          reason: "unreadable",
+          reason: "not-contained",
           diagnostic: `the backup \`${backupPath}\` does not resolve to a workspace-contained file (${target.rejection}).`
         };
       }
@@ -25417,7 +25418,7 @@ function createRecoveryPorts(workspaceRoot) {
       } catch {
       }
       try {
-        rmSync2(joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR), { recursive: false });
+        rmdirSync(joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR));
       } catch {
       }
     }

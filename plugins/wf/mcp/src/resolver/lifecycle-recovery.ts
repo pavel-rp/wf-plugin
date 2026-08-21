@@ -50,10 +50,16 @@ export type LockAcquisition =
   | { ok: false; reason: "held-by-other" | "unavailable"; diagnostic: string };
 
 /** The observed identity of one backup. A backup that cannot be hashed is never
- *  restored — recovery does not write bytes it cannot prove. */
+ *  restored — recovery does not write bytes it cannot prove.
+ *
+ *  The three refusal reasons stay DISTINCT rather than collapsing into one:
+ *  a backup that is absent, one whose bytes cannot be read, and one whose path
+ *  does not resolve inside the workspace are three different maintainer stories,
+ *  and reporting an uncontained path as a byte mismatch would send a reader
+ *  looking for corruption that is not there. */
 export type BackupIdentity =
   | { ok: true; contentHash: string }
-  | { ok: false; reason: "missing" | "unreadable"; diagnostic: string };
+  | { ok: false; reason: "missing" | "unreadable" | "not-contained"; diagnostic: string };
 
 /** The outcome of one write. */
 export type WriteOutcome = { ok: true } | { ok: false; diagnostic: string };
@@ -224,7 +230,12 @@ function runUnderLock(ports: RecoveryPorts): RecoveryReport {
         outcome = {
           destination: entry.destination,
           disposition: "unresolved",
-          reason: backup.reason === "missing" ? "backup-missing" : "backup-mismatch",
+          reason:
+            backup.reason === "missing"
+              ? "backup-missing"
+              : backup.reason === "not-contained"
+                ? "target-not-contained"
+                : "backup-mismatch",
           detail: backup.diagnostic,
         };
       } else if (backup.contentHash !== entry.priorContentHash) {

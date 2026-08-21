@@ -214,6 +214,77 @@ test("a compatible journal restores exact prior bytes and reports it SEPARATELY"
   }
 });
 
+test("a complete recovery leaves NO residue: the backup it named, and an emptied backup root, are both gone", () => {
+  // The tidy is best-effort by contract, but "best-effort" must still mean it can
+  // actually succeed. `rmSync(dir, { recursive: false })` throws EISDIR on ANY
+  // directory, so a tidy written that way would be a no-op dressed as a cleanup —
+  // silently leaving residue after every single complete recovery.
+  const root = makeWorkspace();
+  try {
+    const prior = "prior\n";
+    const ours = "ours\n";
+    mkdirSync(join(root, LIFECYCLE_BACKUP_DIR), { recursive: true });
+    writeFileSync(join(root, LIFECYCLE_BACKUP_DIR, "0"), prior);
+    writeFileSync(join(root, "managed.md"), ours);
+
+    writeJournal(root, [
+      entryFor({
+        destination: "managed.md",
+        priorExistence: "present",
+        priorContentHash: sha256(prior),
+        priorIsSymlink: false,
+        backupPath: `${LIFECYCLE_BACKUP_DIR}/0`,
+        lastWritten: { contentHash: sha256(ours), bytes: Buffer.byteLength(ours) },
+      }),
+    ]);
+
+    const out = service(root).discoverPacks();
+    assert.equal(out.recovery.state, "recovered");
+    assert.equal(existsPath(join(root, LIFECYCLE_BACKUP_DIR, "0")), false);
+    assert.equal(
+      existsPath(join(root, LIFECYCLE_BACKUP_DIR)),
+      false,
+      "an emptied backup root is removed, so a complete recovery leaves no residue",
+    );
+    assert.equal(existsPath(join(root, LIFECYCLE_JOURNAL_PATH)), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a POPULATED backup root survives the tidy — recovery never sweeps bytes it did not name", () => {
+  const root = makeWorkspace();
+  try {
+    const prior = "prior\n";
+    const ours = "ours\n";
+    mkdirSync(join(root, LIFECYCLE_BACKUP_DIR), { recursive: true });
+    writeFileSync(join(root, LIFECYCLE_BACKUP_DIR, "0"), prior);
+    writeFileSync(join(root, LIFECYCLE_BACKUP_DIR, "unrelated"), "not this journal's\n");
+    writeFileSync(join(root, "managed.md"), ours);
+
+    writeJournal(root, [
+      entryFor({
+        destination: "managed.md",
+        priorExistence: "present",
+        priorContentHash: sha256(prior),
+        priorIsSymlink: false,
+        backupPath: `${LIFECYCLE_BACKUP_DIR}/0`,
+        lastWritten: { contentHash: sha256(ours), bytes: Buffer.byteLength(ours) },
+      }),
+    ]);
+
+    assert.equal(service(root).discoverPacks().recovery.state, "recovered");
+    assert.equal(existsPath(join(root, LIFECYCLE_BACKUP_DIR, "0")), false);
+    assert.equal(
+      readFileSync(join(root, LIFECYCLE_BACKUP_DIR, "unrelated"), "utf8"),
+      "not this journal's\n",
+      "a backup this journal never named is never discarded",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("a file the transaction CREATED is removed, restoring its prior absence", () => {
   const root = makeWorkspace();
   try {

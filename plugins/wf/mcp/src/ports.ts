@@ -15,6 +15,7 @@ import {
   readdirSync,
   realpathSync,
   rmSync,
+  rmdirSync,
   writeFileSync,
 } from "node:fs";
 import { createHash } from "node:crypto";
@@ -423,7 +424,7 @@ export function createRecoveryPorts(workspaceRoot: string): RecoveryPorts {
       if (!target.ok) {
         return {
           ok: false,
-          reason: "unreadable",
+          reason: "not-contained",
           diagnostic: `the backup \`${backupPath}\` does not resolve to a workspace-contained file (${target.rejection}).`,
         };
       }
@@ -507,8 +508,12 @@ export function createRecoveryPorts(workspaceRoot: string): RecoveryPorts {
       }
       // Best-effort tidy: succeeds only when the backup root is now empty, so a
       // concurrent-free run leaves no residue and a shared root is left alone.
+      // `rmdirSync` is the deliberate primitive — it removes an EMPTY directory
+      // and fails on a populated one, which is exactly the semantics wanted here.
+      // `rmSync(dir, { recursive: false })` would be a no-op dressed as a tidy:
+      // it throws `EISDIR` on any directory, so the branch could never succeed.
       try {
-        rmSync(joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR), { recursive: false });
+        rmdirSync(joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR));
       } catch {
         /* non-empty or absent — both fine */
       }

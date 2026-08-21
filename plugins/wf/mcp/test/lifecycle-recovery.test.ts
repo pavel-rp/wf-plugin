@@ -228,6 +228,21 @@ test("A MISSING OR ALTERED BACKUP NEVER BECOMES AUTHORITY TO OVERWRITE", () => {
   assert.ok(!altered.log.includes("restore:artifact.md"));
 });
 
+test("an UNCONTAINED backup path is reported as a containment refusal, not a byte mismatch", () => {
+  // The three refusal reasons are three different maintainer stories. Collapsing
+  // an uncontained path onto `backup-mismatch` would send a reader looking for
+  // corruption that is not there — the bytes were never even compared.
+  const h = harness({
+    journal: journalText([entry()]),
+    backup: () => ({ ok: false, reason: "not-contained", diagnostic: "escapes the workspace" }),
+  });
+  const report = recoverInterruptedTransaction(h.ports);
+  assert.equal(report.unresolved[0]?.reason, "target-not-contained");
+  assert.equal(report.wroteBytes, false);
+  assert.equal(report.proceeded, false);
+  assert.ok(!h.log.includes("restore:artifact.md"), "nothing is written on a refused backup path");
+});
+
 test("a failed write is unresolved, and does not claim the baseline moved", () => {
   const h = harness({
     journal: journalText([entry()]),
