@@ -137,3 +137,64 @@ export function upsertSectionRow(
   ];
   return { content: next.join(eol), changed: true };
 }
+
+/**
+ * Idempotently REMOVE a two-column row from the `## <heading>` section of a
+ * markdown document (WF-453). `key` is matched against the first column exactly,
+ * the same case-sensitive comparison `upsertSectionRow` uses — the two halves of
+ * one edit must agree on what "the same row" means.
+ *
+ * NARROW BY CONSTRUCTION. It removes matching DATA rows and nothing else: the
+ * heading, the header row, the separator, an emptied table, and every other
+ * section survive byte-for-byte. An emptied table is deliberately LEFT IN PLACE
+ * rather than tidied away — a header-only `## Capabilities` table is the
+ * contract's own "fully generic core" state, and reconstructing it later is a
+ * strictly larger edit than leaving it.
+ *
+ * Returns `{ content, changed }` — `changed:false` means no such row existed, so
+ * the caller can skip a no-op write. Removing an absent row is a no-op rather
+ * than an error, which is what makes a re-entered transaction converge.
+ */
+export function removeSectionRow(
+  markdown: string,
+  heading: string,
+  key: string,
+): { content: string; changed: boolean } {
+  const eol = markdown.includes("\r\n") ? "\r\n" : "\n";
+  const lines = markdown.split(/\r?\n/);
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex(heading)}\\s*$`, "i");
+
+  let sectionStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (headingRe.test(lines[i])) {
+      sectionStart = i;
+      break;
+    }
+  }
+  if (sectionStart === -1) return { content: markdown, changed: false };
+
+  let sectionEnd = lines.length;
+  for (let i = sectionStart + 1; i < lines.length; i++) {
+    if (/^#{1,6}\s+/.test(lines[i])) {
+      sectionEnd = i;
+      break;
+    }
+  }
+
+  const drop = new Set<number>();
+  let sawHeader = false;
+  for (let i = sectionStart + 1; i < sectionEnd; i++) {
+    const cells = splitRow(lines[i]);
+    if (!cells) continue;
+    if (!sawHeader) {
+      sawHeader = true;
+      continue;
+    }
+    if (isSeparatorRow(cells)) continue;
+    if (cells[0] === key) drop.add(i);
+  }
+
+  if (drop.size === 0) return { content: markdown, changed: false };
+  const next = lines.filter((_, index) => !drop.has(index));
+  return { content: next.join(eol), changed: true };
+}

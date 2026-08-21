@@ -107,6 +107,17 @@ import {
   type PlanCapabilityInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
+import {
+  decideApplyGate,
+  renderRegistryMutation,
+  type ApplyRegistryFact,
+} from "./resolver/apply-install.js";
+import {
+  applyTransaction,
+  type ApplyPorts,
+  type SelfCheckExpectation,
+  type SelfCheckOutcome,
+} from "./resolver/apply-transaction.js";
 import type {
   PayloadTargetResolution,
   PlanPayloadFact,
@@ -129,6 +140,13 @@ import {
   type PayloadDiagnostic,
   type PlanAdmissionState,
   type PlanInstallResponse,
+  APPLY_ENVELOPE_VERSION,
+  type ApplyAppliedAction,
+  type ApplyInstallResponse,
+  type ApplyReason,
+  type ApplyResidueReport,
+  type ApplyStatus,
+  type DiscoveryIssue,
   type PortablePackEvidence,
   type QuestionDiagnostic,
   type RecoveryReport,
@@ -230,6 +248,18 @@ export interface ResolverServicePorts {
    *  `no-journal` — which is byte-inert and non-blocking, exactly the pre-WF-451
    *  behaviour. */
   recovery?: RecoveryPorts;
+  /** The journaled-transaction effects for the FIRST PUBLIC MUTATOR (WF-453).
+   *
+   *  A FACTORY rather than a ready-made port set, because two of the transaction's
+   *  inputs are service-level facts: the resolved registry destination, and the
+   *  refresh + self-check that only the service can perform. OPTIONAL so every
+   *  existing in-memory port double stays valid; when absent, `apply_install`
+   *  refuses with `apply/registry-unresolvable` rather than mutating through a
+   *  guessed path — the fail-safe direction for a mutator. */
+  createApply?(
+    registryRelPath: string,
+    refreshAndSelfCheck: (expectation: SelfCheckExpectation) => SelfCheckOutcome,
+  ): ApplyPorts;
   /** Production-only containment boundary for the registry write. Test doubles
    *  may omit it and use the shape-validated workspace-relative join. */
   resolveRegistryWritePath?(registryRelPath: string): string;
@@ -1537,19 +1567,45 @@ export class ResolverService {
       ? recoverInterruptedTransaction(this.ports.recovery)
       : noRecoveryReport();
 
+    return this.planFrom(admission, selection, recovery).plan;
+  }
+
+  /**
+   * The plan join over an ALREADY-PERFORMED recovery.
+   *
+   * Split out of `planInstall` for WF-453: the mutator must recover once, then
+   * hold the exclusive lock across BOTH the revalidation and the transaction. If
+   * it re-entered `planInstall` it would recover a second time — and, worse,
+   * `recoverInterruptedTransaction` would find the lock it is itself holding and
+   * refuse as `held-by-other`. Threading the finished report through is the same
+   * technique `planInstall` already uses for `discoverPacksWithInspection`.
+   *
+   * Returns the per-pack inspections alongside the plan, because the mutator
+   * needs each addition's install root and capability paths to render the
+   * registry rows and re-inspecting would re-run the CLI and let the inventory
+   * shift mid-transaction.
+   */
+  private planFrom(
+    admission: Extract<PlanAdmissionState, { admitted: true }>,
+    selection: PlanSelectionInput,
+    recovery: RecoveryReport,
+  ): { plan: PlanInstallResponse; inspected: Map<string, InspectPackResponse> } {
     if (!recovery.proceeded) {
       // The fail-safe stop. Nothing below this line runs, so no lifecycle state
       // is read at all. The pure join composes the halted envelope from the same
       // gate, so the property holds whether a caller enters through this service
       // or drives the join directly.
-      return planInstallJoin({
-        admission,
-        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
-        packs: [],
-        capabilities: [],
-        selection,
-        recovery,
-      });
+      return {
+        plan: planInstallJoin({
+          admission,
+          inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+          packs: [],
+          capabilities: [],
+          selection,
+          recovery,
+        }),
+        inspected: new Map(),
+      };
     }
 
     const { response, inspected, snapshot, recordedArtifacts } =
@@ -1608,16 +1664,340 @@ export class ResolverService {
     }
 
     const payloads = this.collectPayloadFacts(admission.root, inspected);
-    return planInstallJoin({
+    return {
+      plan: planInstallJoin({
+        admission,
+        inventory: response.inventory,
+        packs: response.packs,
+        capabilities,
+        selection,
+        payloads,
+        artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
+        recovery,
+      }),
+      inspected,
+    };
+  }
+
+  /**
+   * The sole public mutator for an exact registry-only plan (WF-453).
+   *
+   * The whole method is one guarded, crash-recoverable journaled transaction. It
+   * recovers BEFORE it decides anything, holds the exclusive lock across both the
+   * revalidation and the mutation, refuses everything it is not the mutator for,
+   * and — on any failure after the journal exists — rolls back and reports what
+   * it could not resolve rather than claiming a partial success.
+   *
+   * Ordering is the contract, not an implementation detail:
+   *
+   * 1. **Recovery first, reported separately.** A pre-entry recovery is a fact
+   *    about the workspace, not about this call; it is carried in its own
+   *    `recovery` field and never folded into `status`. An unrecovered workspace
+   *    halts here, before the lock, because the plan it would revalidate against
+   *    is not trustworthy.
+   * 2. **Lock, then revalidate.** The plan is recomputed UNDER the lock via
+   *    `planFrom`, so the `expectedPlanId` comparison cannot race a concurrent
+   *    installer. Recomputing outside the lock would compare against a plan that
+   *    another process could invalidate between the check and the write.
+   * 3. **Screen and gate before any journal.** Every stale-identity, unsupported-
+   *    action, and applicability refusal happens while the workspace is still
+   *    byte-identical to its pre-call state: nothing to roll back, so nothing can
+   *    be left half-undone.
+   * 4. **Transaction.** Only then does `applyTransaction` create a journal.
+   *
+   * The lock is owned HERE and not by the transaction driver precisely because it
+   * must also cover step 2. The driver assumes it is held, and its rollback runs
+   * through a lock-neutral façade so it never deadlocks against this holder.
+   */
+  applyInstall(
+    admission: PlanAdmissionState,
+    selection: PlanSelectionInput,
+    expectedPlanId: string,
+  ): ApplyInstallResponse {
+    const halted = (
+      status: ApplyStatus,
+      reason: ApplyReason | null,
+      recovery: RecoveryReport,
+      plan: PlanInstallResponse | null,
+      diagnostics: DiscoveryIssue[] = [],
+    ): ApplyInstallResponse => ({
+      applyVersion: APPLY_ENVELOPE_VERSION,
+      workspaceRoot: admission.admitted ? admission.root : null,
       admission,
-      inventory: response.inventory,
-      packs: response.packs,
-      capabilities,
-      selection,
-      payloads,
-      artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
+      status,
+      reason,
+      transactionId: null,
+      plan: {
+        planId: plan?.identity.planId ?? null,
+        expectedPlanId,
+        matched: plan !== null && plan.identity.planId === expectedPlanId,
+        applicability: plan?.applicability ?? null,
+        mode: plan?.mode ?? null,
+      },
+      applied: [],
+      deferred: [],
+      rollback: null,
+      selfCheck: "skipped",
+      refreshed: false,
       recovery,
+      residue: {
+        clean: true,
+        journalRetained: false,
+        backupsRetained: false,
+        detail: "no transaction was created.",
+      },
+      diagnostics,
     });
+
+    if (!admission.admitted) {
+      return halted("invalid-root", "apply/invalid-root", noRecoveryReport(), null);
+    }
+
+    // Recovery ports are the lock's home. Without them there is no exclusion
+    // primitive at all, and an unserialized mutator is worse than no mutator —
+    // refuse rather than mutate unprotected.
+    const recoveryPorts = this.ports.recovery;
+    if (recoveryPorts === undefined) {
+      return halted("halted", "apply/lock-unavailable", noRecoveryReport(), null, [
+        {
+          code: "apply-lock-unavailable",
+          message: "no lifecycle recovery ports are configured, so the exclusive lock cannot be taken.",
+        },
+      ]);
+    }
+
+    // Step 1 — recover before deciding anything, and report it separately.
+    const recovery = recoverInterruptedTransaction(recoveryPorts);
+    if (!recovery.proceeded) {
+      return halted("halted", "apply/halted-unrecovered", recovery, null);
+    }
+
+    // Step 2 — the exclusive lock, held across BOTH the revalidation and the
+    // mutation. `held-by-other` is the concurrent-entry refusal, not an error.
+    const lock = recoveryPorts.acquireLock();
+    if (!lock.ok) {
+      return halted(
+        "rejected",
+        lock.reason === "held-by-other" ? "apply/lock-held" : "apply/lock-unavailable",
+        recovery,
+        null,
+        [{ code: `apply-lock-${lock.reason}`, message: lock.diagnostic }],
+      );
+    }
+
+    try {
+      const { plan, inspected } = this.planFrom(admission, selection, recovery);
+
+      // Step 3 — screen and gate, all of it before any journal exists.
+      const gate = decideApplyGate({
+        plan,
+        expectedPlanId,
+        journalPresent: recoveryPorts.readJournal() !== null,
+      });
+      if (!gate.ok) {
+        const refused = halted("rejected", gate.reason, recovery, plan, [
+          { code: gate.reason, message: gate.detail },
+        ]);
+        return { ...refused, deferred: gate.screened.deferred };
+      }
+
+      // The registry destination. A shape or containment failure is a refusal
+      // before the transaction, for the same reason as everything else in step 3.
+      const registryRel = this.ports.registryRelPath();
+      const shapeError = registryPathShapeError(registryRel);
+      if (shapeError) {
+        return {
+          ...halted("rejected", "apply/registry-unresolvable", recovery, plan, [
+            {
+              code: "apply/registry-unresolvable",
+              message: `registryPath \`${registryRel}\` is not a forward-slash repo-relative file path: ${shapeError}.`,
+            },
+          ]),
+          deferred: gate.screened.deferred,
+        };
+      }
+
+      let registryAbs: string;
+      try {
+        registryAbs =
+          this.ports.resolveRegistryWritePath?.(registryRel) ??
+          joinSlash(this.ports.workspaceRoot, registryRel);
+      } catch (err) {
+        return {
+          ...halted("rejected", "apply/registry-unresolvable", recovery, plan, [
+            {
+              code: "apply/registry-unresolvable",
+              message: `registryPath \`${registryRel}\` escapes the selected workspace: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            },
+          ]),
+          deferred: gate.screened.deferred,
+        };
+      }
+
+      // The registry facts each supported action needs, taken from the SAME
+      // inspection the revalidated plan was built from. Re-inspecting here would
+      // let the inventory shift between the plan that was approved and the rows
+      // that get written.
+      const facts = new Map<string, ApplyRegistryFact>();
+      for (const entry of plan.registryDelta.additions) {
+        const pack = inspected.get(entry.pluginId);
+        if (pack === undefined) continue;
+        facts.set(entry.pluginId, {
+          pluginId: entry.pluginId,
+          pluginName: pack.pluginName,
+          installPath: pack.installPath,
+          capabilities: pack.capabilities.map((c) => ({ name: c.name, path: c.path })),
+        });
+      }
+      for (const entry of plan.registryDelta.deregistrations) {
+        facts.set(entry.pluginId, {
+          pluginId: entry.pluginId,
+          pluginName: entry.pluginName,
+          installPath: null,
+          capabilities: entry.capabilities.map((name) => ({ name, path: "" })),
+        });
+      }
+
+      const current = this.ports.readFile(registryAbs) ?? "";
+      const mutation = renderRegistryMutation(current, gate.screened.supported, facts);
+      if (!mutation.ok) {
+        return {
+          ...halted("rejected", mutation.reason, recovery, plan, [
+            { code: mutation.reason, message: mutation.detail },
+          ]),
+          deferred: gate.screened.deferred,
+        };
+      }
+
+      // What the post-write self-check must observe. Derived from the actions
+      // that were actually rendered, so a self-check can never pass by asserting
+      // nothing.
+      const present: string[] = [];
+      const absent: string[] = [];
+      for (const action of gate.screened.supported) {
+        const fact = action.pluginId === null ? undefined : facts.get(action.pluginId);
+        if (fact === undefined) continue;
+        const names = fact.capabilities.map((c) => c.name);
+        if (action.kind === "registry-add") present.push(...names);
+        else absent.push(...names);
+      }
+
+      const applyPorts = this.ports.createApply?.(registryRel, (expectation) =>
+        this.selfCheckRegistry(expectation),
+      );
+      if (applyPorts === undefined) {
+        return {
+          ...halted("rejected", "apply/registry-unresolvable", recovery, plan, [
+            {
+              code: "apply/registry-unresolvable",
+              message: "no apply ports are configured, so the registry cannot be mutated.",
+            },
+          ]),
+          deferred: gate.screened.deferred,
+        };
+      }
+
+      // Step 4 — the transaction. Port throws are deliberately NOT caught inside
+      // the driver (a kill has no catch block either); the outer handler below
+      // turns one into an explicit halted envelope rather than a thrown MCP error.
+      const result = applyTransaction(applyPorts, {
+        newContent: mutation.content,
+        expectation: { present, absent },
+      });
+
+      const applied: ApplyAppliedAction[] =
+        result.status === "applied"
+          ? gate.screened.supported.map((action) => ({
+              kind: action.kind,
+              order: action.order,
+              pluginId: action.pluginId,
+              destination: action.destination,
+              summary: action.summary,
+              persisted: true as const,
+            }))
+          : [];
+
+      return {
+        applyVersion: APPLY_ENVELOPE_VERSION,
+        workspaceRoot: admission.root,
+        admission,
+        status: result.status,
+        reason: result.reason,
+        transactionId: result.transactionId,
+        plan: {
+          planId: plan.identity.planId,
+          expectedPlanId,
+          matched: plan.identity.planId === expectedPlanId,
+          applicability: plan.applicability,
+          mode: plan.mode,
+        },
+        applied,
+        deferred: gate.screened.deferred,
+        rollback: result.rollback,
+        selfCheck: result.selfCheck,
+        refreshed: result.refreshed,
+        recovery,
+        residue: result.residue,
+        diagnostics: result.diagnostics,
+      };
+    } catch (err) {
+      // An unexpected throw is reported as a halt, never as a success. A throw can
+      // land AFTER the journal exists, so the residue is OBSERVED here rather than
+      // assumed clean: claiming "nothing was left behind" over a surviving journal
+      // would be exactly the unearned reassurance this operation must never give.
+      // The next entry's pre-entry recovery is what resolves whatever state is
+      // left, and a retained journal is what makes that entry converge.
+      const journalRetained = recoveryPorts.readJournal() !== null;
+      return {
+        ...halted("halted", "apply/write-failed", recovery, null, [
+          {
+            code: "apply-threw",
+            message: err instanceof Error ? err.message : String(err),
+          },
+        ]),
+        // `backupsRetained` tracks the journal because a backup is only ever
+        // NAMED by one: the journal is written before any backup and discarded
+        // before them, so a surviving journal is the operative fact and an orphan
+        // backup without one is inert and reclaimed by the next prune.
+        residue: {
+          clean: !journalRetained,
+          journalRetained,
+          backupsRetained: journalRetained,
+          detail: journalRetained
+            ? "the transaction was interrupted and its journal is retained, along with the backups that journal names; the next entry's pre-entry recovery restores the prior state."
+            : "no journal survives, so nothing is left that a later run must resolve.",
+        },
+      };
+    } finally {
+      recoveryPorts.releaseLock();
+    }
+  }
+
+  /**
+   * The post-write self-check: refresh discovery, then assert the registry view
+   * agrees with what the transaction claims it wrote.
+   *
+   * A *failed* self-check is a transaction FAILURE, not a warning — the caller
+   * rolls back on it. So this must assert both halves: every added capability
+   * resolves `ok`, and every deregistered one is gone. Asserting only presence
+   * would let a deregistration that silently changed nothing report success.
+   */
+  private selfCheckRegistry(expectation: SelfCheckExpectation): SelfCheckOutcome {
+    this.refresh();
+    const view = this.resolveRegistry();
+    const missing = expectation.present.filter(
+      (name) => !view.capabilities.some((c) => c.name === name && c.validity === "ok"),
+    );
+    const lingering = expectation.absent.filter((name) =>
+      view.capabilities.some((c) => c.name === name),
+    );
+    if (missing.length === 0 && lingering.length === 0) return { ok: true };
+    const parts: string[] = [];
+    if (missing.length > 0) parts.push(`not resolvable after the write: ${missing.join(", ")}`);
+    if (lingering.length > 0) parts.push(`still registered after removal: ${lingering.join(", ")}`);
+    return { ok: false, diagnostic: parts.join("; ") };
   }
 
   /**

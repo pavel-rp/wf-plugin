@@ -8,16 +8,20 @@
 
 import {
   closeSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
   readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   rmdirSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,7 +49,12 @@ import type {
   RecoveryPorts,
   WriteOutcome,
 } from "./resolver/lifecycle-recovery.js";
-import type { JournalEntry } from "./resolver/types.js";
+import type {
+  ApplyPorts,
+  SelfCheckExpectation,
+  SelfCheckOutcome,
+} from "./resolver/apply-transaction.js";
+import type { JournalEntry, TransactionJournal } from "./resolver/types.js";
 import type { ResolverServicePorts, PluginListResult } from "./service.js";
 
 const DEFAULT_REGISTRY_RELPATH = "_local/config.md";
@@ -293,6 +302,8 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     resolveRegistryWritePath: (registryRelPath) =>
       resolveContainedRegistryWritePath(workspaceRoot, registryRelPath),
     recovery: createRecoveryPorts(workspaceRoot),
+    createApply: (registryRel, refreshAndSelfCheck) =>
+      createApplyPorts(workspaceRoot, registryRel, refreshAndSelfCheck),
   };
 }
 
@@ -506,17 +517,264 @@ export function createRecoveryPorts(workspaceRoot: string): RecoveryPorts {
       } catch {
         /* a journal that survives is re-read (and re-converges) next run */
       }
-      // Best-effort tidy: succeeds only when the backup root is now empty, so a
-      // concurrent-free run leaves no residue and a shared root is left alone.
-      // `rmdirSync` is the deliberate primitive — it removes an EMPTY directory
-      // and fails on a populated one, which is exactly the semantics wanted here.
+      // Best-effort tidy, bounded at the backup root. `rmdirSync` is the
+      // deliberate primitive — it removes an EMPTY directory and fails on a
+      // populated one, which is exactly the semantics wanted here.
       // `rmSync(dir, { recursive: false })` would be a no-op dressed as a tidy:
       // it throws `EISDIR` on any directory, so the branch could never succeed.
-      try {
-        rmdirSync(joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR));
-      } catch {
-        /* non-empty or absent — both fine */
-      }
+      //
+      // WF-453: the tidy now prunes the emptied ANCESTORS of each discarded
+      // backup, not just the root. WF-453 is the first item that creates a backup
+      // path at all, and it creates a NESTED one
+      // (`<backup-root>/<transactionId>/<n>`) so two transactions can never
+      // collide on one file. Pruning only the root left that subdirectory behind
+      // after an otherwise complete recovery — an incomplete best-effort tidy
+      // leaving directory residue. Every removal is still `rmdirSync`, so a
+      // directory another transaction still occupies is left strictly alone.
+      pruneEmptyBackupDirs(
+        workspaceRoot,
+        entries
+          .map((entry) => entry.backupPath)
+          .filter((path): path is string => path !== null),
+      );
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Apply-transaction ports (WF-453)
+// ---------------------------------------------------------------------------
+//
+// The production side of the FIRST PUBLIC MUTATOR. Containment is not
+// re-implemented here either: every path — the destination, the backup, and the
+// sibling temp file — is measured through `resolveContainedPayloadTarget`
+// (WF-448), which canonicalizes before deciding and never creates the path it
+// tests. Nothing is resolved against `process.cwd()`: every path is composed from
+// the ADMITTED workspace root (WF-445), which is what makes the mutator correct
+// against a non-cwd admitted workspace.
+
+/**
+ * Build the production apply ports for one ADMITTED workspace root and one
+ * registry destination.
+ *
+ * `refreshAndSelfCheck` is injected rather than reached for: the snapshot rebuild
+ * and the registry self-check belong to the service, and wiring them in here
+ * would make this module depend on the thing that depends on it.
+ */
+export function createApplyPorts(
+  workspaceRoot: string,
+  registryRelPath: string,
+  refreshAndSelfCheck: (expectation: SelfCheckExpectation) => SelfCheckOutcome,
+): ApplyPorts {
+  const journalPath = joinSlash(workspaceRoot, LIFECYCLE_JOURNAL_PATH);
+  const backupRoot = joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR);
+  const recoveryPorts = createRecoveryPorts(workspaceRoot);
+
+  /** Resolve one workspace-relative path to a canonical contained target. */
+  const contained = (relPath: string): string | null => {
+    const resolved = resolveContainedPayloadTarget(workspaceRoot, relPath);
+    return resolved.ok ? resolved.canonicalTarget : null;
+  };
+
+  /** Write `bytes` to `absPath` atomically: a create-exclusive sibling temp file,
+   *  durably flushed with `fsync`, then renamed over the target.
+   *
+   *  `rename` is what makes the destination never observable in a third state —
+   *  it holds either the prior bytes or the complete new bytes, which is exactly
+   *  the property the pre-recorded `lastWritten` identity depends on. `wx` is
+   *  what stops the temp file itself being a symlink an attacker planted. */
+  const atomicWrite = (absPath: string, bytes: Buffer): WriteOutcome => {
+    const dir = dirname(absPath);
+    const temp = joinSlash(
+      normalizeSlashes(dir),
+      `.${basename(absPath)}.wf-apply-${randomBytes(8).toString("hex")}.tmp`,
+    );
+    let fd: number | null = null;
+    try {
+      mkdirSync(dir, { recursive: true });
+      fd = openSync(temp, "wx", 0o600);
+      writeSync(fd, bytes);
+      fsyncSync(fd);
+      closeSync(fd);
+      fd = null;
+      renameSync(temp, absPath);
+      return { ok: true };
+    } catch (err) {
+      if (fd !== null) {
+        try {
+          closeSync(fd);
+        } catch {
+          /* the unlink below is what matters */
+        }
+      }
+      try {
+        rmSync(temp, { force: true });
+      } catch {
+        /* a stranded temp file is inert and named for this run */
+      }
+      return { ok: false, diagnostic: message(err) };
+    }
+  };
+
+  return {
+    destination: registryRelPath,
+
+    // Nested per transaction so two transactions can never collide on one backup
+    // file. That nesting is what made the WF-451 root-only tidy reachable, which
+    // is why `pruneEmptyBackupDirs` above now prunes ancestors.
+    backupPathFor: (transactionId: string): string =>
+      joinSlash(LIFECYCLE_BACKUP_DIR, transactionId, "registry"),
+
+    newTransactionId: (): string => randomBytes(16).toString("hex"),
+    now: (): string => new Date().toISOString(),
+
+    journalPresent: (): boolean => {
+      try {
+        lstatSync(journalPath);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
+    backupsPresent: (): boolean => {
+      try {
+        return readdirSync(backupRoot).length > 0;
+      } catch {
+        return false;
+      }
+    },
+
+    // Delegated to the recovery ports VERBATIM. One observation implementation,
+    // one containment decision, one no-follow rule — a second one here would be a
+    // divergent answer to a question that already has one.
+    observeDestination: (): DestinationObservation =>
+      recoveryPorts.observeDestination(registryRelPath),
+
+    destinationInode: (): number | null => {
+      try {
+        // The LITERAL path and `lstatSync`, so a terminal symlink is stat'd as
+        // the link itself and never followed.
+        return lstatSync(resolve(realpathSync(workspaceRoot), registryRelPath)).ino;
+      } catch {
+        return null;
+      }
+    },
+
+    identify: (content: string) => {
+      const bytes = Buffer.from(content, "utf8");
+      return { contentHash: sha256Bytes(bytes), bytes: bytes.byteLength };
+    },
+
+    writeJournal: (journal: TransactionJournal): WriteOutcome =>
+      atomicWrite(journalPath, Buffer.from(`${JSON.stringify(journal, null, 2)}\n`, "utf8")),
+
+    writeBackup: (backupPath: string): WriteOutcome => {
+      const source = contained(registryRelPath);
+      const target = contained(backupPath);
+      if (source === null || target === null) {
+        return {
+          ok: false,
+          diagnostic: `\`${registryRelPath}\` or its backup \`${backupPath}\` does not resolve to a workspace-contained target; nothing was backed up.`,
+        };
+      }
+      try {
+        return atomicWrite(target, readFileSync(source));
+      } catch (err) {
+        return {
+          ok: false,
+          diagnostic: `the prior bytes of \`${registryRelPath}\` could not be read: ${message(err)}`,
+        };
+      }
+    },
+
+    hashBackup: (backupPath: string): BackupIdentity => recoveryPorts.hashBackup(backupPath),
+
+    atomicReplace: (content: string): WriteOutcome => {
+      const target = contained(registryRelPath);
+      if (target === null) {
+        return {
+          ok: false,
+          diagnostic: `\`${registryRelPath}\` does not resolve to a workspace-contained target; nothing was written.`,
+        };
+      }
+      return atomicWrite(target, Buffer.from(content, "utf8"));
+    },
+
+    refreshAndSelfCheck,
+
+    // DURABLE COMPLETION — the JOURNAL FIRST. See the `apply-transaction.ts`
+    // header: at this call site the destination is at its NEW state, so a kill
+    // between "backups removed" and "journal removed" would leave a journal
+    // demanding a restore from a backup that no longer exists. Removing the
+    // journal first makes the transaction durably complete at that instant; the
+    // worst remaining outcome is an orphan backup, which the prune reclaims.
+    discardTransaction: (entries: readonly JournalEntry[]): void => {
+      try {
+        rmSync(journalPath, { force: true });
+      } catch {
+        /* a journal that survives is re-read (and re-converges) next run */
+      }
+      const backupPaths: string[] = [];
+      for (const entry of entries) {
+        if (entry.backupPath === null) continue;
+        backupPaths.push(entry.backupPath);
+        const target = contained(entry.backupPath);
+        if (target === null) continue;
+        try {
+          rmSync(target, { force: true });
+        } catch {
+          /* a stranded backup is inert; the prune below reclaims what it can */
+        }
+      }
+      pruneEmptyBackupDirs(workspaceRoot, backupPaths);
+    },
+
+    rollbackPorts: (): RecoveryPorts => recoveryPorts,
+  };
+}
+
+/**
+ * Remove every directory that a discarded backup emptied, walking up from each
+ * backup's own parent and stopping AT the backup root — never above it.
+ *
+ * Bounded three ways, because a directory prune that escapes is strictly worse
+ * than the residue it removes: it only ever calls `rmdirSync` (which fails on a
+ * populated directory), it only visits ancestors of a path the journal itself
+ * named, and it refuses any candidate that is not a proper descendant of — or
+ * exactly — the backup root.
+ */
+export function pruneEmptyBackupDirs(
+  workspaceRoot: string,
+  backupPaths: readonly string[],
+): void {
+  const root = joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR);
+  const rootPrefix = root.replace(/\/+$/, "");
+
+  const candidates = new Set<string>();
+  for (const backupPath of backupPaths) {
+    let current = normalizeSlashes(resolve(workspaceRoot, backupPath));
+    // Walk up from the backup file's parent to the root.
+    for (let guard = 0; guard < 64; guard++) {
+      const parent = normalizeSlashes(dirname(current));
+      if (parent === current) break;
+      current = parent;
+      if (current === rootPrefix) {
+        candidates.add(current);
+        break;
+      }
+      if (!current.startsWith(`${rootPrefix}/`)) break;
+      candidates.add(current);
+    }
+  }
+  candidates.add(rootPrefix);
+
+  // Deepest first, so a parent becomes empty only after its children are gone.
+  for (const dir of [...candidates].sort((left, right) => right.length - left.length)) {
+    try {
+      rmdirSync(dir);
+    } catch {
+      /* non-empty or absent — both fine, and both mean STOP for this branch */
+    }
+  }
 }

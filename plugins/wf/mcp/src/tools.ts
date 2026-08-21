@@ -21,10 +21,12 @@ import {
 } from "./resolver/plan-install.js";
 import { selectWorkspaceRoot } from "./workspace-admission.js";
 import { invalidRootRecoveryReport } from "./resolver/lifecycle-recovery.js";
-import type {
-  DiscoverPacksResponse,
-  PlanInstallResponse,
-  RoutingInputs,
+import {
+  APPLY_ENVELOPE_VERSION,
+  type ApplyInstallResponse,
+  type DiscoverPacksResponse,
+  type PlanInstallResponse,
+  type RoutingInputs,
 } from "./resolver/types.js";
 
 type ToolResult = {
@@ -163,6 +165,98 @@ type PlanInstallArgs = {
   deregister?: string[];
   answers?: Array<{ pluginId: string; questionId: string; value: unknown }>;
 };
+
+// --- apply_install (WF-453) -------------------------------------------------
+// The mutator's input is the planner's input plus ONE field: the `planId` the
+// caller approved. It is required and cannot be blank — an apply that accepted a
+// missing plan identity would be an apply with no approval, which is exactly the
+// thing the exact-plan gate exists to prevent.
+
+const applyInstallInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    expectedPlanId: {
+      type: "string",
+      minLength: 1,
+      maxLength: 128,
+      pattern: safeTerminalStringPattern,
+      description:
+        "The `identity.planId` from the `plan_install` response the caller approved. Revalidated under the exclusive lock against a plan recomputed from current facts; any mismatch is `apply/plan-stale` and nothing is written.",
+    },
+    desired: pluginIdListProperty(
+      "The SAME explicit desired selected set the approved plan was computed from, as plugin ids. A registered pack ABSENT from this list is retained, never removed.",
+    ),
+    deregister: pluginIdListProperty(
+      "The SAME explicit deregistration set the approved plan was computed from. The only removal path.",
+    ),
+    answers: {
+      type: "array",
+      maxItems: PLAN_MAX_ANSWERS,
+      items: {
+        type: "object",
+        properties: {
+          pluginId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+          questionId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+          value: {
+            description:
+              "The proposed answer, carried so the recomputed plan matches the approved one. Answer PERSISTENCE is out of scope for this release — an answer write in the plan makes the plan unsupported, never silently skipped.",
+          },
+        },
+        required: ["pluginId", "questionId", "value"],
+        additionalProperties: false,
+      },
+      description:
+        "The SAME proposed project answers the approved plan was computed from. Never persisted by this operation.",
+    },
+  },
+  required: ["expectedPlanId"],
+  additionalProperties: false,
+}));
+
+type ApplyInstallArgs = PlanInstallArgs & { expectedPlanId: string };
+
+/** The typed `invalid-root` apply envelope.
+ *
+ *  Composed at the tool boundary for the same reason the planner's is: an
+ *  inadmissible root must never reach a root-bound service, and the mutator's
+ *  root-bound ports are the ones that would take a lock and write bytes. Every
+ *  field states the same thing — nothing happened: no transaction, no write, no
+ *  recovery attempt, and explicitly no success. */
+function applyInstallEnvelopeForRejection(
+  source: string,
+  reason: string,
+  diagnostic: string,
+  args: ApplyInstallArgs,
+): ApplyInstallResponse {
+  return {
+    applyVersion: APPLY_ENVELOPE_VERSION,
+    workspaceRoot: null,
+    admission: { admitted: false, root: null, source, reason, diagnostic },
+    status: "invalid-root",
+    reason: "apply/invalid-root",
+    transactionId: null,
+    plan: {
+      planId: null,
+      expectedPlanId: args.expectedPlanId,
+      matched: false,
+      applicability: null,
+      mode: null,
+    },
+    applied: [],
+    deferred: [],
+    rollback: null,
+    selfCheck: "skipped",
+    refreshed: false,
+    recovery: invalidRootRecoveryReport(diagnostic),
+    residue: {
+      clean: true,
+      journalRetained: false,
+      backupsRetained: false,
+      detail: "no transaction was created.",
+    },
+    diagnostics: [{ code: "apply/invalid-root", message: diagnostic }],
+  };
+}
 
 function toPlanSelection(args: PlanInstallArgs): PlanSelectionInput {
   return {
@@ -794,6 +888,57 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
         return service.planInstall(
           { admitted: true, root: declared.root, source: declared.source, reason: null, diagnostic: null },
           toPlanSelection(args),
+        );
+      }),
+  );
+
+  // Deliberately NOT `RESIDENT`, for the same reason as `plan_install`: no skill
+  // body names it as a mandatory pre-step. It is also strictly downstream of
+  // `plan_install`, so a caller that can reach the planner can reach this.
+  server.registerTool(
+    "apply_install",
+    {
+      title: "apply install",
+      description:
+        "The SOLE public mutator for an EXACT registry-only plan (WF-453) — one guarded, crash-recoverable journaled transaction through refresh, snapshot, and self-check. Returns the versioned envelope `{applyVersion, workspaceRoot, admission, status, reason, transactionId, plan{planId,expectedPlanId,matched,applicability,mode}, applied[], deferred[], rollback, selfCheck, refreshed, recovery{...}, residue{clean,journalRetained,backupsRetained,detail}, diagnostics[]}`. `status` is one of `applied | rejected | rolled-back | halted | invalid-root`. RECOVERY-FIRST AND REPORTED SEPARATELY: before anything is decided it recovers an interrupted transaction through the SAME frozen protocol `discover_packs` and `plan_install` use, and carries that outcome in `recovery`, never folded into `status`; when `recovery.proceeded` is `false` it HALTS with `apply/halted-unrecovered` and mutates nothing. EXACT PLAN ONLY: it takes the exclusive machine-local lock, recomputes the plan UNDER that lock, and requires `identity.planId` to equal the supplied `expectedPlanId` — a mismatch is `apply/plan-stale`, an applicability other than `applicable` is `apply/plan-not-applicable`, and neither writes. REGISTRY-ONLY, FAILING LOUDLY AND EARLY: the supported action set is exactly `registry-add` and `registry-deregister`; `constitution-recompose` is reported in `deferred[]` with its `/wf:constitution` follow-up, and ANY other mutating action — an answer write, an evidence seed or repair, a payload or project-override write, an artifact removal, bootstrap or upgrade — is `apply/unsupported-action` BEFORE a journal exists. Every rejection above, plus a stale identity-bound precondition, a destination that is a symlink or does not resolve inside the admitted workspace, and a journal already present, is decided BEFORE journal creation and BEFORE any mutation, so nothing can be left half-undone. CONCURRENT LIFECYCLE ENTRY IS REFUSED: a lock already held is `apply/lock-held`, and with no lock primitive available it refuses with `apply/lock-unavailable` rather than mutating unserialized. THE TRANSACTION IS CRASH-RECOVERABLE AT EVERY STAGE: the journal (recording the prior existence, type, inode, hash and the exact bytes this transaction will write) is created and durable BEFORE the backup and BEFORE the destination is touched, the backup is verified against the recorded prior hash, the destination's type/inode/hash are RE-CHECKED without following links immediately before the write, the replacement is a create-exclusive fsynced sibling temp file renamed into place, and completion removes the journal BEFORE the backups. An ordinary failure or a process kill at ANY stage therefore restores the exact prior state idempotently — the same restore runs on a second entry and converges. A FAILED SELF-CHECK IS TRANSACTION FAILURE, NOT A WARNING: after the write it refreshes and re-resolves the registry, asserting BOTH that every added capability resolves `ok` and that every deregistered one is gone; failure rolls back and reports `apply/self-check-failed`. NO SUCCESS IS CLAIMED WHEN ANYTHING IS UNRESOLVED: rollback runs through the frozen recovery decision — an external edit or a symlink swap is PRESERVED, an unaffected artifact is restored, an unverifiable one is left explicitly UNRESOLVED — and an incomplete rollback overrides the reported reason with `apply/rollback-incomplete`, retains the journal and backups, and reports `residue.clean:false`. `applied[]` is non-empty ONLY for `status: applied`, where the change is durable and the residue is clean. Works against a non-cwd admitted workspace. Out of scope, and never written by this operation: answers, profiles, `.wf/` overrides, the constitution, payloads, artifact removals, bootstrap, upgrades, and repair.",
+      inputSchema: applyInstallInput,
+    },
+    async (args: WorkspaceArgs & ApplyInstallArgs) =>
+      guard(() => {
+        // Same ONE canonical admission API and the same typed-envelope-not-error
+        // contract as the planner. Admitting BEFORE a root-bound service exists is
+        // load-bearing here rather than hygienic: this operation's ports take a
+        // lock and write bytes, and neither must ever be attempted against a root
+        // that was never admitted.
+        const declared = selectWorkspaceRoot(
+          { explicit: args.workspaceRoot, cwd: args.workspaceRoot },
+          null,
+        );
+        if (!declared.ok) {
+          return applyInstallEnvelopeForRejection(
+            declared.source,
+            declared.reason,
+            declared.diagnostic,
+            args,
+          );
+        }
+
+        let service: ResolverService;
+        try {
+          service = selectService(args.workspaceRoot);
+        } catch (err) {
+          return applyInstallEnvelopeForRejection(
+            declared.source,
+            "out-of-family",
+            terminalSafeDiagnostic(err),
+            args,
+          );
+        }
+
+        return service.applyInstall(
+          { admitted: true, root: declared.root, source: declared.source, reason: null, diagnostic: null },
+          toPlanSelection(args),
+          args.expectedPlanId,
         );
       }),
   );
