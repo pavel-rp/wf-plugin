@@ -107,6 +107,17 @@ import {
   type PlanCapabilityInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
+import {
+  decideApplyGate,
+  renderRegistryMutation,
+  type ApplyRegistryFact,
+} from "./resolver/apply-install.js";
+import {
+  applyTransaction,
+  type ApplyPorts,
+  type SelfCheckExpectation,
+  type SelfCheckOutcome,
+} from "./resolver/apply-transaction.js";
 import type {
   PayloadTargetResolution,
   PlanPayloadFact,
@@ -129,6 +140,11 @@ import {
   type PayloadDiagnostic,
   type PlanAdmissionState,
   type PlanInstallResponse,
+  APPLY_ENVELOPE_VERSION,
+  type ApplyAppliedAction,
+  type ApplyInstallResponse,
+  type ApplyReason,
+  type ApplyResidueReport,
   type PortablePackEvidence,
   type QuestionDiagnostic,
   type RecoveryReport,
@@ -230,6 +246,18 @@ export interface ResolverServicePorts {
    *  `no-journal` — which is byte-inert and non-blocking, exactly the pre-WF-451
    *  behaviour. */
   recovery?: RecoveryPorts;
+  /** The journaled-transaction effects for the FIRST PUBLIC MUTATOR (WF-453).
+   *
+   *  A FACTORY rather than a ready-made port set, because two of the transaction's
+   *  inputs are service-level facts: the resolved registry destination, and the
+   *  refresh + self-check that only the service can perform. OPTIONAL so every
+   *  existing in-memory port double stays valid; when absent, `apply_install`
+   *  refuses with `apply/registry-unresolvable` rather than mutating through a
+   *  guessed path — the fail-safe direction for a mutator. */
+  createApply?(
+    registryRelPath: string,
+    refreshAndSelfCheck: (expectation: SelfCheckExpectation) => SelfCheckOutcome,
+  ): ApplyPorts;
   /** Production-only containment boundary for the registry write. Test doubles
    *  may omit it and use the shape-validated workspace-relative join. */
   resolveRegistryWritePath?(registryRelPath: string): string;
@@ -1537,19 +1565,45 @@ export class ResolverService {
       ? recoverInterruptedTransaction(this.ports.recovery)
       : noRecoveryReport();
 
+    return this.planFrom(admission, selection, recovery).plan;
+  }
+
+  /**
+   * The plan join over an ALREADY-PERFORMED recovery.
+   *
+   * Split out of `planInstall` for WF-453: the mutator must recover once, then
+   * hold the exclusive lock across BOTH the revalidation and the transaction. If
+   * it re-entered `planInstall` it would recover a second time — and, worse,
+   * `recoverInterruptedTransaction` would find the lock it is itself holding and
+   * refuse as `held-by-other`. Threading the finished report through is the same
+   * technique `planInstall` already uses for `discoverPacksWithInspection`.
+   *
+   * Returns the per-pack inspections alongside the plan, because the mutator
+   * needs each addition's install root and capability paths to render the
+   * registry rows and re-inspecting would re-run the CLI and let the inventory
+   * shift mid-transaction.
+   */
+  private planFrom(
+    admission: PlanAdmissionState,
+    selection: PlanSelectionInput,
+    recovery: RecoveryReport,
+  ): { plan: PlanInstallResponse; inspected: Map<string, InspectPackResponse> } {
     if (!recovery.proceeded) {
       // The fail-safe stop. Nothing below this line runs, so no lifecycle state
       // is read at all. The pure join composes the halted envelope from the same
       // gate, so the property holds whether a caller enters through this service
       // or drives the join directly.
-      return planInstallJoin({
-        admission,
-        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
-        packs: [],
-        capabilities: [],
-        selection,
-        recovery,
-      });
+      return {
+        plan: planInstallJoin({
+          admission,
+          inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+          packs: [],
+          capabilities: [],
+          selection,
+          recovery,
+        }),
+        inspected: new Map(),
+      };
     }
 
     const { response, inspected, snapshot, recordedArtifacts } =

@@ -1391,6 +1391,196 @@ export interface PlanInstallResponse {
   byteInert: true;
 }
 
+// ---------------------------------------------------------------------------
+// The public apply envelope (WF-453)
+// ---------------------------------------------------------------------------
+//
+// THE FIRST PUBLIC MUTATOR. `apply_install` is the SOLE public registry mutator
+// and it applies EXACT REGISTRY-ONLY plans only. It extends the WF-447 lineage
+// rather than opening a second response family: it consumes the frozen
+// `PlanInstallResponse` and the frozen WF-451 recovery protocol unchanged, and
+// adds only the shapes below.
+//
+// THREE RULES ARE CORRECTNESS, NOT PREFERENCE:
+//
+//   1. EVERY PRE-JOURNAL REFUSAL HAPPENS BEFORE A JOURNAL, A BACKUP, OR A BYTE.
+//      An unsupported action kind and a stale identity-bound precondition are
+//      both screened from the RECOMPUTED plan, so a plan whose world moved under
+//      it is refused rather than half-applied.
+//
+//   2. FAILED SELF-CHECK IS TRANSACTION FAILURE. There is no "succeeded but the
+//      self-check complained" status — a failed self-check rolls the transaction
+//      back and reports `rolled-back`.
+//
+//   3. WHEN ANYTHING IS UNRESOLVED, NO SUCCESS IS CLAIMED. `status: "applied"`
+//      requires every supported action applied AND a passing self-check AND a
+//      durably discarded journal. Anything else is `rejected`, `rolled-back`, or
+//      `halted`, each carrying exactly one closed reason token.
+
+/** Frozen version of the public apply envelope. */
+export const APPLY_ENVELOPE_VERSION = 1;
+
+/** The outcome of one apply run. A closed set — a reader may switch on it
+ *  exhaustively.
+ *
+ *  - `applied`      — every supported action landed, the self-check passed, and
+ *                     the journal was durably discarded.
+ *  - `rejected`     — refused BEFORE journal creation. Byte-inert from the
+ *                     recovered baseline: no journal, no backup, no mutation.
+ *  - `rolled-back`  — a journal existed and the transaction failed; the guarded
+ *                     rollback ran. `rollback` reports how far it got.
+ *  - `halted`       — pre-entry recovery did not proceed, so nothing was read
+ *                     and nothing was attempted (the WF-452 posture).
+ *  - `invalid-root` — the declared workspace root was not admitted (WF-445).
+ *                     Its own token rather than `rejected`, for the same reason
+ *                     `unrecovered` is its own applicability: `rejected` asserts
+ *                     something about the PLAN, which was never computed here. */
+export type ApplyStatus =
+  | "applied"
+  | "rejected"
+  | "rolled-back"
+  | "halted"
+  | "invalid-root";
+
+/** The CLOSED reason vocabulary. Exactly one token explains every non-`applied`
+ *  outcome, and the token is the PRECISE class — never a plausible neighbouring
+ *  one. */
+export type ApplyReason =
+  // --- refused before journal creation ---
+  | "apply/invalid-root"
+  | "apply/halted-unrecovered"
+  | "apply/lock-held"
+  | "apply/lock-unavailable"
+  | "apply/plan-stale"
+  | "apply/plan-not-applicable"
+  | "apply/unsupported-action"
+  | "apply/registry-unresolvable"
+  | "apply/journal-present"
+  /** The destination IS a symbolic link. Its own token rather than
+   *  `precondition-moved`: nothing moved, the destination simply is not a thing
+   *  this mutator may write through. Recovery never follows, replaces, or removes
+   *  a link, so a transaction over one could never be rolled back either. */
+  | "apply/destination-symlink"
+  // --- failed after journal creation; each rolls back ---
+  /** The destination's type, inode, or content hash changed between the
+   *  observation the journal recorded and the write — the TOCTOU window. */
+  | "apply/precondition-moved"
+  /** The prior bytes could not be backed up, or the backup did not reproduce
+   *  them. Distinct from `write-failed`: nothing was written to the destination
+   *  at all, and reporting it as a failed write would send a maintainer looking
+   *  at a file that was never touched. */
+  | "apply/backup-failed"
+  | "apply/write-failed"
+  | "apply/self-check-failed"
+  | "apply/rollback-incomplete";
+
+/** One action this run actually applied. Mirrors the plan action it came from,
+ *  with `persisted` flipped to the literal `true` — the inverse of the plan
+ *  envelope, where it is the literal `false`. */
+export interface ApplyAppliedAction {
+  kind: PlanActionKind;
+  order: number;
+  pluginId: string | null;
+  destination: string | null;
+  summary: string;
+  persisted: true;
+}
+
+/** Why a mutating action the plan carries was NOT applied by this mutator.
+ *
+ *  Today there is exactly one member, and it is deliberate rather than a gap:
+ *  `constitution-recompose` is DERIVED by the planner whenever the registered
+ *  capability set changes, so every registry-only plan carries one. The resolver
+ *  has never composed the constitution — `/wf:constitution` does — and the
+ *  constitution is explicitly Out of scope for this item. Rejecting on it would
+ *  make NO registry plan ever appliable; silently dropping it would be the
+ *  half-applied success this item exists to prevent. Naming it is the third
+ *  option, and the only honest one. */
+export type ApplyDeferredReason = "out-of-scope-constitution";
+
+/** One mutating action the plan carries that this mutator's scope does not
+ *  perform, reported explicitly with the follow-up that does perform it. */
+export interface ApplyDeferredAction {
+  kind: PlanActionKind;
+  order: number;
+  destination: string | null;
+  reason: ApplyDeferredReason;
+  /** The named follow-up. Never a body, never a command this mutator runs. */
+  followUp: string;
+  detail: string;
+}
+
+/** How far the guarded rollback got. Produced by running WF-451's recovery
+ *  driver over this transaction's own journal, so the dispositions are that
+ *  protocol's, unchanged. */
+export interface ApplyRollbackReport {
+  /** `true` only when every entry resolved and the journal was discarded. */
+  complete: boolean;
+  restored: RecoveryEntryOutcome[];
+  alreadyRestored: RecoveryEntryOutcome[];
+  preserved: RecoveryEntryOutcome[];
+  unresolved: RecoveryEntryOutcome[];
+}
+
+/** What this run left behind. `clean` is the explicit statement that the
+ *  transaction left no journal, no backup, and no empty backup directory — the
+ *  "no recovery residue" criterion stated as an observable field rather than a
+ *  promise in prose. */
+export interface ApplyResidueReport {
+  clean: boolean;
+  journalRetained: boolean;
+  backupsRetained: boolean;
+  detail: string;
+}
+
+/** The recomputed plan this run revalidated against, echoed so a caller can see
+ *  exactly which plan was applied without re-planning. */
+export interface ApplyPlanEcho {
+  /** The freshly recomputed identity. */
+  planId: string | null;
+  /** What the caller approved. */
+  expectedPlanId: string;
+  /** `true` only when the two are equal. `false` is `apply/plan-stale`. */
+  matched: boolean;
+  applicability: PlanApplicability | null;
+  mode: PlanMode | null;
+}
+
+/** The `apply_install` response.
+ *
+ *  NOT byte-inert — this is the first thing in the runtime whose PURPOSE is to
+ *  change committed state. The envelope therefore says precisely what changed
+ *  (`applied`), what it deliberately did not change (`deferred`), what it undid
+ *  (`rollback`), and what it left behind (`residue`), and it reports pre-entry
+ *  recovery through the same SEPARATE channel the planners use. */
+export interface ApplyInstallResponse {
+  applyVersion: number;
+  workspaceRoot: string | null;
+  admission: PlanAdmissionState;
+  status: ApplyStatus;
+  /** Exactly one closed token, or `null` on `applied`. */
+  reason: ApplyReason | null;
+  /** The transaction id, or `null` when no journal was ever created. Its
+   *  presence is the observable boundary between "refused before a journal" and
+   *  "a transaction existed". */
+  transactionId: string | null;
+  plan: ApplyPlanEcho;
+  applied: ApplyAppliedAction[];
+  deferred: ApplyDeferredAction[];
+  /** `null` when no rollback ran (either nothing was journalled, or the run
+   *  succeeded). */
+  rollback: ApplyRollbackReport | null;
+  /** `skipped` when the transaction never reached the self-check stage. */
+  selfCheck: "ok" | "failed" | "skipped";
+  /** Whether the snapshot was rebuilt and persisted this run. */
+  refreshed: boolean;
+  /** Pre-entry crash recovery, reported SEPARATELY from the apply above and
+   *  never folded into it — the same discipline WF-452 gave the planners. */
+  recovery: RecoveryReport;
+  residue: ApplyResidueReport;
+  diagnostics: DiscoveryIssue[];
+}
+
 /** The fixed taxonomy of resolver-failure categories (WF-272). A broken
  *  resolver state is one of these typed, diagnosable categories — never an
  *  opaque throw. Each maps a diagnostic/throw to a surface-specific reaction and
