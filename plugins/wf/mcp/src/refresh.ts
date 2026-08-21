@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveWorkspaceIdentity } from "./git-workspace.js";
+import { selectWorkspaceRoot, type AdmittedWorkspaceRoot } from "./workspace-admission.js";
 import {
   CONSTITUTION_RELPATH,
   RESOLVER_GENERATOR,
@@ -31,9 +31,21 @@ import {
   type StaleReason,
 } from "./resolver/index.js";
 
-function workspaceRoot(): string {
-  const configured = process.env.WF_WORKSPACE_ROOT || process.cwd();
-  return resolveWorkspaceIdentity(resolve(configured)).root;
+/** Select and admit this run's workspace root through the one resolver-owned
+ *  API (WF-445). Pre-MCP there is no prior launch identity, so the admitted
+ *  candidate IS the launch (`launch: null`) — canonicalize and identify, no
+ *  family constraint. `??` rather than `||` is the whole point: `||` cannot
+ *  tell an UNSET `WF_WORKSPACE_ROOT` (absent — fall through to cwd) from one
+ *  set to the empty string (a blank DECLARATION — terminal, never cwd). */
+function admittedRoot(): AdmittedWorkspaceRoot {
+  return selectWorkspaceRoot(
+    {
+      explicit: null,
+      environment: process.env.WF_WORKSPACE_ROOT ?? null,
+      cwd: process.cwd(),
+    },
+    null,
+  );
 }
 
 /** Resolve the core `wf` plugin root — the anchor for locating a core skill's
@@ -134,13 +146,26 @@ function refreshIfStale(root: string): void {
 }
 
 try {
-  const root = workspaceRoot();
-  refreshIfStale(root);
-  // Emit the constitution AFTER the freshness pass, in its own try so a
-  // composition/read hiccup never undoes the refresh or blocks the session — the
-  // outer catch below preserves the always-exit-0 invariant (no payload that run,
-  // and the query-time backstop still refreshes on the next typed query).
-  emitConstitution(root);
+  const admitted = admittedRoot();
+  if (!admitted.ok) {
+    // A DECLARED but unadmissible root is TERMINAL (WF-445): this run does no
+    // work at all — no freshness pass, no snapshot rebuild, no constitution
+    // payload, and nothing on stdout (stdout is the hook's JSON channel). It is
+    // REPORTED on stderr rather than silently degrading to the current working
+    // directory, which is the containment defect this replaced. Falling through
+    // to the shared `process.exit(0)` below keeps the always-exit-0 invariant:
+    // terminal for the refresh, never a blocked session.
+    log(
+      `no work — ${admitted.source} workspace root rejected (${admitted.reason}): ${admitted.diagnostic}`,
+    );
+  } else {
+    refreshIfStale(admitted.root);
+    // Emit the constitution AFTER the freshness pass, in its own try so a
+    // composition/read hiccup never undoes the refresh or blocks the session — the
+    // outer catch below preserves the always-exit-0 invariant (no payload that run,
+    // and the query-time backstop still refreshes on the next typed query).
+    emitConstitution(admitted.root);
+  }
 } catch (err) {
   // Never block a session on a resolver failure; the query-time backstop will
   // still validate + refresh on the next typed query.
