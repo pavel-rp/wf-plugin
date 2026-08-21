@@ -15,7 +15,12 @@
 import { McpServer, fromJsonSchema } from "@modelcontextprotocol/server";
 import type { ResolverService } from "./service.js";
 import type { ContentRef } from "./resolver/content.js";
-import type { RoutingInputs } from "./resolver/types.js";
+import {
+  planInstall as planInstallJoin,
+  type PlanSelectionInput,
+} from "./resolver/plan-install.js";
+import { selectWorkspaceRoot } from "./workspace-admission.js";
+import type { PlanInstallResponse, RoutingInputs } from "./resolver/types.js";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -98,6 +103,90 @@ const surfaceInput = fromJsonSchema(withWorkspaceRoot({
   required: ["surface"],
   additionalProperties: false,
 }));
+
+// --- plan_install (WF-447) -------------------------------------------------
+// The selection unit is the PACK (`pluginId`), matching `discover_packs` and
+// `register_pack(pluginId, …)`. `deregister` is a SEPARATE explicit input on
+// purpose: it is what makes "omission never removes" a property of the interface
+// rather than a convention the implementation must remember.
+
+const PLAN_MAX_SELECTION = 256;
+const PLAN_MAX_ANSWERS = 512;
+
+const pluginIdListProperty = (description: string) => ({
+  type: "array",
+  maxItems: PLAN_MAX_SELECTION,
+  uniqueItems: true,
+  items: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+  description,
+});
+
+const planInstallInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    desired: pluginIdListProperty(
+      "The explicit desired selected set, as plugin ids. A registered pack ABSENT from this list is retained, never removed.",
+    ),
+    deregister: pluginIdListProperty(
+      "The explicit deregistration set, as plugin ids. The only removal path — omission from `desired` never implies removal, so an orphaned or disabled registration cannot become an implicit removal.",
+    ),
+    answers: {
+      type: "array",
+      maxItems: PLAN_MAX_ANSWERS,
+      items: {
+        type: "object",
+        properties: {
+          pluginId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+          questionId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+          value: {
+            description:
+              "The proposed answer, validated against the question's declared schema. Not persisted evidence — a valid value is reported as a PENDING write.",
+          },
+        },
+        required: ["pluginId", "questionId", "value"],
+        additionalProperties: false,
+      },
+      description:
+        "Proposed project answers. Validated through the same declared-schema path a persisted value takes; never written.",
+    },
+  },
+  additionalProperties: false,
+}));
+
+type PlanInstallArgs = {
+  desired?: string[];
+  deregister?: string[];
+  answers?: Array<{ pluginId: string; questionId: string; value: unknown }>;
+};
+
+function toPlanSelection(args: PlanInstallArgs): PlanSelectionInput {
+  return {
+    desired: args.desired ?? [],
+    deregister: args.deregister ?? [],
+    answers: (args.answers ?? []).map((answer) => ({
+      pluginId: answer.pluginId,
+      questionId: answer.questionId,
+      value: answer.value,
+    })),
+  };
+}
+
+/** The typed `invalid-root` envelope. Composed here rather than in the service
+ *  because an inadmissible root must never reach a root-bound service at all. */
+function planInstallEnvelopeForRejection(
+  source: string,
+  reason: string,
+  diagnostic: string,
+  args: PlanInstallArgs,
+): PlanInstallResponse {
+  return planInstallJoin({
+    admission: { admitted: false, root: null, source, reason, diagnostic },
+    inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+    packs: [],
+    capabilities: [],
+    selection: toPlanSelection(args),
+  });
+}
 
 const surfaceClassInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
@@ -586,6 +675,61 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       inputSchema: workspaceOnlyInput,
     },
     async (args: WorkspaceArgs) => selected(args, (service) => service.discoverPacks()),
+  );
+
+  // Deliberately NOT `RESIDENT`, for the same reason as `discover_packs`: no
+  // skill body names `plan_install` as a mandatory pre-step, so it defers behind
+  // the host's tool-search surface and costs no schema tokens elsewhere.
+  server.registerTool(
+    "plan_install",
+    {
+      title: "plan install",
+      description:
+        "Read-only, byte-inert preview of one explicit selected set (WF-447) — the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], findings[], inventory, byteInert}`. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` → `not-applicable` (a structural error finding) → `blocked` (a missing or invalid project answer) → `no-change` → `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal — deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof — otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
+      inputSchema: planInstallInput,
+    },
+    async (args: WorkspaceArgs & PlanInstallArgs) =>
+      guard(() => {
+        // The admitted root binds to WF-445's ONE canonical selection API, so an
+        // inadmissible root returns the typed `invalid-root` ENVELOPE rather than
+        // an MCP error — the criterion is that invalid-root behaviour is explicit
+        // and byte-inert, and an error channel is neither.
+        //
+        // `selectWorkspaceRoot(..., null)` classifies the declaration itself
+        // (blank / non-absolute / missing / not-a-directory) and canonicalizes it;
+        // the worktree-FAMILY constraint stays where it already lives, in
+        // `selectService`, whose throw maps to the same closed `out-of-family`
+        // token rather than being re-implemented here.
+        const declared = selectWorkspaceRoot(
+          { explicit: args.workspaceRoot, cwd: args.workspaceRoot },
+          null,
+        );
+        if (!declared.ok) {
+          return planInstallEnvelopeForRejection(
+            declared.source,
+            declared.reason,
+            declared.diagnostic,
+            args,
+          );
+        }
+
+        let service: ResolverService;
+        try {
+          service = selectService(args.workspaceRoot);
+        } catch (err) {
+          return planInstallEnvelopeForRejection(
+            declared.source,
+            "out-of-family",
+            terminalSafeDiagnostic(err),
+            args,
+          );
+        }
+
+        return service.planInstall(
+          { admitted: true, root: declared.root, source: declared.source, reason: null, diagnostic: null },
+          toPlanSelection(args),
+        );
+      }),
   );
 
   server.registerTool(

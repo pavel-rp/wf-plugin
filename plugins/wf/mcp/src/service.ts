@@ -94,6 +94,11 @@ import {
   parseEvidenceLedger,
   type EvidenceLedger,
 } from "./resolver/discover-packs.js";
+import {
+  planInstall as planInstallJoin,
+  type PlanCapabilityInput,
+  type PlanSelectionInput,
+} from "./resolver/plan-install.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type {
   InstalledPlugin,
@@ -109,6 +114,8 @@ import {
   type PathHashRecord,
   type PayloadDeclaration,
   type PayloadDiagnostic,
+  type PlanAdmissionState,
+  type PlanInstallResponse,
   type PortablePackEvidence,
   type QuestionDiagnostic,
   type ResolverErrorCategory,
@@ -1321,6 +1328,26 @@ export class ResolverService {
    * that value IS the admitted root; discovery never re-derives one.
    */
   discoverPacks(): DiscoverPacksResponse {
+    return this.discoverPacksWithInspection().response;
+  }
+
+  /**
+   * The discovery join PLUS the per-pack inspection results it already computed.
+   *
+   * `discoverPacks()` deliberately returns only the body-free response, but the
+   * planner (WF-447) needs one more fact discovery does not surface: the resolved
+   * `manifestPath` of a pack that is installed but NOT yet registered, so its
+   * `requires` / `conflicts` / provider scopes can join the post-plan capability
+   * set. Re-inspecting through `inspectPack()` would re-run the `claude` CLI once
+   * per pack and let the inventory shift mid-run — the exact cost
+   * `inspectListedPack` was split out to avoid — so the inspections are handed
+   * back from the single run instead.
+   */
+  private discoverPacksWithInspection(): {
+    response: DiscoverPacksResponse;
+    inspected: Map<string, InspectPackResponse>;
+    snapshot: ResolverSnapshot;
+  } {
     const snapshot = this.ensure();
     const workspaceRoot = this.ports.workspaceRoot;
 
@@ -1341,12 +1368,14 @@ export class ResolverService {
     const byId = new Map(listing.plugins.map((plugin) => [plugin.id, plugin]));
     const byName = new Map(listing.plugins.map((plugin) => [plugin.name, plugin]));
 
+    const inspectedByPluginId = new Map<string, InspectPackResponse>();
     const packs = snapshot.packs.map((record) => {
       const listed = byId.get(record.pluginId) ?? byName.get(record.pluginName) ?? null;
       // A registered pack the inventory does not list cannot be inspected, so it
       // carries no observed evidence and no questions — which is precisely what
       // makes its comparison `evidence-missing` rather than a false `equal`.
       const inspected = listed === null ? null : this.inspectListedPack(listed);
+      if (inspected !== null) inspectedByPluginId.set(record.pluginId, inspected);
       return {
         record,
         expectedPortable: recordedPortable.get(record.pluginId) ?? null,
@@ -1361,15 +1390,110 @@ export class ResolverService {
       };
     });
 
-    return joinDiscoveredPacks({
-      workspaceRoot,
-      inventory: {
-        ok: listing.ok,
-        contractOk: listing.contractOk,
-        issues: listing.issues,
-        plugins: listing.plugins,
-      },
-      packs,
+    return {
+      response: joinDiscoveredPacks({
+        workspaceRoot,
+        inventory: {
+          ok: listing.ok,
+          contractOk: listing.contractOk,
+          issues: listing.issues,
+          plugins: listing.plugins,
+        },
+        packs,
+      }),
+      inspected: inspectedByPluginId,
+      snapshot,
+    };
+  }
+
+  // --- WF-447: plan_install (read-only, byte-inert) -----------------------
+  /**
+   * Preview the effect of one explicit selected set.
+   *
+   * BYTE-INERT on every path. The inputs are the WF-446 discovery join (which is
+   * itself byte-inert), the already-resolved snapshot, and — for a pack that is
+   * installed but not yet registered — one `readFile` of its capability manifest
+   * so the post-plan capability set is complete. Nothing here writes a ledger, a
+   * seed, a project answer, an enablement flag, or any other byte, and the join
+   * that produces the response is a pure function with no write capability at all.
+   *
+   * `admission` is supplied by the caller so the typed `invalid-root` envelope is
+   * produced without this method ever being reached on an inadmissible root.
+   */
+  planInstall(
+    admission: PlanAdmissionState,
+    selection: PlanSelectionInput,
+  ): PlanInstallResponse {
+    if (!admission.admitted) {
+      return planInstallJoin({
+        admission,
+        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+        packs: [],
+        capabilities: [],
+        selection,
+      });
+    }
+
+    const { response, inspected, snapshot } = this.discoverPacksWithInspection();
+
+    // Which pack owns which registered capability. Derived from the snapshot's
+    // own attribution — never re-parsed from a registry row.
+    const ownerOfCapability = new Map<string, string>();
+    for (const pack of snapshot.packs) {
+      for (const name of pack.registeredCapabilities) ownerOfCapability.set(name, pack.pluginId);
+    }
+
+    const capabilities: PlanCapabilityInput[] = [];
+    const seenCapabilities = new Set<string>();
+
+    // Registered capabilities: the snapshot already carries requires/conflicts
+    // and the provider fragments' partition scopes.
+    for (const capability of snapshot.capabilities) {
+      const pluginId = ownerOfCapability.get(capability.name);
+      if (pluginId === undefined) continue;
+      seenCapabilities.add(capability.name);
+      capabilities.push({
+        pluginId,
+        name: capability.name,
+        requires: [...capability.requires],
+        conflicts: [...capability.conflicts],
+        providerScopes: capability.fragments
+          .filter((fragment) => fragment.contributionKind === "provider" && fragment.scope !== null)
+          .map((fragment) => fragment.scope as string),
+      });
+    }
+
+    // Not-yet-registered capabilities an addition would bring. Their metadata is
+    // not in the snapshot (the snapshot records the ACTIVE registry), so the one
+    // manifest read below is what makes a dependency, conflict, or provider
+    // overlap introduced BY the addition detectable at plan time rather than at
+    // apply time.
+    for (const pluginId of new Set(selection.desired)) {
+      const pack = response.packs.find((candidate) => candidate.pluginId === pluginId);
+      if (pack === undefined || pack.registeredCapabilities.length > 0) continue;
+      for (const summary of inspected.get(pluginId)?.capabilities ?? []) {
+        if (seenCapabilities.has(summary.name)) continue;
+        seenCapabilities.add(summary.name);
+        const raw = this.ports.readFile(summary.manifestPath);
+        const parsed = raw === null ? null : parseManifest(raw);
+        capabilities.push({
+          pluginId,
+          name: summary.name,
+          requires: parsed?.requires ?? [],
+          conflicts: parsed?.conflicts ?? [],
+          providerScopes: (parsed?.fragments ?? [])
+            .filter((fragment) => fragment.contributionKind === "provider" && fragment.scope !== null)
+            .map((fragment) => fragment.scope as string),
+        });
+      }
+    }
+
+    return planInstallJoin({
+      admission,
+      inventory: response.inventory,
+      packs: response.packs,
+      capabilities,
+      selection,
     });
   }
 
