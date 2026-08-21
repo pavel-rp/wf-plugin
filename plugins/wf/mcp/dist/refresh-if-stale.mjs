@@ -178,6 +178,13 @@ function selectWorkspaceRoot(declaration, launch) {
   ];
   for (const tier of tiers) {
     if (tier.value === null || tier.value === void 0) continue;
+    if (typeof tier.value !== "string") {
+      return failure(
+        tier.source,
+        "not-absolute",
+        `${label(tier.source)} is declared as a ${typeof tier.value}, not a string path; a declared workspace root is never replaced by a lower-precedence source.`
+      );
+    }
     if (tier.value.trim().length === 0) {
       return failure(
         tier.source,

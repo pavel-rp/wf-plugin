@@ -141,6 +141,36 @@ test("precedence: explicit beats environment, environment beats cwd, cwd only wh
   }
 });
 
+test("a non-string declaration from an untyped caller fails closed instead of throwing", () => {
+  const fixture = makeRepositoryFixture();
+  try {
+    const launch = resolveWorkspaceIdentity(fixture.main);
+
+    // Only reachable from plain JavaScript — TypeScript rejects these — but the
+    // boundary's whole contract is that it RETURNS a typed result and never throws.
+    for (const declared of [0, 1, {}, [], true, Symbol("root"), () => fixture.main]) {
+      const declaration = {
+        environment: declared,
+        cwd: fixture.main,
+      } as unknown as Parameters<typeof selectWorkspaceRoot>[0];
+
+      let result: ReturnType<typeof selectWorkspaceRoot>;
+      assert.doesNotThrow(() => {
+        result = selectWorkspaceRoot(declaration, launch);
+      });
+
+      // Terminal at the declaring tier — a declaration is never replaced by cwd,
+      // and the reason stays inside the frozen closed token set.
+      assert.equal(result!.ok, false);
+      assert.equal(result!.ok === false && result!.source, "environment");
+      assert.equal(result!.ok === false && result!.reason, "not-absolute");
+      assert.ok(result!.ok === false && result!.diagnostic.includes(typeof declared));
+    }
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("declaration-empty is terminal at its declaring tier and never falls through", () => {
   const fixture = makeRepositoryFixture();
   try {

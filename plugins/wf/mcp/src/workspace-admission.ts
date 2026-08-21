@@ -177,6 +177,19 @@ export function selectWorkspaceRoot(
     // ABSENT — not declared at all. Fall through to the next tier; never a failure.
     if (tier.value === null || tier.value === undefined) continue;
 
+    // DECLARED BUT NOT A STRING — only reachable from a plain-JavaScript caller,
+    // and it must not throw: a throw escaping here would defeat the typed-result
+    // contract every consumer binds to. It is a declaration, so it is terminal
+    // rather than absent, and it fails inside the CLOSED reason set (a non-string
+    // is not an absolute path) rather than widening the frozen token union.
+    if (typeof tier.value !== "string") {
+      return failure(
+        tier.source,
+        "not-absolute",
+        `${label(tier.source)} is declared as a ${typeof tier.value}, not a string path; a declared workspace root is never replaced by a lower-precedence source.`,
+      );
+    }
+
     // DECLARED BUT BLANK — invalid, and therefore terminal. Returning here (rather
     // than continuing) is what stops a blank declaration silently degrading to a
     // lower-precedence source.
