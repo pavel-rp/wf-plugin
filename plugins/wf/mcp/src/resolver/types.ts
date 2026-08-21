@@ -650,10 +650,21 @@ export const PLAN_ENVELOPE_VERSION = 1;
 
 /** Why a plan is or is not executable. FIRST MATCH WINS in this precedence:
  *
- *    `invalid-root` → `not-applicable` → `blocked` → `no-change` → `applicable`
+ *    `invalid-root` → `unrecovered` → `not-applicable` → `blocked` → `no-change`
+ *    → `applicable`
  *
  *  - `invalid-root`   — the declared workspace root was not admitted; nothing
  *                       was read and nothing was classified.
+ *  - `unrecovered`    — an interrupted transaction could not be fully recovered
+ *                       before entry (WF-452), so NO lifecycle state was read and
+ *                       no plan was generated. Deliberately its OWN token rather
+ *                       than `not-applicable`: that token asserts something about
+ *                       the SELECTION, which was never classified here, and
+ *                       `invalid-root` would assert something false about
+ *                       admission. Reporting a plausible neighbouring class
+ *                       instead of the precise one is exactly the failure the
+ *                       recovery report's closed reason vocabulary exists to
+ *                       prevent.
  *  - `not-applicable` — a structural error finding (unsatisfied dependency,
  *                       capability conflict, provider overlap, contradictory or
  *                       unknown selection, or incomplete legacy proof). The plan
@@ -662,12 +673,16 @@ export const PLAN_ENVELOPE_VERSION = 1;
  *                       required project answer is missing or invalid.
  *  - `no-change`      — the selection is already satisfied: nothing would be
  *                       added, deregistered, answered, or seeded.
- *  - `applicable`     — the delta is executable once a mutator exists. */
+ *  - `applicable`     — the delta is executable once a mutator exists.
+ *
+ *  `invalid-root` outranks `unrecovered` because admission fails BEFORE any
+ *  root-bound port — and therefore before any recovery port — exists. */
 export type PlanApplicability =
   | "applicable"
   | "no-change"
   | "blocked"
   | "not-applicable"
+  | "unrecovered"
   | "invalid-root";
 
 /** The admitted-root state, carrying WF-445's closed reason token verbatim on
@@ -808,7 +823,11 @@ export type PlanFindingCode =
   /** A source-changed artifact advances — current bytes match the prior hash. */
   | "plan/artifact-advance"
   /** A source-changed artifact was locally edited, so it stays divergent. */
-  | "plan/artifact-divergent";
+  | "plan/artifact-divergent"
+  /** An interrupted transaction could not be fully recovered before entry, so no
+   *  lifecycle state was read and no plan was generated (WF-452). Plan-level:
+   *  `pluginId` is `null`, because the halt precedes any per-pack classification. */
+  | "plan/halted-unrecovered";
 
 /** One planning finding. `pluginId` is `null` for a plan-level finding. */
 export interface PlanFinding {
@@ -1297,7 +1316,12 @@ export interface PlanIdentity {
  *  collection sorts on a stable key under `localeCompare`.
  *
  *  BYTE-INERT: `byteInert` is the literal `true`. Nothing on the planning path
- *  writes a ledger, a seed, an answer, an enablement change, or any other byte. */
+ *  writes a ledger, a seed, an answer, an enablement change, or any other byte.
+ *  Since WF-452 the run is preceded by guarded recovery, which CAN write — so
+ *  the guarantee is stated precisely: planning is byte-inert FROM THE RECOVERED
+ *  BASELINE, and the separate `recovery` envelope is where any such write is
+ *  reported. Planning still never creates a journal or a backup of its own; like
+ *  discovery it is lock-acquiring but journal-free. */
 export interface PlanInstallResponse {
   planVersion: number;
   /** The admitted root, or `null` when admission failed. */
@@ -1305,8 +1329,10 @@ export interface PlanInstallResponse {
   admission: PlanAdmissionState;
   applicability: PlanApplicability;
   /** The dominant lifecycle effect this plan describes (WF-450). `null` on the
-   *  `invalid-root` path and NOWHERE else: admission failed before anything was
-   *  read, so no lifecycle shape was observed and claiming one would be a lie. */
+   *  `invalid-root` and `unrecovered` paths and NOWHERE else — one rationale
+   *  covers both: nothing was read (admission failed, or recovery did not
+   *  proceed), so no lifecycle shape was observed and claiming one would be a
+   *  lie. */
   mode: PlanMode | null;
   registryDelta: PlanRegistryDelta;
   answers: { writes: PlanAnswerWrite[]; unresolved: PlanUnresolvedQuestion[] };
@@ -1342,8 +1368,26 @@ export interface PlanInstallResponse {
   identity: PlanIdentity;
   /** The inventory confidence this plan was computed against, carried verbatim
    *  from discovery so a reader never re-derives whether absence was
-   *  establishable. Zeroed on the `invalid-root` path (nothing was read). */
+   *  establishable. Zeroed on the `invalid-root` and `unrecovered` paths (nothing
+   *  was read). */
   inventory: DiscoveryInventory;
+  /** Crash recovery, reported SEPARATELY from the plan above (WF-452).
+   *
+   *  The SAME separate channel `discover_packs` carries, for the same reason:
+   *  this is the one field in the response that can describe a WRITE. Planning
+   *  itself stays byte-inert — `byteInert` remains the literal `true` — and when
+   *  `recovery.wroteBytes` is `true` it was RECOVERY that wrote, so planning's
+   *  byte-inertness is asserted from the recovered baseline onward, never from
+   *  process start.
+   *
+   *  DELIBERATELY NOT A PLAN-IDENTITY FACT CLASS. `PLAN_IDENTITY_FACT_CLASSES`
+   *  is unchanged at the WF-450 sixteen, and this envelope never reaches
+   *  `planIdentity`. That is what makes the retrofit's headline guarantee
+   *  mechanical: for identical recovered facts the plan schema, actions,
+   *  ordering, and `planId` are byte-for-byte what they were before recovery was
+   *  integrated — two runs agree on a `planId` even when one recovered a journal
+   *  and wrote bytes and the other found none to recover. */
+  recovery: RecoveryReport;
   byteInert: true;
 }
 

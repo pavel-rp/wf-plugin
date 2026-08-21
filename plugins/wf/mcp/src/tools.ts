@@ -190,6 +190,11 @@ function planInstallEnvelopeForRejection(
     packs: [],
     capabilities: [],
     selection: toPlanSelection(args),
+    // The same `invalid-root` recovery report the discovery composer below
+    // carries (WF-452). An inadmissible root is rejected before any root-bound
+    // port exists, so no recovery was attempted — and saying so explicitly is
+    // what stops a reader inferring "nothing needed recovering".
+    recovery: invalidRootRecoveryReport(diagnostic),
   });
 }
 

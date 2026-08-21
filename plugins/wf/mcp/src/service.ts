@@ -96,6 +96,7 @@ import {
   type EvidenceLedger,
 } from "./resolver/discover-packs.js";
 import {
+  invalidRootRecoveryReport,
   noRecoveryReport,
   recoverInterruptedTransaction,
   type RecoveryPorts,
@@ -222,10 +223,12 @@ export interface ResolverServicePorts {
   /** Resolved registry-file location, workspace-relative (default
    *  `_local/config.md`). */
   registryRelPath(): string;
-  /** Crash-recovery effects for the guarded discovery entry (WF-451). OPTIONAL
-   *  so every existing in-memory port double stays valid; when absent, discovery
-   *  performs no recovery and reports `no-journal` — which is byte-inert and
-   *  non-blocking, exactly the pre-WF-451 behaviour. */
+  /** Crash-recovery effects for the guarded lifecycle entries — discovery
+   *  (WF-451) and planning (WF-452), which share this ONE port set rather than
+   *  each binding its own. OPTIONAL so every existing in-memory port double stays
+   *  valid; when absent, the guarded entry performs no recovery and reports
+   *  `no-journal` — which is byte-inert and non-blocking, exactly the pre-WF-451
+   *  behaviour. */
   recovery?: RecoveryPorts;
   /** Production-only containment boundary for the registry write. Test doubles
    *  may omit it and use the shape-validated workspace-relative join. */
@@ -1493,6 +1496,22 @@ export class ResolverService {
    *
    * `admission` is supplied by the caller so the typed `invalid-root` envelope is
    * produced without this method ever being reached on an inadmissible root.
+   *
+   * WF-452 — RECOVERY RUNS FIRST, BEFORE ANY LIFECYCLE STATE IS READ, exactly as
+   * it does for discovery. The ordering is the whole point: everything below
+   * reads state (the snapshot, the CLI inventory, the evidence ledger, declared
+   * payload sources, managed-artifact bytes), and planning from state an
+   * interrupted transaction may have left half-written is the failure this
+   * retrofit exists to prevent.
+   *
+   * PLANNING NEVER CREATES A JOURNAL, a backup, or a transaction of its own — it
+   * may only recover a pre-existing one. With no journal present the lock is
+   * taken and released, no transaction state is created, and the run is
+   * byte-inert. Like discovery, planning is lock-acquiring but journal-free.
+   *
+   * Recovery runs EXACTLY ONCE per plan run: the report is threaded into
+   * `discoverPacksWithInspection(recovery)`, which recovers nothing itself, so a
+   * `plan_install` call takes the lock once rather than twice.
    */
   planInstall(
     admission: PlanAdmissionState,
@@ -1505,11 +1524,36 @@ export class ResolverService {
         packs: [],
         capabilities: [],
         selection,
+        // Admission failed before any root-bound port — and therefore before any
+        // recovery port — existed, so nothing was recovered and nothing could be.
+        recovery: invalidRootRecoveryReport(
+          admission.diagnostic ??
+            "the declared workspace root was not admitted, so no recovery was attempted.",
+        ),
+      });
+    }
+
+    const recovery = this.ports.recovery
+      ? recoverInterruptedTransaction(this.ports.recovery)
+      : noRecoveryReport();
+
+    if (!recovery.proceeded) {
+      // The fail-safe stop. Nothing below this line runs, so no lifecycle state
+      // is read at all. The pure join composes the halted envelope from the same
+      // gate, so the property holds whether a caller enters through this service
+      // or drives the join directly.
+      return planInstallJoin({
+        admission,
+        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+        packs: [],
+        capabilities: [],
+        selection,
+        recovery,
       });
     }
 
     const { response, inspected, snapshot, recordedArtifacts } =
-      this.discoverPacksWithInspection();
+      this.discoverPacksWithInspection(recovery);
 
     // Which pack owns which registered capability. Derived from the snapshot's
     // own attribution — never re-parsed from a registry row.
@@ -1572,6 +1616,7 @@ export class ResolverService {
       selection,
       payloads,
       artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
+      recovery,
     });
   }
 

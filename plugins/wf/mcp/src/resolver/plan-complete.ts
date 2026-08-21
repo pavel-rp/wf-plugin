@@ -33,6 +33,16 @@
 //
 // A no-change plan therefore has a stable identity and zero mutating actions,
 // and any mutation-relevant change produces a different `planId`.
+//
+// WF-452 DELIBERATELY ADDED NO FACT CLASS. Pre-entry crash recovery is reported
+// through the response's own separate `recovery` envelope and never reaches this
+// module, so `PLAN_IDENTITY_FACT_CLASSES` stays at exactly the sixteen classes
+// WF-450 froze. That is what makes the retrofit's headline guarantee mechanical
+// rather than asserted in prose: for identical recovered facts the plan schema,
+// the integrated action list, its ordering, and `planId` are byte-for-byte what
+// they were before recovery was integrated — two runs agree on a `planId` even
+// when one recovered an interrupted transaction and wrote bytes and the other
+// found nothing to recover.
 
 import { sha256Hex } from "./fingerprint.js";
 import { PROJECT_OVERRIDE_DIR } from "./slot.js";
@@ -313,11 +323,17 @@ function integrateActions(input: PlanCompletionInput): PlanAction[] {
 }
 
 /** Derive the plan's lifecycle mode from its own content. FIRST MATCH WINS in
- *  the order documented on `PlanMode`. `null` on the `invalid-root` path only:
- *  admission failed before anything was read, so no lifecycle shape was observed
- *  and claiming one would be a lie. */
+ *  the order documented on `PlanMode`. `null` on the two NOTHING-WAS-READ paths
+ *  and nowhere else — `invalid-root` (admission failed) and `unrecovered`
+ *  (WF-452: recovery did not proceed, so no lifecycle state was read). One
+ *  rationale covers both: no lifecycle shape was observed, so claiming one would
+ *  be a lie. Without the second clause an emptied halted envelope would fall all
+ *  the way through to `reconcile` — a positive claim that the workspace already
+ *  matches the selection, derived from state that was never read. */
 export function planMode(input: PlanCompletionInput): PlanMode | null {
-  if (input.applicability === "invalid-root") return null;
+  if (input.applicability === "invalid-root" || input.applicability === "unrecovered") {
+    return null;
+  }
   if (input.artifacts.deletable.length > 0) return "deletion";
   if (input.registryDelta.deregistrations.length > 0) return "deregistration";
   if (input.repairs.length > 0) return "repair";
