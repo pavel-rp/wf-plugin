@@ -6,7 +6,19 @@
 // facts. Kept apart from service.ts so the service logic stays a pure function
 // of its ports and can be tested with in-memory doubles.
 
-import { lstatSync, mkdirSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  rmdirSync,
+  writeFileSync,
+} from "node:fs";
+import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -21,6 +33,19 @@ import {
 import { parsePluginList } from "./resolver/plugin-list.js";
 import { joinSlash, normalizeSlashes } from "./resolver/paths.js";
 import type { PayloadTargetResolution } from "./resolver/payload-plan.js";
+import {
+  LIFECYCLE_BACKUP_DIR,
+  LIFECYCLE_JOURNAL_PATH,
+  LIFECYCLE_LOCK_PATH,
+  type DestinationObservation,
+} from "./resolver/lifecycle-journal.js";
+import type {
+  BackupIdentity,
+  LockAcquisition,
+  RecoveryPorts,
+  WriteOutcome,
+} from "./resolver/lifecycle-recovery.js";
+import type { JournalEntry } from "./resolver/types.js";
 import type { ResolverServicePorts, PluginListResult } from "./service.js";
 
 const DEFAULT_REGISTRY_RELPATH = "_local/config.md";
@@ -267,5 +292,231 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH,
     resolveRegistryWritePath: (registryRelPath) =>
       resolveContainedRegistryWritePath(workspaceRoot, registryRelPath),
+    recovery: createRecoveryPorts(workspaceRoot),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Recovery ports (WF-451)
+// ---------------------------------------------------------------------------
+//
+// The ONE place in the runtime that writes a byte outside the resolver's own
+// gitignored snapshot cache and the registry edit — and it writes only to
+// restore a destination an interrupted transaction had already changed.
+//
+// Containment is not re-implemented here: every destination and every backup is
+// measured through `resolveContainedPayloadTarget` (WF-448), which canonicalizes
+// before deciding and never creates the path it tests. A destination whose
+// containment cannot be established is refused, never probed further and never
+// written.
+
+function errno(err: unknown): string | undefined {
+  return (err as NodeJS.ErrnoException | undefined)?.code;
+}
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function sha256Bytes(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+/**
+ * Build the production recovery ports for one ADMITTED workspace root.
+ *
+ * The root is passed in rather than re-derived: WF-445's `selectWorkspaceRoot`
+ * is the single admission authority, and re-deriving a root here would be a
+ * second, divergent answer to a question that already has one.
+ */
+export function createRecoveryPorts(workspaceRoot: string): RecoveryPorts {
+  const lockPath = joinSlash(workspaceRoot, LIFECYCLE_LOCK_PATH);
+  const journalPath = joinSlash(workspaceRoot, LIFECYCLE_JOURNAL_PATH);
+
+  /** Resolve one workspace-relative path to a canonical contained target, or
+   *  report why it was refused. */
+  const contained = (
+    relPath: string,
+  ): { ok: true; target: string; exists: boolean } | { ok: false; rejection: string } => {
+    const resolved = resolveContainedPayloadTarget(workspaceRoot, relPath);
+    if (!resolved.ok) return { ok: false, rejection: resolved.rejection };
+    return { ok: true, target: resolved.canonicalTarget, exists: resolved.exists };
+  };
+
+  return {
+    acquireLock: (): LockAcquisition => {
+      try {
+        mkdirSync(dirname(lockPath), { recursive: true });
+        // `wx` is create-exclusive: the FILESYSTEM decides the single holder, so
+        // two concurrent entrants can never both observe "no lock" and proceed.
+        closeSync(openSync(lockPath, "wx"));
+        return { ok: true };
+      } catch (err) {
+        if (errno(err) === "EEXIST") {
+          return {
+            ok: false,
+            reason: "held-by-other",
+            diagnostic: `another lifecycle run holds \`${LIFECYCLE_LOCK_PATH}\`; this run stops without reading or writing lifecycle state.`,
+          };
+        }
+        return {
+          ok: false,
+          reason: "unavailable",
+          diagnostic: `the lifecycle lock \`${LIFECYCLE_LOCK_PATH}\` could not be acquired: ${message(err)}`,
+        };
+      }
+    },
+
+    // Tolerant by contract: the driver calls this on every exit path, including
+    // ones where the lock may already be gone.
+    releaseLock: (): void => {
+      try {
+        rmSync(lockPath, { force: true });
+      } catch {
+        /* a lock that cannot be removed is reported by the next run's acquire */
+      }
+    },
+
+    readJournal: (): string | null => {
+      try {
+        return readFileSync(journalPath, "utf8");
+      } catch (err) {
+        if (errno(err) === "ENOENT") return null;
+        // An unreadable journal is NOT "no journal" — reporting it as absent
+        // would let a caller proceed over state it never managed to read. The
+        // empty string parses as malformed, which is a fail-safe stop.
+        return "";
+      }
+    },
+
+    observeDestination: (destination: string): DestinationObservation => {
+      const target = contained(destination);
+      if (!target.ok) return { kind: "not-contained", rejection: target.rejection };
+
+      // The LITERAL path, not the canonical one: `lstatSync` does not follow a
+      // terminal symlink, so a destination that IS a link is detected as one
+      // rather than silently resolved to whatever it points at.
+      const literal = resolve(realpathSync(workspaceRoot), destination);
+      let stat;
+      try {
+        stat = lstatSync(literal);
+      } catch (err) {
+        if (errno(err) === "ENOENT") return { kind: "absent" };
+        return { kind: "observation-failed", diagnostic: message(err) };
+      }
+      if (stat.isSymbolicLink()) return { kind: "symlink" };
+      if (!stat.isFile()) {
+        return {
+          kind: "observation-failed",
+          diagnostic: `\`${destination}\` is not a regular file.`,
+        };
+      }
+      try {
+        const bytes = readFileSync(literal);
+        return { kind: "file", contentHash: sha256Bytes(bytes), bytes: bytes.byteLength };
+      } catch (err) {
+        return { kind: "observation-failed", diagnostic: message(err) };
+      }
+    },
+
+    hashBackup: (backupPath: string): BackupIdentity => {
+      const target = contained(backupPath);
+      if (!target.ok) {
+        return {
+          ok: false,
+          reason: "not-contained",
+          diagnostic: `the backup \`${backupPath}\` does not resolve to a workspace-contained file (${target.rejection}).`,
+        };
+      }
+      try {
+        return { ok: true, contentHash: sha256Bytes(readFileSync(target.target)) };
+      } catch (err) {
+        if (errno(err) === "ENOENT") {
+          return {
+            ok: false,
+            reason: "missing",
+            diagnostic: `the backup \`${backupPath}\` no longer exists, so the prior bytes cannot be proven.`,
+          };
+        }
+        return {
+          ok: false,
+          reason: "unreadable",
+          diagnostic: `the backup \`${backupPath}\` could not be read: ${message(err)}`,
+        };
+      }
+    },
+
+    restoreBytes: (destination: string, backupPath: string): WriteOutcome => {
+      const targetPath = contained(destination);
+      const backup = contained(backupPath);
+      if (!targetPath.ok || !backup.ok) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` or its backup does not resolve to a workspace-contained target; nothing was written.`,
+        };
+      }
+      try {
+        const bytes = readFileSync(backup.target);
+        mkdirSync(dirname(targetPath.target), { recursive: true });
+        writeFileSync(targetPath.target, bytes);
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` could not be restored: ${message(err)}`,
+        };
+      }
+    },
+
+    removeDestination: (destination: string): WriteOutcome => {
+      const target = contained(destination);
+      if (!target.ok) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` does not resolve to a workspace-contained target; nothing was removed.`,
+        };
+      }
+      try {
+        rmSync(target.target, { force: true });
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` could not be removed: ${message(err)}`,
+        };
+      }
+    },
+
+    // Called ONLY on a complete recovery. Removes exactly the backups the
+    // journal named — never a recursive sweep of the backup root, which could
+    // discard bytes this journal never claimed.
+    discardJournal: (entries: readonly JournalEntry[]): void => {
+      for (const entry of entries) {
+        if (entry.backupPath === null) continue;
+        const backup = contained(entry.backupPath);
+        if (!backup.ok) continue;
+        try {
+          rmSync(backup.target, { force: true });
+        } catch {
+          /* a stranded backup is inert; the journal below is what matters */
+        }
+      }
+      try {
+        rmSync(journalPath, { force: true });
+      } catch {
+        /* a journal that survives is re-read (and re-converges) next run */
+      }
+      // Best-effort tidy: succeeds only when the backup root is now empty, so a
+      // concurrent-free run leaves no residue and a shared root is left alone.
+      // `rmdirSync` is the deliberate primitive — it removes an EMPTY directory
+      // and fails on a populated one, which is exactly the semantics wanted here.
+      // `rmSync(dir, { recursive: false })` would be a no-op dressed as a tidy:
+      // it throws `EISDIR` on any directory, so the branch could never succeed.
+      try {
+        rmdirSync(joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR));
+      } catch {
+        /* non-empty or absent — both fine */
+      }
+    },
   };
 }

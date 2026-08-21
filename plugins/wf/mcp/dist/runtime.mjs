@@ -707,14 +707,14 @@ function prefixIssues(path, issues) {
     return iss;
   });
 }
-function unwrapMessage(message) {
-  return typeof message === "string" ? message : message?.message;
+function unwrapMessage(message2) {
+  return typeof message2 === "string" ? message2 : message2?.message;
 }
 function finalizeIssue(iss, ctx, config2) {
-  const message = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config2.customError?.(iss)) ?? unwrapMessage(config2.localeError?.(iss)) ?? "Invalid input";
+  const message2 = iss.message ? iss.message : unwrapMessage(iss.inst?._zod.def?.error?.(iss)) ?? unwrapMessage(ctx?.error?.(iss)) ?? unwrapMessage(config2.customError?.(iss)) ?? unwrapMessage(config2.localeError?.(iss)) ?? "Invalid input";
   const { inst: _inst, continue: _continue, input: _input, ...rest } = iss;
   rest.path ?? (rest.path = []);
-  rest.message = message;
+  rest.message = message2;
   if (ctx?.reportInput) {
     rest.input = _input;
   }
@@ -6646,8 +6646,8 @@ var OAuthError = class OAuthError2 extends Error {
     if (typeof this !== "function") throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
     return brandedHasInstance(this, value);
   }
-  constructor(code, message, errorUri) {
-    super(message);
+  constructor(code, message2, errorUri) {
+    super(message2);
     this.code = code;
     this.errorUri = errorUri;
     this.name = "OAuthError";
@@ -6713,8 +6713,8 @@ var SdkError = class extends Error {
     if (typeof this !== "function") throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
     return brandedHasInstance(this, value);
   }
-  constructor(code, message, data) {
-    super(message);
+  constructor(code, message2, data) {
+    super(message2);
     this.code = code;
     this.data = data;
     this.name = "SdkError";
@@ -6725,8 +6725,8 @@ var SdkHttpError = class extends SdkError {
   static {
     Object.defineProperty(this, "mcpBrand", { value: "mcp.SdkHttpError" });
   }
-  constructor(code, message, data) {
-    super(code, message, data);
+  constructor(code, message2, data) {
+    super(code, message2, data);
     this.name = "SdkHttpError";
   }
   get status() {
@@ -8901,8 +8901,8 @@ var ProtocolError = class ProtocolError2 extends Error {
     if (typeof this !== "function") throw new TypeError("isInstance must be called on the class (e.g. `SdkError.isInstance(value)`); for callbacks use `v => SdkError.isInstance(v)`");
     return brandedHasInstance(this, value);
   }
-  constructor(code, message, data) {
-    super(message);
+  constructor(code, message2, data) {
+    super(message2);
     this.code = code;
     this.data = data;
     this.name = "ProtocolError";
@@ -8911,35 +8911,35 @@ var ProtocolError = class ProtocolError2 extends Error {
   /**
   * Factory method to create the appropriate error type based on the error code and data
   */
-  static fromError(code, message, data) {
+  static fromError(code, message2, data) {
     if (code === ProtocolErrorCode.UrlElicitationRequired && data) {
       const errorData = data;
-      if (errorData.elicitations) return new UrlElicitationRequiredError(errorData.elicitations, message);
+      if (errorData.elicitations) return new UrlElicitationRequiredError(errorData.elicitations, message2);
     }
     if (code === ProtocolErrorCode.UnsupportedProtocolVersion && data) {
       const errorData = data;
       if (Array.isArray(errorData.supported) && typeof errorData.requested === "string") return new UnsupportedProtocolVersionError({
         supported: errorData.supported,
         requested: errorData.requested
-      }, message);
+      }, message2);
     }
     if (code === ProtocolErrorCode.InvalidParams || code === ProtocolErrorCode.ResourceNotFound) {
       const errorData = data;
-      if (typeof errorData?.uri === "string" && (code === ProtocolErrorCode.ResourceNotFound || Object.keys(errorData).length === 1)) return new ResourceNotFoundError(errorData.uri, message);
+      if (typeof errorData?.uri === "string" && (code === ProtocolErrorCode.ResourceNotFound || Object.keys(errorData).length === 1)) return new ResourceNotFoundError(errorData.uri, message2);
     }
     if (code === ProtocolErrorCode.MissingRequiredClientCapability && data) {
       const errorData = data;
-      if (errorData.requiredCapabilities !== null && typeof errorData.requiredCapabilities === "object" && !Array.isArray(errorData.requiredCapabilities)) return new MissingRequiredClientCapabilityError({ requiredCapabilities: errorData.requiredCapabilities }, message);
+      if (errorData.requiredCapabilities !== null && typeof errorData.requiredCapabilities === "object" && !Array.isArray(errorData.requiredCapabilities)) return new MissingRequiredClientCapabilityError({ requiredCapabilities: errorData.requiredCapabilities }, message2);
     }
-    return new ProtocolError2(code, message, data);
+    return new ProtocolError2(code, message2, data);
   }
 };
 var ResourceNotFoundError = class extends ProtocolError {
   static {
     Object.defineProperty(this, "mcpBrand", { value: "mcp.ResourceNotFoundError" });
   }
-  constructor(uri, message = `Resource not found: ${uri}`) {
-    super(ProtocolErrorCode.InvalidParams, message, { uri });
+  constructor(uri, message2 = `Resource not found: ${uri}`) {
+    super(ProtocolErrorCode.InvalidParams, message2, { uri });
   }
   /** The URI that was requested and not found. */
   get uri() {
@@ -8950,8 +8950,8 @@ var UrlElicitationRequiredError = class extends ProtocolError {
   static {
     Object.defineProperty(this, "mcpBrand", { value: "mcp.UrlElicitationRequiredError" });
   }
-  constructor(elicitations, message = `URL elicitation${elicitations.length > 1 ? "s" : ""} required`) {
-    super(ProtocolErrorCode.UrlElicitationRequired, message, { elicitations });
+  constructor(elicitations, message2 = `URL elicitation${elicitations.length > 1 ? "s" : ""} required`) {
+    super(ProtocolErrorCode.UrlElicitationRequired, message2, { elicitations });
   }
   get elicitations() {
     return this.data?.elicitations ?? [];
@@ -8961,8 +8961,8 @@ var UnsupportedProtocolVersionError = class extends ProtocolError {
   static {
     Object.defineProperty(this, "mcpBrand", { value: "mcp.UnsupportedProtocolVersionError" });
   }
-  constructor(data, message = `Unsupported protocol version: ${data.requested}`) {
-    super(ProtocolErrorCode.UnsupportedProtocolVersion, message, data);
+  constructor(data, message2 = `Unsupported protocol version: ${data.requested}`) {
+    super(ProtocolErrorCode.UnsupportedProtocolVersion, message2, data);
   }
   /**
   * Protocol versions the receiver supports.
@@ -8981,8 +8981,8 @@ var MissingRequiredClientCapabilityError = class extends ProtocolError {
   static {
     Object.defineProperty(this, "mcpBrand", { value: "mcp.MissingRequiredClientCapabilityError" });
   }
-  constructor(data, message = `Missing required client capabilities: ${Object.keys(data.requiredCapabilities).join(", ")}`) {
-    super(ProtocolErrorCode.MissingRequiredClientCapability, message, data);
+  constructor(data, message2 = `Missing required client capabilities: ${Object.keys(data.requiredCapabilities).join(", ")}`) {
+    super(ProtocolErrorCode.MissingRequiredClientCapability, message2, data);
   }
   /**
   * The capabilities the server requires from the client to process the
@@ -10211,17 +10211,17 @@ var RESERVED_ENVELOPE_META_KEYS = [
   LOG_LEVEL_META_KEY
 ];
 var RETRY_PARAMS_KEYS = ["inputResponses", "requestState"];
-function liftWireOnlyMaterial(message, kind) {
-  const params = message.params;
+function liftWireOnlyMaterial(message2, kind) {
+  const params = message2.params;
   if (!isPlainObject$1(params)) return {
-    message,
+    message: message2,
     lifted: {}
   };
   const meta2 = params._meta;
   const envelopeKeys = isPlainObject$1(meta2) ? RESERVED_ENVELOPE_META_KEYS.filter((key) => key in meta2) : [];
   const retryKeys = kind === "request" ? RETRY_PARAMS_KEYS.filter((key) => key in params) : [];
   if (envelopeKeys.length === 0 && retryKeys.length === 0) return {
-    message,
+    message: message2,
     lifted: {}
   };
   const lifted = {};
@@ -10244,7 +10244,7 @@ function liftWireOnlyMaterial(message, kind) {
   }
   return {
     message: {
-      ...message,
+      ...message2,
       params: nextParams
     },
     lifted
@@ -10372,12 +10372,12 @@ var Protocol = class {
   * byte-identical. User-supplied `_meta` keys are spread last so they win
   * over the auto-attached envelope keys.
   */
-  _envelopeOutbound(message) {
+  _envelopeOutbound(message2) {
     const envelope = this._outboundMetaEnvelope();
-    if (envelope === void 0) return message;
-    const params = message.params ?? {};
+    if (envelope === void 0) return message2;
+    const params = message2.params ?? {};
     return {
-      ...message,
+      ...message2,
       params: {
         ...params,
         _meta: {
@@ -10476,12 +10476,12 @@ var Protocol = class {
       this._onerror(error2);
     };
     const _onmessage = this._transport?.onmessage;
-    this._transport.onmessage = (message, extra) => {
-      _onmessage?.(message, extra);
-      if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) this._onresponse(message);
-      else if (isJSONRPCRequest(message)) this._onrequest(message, extra);
-      else if (isJSONRPCNotification(message)) this._onnotification(message, extra);
-      else this._onerror(/* @__PURE__ */ new Error(`Unknown message type: ${JSON.stringify(message)}`));
+    this._transport.onmessage = (message2, extra) => {
+      _onmessage?.(message2, extra);
+      if (isJSONRPCResultResponse(message2) || isJSONRPCErrorResponse(message2)) this._onresponse(message2);
+      else if (isJSONRPCRequest(message2)) this._onrequest(message2, extra);
+      else if (isJSONRPCNotification(message2)) this._onnotification(message2, extra);
+      else this._onerror(/* @__PURE__ */ new Error(`Unknown message type: ${JSON.stringify(message2)}`));
     };
     transport.setSupportedProtocolVersions?.(this._supportedProtocolVersions);
     await this._transport.start();
@@ -10543,13 +10543,13 @@ var Protocol = class {
       return;
     }
     const capturedTransport = this._transport;
-    const sendErrorResponse = (code, message, data) => {
+    const sendErrorResponse = (code, message2, data) => {
       const errorResponse = {
         jsonrpc: "2.0",
         id: request.id,
         error: {
           code,
-          message,
+          message: message2,
           ...data !== void 0 && { data }
         }
       };
@@ -11124,8 +11124,8 @@ var ReadBuffer = class {
 function deserializeMessage(line) {
   return JSONRPCMessageSchema.parse(JSON.parse(line));
 }
-function serializeMessage(message) {
-  return JSON.stringify(message) + "\n";
+function serializeMessage(message2) {
+  return JSON.stringify(message2) + "\n";
 }
 var TOOL_NAME_REGEX = /^[A-Za-z0-9._-]{1,128}$/;
 function validateToolName(name) {
@@ -12391,11 +12391,11 @@ var require_errors = /* @__PURE__ */ __commonJSMin(((exports) => {
     if (schemaPath) schPath = (0, codegen_1.str)`${schPath}${(0, util_1.getErrorPath)(schemaPath, util_1.Type.Str)}`;
     return [E.schemaPath, schPath];
   }
-  function extraErrorProps(cxt, { params, message }, keyValues) {
+  function extraErrorProps(cxt, { params, message: message2 }, keyValues) {
     const { keyword, data, schemaValue, it } = cxt;
     const { opts, propertyName, topSchemaRef, schemaPath } = it;
     keyValues.push([E.keyword, keyword], [E.params, typeof params == "function" ? params(cxt) : params || (0, codegen_1._)`{}`]);
-    if (opts.messages) keyValues.push([E.message, typeof message == "function" ? message(cxt) : message]);
+    if (opts.messages) keyValues.push([E.message, typeof message2 == "function" ? message2(cxt) : message2]);
     if (opts.verbose) keyValues.push([E.schema, schemaValue], [E.parentSchema, (0, codegen_1._)`${topSchemaRef}${schemaPath}`], [names_1.default.data, data]);
     if (propertyName) keyValues.push([E.propertyName, propertyName]);
   }
@@ -14719,9 +14719,9 @@ var require_core$2 = /* @__PURE__ */ __commonJSMin(((exports) => {
       }
       const valid = this.validate($schema, schema);
       if (!valid && throwOrLogError) {
-        const message = "schema is invalid: " + this.errorsText();
-        if (this.opts.validateSchema === "log") this.logger.error(message);
-        else throw new Error(message);
+        const message2 = "schema is invalid: " + this.errorsText();
+        if (this.opts.validateSchema === "log") this.logger.error(message2);
+        else throw new Error(message2);
       }
       return valid;
     }
@@ -17843,8 +17843,8 @@ function stampSubscriptionId(notification, subscriptionId) {
     }
   };
 }
-function parseListenFilter(message) {
-  const outcome = codecForVersion(MODERN_WIRE_REVISION).validateRequest("subscriptions/listen", message);
+function parseListenFilter(message2) {
+  const outcome = codecForVersion(MODERN_WIRE_REVISION).validateRequest("subscriptions/listen", message2);
   return outcome.ok ? outcome.value.params?.notifications : void 0;
 }
 var CHANGE_NOTIFICATION_METHODS = /* @__PURE__ */ new Set([
@@ -17890,31 +17890,31 @@ var StdioListenRouter = class {
   * open (deliver unadvertised types); the entry guarantees capabilities are
   * set before any listen request is routed here.
   */
-  serve(message) {
+  serve(message2) {
     if (this._serverCapabilities === void 0) throw new Error("StdioListenRouter.serve() called before setServerCapabilities(); refusing to honor a filter without capabilities");
     if (this._subs.size >= this._maxSubscriptions) return {
       jsonrpc: "2.0",
-      id: message.id,
+      id: message2.id,
       error: {
         code: -32603,
         message: "Subscription limit reached"
       }
     };
-    const filter = parseListenFilter(message);
+    const filter = parseListenFilter(message2);
     if (filter === void 0) return {
       jsonrpc: "2.0",
-      id: message.id,
+      id: message2.id,
       error: {
         code: -32602,
         message: "Invalid params: 'notifications' is required and must be a valid SubscriptionFilter"
       }
     };
     const honored = honoredSubset(filter, this._serverCapabilities);
-    this._subs.set(message.id, honored);
+    this._subs.set(message2.id, honored);
     return stampSubscriptionId({
       method: "notifications/subscriptions/acknowledged",
       params: { notifications: honored }
-    }, message.id);
+    }, message2.id);
   }
   /**
   * Tear down one subscription (inbound `notifications/cancelled`). Returns
@@ -17933,15 +17933,15 @@ var StdioListenRouter = class {
   * - For any other outbound message, returns `'passthrough'` (the entry
   *   forwards it as-is).
   */
-  routeOutbound(message) {
-    if (!CHANGE_NOTIFICATION_METHODS.has(message.method)) return "passthrough";
-    const uriParam = message.params?.["uri"];
+  routeOutbound(message2) {
+    if (!CHANGE_NOTIFICATION_METHODS.has(message2.method)) return "passthrough";
+    const uriParam = message2.params?.["uri"];
     const uri = typeof uriParam === "string" ? uriParam : void 0;
-    const event = notificationToServerEvent(message.method, uri);
+    const event = notificationToServerEvent(message2.method, uri);
     const out = [];
     for (const [subscriptionId, filter] of this._subs) if (listenFilterAccepts(filter, event)) out.push(stampSubscriptionId({
-      method: message.method,
-      params: message.params ?? {}
+      method: message2.method,
+      params: message2.params ?? {}
     }, subscriptionId));
     return out;
   }
@@ -18011,15 +18011,15 @@ function syntheticElicitationId() {
   const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
-function legacyShimFailure(method, message) {
+function legacyShimFailure(method, message2) {
   if (method === "tools/call") return {
     content: [{
       type: "text",
-      text: message
+      text: message2
     }],
     isError: true
   };
-  throw new ProtocolError(ProtocolErrorCode.InternalError, message);
+  throw new ProtocolError(ProtocolErrorCode.InternalError, message2);
 }
 var LegacyInputRequiredShim = class {
   constructor(_host) {
@@ -19345,9 +19345,9 @@ var StdioServerTransport = class {
   }
   processReadBuffer() {
     while (true) try {
-      const message = this._readBuffer.readMessage();
-      if (message === null) break;
-      this.onmessage?.(message);
+      const message2 = this._readBuffer.readMessage();
+      if (message2 === null) break;
+      this.onmessage?.(message2);
     } catch (error2) {
       this.onerror?.(error2);
     }
@@ -19362,10 +19362,10 @@ var StdioServerTransport = class {
     this._readBuffer.clear();
     this.onclose?.();
   }
-  send(message) {
+  send(message2) {
     if (this._closed) return Promise.reject(/* @__PURE__ */ new Error("StdioServerTransport is closed"));
     return new Promise((resolve4, reject) => {
-      const json = serializeMessage(message);
+      const json = serializeMessage(message2);
       let settled = false;
       const onError = (error2) => {
         if (settled) return;
@@ -19407,27 +19407,27 @@ var StdioConnectionChannel = class {
   }
   async start() {
   }
-  async send(message, options) {
-    if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) {
-      const { id } = message;
+  async send(message2, options) {
+    if (isJSONRPCResultResponse(message2) || isJSONRPCErrorResponse(message2)) {
+      const { id } = message2;
       if (id !== void 0) this._settle(id);
     }
     if (this._closed) return;
-    if (this._outboundIntercept?.(message) === "handled") return;
-    return this._wire.send(message, options);
+    if (this._outboundIntercept?.(message2) === "handled") return;
+    return this._wire.send(message2, options);
   }
   setProtocolVersion = (version2) => {
     this._wire.setProtocolVersion?.(version2);
   };
   /** Forwards one inbound message to the connected instance. */
-  deliver(message, extra) {
+  deliver(message2, extra) {
     if (this._closed) return;
-    if (isJSONRPCRequest(message)) this._pendingRequests.add(message.id);
-    else if (isJSONRPCNotification(message) && message.method === "notifications/cancelled") {
-      const cancelledId = message.params?.requestId;
+    if (isJSONRPCRequest(message2)) this._pendingRequests.add(message2.id);
+    else if (isJSONRPCNotification(message2) && message2.method === "notifications/cancelled") {
+      const cancelledId = message2.params?.requestId;
       if (cancelledId !== void 0) this._settle(cancelledId);
     }
-    this.onmessage?.(message, extra);
+    this.onmessage?.(message2, extra);
   }
   /**
   * Resolves once every request delivered to the instance has been answered
@@ -19473,9 +19473,9 @@ var StdioConnectionChannel = class {
     for (const waiter of waiters) waiter();
   }
 };
-function classifyOpeningMessage(message) {
-  const params = message.params;
-  if (message.method === "initialize" && !carriesValidModernEnvelopeClaim(params)) {
+function classifyOpeningMessage(message2) {
+  const params = message2.params;
+  if (message2.method === "initialize" && !carriesValidModernEnvelopeClaim(params)) {
     const requestedVersion = params !== null && typeof params === "object" && typeof params.protocolVersion === "string" ? params.protocolVersion : void 0;
     return {
       kind: "legacy",
@@ -19520,19 +19520,19 @@ function serveStdio(factory, options = {}) {
     } catch {
     }
   };
-  const writeErrorResponse = (id, code, message, data) => wire.send({
+  const writeErrorResponse = (id, code, message2, data) => wire.send({
     jsonrpc: "2.0",
     id,
     error: {
       code,
-      message,
+      message: message2,
       ...data !== void 0 && { data }
     }
   }).catch((error2) => reportError(toError(error2)));
   const listenRouter = new StdioListenRouter(options.maxSubscriptions ?? DEFAULT_MAX_SUBSCRIPTIONS);
-  const modernOutboundIntercept = (message) => {
-    if (!isJSONRPCNotification(message)) return void 0;
-    const routed = listenRouter.routeOutbound(message);
+  const modernOutboundIntercept = (message2) => {
+    if (!isJSONRPCNotification(message2)) return void 0;
+    const routed = listenRouter.routeOutbound(message2);
     if (routed === "passthrough") return void 0;
     for (const stamped of routed) wire.send({
       jsonrpc: "2.0",
@@ -19540,18 +19540,18 @@ function serveStdio(factory, options = {}) {
     }).catch((error2) => reportError(toError(error2)));
     return "handled";
   };
-  const tryServeListen = async (message) => {
-    if (isJSONRPCRequest(message) && message.method === "subscriptions/listen") {
-      const meta2 = requestMetaOf(message.params);
-      const issue2 = hasEnvelopeClaim(message.params) ? (meta2 === void 0 ? [] : validateEnvelopeMeta(meta2))[0] : {
+  const tryServeListen = async (message2) => {
+    if (isJSONRPCRequest(message2) && message2.method === "subscriptions/listen") {
+      const meta2 = requestMetaOf(message2.params);
+      const issue2 = hasEnvelopeClaim(message2.params) ? (meta2 === void 0 ? [] : validateEnvelopeMeta(meta2))[0] : {
         key: "_meta",
         problem: "the per-request envelope is required on protocol revision 2026-07-28"
       };
-      const claimedVersion = envelopeClaimVersion(message.params);
+      const claimedVersion = envelopeClaimVersion(message2.params);
       let reply;
       if (issue2 !== void 0) reply = {
         jsonrpc: "2.0",
-        id: message.id,
+        id: message2.id,
         error: {
           code: -32602,
           message: `Invalid _meta envelope: ${issue2.key}: ${issue2.problem}`
@@ -19564,14 +19564,14 @@ function serveStdio(factory, options = {}) {
         });
         reply = {
           jsonrpc: "2.0",
-          id: message.id,
+          id: message2.id,
           error: {
             code: error2.code,
             message: error2.message,
             data: error2.data
           }
         };
-      } else reply = listenRouter.serve(message);
+      } else reply = listenRouter.serve(message2);
       await wire.send("error" in reply ? reply : {
         jsonrpc: "2.0",
         method: reply.method,
@@ -19579,8 +19579,8 @@ function serveStdio(factory, options = {}) {
       }).catch((error2) => reportError(toError(error2)));
       return true;
     }
-    if (isJSONRPCNotification(message) && message.method === "notifications/cancelled") {
-      const cancelledId = message.params?.requestId;
+    if (isJSONRPCNotification(message2) && message2.method === "notifications/cancelled") {
+      const cancelledId = message2.params?.requestId;
       if (cancelledId !== void 0 && listenRouter.cancel(cancelledId)) return true;
     }
     return false;
@@ -19626,43 +19626,43 @@ function serveStdio(factory, options = {}) {
       discarding = void 0;
     }
   };
-  const processMessage = async (message) => {
+  const processMessage = async (message2) => {
     if (state.phase === "closed") return;
     if (state.phase === "pinned") {
-      if (state.era === "modern" && isJSONRPCRequest(message) && message.method === "initialize" && !carriesValidModernEnvelopeClaim(message.params)) {
-        await answerLegacyRejection(message, "initialize", message.params !== null && typeof message.params === "object" && typeof message.params.protocolVersion === "string" ? message.params.protocolVersion : void 0);
+      if (state.era === "modern" && isJSONRPCRequest(message2) && message2.method === "initialize" && !carriesValidModernEnvelopeClaim(message2.params)) {
+        await answerLegacyRejection(message2, "initialize", message2.params !== null && typeof message2.params === "object" && typeof message2.params.protocolVersion === "string" ? message2.params.protocolVersion : void 0);
         return;
       }
-      if (state.era === "modern" && await tryServeListen(message)) return;
-      state.instance.channel.deliver(message);
+      if (state.era === "modern" && await tryServeListen(message2)) return;
+      state.instance.channel.deliver(message2);
       return;
     }
-    if (!isJSONRPCRequest(message) && !isJSONRPCNotification(message)) {
+    if (!isJSONRPCRequest(message2) && !isJSONRPCNotification(message2)) {
       reportError(/* @__PURE__ */ new Error("Discarded a JSON-RPC response received before the connection negotiated an era"));
       return;
     }
-    const opening = classifyOpeningMessage(message);
+    const opening = classifyOpeningMessage(message2);
     switch (opening.kind) {
       case "invalid-envelope": {
         const detail = `Invalid _meta envelope for protocol revision 2026-07-28: ${opening.issue.key}: ${opening.issue.problem}`;
-        if (isJSONRPCRequest(message)) await writeErrorResponse(message.id, ProtocolErrorCode.InvalidParams, detail, { envelope: opening.issue });
+        if (isJSONRPCRequest(message2)) await writeErrorResponse(message2.id, ProtocolErrorCode.InvalidParams, detail, { envelope: opening.issue });
         else reportError(/* @__PURE__ */ new Error(`Discarded a notification with a malformed envelope: ${detail}`));
         return;
       }
       case "unsupported-revision":
-        if (isJSONRPCRequest(message)) {
+        if (isJSONRPCRequest(message2)) {
           const error2 = new UnsupportedProtocolVersionError({
             supported: [...SUPPORTED_MODERN_PROTOCOL_VERSIONS],
             requested: opening.requested
           });
           reportError(error2);
-          await writeErrorResponse(message.id, error2.code, error2.message, error2.data);
+          await writeErrorResponse(message2.id, error2.code, error2.message, error2.data);
         } else reportError(/* @__PURE__ */ new Error(`Discarded a notification claiming unsupported protocol revision ${opening.requested}`));
         return;
       case "modern":
-        if (isJSONRPCRequest(message) && message.method === "server/discover") {
+        if (isJSONRPCRequest(message2) && message2.method === "server/discover") {
           if (state.phase === "probe") {
-            state.instance.channel.deliver(message, { classification: opening.classification });
+            state.instance.channel.deliver(message2, { classification: opening.classification });
             return;
           }
           const instance = await connectInstance("modern", opening.revision);
@@ -19674,12 +19674,12 @@ function serveStdio(factory, options = {}) {
             phase: "probe",
             instance
           };
-          instance.channel.deliver(message, { classification: opening.classification });
+          instance.channel.deliver(message2, { classification: opening.classification });
           return;
         }
         if (state.phase === "probe") {
-          if (isJSONRPCNotification(message)) {
-            state.instance.channel.deliver(message, { classification: opening.classification });
+          if (isJSONRPCNotification(message2)) {
+            state.instance.channel.deliver(message2, { classification: opening.classification });
             return;
           }
           state = {
@@ -19699,12 +19699,12 @@ function serveStdio(factory, options = {}) {
             instance
           };
         }
-        if (await tryServeListen(message)) return;
-        state.instance.channel.deliver(message, { classification: opening.classification });
+        if (await tryServeListen(message2)) return;
+        state.instance.channel.deliver(message2, { classification: opening.classification });
         return;
       case "legacy": {
         if (legacyMode === "reject") {
-          if (isJSONRPCRequest(message)) await answerLegacyRejection(message, opening.reason, opening.requestedVersion);
+          if (isJSONRPCRequest(message2)) await answerLegacyRejection(message2, opening.reason, opening.requestedVersion);
           return;
         }
         if (state.phase === "probe") {
@@ -19722,7 +19722,7 @@ function serveStdio(factory, options = {}) {
           era: "legacy",
           instance
         };
-        state.instance.channel.deliver(message);
+        state.instance.channel.deliver(message2);
         return;
       }
     }
@@ -19734,11 +19734,11 @@ function serveStdio(factory, options = {}) {
     pumping = true;
     try {
       while (queue.length > 0) {
-        const message = queue.shift();
+        const message2 = queue.shift();
         try {
-          await processMessage(message);
+          await processMessage(message2);
         } catch (error2) {
-          if (isJSONRPCRequest(message)) await writeErrorResponse(message.id, ProtocolErrorCode.InternalError, "Internal server error");
+          if (isJSONRPCRequest(message2)) await writeErrorResponse(message2.id, ProtocolErrorCode.InternalError, "Internal server error");
           reportError(toError(error2));
         }
       }
@@ -19755,8 +19755,8 @@ function serveStdio(factory, options = {}) {
     if (current.phase === "probe" || current.phase === "pinned") await current.instance.product.close().catch((error2) => reportError(toError(error2)));
     await wire.close().catch((error2) => reportError(toError(error2)));
   };
-  wire.onmessage = (message) => {
-    queue.push(message);
+  wire.onmessage = (message2) => {
+    queue.push(message2);
     pump();
   };
   wire.onerror = (error2) => {
@@ -19951,57 +19951,57 @@ function classify(fact, inventoryTrustworthy) {
     persisted: false
   };
 }
-function findingFor(decision) {
-  const pluginId = decision.owners.length > 0 ? decision.owners[0].pluginId : null;
-  if (decision.form === "deletable") {
+function findingFor(decision2) {
+  const pluginId = decision2.owners.length > 0 ? decision2.owners[0].pluginId : null;
+  if (decision2.form === "deletable") {
     return {
       code: "plan/artifact-deletable",
       severity: "warning",
       pluginId,
-      message: `managed artifact \`${decision.destination}\` is eligible for removal: every recorded owner is explicitly deselected, the current bytes match the recorded hash, and the declared removal semantics permit it.`
+      message: `managed artifact \`${decision2.destination}\` is eligible for removal: every recorded owner is explicitly deselected, the current bytes match the recorded hash, and the declared removal semantics permit it.`
     };
   }
-  if (decision.form === "bootstrap") {
+  if (decision2.form === "bootstrap") {
     return {
       code: "plan/artifact-bootstrap-previewed",
       severity: "info",
       pluginId,
-      message: `managed artifact \`${decision.destination}\` has no recorded lifecycle evidence; complete observed proof makes a bootstrap reviewable. It records future authority and grants no deletion in this plan.`
+      message: `managed artifact \`${decision2.destination}\` has no recorded lifecycle evidence; complete observed proof makes a bootstrap reviewable. It records future authority and grants no deletion in this plan.`
     };
   }
-  if (decision.form === "advance") {
+  if (decision2.form === "advance") {
     return {
       code: "plan/artifact-advance",
       severity: "info",
       pluginId,
-      message: `managed artifact \`${decision.destination}\` advances: its declared source changed and the current bytes still match the prior ledger hash.`
+      message: `managed artifact \`${decision2.destination}\` advances: its declared source changed and the current bytes still match the prior ledger hash.`
     };
   }
-  if (decision.reason === "divergent") {
+  if (decision2.reason === "divergent") {
     return {
       code: "plan/artifact-divergent",
       severity: "warning",
       pluginId,
-      message: `managed artifact \`${decision.destination}\` is divergent: its declared source changed but the current bytes do not match the prior ledger hash, so it is retained and not fully upgraded.`
+      message: `managed artifact \`${decision2.destination}\` is divergent: its declared source changed but the current bytes do not match the prior ledger hash, so it is retained and not fully upgraded.`
     };
   }
   return {
     code: "plan/artifact-retained",
     severity: "info",
     pluginId,
-    message: `managed artifact \`${decision.destination}\` is retained (\`${decision.reason}\`); it grants no deletion authority.`
+    message: `managed artifact \`${decision2.destination}\` is retained (\`${decision2.reason}\`); it grants no deletion authority.`
   };
 }
 function planArtifacts(facts, options) {
   const preview = emptyArtifactPreview();
   const findings = [];
   for (const fact of facts) {
-    const decision = classify(fact, options.inventoryTrustworthy);
-    findings.push(findingFor(decision));
-    if (decision.form === "deletable") preview.deletable.push(decision);
-    else if (decision.form === "bootstrap") preview.bootstrap.push(decision);
-    else if (decision.form === "advance") preview.advance.push(decision);
-    else preview.retained.push(decision);
+    const decision2 = classify(fact, options.inventoryTrustworthy);
+    findings.push(findingFor(decision2));
+    if (decision2.form === "deletable") preview.deletable.push(decision2);
+    else if (decision2.form === "bootstrap") preview.bootstrap.push(decision2);
+    else if (decision2.form === "advance") preview.advance.push(decision2);
+    else preview.retained.push(decision2);
   }
   const byDestination = (left, right) => left.destination.localeCompare(right.destination);
   preview.deletable.sort(byDestination);
@@ -20489,16 +20489,16 @@ function registryActionFor(entry, kind) {
     `${verb} ${names} for pack \`${entry.pluginId}\` (${entry.reason})`
   );
 }
-function artifactActionFor(decision, kind) {
-  const pluginId = decision.owners.length > 0 ? decision.owners[0].pluginId : null;
+function artifactActionFor(decision2, kind) {
+  const pluginId = decision2.owners.length > 0 ? decision2.owners[0].pluginId : null;
   const verb = kind === "artifact-delete" ? "delete" : kind === "artifact-bootstrap" ? "record bootstrap authority over" : kind === "artifact-advance" ? "advance" : "retain";
-  const because = decision.reason === null ? "" : ` (${decision.reason})`;
+  const because = decision2.reason === null ? "" : ` (${decision2.reason})`;
   return action(
     kind,
     pluginId,
-    decision.destination,
+    decision2.destination,
     kind !== "artifact-retain",
-    `${verb} managed artifact \`${decision.destination}\`${because}`
+    `${verb} managed artifact \`${decision2.destination}\`${because}`
   );
 }
 function integrateActions(input) {
@@ -20544,14 +20544,14 @@ function integrateActions(input) {
       )
     );
   }
-  for (const decision of input.artifacts.advance) {
-    pending.push(artifactActionFor(decision, "artifact-advance"));
+  for (const decision2 of input.artifacts.advance) {
+    pending.push(artifactActionFor(decision2, "artifact-advance"));
   }
-  for (const decision of input.artifacts.bootstrap) {
-    pending.push(artifactActionFor(decision, "artifact-bootstrap"));
+  for (const decision2 of input.artifacts.bootstrap) {
+    pending.push(artifactActionFor(decision2, "artifact-bootstrap"));
   }
-  for (const decision of input.artifacts.deletable) {
-    pending.push(artifactActionFor(decision, "artifact-delete"));
+  for (const decision2 of input.artifacts.deletable) {
+    pending.push(artifactActionFor(decision2, "artifact-delete"));
   }
   for (const write of input.answers.writes) {
     pending.push(
@@ -20578,8 +20578,8 @@ function integrateActions(input) {
   for (const entry of input.registryDelta.retentions) {
     pending.push(registryActionFor(entry, "registry-retain"));
   }
-  for (const decision of input.artifacts.retained) {
-    pending.push(artifactActionFor(decision, "artifact-retain"));
+  for (const decision2 of input.artifacts.retained) {
+    pending.push(artifactActionFor(decision2, "artifact-retain"));
   }
   const rank = (kind) => PLAN_ACTION_ORDER.indexOf(kind);
   return [...pending].sort(
@@ -20594,7 +20594,7 @@ function planMode(input) {
   if (input.evidenceSeeds.length > 0 || input.artifacts.bootstrap.length > 0) return "bootstrap";
   if (input.artifacts.advance.length > 0) return "upgrade";
   if (input.registryDelta.additions.length > 0) return "install";
-  if (input.artifacts.retained.some((decision) => decision.reason === "divergent")) {
+  if (input.artifacts.retained.some((decision2) => decision2.reason === "divergent")) {
     return "retained-divergence";
   }
   return "reconcile";
@@ -20677,10 +20677,10 @@ function planIdentity(input, actions) {
   emit("payload-rejection", [...input.payloads.rejected]);
   emit("payload-conflict", [...input.payloads.conflicts]);
   emit("artifact-decision", [
-    ...input.artifacts.deletable.map((decision) => ["deletable", decision]),
-    ...input.artifacts.bootstrap.map((decision) => ["bootstrap", decision]),
-    ...input.artifacts.advance.map((decision) => ["advance", decision]),
-    ...input.artifacts.retained.map((decision) => ["retained", decision])
+    ...input.artifacts.deletable.map((decision2) => ["deletable", decision2]),
+    ...input.artifacts.bootstrap.map((decision2) => ["bootstrap", decision2]),
+    ...input.artifacts.advance.map((decision2) => ["advance", decision2]),
+    ...input.artifacts.retained.map((decision2) => ["retained", decision2])
   ]);
   emit(
     "action",
@@ -21568,8 +21568,8 @@ function planInstall(input) {
     };
   }
   const findings = [];
-  const finding2 = (code, severity, pluginId, message) => {
-    findings.push({ code, severity, pluginId, message });
+  const finding2 = (code, severity, pluginId, message2) => {
+    findings.push({ code, severity, pluginId, message: message2 });
   };
   const byId = new Map(input.packs.map((pack) => [pack.pluginId, pack]));
   const desired = new Set(input.selection.desired);
@@ -21964,10 +21964,10 @@ function label(source) {
 function failure(source, reason, diagnostic) {
   return { ok: false, root: null, source, reason, diagnostic };
 }
-function reasonFromThrow(message) {
-  if (message.includes("must be an absolute path")) return "not-absolute";
-  if (message.includes("must be a directory")) return "not-a-directory";
-  if (message.includes("does not exist")) return "not-found";
+function reasonFromThrow(message2) {
+  if (message2.includes("must be an absolute path")) return "not-absolute";
+  if (message2.includes("must be a directory")) return "not-a-directory";
+  if (message2.includes("does not exist")) return "not-found";
   return "not-found";
 }
 function admittedByFamily(identity, launch) {
@@ -21982,9 +21982,9 @@ function admit(source, candidate, launch) {
   try {
     identity = resolveWorkspaceIdentity(candidate, label(source));
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const classifiable = message.split(": ")[0] ?? message;
-    const diagnostic = message.includes(candidate) ? message : `${message} Received: \`${candidate}\`.`;
+    const message2 = err instanceof Error ? err.message : String(err);
+    const classifiable = message2.split(": ")[0] ?? message2;
+    const diagnostic = message2.includes(candidate) ? message2 : `${message2} Received: \`${candidate}\`.`;
     return failure(source, reasonFromThrow(classifiable), diagnostic);
   }
   if (!admittedByFamily(identity, launch)) {
@@ -22027,6 +22027,392 @@ function selectWorkspaceRoot(declaration, launch) {
   );
 }
 
+// src/resolver/lifecycle-journal.ts
+var LIFECYCLE_LOCK_PATH = "_local/lifecycle.lock";
+var LIFECYCLE_JOURNAL_PATH = "_local/lifecycle-journal.json";
+var LIFECYCLE_BACKUP_DIR = "_local/lifecycle-backups";
+var LIFECYCLE_JOURNAL_VERSION = 1;
+var SHA256_RE2 = /^[a-f0-9]{64}$/;
+function nonEmpty(value) {
+  return typeof value === "string" && value.length > 0;
+}
+function asRecord(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return value;
+}
+function createLastWrittenIdentity(inputs) {
+  if (!SHA256_RE2.test(inputs.contentHash)) return null;
+  if (!Number.isInteger(inputs.bytes) || inputs.bytes < 0) return null;
+  return { contentHash: inputs.contentHash, bytes: inputs.bytes };
+}
+function createJournalEntry(inputs) {
+  if (!nonEmpty(inputs.destination)) return null;
+  if (inputs.priorExistence !== "present" && inputs.priorExistence !== "absent") return null;
+  if (typeof inputs.priorIsSymlink !== "boolean") return null;
+  if (inputs.priorExistence === "present") {
+    if (inputs.priorContentHash === null) {
+      if (!inputs.priorIsSymlink) return null;
+    } else if (!SHA256_RE2.test(inputs.priorContentHash)) {
+      return null;
+    }
+  } else if (inputs.priorContentHash !== null) {
+    return null;
+  }
+  if (inputs.backupPath !== null && !nonEmpty(inputs.backupPath)) return null;
+  const lastWritten = inputs.lastWritten === null ? null : createLastWrittenIdentity(inputs.lastWritten);
+  if (inputs.lastWritten !== null && lastWritten === null) return null;
+  return {
+    destination: inputs.destination,
+    priorExistence: inputs.priorExistence,
+    priorContentHash: inputs.priorContentHash,
+    priorIsSymlink: inputs.priorIsSymlink,
+    backupPath: inputs.backupPath,
+    lastWritten
+  };
+}
+function readLastWritten(value) {
+  if (value === null || value === void 0) return null;
+  const row = asRecord(value);
+  if (row === null) return "invalid";
+  const identity = createLastWrittenIdentity({
+    contentHash: typeof row.contentHash === "string" ? row.contentHash : "",
+    bytes: typeof row.bytes === "number" ? row.bytes : -1
+  });
+  return identity === null ? "invalid" : identity;
+}
+function parseTransactionJournal(raw) {
+  if (raw === null) return { status: "absent" };
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return {
+      status: "malformed",
+      diagnostic: "the transaction journal is not valid JSON."
+    };
+  }
+  const root = asRecord(data);
+  if (root === null) {
+    return {
+      status: "malformed",
+      diagnostic: "the transaction journal is not a JSON object."
+    };
+  }
+  const rawVersion = root.journalVersion;
+  if (typeof rawVersion !== "number" || !Number.isInteger(rawVersion)) {
+    return {
+      status: "unsupported",
+      observedVersion: null,
+      diagnostic: "the transaction journal declares no integer `journalVersion`; a journal with no declared version is never assumed to be the current one."
+    };
+  }
+  if (rawVersion !== LIFECYCLE_JOURNAL_VERSION) {
+    return {
+      status: "unsupported",
+      observedVersion: rawVersion,
+      diagnostic: `the transaction journal declares \`journalVersion\` ${rawVersion}; this release understands only ${LIFECYCLE_JOURNAL_VERSION}.`
+    };
+  }
+  if (!nonEmpty(root.transactionId) || !nonEmpty(root.startedAt)) {
+    return {
+      status: "malformed",
+      diagnostic: "the transaction journal is missing `transactionId` or `startedAt`."
+    };
+  }
+  if (!Array.isArray(root.entries)) {
+    return {
+      status: "malformed",
+      diagnostic: "the transaction journal's `entries` is not an array."
+    };
+  }
+  const entries = [];
+  for (const candidate of root.entries) {
+    const row = asRecord(candidate);
+    if (row === null) {
+      return {
+        status: "malformed",
+        diagnostic: "a transaction-journal entry is not a JSON object."
+      };
+    }
+    const lastWritten = readLastWritten(row.lastWritten);
+    if (lastWritten === "invalid") {
+      return {
+        status: "malformed",
+        diagnostic: `the last-written identity for \`${String(row.destination)}\` is incomplete or non-deterministic.`
+      };
+    }
+    const entry = createJournalEntry({
+      destination: typeof row.destination === "string" ? row.destination : "",
+      priorExistence: row.priorExistence,
+      priorContentHash: typeof row.priorContentHash === "string" ? row.priorContentHash : null,
+      priorIsSymlink: row.priorIsSymlink === true,
+      backupPath: typeof row.backupPath === "string" ? row.backupPath : null,
+      lastWritten
+    });
+    if (entry === null) {
+      return {
+        status: "malformed",
+        diagnostic: `the transaction-journal entry for \`${String(row.destination)}\` is incomplete or self-contradictory.`
+      };
+    }
+    entries.push(entry);
+  }
+  const destinations = new Set(entries.map((entry) => entry.destination));
+  if (destinations.size !== entries.length) {
+    return {
+      status: "malformed",
+      diagnostic: "the transaction journal names a destination more than once; the recovery decision would depend on iteration order."
+    };
+  }
+  return {
+    status: "ok",
+    journal: {
+      journalVersion: LIFECYCLE_JOURNAL_VERSION,
+      transactionId: root.transactionId,
+      startedAt: root.startedAt,
+      entries: entries.sort(
+        (left, right) => left.destination.localeCompare(right.destination)
+      )
+    }
+  };
+}
+function decision(action2, disposition, reason, detail) {
+  return { action: action2, disposition, reason, detail };
+}
+function identityMatches(observation, identity) {
+  return observation.contentHash === identity.contentHash && observation.bytes === identity.bytes;
+}
+function decideEntryRecovery(entry, observation) {
+  if (observation.kind === "not-contained") {
+    return decision(
+      "none",
+      "unresolved",
+      "target-not-contained",
+      `\`${entry.destination}\` does not resolve to a workspace-contained target (${observation.rejection}); recovery refuses it rather than writing outside the admitted root.`
+    );
+  }
+  if (observation.kind === "observation-failed") {
+    return decision(
+      "none",
+      "unresolved",
+      "observation-failed",
+      `\`${entry.destination}\` could not be observed: ${observation.diagnostic}`
+    );
+  }
+  if (observation.kind === "symlink" || entry.priorIsSymlink) {
+    return decision(
+      "none",
+      "preserved",
+      "symlink-conflict",
+      `\`${entry.destination}\` is or was a symbolic link; recovery never follows, replaces, or removes a link, so it is preserved exactly as found.`
+    );
+  }
+  if (entry.priorExistence === "absent") {
+    if (observation.kind === "absent") {
+      return decision(
+        "none",
+        "already-restored",
+        "already-prior-absence",
+        `\`${entry.destination}\` is already absent, which is its prior state.`
+      );
+    }
+  } else if (observation.kind === "file" && entry.priorContentHash !== null && observation.contentHash === entry.priorContentHash) {
+    return decision(
+      "none",
+      "already-restored",
+      "already-prior-content",
+      `\`${entry.destination}\` already holds its prior bytes.`
+    );
+  }
+  if (entry.lastWritten === null) {
+    return decision(
+      "none",
+      "preserved",
+      "external-edit",
+      `\`${entry.destination}\` differs from its prior state, but the interrupted transaction never wrote it; the change is not ours to undo.`
+    );
+  }
+  const ours = observation.kind === "file" && identityMatches(observation, entry.lastWritten);
+  if (!ours) {
+    return decision(
+      "none",
+      "preserved",
+      "external-edit",
+      `\`${entry.destination}\` no longer holds the bytes the interrupted transaction wrote; an unrelated edit is preserved, never overwritten.`
+    );
+  }
+  if (entry.priorExistence === "absent") {
+    return decision(
+      "restore-absence",
+      "restored",
+      "restored-absence",
+      `\`${entry.destination}\` was created by the interrupted transaction and is removed to restore its prior absence.`
+    );
+  }
+  if (entry.backupPath === null || entry.priorContentHash === null) {
+    return decision(
+      "none",
+      "unresolved",
+      "backup-missing",
+      `\`${entry.destination}\` records prior bytes but no backup to restore them from.`
+    );
+  }
+  return decision(
+    "restore-content",
+    "restored",
+    "restored-content",
+    `\`${entry.destination}\` still holds the interrupted transaction's bytes and is restored from its verified backup.`
+  );
+}
+
+// src/resolver/lifecycle-recovery.ts
+function emptyBuckets() {
+  return { restored: [], alreadyRestored: [], preserved: [], unresolved: [] };
+}
+function bucketFor(buckets, outcome) {
+  if (outcome.disposition === "restored") return buckets.restored;
+  if (outcome.disposition === "already-restored") return buckets.alreadyRestored;
+  if (outcome.disposition === "preserved") return buckets.preserved;
+  return buckets.unresolved;
+}
+function terminalReport(state, proceeded, diagnostics, journalVersion = null) {
+  return {
+    state,
+    proceeded,
+    wroteBytes: false,
+    journalVersion,
+    transactionId: null,
+    ...emptyBuckets(),
+    diagnostics
+  };
+}
+function invalidRootRecoveryReport(diagnostic) {
+  return terminalReport("invalid-root", false, [
+    { code: "recovery/invalid-root", message: diagnostic }
+  ]);
+}
+function noRecoveryReport() {
+  return terminalReport("no-journal", true, []);
+}
+function recoverInterruptedTransaction(ports) {
+  const lock = ports.acquireLock();
+  if (!lock.ok) {
+    const code = lock.reason === "held-by-other" ? "recovery/lock-held" : "recovery/lock-unavailable";
+    return terminalReport("lock-unavailable", false, [
+      { code, message: lock.diagnostic }
+    ]);
+  }
+  try {
+    return runUnderLock(ports);
+  } catch (err) {
+    const message2 = err instanceof Error ? err.message : String(err);
+    return terminalReport("incomplete", false, [
+      {
+        code: "recovery/failed",
+        message: `recovery could not complete: ${message2}`
+      }
+    ]);
+  } finally {
+    ports.releaseLock();
+  }
+}
+function runUnderLock(ports) {
+  const parsed = parseTransactionJournal(ports.readJournal());
+  if (parsed.status === "absent") {
+    return terminalReport("no-journal", true, []);
+  }
+  if (parsed.status === "unsupported") {
+    return terminalReport(
+      "unsupported",
+      false,
+      [{ code: "recovery/journal-unsupported", message: parsed.diagnostic }],
+      parsed.observedVersion
+    );
+  }
+  if (parsed.status === "malformed") {
+    return terminalReport("malformed", false, [
+      { code: "recovery/journal-malformed", message: parsed.diagnostic }
+    ]);
+  }
+  const journal = parsed.journal;
+  const buckets = emptyBuckets();
+  const diagnostics = [];
+  let wroteBytes = false;
+  for (const entry of journal.entries) {
+    const decided = decideEntryRecovery(entry, ports.observeDestination(entry.destination));
+    let outcome = {
+      destination: entry.destination,
+      disposition: decided.disposition,
+      reason: decided.reason,
+      detail: decided.detail
+    };
+    if (decided.action === "restore-content" && entry.backupPath !== null) {
+      const backup = ports.hashBackup(entry.backupPath);
+      if (!backup.ok) {
+        outcome = {
+          destination: entry.destination,
+          disposition: "unresolved",
+          reason: backup.reason === "missing" ? "backup-missing" : backup.reason === "not-contained" ? "target-not-contained" : "backup-mismatch",
+          detail: backup.diagnostic
+        };
+      } else if (backup.contentHash !== entry.priorContentHash) {
+        outcome = {
+          destination: entry.destination,
+          disposition: "unresolved",
+          reason: "backup-mismatch",
+          detail: `the backup for \`${entry.destination}\` no longer reproduces the recorded prior bytes; recovery writes nothing it cannot prove.`
+        };
+      } else {
+        const written = ports.restoreBytes(entry.destination, entry.backupPath);
+        if (written.ok) {
+          wroteBytes = true;
+        } else {
+          outcome = {
+            destination: entry.destination,
+            disposition: "unresolved",
+            reason: "restore-failed",
+            detail: written.diagnostic
+          };
+        }
+      }
+    } else if (decided.action === "restore-absence") {
+      const removed = ports.removeDestination(entry.destination);
+      if (removed.ok) {
+        wroteBytes = true;
+      } else {
+        outcome = {
+          destination: entry.destination,
+          disposition: "unresolved",
+          reason: "restore-failed",
+          detail: removed.diagnostic
+        };
+      }
+    }
+    bucketFor(buckets, outcome).push(outcome);
+  }
+  const complete = buckets.preserved.length === 0 && buckets.unresolved.length === 0;
+  if (complete) {
+    ports.discardJournal(journal.entries);
+  } else {
+    diagnostics.push({
+      code: "recovery/incomplete",
+      message: `recovery left ${buckets.preserved.length} destination(s) preserved and ${buckets.unresolved.length} unresolved; the journal is retained and lifecycle state is not read.`
+    });
+  }
+  return {
+    state: complete ? "recovered" : "incomplete",
+    proceeded: complete,
+    wroteBytes,
+    journalVersion: journal.journalVersion,
+    transactionId: journal.transactionId,
+    restored: buckets.restored,
+    alreadyRestored: buckets.alreadyRestored,
+    preserved: buckets.preserved,
+    unresolved: buckets.unresolved,
+    diagnostics
+  };
+}
+
 // src/tools.ts
 function ok(payload) {
   return {
@@ -22036,16 +22422,16 @@ function ok(payload) {
 }
 var safeTerminalStringPattern = "^[^\\u0000-\\u001F\\u007F-\\u009F]*$";
 function terminalSafeDiagnostic(value) {
-  const message = value instanceof Error ? value.message : String(value);
-  return message.replace(new RegExp("\\p{C}", "gu"), "?").slice(0, 512);
+  const message2 = value instanceof Error ? value.message : String(value);
+  return message2.replace(new RegExp("\\p{C}", "gu"), "?").slice(0, 512);
 }
 function guard(fn) {
   try {
     return ok(fn());
   } catch (err) {
-    const message = terminalSafeDiagnostic(err);
+    const message2 = terminalSafeDiagnostic(err);
     return {
-      content: [{ type: "text", text: `resolver error: ${message}` }],
+      content: [{ type: "text", text: `resolver error: ${message2}` }],
       isError: true
     };
   }
@@ -22137,6 +22523,21 @@ function planInstallEnvelopeForRejection(source, reason, diagnostic, args) {
     capabilities: [],
     selection: toPlanSelection(args)
   });
+}
+function discoverPacksEnvelopeForRejection(workspaceRoot, diagnostic) {
+  return {
+    workspaceRoot,
+    inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+    packs: [],
+    diagnostics: [
+      {
+        pluginId: null,
+        code: "discovery/invalid-root",
+        message: diagnostic
+      }
+    ],
+    recovery: invalidRootRecoveryReport(diagnostic)
+  };
 }
 var surfaceClassInput = fromJsonSchema2(withWorkspaceRoot({
   type: "object",
@@ -22448,7 +22849,7 @@ var reasonsInput = fromJsonSchema2(withWorkspaceRoot({
   additionalProperties: false
 }));
 function toReasons(reasons, code) {
-  return (reasons ?? []).filter((r) => typeof r === "string" && r.trim().length > 0).map((message) => ({ code, message: message.trim() }));
+  return (reasons ?? []).filter((r) => typeof r === "string" && r.trim().length > 0).map((message2) => ({ code, message: message2.trim() }));
 }
 var RESIDENT = { "anthropic/alwaysLoad": true };
 function registerResolverTools(server, selectService) {
@@ -22550,10 +22951,28 @@ function registerResolverTools(server, selectService) {
     "discover_packs",
     {
       title: "discover packs",
-      description: "Read-only, byte-inert pack discovery (R6). Joins the authoritative `claude plugin list --json` inventory, registry attribution, each pack's existing snapshot state, recorded-vs-observed lifecycle evidence, and declared questions into one deterministic inventory a maintainer inspects before choosing a lifecycle change. Returns `{workspaceRoot, inventory{confidence, mayEstablishAbsence, observedCount, issues}, packs[], diagnostics[]}`. `confidence` is one of `trustworthy | unavailable | malformed | partial | invalid`, and ONLY `trustworthy` may establish that a registered pack is orphaned \u2014 every other value reports `absence-indeterminate` instead. A duplicate plugin id or name invalidates the whole inventory and classifies nothing. Each pack carries its unchanged `PackState` plus a separate nullable staleness `overlay`, a non-persisted `seedProposal`, and its declared questions. Writes nothing: no ledger, no seed, no enablement change.",
+      description: "Recovery-first, then read-only byte-inert pack discovery (R6 + WF-451). BEFORE any lifecycle state is read it takes an EXCLUSIVE machine-local lock and recovers an interrupted transaction from the versioned machine-local journal; only then does it join the authoritative `claude plugin list --json` inventory, registry attribution, each pack's snapshot state, recorded-vs-observed lifecycle evidence, and declared questions into one deterministic inventory. Returns `{workspaceRoot, inventory{confidence, mayEstablishAbsence, observedCount, issues}, packs[], diagnostics[], recovery{...}}`. `confidence` is one of `trustworthy | unavailable | malformed | partial | invalid`, and ONLY `trustworthy` may establish that a registered pack is orphaned \u2014 every other value reports `absence-indeterminate` instead. A duplicate plugin id or name invalidates the whole inventory and classifies nothing. Each pack carries its unchanged `PackState` plus a separate nullable staleness `overlay`, a non-persisted `seedProposal`, and its declared questions. DISCOVERY NEVER CREATES A JOURNAL, a backup, or a transaction of its own \u2014 with no journal present it acquires and releases the lock, creates zero transaction state, and is byte-inert. RECOVERY WRITES ARE REPORTED SEPARATELY in `recovery`, never folded into discovery's output: `recovery.wroteBytes` states that recovery moved the baseline, and discovery's byte-inertness is asserted FROM THAT RECOVERED BASELINE, never from process start. `recovery.state` is one of `no-journal | recovered | incomplete | unsupported | malformed | lock-unavailable | invalid-root`, and `recovery.proceeded` is `true` only for `no-journal` and `recovered`. RECOVERY IS FAIL-SAFE AND IDEMPOTENT: a destination is restored to its exact prior existence and bytes only when the bytes on disk are still the ones the interrupted transaction wrote AND the backup reproduces the recorded prior hash; an external edit or a symlink is PRESERVED, an uncontained destination, a missing or mismatching backup, or a failed write is left UNRESOLVED, and any preserved or unresolved work RETAINS the journal and stops discovery \u2014 which then reports `unavailable` confidence and can never establish absence. A journal version this release does not understand is a STOP, never a best-effort parse. Concurrent entry (`lock-unavailable`) and an inadmissible workspace root (`invalid-root`, bound to the one canonical admission API) each return this same typed byte-inert envelope rather than an error. Writes nothing of its own: no ledger, no seed, no enablement change, no journal.",
       inputSchema: workspaceOnlyInput
     },
-    async (args) => selected(args, (service) => service.discoverPacks())
+    async (args) => guard(() => {
+      const declared = selectWorkspaceRoot(
+        { explicit: args.workspaceRoot, cwd: args.workspaceRoot },
+        null
+      );
+      if (!declared.ok) {
+        return discoverPacksEnvelopeForRejection(args.workspaceRoot, declared.diagnostic);
+      }
+      let service;
+      try {
+        service = selectService(args.workspaceRoot);
+      } catch (err) {
+        return discoverPacksEnvelopeForRejection(
+          args.workspaceRoot,
+          terminalSafeDiagnostic(err)
+        );
+      }
+      return service.discoverPacks();
+    })
   );
   server.registerTool(
     "plan_install",
@@ -22685,7 +23104,19 @@ function registerResolverTools(server, selectService) {
 }
 
 // src/ports.ts
-import { lstatSync as lstatSync2, mkdirSync as mkdirSync2, readdirSync as readdirSync2, realpathSync as realpathSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import {
+  closeSync as closeSync2,
+  lstatSync as lstatSync2,
+  mkdirSync as mkdirSync2,
+  openSync as openSync2,
+  readFileSync as readFileSync3,
+  readdirSync as readdirSync2,
+  realpathSync as realpathSync3,
+  rmSync as rmSync2,
+  rmdirSync,
+  writeFileSync as writeFileSync2
+} from "node:fs";
+import { createHash as createHash3 } from "node:crypto";
 import { basename, dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23113,12 +23544,12 @@ function validatePayloadDeclarations(pluginId, capability, table) {
 // src/resolver/lifecycle-evidence.ts
 var COMMITTED_LEDGER_PATH = ".wf/install-state.json";
 var LOCAL_LEDGER_PATH = "_local/install-state.json";
-var SHA256_RE2 = /^[a-f0-9]{64}$/;
-function nonEmpty(value) {
+var SHA256_RE3 = /^[a-f0-9]{64}$/;
+function nonEmpty2(value) {
   return typeof value === "string" && value.length > 0;
 }
 function uniqueSortedStrings(values) {
-  if (values.some((value) => !nonEmpty(value))) return null;
+  if (values.some((value) => !nonEmpty2(value))) return null;
   const sorted = [...values].sort((left, right) => left.localeCompare(right));
   return new Set(sorted).size === sorted.length ? sorted : null;
 }
@@ -23126,7 +23557,7 @@ function orderedHashes(records) {
   const normalized = [];
   const paths = /* @__PURE__ */ new Set();
   for (const record2 of records) {
-    if (!nonEmpty(record2.path) || !SHA256_RE2.test(record2.sha256) || paths.has(record2.path)) {
+    if (!nonEmpty2(record2.path) || !SHA256_RE3.test(record2.sha256) || paths.has(record2.path)) {
       return null;
     }
     paths.add(record2.path);
@@ -23139,7 +23570,7 @@ function orderedHashes(records) {
 function orderedOwners(owners) {
   const normalized = owners.map((owner) => ({ ...owner }));
   if (normalized.length === 0 || normalized.some(
-    (owner) => !nonEmpty(owner.pluginId) || !nonEmpty(owner.capability) || !nonEmpty(owner.source)
+    (owner) => !nonEmpty2(owner.pluginId) || !nonEmpty2(owner.capability) || !nonEmpty2(owner.source)
   )) {
     return null;
   }
@@ -23178,7 +23609,7 @@ function resolveLedgerHome(value) {
   };
 }
 function createPortablePackEvidence(inputs) {
-  if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.version)) return null;
+  if (!nonEmpty2(inputs.pluginId) || !nonEmpty2(inputs.version)) return null;
   const capabilities = uniqueSortedStrings(inputs.capabilities);
   const manifestHashes = orderedHashes(inputs.manifestHashes);
   const declaredSourceHashes = orderedHashes(inputs.declaredSourceHashes);
@@ -23194,7 +23625,7 @@ function createPortablePackEvidence(inputs) {
   };
 }
 function createMachineBindingEvidence(inputs) {
-  if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.canonicalRoot) || inputs.cliScope !== null && !nonEmpty(inputs.cliScope) || inputs.observedVersion !== null && !nonEmpty(inputs.observedVersion)) {
+  if (!nonEmpty2(inputs.pluginId) || !nonEmpty2(inputs.canonicalRoot) || inputs.cliScope !== null && !nonEmpty2(inputs.cliScope) || inputs.observedVersion !== null && !nonEmpty2(inputs.observedVersion)) {
     return null;
   }
   const localFingerprints = orderedHashes(inputs.localFingerprints);
@@ -23210,7 +23641,7 @@ function createMachineBindingEvidence(inputs) {
 }
 function createArtifactEvidence(inputs) {
   const owners = orderedOwners(inputs.owners);
-  if (!nonEmpty(inputs.destination) || owners === null || !SHA256_RE2.test(inputs.declaredSourceFingerprint) || !SHA256_RE2.test(inputs.producedContentHash) || inputs.production !== "copy" || inputs.refresh !== "replace-if-unmodified" && inputs.refresh !== "retain" || inputs.removal !== "delete-if-unmodified" && inputs.removal !== "retain") {
+  if (!nonEmpty2(inputs.destination) || owners === null || !SHA256_RE3.test(inputs.declaredSourceFingerprint) || !SHA256_RE3.test(inputs.producedContentHash) || inputs.production !== "copy" || inputs.refresh !== "replace-if-unmodified" && inputs.refresh !== "retain" || inputs.removal !== "delete-if-unmodified" && inputs.removal !== "retain") {
     return null;
   }
   return {
@@ -23539,18 +23970,18 @@ function annotate(d) {
   return { ...d, category, recovery: recoveryFor(category) };
 }
 function classifyThrow(err) {
-  const message = err instanceof Error ? err.message : String(err);
+  const message2 = err instanceof Error ? err.message : String(err);
   let category;
-  if (/schema\s*version|schemaversion|incompatible schema|schema is incompatible/i.test(message)) {
+  if (/schema\s*version|schemaversion|incompatible schema|schema is incompatible/i.test(message2)) {
     category = "schema-incompatible";
-  } else if (/fingerprint|re-?read|unresolvable source/i.test(message)) {
+  } else if (/fingerprint|re-?read|unresolvable source/i.test(message2)) {
     category = "fingerprint-unresolvable";
-  } else if (/malformed|corrupt|unparse|json|parse error|invalid snapshot/i.test(message)) {
+  } else if (/malformed|corrupt|unparse|json|parse error|invalid snapshot/i.test(message2)) {
     category = "snapshot-malformed";
   } else {
     category = "snapshot-missing";
   }
-  return { category, failedInput: "resolution snapshot", message };
+  return { category, failedInput: "resolution snapshot", message: message2 };
 }
 function reactionFor(surface, healthy) {
   if (healthy) return "continue";
@@ -23598,13 +24029,13 @@ function toAbsolute2(workspaceRoot, snapshotPath2) {
 function refused(refClass, reason) {
   return { kind: "refused", refClass, reason };
 }
-function unresolved(refClass, message) {
+function unresolved(refClass, message2) {
   return {
     kind: "unresolved",
     refClass,
     category: "registry-invalid",
     recovery: recoveryFor("registry-invalid"),
-    message
+    message: message2
   };
 }
 function resolveContentRef(ref, ctx) {
@@ -24821,7 +25252,176 @@ function createDefaultPorts(workspaceRoot) {
       };
     },
     registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH2,
-    resolveRegistryWritePath: (registryRelPath2) => resolveContainedRegistryWritePath(workspaceRoot, registryRelPath2)
+    resolveRegistryWritePath: (registryRelPath2) => resolveContainedRegistryWritePath(workspaceRoot, registryRelPath2),
+    recovery: createRecoveryPorts(workspaceRoot)
+  };
+}
+function errno(err) {
+  return err?.code;
+}
+function message(err) {
+  return err instanceof Error ? err.message : String(err);
+}
+function sha256Bytes(bytes) {
+  return createHash3("sha256").update(bytes).digest("hex");
+}
+function createRecoveryPorts(workspaceRoot) {
+  const lockPath = joinSlash(workspaceRoot, LIFECYCLE_LOCK_PATH);
+  const journalPath = joinSlash(workspaceRoot, LIFECYCLE_JOURNAL_PATH);
+  const contained = (relPath) => {
+    const resolved = resolveContainedPayloadTarget(workspaceRoot, relPath);
+    if (!resolved.ok) return { ok: false, rejection: resolved.rejection };
+    return { ok: true, target: resolved.canonicalTarget, exists: resolved.exists };
+  };
+  return {
+    acquireLock: () => {
+      try {
+        mkdirSync2(dirname2(lockPath), { recursive: true });
+        closeSync2(openSync2(lockPath, "wx"));
+        return { ok: true };
+      } catch (err) {
+        if (errno(err) === "EEXIST") {
+          return {
+            ok: false,
+            reason: "held-by-other",
+            diagnostic: `another lifecycle run holds \`${LIFECYCLE_LOCK_PATH}\`; this run stops without reading or writing lifecycle state.`
+          };
+        }
+        return {
+          ok: false,
+          reason: "unavailable",
+          diagnostic: `the lifecycle lock \`${LIFECYCLE_LOCK_PATH}\` could not be acquired: ${message(err)}`
+        };
+      }
+    },
+    // Tolerant by contract: the driver calls this on every exit path, including
+    // ones where the lock may already be gone.
+    releaseLock: () => {
+      try {
+        rmSync2(lockPath, { force: true });
+      } catch {
+      }
+    },
+    readJournal: () => {
+      try {
+        return readFileSync3(journalPath, "utf8");
+      } catch (err) {
+        if (errno(err) === "ENOENT") return null;
+        return "";
+      }
+    },
+    observeDestination: (destination) => {
+      const target = contained(destination);
+      if (!target.ok) return { kind: "not-contained", rejection: target.rejection };
+      const literal2 = resolve3(realpathSync3(workspaceRoot), destination);
+      let stat;
+      try {
+        stat = lstatSync2(literal2);
+      } catch (err) {
+        if (errno(err) === "ENOENT") return { kind: "absent" };
+        return { kind: "observation-failed", diagnostic: message(err) };
+      }
+      if (stat.isSymbolicLink()) return { kind: "symlink" };
+      if (!stat.isFile()) {
+        return {
+          kind: "observation-failed",
+          diagnostic: `\`${destination}\` is not a regular file.`
+        };
+      }
+      try {
+        const bytes = readFileSync3(literal2);
+        return { kind: "file", contentHash: sha256Bytes(bytes), bytes: bytes.byteLength };
+      } catch (err) {
+        return { kind: "observation-failed", diagnostic: message(err) };
+      }
+    },
+    hashBackup: (backupPath) => {
+      const target = contained(backupPath);
+      if (!target.ok) {
+        return {
+          ok: false,
+          reason: "not-contained",
+          diagnostic: `the backup \`${backupPath}\` does not resolve to a workspace-contained file (${target.rejection}).`
+        };
+      }
+      try {
+        return { ok: true, contentHash: sha256Bytes(readFileSync3(target.target)) };
+      } catch (err) {
+        if (errno(err) === "ENOENT") {
+          return {
+            ok: false,
+            reason: "missing",
+            diagnostic: `the backup \`${backupPath}\` no longer exists, so the prior bytes cannot be proven.`
+          };
+        }
+        return {
+          ok: false,
+          reason: "unreadable",
+          diagnostic: `the backup \`${backupPath}\` could not be read: ${message(err)}`
+        };
+      }
+    },
+    restoreBytes: (destination, backupPath) => {
+      const targetPath = contained(destination);
+      const backup = contained(backupPath);
+      if (!targetPath.ok || !backup.ok) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` or its backup does not resolve to a workspace-contained target; nothing was written.`
+        };
+      }
+      try {
+        const bytes = readFileSync3(backup.target);
+        mkdirSync2(dirname2(targetPath.target), { recursive: true });
+        writeFileSync2(targetPath.target, bytes);
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` could not be restored: ${message(err)}`
+        };
+      }
+    },
+    removeDestination: (destination) => {
+      const target = contained(destination);
+      if (!target.ok) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` does not resolve to a workspace-contained target; nothing was removed.`
+        };
+      }
+      try {
+        rmSync2(target.target, { force: true });
+        return { ok: true };
+      } catch (err) {
+        return {
+          ok: false,
+          diagnostic: `\`${destination}\` could not be removed: ${message(err)}`
+        };
+      }
+    },
+    // Called ONLY on a complete recovery. Removes exactly the backups the
+    // journal named — never a recursive sweep of the backup root, which could
+    // discard bytes this journal never claimed.
+    discardJournal: (entries) => {
+      for (const entry of entries) {
+        if (entry.backupPath === null) continue;
+        const backup = contained(entry.backupPath);
+        if (!backup.ok) continue;
+        try {
+          rmSync2(backup.target, { force: true });
+        } catch {
+        }
+      }
+      try {
+        rmSync2(journalPath, { force: true });
+      } catch {
+      }
+      try {
+        rmdirSync(joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR));
+      } catch {
+      }
+    }
   };
 }
 
@@ -25148,8 +25748,8 @@ function evaluationProblem(evaluation, inputs) {
   }
   return null;
 }
-function stopDecision(decision, disposition, diagnostic, retainedUnitIds = []) {
-  return { ...decision, status: "stop", disposition, retry: null, retainedUnitIds, diagnostic };
+function stopDecision(decision2, disposition, diagnostic, retainedUnitIds = []) {
+  return { ...decision2, status: "stop", disposition, retry: null, retainedUnitIds, diagnostic };
 }
 function priorTerminalDecision(current, prior, shape, status, disposition, diagnostic, retainedUnitIds) {
   const { actualModel: _currentActualModel, ...withoutCurrentActualModel } = current;
@@ -25368,8 +25968,8 @@ function resolveRouting(project, inputs) {
 function toPosix(p) {
   return p.replace(/\\/g, "/");
 }
-function finding(rule, file, line, message) {
-  return { rule, severity: "error", file: toPosix(file), line, message };
+function finding(rule, file, line, message2) {
+  return { rule, severity: "error", file: toPosix(file), line, message: message2 };
 }
 function verdict(tool, target, findings, ruleSources, summary, forceError = false) {
   const status = forceError ? "error" : findings.length === 0 ? "pass" : "fail";
@@ -25427,8 +26027,8 @@ function tableRows(lines) {
   return rows;
 }
 var RuleSourceError = class extends Error {
-  constructor(message, source) {
-    super(message);
+  constructor(message2, source) {
+    super(message2);
     this.source = source;
     this.name = "RuleSourceError";
   }
@@ -26291,11 +26891,11 @@ function loadRules(fs, opsDocPath) {
   return deriveRules(content, opsDocPath);
 }
 function ruleSourceErrorVerdict(tool, target, err, opsDocPath) {
-  const message = err instanceof Error ? err.message : String(err);
+  const message2 = err instanceof Error ? err.message : String(err);
   return verdict(
     tool,
     target,
-    [finding("rule-source-unresolvable", opsDocPath, null, message)],
+    [finding("rule-source-unresolvable", opsDocPath, null, message2)],
     [],
     "no verdict \u2014 the live rule source could not be read.",
     true
@@ -26728,7 +27328,7 @@ var OVERLAY_BY_COMPARISON = {
 function emptyLedger() {
   return { portable: /* @__PURE__ */ new Map(), binding: /* @__PURE__ */ new Map(), artifacts: /* @__PURE__ */ new Map() };
 }
-function asRecord(value) {
+function asRecord2(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   return value;
 }
@@ -26736,7 +27336,7 @@ function asHashRecords(value) {
   if (!Array.isArray(value)) return [];
   const rows = [];
   for (const entry of value) {
-    const row = asRecord(entry);
+    const row = asRecord2(entry);
     if (row === null) continue;
     if (typeof row.path !== "string" || typeof row.sha256 !== "string") continue;
     rows.push({ path: row.path, sha256: row.sha256 });
@@ -26757,13 +27357,13 @@ function parseEvidenceLedger(raw) {
   } catch {
     return emptyLedger();
   }
-  const root = asRecord(data);
+  const root = asRecord2(data);
   if (root === null) return emptyLedger();
   const ledger = emptyLedger();
-  const portableSection = asRecord(root.portable);
+  const portableSection = asRecord2(root.portable);
   if (portableSection !== null) {
     for (const [pluginId, entry] of Object.entries(portableSection)) {
-      const row = asRecord(entry);
+      const row = asRecord2(entry);
       if (row === null) continue;
       const evidence = createPortablePackEvidence({
         pluginId: asNullableString(row.pluginId) ?? pluginId,
@@ -26775,10 +27375,10 @@ function parseEvidenceLedger(raw) {
       if (evidence !== null) ledger.portable.set(pluginId, evidence);
     }
   }
-  const bindingSection = asRecord(root.binding);
+  const bindingSection = asRecord2(root.binding);
   if (bindingSection !== null) {
     for (const [pluginId, entry] of Object.entries(bindingSection)) {
-      const row = asRecord(entry);
+      const row = asRecord2(entry);
       if (row === null) continue;
       const enablement = row.enablement;
       const evidence = createMachineBindingEvidence({
@@ -26792,15 +27392,15 @@ function parseEvidenceLedger(raw) {
       if (evidence !== null) ledger.binding.set(pluginId, evidence);
     }
   }
-  const artifactSection = asRecord(root.artifacts);
+  const artifactSection = asRecord2(root.artifacts);
   if (artifactSection !== null) {
     for (const [destination, entry] of Object.entries(artifactSection)) {
-      const row = asRecord(entry);
+      const row = asRecord2(entry);
       if (row === null) continue;
       const owners = [];
       if (Array.isArray(row.owners)) {
         for (const candidate of row.owners) {
-          const owner = asRecord(candidate);
+          const owner = asRecord2(candidate);
           if (owner === null) continue;
           if (typeof owner.pluginId !== "string" || typeof owner.capability !== "string" || typeof owner.source !== "string") {
             continue;
@@ -26894,7 +27494,8 @@ function discoverPacks(input) {
       workspaceRoot: input.workspaceRoot,
       inventory,
       packs: [],
-      diagnostics: sortDiagnostics(diagnostics)
+      diagnostics: sortDiagnostics(diagnostics),
+      recovery: input.recovery
     };
   }
   const installedIds = new Set(input.inventory.plugins.map((plugin) => plugin.id));
@@ -26955,7 +27556,8 @@ function discoverPacks(input) {
     workspaceRoot: input.workspaceRoot,
     inventory,
     packs,
-    diagnostics: sortDiagnostics(diagnostics)
+    diagnostics: sortDiagnostics(diagnostics),
+    recovery: input.recovery
   };
 }
 
@@ -27790,7 +28392,28 @@ var ResolverService = class {
    * that value IS the admitted root; discovery never re-derives one.
    */
   discoverPacks() {
-    return this.discoverPacksWithInspection().response;
+    const recovery = this.ports.recovery ? recoverInterruptedTransaction(this.ports.recovery) : noRecoveryReport();
+    if (!recovery.proceeded) {
+      return {
+        workspaceRoot: this.ports.workspaceRoot,
+        inventory: {
+          confidence: "unavailable",
+          mayEstablishAbsence: false,
+          observedCount: 0,
+          issues: []
+        },
+        packs: [],
+        diagnostics: [
+          {
+            pluginId: null,
+            code: "discovery/halted-unrecovered",
+            message: `discovery did not proceed: recovery reported \`${recovery.state}\`, so lifecycle state was never read.`
+          }
+        ],
+        recovery
+      };
+    }
+    return this.discoverPacksWithInspection(recovery).response;
   }
   /**
    * The discovery join PLUS the per-pack inspection results it already computed.
@@ -27804,7 +28427,7 @@ var ResolverService = class {
    * `inspectListedPack` was split out to avoid — so the inspections are handed
    * back from the single run instead.
    */
-  discoverPacksWithInspection() {
+  discoverPacksWithInspection(recovery = noRecoveryReport()) {
     const snapshot = this.ensure();
     const workspaceRoot = this.ports.workspaceRoot;
     const listing = this.ports.listPlugins();
@@ -27839,7 +28462,11 @@ var ResolverService = class {
           issues: listing.issues,
           plugins: listing.plugins
         },
-        packs
+        packs,
+        // Echoed, never consulted. The default is the byte-inert `no-journal`
+        // report, which is what `plan_install` gets: planner integration is
+        // WF-452's, so this shared path is left exactly as byte-inert as it was.
+        recovery
       }),
       inspected: inspectedByPluginId,
       snapshot,

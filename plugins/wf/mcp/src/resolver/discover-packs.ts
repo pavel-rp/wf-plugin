@@ -53,6 +53,7 @@ import type {
   PackStaleOverlay,
   PortablePackEvidence,
   QuestionRecord,
+  RecoveryReport,
 } from "./types.js";
 
 /** The `parsePluginList` codes that mean the output could not be read as an
@@ -296,6 +297,16 @@ export interface DiscoveryInput {
   workspaceRoot: string;
   inventory: DiscoveryInventoryInput;
   packs: readonly DiscoveryPackInput[];
+  /** The crash-recovery report for this run (WF-451), ECHOED VERBATIM into the
+   *  response and never consulted by the join.
+   *
+   *  This module stays byte-inert and side-effect-free: recovery — the one part
+   *  of a discovery run that can write — happens in the caller, BEFORE any state
+   *  is read, and arrives here as a finished fact. Carrying it as its own field
+   *  rather than folding it into `diagnostics` is what keeps a recovery write
+   *  distinguishable from a discovery write, and it is why the response can say
+   *  that discovery's byte-inertness begins at the RECOVERED baseline. */
+  recovery: RecoveryReport;
 }
 
 /** Stable ids and names seen more than once in the accepted inventory. */
@@ -421,6 +432,7 @@ export function discoverPacks(input: DiscoveryInput): DiscoverPacksResponse {
       inventory,
       packs: [],
       diagnostics: sortDiagnostics(diagnostics),
+      recovery: input.recovery,
     };
   }
 
@@ -505,5 +517,6 @@ export function discoverPacks(input: DiscoveryInput): DiscoverPacksResponse {
     inventory,
     packs,
     diagnostics: sortDiagnostics(diagnostics),
+    recovery: input.recovery,
   };
 }

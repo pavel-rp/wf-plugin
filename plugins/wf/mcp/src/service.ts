@@ -96,6 +96,11 @@ import {
   type EvidenceLedger,
 } from "./resolver/discover-packs.js";
 import {
+  noRecoveryReport,
+  recoverInterruptedTransaction,
+  type RecoveryPorts,
+} from "./resolver/lifecycle-recovery.js";
+import {
   planInstall as planInstallJoin,
   type PlanArtifactFactInput,
   type PlanCapabilityInput,
@@ -125,6 +130,7 @@ import {
   type PlanInstallResponse,
   type PortablePackEvidence,
   type QuestionDiagnostic,
+  type RecoveryReport,
   type ResolverErrorCategory,
   type ResolverSnapshot,
 } from "./resolver/types.js";
@@ -216,6 +222,11 @@ export interface ResolverServicePorts {
   /** Resolved registry-file location, workspace-relative (default
    *  `_local/config.md`). */
   registryRelPath(): string;
+  /** Crash-recovery effects for the guarded discovery entry (WF-451). OPTIONAL
+   *  so every existing in-memory port double stays valid; when absent, discovery
+   *  performs no recovery and reports `no-journal` — which is byte-inert and
+   *  non-blocking, exactly the pre-WF-451 behaviour. */
+  recovery?: RecoveryPorts;
   /** Production-only containment boundary for the registry write. Test doubles
    *  may omit it and use the shape-validated workspace-relative join. */
   resolveRegistryWritePath?(registryRelPath: string): string;
@@ -1343,7 +1354,48 @@ export class ResolverService {
    * that value IS the admitted root; discovery never re-derives one.
    */
   discoverPacks(): DiscoverPacksResponse {
-    return this.discoverPacksWithInspection().response;
+    // WF-451 — RECOVERY RUNS FIRST, BEFORE ANY LIFECYCLE STATE IS READ.
+    //
+    // The ordering is the whole point. `discoverPacksWithInspection()` reads the
+    // snapshot, the CLI inventory, and the evidence ledger; running it before
+    // recovery would mean classifying packs from state an interrupted
+    // transaction may have left half-written. So the guarded entry takes the
+    // exclusive lock, recovers whatever it can prove, and only then reads.
+    //
+    // Discovery NEVER CREATES A JOURNAL. It ships before any mutator exists and
+    // has no transaction of its own to open; it may only recover a pre-existing
+    // one. With no journal present the lock is taken and released, no
+    // transaction state is created, and the run is byte-inert.
+    const recovery = this.ports.recovery
+      ? recoverInterruptedTransaction(this.ports.recovery)
+      : noRecoveryReport();
+
+    if (!recovery.proceeded) {
+      // The fail-safe stop. Nothing below this line runs, so no lifecycle state
+      // is read at all. The inventory reports `unavailable`, which under WF-446's
+      // trust asymmetry can never establish that a registered pack is orphaned —
+      // a halted run must not be mistakable for an observation of absence.
+      return {
+        workspaceRoot: this.ports.workspaceRoot,
+        inventory: {
+          confidence: "unavailable",
+          mayEstablishAbsence: false,
+          observedCount: 0,
+          issues: [],
+        },
+        packs: [],
+        diagnostics: [
+          {
+            pluginId: null,
+            code: "discovery/halted-unrecovered",
+            message: `discovery did not proceed: recovery reported \`${recovery.state}\`, so lifecycle state was never read.`,
+          },
+        ],
+        recovery,
+      };
+    }
+
+    return this.discoverPacksWithInspection(recovery).response;
   }
 
   /**
@@ -1358,7 +1410,7 @@ export class ResolverService {
    * `inspectListedPack` was split out to avoid — so the inspections are handed
    * back from the single run instead.
    */
-  private discoverPacksWithInspection(): {
+  private discoverPacksWithInspection(recovery: RecoveryReport = noRecoveryReport()): {
     response: DiscoverPacksResponse;
     inspected: Map<string, InspectPackResponse>;
     snapshot: ResolverSnapshot;
@@ -1417,6 +1469,10 @@ export class ResolverService {
           plugins: listing.plugins,
         },
         packs,
+        // Echoed, never consulted. The default is the byte-inert `no-journal`
+        // report, which is what `plan_install` gets: planner integration is
+        // WF-452's, so this shared path is left exactly as byte-inert as it was.
+        recovery,
       }),
       inspected: inspectedByPluginId,
       snapshot,
