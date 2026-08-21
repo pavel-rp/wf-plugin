@@ -32,8 +32,10 @@ const CORE = "/core/plugins/wf";
 const NOW = () => new Date("2026-07-17T00:00:00.000Z");
 const GEN = { name: "wf-resolver", version: "0.3.0" };
 
-// A `demo` skill interface declaring exactly one slot (`demo.review`, replace)
-// and one settings key — the active declaration orphan validation checks against.
+// A `demo` skill interface declaring two slots — `demo.review` (replace, which
+// `capx` contributes to) and `demo.solo` (append, declared but uncontributed, so a
+// committed project override can fill it alone) — plus one settings key. This is
+// what the active declaration orphan validation checks against.
 const DEMO_INTERFACE = `# /wf:demo — interface declaration (fixture)
 
 ## Slots
@@ -41,6 +43,7 @@ const DEMO_INTERFACE = `# /wf:demo — interface declaration (fixture)
 | slot (skill.point) | merge policy | purpose             |
 |--------------------|--------------|---------------------|
 | demo.review        | replace      | the review step     |
+| demo.solo          | append       | an uncontributed point |
 
 ## Settings
 
@@ -63,6 +66,7 @@ const CAPX_MANIFEST = `# capx capability
 
 const CAPX_BODY = "CAPX_REVIEW_BODY_v1";
 const OVERRIDE_BODY = "PERSONAL_REVIEW_OVERRIDE_v1";
+const PROJECT_BODY = "COMMITTED_PROJECT_OVERRIDE_v1";
 
 const REGISTRY = `# Config
 
@@ -147,7 +151,8 @@ test("parseSlotDeclaration reads declared slot ids from the `## Slots` table", (
   const decl = parseSlotDeclaration(DEMO_INTERFACE);
   assert.ok(decl);
   assert.ok(decl.has("demo.review"));
-  assert.equal(decl.size, 1); // the header row is not a declaration
+  assert.ok(decl.has("demo.solo"));
+  assert.equal(decl.size, 2); // the header and separator rows are not declarations
 });
 
 test("parseSlotDeclaration returns an empty set for a `_(none)_` section, null for no section", () => {
@@ -202,6 +207,21 @@ test("editing a personal slot override invalidates the snapshot", () => {
   assert.ok(reasons.some((r) => r.code === "slot-override/changed"));
 });
 
+test("editing a committed project slot override invalidates the snapshot", () => {
+  // WF-443: the committed `.wf/` tier is fingerprinted exactly as the personal
+  // `_local/` one, so a checked-in customization is never served stale.
+  const { snap, io } = build(healthyFiles({ [`${WS}/.wf/slots/demo.review.md`]: PROJECT_BODY }));
+  assert.ok(snap.sources.some((s) => s.kind === "slot-project-override" && s.present));
+
+  const edited = new Map(io.map);
+  edited.set(normalizeSlashes(`${WS}/.wf/slots/demo.review.md`), PROJECT_BODY + "_EDITED");
+  const { fresh, reasons } = evaluateFreshness(snap, WS, {
+    readFile: (p) => edited.get(normalizeSlashes(p)) ?? null,
+  });
+  assert.equal(fresh, false);
+  assert.ok(reasons.some((r) => r.code === "slot-project-override/changed"));
+});
+
 test("editing a per-skill settings override invalidates the snapshot", () => {
   const { snap, io } = build(
     healthyFiles({ [`${WS}/_local/profiles/demo.settings.json`]: JSON.stringify({ "review.depth": 5 }) }),
@@ -232,6 +252,20 @@ test("an override targeting an undeclared slot fails loudly, naming the file and
   assert.equal(d.severity, "error");
   assert.equal(d.category, "registry-invalid");
   assert.ok(d.message.includes("_local/slots/demo.gone.md"), "names the override file");
+  assert.ok(d.message.includes("demo.gone"), "names the missing slot id");
+  assert.ok(d.recovery?.includes("/wf:resolve"), "states a /wf:resolve recovery path");
+});
+
+test("a committed project override targeting an undeclared slot fails loudly, naming the file and the slot id", () => {
+  // WF-443: symmetric with the personal-override orphan check — a committed
+  // override that could only ever lose to the inline default is a loud error,
+  // never a silent no-op.
+  const { snap } = build(healthyFiles({ [`${WS}/.wf/slots/demo.gone.md`]: "orphan project override body" }));
+  const d = snap.diagnostics.find((x) => x.code === "slot/orphaned-project-override");
+  assert.ok(d, "expected a slot/orphaned-project-override diagnostic");
+  assert.equal(d.severity, "error");
+  assert.equal(d.category, "registry-invalid");
+  assert.ok(d.message.includes(".wf/slots/demo.gone.md"), "names the override file");
   assert.ok(d.message.includes("demo.gone"), "names the missing slot id");
   assert.ok(d.recovery?.includes("/wf:resolve"), "states a /wf:resolve recovery path");
 });
@@ -269,6 +303,7 @@ test("provenance records the pack contribution as the winner when no override is
   assert.equal(row.tier, "pack-contribution");
   assert.equal(row.winningSource, "capx");
   assert.equal(row.overridePresent, false);
+  assert.equal(row.projectOverridePresent, false);
   assert.equal(row.policy, "replace");
   assert.deepEqual(row.contributors, ["capx"]);
 });
@@ -280,6 +315,42 @@ test("a personal override outranks the pack contribution in provenance", () => {
   assert.equal(row.tier, "local-override");
   assert.equal(row.winningSource, "local-override");
   assert.equal(row.overridePresent, true);
+});
+
+test("a committed project override outranks the pack contribution in provenance", () => {
+  const { snap } = build(healthyFiles({ [`${WS}/.wf/slots/demo.review.md`]: PROJECT_BODY }));
+  const row = snap.slots.find((s) => s.skillPoint === "demo.review");
+  assert.ok(row);
+  assert.equal(row.tier, "project-override");
+  assert.equal(row.winningSource, "project-override");
+  assert.equal(row.projectOverridePresent, true);
+  assert.equal(row.overridePresent, false, "no personal override is present");
+  assert.deepEqual(row.contributors, ["capx"], "the pack contributor is still recorded");
+});
+
+test("a personal override outranks a committed project override in provenance", () => {
+  const { snap } = build(
+    healthyFiles({
+      [`${WS}/.wf/slots/demo.review.md`]: PROJECT_BODY,
+      [`${WS}/_local/slots/demo.review.md`]: OVERRIDE_BODY,
+    }),
+  );
+  const row = snap.slots.find((s) => s.skillPoint === "demo.review");
+  assert.ok(row);
+  assert.equal(row.tier, "local-override", "personal content remains highest precedence");
+  assert.equal(row.winningSource, "local-override");
+  // Both presences are reported, so a reader can see the project tier was masked.
+  assert.equal(row.overridePresent, true);
+  assert.equal(row.projectOverridePresent, true);
+});
+
+test("a committed project override alone produces a provenance row for an uncontributed slot", () => {
+  const { snap } = build(healthyFiles({ [`${WS}/.wf/slots/demo.solo.md`]: PROJECT_BODY }));
+  const row = snap.slots.find((s) => s.skillPoint === "demo.solo");
+  assert.ok(row, "a project override alone mints a provenance row");
+  assert.equal(row.tier, "project-override");
+  assert.deepEqual(row.contributors, []);
+  assert.equal(row.policy, null, "no contributor declares a policy");
 });
 
 test("resolve_inspect surfaces per-slot provenance + settings-override presence", () => {

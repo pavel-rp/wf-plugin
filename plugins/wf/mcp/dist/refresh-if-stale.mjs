@@ -1236,6 +1236,10 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   // the snapshot on the next query (recorded by their exact path, never a walk).
   "slot-contribution",
   "slot-override",
+  // WF-443: the committed `.wf/` project slot override joins the same re-read
+  // set, so a checked-in customization invalidates the snapshot on the next
+  // query exactly as a personal override does.
+  "slot-project-override",
   "settings-override",
   // WF-334: the composed constitution record joins the re-read set — editing a
   // project clause (or re-composing capability articles into it) invalidates the

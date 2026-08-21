@@ -55,6 +55,10 @@ export interface SourceFingerprint {
     | "slot-contribution"
     /** A personal `_local/slots/<skill>.<point>.md` slot override (WF-329). */
     | "slot-override"
+    /** A committed `.wf/slots/<skill>.<point>.md` project slot override (WF-443)
+     *  — hashed, never stored, so a committed project customization invalidates
+     *  the snapshot exactly as a personal override does. */
+    | "slot-project-override"
     /** A per-skill `_local/profiles/<skill>.settings.json` override (WF-329). */
     | "settings-override"
     /** The composed constitution record `_local/constitution.md` (WF-334) —
