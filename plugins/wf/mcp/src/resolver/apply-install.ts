@@ -14,14 +14,15 @@
 // FOUR RULES ARE CORRECTNESS, NOT PREFERENCE:
 //
 //   1. A BOUNDED SUPPORTED SET, AND EVERYTHING ELSE FAILS LOUDLY AND EARLY. The
-//      frozen plan schema has thirteen action kinds. Exactly four are applied
-//      here (WF-454 widened WF-453's two); one is DEFERRED with a named
-//      follow-up; the rest are refused before entry. The screen covers the WHOLE
-//      action list AND the whole seed list before the first target is composed,
-//      so an unsupported kind can never follow a supported subset that was
-//      already written. A silently-ignored unsupported action would report
-//      success over a half-applied plan — the worst defect available to this
-//      item.
+//      frozen plan schema has thirteen action kinds. Five are applied
+//      unconditionally (WF-453's two, widened by WF-454 and again by WF-455's
+//      committed project override); one more is applied when its enabling fact
+//      holds and NAMED with a follow-up when it does not; the rest are refused
+//      before entry. The screen covers the WHOLE action list AND the whole seed
+//      list before the first target is composed, so an unsupported kind can never
+//      follow a supported subset that was already written. A silently-ignored
+//      unsupported action would report success over a half-applied plan — the
+//      worst defect available to this family.
 //
 //   2. THE PLAN IS REVALIDATED AGAINST CURRENT FACTS, NEVER TRUSTED. The caller
 //      approves a `planId`; this module compares it to one recomputed from the
@@ -54,41 +55,69 @@ import type {
 // The closed action screen
 // ---------------------------------------------------------------------------
 
-/** The mutating action kinds this mutator APPLIES.
+/** The mutating action kinds this mutator APPLIES UNCONDITIONALLY.
  *
- *  WF-453 shipped exactly the registry pair. WF-454 widens the set to the four
- *  kinds that make up ONE lifecycle registration — the registry rows, the
- *  evidence that records who owns them, and the approved project answers that
- *  seed the capability profile — because those facts must become durable
- *  together or not at all.
+ *  WF-453 shipped exactly the registry pair. WF-454 widened it to the four kinds
+ *  that make up ONE lifecycle registration — the registry rows, the evidence that
+ *  records who owns them, and the approved project answers that seed the
+ *  capability profile. WF-455 adds `override-write`, the committed
+ *  project-override tier, because a pack that contributes shared slot content
+ *  activates through the SAME confirmed transaction as its registration: applying
+ *  the rows without the override would leave the project registered against
+ *  content it has not received.
+ *
+ *  `payload-write` is deliberately NOT here. The planner already separates the two
+ *  (`isProjectOverrideDestination`), and general payloads remain Out of scope; the
+ *  committed-override half is admitted precisely because it lands in a DECLARED
+ *  committed lifecycle artifact class and nowhere else.
  *
  *  Stated as data rather than as a comment so the contract tests can assert the
- *  boundary mechanically. EVERY kind absent from this list and from the deferred
- *  list below is refused, and refused over the WHOLE plan before any of these
- *  four writes a byte. */
+ *  boundary mechanically. EVERY kind absent from this list and from the
+ *  conditional list below is refused, and refused over the WHOLE plan before any
+ *  of these writes a byte. */
 export const APPLY_SUPPORTED_ACTION_KINDS: readonly PlanActionKind[] = [
   "evidence-seed",
   "registry-add",
   "registry-deregister",
   "answer-write",
+  "override-write",
 ];
 
-/** The mutating action kinds this mutator DEFERS with a named follow-up.
+/** The mutating action kinds this mutator applies ONLY when an enabling fact
+ *  holds, and NAMES with a follow-up when it does not.
  *
  *  `constitution-recompose` is derived by the planner whenever the registered
- *  capability set changes, so EVERY registry-only plan carries one. It is not
- *  applied (the constitution is Out of scope, and the resolver has never composed
- *  it — `/wf:constitution` does) and it is not refused (refusing would make no
- *  registry plan ever appliable). It is named. */
-export const APPLY_DEFERRED_ACTION_KINDS: readonly PlanActionKind[] = [
+ *  capability set changes, so EVERY registry plan carries one. WF-455 composes it
+ *  — but composition REPLACES a derived section of an existing record and
+ *  preserves the rest, so it is only possible where a record already exists. A
+ *  project that has never run `/wf:constitution` has no record to compose from,
+ *  and inventing one would mean the resolver authoring the core articles and the
+ *  project's own clauses, which it did not write and must not fabricate.
+ *
+ *  On that path the action is DEFERRED exactly as it was before this item —
+ *  neither applied nor refused — so a project with no composed constitution keeps
+ *  precisely its prior appliability. */
+export const APPLY_CONDITIONAL_ACTION_KINDS: readonly PlanActionKind[] = [
   "constitution-recompose",
 ];
 
-/** The named follow-up for each deferred kind. A command a maintainer runs —
- *  never a command this mutator runs. */
+/** The named follow-up for each conditional kind when its enabling fact does not
+ *  hold. A command a maintainer runs — never a command this mutator runs. */
 const DEFERRED_FOLLOW_UP: Record<string, string> = {
   "constitution-recompose": "/wf:constitution",
 };
+
+/** Every caller-computed fact the SCREEN depends on.
+ *
+ *  Handed in rather than observed, exactly as `ApplyGateInput` hands in the
+ *  recomputed plan and the journal's presence: the screen stays pure, so "every
+ *  refusal happens before a journal, a backup, or a byte" remains provable with no
+ *  filesystem at all. */
+export interface ApplyScreeningFacts {
+  /** `true` when the composed constitution record exists NOW. Decides whether a
+   *  `constitution-recompose` action is applied or named. */
+  constitutionRecordPresent: boolean;
+}
 
 export interface ScreenedActions {
   /** Mutating registry actions, in the plan's own canonical order. */
@@ -112,12 +141,31 @@ export interface ScreenedActions {
  * same fail-closed posture `parseTransactionJournal` takes toward a journal
  * version it does not understand.
  */
-export function screenPlanActions(actions: readonly PlanAction[]): ScreenedActions {
+export function screenPlanActions(
+  actions: readonly PlanAction[],
+  facts: ApplyScreeningFacts,
+): ScreenedActions {
   const screened: ScreenedActions = {
     supported: [],
     deferred: [],
     unsupported: [],
     retained: [],
+  };
+
+  /** Whether one conditional kind's enabling fact holds RIGHT NOW.
+   *
+   *  Written as an exhaustive switch on the kind rather than as a boolean flag,
+   *  so adding a second conditional kind is a compile-visible edit here rather
+   *  than a silent inheritance of the constitution's condition — the WF-454
+   *  defect-(A) class, where an unguarded branch quietly answered for a kind it
+   *  was never asked about. */
+  const conditionMet = (kind: PlanActionKind): boolean => {
+    switch (kind) {
+      case "constitution-recompose":
+        return facts.constitutionRecordPresent;
+      default:
+        return false;
+    }
   };
 
   for (const action of actions) {
@@ -129,14 +177,18 @@ export function screenPlanActions(actions: readonly PlanAction[]): ScreenedActio
       screened.supported.push(action);
       continue;
     }
-    if (APPLY_DEFERRED_ACTION_KINDS.includes(action.kind)) {
+    if (APPLY_CONDITIONAL_ACTION_KINDS.includes(action.kind)) {
+      if (conditionMet(action.kind)) {
+        screened.supported.push(action);
+        continue;
+      }
       screened.deferred.push({
         kind: action.kind,
         order: action.order,
         destination: action.destination,
-        reason: "out-of-scope-constitution",
+        reason: "no-constitution-record",
         followUp: DEFERRED_FOLLOW_UP[action.kind] ?? "",
-        detail: `\`${action.kind}\` is derived from the registered capability set and is Out of scope for this mutator; the registry transaction below does not perform it.`,
+        detail: `\`${action.kind}\` replaces a derived section of the composed constitution record and preserves the rest, but this workspace has no record to compose from; the transaction below does not create one.`,
       });
       continue;
     }
@@ -178,6 +230,9 @@ export interface ApplyGateInput {
    *  means something outside the protocol wrote it, and entering a second
    *  transaction over it could strand the first. */
   journalPresent: boolean;
+  /** `true` when the composed constitution record exists NOW (WF-455). The one
+   *  screening fact the gate forwards; see {@link ApplyScreeningFacts}. */
+  constitutionRecordPresent: boolean;
 }
 
 export type ApplyGateDecision =
@@ -195,7 +250,9 @@ export type ApplyGateDecision =
  * are different maintainer stories, and the first one explains the second.
  */
 export function decideApplyGate(input: ApplyGateInput): ApplyGateDecision {
-  const screened = screenPlanActions(input.plan.actions);
+  const screened = screenPlanActions(input.plan.actions, {
+    constitutionRecordPresent: input.constitutionRecordPresent,
+  });
 
   if (!input.plan.admission.admitted) {
     return {
@@ -284,18 +341,18 @@ export function decideApplyGate(input: ApplyGateInput): ApplyGateDecision {
 
   // An `applicable` plan carries at least one mutating action by the planner's
   // own invariant, and every mutating action here is either supported or
-  // deferred. A plan whose ONLY mutating action is the deferred constitution
+  // deferred. A plan whose ONLY mutating action is a deferred constitution
   // recomposition would leave this mutator nothing to do, which is not a
-  // registry-only plan at all — it is a plan whose registry delta is empty, and
-  // the planner cannot produce one (the recomposition is derived FROM a non-empty
-  // delta). Refusing it explicitly costs one branch and removes the possibility
-  // of opening a transaction that writes nothing.
+  // configuration-only plan at all — it is a plan whose registry delta is empty,
+  // and the planner cannot produce one (the recomposition is derived FROM a
+  // non-empty delta). Refusing it explicitly costs one branch and removes the
+  // possibility of opening a transaction that writes nothing.
   if (screened.supported.length === 0) {
     return {
       ok: false,
       reason: "apply/plan-not-applicable",
       detail:
-        "the plan carries no supported registry action, so there is nothing for this mutator to apply.",
+        "the plan carries no supported mutating action, so there is nothing for this mutator to apply.",
       screened,
     };
   }
