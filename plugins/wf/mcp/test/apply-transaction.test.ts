@@ -64,6 +64,15 @@ const CONSTITUTION_PRIOR =
 const CONSTITUTION_NEW =
   "# Project Constitution\n\n## Capability articles (provenance: each capability)\n\n### beta\n\n- **k:** v\n\n## Project clauses (provenance: project)\n\n1. **no-vendored-forks:** upgraded, never forked.\n";
 
+/** The target WF-456 adds — a pack payload installed into the workspace. Like
+ *  the override it is ABSENT beforehand, but it differs in the way that matters
+ *  for the five-surface rollback: it is the only target whose PROOF lives in a
+ *  different file (the ledger's `artifacts` section), so a rollback that undid
+ *  the payload while leaving its ownership record behind would leave the
+ *  workspace claiming to own a file that is not there. */
+const PAYLOAD = "_local/tooling/helper.mjs";
+const PAYLOAD_NEW = "export const answer = 42;\n";
+
 function sha256(text: string): string {
   return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
@@ -318,6 +327,14 @@ const FOUR_TARGETS: readonly ApplyTargetWrite[] = [
   { destination: LEDGER, newContent: LEDGER_NEW },
   { destination: OVERRIDE, newContent: OVERRIDE_NEW },
   { destination: CONSTITUTION, newContent: CONSTITUTION_NEW },
+];
+/** The WF-456 width: the same four surfaces plus the pack payload. Run through
+ *  the SAME matrix — extended, never rebuilt — so the five surfaces a rollback
+ *  must restore (payload, ledger, registry, configuration and the composed
+ *  constitution) are each proved at every kill stage rather than argued for. */
+const FIVE_TARGETS: readonly ApplyTargetWrite[] = [
+  ...FOUR_TARGETS,
+  { destination: PAYLOAD, newContent: PAYLOAD_NEW },
 ];
 
 function runTargets(ws: Workspace, targets: readonly ApplyTargetWrite[]) {
@@ -879,6 +896,57 @@ function crashMatrix(label: string, targets: readonly ApplyTargetWrite[]) {
 crashMatrix("one target", ONE_TARGET);
 crashMatrix("two targets", TWO_TARGETS);
 crashMatrix("four targets, with the committed override and the constitution", FOUR_TARGETS);
+crashMatrix("five targets, with the pack payload", FIVE_TARGETS);
+
+test("SC-5: a rolled-back payload transaction restores ALL FIVE surfaces, leaving no residue", () => {
+  // The five surfaces named as five, at the point of failure rather than in the
+  // happy path: payload, ledger, registry, configuration and snapshot. The
+  // registry IS the configuration file here (`_local/config.md`), and the
+  // "snapshot" surface is the composed constitution the resolver derives from
+  // the final capability set — the one whose loss no backup elsewhere covers.
+  const ws = newWorkspace({ selfCheck: { ok: false, diagnostic: "beta did not resolve" } });
+  const result = applyTransaction(applyPortsFor(ws), {
+    targets: FIVE_TARGETS,
+    expectation: EXPECTATION,
+  });
+
+  assert.equal(result.status, "rolled-back");
+  assert.equal(result.selfCheck, "failed");
+
+  // Created targets are REMOVED, not left holding their new bytes.
+  assert.equal(ws.files.get(PAYLOAD), undefined, "the payload is removed, not left behind");
+  assert.equal(ws.files.get(OVERRIDE), undefined, "the override is removed, not left behind");
+  // Replaced targets are restored byte-for-byte.
+  assert.equal(ws.files.get(LEDGER), LEDGER_PRIOR, "the ledger is restored exactly");
+  assert.equal(ws.files.get(DESTINATION), PRIOR_BYTES, "the registry/config is restored exactly");
+  assert.equal(ws.files.get(CONSTITUTION), CONSTITUTION_PRIOR, "the constitution is restored exactly");
+
+  assert.equal(ws.journal, null, "no journal survives the rollback");
+  assert.deepEqual(backupsIn(ws), [], "no backup survives the rollback");
+  assert.equal(result.residue.clean, true);
+});
+
+test("SC-5b: the payload and its ownership record are written under ONE journal, or not at all", () => {
+  // The property the five-surface rule exists to protect. The payload is the LAST
+  // target written, so at the moment it fails the ledger's ownership record is
+  // ALREADY on disk — and must come back off. Recording ownership of a file that
+  // was never installed is the specific inconsistency a per-target write loop
+  // would produce, and the reason both belong to one transaction.
+  const ws = newWorkspace({ failAt: "atomicReplace", failFor: PAYLOAD });
+  const result = runTargets(ws, FIVE_TARGETS);
+
+  assert.equal(result.status, "rolled-back");
+  assert.equal(ws.files.get(PAYLOAD), undefined);
+  assert.equal(
+    ws.files.get(LEDGER),
+    LEDGER_PRIOR,
+    "no ownership record survives an uninstalled payload",
+  );
+  assert.equal(ws.files.get(DESTINATION), PRIOR_BYTES);
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), []);
+  assert.equal(result.residue.clean, true);
+});
 
 test("a rolled-back four-target transaction leaves the project's clause section exactly as it was", () => {
   // The single most damaging loss this item could cause, asserted at the widest
