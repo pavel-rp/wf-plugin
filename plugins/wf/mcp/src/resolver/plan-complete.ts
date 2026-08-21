@@ -453,7 +453,15 @@ export function planIdentity(input: PlanCompletionInput, actions: readonly PlanA
     ...input.artifacts.retained.map((decision) => ["retained", decision] as const),
   ]);
 
-  emit("action", [...actions]);
+  // An action contributes its kind, target, and mutating flag — never its
+  // human-readable `summary`, for exactly the reason a finding never contributes
+  // its message: rewording review prose must not invalidate an approved plan.
+  // `order` is excluded too, because it is derived from the kind rank and the
+  // tiebreak rather than observed, and the tokens are sorted anyway.
+  emit(
+    "action",
+    actions.map((entry) => [entry.kind, entry.pluginId, entry.destination, entry.mutating]),
+  );
 
   // Findings contribute their code, severity, and attribution — never their
   // message. Rewording a diagnostic must not invalidate an approved plan, while

@@ -387,6 +387,10 @@ test("every action class integrates into ONE list, ordered by the exported rank 
   }
 
   const ranks = out.actions.map((action) => PLAN_ACTION_ORDER.indexOf(action.kind));
+  assert.ok(
+    ranks.every((rank) => rank >= 0),
+    "the rank table covers every emitted kind — an unranked kind would sort silently first",
+  );
   assert.deepEqual([...ranks].sort((l, r) => l - r), ranks, "kinds appear in rank-table order");
   assert.deepEqual(
     out.actions.map((action) => action.order),
@@ -544,6 +548,25 @@ test("a no-change plan has a stable identity and zero writes", () => {
   const second = completePlan(completion());
   assert.equal(first.identity.planId, second.identity.planId);
   assert.equal(hasMutatingAction(first.actions), false);
+});
+
+test("the action rank table is a closed, duplicate-free vocabulary", () => {
+  assert.equal(new Set(PLAN_ACTION_ORDER).size, PLAN_ACTION_ORDER.length, "no kind is ranked twice");
+  assert.deepEqual([...PLAN_ACTION_ORDER], [
+    "evidence-repair",
+    "evidence-seed",
+    "registry-add",
+    "registry-deregister",
+    "payload-write",
+    "override-write",
+    "artifact-advance",
+    "artifact-bootstrap",
+    "artifact-delete",
+    "answer-write",
+    "constitution-recompose",
+    "registry-retain",
+    "artifact-retain",
+  ]);
 });
 
 test("coverage is a property of the derivation: every plan reports the complete closed set", () => {

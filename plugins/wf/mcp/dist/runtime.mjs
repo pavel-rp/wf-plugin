@@ -20682,7 +20682,10 @@ function planIdentity(input, actions) {
     ...input.artifacts.advance.map((decision) => ["advance", decision]),
     ...input.artifacts.retained.map((decision) => ["retained", decision])
   ]);
-  emit("action", [...actions]);
+  emit(
+    "action",
+    actions.map((entry) => [entry.kind, entry.pluginId, entry.destination, entry.mutating])
+  );
   emit(
     "finding",
     input.findings.map((finding2) => [finding2.code, finding2.severity, finding2.pluginId])
