@@ -20248,6 +20248,15 @@ function registerResolverTools(server, selectService) {
     async (args) => selected(args, (service) => service.inspectPack(args.pluginId))
   );
   server.registerTool(
+    "discover_packs",
+    {
+      title: "discover packs",
+      description: "Read-only, byte-inert pack discovery (R6). Joins the authoritative `claude plugin list --json` inventory, registry attribution, each pack's existing snapshot state, recorded-vs-observed lifecycle evidence, and declared questions into one deterministic inventory a maintainer inspects before choosing a lifecycle change. Returns `{workspaceRoot, inventory{confidence, mayEstablishAbsence, observedCount, issues}, packs[], diagnostics[]}`. `confidence` is one of `trustworthy | unavailable | malformed | partial | invalid`, and ONLY `trustworthy` may establish that a registered pack is orphaned \u2014 every other value reports `absence-indeterminate` instead. A duplicate plugin id or name invalidates the whole inventory and classifies nothing. Each pack carries its unchanged `PackState` plus a separate nullable staleness `overlay`, a non-persisted `seedProposal`, and its declared questions. Writes nothing: no ledger, no seed, no enablement change.",
+      inputSchema: workspaceOnlyInput
+    },
+    async (args) => selected(args, (service) => service.discoverPacks())
+  );
+  server.registerTool(
     "register_pack",
     {
       title: "register pack",
@@ -20904,6 +20913,8 @@ function validatePayloadDeclarations(pluginId, capability, table) {
 }
 
 // src/resolver/lifecycle-evidence.ts
+var COMMITTED_LEDGER_PATH = ".wf/install-state.json";
+var LOCAL_LEDGER_PATH = "_local/install-state.json";
 var SHA256_RE = /^[a-f0-9]{64}$/;
 function nonEmpty(value) {
   return typeof value === "string" && value.length > 0;
@@ -20926,6 +20937,32 @@ function orderedHashes(records) {
   return normalized.sort(
     (left, right) => left.path.localeCompare(right.path) || left.sha256.localeCompare(right.sha256)
   );
+}
+function resolveLedgerHome(value) {
+  const selected = value === void 0 || value === null || value === "" ? "committed" : value;
+  if (selected === "committed") {
+    return {
+      ok: true,
+      home: "committed",
+      portablePath: COMMITTED_LEDGER_PATH,
+      bindingPath: LOCAL_LEDGER_PATH
+    };
+  }
+  if (selected === "local") {
+    return {
+      ok: true,
+      home: "local",
+      portablePath: LOCAL_LEDGER_PATH,
+      bindingPath: LOCAL_LEDGER_PATH
+    };
+  }
+  return {
+    ok: false,
+    home: null,
+    portablePath: null,
+    bindingPath: LOCAL_LEDGER_PATH,
+    diagnostic: "ledger home must be exactly `committed` or `local`."
+  };
 }
 function createPortablePackEvidence(inputs) {
   if (!nonEmpty(inputs.pluginId) || !nonEmpty(inputs.version)) return null;
@@ -20957,6 +20994,27 @@ function createMachineBindingEvidence(inputs) {
     observedVersion: inputs.observedVersion,
     localFingerprints
   };
+}
+function evidenceEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+function compareLifecycleEvidence(expectedPortable, observedPortable, priorBinding, observedBinding) {
+  if (expectedPortable === null || observedPortable === null || observedBinding === null) {
+    return { state: "evidence-missing", seedProposal: null, persisted: false };
+  }
+  if (!evidenceEqual(expectedPortable, observedPortable)) {
+    return { state: "portable-mismatch", seedProposal: null, persisted: false };
+  }
+  if (priorBinding === null) {
+    return { state: "binding-seed", seedProposal: observedBinding, persisted: false };
+  }
+  if (priorBinding.canonicalRoot !== observedBinding.canonicalRoot) {
+    return { state: "root-moved", seedProposal: null, persisted: false };
+  }
+  if (!evidenceEqual(priorBinding, observedBinding)) {
+    return { state: "local-mismatch", seedProposal: null, persisted: false };
+  }
+  return { state: "equal", seedProposal: null, persisted: true };
 }
 
 // src/resolver/plugin-list.ts
@@ -25358,6 +25416,221 @@ function previewComposition(snapshot, phase) {
   };
 }
 
+// src/resolver/discover-packs.ts
+var WHOLE_OUTPUT_FAILURE_CODES = /* @__PURE__ */ new Set([
+  "plugin-list/unparseable",
+  "plugin-list/not-an-array"
+]);
+var OVERLAY_BY_COMPARISON = {
+  "portable-mismatch": "pack/stale(source-changed)",
+  "root-moved": "pack/stale(root-moved)",
+  "evidence-missing": "pack/stale(evidence-missing)",
+  "local-mismatch": "pack/stale(binding-changed)",
+  "binding-seed": null,
+  equal: null
+};
+function emptyLedger() {
+  return { portable: /* @__PURE__ */ new Map(), binding: /* @__PURE__ */ new Map() };
+}
+function asRecord(value) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return value;
+}
+function asHashRecords(value) {
+  if (!Array.isArray(value)) return [];
+  const rows = [];
+  for (const entry of value) {
+    const row = asRecord(entry);
+    if (row === null) continue;
+    if (typeof row.path !== "string" || typeof row.sha256 !== "string") continue;
+    rows.push({ path: row.path, sha256: row.sha256 });
+  }
+  return rows;
+}
+function asStrings(value) {
+  return Array.isArray(value) ? value.filter((v) => typeof v === "string") : [];
+}
+function asNullableString(value) {
+  return typeof value === "string" ? value : null;
+}
+function parseEvidenceLedger(raw) {
+  if (raw === null) return emptyLedger();
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return emptyLedger();
+  }
+  const root = asRecord(data);
+  if (root === null) return emptyLedger();
+  const ledger = emptyLedger();
+  const portableSection = asRecord(root.portable);
+  if (portableSection !== null) {
+    for (const [pluginId, entry] of Object.entries(portableSection)) {
+      const row = asRecord(entry);
+      if (row === null) continue;
+      const evidence = createPortablePackEvidence({
+        pluginId: asNullableString(row.pluginId) ?? pluginId,
+        version: asNullableString(row.version) ?? "",
+        capabilities: asStrings(row.capabilities),
+        manifestHashes: asHashRecords(row.manifestHashes),
+        declaredSourceHashes: asHashRecords(row.declaredSourceHashes)
+      });
+      if (evidence !== null) ledger.portable.set(pluginId, evidence);
+    }
+  }
+  const bindingSection = asRecord(root.binding);
+  if (bindingSection !== null) {
+    for (const [pluginId, entry] of Object.entries(bindingSection)) {
+      const row = asRecord(entry);
+      if (row === null) continue;
+      const enablement = row.enablement;
+      const evidence = createMachineBindingEvidence({
+        pluginId: asNullableString(row.pluginId) ?? pluginId,
+        canonicalRoot: asNullableString(row.canonicalRoot) ?? "",
+        cliScope: asNullableString(row.cliScope),
+        enablement: enablement === "enabled" || enablement === "disabled" ? enablement : "unknown",
+        observedVersion: asNullableString(row.observedVersion),
+        localFingerprints: asHashRecords(row.localFingerprints)
+      });
+      if (evidence !== null) ledger.binding.set(pluginId, evidence);
+    }
+  }
+  return ledger;
+}
+function findDuplicates(plugins) {
+  const idCounts = /* @__PURE__ */ new Map();
+  const nameCounts = /* @__PURE__ */ new Map();
+  for (const plugin of plugins) {
+    idCounts.set(plugin.id, (idCounts.get(plugin.id) ?? 0) + 1);
+    nameCounts.set(plugin.name, (nameCounts.get(plugin.name) ?? 0) + 1);
+  }
+  const collect = (counts) => [...counts.entries()].filter(([, count]) => count > 1).map(([key]) => key).sort((left, right) => left.localeCompare(right));
+  return { ids: collect(idCounts), names: collect(nameCounts) };
+}
+function resolveConfidence(inventory, duplicates) {
+  if (!inventory.ok) return "unavailable";
+  if (inventory.issues.some((issue2) => WHOLE_OUTPUT_FAILURE_CODES.has(issue2.code))) {
+    return "malformed";
+  }
+  if (duplicates.ids.length > 0 || duplicates.names.length > 0) return "invalid";
+  if (inventory.plugins.length === 0 && inventory.issues.length > 0) return "invalid";
+  if (!inventory.contractOk) return "partial";
+  return "trustworthy";
+}
+function sortDiagnostics(diagnostics) {
+  return [...diagnostics].sort(
+    (left, right) => (left.pluginId ?? "").localeCompare(right.pluginId ?? "") || left.code.localeCompare(right.code) || left.message.localeCompare(right.message)
+  );
+}
+function discoverPacks(input) {
+  const diagnostics = [];
+  const duplicates = findDuplicates(input.inventory.plugins);
+  const confidence = resolveConfidence(input.inventory, duplicates);
+  const inventory = {
+    confidence,
+    // The one gate that turns silence into absence. Kept as a derived boolean so
+    // a consumer never has to re-implement the precedence to know whether a
+    // missing pack means anything.
+    mayEstablishAbsence: confidence === "trustworthy",
+    observedCount: input.inventory.plugins.length,
+    issues: input.inventory.issues.map((issue2) => ({
+      code: issue2.code,
+      message: issue2.message
+    }))
+  };
+  for (const issue2 of input.inventory.issues) {
+    diagnostics.push({ pluginId: null, code: issue2.code, message: issue2.message });
+  }
+  for (const id of duplicates.ids) {
+    diagnostics.push({
+      pluginId: id,
+      code: "discovery/duplicate-plugin-id",
+      message: `plugin id \`${id}\` appears more than once in the inventory; the inventory is ambiguous and cannot be classified.`
+    });
+  }
+  for (const name of duplicates.names) {
+    diagnostics.push({
+      pluginId: null,
+      code: "discovery/duplicate-plugin-name",
+      message: `plugin name \`${name}\` appears more than once in the inventory; the inventory is ambiguous and cannot be classified.`
+    });
+  }
+  if (confidence === "invalid") {
+    diagnostics.push({
+      pluginId: null,
+      code: "discovery/inventory-invalid",
+      message: "the inventory is self-inconsistent, so no pack was classified and none is selectable."
+    });
+    return {
+      workspaceRoot: input.workspaceRoot,
+      inventory,
+      packs: [],
+      diagnostics: sortDiagnostics(diagnostics)
+    };
+  }
+  const installedIds = new Set(input.inventory.plugins.map((plugin) => plugin.id));
+  const installedNames = new Set(input.inventory.plugins.map((plugin) => plugin.name));
+  const packs = input.packs.map((pack) => {
+    const comparison = compareLifecycleEvidence(
+      pack.expectedPortable,
+      pack.observedPortable,
+      pack.priorBinding,
+      pack.observedBinding
+    );
+    const overlay = OVERLAY_BY_COMPARISON[comparison.state];
+    const seedProposal = comparison.seedProposal ?? (comparison.state === "evidence-missing" ? pack.observedBinding : null);
+    const listed = installedIds.has(pack.record.pluginId) || installedNames.has(pack.record.pluginName);
+    const presence = listed ? "installed" : inventory.mayEstablishAbsence ? "orphaned" : "absence-indeterminate";
+    for (const issue2 of pack.inspectionIssues) {
+      diagnostics.push({
+        pluginId: pack.record.pluginId,
+        code: "discovery/inspection-issue",
+        message: issue2
+      });
+    }
+    if (overlay !== null) {
+      diagnostics.push({
+        pluginId: pack.record.pluginId,
+        code: "discovery/stale",
+        message: `lifecycle evidence compares as \`${comparison.state}\`; overlay \`${overlay}\`.`
+      });
+    }
+    if (presence === "orphaned") {
+      diagnostics.push({
+        pluginId: pack.record.pluginId,
+        code: "discovery/orphaned",
+        message: "registered but absent from a trustworthy inventory; the pack is no longer installed."
+      });
+    }
+    return {
+      ...pack.record,
+      overlay,
+      presence,
+      evidence: {
+        comparison: comparison.state,
+        portable: pack.observedPortable,
+        binding: pack.observedBinding
+      },
+      seedProposal,
+      questions: [...pack.questions],
+      // Selectability is read off the state the snapshot already derived. A
+      // staleness overlay deliberately does NOT clear it (criterion 3: a legacy
+      // registration remains selected and operational), and discovery never
+      // flips `enablement` — a disabled pack keeps its own state and simply is
+      // not selectable, exactly as it was before this release.
+      selectable: pack.record.state === "active"
+    };
+  });
+  packs.sort((left, right) => left.pluginId.localeCompare(right.pluginId));
+  return {
+    workspaceRoot: input.workspaceRoot,
+    inventory,
+    packs,
+    diagnostics: sortDiagnostics(diagnostics)
+  };
+}
+
 // src/resolver/registry-edit.ts
 function splitRow2(line) {
   const trimmed = line.trim();
@@ -26062,9 +26335,57 @@ var ResolverService = class {
   inspectPack(pluginId) {
     const pluginName = this.bareName(pluginId);
     const listing = this.ports.listPlugins();
-    const base = {
+    if (!listing.ok) {
+      return this.uninspectablePack(
+        pluginId,
+        pluginName,
+        "`claude plugin list --json` is unavailable; pack state cannot be resolved."
+      );
+    }
+    const pack = listing.plugins.find(
+      (p) => p.id === pluginId || p.name === pluginName
+    );
+    if (!pack) {
+      return this.uninspectablePack(
+        pluginId,
+        pluginName,
+        `plugin \`${pluginId}\` is not installed.`
+      );
+    }
+    return this.inspectListedPack(pack, pluginId, pluginName);
+  }
+  /** The not-installed / no-inventory shape: everything false, one issue. */
+  uninspectablePack(pluginId, pluginName, issue2) {
+    return {
       pluginId,
       pluginName,
+      installed: false,
+      enabled: false,
+      version: null,
+      installPath: null,
+      capabilities: [],
+      portableEvidence: null,
+      machineBinding: null,
+      fingerprint: null,
+      valid: false,
+      issues: boundInspectionIssues([issue2])
+    };
+  }
+  /**
+   * Inspect one ALREADY-RESOLVED inventory record. Split out of `inspectPack` so
+   * a caller holding a whole inventory (pack discovery) inspects every pack
+   * against ONE `listPlugins()` call — that port shells out to the `claude` CLI,
+   * so calling it per pack would turn a single discovery run into N process
+   * spawns and let the inventory shift mid-run.
+   *
+   * `reportedId`/`reportedName` are echoed into the response so a lookup by bare
+   * name still reports the id the caller asked about, exactly as before.
+   */
+  inspectListedPack(pack, reportedId = pack.id, reportedName = pack.name) {
+    const pluginId = reportedId;
+    const base = {
+      pluginId,
+      pluginName: reportedName,
       installed: false,
       enabled: false,
       version: null,
@@ -26082,19 +26403,6 @@ var ResolverService = class {
       base.issues = boundInspectionIssues(base.issues);
       return base;
     };
-    if (!listing.ok) {
-      base.issues.push(
-        "`claude plugin list --json` is unavailable; pack state cannot be resolved."
-      );
-      return finish();
-    }
-    const pack = listing.plugins.find(
-      (p) => p.id === pluginId || p.name === pluginName
-    );
-    if (!pack) {
-      base.issues.push(`plugin \`${pluginId}\` is not installed.`);
-      return finish();
-    }
     base.installed = true;
     base.enabled = pack.enabled;
     base.version = pack.version;
@@ -26135,6 +26443,58 @@ var ResolverService = class {
     base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
     base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
     return finish();
+  }
+  // --- R6: discover_packs (read-only, byte-inert) ------------------------
+  /**
+   * Join the authoritative inventory, the snapshot's own pack records, recorded
+   * vs. observed lifecycle evidence, and each pack's declared questions into one
+   * deterministic inventory a maintainer can act on.
+   *
+   * BYTE-INERT. Every step here reads: `listPlugins()` runs the CLI, the ledger
+   * reads are `readFile`, inspection hashes files, and the join is a pure
+   * function. Nothing on this path writes a ledger, a seed proposal, or any
+   * other file, and no `enablement` is changed. (`ensure()` may refresh the
+   * resolver's own gitignored snapshot cache — that is the shared read-query
+   * machinery every typed resolver query already runs, not a discovery write.)
+   *
+   * The admitted workspace root is consumed from `this.ports.workspaceRoot`.
+   * `WorkspaceServiceRegistry.select()` binds one service per admitted root, so
+   * that value IS the admitted root; discovery never re-derives one.
+   */
+  discoverPacks() {
+    const snapshot = this.ensure();
+    const workspaceRoot = this.ports.workspaceRoot;
+    const listing = this.ports.listPlugins();
+    const home = resolveLedgerHome();
+    const readLedger = (relPath) => relPath === null ? parseEvidenceLedger(null) : parseEvidenceLedger(this.ports.readFile(joinSlash(workspaceRoot, relPath)));
+    const recordedPortable = readLedger(home.portablePath).portable;
+    const recordedBinding = readLedger(home.bindingPath).binding;
+    const byId = new Map(listing.plugins.map((plugin) => [plugin.id, plugin]));
+    const byName = new Map(listing.plugins.map((plugin) => [plugin.name, plugin]));
+    const packs = snapshot.packs.map((record2) => {
+      const listed = byId.get(record2.pluginId) ?? byName.get(record2.pluginName) ?? null;
+      const inspected = listed === null ? null : this.inspectListedPack(listed);
+      return {
+        record: record2,
+        expectedPortable: recordedPortable.get(record2.pluginId) ?? null,
+        observedPortable: inspected?.portableEvidence ?? null,
+        priorBinding: recordedBinding.get(record2.pluginId) ?? null,
+        observedBinding: inspected?.machineBinding ?? null,
+        questions: inspected ? inspected.capabilities.flatMap((capability) => capability.questions) : [],
+        inspectionValid: inspected?.valid ?? false,
+        inspectionIssues: inspected?.issues ?? []
+      };
+    });
+    return discoverPacks({
+      workspaceRoot,
+      inventory: {
+        ok: listing.ok,
+        contractOk: listing.contractOk,
+        issues: listing.issues,
+        plugins: listing.plugins
+      },
+      packs
+    });
   }
   // --- R6: register_pack (mutating write-path) ---------------------------
   registerPack(pluginId, expectedFingerprint) {

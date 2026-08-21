@@ -87,7 +87,13 @@ import {
 import {
   createMachineBindingEvidence,
   createPortablePackEvidence,
+  resolveLedgerHome,
 } from "./resolver/lifecycle-evidence.js";
+import {
+  discoverPacks as joinDiscoveredPacks,
+  parseEvidenceLedger,
+  type EvidenceLedger,
+} from "./resolver/discover-packs.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type {
   InstalledPlugin,
@@ -98,6 +104,7 @@ import {
   type CapabilityRecord,
   type ContainedFileFingerprintResult,
   type Diagnostic,
+  type DiscoverPacksResponse,
   type MachineBindingEvidence,
   type PathHashRecord,
   type PayloadDeclaration,
@@ -1164,9 +1171,70 @@ export class ResolverService {
   inspectPack(pluginId: string): InspectPackResponse {
     const pluginName = this.bareName(pluginId);
     const listing = this.ports.listPlugins();
-    const base: InspectPackResponse = {
+
+    if (!listing.ok) {
+      return this.uninspectablePack(
+        pluginId,
+        pluginName,
+        "`claude plugin list --json` is unavailable; pack state cannot be resolved.",
+      );
+    }
+
+    const pack = listing.plugins.find(
+      (p) => p.id === pluginId || p.name === pluginName,
+    );
+    if (!pack) {
+      return this.uninspectablePack(
+        pluginId,
+        pluginName,
+        `plugin \`${pluginId}\` is not installed.`,
+      );
+    }
+
+    return this.inspectListedPack(pack, pluginId, pluginName);
+  }
+
+  /** The not-installed / no-inventory shape: everything false, one issue. */
+  private uninspectablePack(
+    pluginId: string,
+    pluginName: string,
+    issue: string,
+  ): InspectPackResponse {
+    return {
       pluginId,
       pluginName,
+      installed: false,
+      enabled: false,
+      version: null,
+      installPath: null,
+      capabilities: [],
+      portableEvidence: null,
+      machineBinding: null,
+      fingerprint: null,
+      valid: false,
+      issues: boundInspectionIssues([issue]),
+    };
+  }
+
+  /**
+   * Inspect one ALREADY-RESOLVED inventory record. Split out of `inspectPack` so
+   * a caller holding a whole inventory (pack discovery) inspects every pack
+   * against ONE `listPlugins()` call — that port shells out to the `claude` CLI,
+   * so calling it per pack would turn a single discovery run into N process
+   * spawns and let the inventory shift mid-run.
+   *
+   * `reportedId`/`reportedName` are echoed into the response so a lookup by bare
+   * name still reports the id the caller asked about, exactly as before.
+   */
+  private inspectListedPack(
+    pack: InstalledPlugin,
+    reportedId: string = pack.id,
+    reportedName: string = pack.name,
+  ): InspectPackResponse {
+    const pluginId = reportedId;
+    const base: InspectPackResponse = {
+      pluginId,
+      pluginName: reportedName,
       installed: false,
       enabled: false,
       version: null,
@@ -1184,21 +1252,6 @@ export class ResolverService {
       base.issues = boundInspectionIssues(base.issues);
       return base;
     };
-
-    if (!listing.ok) {
-      base.issues.push(
-        "`claude plugin list --json` is unavailable; pack state cannot be resolved.",
-      );
-      return finish();
-    }
-
-    const pack = listing.plugins.find(
-      (p) => p.id === pluginId || p.name === pluginName,
-    );
-    if (!pack) {
-      base.issues.push(`plugin \`${pluginId}\` is not installed.`);
-      return finish();
-    }
 
     base.installed = true;
     base.enabled = pack.enabled;
@@ -1248,6 +1301,76 @@ export class ResolverService {
     base.fingerprint = this.packFingerprint(pack, found.fingerprintInputs);
     base.valid = base.enabled && base.capabilities.length > 0 && base.issues.length === 0;
     return finish();
+  }
+
+  // --- R6: discover_packs (read-only, byte-inert) ------------------------
+  /**
+   * Join the authoritative inventory, the snapshot's own pack records, recorded
+   * vs. observed lifecycle evidence, and each pack's declared questions into one
+   * deterministic inventory a maintainer can act on.
+   *
+   * BYTE-INERT. Every step here reads: `listPlugins()` runs the CLI, the ledger
+   * reads are `readFile`, inspection hashes files, and the join is a pure
+   * function. Nothing on this path writes a ledger, a seed proposal, or any
+   * other file, and no `enablement` is changed. (`ensure()` may refresh the
+   * resolver's own gitignored snapshot cache — that is the shared read-query
+   * machinery every typed resolver query already runs, not a discovery write.)
+   *
+   * The admitted workspace root is consumed from `this.ports.workspaceRoot`.
+   * `WorkspaceServiceRegistry.select()` binds one service per admitted root, so
+   * that value IS the admitted root; discovery never re-derives one.
+   */
+  discoverPacks(): DiscoverPacksResponse {
+    const snapshot = this.ensure();
+    const workspaceRoot = this.ports.workspaceRoot;
+
+    // ONE inventory read for the whole run — see `inspectListedPack`.
+    const listing = this.ports.listPlugins();
+
+    // Recorded evidence. The declared home decides which file holds the portable
+    // section; the binding section is always machine-local. When the home is
+    // `local` both paths are the same file and each read takes its own section.
+    const home = resolveLedgerHome();
+    const readLedger = (relPath: string | null): EvidenceLedger =>
+      relPath === null
+        ? parseEvidenceLedger(null)
+        : parseEvidenceLedger(this.ports.readFile(joinSlash(workspaceRoot, relPath)));
+    const recordedPortable = readLedger(home.portablePath).portable;
+    const recordedBinding = readLedger(home.bindingPath).binding;
+
+    const byId = new Map(listing.plugins.map((plugin) => [plugin.id, plugin]));
+    const byName = new Map(listing.plugins.map((plugin) => [plugin.name, plugin]));
+
+    const packs = snapshot.packs.map((record) => {
+      const listed = byId.get(record.pluginId) ?? byName.get(record.pluginName) ?? null;
+      // A registered pack the inventory does not list cannot be inspected, so it
+      // carries no observed evidence and no questions — which is precisely what
+      // makes its comparison `evidence-missing` rather than a false `equal`.
+      const inspected = listed === null ? null : this.inspectListedPack(listed);
+      return {
+        record,
+        expectedPortable: recordedPortable.get(record.pluginId) ?? null,
+        observedPortable: inspected?.portableEvidence ?? null,
+        priorBinding: recordedBinding.get(record.pluginId) ?? null,
+        observedBinding: inspected?.machineBinding ?? null,
+        questions: inspected
+          ? inspected.capabilities.flatMap((capability) => capability.questions)
+          : [],
+        inspectionValid: inspected?.valid ?? false,
+        inspectionIssues: inspected?.issues ?? [],
+      };
+    });
+
+    return joinDiscoveredPacks({
+      workspaceRoot,
+      inventory: {
+        ok: listing.ok,
+        contractOk: listing.contractOk,
+        issues: listing.issues,
+        plugins: listing.plugins,
+      },
+      packs,
+    });
   }
 
   // --- R6: register_pack (mutating write-path) ---------------------------
