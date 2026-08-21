@@ -302,6 +302,8 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     resolveRegistryWritePath: (registryRelPath) =>
       resolveContainedRegistryWritePath(workspaceRoot, registryRelPath),
     recovery: createRecoveryPorts(workspaceRoot),
+    createApply: (registryRel, refreshAndSelfCheck) =>
+      createApplyPorts(workspaceRoot, registryRel, refreshAndSelfCheck),
   };
 }
 

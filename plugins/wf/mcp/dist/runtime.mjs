@@ -835,7 +835,7 @@ var initializer = (inst, def) => {
 };
 var $ZodError = $constructor("$ZodError", initializer);
 var $ZodRealError = $constructor("$ZodError", initializer, { Parent: Error });
-function flattenError(error2, mapper = (issue2) => issue2.message) {
+function flattenError(error2, mapper = (issue3) => issue3.message) {
   const fieldErrors = {};
   const formErrors = [];
   for (const sub of error2.issues) {
@@ -848,20 +848,20 @@ function flattenError(error2, mapper = (issue2) => issue2.message) {
   }
   return { formErrors, fieldErrors };
 }
-function formatError(error2, mapper = (issue2) => issue2.message) {
+function formatError(error2, mapper = (issue3) => issue3.message) {
   const fieldErrors = { _errors: [] };
   const processError = (error3, path = []) => {
-    for (const issue2 of error3.issues) {
-      if (issue2.code === "invalid_union" && issue2.errors.length) {
-        issue2.errors.map((issues) => processError({ issues }, [...path, ...issue2.path]));
-      } else if (issue2.code === "invalid_key") {
-        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
-      } else if (issue2.code === "invalid_element") {
-        processError({ issues: issue2.issues }, [...path, ...issue2.path]);
+    for (const issue3 of error3.issues) {
+      if (issue3.code === "invalid_union" && issue3.errors.length) {
+        issue3.errors.map((issues) => processError({ issues }, [...path, ...issue3.path]));
+      } else if (issue3.code === "invalid_key") {
+        processError({ issues: issue3.issues }, [...path, ...issue3.path]);
+      } else if (issue3.code === "invalid_element") {
+        processError({ issues: issue3.issues }, [...path, ...issue3.path]);
       } else {
-        const fullpath = [...path, ...issue2.path];
+        const fullpath = [...path, ...issue3.path];
         if (fullpath.length === 0) {
-          fieldErrors._errors.push(mapper(issue2));
+          fieldErrors._errors.push(mapper(issue3));
         } else {
           let curr = fieldErrors;
           let i = 0;
@@ -872,7 +872,7 @@ function formatError(error2, mapper = (issue2) => issue2.message) {
               curr[el] = curr[el] || { _errors: [] };
             } else {
               curr[el] = curr[el] || { _errors: [] };
-              curr[el]._errors.push(mapper(issue2));
+              curr[el]._errors.push(mapper(issue3));
             }
             curr = curr[el];
             i++;
@@ -3048,35 +3048,35 @@ var error = () => {
     nan: "NaN"
     // All other type names omitted - they fall back to raw values via ?? operator
   };
-  return (issue2) => {
-    switch (issue2.code) {
+  return (issue3) => {
+    switch (issue3.code) {
       case "invalid_type": {
-        const expected = TypeDictionary[issue2.expected] ?? issue2.expected;
-        const receivedType = parsedType(issue2.input);
+        const expected = TypeDictionary[issue3.expected] ?? issue3.expected;
+        const receivedType = parsedType(issue3.input);
         const received = TypeDictionary[receivedType] ?? receivedType;
         return `Invalid input: expected ${expected}, received ${received}`;
       }
       case "invalid_value":
-        if (issue2.values.length === 1)
-          return `Invalid input: expected ${stringifyPrimitive(issue2.values[0])}`;
-        return `Invalid option: expected one of ${joinValues(issue2.values, "|")}`;
+        if (issue3.values.length === 1)
+          return `Invalid input: expected ${stringifyPrimitive(issue3.values[0])}`;
+        return `Invalid option: expected one of ${joinValues(issue3.values, "|")}`;
       case "too_big": {
-        const adj = issue2.inclusive ? "<=" : "<";
-        const sizing = getSizing(issue2.origin);
+        const adj = issue3.inclusive ? "<=" : "<";
+        const sizing = getSizing(issue3.origin);
         if (sizing)
-          return `Too big: expected ${issue2.origin ?? "value"} to have ${adj}${issue2.maximum.toString()} ${sizing.unit ?? "elements"}`;
-        return `Too big: expected ${issue2.origin ?? "value"} to be ${adj}${issue2.maximum.toString()}`;
+          return `Too big: expected ${issue3.origin ?? "value"} to have ${adj}${issue3.maximum.toString()} ${sizing.unit ?? "elements"}`;
+        return `Too big: expected ${issue3.origin ?? "value"} to be ${adj}${issue3.maximum.toString()}`;
       }
       case "too_small": {
-        const adj = issue2.inclusive ? ">=" : ">";
-        const sizing = getSizing(issue2.origin);
+        const adj = issue3.inclusive ? ">=" : ">";
+        const sizing = getSizing(issue3.origin);
         if (sizing) {
-          return `Too small: expected ${issue2.origin} to have ${adj}${issue2.minimum.toString()} ${sizing.unit}`;
+          return `Too small: expected ${issue3.origin} to have ${adj}${issue3.minimum.toString()} ${sizing.unit}`;
         }
-        return `Too small: expected ${issue2.origin} to be ${adj}${issue2.minimum.toString()}`;
+        return `Too small: expected ${issue3.origin} to be ${adj}${issue3.minimum.toString()}`;
       }
       case "invalid_format": {
-        const _issue = issue2;
+        const _issue = issue3;
         if (_issue.format === "starts_with") {
           return `Invalid string: must start with "${_issue.prefix}"`;
         }
@@ -3086,22 +3086,22 @@ var error = () => {
           return `Invalid string: must include "${_issue.includes}"`;
         if (_issue.format === "regex")
           return `Invalid string: must match pattern ${_issue.pattern}`;
-        return `Invalid ${FormatDictionary[_issue.format] ?? issue2.format}`;
+        return `Invalid ${FormatDictionary[_issue.format] ?? issue3.format}`;
       }
       case "not_multiple_of":
-        return `Invalid number: must be a multiple of ${issue2.divisor}`;
+        return `Invalid number: must be a multiple of ${issue3.divisor}`;
       case "unrecognized_keys":
-        return `Unrecognized key${issue2.keys.length > 1 ? "s" : ""}: ${joinValues(issue2.keys, ", ")}`;
+        return `Unrecognized key${issue3.keys.length > 1 ? "s" : ""}: ${joinValues(issue3.keys, ", ")}`;
       case "invalid_key":
-        return `Invalid key in ${issue2.origin}`;
+        return `Invalid key in ${issue3.origin}`;
       case "invalid_union":
-        if (issue2.options && Array.isArray(issue2.options) && issue2.options.length > 0) {
-          const opts = issue2.options.map((o) => `'${o}'`).join(" | ");
+        if (issue3.options && Array.isArray(issue3.options) && issue3.options.length > 0) {
+          const opts = issue3.options.map((o) => `'${o}'`).join(" | ");
           return `Invalid discriminator value. Expected ${opts}`;
         }
         return "Invalid input";
       case "invalid_element":
-        return `Invalid value in ${issue2.origin}`;
+        return `Invalid value in ${issue3.origin}`;
       default:
         return `Invalid input`;
     }
@@ -3696,11 +3696,11 @@ function _refine(Class2, fn, _params) {
 // @__NO_SIDE_EFFECTS__
 function _superRefine(fn, params) {
   const ch = /* @__PURE__ */ _check((payload) => {
-    payload.addIssue = (issue2) => {
-      if (typeof issue2 === "string") {
-        payload.issues.push(issue(issue2, payload.value, ch._zod.def));
+    payload.addIssue = (issue3) => {
+      if (typeof issue3 === "string") {
+        payload.issues.push(issue(issue3, payload.value, ch._zod.def));
       } else {
-        const _issue = issue2;
+        const _issue = issue3;
         if (_issue.fatal)
           _issue.continue = false;
         _issue.code ?? (_issue.code = "custom");
@@ -4682,8 +4682,8 @@ var initializer2 = (inst, issues) => {
       // enumerable: false,
     },
     addIssue: {
-      value: (issue2) => {
-        inst.issues.push(issue2);
+      value: (issue3) => {
+        inst.issues.push(issue3);
         inst.message = JSON.stringify(inst.issues, jsonStringifyReplacer, 2);
       }
       // enumerable: false,
@@ -5430,11 +5430,11 @@ var ZodTransform = /* @__PURE__ */ $constructor("ZodTransform", (inst, def) => {
     if (_ctx.direction === "backward") {
       throw new $ZodEncodeError(inst.constructor.name);
     }
-    payload.addIssue = (issue2) => {
-      if (typeof issue2 === "string") {
-        payload.issues.push(util_exports.issue(issue2, payload.value, def));
+    payload.addIssue = (issue3) => {
+      if (typeof issue3 === "string") {
+        payload.issues.push(util_exports.issue(issue3, payload.value, def));
       } else {
-        const _issue = issue2;
+        const _issue = issue3;
         if (_issue.fatal)
           _issue.continue = false;
         _issue.code ?? (_issue.code = "custom");
@@ -9195,13 +9195,13 @@ var rev2026Codec = {
       problem: "missing"
     });
     const parsed = buildSchemas2026().RequestMetaEnvelopeSchema.safeParse(meta2);
-    if (!parsed.success) for (const issue2 of parsed.error.issues) {
-      const path = issue2.path.map(String);
+    if (!parsed.success) for (const issue3 of parsed.error.issues) {
+      const path = issue3.path.map(String);
       const key = path.length > 0 ? path.join(".") : "_meta";
       if (path.length === 1 && issues.some((existing) => existing.key === key && existing.problem === "missing")) continue;
       issues.push({
         key,
-        problem: issue2.message
+        problem: issue3.message
       });
     }
     return issues;
@@ -9275,7 +9275,7 @@ var rev2026Codec = {
   checkInboundEnvelope(material) {
     if (material.envelope === void 0) return "Request is missing the required _meta envelope for protocol revision 2026-07-28 (io.modelcontextprotocol/protocolVersion, io.modelcontextprotocol/clientInfo, io.modelcontextprotocol/clientCapabilities)";
     const parsed = buildSchemas2026().RequestMetaEnvelopeSchema.safeParse(material.envelope);
-    if (!parsed.success) return `Invalid _meta envelope for protocol revision 2026-07-28: ${parsed.error.issues.map((issue2) => issue2.message).join("; ")}`;
+    if (!parsed.success) return `Invalid _meta envelope for protocol revision 2026-07-28: ${parsed.error.issues.map((issue3) => issue3.message).join("; ")}`;
   }
 };
 var wireResultSchemasMemo;
@@ -9772,9 +9772,9 @@ function isProvablyObjectShapedRoot(schema) {
   }
   return false;
 }
-function formatIssue(issue2) {
-  if (!issue2.path?.length) return issue2.message;
-  return `${issue2.path.map((p) => String(typeof p === "object" ? p.key : p)).join(".")}: ${issue2.message}`;
+function formatIssue(issue3) {
+  if (!issue3.path?.length) return issue3.message;
+  return `${issue3.path.map((p) => String(typeof p === "object" ? p.key : p)).join(".")}: ${issue3.message}`;
 }
 async function validateStandardSchema(schema, data) {
   const result = await schema["~standard"].validate(data);
@@ -19543,18 +19543,18 @@ function serveStdio(factory, options = {}) {
   const tryServeListen = async (message2) => {
     if (isJSONRPCRequest(message2) && message2.method === "subscriptions/listen") {
       const meta2 = requestMetaOf(message2.params);
-      const issue2 = hasEnvelopeClaim(message2.params) ? (meta2 === void 0 ? [] : validateEnvelopeMeta(meta2))[0] : {
+      const issue3 = hasEnvelopeClaim(message2.params) ? (meta2 === void 0 ? [] : validateEnvelopeMeta(meta2))[0] : {
         key: "_meta",
         problem: "the per-request envelope is required on protocol revision 2026-07-28"
       };
       const claimedVersion = envelopeClaimVersion(message2.params);
       let reply;
-      if (issue2 !== void 0) reply = {
+      if (issue3 !== void 0) reply = {
         jsonrpc: "2.0",
         id: message2.id,
         error: {
           code: -32602,
-          message: `Invalid _meta envelope: ${issue2.key}: ${issue2.problem}`
+          message: `Invalid _meta envelope: ${issue3.key}: ${issue3.problem}`
         }
       };
       else if (claimedVersion === void 0 || !SUPPORTED_MODERN_PROTOCOL_VERSIONS.includes(claimedVersion)) {
@@ -20040,14 +20040,14 @@ function semanticsEqual(left, right) {
 }
 function planPayloads(facts) {
   const findings = [];
-  const rejected = [];
+  const rejected2 = [];
   const conflicts = [];
   const actions = [];
   const groups = /* @__PURE__ */ new Map();
   for (const fact of facts) {
     if (!fact.target.ok) {
       const rejection2 = fact.target.rejection;
-      rejected.push({
+      rejected2.push({
         pluginId: fact.pluginId,
         capability: fact.capability,
         destination: fact.destination,
@@ -20123,13 +20123,13 @@ function planPayloads(facts) {
       });
     }
   }
-  rejected.sort(
+  rejected2.sort(
     (left, right) => left.pluginId.localeCompare(right.pluginId) || left.capability.localeCompare(right.capability) || left.destination.localeCompare(right.destination) || left.rejection.localeCompare(right.rejection)
   );
   conflicts.sort(
     (left, right) => left.canonicalTarget.localeCompare(right.canonicalTarget) || left.kind.localeCompare(right.kind)
   );
-  return { preview: { actions, rejected, conflicts }, findings };
+  return { preview: { actions, rejected: rejected2, conflicts }, findings };
 }
 
 // src/resolver/fingerprint.ts
@@ -20819,16 +20819,16 @@ function diagnosticBytes(diagnostics) {
 function finalizeDiagnostics(pack, diagnostics) {
   const retained = [];
   let truncated = false;
-  for (const issue2 of diagnostics) {
+  for (const issue3 of diagnostics) {
     if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
       truncated = true;
       break;
     }
-    if (diagnosticBytes([...retained, issue2]) > MAX_NORMALIZED_QUESTION_BYTES) {
+    if (diagnosticBytes([...retained, issue3]) > MAX_NORMALIZED_QUESTION_BYTES) {
       truncated = true;
       break;
     }
-    retained.push(issue2);
+    retained.push(issue3);
   }
   if (!truncated) return retained;
   const sentinel = makeQuestionDiagnostic(
@@ -21494,6 +21494,7 @@ var SNAPSHOT_SCHEMA_VERSION = 4;
 var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.1" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 var PLAN_ENVELOPE_VERSION = 1;
+var APPLY_ENVELOPE_VERSION = 1;
 
 // src/resolver/plan-install.ts
 var UNOBSERVED_INVENTORY = {
@@ -22121,6 +22122,23 @@ function createJournalEntry(inputs) {
     lastWritten
   };
 }
+function createTransactionJournal(inputs) {
+  if (!nonEmpty(inputs.transactionId) || !nonEmpty(inputs.startedAt)) return null;
+  const entries = [...inputs.entries].sort(
+    (left, right) => left.destination.localeCompare(right.destination)
+  );
+  const destinations = new Set(entries.map((entry) => entry.destination));
+  if (destinations.size !== entries.length) return null;
+  for (const entry of entries) {
+    if (createJournalEntry(entry) === null) return null;
+  }
+  return {
+    journalVersion: LIFECYCLE_JOURNAL_VERSION,
+    transactionId: inputs.transactionId,
+    startedAt: inputs.startedAt,
+    entries
+  };
+}
 function readLastWritten(value) {
   if (value === null || value === void 0) return null;
   const row = asRecord(value);
@@ -22555,6 +22573,73 @@ var planInstallInput = fromJsonSchema2(withWorkspaceRoot({
   },
   additionalProperties: false
 }));
+var applyInstallInput = fromJsonSchema2(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    expectedPlanId: {
+      type: "string",
+      minLength: 1,
+      maxLength: 128,
+      pattern: safeTerminalStringPattern,
+      description: "The `identity.planId` from the `plan_install` response the caller approved. Revalidated under the exclusive lock against a plan recomputed from current facts; any mismatch is `apply/plan-stale` and nothing is written."
+    },
+    desired: pluginIdListProperty(
+      "The SAME explicit desired selected set the approved plan was computed from, as plugin ids. A registered pack ABSENT from this list is retained, never removed."
+    ),
+    deregister: pluginIdListProperty(
+      "The SAME explicit deregistration set the approved plan was computed from. The only removal path."
+    ),
+    answers: {
+      type: "array",
+      maxItems: PLAN_MAX_ANSWERS,
+      items: {
+        type: "object",
+        properties: {
+          pluginId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+          questionId: { type: "string", minLength: 1, maxLength: 256, pattern: safeTerminalStringPattern },
+          value: {
+            description: "The proposed answer, carried so the recomputed plan matches the approved one. Answer PERSISTENCE is out of scope for this release \u2014 an answer write in the plan makes the plan unsupported, never silently skipped."
+          }
+        },
+        required: ["pluginId", "questionId", "value"],
+        additionalProperties: false
+      },
+      description: "The SAME proposed project answers the approved plan was computed from. Never persisted by this operation."
+    }
+  },
+  required: ["expectedPlanId"],
+  additionalProperties: false
+}));
+function applyInstallEnvelopeForRejection(source, reason, diagnostic, args) {
+  return {
+    applyVersion: APPLY_ENVELOPE_VERSION,
+    workspaceRoot: null,
+    admission: { admitted: false, root: null, source, reason, diagnostic },
+    status: "invalid-root",
+    reason: "apply/invalid-root",
+    transactionId: null,
+    plan: {
+      planId: null,
+      expectedPlanId: args.expectedPlanId,
+      matched: false,
+      applicability: null,
+      mode: null
+    },
+    applied: [],
+    deferred: [],
+    rollback: null,
+    selfCheck: "skipped",
+    refreshed: false,
+    recovery: invalidRootRecoveryReport(diagnostic),
+    residue: {
+      clean: true,
+      journalRetained: false,
+      backupsRetained: false,
+      detail: "no transaction was created."
+    },
+    diagnostics: [{ code: "apply/invalid-root", message: diagnostic }]
+  };
+}
 function toPlanSelection(args) {
   return {
     desired: args.desired ?? [],
@@ -23068,6 +23153,44 @@ function registerResolverTools(server, selectService) {
     })
   );
   server.registerTool(
+    "apply_install",
+    {
+      title: "apply install",
+      description: "The SOLE public mutator for an EXACT registry-only plan (WF-453) \u2014 one guarded, crash-recoverable journaled transaction through refresh, snapshot, and self-check. Returns the versioned envelope `{applyVersion, workspaceRoot, admission, status, reason, transactionId, plan{planId,expectedPlanId,matched,applicability,mode}, applied[], deferred[], rollback, selfCheck, refreshed, recovery{...}, residue{clean,journalRetained,backupsRetained,detail}, diagnostics[]}`. `status` is one of `applied | rejected | rolled-back | halted | invalid-root`. RECOVERY-FIRST AND REPORTED SEPARATELY: before anything is decided it recovers an interrupted transaction through the SAME frozen protocol `discover_packs` and `plan_install` use, and carries that outcome in `recovery`, never folded into `status`; when `recovery.proceeded` is `false` it HALTS with `apply/halted-unrecovered` and mutates nothing. EXACT PLAN ONLY: it takes the exclusive machine-local lock, recomputes the plan UNDER that lock, and requires `identity.planId` to equal the supplied `expectedPlanId` \u2014 a mismatch is `apply/plan-stale`, an applicability other than `applicable` is `apply/plan-not-applicable`, and neither writes. REGISTRY-ONLY, FAILING LOUDLY AND EARLY: the supported action set is exactly `registry-add` and `registry-deregister`; `constitution-recompose` is reported in `deferred[]` with its `/wf:constitution` follow-up, and ANY other mutating action \u2014 an answer write, an evidence seed or repair, a payload or project-override write, an artifact removal, bootstrap or upgrade \u2014 is `apply/unsupported-action` BEFORE a journal exists. Every rejection above, plus a stale identity-bound precondition, a destination that is a symlink or does not resolve inside the admitted workspace, and a journal already present, is decided BEFORE journal creation and BEFORE any mutation, so nothing can be left half-undone. CONCURRENT LIFECYCLE ENTRY IS REFUSED: a lock already held is `apply/lock-held`, and with no lock primitive available it refuses with `apply/lock-unavailable` rather than mutating unserialized. THE TRANSACTION IS CRASH-RECOVERABLE AT EVERY STAGE: the journal (recording the prior existence, type, inode, hash and the exact bytes this transaction will write) is created and durable BEFORE the backup and BEFORE the destination is touched, the backup is verified against the recorded prior hash, the destination's type/inode/hash are RE-CHECKED without following links immediately before the write, the replacement is a create-exclusive fsynced sibling temp file renamed into place, and completion removes the journal BEFORE the backups. An ordinary failure or a process kill at ANY stage therefore restores the exact prior state idempotently \u2014 the same restore runs on a second entry and converges. A FAILED SELF-CHECK IS TRANSACTION FAILURE, NOT A WARNING: after the write it refreshes and re-resolves the registry, asserting BOTH that every added capability resolves `ok` and that every deregistered one is gone; failure rolls back and reports `apply/self-check-failed`. NO SUCCESS IS CLAIMED WHEN ANYTHING IS UNRESOLVED: rollback runs through the frozen recovery decision \u2014 an external edit or a symlink swap is PRESERVED, an unaffected artifact is restored, an unverifiable one is left explicitly UNRESOLVED \u2014 and an incomplete rollback overrides the reported reason with `apply/rollback-incomplete`, retains the journal and backups, and reports `residue.clean:false`. `applied[]` is non-empty ONLY for `status: applied`, where the change is durable and the residue is clean. Works against a non-cwd admitted workspace. Out of scope, and never written by this operation: answers, profiles, `.wf/` overrides, the constitution, payloads, artifact removals, bootstrap, upgrades, and repair.",
+      inputSchema: applyInstallInput
+    },
+    async (args) => guard(() => {
+      const declared = selectWorkspaceRoot(
+        { explicit: args.workspaceRoot, cwd: args.workspaceRoot },
+        null
+      );
+      if (!declared.ok) {
+        return applyInstallEnvelopeForRejection(
+          declared.source,
+          declared.reason,
+          declared.diagnostic,
+          args
+        );
+      }
+      let service;
+      try {
+        service = selectService(args.workspaceRoot);
+      } catch (err) {
+        return applyInstallEnvelopeForRejection(
+          declared.source,
+          "out-of-family",
+          terminalSafeDiagnostic(err),
+          args
+        );
+      }
+      return service.applyInstall(
+        { admitted: true, root: declared.root, source: declared.source, reason: null, diagnostic: null },
+        toPlanSelection(args),
+        args.expectedPlanId
+      );
+    })
+  );
+  server.registerTool(
     "register_pack",
     {
       title: "register pack",
@@ -23162,16 +23285,20 @@ function registerResolverTools(server, selectService) {
 // src/ports.ts
 import {
   closeSync as closeSync2,
+  fsyncSync,
   lstatSync as lstatSync2,
   mkdirSync as mkdirSync2,
   openSync as openSync2,
   readFileSync as readFileSync3,
   readdirSync as readdirSync2,
   realpathSync as realpathSync3,
+  renameSync as renameSync2,
   rmSync as rmSync2,
   rmdirSync,
-  writeFileSync as writeFileSync2
+  writeFileSync as writeFileSync2,
+  writeSync
 } from "node:fs";
+import { randomBytes as randomBytes2 } from "node:crypto";
 import { createHash as createHash3 } from "node:crypto";
 import { basename, dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24345,11 +24472,11 @@ function isRecord2(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function appendQuestionDiagnostics(target, questionDiagnostics) {
-  for (const issue2 of questionDiagnostics) {
+  for (const issue3 of questionDiagnostics) {
     target.push({
       severity: "error",
-      code: issue2.code,
-      message: issue2.message,
+      code: issue3.code,
+      message: issue3.message,
       category: "registry-invalid",
       recovery: "The capability registry or a manifest/profile is invalid. Fix the registry or re-run the owning pack's init, then run `/wf:resolve refresh`."
     });
@@ -24393,8 +24520,8 @@ function buildSnapshot(inputs, io) {
     });
   } else {
     pluginList = parsePluginList(inputs.pluginListRaw);
-    for (const issue2 of pluginList.issues) {
-      diagnostics.push({ severity: "error", code: issue2.code, message: issue2.message });
+    for (const issue3 of pluginList.issues) {
+      diagnostics.push({ severity: "error", code: issue3.code, message: issue3.message });
     }
   }
   const recordedRoots = registry2.pluginRoots.map((r) => ({
@@ -25309,7 +25436,8 @@ function createDefaultPorts(workspaceRoot) {
     },
     registryRelPath: () => registryRelPath() || DEFAULT_REGISTRY_RELPATH2,
     resolveRegistryWritePath: (registryRelPath2) => resolveContainedRegistryWritePath(workspaceRoot, registryRelPath2),
-    recovery: createRecoveryPorts(workspaceRoot)
+    recovery: createRecoveryPorts(workspaceRoot),
+    createApply: (registryRel, refreshAndSelfCheck) => createApplyPorts(workspaceRoot, registryRel, refreshAndSelfCheck)
   };
 }
 function errno(err) {
@@ -25473,12 +25601,173 @@ function createRecoveryPorts(workspaceRoot) {
         rmSync2(journalPath, { force: true });
       } catch {
       }
-      try {
-        rmdirSync(joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR));
-      } catch {
-      }
+      pruneEmptyBackupDirs(
+        workspaceRoot,
+        entries.map((entry) => entry.backupPath).filter((path) => path !== null)
+      );
     }
   };
+}
+function createApplyPorts(workspaceRoot, registryRelPath, refreshAndSelfCheck) {
+  const journalPath = joinSlash(workspaceRoot, LIFECYCLE_JOURNAL_PATH);
+  const backupRoot = joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR);
+  const recoveryPorts = createRecoveryPorts(workspaceRoot);
+  const contained = (relPath) => {
+    const resolved = resolveContainedPayloadTarget(workspaceRoot, relPath);
+    return resolved.ok ? resolved.canonicalTarget : null;
+  };
+  const atomicWrite = (absPath, bytes) => {
+    const dir = dirname2(absPath);
+    const temp = joinSlash(
+      normalizeSlashes(dir),
+      `.${basename(absPath)}.wf-apply-${randomBytes2(8).toString("hex")}.tmp`
+    );
+    let fd = null;
+    try {
+      mkdirSync2(dir, { recursive: true });
+      fd = openSync2(temp, "wx", 384);
+      writeSync(fd, bytes);
+      fsyncSync(fd);
+      closeSync2(fd);
+      fd = null;
+      renameSync2(temp, absPath);
+      return { ok: true };
+    } catch (err) {
+      if (fd !== null) {
+        try {
+          closeSync2(fd);
+        } catch {
+        }
+      }
+      try {
+        rmSync2(temp, { force: true });
+      } catch {
+      }
+      return { ok: false, diagnostic: message(err) };
+    }
+  };
+  return {
+    destination: registryRelPath,
+    // Nested per transaction so two transactions can never collide on one backup
+    // file. That nesting is what made the WF-451 root-only tidy reachable, which
+    // is why `pruneEmptyBackupDirs` above now prunes ancestors.
+    backupPathFor: (transactionId) => joinSlash(LIFECYCLE_BACKUP_DIR, transactionId, "registry"),
+    newTransactionId: () => randomBytes2(16).toString("hex"),
+    now: () => (/* @__PURE__ */ new Date()).toISOString(),
+    journalPresent: () => {
+      try {
+        lstatSync2(journalPath);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    backupsPresent: () => {
+      try {
+        return readdirSync2(backupRoot).length > 0;
+      } catch {
+        return false;
+      }
+    },
+    // Delegated to the recovery ports VERBATIM. One observation implementation,
+    // one containment decision, one no-follow rule — a second one here would be a
+    // divergent answer to a question that already has one.
+    observeDestination: () => recoveryPorts.observeDestination(registryRelPath),
+    destinationInode: () => {
+      try {
+        return lstatSync2(resolve3(realpathSync3(workspaceRoot), registryRelPath)).ino;
+      } catch {
+        return null;
+      }
+    },
+    identify: (content) => {
+      const bytes = Buffer.from(content, "utf8");
+      return { contentHash: sha256Bytes(bytes), bytes: bytes.byteLength };
+    },
+    writeJournal: (journal) => atomicWrite(journalPath, Buffer.from(`${JSON.stringify(journal, null, 2)}
+`, "utf8")),
+    writeBackup: (backupPath) => {
+      const source = contained(registryRelPath);
+      const target = contained(backupPath);
+      if (source === null || target === null) {
+        return {
+          ok: false,
+          diagnostic: `\`${registryRelPath}\` or its backup \`${backupPath}\` does not resolve to a workspace-contained target; nothing was backed up.`
+        };
+      }
+      try {
+        return atomicWrite(target, readFileSync3(source));
+      } catch (err) {
+        return {
+          ok: false,
+          diagnostic: `the prior bytes of \`${registryRelPath}\` could not be read: ${message(err)}`
+        };
+      }
+    },
+    hashBackup: (backupPath) => recoveryPorts.hashBackup(backupPath),
+    atomicReplace: (content) => {
+      const target = contained(registryRelPath);
+      if (target === null) {
+        return {
+          ok: false,
+          diagnostic: `\`${registryRelPath}\` does not resolve to a workspace-contained target; nothing was written.`
+        };
+      }
+      return atomicWrite(target, Buffer.from(content, "utf8"));
+    },
+    refreshAndSelfCheck,
+    // DURABLE COMPLETION — the JOURNAL FIRST. See the `apply-transaction.ts`
+    // header: at this call site the destination is at its NEW state, so a kill
+    // between "backups removed" and "journal removed" would leave a journal
+    // demanding a restore from a backup that no longer exists. Removing the
+    // journal first makes the transaction durably complete at that instant; the
+    // worst remaining outcome is an orphan backup, which the prune reclaims.
+    discardTransaction: (entries) => {
+      try {
+        rmSync2(journalPath, { force: true });
+      } catch {
+      }
+      const backupPaths = [];
+      for (const entry of entries) {
+        if (entry.backupPath === null) continue;
+        backupPaths.push(entry.backupPath);
+        const target = contained(entry.backupPath);
+        if (target === null) continue;
+        try {
+          rmSync2(target, { force: true });
+        } catch {
+        }
+      }
+      pruneEmptyBackupDirs(workspaceRoot, backupPaths);
+    },
+    rollbackPorts: () => recoveryPorts
+  };
+}
+function pruneEmptyBackupDirs(workspaceRoot, backupPaths) {
+  const root = joinSlash(workspaceRoot, LIFECYCLE_BACKUP_DIR);
+  const rootPrefix = root.replace(/\/+$/, "");
+  const candidates = /* @__PURE__ */ new Set();
+  for (const backupPath of backupPaths) {
+    let current = normalizeSlashes(resolve3(workspaceRoot, backupPath));
+    for (let guard2 = 0; guard2 < 64; guard2++) {
+      const parent = normalizeSlashes(dirname2(current));
+      if (parent === current) break;
+      current = parent;
+      if (current === rootPrefix) {
+        candidates.add(current);
+        break;
+      }
+      if (!current.startsWith(`${rootPrefix}/`)) break;
+      candidates.add(current);
+    }
+  }
+  candidates.add(rootPrefix);
+  for (const dir of [...candidates].sort((left, right) => right.length - left.length)) {
+    try {
+      rmdirSync(dir);
+    } catch {
+    }
+  }
 }
 
 // src/resolver/routing.ts
@@ -27494,7 +27783,7 @@ function findDuplicates(plugins) {
 }
 function resolveConfidence(inventory, duplicates) {
   if (!inventory.ok) return "unavailable";
-  if (inventory.issues.some((issue2) => WHOLE_OUTPUT_FAILURE_CODES.has(issue2.code))) {
+  if (inventory.issues.some((issue3) => WHOLE_OUTPUT_FAILURE_CODES.has(issue3.code))) {
     return "malformed";
   }
   if (duplicates.ids.length > 0 || duplicates.names.length > 0) return "invalid";
@@ -27518,13 +27807,13 @@ function discoverPacks(input) {
     // missing pack means anything.
     mayEstablishAbsence: confidence === "trustworthy",
     observedCount: input.inventory.plugins.length,
-    issues: input.inventory.issues.map((issue2) => ({
-      code: issue2.code,
-      message: issue2.message
+    issues: input.inventory.issues.map((issue3) => ({
+      code: issue3.code,
+      message: issue3.message
     }))
   };
-  for (const issue2 of input.inventory.issues) {
-    diagnostics.push({ pluginId: null, code: issue2.code, message: issue2.message });
+  for (const issue3 of input.inventory.issues) {
+    diagnostics.push({ pluginId: null, code: issue3.code, message: issue3.message });
   }
   for (const id of duplicates.ids) {
     diagnostics.push({
@@ -27567,11 +27856,11 @@ function discoverPacks(input) {
     const seedProposal = comparison.seedProposal ?? (comparison.state === "evidence-missing" ? pack.observedBinding : null);
     const listed = installedIds.has(pack.record.pluginId) || installedNames.has(pack.record.pluginName);
     const presence = listed ? "installed" : inventory.mayEstablishAbsence ? "orphaned" : "absence-indeterminate";
-    for (const issue2 of pack.inspectionIssues) {
+    for (const issue3 of pack.inspectionIssues) {
       diagnostics.push({
         pluginId: pack.record.pluginId,
         code: "discovery/inspection-issue",
-        message: issue2
+        message: issue3
       });
     }
     if (overlay !== null) {
@@ -27706,6 +27995,468 @@ function upsertSectionRow(markdown, heading, columns, key, value) {
   ];
   return { content: next.join(eol), changed: true };
 }
+function removeSectionRow(markdown, heading, key) {
+  const eol = markdown.includes("\r\n") ? "\r\n" : "\n";
+  const lines = markdown.split(/\r?\n/);
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRegex3(heading)}\\s*$`, "i");
+  let sectionStart = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (headingRe.test(lines[i])) {
+      sectionStart = i;
+      break;
+    }
+  }
+  if (sectionStart === -1) return { content: markdown, changed: false };
+  let sectionEnd = lines.length;
+  for (let i = sectionStart + 1; i < lines.length; i++) {
+    if (/^#{1,6}\s+/.test(lines[i])) {
+      sectionEnd = i;
+      break;
+    }
+  }
+  const drop = /* @__PURE__ */ new Set();
+  let sawHeader = false;
+  for (let i = sectionStart + 1; i < sectionEnd; i++) {
+    const cells = splitRow2(lines[i]);
+    if (!cells) continue;
+    if (!sawHeader) {
+      sawHeader = true;
+      continue;
+    }
+    if (isSeparatorRow2(cells)) continue;
+    if (cells[0] === key) drop.add(i);
+  }
+  if (drop.size === 0) return { content: markdown, changed: false };
+  const next = lines.filter((_, index) => !drop.has(index));
+  return { content: next.join(eol), changed: true };
+}
+
+// src/resolver/apply-install.ts
+var APPLY_SUPPORTED_ACTION_KINDS = [
+  "registry-add",
+  "registry-deregister"
+];
+var APPLY_DEFERRED_ACTION_KINDS = [
+  "constitution-recompose"
+];
+var DEFERRED_FOLLOW_UP = {
+  "constitution-recompose": "/wf:constitution"
+};
+function screenPlanActions(actions) {
+  const screened = {
+    supported: [],
+    deferred: [],
+    unsupported: [],
+    retained: []
+  };
+  for (const action2 of actions) {
+    if (!action2.mutating) {
+      screened.retained.push(action2);
+      continue;
+    }
+    if (APPLY_SUPPORTED_ACTION_KINDS.includes(action2.kind)) {
+      screened.supported.push(action2);
+      continue;
+    }
+    if (APPLY_DEFERRED_ACTION_KINDS.includes(action2.kind)) {
+      screened.deferred.push({
+        kind: action2.kind,
+        order: action2.order,
+        destination: action2.destination,
+        reason: "out-of-scope-constitution",
+        followUp: DEFERRED_FOLLOW_UP[action2.kind] ?? "",
+        detail: `\`${action2.kind}\` is derived from the registered capability set and is Out of scope for this mutator; the registry transaction below does not perform it.`
+      });
+      continue;
+    }
+    screened.unsupported.push(action2);
+  }
+  return screened;
+}
+function decideApplyGate(input) {
+  const screened = screenPlanActions(input.plan.actions);
+  if (!input.plan.admission.admitted) {
+    return {
+      ok: false,
+      reason: "apply/invalid-root",
+      detail: input.plan.admission.diagnostic ?? "the declared workspace root was not admitted, so nothing was read and nothing was applied.",
+      screened
+    };
+  }
+  if (input.plan.applicability === "unrecovered") {
+    return {
+      ok: false,
+      reason: "apply/halted-unrecovered",
+      detail: "pre-entry recovery did not proceed, so lifecycle state was never read and no plan was generated; nothing was applied.",
+      screened
+    };
+  }
+  if (input.journalPresent) {
+    return {
+      ok: false,
+      reason: "apply/journal-present",
+      detail: "a transaction journal is still present after recovery reported it proceeded; a second transaction is not opened over it.",
+      screened
+    };
+  }
+  if (input.plan.identity.planId !== input.expectedPlanId) {
+    return {
+      ok: false,
+      reason: "apply/plan-stale",
+      detail: `the approved plan \`${input.expectedPlanId}\` no longer describes this workspace; re-planning now yields \`${input.plan.identity.planId}\`. Re-run \`plan_install\` and approve the current plan.`,
+      screened
+    };
+  }
+  if (input.plan.applicability !== "applicable") {
+    return {
+      ok: false,
+      reason: "apply/plan-not-applicable",
+      detail: `the plan's applicability is \`${input.plan.applicability}\`; only an \`applicable\` plan is applied.`,
+      screened
+    };
+  }
+  if (screened.unsupported.length > 0) {
+    const kinds = [...new Set(screened.unsupported.map((action2) => action2.kind))].sort();
+    return {
+      ok: false,
+      reason: "apply/unsupported-action",
+      detail: `the plan carries mutating action kind(s) this mutator does not support: ${kinds.map((kind) => `\`${kind}\``).join(", ")}. Only exact registry-only plans are applied, and an unsupported kind is refused before any journal, backup, or mutation.`,
+      screened
+    };
+  }
+  if (screened.supported.length === 0) {
+    return {
+      ok: false,
+      reason: "apply/plan-not-applicable",
+      detail: "the plan carries no supported registry action, so there is nothing for this mutator to apply.",
+      screened
+    };
+  }
+  return { ok: true, screened };
+}
+var CAPABILITIES_SECTION = "Capabilities";
+var PLUGIN_ROOTS_SECTION = "Plugin Roots";
+function renderRegistryMutation(current, supported, facts) {
+  let content = current;
+  let changed = false;
+  for (const action2 of supported) {
+    const pluginId = action2.pluginId;
+    if (pluginId === null) {
+      return {
+        ok: false,
+        reason: "apply/registry-unresolvable",
+        detail: `a \`${action2.kind}\` action carries no pack attribution, so the registry rows it names cannot be resolved.`
+      };
+    }
+    const fact = facts.get(pluginId);
+    if (fact === void 0) {
+      return {
+        ok: false,
+        reason: "apply/registry-unresolvable",
+        detail: `pack \`${pluginId}\` is named by a \`${action2.kind}\` action but was not inspectable at apply time, so its registry rows cannot be resolved.`
+      };
+    }
+    if (action2.kind === "registry-add") {
+      if (fact.installPath === null || fact.capabilities.length === 0) {
+        return {
+          ok: false,
+          reason: "apply/registry-unresolvable",
+          detail: `pack \`${pluginId}\` has no resolvable install root or no valid capability rows at apply time, so its registration cannot be written.`
+        };
+      }
+      const root = upsertSectionRow(
+        content,
+        PLUGIN_ROOTS_SECTION,
+        ["Plugin", "Root"],
+        fact.pluginName,
+        fact.installPath
+      );
+      content = root.content;
+      changed = changed || root.changed;
+      for (const capability of fact.capabilities) {
+        const row = upsertSectionRow(
+          content,
+          CAPABILITIES_SECTION,
+          ["Capability", "Path"],
+          capability.name,
+          capability.path
+        );
+        content = row.content;
+        changed = changed || row.changed;
+      }
+      continue;
+    }
+    for (const capability of fact.capabilities) {
+      const row = removeSectionRow(content, CAPABILITIES_SECTION, capability.name);
+      content = row.content;
+      changed = changed || row.changed;
+    }
+    const rootRow = removeSectionRow(content, PLUGIN_ROOTS_SECTION, fact.pluginName);
+    content = rootRow.content;
+    changed = changed || rootRow.changed;
+  }
+  return { ok: true, content, changed };
+}
+
+// src/resolver/apply-transaction.ts
+function issue2(code, message2) {
+  return { code, message: message2 };
+}
+function rejected(reason, message2, residue) {
+  return {
+    status: "rejected",
+    reason,
+    transactionId: null,
+    rollback: null,
+    selfCheck: "skipped",
+    refreshed: false,
+    residue,
+    diagnostics: [issue2(reason, message2)]
+  };
+}
+function noTransactionResidue() {
+  return {
+    clean: true,
+    journalRetained: false,
+    backupsRetained: false,
+    detail: "no journal and no backup were created; nothing was left behind."
+  };
+}
+function residueFrom(ports, detail) {
+  const journalRetained = ports.journalPresent();
+  const backupsRetained = ports.backupsPresent();
+  return {
+    clean: !journalRetained && !backupsRetained,
+    journalRetained,
+    backupsRetained,
+    detail
+  };
+}
+function rollback(ports) {
+  const real = ports.rollbackPorts();
+  const lockNeutral = {
+    ...real,
+    acquireLock: () => ({ ok: true }),
+    releaseLock: () => {
+    }
+  };
+  const report = recoverInterruptedTransaction(lockNeutral);
+  return {
+    complete: report.state === "recovered" || report.state === "no-journal",
+    restored: report.restored,
+    alreadyRestored: report.alreadyRestored,
+    preserved: report.preserved,
+    unresolved: report.unresolved
+  };
+}
+function failAfterJournal(ports, transactionId, reason, message2, selfCheck, refreshed) {
+  const report = rollback(ports);
+  const diagnostics = [issue2(reason, message2)];
+  if (!report.complete) {
+    diagnostics.push(
+      issue2(
+        "apply/rollback-incomplete",
+        `rollback left ${report.preserved.length} destination(s) preserved and ${report.unresolved.length} unresolved; the journal is retained and no success is claimed.`
+      )
+    );
+  }
+  return {
+    status: "rolled-back",
+    reason: report.complete ? reason : "apply/rollback-incomplete",
+    transactionId,
+    rollback: report,
+    selfCheck,
+    refreshed,
+    residue: residueFrom(
+      ports,
+      report.complete ? "the transaction was rolled back and its journal and backups were discarded." : "the transaction could not be fully rolled back; its journal is retained so a later run re-observes and converges."
+    ),
+    diagnostics
+  };
+}
+function applyTransaction(ports, input) {
+  const observed = ports.observeDestination();
+  const observedInode = ports.destinationInode();
+  if (observed.kind === "not-contained") {
+    return rejected(
+      "apply/registry-unresolvable",
+      `\`${ports.destination}\` does not resolve to a workspace-contained target (${observed.rejection}); nothing was journalled and nothing was written.`,
+      noTransactionResidue()
+    );
+  }
+  if (observed.kind === "observation-failed") {
+    return rejected(
+      "apply/registry-unresolvable",
+      `\`${ports.destination}\` could not be observed: ${observed.diagnostic}`,
+      noTransactionResidue()
+    );
+  }
+  if (observed.kind === "symlink") {
+    return rejected(
+      "apply/destination-symlink",
+      `\`${ports.destination}\` is a symbolic link; this mutator never writes through a link, so no journal was created and nothing was written.`,
+      noTransactionResidue()
+    );
+  }
+  const willWrite = createLastWrittenIdentity(ports.identify(input.newContent));
+  if (willWrite === null) {
+    return rejected(
+      "apply/registry-unresolvable",
+      "the bytes to be written could not be identified deterministically; nothing was journalled and nothing was written.",
+      noTransactionResidue()
+    );
+  }
+  const transactionId = ports.newTransactionId();
+  const backupPath = observed.kind === "file" ? ports.backupPathFor(transactionId) : null;
+  const entry = createJournalEntry({
+    destination: ports.destination,
+    priorExistence: observed.kind === "file" ? "present" : "absent",
+    priorContentHash: observed.kind === "file" ? observed.contentHash : null,
+    priorIsSymlink: false,
+    backupPath,
+    lastWritten: willWrite
+  });
+  if (entry === null) {
+    return rejected(
+      "apply/registry-unresolvable",
+      "the transaction journal entry for the registry destination is incomplete or self-contradictory; nothing was journalled and nothing was written.",
+      noTransactionResidue()
+    );
+  }
+  const journal = createTransactionJournal({
+    transactionId,
+    startedAt: ports.now(),
+    entries: [entry]
+  });
+  if (journal === null) {
+    return rejected(
+      "apply/registry-unresolvable",
+      "the transaction journal could not be constructed; nothing was journalled and nothing was written.",
+      noTransactionResidue()
+    );
+  }
+  const journalled = ports.writeJournal(journal);
+  if (!journalled.ok) {
+    return rejected(
+      "apply/write-failed",
+      `the transaction journal could not be written: ${journalled.diagnostic}`,
+      residueFrom(ports, "the transaction journal could not be written.")
+    );
+  }
+  if (backupPath !== null) {
+    const backed = ports.writeBackup(backupPath);
+    if (!backed.ok) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/backup-failed",
+        `the prior bytes of \`${ports.destination}\` could not be backed up: ${backed.diagnostic}`,
+        "skipped",
+        false
+      );
+    }
+    const proof = ports.hashBackup(backupPath);
+    if (!proof.ok) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/backup-failed",
+        `the backup of \`${ports.destination}\` could not be verified (${proof.reason}): ${proof.diagnostic}`,
+        "skipped",
+        false
+      );
+    }
+    if (proof.contentHash !== entry.priorContentHash) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/backup-failed",
+        `the backup of \`${ports.destination}\` does not reproduce its recorded prior bytes; nothing was written.`,
+        "skipped",
+        false
+      );
+    }
+  }
+  const recheck = ports.observeDestination();
+  const recheckInode = ports.destinationInode();
+  if (!sameObservation(observed, recheck)) {
+    return failAfterJournal(
+      ports,
+      transactionId,
+      "apply/precondition-moved",
+      `\`${ports.destination}\` changed between the observation this transaction recorded and the write (${describe2(observed)} \u2192 ${describe2(recheck)}); nothing was written.`,
+      "skipped",
+      false
+    );
+  }
+  if (observedInode !== recheckInode) {
+    return failAfterJournal(
+      ports,
+      transactionId,
+      "apply/precondition-moved",
+      `\`${ports.destination}\` names a different file than the one this transaction validated (inode ${String(observedInode)} \u2192 ${String(recheckInode)}); nothing was written.`,
+      "skipped",
+      false
+    );
+  }
+  const written = ports.atomicReplace(input.newContent);
+  if (!written.ok) {
+    return failAfterJournal(
+      ports,
+      transactionId,
+      "apply/write-failed",
+      `\`${ports.destination}\` could not be replaced: ${written.diagnostic}`,
+      "skipped",
+      false
+    );
+  }
+  const checked = ports.refreshAndSelfCheck(input.expectation);
+  if (!checked.ok) {
+    return failAfterJournal(
+      ports,
+      transactionId,
+      "apply/self-check-failed",
+      `the registry was written but the self-check did not confirm the intended state: ${checked.diagnostic}`,
+      "failed",
+      true
+    );
+  }
+  ports.discardTransaction(journal.entries);
+  return {
+    status: "applied",
+    reason: null,
+    transactionId,
+    rollback: null,
+    selfCheck: "ok",
+    refreshed: true,
+    residue: residueFrom(
+      ports,
+      "the transaction completed durably: the journal was discarded first, then its backups, then the emptied backup directories were pruned."
+    ),
+    diagnostics: []
+  };
+}
+function sameObservation(left, right) {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "file" && right.kind === "file") {
+    return left.contentHash === right.contentHash && left.bytes === right.bytes;
+  }
+  return left.kind === "absent" && right.kind === "absent";
+}
+function describe2(observation) {
+  switch (observation.kind) {
+    case "file":
+      return `file sha256 ${observation.contentHash}`;
+    case "absent":
+      return "absent";
+    case "symlink":
+      return "symbolic link";
+    case "not-contained":
+      return `not contained (${observation.rejection})`;
+    default:
+      return "unobservable";
+  }
+}
 
 // src/service.ts
 var MAX_DECLARED_SOURCE_BYTES = 16 * 1024 * 1024;
@@ -27731,16 +28482,16 @@ function degradationFor(surface, state) {
 function boundInspectionIssues(issues) {
   const retained = [];
   let truncated = false;
-  for (const issue2 of issues) {
+  for (const issue3 of issues) {
     if (retained.length >= MAX_QUESTION_DIAGNOSTICS) {
       truncated = true;
       break;
     }
-    if (Buffer.byteLength(JSON.stringify([...retained, issue2]), "utf8") > MAX_NORMALIZED_QUESTION_BYTES) {
+    if (Buffer.byteLength(JSON.stringify([...retained, issue3]), "utf8") > MAX_NORMALIZED_QUESTION_BYTES) {
       truncated = true;
       break;
     }
-    retained.push(issue2);
+    retained.push(issue3);
   }
   if (!truncated) return retained;
   const sentinel = "additional question diagnostics omitted after aggregate limit.";
@@ -28341,7 +29092,7 @@ var ResolverService = class {
     return this.inspectListedPack(pack, pluginId, pluginName);
   }
   /** The not-installed / no-inventory shape: everything false, one issue. */
-  uninspectablePack(pluginId, pluginName, issue2) {
+  uninspectablePack(pluginId, pluginName, issue3) {
     return {
       pluginId,
       pluginName,
@@ -28354,7 +29105,7 @@ var ResolverService = class {
       machineBinding: null,
       fingerprint: null,
       valid: false,
-      issues: boundInspectionIssues([issue2])
+      issues: boundInspectionIssues([issue3])
     };
   }
   /**
@@ -28575,15 +29326,36 @@ var ResolverService = class {
       });
     }
     const recovery = this.ports.recovery ? recoverInterruptedTransaction(this.ports.recovery) : noRecoveryReport();
+    return this.planFrom(admission, selection, recovery).plan;
+  }
+  /**
+   * The plan join over an ALREADY-PERFORMED recovery.
+   *
+   * Split out of `planInstall` for WF-453: the mutator must recover once, then
+   * hold the exclusive lock across BOTH the revalidation and the transaction. If
+   * it re-entered `planInstall` it would recover a second time — and, worse,
+   * `recoverInterruptedTransaction` would find the lock it is itself holding and
+   * refuse as `held-by-other`. Threading the finished report through is the same
+   * technique `planInstall` already uses for `discoverPacksWithInspection`.
+   *
+   * Returns the per-pack inspections alongside the plan, because the mutator
+   * needs each addition's install root and capability paths to render the
+   * registry rows and re-inspecting would re-run the CLI and let the inventory
+   * shift mid-transaction.
+   */
+  planFrom(admission, selection, recovery) {
     if (!recovery.proceeded) {
-      return planInstall({
-        admission,
-        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
-        packs: [],
-        capabilities: [],
-        selection,
-        recovery
-      });
+      return {
+        plan: planInstall({
+          admission,
+          inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+          packs: [],
+          capabilities: [],
+          selection,
+          recovery
+        }),
+        inspected: /* @__PURE__ */ new Map()
+      };
     }
     const { response, inspected, snapshot, recordedArtifacts } = this.discoverPacksWithInspection(recovery);
     const ownerOfCapability = /* @__PURE__ */ new Map();
@@ -28622,16 +29394,267 @@ var ResolverService = class {
       }
     }
     const payloads = this.collectPayloadFacts(admission.root, inspected);
-    return planInstall({
+    return {
+      plan: planInstall({
+        admission,
+        inventory: response.inventory,
+        packs: response.packs,
+        capabilities,
+        selection,
+        payloads,
+        artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
+        recovery
+      }),
+      inspected
+    };
+  }
+  /**
+   * The sole public mutator for an exact registry-only plan (WF-453).
+   *
+   * The whole method is one guarded, crash-recoverable journaled transaction. It
+   * recovers BEFORE it decides anything, holds the exclusive lock across both the
+   * revalidation and the mutation, refuses everything it is not the mutator for,
+   * and — on any failure after the journal exists — rolls back and reports what
+   * it could not resolve rather than claiming a partial success.
+   *
+   * Ordering is the contract, not an implementation detail:
+   *
+   * 1. **Recovery first, reported separately.** A pre-entry recovery is a fact
+   *    about the workspace, not about this call; it is carried in its own
+   *    `recovery` field and never folded into `status`. An unrecovered workspace
+   *    halts here, before the lock, because the plan it would revalidate against
+   *    is not trustworthy.
+   * 2. **Lock, then revalidate.** The plan is recomputed UNDER the lock via
+   *    `planFrom`, so the `expectedPlanId` comparison cannot race a concurrent
+   *    installer. Recomputing outside the lock would compare against a plan that
+   *    another process could invalidate between the check and the write.
+   * 3. **Screen and gate before any journal.** Every stale-identity, unsupported-
+   *    action, and applicability refusal happens while the workspace is still
+   *    byte-identical to its pre-call state: nothing to roll back, so nothing can
+   *    be left half-undone.
+   * 4. **Transaction.** Only then does `applyTransaction` create a journal.
+   *
+   * The lock is owned HERE and not by the transaction driver precisely because it
+   * must also cover step 2. The driver assumes it is held, and its rollback runs
+   * through a lock-neutral façade so it never deadlocks against this holder.
+   */
+  applyInstall(admission, selection, expectedPlanId) {
+    const halted = (status, reason, recovery2, plan, diagnostics = []) => ({
+      applyVersion: APPLY_ENVELOPE_VERSION,
+      workspaceRoot: admission.admitted ? admission.root : null,
       admission,
-      inventory: response.inventory,
-      packs: response.packs,
-      capabilities,
-      selection,
-      payloads,
-      artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
-      recovery
+      status,
+      reason,
+      transactionId: null,
+      plan: {
+        planId: plan?.identity.planId ?? null,
+        expectedPlanId,
+        matched: plan !== null && plan.identity.planId === expectedPlanId,
+        applicability: plan?.applicability ?? null,
+        mode: plan?.mode ?? null
+      },
+      applied: [],
+      deferred: [],
+      rollback: null,
+      selfCheck: "skipped",
+      refreshed: false,
+      recovery: recovery2,
+      residue: {
+        clean: true,
+        journalRetained: false,
+        backupsRetained: false,
+        detail: "no transaction was created."
+      },
+      diagnostics
     });
+    if (!admission.admitted) {
+      return halted("invalid-root", "apply/invalid-root", noRecoveryReport(), null);
+    }
+    const recoveryPorts = this.ports.recovery;
+    if (recoveryPorts === void 0) {
+      return halted("halted", "apply/lock-unavailable", noRecoveryReport(), null, [
+        {
+          code: "apply-lock-unavailable",
+          message: "no lifecycle recovery ports are configured, so the exclusive lock cannot be taken."
+        }
+      ]);
+    }
+    const recovery = recoverInterruptedTransaction(recoveryPorts);
+    if (!recovery.proceeded) {
+      return halted("halted", "apply/halted-unrecovered", recovery, null);
+    }
+    const lock = recoveryPorts.acquireLock();
+    if (!lock.ok) {
+      return halted(
+        "rejected",
+        lock.reason === "held-by-other" ? "apply/lock-held" : "apply/lock-unavailable",
+        recovery,
+        null,
+        [{ code: `apply-lock-${lock.reason}`, message: lock.diagnostic }]
+      );
+    }
+    try {
+      const { plan, inspected } = this.planFrom(admission, selection, recovery);
+      const gate = decideApplyGate({
+        plan,
+        expectedPlanId,
+        journalPresent: recoveryPorts.readJournal() !== null
+      });
+      if (!gate.ok) {
+        const refused2 = halted("rejected", gate.reason, recovery, plan, [
+          { code: gate.reason, message: gate.detail }
+        ]);
+        return { ...refused2, deferred: gate.screened.deferred };
+      }
+      const registryRel = this.ports.registryRelPath();
+      const shapeError = registryPathShapeError(registryRel);
+      if (shapeError) {
+        return {
+          ...halted("rejected", "apply/registry-unresolvable", recovery, plan, [
+            {
+              code: "apply/registry-unresolvable",
+              message: `registryPath \`${registryRel}\` is not a forward-slash repo-relative file path: ${shapeError}.`
+            }
+          ]),
+          deferred: gate.screened.deferred
+        };
+      }
+      let registryAbs;
+      try {
+        registryAbs = this.ports.resolveRegistryWritePath?.(registryRel) ?? joinSlash(this.ports.workspaceRoot, registryRel);
+      } catch (err) {
+        return {
+          ...halted("rejected", "apply/registry-unresolvable", recovery, plan, [
+            {
+              code: "apply/registry-unresolvable",
+              message: `registryPath \`${registryRel}\` escapes the selected workspace: ${err instanceof Error ? err.message : String(err)}`
+            }
+          ]),
+          deferred: gate.screened.deferred
+        };
+      }
+      const facts = /* @__PURE__ */ new Map();
+      for (const entry of plan.registryDelta.additions) {
+        const pack = inspected.get(entry.pluginId);
+        if (pack === void 0) continue;
+        facts.set(entry.pluginId, {
+          pluginId: entry.pluginId,
+          pluginName: pack.pluginName,
+          installPath: pack.installPath,
+          capabilities: pack.capabilities.map((c) => ({ name: c.name, path: c.path }))
+        });
+      }
+      for (const entry of plan.registryDelta.deregistrations) {
+        facts.set(entry.pluginId, {
+          pluginId: entry.pluginId,
+          pluginName: entry.pluginName,
+          installPath: null,
+          capabilities: entry.capabilities.map((name) => ({ name, path: "" }))
+        });
+      }
+      const current = this.ports.readFile(registryAbs) ?? "";
+      const mutation = renderRegistryMutation(current, gate.screened.supported, facts);
+      if (!mutation.ok) {
+        return {
+          ...halted("rejected", mutation.reason, recovery, plan, [
+            { code: mutation.reason, message: mutation.detail }
+          ]),
+          deferred: gate.screened.deferred
+        };
+      }
+      const present = [];
+      const absent = [];
+      for (const action2 of gate.screened.supported) {
+        const fact = action2.pluginId === null ? void 0 : facts.get(action2.pluginId);
+        if (fact === void 0) continue;
+        const names = fact.capabilities.map((c) => c.name);
+        if (action2.kind === "registry-add") present.push(...names);
+        else absent.push(...names);
+      }
+      const applyPorts = this.ports.createApply?.(
+        registryRel,
+        (expectation) => this.selfCheckRegistry(expectation)
+      );
+      if (applyPorts === void 0) {
+        return {
+          ...halted("rejected", "apply/registry-unresolvable", recovery, plan, [
+            {
+              code: "apply/registry-unresolvable",
+              message: "no apply ports are configured, so the registry cannot be mutated."
+            }
+          ]),
+          deferred: gate.screened.deferred
+        };
+      }
+      const result = applyTransaction(applyPorts, {
+        newContent: mutation.content,
+        expectation: { present, absent }
+      });
+      const applied = result.status === "applied" ? gate.screened.supported.map((action2) => ({
+        kind: action2.kind,
+        order: action2.order,
+        pluginId: action2.pluginId,
+        destination: action2.destination,
+        summary: action2.summary,
+        persisted: true
+      })) : [];
+      return {
+        applyVersion: APPLY_ENVELOPE_VERSION,
+        workspaceRoot: admission.root,
+        admission,
+        status: result.status,
+        reason: result.reason,
+        transactionId: result.transactionId,
+        plan: {
+          planId: plan.identity.planId,
+          expectedPlanId,
+          matched: plan.identity.planId === expectedPlanId,
+          applicability: plan.applicability,
+          mode: plan.mode
+        },
+        applied,
+        deferred: gate.screened.deferred,
+        rollback: result.rollback,
+        selfCheck: result.selfCheck,
+        refreshed: result.refreshed,
+        recovery,
+        residue: result.residue,
+        diagnostics: result.diagnostics
+      };
+    } catch (err) {
+      return halted("halted", "apply/write-failed", recovery, null, [
+        {
+          code: "apply-threw",
+          message: err instanceof Error ? err.message : String(err)
+        }
+      ]);
+    } finally {
+      recoveryPorts.releaseLock();
+    }
+  }
+  /**
+   * The post-write self-check: refresh discovery, then assert the registry view
+   * agrees with what the transaction claims it wrote.
+   *
+   * A *failed* self-check is a transaction FAILURE, not a warning — the caller
+   * rolls back on it. So this must assert both halves: every added capability
+   * resolves `ok`, and every deregistered one is gone. Asserting only presence
+   * would let a deregistration that silently changed nothing report success.
+   */
+  selfCheckRegistry(expectation) {
+    this.refresh();
+    const view = this.resolveRegistry();
+    const missing = expectation.present.filter(
+      (name) => !view.capabilities.some((c) => c.name === name && c.validity === "ok")
+    );
+    const lingering = expectation.absent.filter(
+      (name) => view.capabilities.some((c) => c.name === name)
+    );
+    if (missing.length === 0 && lingering.length === 0) return { ok: true };
+    const parts = [];
+    if (missing.length > 0) parts.push(`not resolvable after the write: ${missing.join(", ")}`);
+    if (lingering.length > 0) parts.push(`still registered after removal: ${lingering.join(", ")}`);
+    return { ok: false, diagnostic: parts.join("; ") };
   }
   /**
    * Answer every filesystem question one managed artifact raises, so the pure
@@ -28983,10 +30006,10 @@ var ResolverService = class {
         }
       }
       if (questionDiagnostics.length > 0) {
-        issues.push(...questionDiagnostics.map((issue2) => issue2.message));
+        issues.push(...questionDiagnostics.map((issue3) => issue3.message));
       }
       if (payloadDiagnostics.length > 0) {
-        issues.push(...payloadDiagnostics.map((issue2) => issue2.message));
+        issues.push(...payloadDiagnostics.map((issue3) => issue3.message));
       }
       capabilities.push({
         name,
