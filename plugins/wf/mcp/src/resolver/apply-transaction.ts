@@ -125,6 +125,22 @@ export interface SelfCheckExpectation {
    *  run happened to compute, so the check is against an independently-derived
    *  fact and cannot pass by comparing memory with itself. */
   overridesRecorded: readonly { destination: string; sha256: string }[];
+  /** Pack payloads that must now hold the APPROVED source bytes AND read back
+   *  from the ledger's `artifacts` section with their COMPLETE owner set
+   *  (WF-456).
+   *
+   *  The owner set is carried here rather than re-derived at check time for the
+   *  same reason the override digest is: it is an independently-derived fact
+   *  bound by the approved plan, so the check compares disk against the approval
+   *  rather than memory against itself. Recording a partial owner set is a
+   *  defect and not merely untidy — a later removal decision reads this set to
+   *  decide exclusivity, so an omitted owner would license a deletion the
+   *  remaining owner never agreed to. */
+  payloadsRecorded: readonly {
+    destination: string;
+    sha256: string;
+    owners: readonly { pluginId: string; capability: string; source: string }[];
+  }[];
   /** `true` when the composed constitution was recomposed by this transaction
    *  (WF-455). The check asserts the record reads back AND that the project's own
    *  clause section survived — the one property whose loss is unrecoverable. */
@@ -142,6 +158,7 @@ export function emptySelfCheckExpectation(): SelfCheckExpectation {
     bindingRecorded: [],
     answersRecorded: [],
     overridesRecorded: [],
+    payloadsRecorded: [],
     constitutionRecomposed: false,
   };
 }

@@ -151,10 +151,17 @@ function gate(
 // The closed action screen
 // ---------------------------------------------------------------------------
 
-test("the supported set is exactly the five unconditional kinds, and the conditional set exactly the constitution", () => {
+test("the supported set is exactly the six unconditional kinds, and the conditional set exactly the constitution", () => {
   assert.deepEqual(
     [...APPLY_SUPPORTED_ACTION_KINDS],
-    ["evidence-seed", "registry-add", "registry-deregister", "answer-write", "override-write"],
+    [
+      "evidence-seed",
+      "registry-add",
+      "registry-deregister",
+      "payload-write",
+      "answer-write",
+      "override-write",
+    ],
   );
   assert.deepEqual([...APPLY_CONDITIONAL_ACTION_KINDS], ["constitution-recompose"]);
   // The seed screen is the SECOND half of the action screen, because both seed
@@ -242,15 +249,31 @@ test("an approved committed project override is SUPPORTED, and does not depend o
   }
 });
 
-test("a payload write stays UNSUPPORTED, though it shares the override's destination root", () => {
-  // The `.wf/` prefix is not the authority — the declared artifact class is. A
-  // payload destination under the same root must not ride in on the override's
-  // admission.
+test("an approved pack payload is SUPPORTED, and does not depend on the constitution's presence (WF-456)", () => {
+  for (const facts of [NO_CONSTITUTION, HAS_CONSTITUTION]) {
+    const screened = screenPlanActions(
+      [action({ kind: "payload-write", destination: "_local/tooling/helper.mjs" })],
+      facts,
+    );
+    assert.deepEqual(screened.supported.map((a) => a.kind), ["payload-write"]);
+    assert.equal(screened.unsupported.length, 0);
+    assert.equal(screened.deferred.length, 0);
+  }
+});
+
+test("the gate SCREEN admits a payload by its action kind alone — the artifact-class test lives at compose time (WF-456)", () => {
+  // WF-444's authority test is two-part, and only one part belongs here. The
+  // whole-plan screen decides KIND; whether a particular destination is a legal
+  // artifact of that kind is decided by the composer, which refuses a payload
+  // aimed at the committed project-override tier with
+  // `apply/payload-precondition` before a single byte moves. Asserting that
+  // separation keeps a future reader from "hardening" the screen with a path
+  // test and quietly creating a second, divergent answer to the same question.
   const screened = screenPlanActions(
-    [action({ kind: "payload-write", destination: ".wf/anything.md" })],
+    [action({ kind: "payload-write", destination: ".wf/slots/ship.review.md" })],
     HAS_CONSTITUTION,
   );
-  assert.deepEqual(screened.unsupported.map((a) => a.kind), ["payload-write"]);
+  assert.deepEqual(screened.supported.map((a) => a.kind), ["payload-write"]);
 });
 
 test("screening preserves the plan's own canonical order", () => {
@@ -374,8 +397,9 @@ test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY suppo
         action({ kind: "registry-deregister", order: 2 }),
         action({ kind: "answer-write", order: 3, destination: "beta.token" }),
         action({ kind: "override-write", order: 4, destination: ".wf/slots/ship.review.md" }),
-        action({ kind: "constitution-recompose", order: 5, pluginId: null }),
-        action({ kind: "payload-write", order: 6, destination: ".wf/thing.md" }),
+        action({ kind: "payload-write", order: 5, destination: "_local/tooling/helper.mjs" }),
+        action({ kind: "constitution-recompose", order: 6, pluginId: null }),
+        action({ kind: "artifact-delete", order: 7, destination: "_local/tooling/helper.mjs" }),
       ],
       evidenceSeeds: [seed("binding-seed")],
     }),
@@ -384,10 +408,43 @@ test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY suppo
   });
 
   assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
-  assert.ok(!decision.ok && decision.detail.includes("payload-write"));
-  // All six supported actions WERE screened — and none of them can be applied,
+  assert.ok(!decision.ok && decision.detail.includes("artifact-delete"));
+  // All seven supported actions WERE screened — and none of them can be applied,
   // because the gate did not return `ok`.
-  assert.ok(!decision.ok && decision.screened.supported.length === 6);
+  assert.ok(!decision.ok && decision.screened.supported.length === 7);
+});
+
+test("SC-4: deletion, upgrade, bootstrap and repair each refuse a plan that ALSO carries a payload write (WF-456)", () => {
+  // The requirement stated at the level it is written: adding `payload-write` to
+  // the supported set must not open a door for the four out-of-scope modes to
+  // ride alongside it. Each is checked on its own, so a fix that happened to
+  // catch one of them cannot mask the other three — and each is checked in the
+  // presence of a supported payload, which is the combination a naive
+  // loop-with-early-return would apply half of.
+  for (const kind of [
+    "artifact-delete",
+    "artifact-advance",
+    "artifact-bootstrap",
+    "evidence-repair",
+  ] as const) {
+    const decision = gate({
+      ...HAS_CONSTITUTION,
+      plan: plan({
+        actions: [
+          action({ kind: "payload-write", order: 0, destination: "_local/tooling/helper.mjs" }),
+          action({ kind, order: 1, destination: "_local/tooling/helper.mjs" }),
+        ],
+      }),
+      expectedPlanId: PLAN_ID,
+      journalPresent: false,
+    });
+    assert.ok(!decision.ok, `\`${kind}\` must refuse the whole plan`);
+    assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
+    assert.ok(!decision.ok && decision.detail.includes(kind));
+    // The payload WAS screened as supported and is still not applied: the screen
+    // is a whole-plan gate, so nothing downstream of it ever runs.
+    assert.ok(!decision.ok && decision.screened.supported.some((a) => a.kind === "payload-write"));
+  }
 });
 
 test("EVERY out-of-scope kind refuses a plan that also carries a full supported set", () => {

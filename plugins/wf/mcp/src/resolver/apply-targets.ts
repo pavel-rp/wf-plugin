@@ -30,6 +30,7 @@
 //      the refusal happens before the transaction opens.
 
 import type {
+  ArtifactEvidence,
   MachineBindingEvidence,
   PortablePackEvidence,
   QuestionValue,
@@ -106,18 +107,37 @@ export interface LedgerEvidenceUpdate {
   binding?: MachineBindingEvidence;
 }
 
+/** One installed payload's ownership + hash proof, bound to its destination
+ *  (WF-456).
+ *
+ *  Recorded in the ledger's `artifacts` section — the PORTABLE half, because the
+ *  produced bytes and the capabilities that own them are project facts rather
+ *  than machine facts, and `parseEvidenceLedger` already reads them from there.
+ *  The `evidence` value is a fully-constructed `ArtifactEvidence`, so the owner
+ *  set it carries has already passed `createArtifactEvidence`'s completeness and
+ *  uniqueness checks: this renderer never assembles one from parts, and so cannot
+ *  record a partial owner set by omission. */
+export interface LedgerArtifactUpdate {
+  destination: string;
+  evidence: ArtifactEvidence;
+}
+
 /**
  * Render one evidence-ledger document with the named packs' evidence recorded.
  *
- * The two sections are written independently because the portable half may be
+ * The three sections are written independently because the portable half may be
  * committed while the binding half is always machine-local. When the declared
- * home is `local` BOTH land in the same file, so this renderer accepts updates
- * for either or both sections of whichever document it is given.
+ * home is `local` they land in the same file, so this renderer accepts updates
+ * for any or all sections of whichever document it is given — which is also why
+ * artifact proof (WF-456) is folded in HERE rather than through a second target:
+ * two renderers writing one path would be two writes racing over one file, which
+ * `addRendered`'s duplicate-destination gate would then have to reject.
  */
 export function renderLedgerMutation(
   current: string | null,
   updates: readonly LedgerEvidenceUpdate[],
   label: string,
+  artifacts: readonly LedgerArtifactUpdate[] = [],
 ): TargetRender {
   const parsed = parseDocument(current, label);
   if (!parsed.ok) return parsed;
@@ -125,14 +145,19 @@ export function renderLedgerMutation(
   const document = { ...parsed.document };
   const portable = asSection(document, "portable");
   const binding = asSection(document, "binding");
+  const artifactSection = asSection(document, "artifacts");
 
   for (const update of updates) {
     if (update.portable !== undefined) portable[update.pluginId] = update.portable;
     if (update.binding !== undefined) binding[update.pluginId] = update.binding;
   }
+  // Rule 2 restated for the third section: only the destinations this plan names
+  // are replaced, so an artifact recorded by an earlier install keeps its proof.
+  for (const update of artifacts) artifactSection[update.destination] = update.evidence;
 
   if (Object.keys(portable).length > 0) document.portable = portable;
   if (Object.keys(binding).length > 0) document.binding = binding;
+  if (Object.keys(artifactSection).length > 0) document.artifacts = artifactSection;
 
   const content = stableStringify(document);
   // Compared against the CURRENT BYTES, not against the parsed data, because the

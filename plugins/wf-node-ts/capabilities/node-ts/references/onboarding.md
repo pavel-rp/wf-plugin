@@ -13,6 +13,14 @@ from the registry row in `_local/config.md`; it does not hardcode this path.
 node-ts belongs in a stack capability — not domain-free core — because it names the Node test
 runner and the `_local/_testkit` harness.
 
+That placement is now structural rather than merely documented. Since WF-456 this capability
+**ships the runner itself** as a declared payload (`payloads/testkit-run.mjs` →
+`_local/_testkit/run.mjs`, `copy` / `replace-if-unmodified` / `retain`), and core's `/wf:init`
+scaffolds nothing of the kind. A project running bare core, or one that never selects this
+capability, receives no runner and no `_testkit` directory — the capability contributes nothing
+until it is registered, which is the `capabilities-ship-inert` article stated in bytes rather
+than in prose.
+
 ## Requires
 
 `requires: git`. This capability assumes only a `delivery` provider (`git`) is registered in the

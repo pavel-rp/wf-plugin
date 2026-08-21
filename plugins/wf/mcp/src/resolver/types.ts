@@ -1485,6 +1485,17 @@ export type ApplyReason =
    *  respect, and rather than `precondition-moved`, which is the post-journal
    *  TOCTOU class. Nothing is written on this path. */
   | "apply/override-precondition"
+  /** A pack-payload precondition no longer holds at apply time (WF-456): the
+   *  approved plan names no single previewed payload action for the destination,
+   *  the destination no longer resolves to a workspace-contained target, an
+   *  owner's declared source no longer reproduces the approved `{sha256, bytes}`
+   *  identity, or the co-owners' generation/refresh/removal tuples are no longer
+   *  field-for-field equal. Its own token rather than `override-precondition`
+   *  (a different, narrower artifact class) and rather than `plan-stale` (the
+   *  approved plan may still be current in every other respect). Reporting the
+   *  precise class matters: a maintainer chasing a stale plan would never look at
+   *  the pack's payload source. Nothing is written on this path. */
+  | "apply/payload-precondition"
   /** The composed constitution record cannot be recomposed without risking the
    *  project's own writing (WF-455): a section heading this composer needs is
    *  absent, duplicated, or out of order, or the record could not be read back
