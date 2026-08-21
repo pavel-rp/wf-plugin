@@ -158,6 +158,7 @@ export function emptySelfCheckExpectation(): SelfCheckExpectation {
     bindingRecorded: [],
     answersRecorded: [],
     overridesRecorded: [],
+    payloadsRecorded: [],
     constitutionRecomposed: false,
   };
 }

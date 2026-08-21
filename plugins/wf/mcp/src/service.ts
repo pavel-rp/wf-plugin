@@ -95,6 +95,7 @@ import {
   validatePayloadDeclarations,
 } from "./resolver/payloads.js";
 import {
+  createArtifactEvidence,
   createMachineBindingEvidence,
   createPortablePackEvidence,
   resolveLedgerHome,
@@ -116,7 +117,10 @@ import {
   type PlanCapabilityInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
-import { isDeclaredProjectOverrideArtifact } from "./resolver/plan-complete.js";
+import {
+  isDeclaredProjectOverrideArtifact,
+  isProjectOverrideDestination,
+} from "./resolver/plan-complete.js";
 import {
   decideApplyGate,
   renderRegistryMutation,
@@ -132,6 +136,7 @@ import {
 import {
   renderLedgerMutation,
   renderProfileMutation,
+  type LedgerArtifactUpdate,
   type LedgerEvidenceUpdate,
   type ProfileAnswerUpdate,
   type TargetRender,
@@ -157,6 +162,7 @@ import {
   type PathHashRecord,
   type PayloadDeclaration,
   type PayloadDiagnostic,
+  type PayloadSemantics,
   type PlanAction,
   type PlanAdmissionState,
   type PlanInstallResponse,
@@ -1928,6 +1934,7 @@ export class ResolverService {
         plan,
         inspected,
         supported: gate.screened.supported,
+        admittedRoot: admission.root,
         registryRel,
         registryContent: mutation.content,
         registryChanged: mutation.changed,
@@ -1968,6 +1975,7 @@ export class ResolverService {
           bindingRecorded: composed.bindingRecorded,
           answersRecorded: composed.answersRecorded,
           overridesRecorded: composed.overridesRecorded,
+          payloadsRecorded: composed.payloadsRecorded,
           constitutionRecomposed: composed.constitutionRecomposed,
         },
       });
@@ -2073,6 +2081,11 @@ export class ResolverService {
     plan: PlanInstallResponse;
     inspected: Map<string, InspectPackResponse>;
     supported: readonly PlanAction[];
+    /** The ONE admitted workspace root (WF-445), threaded from the admission
+     *  rather than re-derived, because payload containment is measured against
+     *  the admitted root and a second answer to "which root?" is a second
+     *  boundary. */
+    admittedRoot: string;
     registryRel: string;
     registryContent: string;
     /** Whether the rendered registry bytes DIFFER from the current ones. A
@@ -2088,6 +2101,11 @@ export class ResolverService {
         bindingRecorded: string[];
         answersRecorded: { capability: string; destination: string }[];
         overridesRecorded: { destination: string; sha256: string }[];
+        payloadsRecorded: {
+          destination: string;
+          sha256: string;
+          owners: { pluginId: string; capability: string; source: string }[];
+        }[];
         constitutionRecomposed: boolean;
       }
     | { ok: false; reason: ApplyReason; detail: string } {
@@ -2124,6 +2142,16 @@ export class ResolverService {
      *  alongside every other target, so one `addRendered` gate decides
      *  drop-if-unchanged and duplicate-destination for ALL of them. */
     const overrideWrites: { destination: string; content: string; sha256: string }[] = [];
+    /** The pack payloads this run will install, in the plan's own canonical action
+     *  order (WF-456). Collected in the loop and rendered below through the same
+     *  `addRendered` gate, so an unchanged payload is dropped exactly as an
+     *  unchanged override is. */
+    const payloadWrites: {
+      destination: string;
+      content: string;
+      sha256: string;
+      evidence: ArtifactEvidence;
+    }[] = [];
     /** Whether a `constitution-recompose` action reached the compose step. The
      *  record is composed AFTER the loop, because its content is a function of the
      *  FINAL capability set — which every registry action in this same plan
@@ -2217,10 +2245,45 @@ export class ResolverService {
         continue;
       }
 
+      if (action.kind === "payload-write") {
+        const rendered = this.renderPayloadWrite(
+          input.admittedRoot,
+          input.plan,
+          input.inspected,
+          action,
+        );
+        if (!rendered.ok) {
+          return { ok: false, reason: "apply/payload-precondition", detail: rendered.detail };
+        }
+        payloadWrites.push(rendered);
+        continue;
+      }
+
       if (action.kind === "constitution-recompose") {
         recomposeConstitution = true;
         continue;
       }
+
+      // The two supported kinds that deliberately contribute NO target here.
+      // `answer-write` is composed below from `plan.answers.writes` (one profile
+      // document per capability, not one per action), and `registry-deregister`
+      // is already carried by the registry render — evidence removal is a
+      // removal, and removals are out of scope.
+      if (action.kind === "answer-write" || action.kind === "registry-deregister") continue;
+
+      // THE DEFAULT ARM (WF-456). `decideApplyGate` has already screened the whole
+      // plan against `APPLY_SUPPORTED_ACTION_KINDS`, so reaching here means a kind
+      // was ADMITTED by the gate and then not handled by this loop — the exact
+      // shape of a bug that widening the supported set can introduce (WF-454
+      // defect class A). Falling through would apply the plan MINUS that action
+      // and report success, so it refuses loudly instead. Unreachable by
+      // construction; present precisely because "unreachable" is a claim the next
+      // widening could quietly falsify.
+      return {
+        ok: false,
+        reason: "apply/unsupported-action",
+        detail: `action kind \`${action.kind}\` is admitted by the apply gate but composes no target, so applying this plan would silently omit it; nothing was written.`,
+      };
     }
 
     // --- project answers -> capability profile seeds --------------------------
@@ -2281,9 +2344,14 @@ export class ResolverService {
       if (!render.ok) return { ok: false, reason, detail: render.detail };
       if (!render.changed) return null;
       if (targets.some((target) => target.destination === destination)) {
+        // The CALLER's reason again (WF-456, closing WF-455's warn 2). A duplicate
+        // destination is a fault in the artifact class being composed, so
+        // reporting every one of them as a ledger fault would send a maintainer
+        // chasing the wrong file — and the ledger is very often not even one of
+        // the two writers involved.
         return {
           ok: false,
-          reason: "apply/ledger-unresolvable",
+          reason,
           detail: `destination \`${destination}\` would be written twice in one transaction; nothing was written.`,
         };
       }
@@ -2294,6 +2362,15 @@ export class ResolverService {
     // The portable half and the binding half may land in the SAME file when the
     // declared home is `local`, so they are grouped by destination first — a
     // single document rendered once, never two writes racing over one path.
+    //
+    // Artifact proof joins the SAME grouping (WF-456) rather than opening a
+    // second target on the ledger path: the portable half and the artifact
+    // section can be the same document, and two renderers writing one path would
+    // be a duplicate destination the gate above would then have to refuse.
+    const artifactUpdates: LedgerArtifactUpdate[] = payloadWrites.map((payload) => ({
+      destination: payload.destination,
+      evidence: payload.evidence,
+    }));
     const byDestination = new Map<string, LedgerEvidenceUpdate[]>();
     if (portableUpdates.length > 0) {
       byDestination.set(home.portablePath, [
@@ -2307,10 +2384,21 @@ export class ResolverService {
         ...bindingUpdates,
       ]);
     }
+    // Artifact proof is PORTABLE: produced bytes and the capabilities that own
+    // them are project facts, not machine facts, and `parseEvidenceLedger`
+    // already reads the `artifacts` section from the portable document.
+    if (artifactUpdates.length > 0 && !byDestination.has(home.portablePath)) {
+      byDestination.set(home.portablePath, []);
+    }
     for (const [destination, updates] of byDestination) {
       const failure = addRendered(
         destination,
-        renderLedgerMutation(readRel(destination), updates, `the evidence ledger \`${destination}\``),
+        renderLedgerMutation(
+          readRel(destination),
+          updates,
+          `the evidence ledger \`${destination}\``,
+          destination === home.portablePath ? artifactUpdates : [],
+        ),
         "apply/ledger-unresolvable",
       );
       if (failure !== null) return failure;
@@ -2349,6 +2437,39 @@ export class ResolverService {
       overridesRecorded.push({ destination: override.destination, sha256: override.sha256 });
     }
 
+    // --- pack payloads (WF-456) -----------------------------------------------
+    // Same gate, same drop-if-unchanged rule (WF-454 defect class B): a payload
+    // whose destination already holds the approved bytes composes NO target, so
+    // re-running an apply over a settled workspace rewrites nothing — and the
+    // ledger's artifact record, rendered above, is unchanged too, which makes the
+    // second run a genuine no-op rather than a quiet re-write.
+    const payloadsRecorded: {
+      destination: string;
+      sha256: string;
+      owners: { pluginId: string; capability: string; source: string }[];
+    }[] = [];
+    for (const payload of payloadWrites) {
+      const failure = addRendered(
+        payload.destination,
+        {
+          ok: true,
+          content: payload.content,
+          changed: payload.content !== (readRel(payload.destination) ?? ""),
+        },
+        "apply/payload-precondition",
+      );
+      if (failure !== null) return failure;
+      // Recorded whether or not the bytes changed, for the same reason an override
+      // is: the asserted END STATE is "this destination holds the approved bytes
+      // and the ledger names its complete owner set", and a target dropped because
+      // it already satisfied that state must still be checked against it.
+      payloadsRecorded.push({
+        destination: payload.destination,
+        sha256: payload.sha256,
+        owners: payload.evidence.owners.map((owner) => ({ ...owner })),
+      });
+    }
+
     // --- the composed constitution (WF-455) -----------------------------------
     let constitutionRecomposed = false;
     if (recomposeConstitution) {
@@ -2385,6 +2506,7 @@ export class ResolverService {
       bindingRecorded,
       answersRecorded,
       overridesRecorded,
+      payloadsRecorded,
       constitutionRecomposed,
     };
   }
@@ -2499,6 +2621,227 @@ export class ResolverService {
     }
 
     return { ok: true, destination, content, sha256: approved.identity.sha256 };
+  }
+
+  /**
+   * Bind one `payload-write` action to the exact bytes the approved plan
+   * previewed, and refuse before mutation if any fact it rested on has moved
+   * (WF-456).
+   *
+   * THIS EXECUTES A DECISION; IT NEVER MAKES ONE. Payload *eligibility* — which
+   * declarations are admissible, which co-ownership is legal, which destination
+   * is contained — was decided by the planner and approved by the reviewer. What
+   * happens here is REVALIDATION: the same questions asked again, now, under the
+   * lock, against the workspace rather than against the plan. Every answer must
+   * still match the approval exactly. A mismatch is `apply/payload-precondition`
+   * and nothing is written — never a quiet re-decision in the mutator, because a
+   * mutator that may overrule the plan it was handed is not applying an approval
+   * at all.
+   *
+   * FOUR FACTS ARE RE-DERIVED, AND EACH ONE INDEPENDENTLY REFUSES:
+   *
+   *   1. CONTAINMENT (WF-448). The destination is re-resolved through the
+   *      no-create containment port bound to the ADMITTED root, and must land on
+   *      the same canonical target the plan previewed. Traversal, an absolute
+   *      path, a symlink that escapes, an out-of-workspace canonical target, and
+   *      a target that is no longer a regular file are each refused by their own
+   *      token — and refused WITHOUT the probe ever creating the path it tests.
+   *   2. BYTES. Every owner's declared source is re-fingerprinted and must still
+   *      reproduce the approved `{sha256, bytes}` identity.
+   *   3. THE SEMANTIC TUPLE. Every owner's currently-declared
+   *      generation/refresh/removal triple must be FIELD-FOR-FIELD equal to the
+   *      approved one — not compatible, not a superset. Bytes and semantics are
+   *      two independent axes and are checked independently, so a target whose
+   *      owners agree on content but have diverged on removal policy refuses.
+   *   4. THE COMPLETE OWNER SET. The set of capabilities declaring this
+   *      destination NOW must equal the approved owner set exactly. An owner that
+   *      appeared, and an owner that vanished, are both refusals. This is why the
+   *      recorded evidence can be trusted later: a removal decision reads that
+   *      owner set to establish exclusivity, so recording a partial set would
+   *      license a deletion an unrecorded owner never agreed to.
+   *
+   * The returned `evidence` is built by `createArtifactEvidence`, which fails
+   * closed on an empty or duplicated owner set and on a digest or tuple outside
+   * its closed vocabulary — so this renderer cannot emit a half-formed proof even
+   * if every check above were to be weakened.
+   */
+  private renderPayloadWrite(
+    admittedRoot: string,
+    plan: PlanInstallResponse,
+    inspected: Map<string, InspectPackResponse>,
+    action: PlanAction,
+  ):
+    | { ok: true; destination: string; content: string; sha256: string; evidence: ArtifactEvidence }
+    | { ok: false; detail: string } {
+    const destination = action.destination;
+    if (destination === null) {
+      return {
+        ok: false,
+        detail:
+          "a `payload-write` action carries no destination, so the pack payload it would install cannot be resolved.",
+      };
+    }
+
+    // The committed project-override tier is a DIFFERENT artifact class with its
+    // own authority test and its own action kind. Refusing it here keeps the two
+    // classes from acquiring a second, silently-divergent write path.
+    if (isProjectOverrideDestination(destination)) {
+      return {
+        ok: false,
+        detail: `\`${destination}\` is a committed project-override artifact, which is written by an \`override-write\` action and never by a payload write; nothing was written.`,
+      };
+    }
+
+    // --- exactly one approved payload action names it -------------------------
+    const previewed = plan.payloads.actions.filter((entry) => entry.destination === destination);
+    if (previewed.length !== 1) {
+      return {
+        ok: false,
+        detail: `the approved plan carries ${previewed.length} previewed payload action(s) for \`${destination}\`; exactly one is required to bind the bytes this payload would receive, so nothing was written.`,
+      };
+    }
+    const approved = previewed[0];
+
+    const fingerprint = this.ports.fingerprintContainedFile;
+    const read = this.ports.readContainedFile;
+    const resolveTarget = this.ports.resolvePayloadTarget;
+    if (fingerprint === undefined || read === undefined || resolveTarget === undefined) {
+      return {
+        ok: false,
+        detail: `the contained-source and containment boundaries are not both configured, so \`${destination}\` cannot be revalidated; nothing was written.`,
+      };
+    }
+
+    // --- 1. containment, re-established rather than inherited ------------------
+    const target = resolveTarget(admittedRoot, destination);
+    if (!target.ok) {
+      return {
+        ok: false,
+        detail: `the payload destination \`${destination}\` is no longer a usable workspace target (\`${target.rejection}\`); nothing was written.`,
+      };
+    }
+    if (target.canonicalTarget !== approved.canonicalTarget) {
+      return {
+        ok: false,
+        detail: `the payload destination \`${destination}\` now canonicalizes to a different target than the approved plan previewed; nothing was written.`,
+      };
+    }
+
+    // --- 3 + 4. the currently-declared owner set and its tuple -----------------
+    // Re-read from the CURRENT inspection rather than from the plan, because "who
+    // declares this destination, and with what semantics" is precisely the fact a
+    // pack edited between plan and apply would have changed.
+    const declared: { pluginId: string; capability: string; source: string; semantics: PayloadSemantics }[] = [];
+    for (const [pluginId, record] of inspected) {
+      for (const capability of record.capabilities) {
+        for (const payload of capability.payloads) {
+          if (payload.destination !== destination) continue;
+          declared.push({
+            pluginId,
+            capability: capability.name,
+            source: payload.source,
+            semantics: {
+              production: payload.production,
+              refresh: payload.refresh,
+              removal: payload.removal,
+            },
+          });
+        }
+      }
+    }
+
+    const ownerKey = (owner: { pluginId: string; capability: string; source: string }): string =>
+      JSON.stringify([owner.pluginId, owner.capability, owner.source]);
+    const declaredKeys = [...declared.map(ownerKey)].sort();
+    const approvedKeys = [...approved.owners.map(ownerKey)].sort();
+    if (JSON.stringify(declaredKeys) !== JSON.stringify(approvedKeys)) {
+      return {
+        ok: false,
+        detail: `the set of capabilities declaring \`${destination}\` has changed since the plan was approved (approved ${approvedKeys.length}, now ${declaredKeys.length}); the complete owner set cannot be recorded, so nothing was written.`,
+      };
+    }
+
+    for (const row of declared) {
+      if (
+        row.semantics.production !== approved.semantics.production ||
+        row.semantics.refresh !== approved.semantics.refresh ||
+        row.semantics.removal !== approved.semantics.removal
+      ) {
+        return {
+          ok: false,
+          detail: `capability \`${row.capability}\` of pack \`${row.pluginId}\` no longer declares the approved generation/refresh/removal tuple for \`${destination}\` (approved \`${approved.semantics.production}\`/\`${approved.semantics.refresh}\`/\`${approved.semantics.removal}\`, now \`${row.semantics.production}\`/\`${row.semantics.refresh}\`/\`${row.semantics.removal}\`); nothing was written.`,
+        };
+      }
+    }
+
+    // --- 2. every owner's source still reproduces the approved identity --------
+    let content: string | null = null;
+    for (const owner of approved.owners) {
+      const capability = inspected
+        .get(owner.pluginId)
+        ?.capabilities.find((candidate) => candidate.name === owner.capability);
+      if (capability === undefined) {
+        return {
+          ok: false,
+          detail: `capability \`${owner.capability}\` of pack \`${owner.pluginId}\` declares the payload \`${destination}\` but was not inspectable at apply time; nothing was written.`,
+        };
+      }
+      const capabilityRoot = dirnameSlash(capability.manifestPath);
+      const observed = fingerprint(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (
+        observed.status !== "ok" ||
+        observed.sha256 !== approved.identity.sha256 ||
+        observed.bytes !== approved.identity.bytes
+      ) {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` no longer reproduces the approved bytes for \`${destination}\` (approved sha256 ${approved.identity.sha256}, ${approved.identity.bytes} bytes; observed ${observed.status === "ok" ? `sha256 ${observed.sha256}, ${observed.bytes} bytes` : observed.status}); nothing was written.`,
+        };
+      }
+      if (content !== null) continue;
+      const body = read(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (body.status !== "ok") {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` could not be read (\`${body.status}\`), so the bytes for \`${destination}\` are not available; nothing was written.`,
+        };
+      }
+      content = body.content;
+    }
+
+    if (content === null) {
+      return {
+        ok: false,
+        detail: `the approved payload action for \`${destination}\` names no owner, so the bytes it would receive cannot be resolved; nothing was written.`,
+      };
+    }
+
+    // Production is `copy`, so the produced content IS the declared source — the
+    // same equality WF-448's co-ownership test already rests on. Both digests are
+    // therefore the one approved digest, recorded twice on purpose: a future
+    // production mode that transforms its input would make them diverge, and the
+    // record's shape should not have to change on that day.
+    const evidence = createArtifactEvidence({
+      destination,
+      owners: approved.owners.map((owner) => ({
+        pluginId: owner.pluginId,
+        capability: owner.capability,
+        source: owner.source,
+      })),
+      declaredSourceFingerprint: approved.identity.sha256,
+      producedContentHash: approved.identity.sha256,
+      production: approved.semantics.production,
+      refresh: approved.semantics.refresh,
+      removal: approved.semantics.removal,
+    });
+    if (evidence === null) {
+      return {
+        ok: false,
+        detail: `the ownership and hash evidence for \`${destination}\` could not be constructed from the approved action, so the payload is not installed without the proof that owns it; nothing was written.`,
+      };
+    }
+
+    return { ok: true, destination, content, sha256: approved.identity.sha256, evidence };
   }
 
   /**
@@ -2665,6 +3008,54 @@ export class ResolverService {
       }
     }
 
+    // --- pack payloads (WF-456) ----------------------------------------------
+    // TWO INDEPENDENT ASSERTIONS PER DESTINATION, because two different things
+    // can go wrong and only one of them is about bytes:
+    //
+    //   (a) the destination hashes back to the APPROVED digest — the payload
+    //       actually landed, and landed as the bytes the plan bound; and
+    //   (b) the ledger's `artifacts` record for it names the COMPLETE owner set,
+    //       field-for-field, in the same order `createArtifactEvidence` sorts it.
+    //
+    // (b) is the load-bearing half and the reason a "did the file appear?" check
+    // would not be enough. A later removal decision establishes exclusivity from
+    // this recorded owner set, so a record that landed with an owner missing would
+    // license deleting a file a second capability still declares. Recording it and
+    // never reading it back would leave that defect invisible until the deletion.
+    const payloadMissing: string[] = [];
+    const artifactsBack =
+      home.portablePath === null
+        ? new Map<string, ArtifactEvidence>()
+        : parseEvidenceLedger(readRel(home.portablePath)).artifacts;
+    for (const payload of expectation.payloadsRecorded) {
+      const back = readRel(payload.destination);
+      if (back === null || sha256Hex(back) !== payload.sha256) {
+        payloadMissing.push(`${payload.destination} (bytes)`);
+        continue;
+      }
+      const recorded = artifactsBack.get(payload.destination) ?? null;
+      if (recorded === null) {
+        payloadMissing.push(`${payload.destination} (no ownership record)`);
+        continue;
+      }
+      if (
+        recorded.producedContentHash !== payload.sha256 ||
+        recorded.declaredSourceFingerprint !== payload.sha256
+      ) {
+        payloadMissing.push(`${payload.destination} (recorded hash)`);
+        continue;
+      }
+      const expectedOwners = JSON.stringify(
+        payload.owners.map((owner) => [owner.pluginId, owner.capability, owner.source]),
+      );
+      const recordedOwners = JSON.stringify(
+        recorded.owners.map((owner) => [owner.pluginId, owner.capability, owner.source]),
+      );
+      if (expectedOwners !== recordedOwners) {
+        payloadMissing.push(`${payload.destination} (incomplete owner set)`);
+      }
+    }
+
     // --- the composed constitution (WF-455) ----------------------------------
     // The project's own clause section is the one property whose loss is
     // unrecoverable, so it is asserted directly rather than inferred from the
@@ -2688,6 +3079,7 @@ export class ResolverService {
       bindingMissing.length === 0 &&
       answerMissing.length === 0 &&
       overrideMissing.length === 0 &&
+      payloadMissing.length === 0 &&
       constitutionMissing.length === 0
     ) {
       return { ok: true };
@@ -2706,6 +3098,9 @@ export class ResolverService {
     }
     if (overrideMissing.length > 0) {
       parts.push(`committed project override did not read back: ${overrideMissing.join(", ")}`);
+    }
+    if (payloadMissing.length > 0) {
+      parts.push(`pack payload did not read back: ${payloadMissing.join(", ")}`);
     }
     if (constitutionMissing.length > 0) {
       parts.push(`composed constitution did not read back: ${constitutionMissing.join(", ")}`);

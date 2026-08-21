@@ -28154,6 +28154,7 @@ var APPLY_SUPPORTED_ACTION_KINDS = [
   "evidence-seed",
   "registry-add",
   "registry-deregister",
+  "payload-write",
   "answer-write",
   "override-write"
 ];
@@ -28691,18 +28692,21 @@ function asSection(document, name) {
   if (typeof section !== "object" || section === null || Array.isArray(section)) return {};
   return { ...section };
 }
-function renderLedgerMutation(current, updates, label2) {
+function renderLedgerMutation(current, updates, label2, artifacts = []) {
   const parsed = parseDocument(current, label2);
   if (!parsed.ok) return parsed;
   const document = { ...parsed.document };
   const portable = asSection(document, "portable");
   const binding = asSection(document, "binding");
+  const artifactSection = asSection(document, "artifacts");
   for (const update of updates) {
     if (update.portable !== void 0) portable[update.pluginId] = update.portable;
     if (update.binding !== void 0) binding[update.pluginId] = update.binding;
   }
+  for (const update of artifacts) artifactSection[update.destination] = update.evidence;
   if (Object.keys(portable).length > 0) document.portable = portable;
   if (Object.keys(binding).length > 0) document.binding = binding;
+  if (Object.keys(artifactSection).length > 0) document.artifacts = artifactSection;
   const content = stableStringify(document);
   return { ok: true, content, changed: content !== (current ?? "") };
 }
@@ -29836,6 +29840,7 @@ var ResolverService = class {
         plan,
         inspected,
         supported: gate.screened.supported,
+        admittedRoot: admission.root,
         registryRel,
         registryContent: mutation.content,
         registryChanged: mutation.changed
@@ -29872,6 +29877,7 @@ var ResolverService = class {
           bindingRecorded: composed.bindingRecorded,
           answersRecorded: composed.answersRecorded,
           overridesRecorded: composed.overridesRecorded,
+          payloadsRecorded: composed.payloadsRecorded,
           constitutionRecomposed: composed.constitutionRecomposed
         }
       });
@@ -29978,6 +29984,7 @@ var ResolverService = class {
     const bindingRecorded = [];
     const seedByPluginId = new Map(input.plan.evidenceSeeds.map((seed) => [seed.pluginId, seed]));
     const overrideWrites = [];
+    const payloadWrites = [];
     let recomposeConstitution = false;
     for (const action2 of input.supported) {
       const pluginId = action2.pluginId;
@@ -30049,10 +30056,29 @@ var ResolverService = class {
         overrideWrites.push(rendered);
         continue;
       }
+      if (action2.kind === "payload-write") {
+        const rendered = this.renderPayloadWrite(
+          input.admittedRoot,
+          input.plan,
+          input.inspected,
+          action2
+        );
+        if (!rendered.ok) {
+          return { ok: false, reason: "apply/payload-precondition", detail: rendered.detail };
+        }
+        payloadWrites.push(rendered);
+        continue;
+      }
       if (action2.kind === "constitution-recompose") {
         recomposeConstitution = true;
         continue;
       }
+      if (action2.kind === "answer-write" || action2.kind === "registry-deregister") continue;
+      return {
+        ok: false,
+        reason: "apply/unsupported-action",
+        detail: `action kind \`${action2.kind}\` is admitted by the apply gate but composes no target, so applying this plan would silently omit it; nothing was written.`
+      };
     }
     const answersByCapability = /* @__PURE__ */ new Map();
     const answersRecorded = [];
@@ -30088,13 +30114,17 @@ var ResolverService = class {
       if (targets.some((target) => target.destination === destination)) {
         return {
           ok: false,
-          reason: "apply/ledger-unresolvable",
+          reason,
           detail: `destination \`${destination}\` would be written twice in one transaction; nothing was written.`
         };
       }
       targets.push({ destination, newContent: render.content });
       return null;
     };
+    const artifactUpdates = payloadWrites.map((payload) => ({
+      destination: payload.destination,
+      evidence: payload.evidence
+    }));
     const byDestination = /* @__PURE__ */ new Map();
     if (portableUpdates.length > 0) {
       byDestination.set(home.portablePath, [
@@ -30108,10 +30138,18 @@ var ResolverService = class {
         ...bindingUpdates
       ]);
     }
+    if (artifactUpdates.length > 0 && !byDestination.has(home.portablePath)) {
+      byDestination.set(home.portablePath, []);
+    }
     for (const [destination, updates] of byDestination) {
       const failure2 = addRendered(
         destination,
-        renderLedgerMutation(readRel(destination), updates, `the evidence ledger \`${destination}\``),
+        renderLedgerMutation(
+          readRel(destination),
+          updates,
+          `the evidence ledger \`${destination}\``,
+          destination === home.portablePath ? artifactUpdates : []
+        ),
         "apply/ledger-unresolvable"
       );
       if (failure2 !== null) return failure2;
@@ -30138,6 +30176,24 @@ var ResolverService = class {
       );
       if (failure2 !== null) return failure2;
       overridesRecorded.push({ destination: override.destination, sha256: override.sha256 });
+    }
+    const payloadsRecorded = [];
+    for (const payload of payloadWrites) {
+      const failure2 = addRendered(
+        payload.destination,
+        {
+          ok: true,
+          content: payload.content,
+          changed: payload.content !== (readRel(payload.destination) ?? "")
+        },
+        "apply/payload-precondition"
+      );
+      if (failure2 !== null) return failure2;
+      payloadsRecorded.push({
+        destination: payload.destination,
+        sha256: payload.sha256,
+        owners: payload.evidence.owners.map((owner) => ({ ...owner }))
+      });
     }
     let constitutionRecomposed = false;
     if (recomposeConstitution) {
@@ -30167,6 +30223,7 @@ var ResolverService = class {
       bindingRecorded,
       answersRecorded,
       overridesRecorded,
+      payloadsRecorded,
       constitutionRecomposed
     };
   }
@@ -30255,6 +30312,181 @@ var ResolverService = class {
       };
     }
     return { ok: true, destination, content, sha256: approved.identity.sha256 };
+  }
+  /**
+   * Bind one `payload-write` action to the exact bytes the approved plan
+   * previewed, and refuse before mutation if any fact it rested on has moved
+   * (WF-456).
+   *
+   * THIS EXECUTES A DECISION; IT NEVER MAKES ONE. Payload *eligibility* — which
+   * declarations are admissible, which co-ownership is legal, which destination
+   * is contained — was decided by the planner and approved by the reviewer. What
+   * happens here is REVALIDATION: the same questions asked again, now, under the
+   * lock, against the workspace rather than against the plan. Every answer must
+   * still match the approval exactly. A mismatch is `apply/payload-precondition`
+   * and nothing is written — never a quiet re-decision in the mutator, because a
+   * mutator that may overrule the plan it was handed is not applying an approval
+   * at all.
+   *
+   * FOUR FACTS ARE RE-DERIVED, AND EACH ONE INDEPENDENTLY REFUSES:
+   *
+   *   1. CONTAINMENT (WF-448). The destination is re-resolved through the
+   *      no-create containment port bound to the ADMITTED root, and must land on
+   *      the same canonical target the plan previewed. Traversal, an absolute
+   *      path, a symlink that escapes, an out-of-workspace canonical target, and
+   *      a target that is no longer a regular file are each refused by their own
+   *      token — and refused WITHOUT the probe ever creating the path it tests.
+   *   2. BYTES. Every owner's declared source is re-fingerprinted and must still
+   *      reproduce the approved `{sha256, bytes}` identity.
+   *   3. THE SEMANTIC TUPLE. Every owner's currently-declared
+   *      generation/refresh/removal triple must be FIELD-FOR-FIELD equal to the
+   *      approved one — not compatible, not a superset. Bytes and semantics are
+   *      two independent axes and are checked independently, so a target whose
+   *      owners agree on content but have diverged on removal policy refuses.
+   *   4. THE COMPLETE OWNER SET. The set of capabilities declaring this
+   *      destination NOW must equal the approved owner set exactly. An owner that
+   *      appeared, and an owner that vanished, are both refusals. This is why the
+   *      recorded evidence can be trusted later: a removal decision reads that
+   *      owner set to establish exclusivity, so recording a partial set would
+   *      license a deletion an unrecorded owner never agreed to.
+   *
+   * The returned `evidence` is built by `createArtifactEvidence`, which fails
+   * closed on an empty or duplicated owner set and on a digest or tuple outside
+   * its closed vocabulary — so this renderer cannot emit a half-formed proof even
+   * if every check above were to be weakened.
+   */
+  renderPayloadWrite(admittedRoot, plan, inspected, action2) {
+    const destination = action2.destination;
+    if (destination === null) {
+      return {
+        ok: false,
+        detail: "a `payload-write` action carries no destination, so the pack payload it would install cannot be resolved."
+      };
+    }
+    if (isProjectOverrideDestination(destination)) {
+      return {
+        ok: false,
+        detail: `\`${destination}\` is a committed project-override artifact, which is written by an \`override-write\` action and never by a payload write; nothing was written.`
+      };
+    }
+    const previewed = plan.payloads.actions.filter((entry) => entry.destination === destination);
+    if (previewed.length !== 1) {
+      return {
+        ok: false,
+        detail: `the approved plan carries ${previewed.length} previewed payload action(s) for \`${destination}\`; exactly one is required to bind the bytes this payload would receive, so nothing was written.`
+      };
+    }
+    const approved = previewed[0];
+    const fingerprint2 = this.ports.fingerprintContainedFile;
+    const read = this.ports.readContainedFile;
+    const resolveTarget = this.ports.resolvePayloadTarget;
+    if (fingerprint2 === void 0 || read === void 0 || resolveTarget === void 0) {
+      return {
+        ok: false,
+        detail: `the contained-source and containment boundaries are not both configured, so \`${destination}\` cannot be revalidated; nothing was written.`
+      };
+    }
+    const target = resolveTarget(admittedRoot, destination);
+    if (!target.ok) {
+      return {
+        ok: false,
+        detail: `the payload destination \`${destination}\` is no longer a usable workspace target (\`${target.rejection}\`); nothing was written.`
+      };
+    }
+    if (target.canonicalTarget !== approved.canonicalTarget) {
+      return {
+        ok: false,
+        detail: `the payload destination \`${destination}\` now canonicalizes to a different target than the approved plan previewed; nothing was written.`
+      };
+    }
+    const declared = [];
+    for (const [pluginId, record2] of inspected) {
+      for (const capability of record2.capabilities) {
+        for (const payload of capability.payloads) {
+          if (payload.destination !== destination) continue;
+          declared.push({
+            pluginId,
+            capability: capability.name,
+            source: payload.source,
+            semantics: {
+              production: payload.production,
+              refresh: payload.refresh,
+              removal: payload.removal
+            }
+          });
+        }
+      }
+    }
+    const ownerKey2 = (owner) => JSON.stringify([owner.pluginId, owner.capability, owner.source]);
+    const declaredKeys = [...declared.map(ownerKey2)].sort();
+    const approvedKeys = [...approved.owners.map(ownerKey2)].sort();
+    if (JSON.stringify(declaredKeys) !== JSON.stringify(approvedKeys)) {
+      return {
+        ok: false,
+        detail: `the set of capabilities declaring \`${destination}\` has changed since the plan was approved (approved ${approvedKeys.length}, now ${declaredKeys.length}); the complete owner set cannot be recorded, so nothing was written.`
+      };
+    }
+    for (const row of declared) {
+      if (row.semantics.production !== approved.semantics.production || row.semantics.refresh !== approved.semantics.refresh || row.semantics.removal !== approved.semantics.removal) {
+        return {
+          ok: false,
+          detail: `capability \`${row.capability}\` of pack \`${row.pluginId}\` no longer declares the approved generation/refresh/removal tuple for \`${destination}\` (approved \`${approved.semantics.production}\`/\`${approved.semantics.refresh}\`/\`${approved.semantics.removal}\`, now \`${row.semantics.production}\`/\`${row.semantics.refresh}\`/\`${row.semantics.removal}\`); nothing was written.`
+        };
+      }
+    }
+    let content = null;
+    for (const owner of approved.owners) {
+      const capability = inspected.get(owner.pluginId)?.capabilities.find((candidate) => candidate.name === owner.capability);
+      if (capability === void 0) {
+        return {
+          ok: false,
+          detail: `capability \`${owner.capability}\` of pack \`${owner.pluginId}\` declares the payload \`${destination}\` but was not inspectable at apply time; nothing was written.`
+        };
+      }
+      const capabilityRoot = dirnameSlash(capability.manifestPath);
+      const observed = fingerprint2(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (observed.status !== "ok" || observed.sha256 !== approved.identity.sha256 || observed.bytes !== approved.identity.bytes) {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` no longer reproduces the approved bytes for \`${destination}\` (approved sha256 ${approved.identity.sha256}, ${approved.identity.bytes} bytes; observed ${observed.status === "ok" ? `sha256 ${observed.sha256}, ${observed.bytes} bytes` : observed.status}); nothing was written.`
+        };
+      }
+      if (content !== null) continue;
+      const body = read(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (body.status !== "ok") {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` could not be read (\`${body.status}\`), so the bytes for \`${destination}\` are not available; nothing was written.`
+        };
+      }
+      content = body.content;
+    }
+    if (content === null) {
+      return {
+        ok: false,
+        detail: `the approved payload action for \`${destination}\` names no owner, so the bytes it would receive cannot be resolved; nothing was written.`
+      };
+    }
+    const evidence = createArtifactEvidence({
+      destination,
+      owners: approved.owners.map((owner) => ({
+        pluginId: owner.pluginId,
+        capability: owner.capability,
+        source: owner.source
+      })),
+      declaredSourceFingerprint: approved.identity.sha256,
+      producedContentHash: approved.identity.sha256,
+      production: approved.semantics.production,
+      refresh: approved.semantics.refresh,
+      removal: approved.semantics.removal
+    });
+    if (evidence === null) {
+      return {
+        ok: false,
+        detail: `the ownership and hash evidence for \`${destination}\` could not be constructed from the approved action, so the payload is not installed without the proof that owns it; nothing was written.`
+      };
+    }
+    return { ok: true, destination, content, sha256: approved.identity.sha256, evidence };
   }
   /**
    * Compose the constitution record this transaction will write (WF-455).
@@ -30379,6 +30611,33 @@ var ResolverService = class {
         overrideMissing.push(`${override.destination} (not seen as a committed project override)`);
       }
     }
+    const payloadMissing = [];
+    const artifactsBack = home.portablePath === null ? /* @__PURE__ */ new Map() : parseEvidenceLedger(readRel(home.portablePath)).artifacts;
+    for (const payload of expectation.payloadsRecorded) {
+      const back = readRel(payload.destination);
+      if (back === null || sha256Hex(back) !== payload.sha256) {
+        payloadMissing.push(`${payload.destination} (bytes)`);
+        continue;
+      }
+      const recorded = artifactsBack.get(payload.destination) ?? null;
+      if (recorded === null) {
+        payloadMissing.push(`${payload.destination} (no ownership record)`);
+        continue;
+      }
+      if (recorded.producedContentHash !== payload.sha256 || recorded.declaredSourceFingerprint !== payload.sha256) {
+        payloadMissing.push(`${payload.destination} (recorded hash)`);
+        continue;
+      }
+      const expectedOwners = JSON.stringify(
+        payload.owners.map((owner) => [owner.pluginId, owner.capability, owner.source])
+      );
+      const recordedOwners = JSON.stringify(
+        recorded.owners.map((owner) => [owner.pluginId, owner.capability, owner.source])
+      );
+      if (expectedOwners !== recordedOwners) {
+        payloadMissing.push(`${payload.destination} (incomplete owner set)`);
+      }
+    }
     const constitutionMissing = [];
     if (expectation.constitutionRecomposed) {
       const back = readRel(CONSTITUTION_RELPATH);
@@ -30390,7 +30649,7 @@ var ResolverService = class {
         );
       }
     }
-    if (missing.length === 0 && lingering.length === 0 && portableMissing.length === 0 && bindingMissing.length === 0 && answerMissing.length === 0 && overrideMissing.length === 0 && constitutionMissing.length === 0) {
+    if (missing.length === 0 && lingering.length === 0 && portableMissing.length === 0 && bindingMissing.length === 0 && answerMissing.length === 0 && overrideMissing.length === 0 && payloadMissing.length === 0 && constitutionMissing.length === 0) {
       return { ok: true };
     }
     const parts = [];
@@ -30407,6 +30666,9 @@ var ResolverService = class {
     }
     if (overrideMissing.length > 0) {
       parts.push(`committed project override did not read back: ${overrideMissing.join(", ")}`);
+    }
+    if (payloadMissing.length > 0) {
+      parts.push(`pack payload did not read back: ${payloadMissing.join(", ")}`);
     }
     if (constitutionMissing.length > 0) {
       parts.push(`composed constitution did not read back: ${constitutionMissing.join(", ")}`);
