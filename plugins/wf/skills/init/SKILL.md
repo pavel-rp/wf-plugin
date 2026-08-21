@@ -106,16 +106,16 @@ Nothing is written, and no lifecycle state is read, until a root is admitted.
    fields come back unset, the state Phase 3 fills. Perform **no** direct config
    parse, plugin-root probe, or manual registry/manifest read.
 
-3. **Relay the admission verdict.** Every lifecycle envelope carries an
-   `admission` block: `{ admitted, root, source, reason, diagnostic }`. Read it,
-   never re-derive it.
-   - `admitted: true` ⇒ carry `admission.root` — **the admitted root, not the
-     candidate** — into every later call, and report the `source` that produced
-     it so a non-cwd root is visible rather than silent.
-   - `admitted: false` ⇒ **hard stop before any scaffold write.** Emit
-     `INIT — stopped`, quoting `reason` and `diagnostic` verbatim. An
-     inadmissible declaration never reaches Phase 3; a repo is not scaffolded on
-     a root the resolver refused.
+3. **Relay the admission verdict — never re-derive it.** `resolve_config` carries
+   config facts only; the verdict rides the **lifecycle** envelopes. `plan_install`
+   and `apply_install` each carry an explicit `admission` block
+   (`{ admitted, root, source, reason, diagnostic }`); `discover_packs` reports an
+   inadmissible root as `recovery.state: "invalid-root"` with
+   `recovery.proceeded: false`. Phase 2 is the first lifecycle call, so its verdict
+   lands **before** Phase 3 — an inadmissible declaration never reaches a scaffold
+   write. On refusal emit `INIT — stopped`, quoting the diagnostic verbatim. On
+   admission carry the **admitted** root, not the candidate, into every later call,
+   and report its `source` so a non-cwd root is visible rather than silent.
 
 4. **Resolver unavailable** (the call errors, or the MCP server is not loaded) ⇒
    stop with `INIT — stopped`: "The `wf-resolver` service is not available —
