@@ -443,10 +443,13 @@ export interface PresentPart {
  * Compose the single served body from the present parts, under the merge policy.
  * The parts arrive in ascending tier rank (the plan's order).
  *   - `replace`: the highest-rank present part (the last in the list) — the
- *     override when present, else the single pack contribution.
+ *     personal `_local/` override when present, else the committed `.wf/` project
+ *     override, else the single pack contribution.
  *   - `append` : every present part concatenated in order, joined by one blank
- *     line — pack contributions (registry order) first, the override last.
- * Pure and deterministic: the body is a function of the parts alone.
+ *     line — pack contributions (registry order) first, then the committed
+ *     project override, the personal override last.
+ * Pure and deterministic: the body is a function of the parts alone, and it stays
+ * generic over the chain — a further tier changes no line of this function.
  */
 export function composeSlotBody(policy: MergePolicy, present: PresentPart[]): string {
   if (present.length === 0) return "";
