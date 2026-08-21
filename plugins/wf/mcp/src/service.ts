@@ -116,7 +116,7 @@ import {
   type PlanCapabilityInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
-import { isProjectOverrideDestination } from "./resolver/plan-complete.js";
+import { isDeclaredProjectOverrideArtifact } from "./resolver/plan-complete.js";
 import {
   decideApplyGate,
   renderRegistryMutation,
@@ -2427,12 +2427,7 @@ export class ResolverService {
     }
 
     // --- the two-part authority test ----------------------------------------
-    const filename = destination.slice(PROJECT_OVERRIDE_DIR.length + 1);
-    if (
-      !isProjectOverrideDestination(destination) ||
-      filename.includes("/") ||
-      slotPointFromOverrideFilename(filename) === null
-    ) {
+    if (!isDeclaredProjectOverrideArtifact(destination)) {
       return {
         ok: false,
         detail: `\`${destination}\` is not a declared committed project-override artifact (\`${PROJECT_OVERRIDE_DIR}/<skill>.<point>.md\`); the resolver's lifecycle ownership does not widen the admitted artifact set, so nothing was written.`,

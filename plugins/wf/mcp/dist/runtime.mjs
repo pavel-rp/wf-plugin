@@ -20475,6 +20475,12 @@ var OVERRIDE_PREFIX = `${PROJECT_OVERRIDE_DIR}/`;
 function isProjectOverrideDestination(destination) {
   return destination.startsWith(OVERRIDE_PREFIX) && destination.length > OVERRIDE_PREFIX.length;
 }
+function isDeclaredProjectOverrideArtifact(destination) {
+  if (!isProjectOverrideDestination(destination)) return false;
+  const filename = destination.slice(OVERRIDE_PREFIX.length);
+  if (filename.includes("/")) return false;
+  return slotPointFromOverrideFilename(filename) !== null;
+}
 function action(kind, pluginId, destination, mutating, summary) {
   return { kind, pluginId, destination, mutating, summary, persisted: false };
 }
@@ -30193,8 +30199,7 @@ var ResolverService = class {
         detail: "an `override-write` action carries no destination, so the committed project override it would write cannot be resolved."
       };
     }
-    const filename = destination.slice(PROJECT_OVERRIDE_DIR.length + 1);
-    if (!isProjectOverrideDestination(destination) || filename.includes("/") || slotPointFromOverrideFilename(filename) === null) {
+    if (!isDeclaredProjectOverrideArtifact(destination)) {
       return {
         ok: false,
         detail: `\`${destination}\` is not a declared committed project-override artifact (\`${PROJECT_OVERRIDE_DIR}/<skill>.<point>.md\`); the resolver's lifecycle ownership does not widen the admitted artifact set, so nothing was written.`
