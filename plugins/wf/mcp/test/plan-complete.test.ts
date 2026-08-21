@@ -45,6 +45,7 @@ import {
   type PlanCapabilityInput,
   type PlanInstallInput,
 } from "../src/resolver/plan-install.js";
+import { noRecoveryReport } from "../src/resolver/lifecycle-recovery.js";
 import { PROJECT_OVERRIDE_DIR } from "../src/resolver/slot.js";
 import { CONSTITUTION_RELPATH } from "../src/resolver/constitution.js";
 import {
@@ -168,6 +169,10 @@ function joinInput(over: Partial<PlanInstallInput> = {}): PlanInstallInput {
     packs: [pack()],
     capabilities: [capability()],
     selection: { desired: [], deregister: [], answers: [] },
+    // WF-452: the byte-inert, non-blocking report. Every completion, action-order,
+    // and identity property in this suite is therefore asserted against exactly
+    // the pre-retrofit behaviour.
+    recovery: noRecoveryReport(),
     ...over,
   };
 }

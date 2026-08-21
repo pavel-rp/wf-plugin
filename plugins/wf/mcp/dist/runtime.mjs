@@ -20587,7 +20587,9 @@ function integrateActions(input) {
   ).map((entry, order) => ({ ...entry, order }));
 }
 function planMode(input) {
-  if (input.applicability === "invalid-root") return null;
+  if (input.applicability === "invalid-root" || input.applicability === "unrecovered") {
+    return null;
+  }
   if (input.artifacts.deletable.length > 0) return "deletion";
   if (input.registryDelta.deregistrations.length > 0) return "deregistration";
   if (input.repairs.length > 0) return "repair";
@@ -21564,6 +21566,51 @@ function planInstall(input) {
       identity: completion2.identity,
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
+      recovery: input.recovery,
+      byteInert: true
+    };
+  }
+  if (!input.recovery.proceeded) {
+    const halted = [
+      {
+        code: "plan/halted-unrecovered",
+        severity: "error",
+        pluginId: null,
+        message: `planning did not proceed: recovery reported \`${input.recovery.state}\`, so lifecycle state was never read and no plan was generated.`
+      }
+    ];
+    const completion2 = completePlan({
+      planVersion: PLAN_ENVELOPE_VERSION,
+      admission: input.admission,
+      workspaceRoot: input.admission.root,
+      applicability: "unrecovered",
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      repairs: [],
+      payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
+      findings: halted,
+      inventory: UNOBSERVED_INVENTORY
+    });
+    return {
+      planVersion: PLAN_ENVELOPE_VERSION,
+      workspaceRoot: input.admission.root,
+      admission: input.admission,
+      applicability: "unrecovered",
+      mode: completion2.mode,
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      repairs: [],
+      payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
+      actions: completion2.actions,
+      applicabilityBasis: completion2.applicabilityBasis,
+      identity: completion2.identity,
+      findings: halted,
+      inventory: UNOBSERVED_INVENTORY,
+      recovery: input.recovery,
       byteInert: true
     };
   }
@@ -21895,6 +21942,10 @@ function planInstall(input) {
     identity: completion.identity,
     findings: sortFindings(findings),
     inventory: input.inventory,
+    // Echoed verbatim, never consulted beyond the gate above and never folded
+    // into the identity — the separation that lets a maintainer read the
+    // restoration and the plan they asked for as two distinct things.
+    recovery: input.recovery,
     byteInert: true
   };
 }
@@ -22521,7 +22572,12 @@ function planInstallEnvelopeForRejection(source, reason, diagnostic, args) {
     inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
     packs: [],
     capabilities: [],
-    selection: toPlanSelection(args)
+    selection: toPlanSelection(args),
+    // The same `invalid-root` recovery report the discovery composer below
+    // carries (WF-452). An inadmissible root is rejected before any root-bound
+    // port exists, so no recovery was attempted — and saying so explicitly is
+    // what stops a reader inferring "nothing needed recovering".
+    recovery: invalidRootRecoveryReport(diagnostic)
   });
 }
 function discoverPacksEnvelopeForRejection(workspaceRoot, diagnostic) {
@@ -28486,6 +28542,22 @@ var ResolverService = class {
    *
    * `admission` is supplied by the caller so the typed `invalid-root` envelope is
    * produced without this method ever being reached on an inadmissible root.
+   *
+   * WF-452 — RECOVERY RUNS FIRST, BEFORE ANY LIFECYCLE STATE IS READ, exactly as
+   * it does for discovery. The ordering is the whole point: everything below
+   * reads state (the snapshot, the CLI inventory, the evidence ledger, declared
+   * payload sources, managed-artifact bytes), and planning from state an
+   * interrupted transaction may have left half-written is the failure this
+   * retrofit exists to prevent.
+   *
+   * PLANNING NEVER CREATES A JOURNAL, a backup, or a transaction of its own — it
+   * may only recover a pre-existing one. With no journal present the lock is
+   * taken and released, no transaction state is created, and the run is
+   * byte-inert. Like discovery, planning is lock-acquiring but journal-free.
+   *
+   * Recovery runs EXACTLY ONCE per plan run: the report is threaded into
+   * `discoverPacksWithInspection(recovery)`, which recovers nothing itself, so a
+   * `plan_install` call takes the lock once rather than twice.
    */
   planInstall(admission, selection) {
     if (!admission.admitted) {
@@ -28494,10 +28566,26 @@ var ResolverService = class {
         inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
         packs: [],
         capabilities: [],
-        selection
+        selection,
+        // Admission failed before any root-bound port — and therefore before any
+        // recovery port — existed, so nothing was recovered and nothing could be.
+        recovery: invalidRootRecoveryReport(
+          admission.diagnostic ?? "the declared workspace root was not admitted, so no recovery was attempted."
+        )
       });
     }
-    const { response, inspected, snapshot, recordedArtifacts } = this.discoverPacksWithInspection();
+    const recovery = this.ports.recovery ? recoverInterruptedTransaction(this.ports.recovery) : noRecoveryReport();
+    if (!recovery.proceeded) {
+      return planInstall({
+        admission,
+        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+        packs: [],
+        capabilities: [],
+        selection,
+        recovery
+      });
+    }
+    const { response, inspected, snapshot, recordedArtifacts } = this.discoverPacksWithInspection(recovery);
     const ownerOfCapability = /* @__PURE__ */ new Map();
     for (const pack of snapshot.packs) {
       for (const name of pack.registeredCapabilities) ownerOfCapability.set(name, pack.pluginId);
@@ -28541,7 +28629,8 @@ var ResolverService = class {
       capabilities,
       selection,
       payloads,
-      artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts)
+      artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
+      recovery
     });
   }
   /**

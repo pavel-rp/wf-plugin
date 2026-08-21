@@ -28,6 +28,7 @@ import {
   type PlanCapabilityInput,
   type PlanInstallInput,
 } from "../src/resolver/plan-install.js";
+import { noRecoveryReport } from "../src/resolver/lifecycle-recovery.js";
 import {
   PLAN_ENVELOPE_VERSION,
   type ArtifactEvidence,
@@ -607,6 +608,9 @@ function input(over: Partial<PlanInstallInput> = {}): PlanInstallInput {
     packs: [pack()],
     capabilities: [capability()],
     selection: { desired: [], deregister: [], answers: [] },
+    // WF-452: the byte-inert, non-blocking report, so the artifact-evidence path
+    // is asserted against exactly its pre-retrofit behaviour.
+    recovery: noRecoveryReport(),
     ...over,
   };
 }

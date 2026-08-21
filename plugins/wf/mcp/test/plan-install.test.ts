@@ -19,6 +19,7 @@ import {
   type PlanInstallInput,
 } from "../src/resolver/plan-install.js";
 import { createDefaultPorts } from "../src/ports.js";
+import { noRecoveryReport } from "../src/resolver/lifecycle-recovery.js";
 import {
   normalizeSlashes,
   resolveContainedCapabilityPath,
@@ -132,6 +133,11 @@ function input(over: Partial<PlanInstallInput> = {}): PlanInstallInput {
     packs: [pack()],
     capabilities: [capability()],
     selection: { desired: [], deregister: [], answers: [] },
+    // WF-452: stated explicitly, never defaulted. `noRecoveryReport()` is the
+    // byte-inert, non-blocking "this caller performs no recovery" report, so
+    // every pre-existing planning property is asserted against exactly the
+    // behaviour it had before the retrofit.
+    recovery: noRecoveryReport(),
     ...over,
   };
 }
