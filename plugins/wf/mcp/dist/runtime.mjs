@@ -20587,7 +20587,9 @@ function integrateActions(input) {
   ).map((entry, order) => ({ ...entry, order }));
 }
 function planMode(input) {
-  if (input.applicability === "invalid-root") return null;
+  if (input.applicability === "invalid-root" || input.applicability === "unrecovered") {
+    return null;
+  }
   if (input.artifacts.deletable.length > 0) return "deletion";
   if (input.registryDelta.deregistrations.length > 0) return "deregistration";
   if (input.repairs.length > 0) return "repair";
@@ -21564,6 +21566,51 @@ function planInstall(input) {
       identity: completion2.identity,
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
+      recovery: input.recovery,
+      byteInert: true
+    };
+  }
+  if (!input.recovery.proceeded) {
+    const halted = [
+      {
+        code: "plan/halted-unrecovered",
+        severity: "error",
+        pluginId: null,
+        message: `planning did not proceed: recovery reported \`${input.recovery.state}\`, so lifecycle state was never read and no plan was generated.`
+      }
+    ];
+    const completion2 = completePlan({
+      planVersion: PLAN_ENVELOPE_VERSION,
+      admission: input.admission,
+      workspaceRoot: input.admission.root,
+      applicability: "unrecovered",
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      repairs: [],
+      payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
+      findings: halted,
+      inventory: UNOBSERVED_INVENTORY
+    });
+    return {
+      planVersion: PLAN_ENVELOPE_VERSION,
+      workspaceRoot: input.admission.root,
+      admission: input.admission,
+      applicability: "unrecovered",
+      mode: completion2.mode,
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      repairs: [],
+      payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
+      actions: completion2.actions,
+      applicabilityBasis: completion2.applicabilityBasis,
+      identity: completion2.identity,
+      findings: halted,
+      inventory: UNOBSERVED_INVENTORY,
+      recovery: input.recovery,
       byteInert: true
     };
   }
@@ -21895,6 +21942,10 @@ function planInstall(input) {
     identity: completion.identity,
     findings: sortFindings(findings),
     inventory: input.inventory,
+    // Echoed verbatim, never consulted beyond the gate above and never folded
+    // into the identity — the separation that lets a maintainer read the
+    // restoration and the plan they asked for as two distinct things.
+    recovery: input.recovery,
     byteInert: true
   };
 }
@@ -22521,7 +22572,12 @@ function planInstallEnvelopeForRejection(source, reason, diagnostic, args) {
     inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
     packs: [],
     capabilities: [],
-    selection: toPlanSelection(args)
+    selection: toPlanSelection(args),
+    // The same `invalid-root` recovery report the discovery composer below
+    // carries (WF-452). An inadmissible root is rejected before any root-bound
+    // port exists, so no recovery was attempted — and saying so explicitly is
+    // what stops a reader inferring "nothing needed recovering".
+    recovery: invalidRootRecoveryReport(diagnostic)
   });
 }
 function discoverPacksEnvelopeForRejection(workspaceRoot, diagnostic) {
@@ -22978,7 +23034,7 @@ function registerResolverTools(server, selectService) {
     "plan_install",
     {
       title: "plan install",
-      description: "Read-only, byte-inert preview of one explicit selected set (WF-447/WF-448/WF-449/WF-450) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, mode, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], repairs[], payloads{actions,rejected,conflicts}, artifacts{deletable,retained,bootstrap,advance}, actions[], applicabilityBasis{applicability,blockingFindings,blockingQuestions,blocked}, identity{planId,algorithm,coveredFactClasses,factCount}, findings[], inventory, byteInert}`. ONE SCHEMA, ONE IDENTITY: install, reconcile, bootstrap, deregistration, deletion, upgrade, retained-divergence and repair are `mode`s of this ONE envelope \u2014 there is no second schema and no per-mode response family, and `mode` is derived from the plan's own content, never asserted by a caller. `actions[]` integrates EVERY action class \u2014 evidence repair and seed, registration, deregistration, payload and project-override write, artifact advance, bootstrap and delete, answer binding, constitution recomposition, and non-mutating registry and artifact retentions \u2014 into one deterministically ordered list carrying `{kind, order, pluginId, destination, mutating, summary, persisted:false}`. `no-change` implies no action is `mutating`; `applicable` implies at least one is. REPAIR-CAPABLE: a drifted lifecycle comparison (`portable-mismatch`, `root-moved`, `local-mismatch`) yields an explicit previewed repair scoped to the portable or machine-binding half, so a plan reporting drift also carries the effect that resolves it. NO BLOCKING CONDITION IS EVER A SILENT OMISSION: `applicabilityBasis` enumerates every blocking finding and blocking question from the SAME inputs the applicability decision consumed, and an action whose exact proof predicate fails \u2014 a `binding-seed` comparison with no observed binding proposal, or a missing-evidence bootstrap without complete observed proof \u2014 produces an explicit error finding, a preserved registration, and `not-applicable`, never a silent no-op. IDENTITY: `identity.planId` is a SHA-256 over exactly the enumerated mutation-relevant fact classes reported in `coveredFactClasses`, so a no-change plan has a stable id with zero writes and any change to a covered hash, tuple, binding, owner set, answer, destination, containment, symlink, registry or evidence fact changes it; a finding's code, severity and attribution are covered, its human-readable message deliberately is not. ARTIFACTS: every managed destination the ledger records or an installed pack declares is classified into exactly one evidence-backed form, and nothing wider \u2014 pruning unlisted files is out of scope. DELETION ELIGIBILITY IS CONJUNCTIVE AND FAIL-SAFE: an artifact is `deletable` only when every recorded owner is EXPLICITLY deselected AND the current bytes match the PRIOR LEDGER HASH AND ownership is exclusive AND the declared removal semantics permit it. Every missing, conflicting, ambiguous, shared-incomplete, mismatching, or non-reproducible proof class RETAINS the artifact with a closed reason token and grants NO deletion authority \u2014 missing evidence never infers permission. Ownerless payloads follow the same rules: an empty owner set is incomplete, not exclusive, ownership. A missing-ledger BOOTSTRAP is previewable only when a trustworthy complete inventory holds AND validated declarations prove canonical destination, reproduced bytes, source fingerprint, complete owners, and the full semantic tuple; it records FUTURE authority and never permits deletion in the same plan. UPGRADE IS HASH-GATED: a source-changed artifact advances only when the current bytes still match the prior ledger hash, and a locally edited file stays `divergent` and not fully upgraded rather than being overwritten. Each decision carries `runnerCandidate` \u2014 Node-runner candidacy surfaced in this same plan, never a separate API. Every decision's `persisted` is the literal `false`. PAYLOADS: every acted-on capability's declared `## Payloads` row is previewed as an action carrying the declared destination, the canonical workspace-contained target, the produced-byte SHA-256 and length, the complete `{production, refresh, removal}` tuple, the FULL owner set, and whether the write would create or overwrite. Containment is measured against the admitted workspace root and canonicalized BEFORE the decision, without creating the path being tested \u2014 traversal, an absolute path, a symlink that escapes the root, and an out-of-workspace target each make the plan not applicable. Co-ownership of one target is accepted ONLY for byte-identical output AND field-for-field equal generation, refresh and removal semantics; any byte or semantic mismatch blocks deterministically, with no first-writer, registry-order, or model arbitration. Payload workspace containment is distinct from plugin-root validation, which this never performs. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
+      description: "Read-only, byte-inert preview of one explicit selected set (WF-447/WF-448/WF-449/WF-450) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, mode, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], repairs[], payloads{actions,rejected,conflicts}, artifacts{deletable,retained,bootstrap,advance}, actions[], applicabilityBasis{applicability,blockingFindings,blockingQuestions,blocked}, identity{planId,algorithm,coveredFactClasses,factCount}, findings[], inventory, recovery{...}, byteInert}`. RECOVERY-FIRST (WF-452): BEFORE any lifecycle state is read \u2014 the snapshot, the CLI inventory, the evidence ledger, declared payload sources, managed-artifact bytes \u2014 planning takes the SAME exclusive machine-local lock discovery takes and recovers an interrupted transaction from the versioned machine-local journal. PLANNING NEVER CREATES A JOURNAL, a backup, or a transaction of its own: with no journal present it acquires and releases the lock, creates zero transaction state, and is byte-inert. RECOVERY WRITES ARE REPORTED SEPARATELY in `recovery`, never folded into the plan and never folded into `identity`: `recovery.state` is one of `no-journal | recovered | incomplete | unsupported | malformed | lock-unavailable | invalid-root`, `recovery.proceeded` is `true` only for `no-journal` and `recovered`, and `byteInert` is asserted FROM THAT RECOVERED BASELINE, never from process start. NO UNRESOLVED RECOVERY EVER FLOWS INTO PLAN GENERATION: when `recovery.proceeded` is `false` \u2014 unresolved external interference, an unreadable journal version, or a concurrent lifecycle entry \u2014 NONE of the five planner paths runs, so the response carries no registry delta, no answers, no seeds, no repairs, no payload or artifact preview and no actions, `mode` is `null`, `inventory` reports `unavailable` confidence and can never establish absence, and `findings[]` carries exactly one `plan/halted-unrecovered` error. ONE SCHEMA, ONE IDENTITY: install, reconcile, bootstrap, deregistration, deletion, upgrade, retained-divergence and repair are `mode`s of this ONE envelope \u2014 there is no second schema and no per-mode response family, and `mode` is derived from the plan's own content, never asserted by a caller. `actions[]` integrates EVERY action class \u2014 evidence repair and seed, registration, deregistration, payload and project-override write, artifact advance, bootstrap and delete, answer binding, constitution recomposition, and non-mutating registry and artifact retentions \u2014 into one deterministically ordered list carrying `{kind, order, pluginId, destination, mutating, summary, persisted:false}`. `no-change` implies no action is `mutating`; `applicable` implies at least one is. REPAIR-CAPABLE: a drifted lifecycle comparison (`portable-mismatch`, `root-moved`, `local-mismatch`) yields an explicit previewed repair scoped to the portable or machine-binding half, so a plan reporting drift also carries the effect that resolves it. NO BLOCKING CONDITION IS EVER A SILENT OMISSION: `applicabilityBasis` enumerates every blocking finding and blocking question from the SAME inputs the applicability decision consumed, and an action whose exact proof predicate fails \u2014 a `binding-seed` comparison with no observed binding proposal, or a missing-evidence bootstrap without complete observed proof \u2014 produces an explicit error finding, a preserved registration, and `not-applicable`, never a silent no-op. IDENTITY: `identity.planId` is a SHA-256 over exactly the enumerated mutation-relevant fact classes reported in `coveredFactClasses`, so a no-change plan has a stable id with zero writes and any change to a covered hash, tuple, binding, owner set, answer, destination, containment, symlink, registry or evidence fact changes it; a finding's code, severity and attribution are covered, its human-readable message deliberately is not. ARTIFACTS: every managed destination the ledger records or an installed pack declares is classified into exactly one evidence-backed form, and nothing wider \u2014 pruning unlisted files is out of scope. DELETION ELIGIBILITY IS CONJUNCTIVE AND FAIL-SAFE: an artifact is `deletable` only when every recorded owner is EXPLICITLY deselected AND the current bytes match the PRIOR LEDGER HASH AND ownership is exclusive AND the declared removal semantics permit it. Every missing, conflicting, ambiguous, shared-incomplete, mismatching, or non-reproducible proof class RETAINS the artifact with a closed reason token and grants NO deletion authority \u2014 missing evidence never infers permission. Ownerless payloads follow the same rules: an empty owner set is incomplete, not exclusive, ownership. A missing-ledger BOOTSTRAP is previewable only when a trustworthy complete inventory holds AND validated declarations prove canonical destination, reproduced bytes, source fingerprint, complete owners, and the full semantic tuple; it records FUTURE authority and never permits deletion in the same plan. UPGRADE IS HASH-GATED: a source-changed artifact advances only when the current bytes still match the prior ledger hash, and a locally edited file stays `divergent` and not fully upgraded rather than being overwritten. Each decision carries `runnerCandidate` \u2014 Node-runner candidacy surfaced in this same plan, never a separate API. Every decision's `persisted` is the literal `false`. PAYLOADS: every acted-on capability's declared `## Payloads` row is previewed as an action carrying the declared destination, the canonical workspace-contained target, the produced-byte SHA-256 and length, the complete `{production, refresh, removal}` tuple, the FULL owner set, and whether the write would create or overwrite. Containment is measured against the admitted workspace root and canonicalized BEFORE the decision, without creating the path being tested \u2014 traversal, an absolute path, a symlink that escapes the root, and an out-of-workspace target each make the plan not applicable. Co-ownership of one target is accepted ONLY for byte-identical output AND field-for-field equal generation, refresh and removal semantics; any byte or semantic mismatch blocks deterministically, with no first-writer, registry-order, or model arbitration. Payload workspace containment is distinct from plugin-root validation, which this never performs. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `unrecovered` (recovery did not proceed, so no lifecycle state was read and NO claim is made about the selection) \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
       inputSchema: planInstallInput
     },
     async (args) => guard(() => {
@@ -28486,6 +28542,22 @@ var ResolverService = class {
    *
    * `admission` is supplied by the caller so the typed `invalid-root` envelope is
    * produced without this method ever being reached on an inadmissible root.
+   *
+   * WF-452 — RECOVERY RUNS FIRST, BEFORE ANY LIFECYCLE STATE IS READ, exactly as
+   * it does for discovery. The ordering is the whole point: everything below
+   * reads state (the snapshot, the CLI inventory, the evidence ledger, declared
+   * payload sources, managed-artifact bytes), and planning from state an
+   * interrupted transaction may have left half-written is the failure this
+   * retrofit exists to prevent.
+   *
+   * PLANNING NEVER CREATES A JOURNAL, a backup, or a transaction of its own — it
+   * may only recover a pre-existing one. With no journal present the lock is
+   * taken and released, no transaction state is created, and the run is
+   * byte-inert. Like discovery, planning is lock-acquiring but journal-free.
+   *
+   * Recovery runs EXACTLY ONCE per plan run: the report is threaded into
+   * `discoverPacksWithInspection(recovery)`, which recovers nothing itself, so a
+   * `plan_install` call takes the lock once rather than twice.
    */
   planInstall(admission, selection) {
     if (!admission.admitted) {
@@ -28494,10 +28566,26 @@ var ResolverService = class {
         inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
         packs: [],
         capabilities: [],
-        selection
+        selection,
+        // Admission failed before any root-bound port — and therefore before any
+        // recovery port — existed, so nothing was recovered and nothing could be.
+        recovery: invalidRootRecoveryReport(
+          admission.diagnostic ?? "the declared workspace root was not admitted, so no recovery was attempted."
+        )
       });
     }
-    const { response, inspected, snapshot, recordedArtifacts } = this.discoverPacksWithInspection();
+    const recovery = this.ports.recovery ? recoverInterruptedTransaction(this.ports.recovery) : noRecoveryReport();
+    if (!recovery.proceeded) {
+      return planInstall({
+        admission,
+        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+        packs: [],
+        capabilities: [],
+        selection,
+        recovery
+      });
+    }
+    const { response, inspected, snapshot, recordedArtifacts } = this.discoverPacksWithInspection(recovery);
     const ownerOfCapability = /* @__PURE__ */ new Map();
     for (const pack of snapshot.packs) {
       for (const name of pack.registeredCapabilities) ownerOfCapability.set(name, pack.pluginId);
@@ -28541,7 +28629,8 @@ var ResolverService = class {
       capabilities,
       selection,
       payloads,
-      artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts)
+      artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
+      recovery
     });
   }
   /**

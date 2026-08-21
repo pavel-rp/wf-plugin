@@ -35,6 +35,23 @@
 //      SAME declared-schema path a persisted value takes, and a valid one
 //      satisfies planning — but it stays `pending` until an apply that does not
 //      exist yet. A missing or invalid answer blocks.
+//
+//   4. NO UNRESOLVED RECOVERY FLOWS INTO PLAN GENERATION (WF-452). The guarded
+//      pre-entry gate below runs BEFORE any of the five planner paths —
+//      registration, answers, payload safety, artifact evidence, and the
+//      complete repair-capable completion — so an interrupted transaction that
+//      could not be fully recovered yields NO plan and NO applicability claim
+//      about the selection, rather than a degraded plan or a plan with a
+//      warning. The gate lives HERE, in the pure join, rather than only in the
+//      service: every one of the five paths runs through this function, so a
+//      future caller cannot route around it, and the property is testable with
+//      no filesystem at all.
+//
+// This module still writes nothing. Recovery — the one part of a planning run
+// that can write — happens in the caller, BEFORE any state is read, and arrives
+// here as a finished fact that is gated on and then echoed verbatim. Planning
+// NEVER creates a journal, a backup, or a transaction: like discovery it is
+// lock-acquiring but journal-free.
 
 import {
   emptyArtifactPreview,
@@ -65,6 +82,7 @@ import type {
   PlanRepairAction,
   PlanUnresolvedQuestion,
   QuestionRecord,
+  RecoveryReport,
 } from "./types.js";
 import { PLAN_ENVELOPE_VERSION } from "./types.js";
 
@@ -117,14 +135,32 @@ export interface PlanInstallInput {
    *  deletion authority by handing one in. Omitted entirely by a caller that does
    *  not preview artifacts, which leaves registration-only planning unchanged. */
   artifacts?: readonly PlanArtifactFactInput[];
+  /** The pre-entry crash-recovery report for this run (WF-452).
+   *
+   *  REQUIRED, not optional-with-a-default, and that is the point. An omitted
+   *  report would silently read as "there was nothing to recover" — precisely the
+   *  false negative this field exists to prevent — so every caller must state
+   *  what recovery found. `noRecoveryReport()` is the explicit way to say "this
+   *  caller performs no recovery"; it is never assumed.
+   *
+   *  Consumed for exactly TWO things: the `proceeded` gate below, and a verbatim
+   *  echo into the response's separate `recovery` envelope. It is NOT a
+   *  mutation-relevant fact and never reaches `completePlan`, which is what keeps
+   *  `planId` byte-stable across differing recovery reports. */
+  recovery: RecoveryReport;
 }
 
 /** A managed-artifact fact as a CALLER supplies it — the pure join's fact without
  *  the deselection half, which only the plan itself may determine. */
 export type PlanArtifactFactInput = Omit<PlanArtifactFact, "deselectedOwners">;
 
-/** The zeroed inventory the `invalid-root` path reports: admission failed before
- *  anything was read, so claiming any observation would be a lie. */
+/** The zeroed inventory the two NOTHING-WAS-READ paths report — `invalid-root`
+ *  (admission failed before anything was read) and `unrecovered` (WF-452:
+ *  recovery did not proceed, so lifecycle state was never read). One rationale
+ *  covers both: claiming any observation would be a lie, and under WF-446's trust
+ *  asymmetry only a `trustworthy` inventory may turn "not listed" into
+ *  "orphaned", so neither path can ever be mistaken for an observation of
+ *  absence. */
 const UNOBSERVED_INVENTORY: DiscoveryInventory = {
   confidence: "unavailable",
   mayEstablishAbsence: false,
@@ -233,6 +269,75 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
       identity: completion.identity,
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
+      recovery: input.recovery,
+      byteInert: true,
+    };
+  }
+
+  // --- the unrecovered path (WF-452) ----------------------------------------
+  // RULE 4. Recovery ran before entry and did not proceed, so NO lifecycle state
+  // was read and none of the five planner paths below may run. The response is
+  // the ordinary envelope, emptied: no delta, no answers, no seeds, no repairs,
+  // no payload or artifact preview, no actions — and `applicability:
+  // "unrecovered"`, which claims nothing about the selection because the
+  // selection was never classified.
+  //
+  // `inventory` is zeroed for the same reason discovery zeroes it on its own
+  // halted path: under WF-446's trust asymmetry only a `trustworthy` inventory
+  // may turn "not listed" into "orphaned", so a halted run can never be
+  // mistakable for an observation of absence.
+  //
+  // This branch is placed AFTER the admission branch on purpose: admission fails
+  // before any root-bound port — and therefore before any recovery port — exists,
+  // so `invalid-root` outranks `unrecovered` and the two can never both apply.
+  if (!input.recovery.proceeded) {
+    const halted: PlanFinding[] = [
+      {
+        code: "plan/halted-unrecovered",
+        severity: "error",
+        pluginId: null,
+        message: `planning did not proceed: recovery reported \`${input.recovery.state}\`, so lifecycle state was never read and no plan was generated.`,
+      },
+    ];
+    // The completion pass runs here too, exactly as it does on the `invalid-root`
+    // path: a halted plan is a real plan with a real identity — one that says
+    // "nothing may be done, and here is why" — so a reviewer approving it
+    // approves the same schema they approve everywhere else. The recovery report
+    // itself is NOT folded in (it is not a mutation-relevant fact), so the halt's
+    // identity is a function of the root, the admission verdict, and the halt
+    // finding alone.
+    const completion = completePlan({
+      planVersion: PLAN_ENVELOPE_VERSION,
+      admission: input.admission,
+      workspaceRoot: input.admission.root,
+      applicability: "unrecovered",
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      repairs: [],
+      payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
+      findings: halted,
+      inventory: UNOBSERVED_INVENTORY,
+    });
+    return {
+      planVersion: PLAN_ENVELOPE_VERSION,
+      workspaceRoot: input.admission.root,
+      admission: input.admission,
+      applicability: "unrecovered",
+      mode: completion.mode,
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      repairs: [],
+      payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
+      actions: completion.actions,
+      applicabilityBasis: completion.applicabilityBasis,
+      identity: completion.identity,
+      findings: halted,
+      inventory: UNOBSERVED_INVENTORY,
+      recovery: input.recovery,
       byteInert: true,
     };
   }
@@ -702,6 +807,10 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
     identity: completion.identity,
     findings: sortFindings(findings),
     inventory: input.inventory,
+    // Echoed verbatim, never consulted beyond the gate above and never folded
+    // into the identity — the separation that lets a maintainer read the
+    // restoration and the plan they asked for as two distinct things.
+    recovery: input.recovery,
     byteInert: true,
   };
 }
