@@ -20,6 +20,7 @@ import {
   type DiscoveryPackInput,
 } from "../src/resolver/discover-packs.js";
 import { createDefaultPorts } from "../src/ports.js";
+import { noRecoveryReport } from "../src/resolver/lifecycle-recovery.js";
 import {
   normalizeSlashes,
   resolveContainedCapabilityPath,
@@ -113,9 +114,21 @@ function input(over: Partial<DiscoveryInput> = {}): DiscoveryInput {
     workspaceRoot: "/ws",
     inventory: { ok: true, contractOk: true, issues: [], plugins: [installedPlugin()] },
     packs: [packInput()],
+    // WF-451: the join ECHOES this and never consults it, so the byte-inert
+    // `no-journal` report is the right default for every pure-join case here.
+    recovery: noRecoveryReport(),
     ...over,
   };
 }
+
+test("the join echoes the recovery report verbatim and never derives one", () => {
+  const report = noRecoveryReport();
+  const out = discoverPacks(input({ recovery: report }));
+  assert.deepEqual(out.recovery, report);
+  assert.equal(out.recovery.state, "no-journal");
+  assert.equal(out.recovery.proceeded, true);
+  assert.equal(out.recovery.wroteBytes, false);
+});
 
 // --- criterion 10: the confidence token + its precedence ---------------------
 

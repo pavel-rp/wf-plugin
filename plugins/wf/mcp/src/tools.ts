@@ -20,7 +20,12 @@ import {
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
 import { selectWorkspaceRoot } from "./workspace-admission.js";
-import type { PlanInstallResponse, RoutingInputs } from "./resolver/types.js";
+import { invalidRootRecoveryReport } from "./resolver/lifecycle-recovery.js";
+import type {
+  DiscoverPacksResponse,
+  PlanInstallResponse,
+  RoutingInputs,
+} from "./resolver/types.js";
 
 type ToolResult = {
   content: Array<{ type: "text"; text: string }>;
@@ -186,6 +191,33 @@ function planInstallEnvelopeForRejection(
     capabilities: [],
     selection: toPlanSelection(args),
   });
+}
+
+/** The typed `invalid-root` discovery envelope (WF-451).
+ *
+ *  Composed here for the same reason as the planner's: an inadmissible root must
+ *  never reach a root-bound service at all. Returning a TYPED, byte-inert
+ *  envelope rather than an MCP error is what makes "invalid roots fail safely"
+ *  an observable property of the response instead of an error channel a caller
+ *  has to interpret. The inventory reports `unavailable`, so a rejected run can
+ *  never establish that a pack is absent. */
+function discoverPacksEnvelopeForRejection(
+  workspaceRoot: string,
+  diagnostic: string,
+): DiscoverPacksResponse {
+  return {
+    workspaceRoot,
+    inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+    packs: [],
+    diagnostics: [
+      {
+        pluginId: null,
+        code: "discovery/invalid-root",
+        message: diagnostic,
+      },
+    ],
+    recovery: invalidRootRecoveryReport(diagnostic),
+  };
 }
 
 const surfaceClassInput = fromJsonSchema(withWorkspaceRoot({
@@ -671,10 +703,39 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     {
       title: "discover packs",
       description:
-        "Read-only, byte-inert pack discovery (R6). Joins the authoritative `claude plugin list --json` inventory, registry attribution, each pack's existing snapshot state, recorded-vs-observed lifecycle evidence, and declared questions into one deterministic inventory a maintainer inspects before choosing a lifecycle change. Returns `{workspaceRoot, inventory{confidence, mayEstablishAbsence, observedCount, issues}, packs[], diagnostics[]}`. `confidence` is one of `trustworthy | unavailable | malformed | partial | invalid`, and ONLY `trustworthy` may establish that a registered pack is orphaned — every other value reports `absence-indeterminate` instead. A duplicate plugin id or name invalidates the whole inventory and classifies nothing. Each pack carries its unchanged `PackState` plus a separate nullable staleness `overlay`, a non-persisted `seedProposal`, and its declared questions. Writes nothing: no ledger, no seed, no enablement change.",
+        "Recovery-first, then read-only byte-inert pack discovery (R6 + WF-451). BEFORE any lifecycle state is read it takes an EXCLUSIVE machine-local lock and recovers an interrupted transaction from the versioned machine-local journal; only then does it join the authoritative `claude plugin list --json` inventory, registry attribution, each pack's snapshot state, recorded-vs-observed lifecycle evidence, and declared questions into one deterministic inventory. Returns `{workspaceRoot, inventory{confidence, mayEstablishAbsence, observedCount, issues}, packs[], diagnostics[], recovery{...}}`. `confidence` is one of `trustworthy | unavailable | malformed | partial | invalid`, and ONLY `trustworthy` may establish that a registered pack is orphaned — every other value reports `absence-indeterminate` instead. A duplicate plugin id or name invalidates the whole inventory and classifies nothing. Each pack carries its unchanged `PackState` plus a separate nullable staleness `overlay`, a non-persisted `seedProposal`, and its declared questions. DISCOVERY NEVER CREATES A JOURNAL, a backup, or a transaction of its own — with no journal present it acquires and releases the lock, creates zero transaction state, and is byte-inert. RECOVERY WRITES ARE REPORTED SEPARATELY in `recovery`, never folded into discovery's output: `recovery.wroteBytes` states that recovery moved the baseline, and discovery's byte-inertness is asserted FROM THAT RECOVERED BASELINE, never from process start. `recovery.state` is one of `no-journal | recovered | incomplete | unsupported | malformed | lock-unavailable | invalid-root`, and `recovery.proceeded` is `true` only for `no-journal` and `recovered`. RECOVERY IS FAIL-SAFE AND IDEMPOTENT: a destination is restored to its exact prior existence and bytes only when the bytes on disk are still the ones the interrupted transaction wrote AND the backup reproduces the recorded prior hash; an external edit or a symlink is PRESERVED, an uncontained destination, a missing or mismatching backup, or a failed write is left UNRESOLVED, and any preserved or unresolved work RETAINS the journal and stops discovery — which then reports `unavailable` confidence and can never establish absence. A journal version this release does not understand is a STOP, never a best-effort parse. Concurrent entry (`lock-unavailable`) and an inadmissible workspace root (`invalid-root`, bound to the one canonical admission API) each return this same typed byte-inert envelope rather than an error. Writes nothing of its own: no ledger, no seed, no enablement change, no journal.",
       inputSchema: workspaceOnlyInput,
     },
-    async (args: WorkspaceArgs) => selected(args, (service) => service.discoverPacks()),
+    async (args: WorkspaceArgs) =>
+      guard(() => {
+        // The admitted root binds to WF-445's ONE canonical selection API, the
+        // same binding `plan_install` uses. Discovery now WRITES on the recovery
+        // path, so admitting the root before a root-bound service exists is not
+        // hygiene — it is what keeps a restore from ever being attempted against
+        // a root that was never admitted.
+        const declared = selectWorkspaceRoot(
+          { explicit: args.workspaceRoot, cwd: args.workspaceRoot },
+          null,
+        );
+        if (!declared.ok) {
+          return discoverPacksEnvelopeForRejection(args.workspaceRoot, declared.diagnostic);
+        }
+
+        let service: ResolverService;
+        try {
+          service = selectService(args.workspaceRoot);
+        } catch (err) {
+          // The worktree-FAMILY constraint stays where it already lives, in
+          // `selectService`; its throw maps onto the same typed envelope rather
+          // than being re-implemented here.
+          return discoverPacksEnvelopeForRejection(
+            args.workspaceRoot,
+            terminalSafeDiagnostic(err),
+          );
+        }
+
+        return service.discoverPacks();
+      }),
   );
 
   // Deliberately NOT `RESIDENT`, for the same reason as `discover_packs`: no
