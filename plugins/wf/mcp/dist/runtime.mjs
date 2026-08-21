@@ -1839,9 +1839,9 @@ var $ZodE164 = /* @__PURE__ */ $constructor("$ZodE164", (inst, def) => {
   def.pattern ?? (def.pattern = e164);
   $ZodStringFormat.init(inst, def);
 });
-function isValidJWT(token, algorithm = null) {
+function isValidJWT(token2, algorithm = null) {
   try {
-    const tokensParts = token.split(".");
+    const tokensParts = token2.split(".");
     if (tokensParts.length !== 3)
       return false;
     const [header] = tokensParts;
@@ -13984,9 +13984,9 @@ var require_utils = /* @__PURE__ */ __commonJSMin(((exports, module) => {
       isIPV6: false
     };
   }
-  function findToken(str, token) {
+  function findToken(str, token2) {
     let ind = 0;
-    for (let i = 0; i < str.length; i++) if (str[i] === token) ind++;
+    for (let i = 0; i < str.length; i++) if (str[i] === token2) ind++;
     return ind;
   }
   function removeDotSegments(path) {
@@ -20132,6 +20132,576 @@ function planPayloads(facts) {
   return { preview: { actions, rejected, conflicts }, findings };
 }
 
+// src/resolver/fingerprint.ts
+import { createHash } from "node:crypto";
+function sha256Hex(content) {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+function fingerprint(kind, path, content) {
+  if (content === null) {
+    return { kind, path, sha256: null, bytes: null, present: false };
+  }
+  return {
+    kind,
+    path,
+    sha256: sha256Hex(content),
+    bytes: Buffer.byteLength(content, "utf8"),
+    present: true
+  };
+}
+
+// src/resolver/paths.ts
+function registryPathShapeError(path) {
+  if (path.includes("\\")) return "contains a backslash (must use forward slashes)";
+  if (/^\//.test(path)) return "absolute path (leading '/')";
+  if (/^[A-Za-z]:/.test(path)) return "drive-prefixed path";
+  if (`/${path}/`.includes("/../")) return "contains a '..' segment";
+  return null;
+}
+function normalizeSlashes(p) {
+  return p.replace(/\\/g, "/");
+}
+function joinSlash(...segments) {
+  return segments.map((s, i) => {
+    let seg = normalizeSlashes(s);
+    if (i > 0) seg = seg.replace(/^\/+/, "");
+    if (i < segments.length - 1) seg = seg.replace(/\/+$/, "");
+    return seg;
+  }).filter((s) => s.length > 0).join("/");
+}
+function dirnameSlash(p) {
+  const normalized = normalizeSlashes(p).replace(/\/+$/, "");
+  const cut = normalized.lastIndexOf("/");
+  if (cut < 0) return normalized;
+  if (cut === 0) return "/";
+  return normalized.slice(0, cut);
+}
+function resolveContainedCapabilityPath(root, relative3) {
+  if (relative3.length === 0 || relative3.includes("\0") || relative3.includes("\\") || isAbsoluteRoot(relative3)) {
+    return null;
+  }
+  const segments = relative3.split("/");
+  if (segments.some(
+    (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":")
+  )) {
+    return null;
+  }
+  const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
+  const candidate = joinSlash(normalizedRoot, ...segments);
+  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
+  return candidate.startsWith(prefix) ? candidate : null;
+}
+var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
+function parsePluginAnchor(registryPath) {
+  const m = PLUGIN_ANCHOR.exec(registryPath.trim());
+  if (!m) return null;
+  return { pluginName: m[1], relPath: m[2] };
+}
+function resolveCapabilityPath(registryPath, opts) {
+  const anchor = parsePluginAnchor(registryPath);
+  if (!anchor) {
+    const folder = joinSlash(opts.workspaceRoot, registryPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+    }
+    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
+  }
+  const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
+  if (recorded) {
+    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
+    const folder = joinSlash(root, anchor.relPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
+    }
+  }
+  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
+  if (installed) {
+    const root = normalizeSlashes(installed.installPath);
+    const folder = joinSlash(root, anchor.relPath);
+    const manifest = joinSlash(folder, "manifest.md");
+    if (opts.manifestExists(manifest)) {
+      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
+    }
+  }
+  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
+}
+function isAbsoluteRoot(root) {
+  const n = normalizeSlashes(root);
+  return n.startsWith("/") || /^[A-Za-z]:/.test(n);
+}
+
+// src/resolver/slot.ts
+var OVERRIDE_DIR = "_local/slots";
+var PROJECT_OVERRIDE_DIR = ".wf/slots";
+var OVERRIDE_TIER_RANK = 30;
+var PROJECT_TIER_RANK = 20;
+var PACK_TIER_RANK = 10;
+var APPEND_SEPARATOR = "\n\n";
+function isSegment(s) {
+  return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
+}
+var SLOT_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
+function parseSlotDeclaration(interfaceMd) {
+  const lines = interfaceMd.split(/\r?\n/);
+  let inSection = false;
+  let sawSection = false;
+  const decl = /* @__PURE__ */ new Set();
+  for (const line of lines) {
+    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
+    if (heading) {
+      inSection = /^slots$/i.test(heading[1].trim());
+      if (inSection) sawSection = true;
+      continue;
+    }
+    if (!inSection) continue;
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("|")) continue;
+    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
+    if (cells.length < 1) continue;
+    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
+    const id = cells[0].replace(/^`/, "").replace(/`$/, "").trim();
+    if (SLOT_ID.test(id)) decl.add(id);
+  }
+  return sawSection ? decl : null;
+}
+function locateSlotInterface(skill, roots, readFile, joinSlashFn) {
+  for (const root of roots) {
+    const path = joinSlashFn(root, "skills", skill, "interface.md");
+    const content = readFile(path);
+    if (content === null) continue;
+    const declared = parseSlotDeclaration(content);
+    if (declared === null) continue;
+    return { root, path, declared };
+  }
+  return null;
+}
+function slotPointFromOverrideFilename(filename) {
+  if (!filename.endsWith(".md")) return null;
+  const stem = filename.slice(0, -3);
+  const segs = stem.split(".");
+  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
+  return { skillPoint: stem, skill: segs[0], point: segs[1] };
+}
+function isSafeRelPath(p) {
+  if (p.length === 0) return false;
+  const n = normalizeSlashes(p);
+  if (n.includes("\\")) return false;
+  if (n.startsWith("/") || isAbsoluteRoot(n)) return false;
+  return !n.split("/").some((seg) => seg === "." || seg === ".." || seg === "");
+}
+function toAbsolute(workspaceRoot, snapshotPath2) {
+  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
+}
+function parseSlotScope(scope) {
+  if (!scope) return null;
+  const parts = scope.trim().split(/\s+/);
+  if (parts.length !== 2) return null;
+  const [id, policyRaw] = parts;
+  const segs = id.split(".");
+  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
+  if (policyRaw !== "replace" && policyRaw !== "append") return null;
+  return { skillPoint: id, policy: policyRaw };
+}
+function parseInlineDispatch(dispatch) {
+  const m = /^inline:\s*(.+)$/i.exec(dispatch.trim());
+  if (!m) return null;
+  const rel = m[1].trim().replace(/^`/, "").replace(/`$/, "").trim();
+  return rel.length > 0 ? rel : null;
+}
+function findSlotFragments(snapshot, skillPoint) {
+  const out = [];
+  for (const cap of snapshot.capabilities) {
+    for (const f of cap.fragments) {
+      if (f.contributionKind !== "slot") continue;
+      const parsed = parseSlotScope(f.scope);
+      if (!parsed || parsed.skillPoint !== skillPoint) continue;
+      out.push({
+        capability: cap.name,
+        validity: cap.validity,
+        resolvedPath: cap.resolvedPath,
+        dispatchRel: parseInlineDispatch(f.dispatch),
+        policy: parsed.policy
+      });
+    }
+  }
+  return out;
+}
+var PACK_CONTRIBUTION_TIER = {
+  name: "pack-contribution",
+  rank: PACK_TIER_RANK,
+  gather(ctx) {
+    return findSlotFragments(ctx.snapshot, ctx.skillPoint).filter((m) => m.validity === "ok" && m.resolvedPath && m.dispatchRel).map((m) => ({
+      tier: "pack-contribution",
+      rank: PACK_TIER_RANK,
+      source: m.capability,
+      path: joinSlash(toAbsolute(ctx.workspaceRoot, m.resolvedPath), m.dispatchRel),
+      optional: false
+    }));
+  }
+};
+var LOCAL_OVERRIDE_TIER = {
+  name: "local-override",
+  rank: OVERRIDE_TIER_RANK,
+  gather(ctx) {
+    return [
+      {
+        tier: "local-override",
+        rank: OVERRIDE_TIER_RANK,
+        source: "local-override",
+        path: joinSlash(ctx.workspaceRoot, OVERRIDE_DIR, `${ctx.skillPoint}.md`),
+        optional: true
+      }
+    ];
+  }
+};
+var PROJECT_OVERRIDE_TIER = {
+  name: "project-override",
+  rank: PROJECT_TIER_RANK,
+  gather(ctx) {
+    return [
+      {
+        tier: "project-override",
+        rank: PROJECT_TIER_RANK,
+        source: "project-override",
+        path: joinSlash(ctx.workspaceRoot, PROJECT_OVERRIDE_DIR, `${ctx.skillPoint}.md`),
+        optional: true
+      }
+    ];
+  }
+};
+var DEFAULT_TIERS = [
+  PACK_CONTRIBUTION_TIER,
+  PROJECT_OVERRIDE_TIER,
+  LOCAL_OVERRIDE_TIER
+];
+function planSlot(ref, snapshot, workspaceRoot, tiers = DEFAULT_TIERS) {
+  const skill = ref.skill?.trim();
+  const point = ref.point?.trim();
+  if (!isSegment(skill)) {
+    return { kind: "refused", reason: "a `slot` ref requires a `skill` segment (lowercase, hyphenated)." };
+  }
+  if (!isSegment(point)) {
+    return { kind: "refused", reason: "a `slot` ref requires a `point` segment (lowercase, hyphenated)." };
+  }
+  const skillPoint = `${skill}.${point}`;
+  const matches = findSlotFragments(snapshot, skillPoint);
+  for (const m of matches) {
+    if (!m.dispatchRel) {
+      return {
+        kind: "unresolved",
+        category: "registry-invalid",
+        message: `capability \`${m.capability}\` contributes to slot \`${skillPoint}\` with a non-inline dispatch \u2014 a slot body must use \`inline: <rel-path>\` to be composed.`
+      };
+    }
+    if (!isSafeRelPath(m.dispatchRel)) {
+      return {
+        kind: "refused",
+        reason: `capability \`${m.capability}\` slot \`${skillPoint}\` dispatch is not a safe relative path.`
+      };
+    }
+  }
+  let policy = "replace";
+  if (matches.length > 0) {
+    const policies = new Set(matches.map((m) => m.policy));
+    if (policies.size > 1) {
+      return {
+        kind: "unresolved",
+        category: "registry-invalid",
+        message: `slot \`${skillPoint}\` has contributions declaring conflicting merge policies \u2014 a slot's policy must be consistent across contributors.`
+      };
+    }
+    policy = matches[0].policy;
+    if (policy === "replace" && matches.length > 1) {
+      return {
+        kind: "unresolved",
+        category: "registry-invalid",
+        message: `slot \`${skillPoint}\` is claimed \`replace\` by ${matches.length} capabilities (${matches.map((m) => m.capability).join(", ")}) \u2014 a replace slot has a single owner.`
+      };
+    }
+  }
+  const ctx = { skill, point, skillPoint, snapshot, workspaceRoot };
+  const ordered = [...tiers].sort((a, b) => a.rank - b.rank);
+  const contributions = ordered.flatMap((t) => t.gather(ctx));
+  return { kind: "compose", skillPoint, policy, contributions };
+}
+function composeSlotBody(policy, present) {
+  if (present.length === 0) return "";
+  if (policy === "replace") {
+    return present.reduce((a, b) => b.rank >= a.rank ? b : a).content;
+  }
+  return present.map((p) => p.content).join(APPEND_SEPARATOR);
+}
+
+// src/resolver/constitution.ts
+var CONSTITUTION_RELPATH = "_local/constitution.md";
+
+// src/resolver/plan-complete.ts
+var PLAN_ACTION_ORDER = [
+  "evidence-repair",
+  "evidence-seed",
+  "registry-add",
+  "registry-deregister",
+  "payload-write",
+  "override-write",
+  "artifact-advance",
+  "artifact-bootstrap",
+  "artifact-delete",
+  "answer-write",
+  "constitution-recompose",
+  "registry-retain",
+  "artifact-retain"
+];
+var PLAN_IDENTITY_FACT_CLASSES = [
+  "envelope-version",
+  "workspace-root",
+  "mode",
+  "applicability",
+  "inventory-trust",
+  "registry-delta",
+  "answer-write",
+  "answer-unresolved",
+  "evidence-seed",
+  "evidence-repair",
+  "payload-action",
+  "payload-rejection",
+  "payload-conflict",
+  "artifact-decision",
+  "action",
+  "finding"
+];
+var OVERRIDE_PREFIX = `${PROJECT_OVERRIDE_DIR}/`;
+function isProjectOverrideDestination(destination) {
+  return destination.startsWith(OVERRIDE_PREFIX) && destination.length > OVERRIDE_PREFIX.length;
+}
+function action(kind, pluginId, destination, mutating, summary) {
+  return { kind, pluginId, destination, mutating, summary, persisted: false };
+}
+function registryActionFor(entry, kind) {
+  const names = entry.capabilities.length === 0 ? "no capabilities" : entry.capabilities.join(", ");
+  const verb = kind === "registry-add" ? "register" : kind === "registry-deregister" ? "deregister" : "retain";
+  return action(
+    kind,
+    entry.pluginId,
+    null,
+    kind !== "registry-retain",
+    `${verb} ${names} for pack \`${entry.pluginId}\` (${entry.reason})`
+  );
+}
+function artifactActionFor(decision, kind) {
+  const pluginId = decision.owners.length > 0 ? decision.owners[0].pluginId : null;
+  const verb = kind === "artifact-delete" ? "delete" : kind === "artifact-bootstrap" ? "record bootstrap authority over" : kind === "artifact-advance" ? "advance" : "retain";
+  const because = decision.reason === null ? "" : ` (${decision.reason})`;
+  return action(
+    kind,
+    pluginId,
+    decision.destination,
+    kind !== "artifact-retain",
+    `${verb} managed artifact \`${decision.destination}\`${because}`
+  );
+}
+function integrateActions(input) {
+  const pending = [];
+  for (const repair of input.repairs) {
+    pending.push(
+      action(
+        "evidence-repair",
+        repair.pluginId,
+        null,
+        true,
+        `re-establish drifted lifecycle evidence for pack \`${repair.pluginId}\` (${repair.comparison}, ${repair.scope} half)`
+      )
+    );
+  }
+  for (const seed of input.evidenceSeeds) {
+    pending.push(
+      action(
+        "evidence-seed",
+        seed.pluginId,
+        null,
+        true,
+        `record ${seed.kind} lifecycle evidence for pack \`${seed.pluginId}\` (comparison ${seed.comparison})`
+      )
+    );
+  }
+  for (const entry of input.registryDelta.additions) {
+    pending.push(registryActionFor(entry, "registry-add"));
+  }
+  for (const entry of input.registryDelta.deregistrations) {
+    pending.push(registryActionFor(entry, "registry-deregister"));
+  }
+  for (const payload of input.payloads.actions) {
+    const override = isProjectOverrideDestination(payload.destination);
+    const pluginId = payload.owners.length > 0 ? payload.owners[0].pluginId : null;
+    pending.push(
+      action(
+        override ? "override-write" : "payload-write",
+        pluginId,
+        payload.destination,
+        true,
+        `${payload.write} ${override ? "project override" : "payload"} \`${payload.destination}\` (sha256 ${payload.identity.sha256}, ${payload.identity.bytes} bytes, ${payload.owners.length} owner(s))`
+      )
+    );
+  }
+  for (const decision of input.artifacts.advance) {
+    pending.push(artifactActionFor(decision, "artifact-advance"));
+  }
+  for (const decision of input.artifacts.bootstrap) {
+    pending.push(artifactActionFor(decision, "artifact-bootstrap"));
+  }
+  for (const decision of input.artifacts.deletable) {
+    pending.push(artifactActionFor(decision, "artifact-delete"));
+  }
+  for (const write of input.answers.writes) {
+    pending.push(
+      action(
+        "answer-write",
+        write.pluginId,
+        write.destination,
+        true,
+        `bind proposed answer for question \`${write.questionId}\` of capability \`${write.pack}\` (${write.status})`
+      )
+    );
+  }
+  if (input.registryDelta.additions.length > 0 || input.registryDelta.deregistrations.length > 0) {
+    pending.push(
+      action(
+        "constitution-recompose",
+        null,
+        CONSTITUTION_RELPATH,
+        true,
+        `recompose the project constitution: the registered capability set changes (${input.registryDelta.additions.length} addition(s), ${input.registryDelta.deregistrations.length} deregistration(s))`
+      )
+    );
+  }
+  for (const entry of input.registryDelta.retentions) {
+    pending.push(registryActionFor(entry, "registry-retain"));
+  }
+  for (const decision of input.artifacts.retained) {
+    pending.push(artifactActionFor(decision, "artifact-retain"));
+  }
+  const rank = (kind) => PLAN_ACTION_ORDER.indexOf(kind);
+  return [...pending].sort(
+    (left, right) => rank(left.kind) - rank(right.kind) || (left.pluginId ?? "").localeCompare(right.pluginId ?? "") || (left.destination ?? "").localeCompare(right.destination ?? "") || left.summary.localeCompare(right.summary)
+  ).map((entry, order) => ({ ...entry, order }));
+}
+function planMode(input) {
+  if (input.applicability === "invalid-root") return null;
+  if (input.artifacts.deletable.length > 0) return "deletion";
+  if (input.registryDelta.deregistrations.length > 0) return "deregistration";
+  if (input.repairs.length > 0) return "repair";
+  if (input.evidenceSeeds.length > 0 || input.artifacts.bootstrap.length > 0) return "bootstrap";
+  if (input.artifacts.advance.length > 0) return "upgrade";
+  if (input.registryDelta.additions.length > 0) return "install";
+  if (input.artifacts.retained.some((decision) => decision.reason === "divergent")) {
+    return "retained-divergence";
+  }
+  return "reconcile";
+}
+function applicabilityBasis(input) {
+  const blockingFindings = input.findings.filter((finding2) => finding2.severity === "error");
+  const blockingQuestions = [...input.answers.unresolved];
+  return {
+    applicability: input.applicability,
+    blockingFindings,
+    blockingQuestions,
+    blocked: blockingFindings.length > 0 || blockingQuestions.length > 0
+  };
+}
+function canonical(value) {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value !== null && typeof value === "object") {
+    const source = value;
+    const out = {};
+    for (const key of Object.keys(source).sort((left, right) => left.localeCompare(right))) {
+      out[key] = canonical(source[key]);
+    }
+    return out;
+  }
+  return value;
+}
+function token(factClass, value) {
+  return JSON.stringify([factClass, canonical(value)]);
+}
+function planIdentity(input, actions) {
+  const tokens = [];
+  const emit = (factClass, values) => {
+    tokens.push(JSON.stringify([factClass, "count", values.length]));
+    for (const value of values) tokens.push(token(factClass, value));
+  };
+  emit("envelope-version", [input.planVersion]);
+  emit("workspace-root", [
+    [
+      input.workspaceRoot,
+      input.admission.admitted,
+      input.admission.source,
+      input.admission.reason
+    ]
+  ]);
+  emit("mode", [planMode(input)]);
+  emit("applicability", [input.applicability]);
+  emit("inventory-trust", [[input.inventory.confidence, input.inventory.mayEstablishAbsence]]);
+  emit("registry-delta", [
+    ...input.registryDelta.additions.map((entry) => ["addition", entry]),
+    ...input.registryDelta.deregistrations.map((entry) => ["deregistration", entry]),
+    ...input.registryDelta.retentions.map((entry) => ["retention", entry])
+  ]);
+  emit(
+    "answer-write",
+    input.answers.writes.map((write) => [
+      write.pluginId,
+      write.pack,
+      write.questionId,
+      write.destination,
+      write.value,
+      write.source,
+      write.status
+    ])
+  );
+  emit(
+    "answer-unresolved",
+    input.answers.unresolved.map((question) => [
+      question.pluginId,
+      question.pack,
+      question.questionId,
+      question.destination,
+      question.reason
+    ])
+  );
+  emit("evidence-seed", [...input.evidenceSeeds]);
+  emit("evidence-repair", [...input.repairs]);
+  emit("payload-action", [...input.payloads.actions]);
+  emit("payload-rejection", [...input.payloads.rejected]);
+  emit("payload-conflict", [...input.payloads.conflicts]);
+  emit("artifact-decision", [
+    ...input.artifacts.deletable.map((decision) => ["deletable", decision]),
+    ...input.artifacts.bootstrap.map((decision) => ["bootstrap", decision]),
+    ...input.artifacts.advance.map((decision) => ["advance", decision]),
+    ...input.artifacts.retained.map((decision) => ["retained", decision])
+  ]);
+  emit("action", [...actions]);
+  emit(
+    "finding",
+    input.findings.map((finding2) => [finding2.code, finding2.severity, finding2.pluginId])
+  );
+  return {
+    planId: sha256Hex(JSON.stringify(tokens)),
+    algorithm: "sha256",
+    coveredFactClasses: [...PLAN_IDENTITY_FACT_CLASSES],
+    factCount: tokens.length
+  };
+}
+function completePlan(input) {
+  const actions = integrateActions(input);
+  return {
+    mode: planMode(input),
+    actions,
+    applicabilityBasis: applicabilityBasis(input),
+    identity: planIdentity(input, actions)
+  };
+}
+
 // src/resolver/questions.ts
 var DECLARATION_FIELDS = /* @__PURE__ */ new Set([
   "id",
@@ -20958,16 +21528,35 @@ function entryFor(pack, reason, capabilities) {
 }
 function planInstall(input) {
   if (!input.admission.admitted) {
+    const completion2 = completePlan({
+      planVersion: PLAN_ENVELOPE_VERSION,
+      admission: input.admission,
+      workspaceRoot: null,
+      applicability: "invalid-root",
+      registryDelta: { additions: [], retentions: [], deregistrations: [] },
+      answers: { writes: [], unresolved: [] },
+      evidenceSeeds: [],
+      repairs: [],
+      payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
+      findings: [],
+      inventory: UNOBSERVED_INVENTORY
+    });
     return {
       planVersion: PLAN_ENVELOPE_VERSION,
       workspaceRoot: null,
       admission: input.admission,
       applicability: "invalid-root",
+      mode: completion2.mode,
       registryDelta: { additions: [], retentions: [], deregistrations: [] },
       answers: { writes: [], unresolved: [] },
       evidenceSeeds: [],
+      repairs: [],
       payloads: emptyPayloadPreview(),
       artifacts: emptyArtifactPreview(),
+      actions: completion2.actions,
+      applicabilityBasis: completion2.applicabilityBasis,
+      identity: completion2.identity,
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
       byteInert: true
@@ -21006,6 +21595,7 @@ function planInstall(input) {
   const retentions = [];
   const deregistrations = [];
   const evidenceSeeds = [];
+  const repairs = [];
   const actedOn = [];
   const postPlanPacks = /* @__PURE__ */ new Set();
   for (const pack of byPluginId([...input.packs])) {
@@ -21038,7 +21628,7 @@ function planInstall(input) {
     }
     const acting = (wanted || removing) && byId.has(pack.pluginId);
     if (acting) actedOn.push(pack);
-    let proofIncomplete = false;
+    let proofIncomplete = null;
     if (acting) {
       const comparison = pack.evidence.comparison;
       if (comparison === "binding-seed" && pack.seedProposal !== null) {
@@ -21050,6 +21640,14 @@ function planInstall(input) {
           binding: pack.seedProposal,
           persisted: false
         });
+      } else if (comparison === "binding-seed") {
+        proofIncomplete = "retained-binding-proof-incomplete";
+        finding2(
+          "plan/binding-proof-incomplete",
+          "error",
+          pack.pluginId,
+          "needs a machine-binding seed but no binding proposal was observed; planning is not applicable and its registration is preserved."
+        );
       } else if (comparison === "evidence-missing") {
         const observedPortable = pack.evidence.portable;
         const observedBinding = pack.evidence.binding;
@@ -21069,7 +21667,7 @@ function planInstall(input) {
             "has no recorded lifecycle evidence; complete observed proof makes a bootstrap seed reviewable."
           );
         } else {
-          proofIncomplete = true;
+          proofIncomplete = "retained-legacy-proof-incomplete";
           finding2(
             "plan/legacy-proof-incomplete",
             "error",
@@ -21084,11 +21682,18 @@ function planInstall(input) {
           pack.pluginId,
           `lifecycle evidence compares as \`${comparison}\`${pack.overlay === null ? "" : `; overlay \`${pack.overlay}\``}.`
         );
+        repairs.push({
+          pluginId: pack.pluginId,
+          comparison,
+          scope: comparison === "portable-mismatch" ? "portable" : "binding",
+          overlay: pack.overlay,
+          persisted: false
+        });
       }
     }
-    if (proofIncomplete) {
+    if (proofIncomplete !== null) {
       if (registered) {
-        retentions.push(entryFor(pack, "retained-legacy-proof-incomplete", pack.registeredCapabilities));
+        retentions.push(entryFor(pack, proofIncomplete, pack.registeredCapabilities));
         postPlanPacks.add(pack.pluginId);
       }
       continue;
@@ -21236,7 +21841,11 @@ function planInstall(input) {
     retentions: byPluginId(retentions),
     deregistrations: byPluginId(deregistrations)
   };
-  const applicability = findings.some((f) => f.severity === "error") ? "not-applicable" : unresolved2.length > 0 ? "blocked" : registryDelta.additions.length === 0 && registryDelta.deregistrations.length === 0 && writes.length === 0 && evidenceSeeds.length === 0 && // A previewed payload write is a previewed EFFECT, so a plan carrying
+  const applicability = findings.some((f) => f.severity === "error") ? "not-applicable" : unresolved2.length > 0 ? "blocked" : registryDelta.additions.length === 0 && registryDelta.deregistrations.length === 0 && writes.length === 0 && evidenceSeeds.length === 0 && // A previewed repair is a previewed EFFECT. Without this conjunct a
+  // `mode: "repair"` plan could report `no-change`, which is
+  // self-contradictory — and it would break the schema's own invariant
+  // that `no-change` implies no mutating action.
+  repairs.length === 0 && // A previewed payload write is a previewed EFFECT, so a plan carrying
   // one is never `no-change`. Whether that write would be a no-op against
   // the target's current bytes is an eligibility question this slice
   // deliberately does not answer.
@@ -21245,19 +21854,40 @@ function planInstall(input) {
   // entries are RETENTIONS still is — retaining changes nothing, which is
   // exactly why retention is the fail-safe default.
   !hasPreviewedArtifactEffect(artifactPlan.preview) ? "no-change" : "applicable";
+  const answers = {
+    writes: sortQuestionRows(writes),
+    unresolved: sortQuestionRows(unresolved2)
+  };
+  const completionInput = {
+    planVersion: PLAN_ENVELOPE_VERSION,
+    admission: input.admission,
+    workspaceRoot: input.admission.root,
+    applicability,
+    registryDelta,
+    answers,
+    evidenceSeeds: byPluginId(evidenceSeeds),
+    repairs: byPluginId(repairs),
+    payloads: payloadPlan.preview,
+    artifacts: artifactPlan.preview,
+    findings: sortFindings(findings),
+    inventory: input.inventory
+  };
+  const completion = completePlan(completionInput);
   return {
     planVersion: PLAN_ENVELOPE_VERSION,
     workspaceRoot: input.admission.root,
     admission: input.admission,
     applicability,
+    mode: completion.mode,
     registryDelta,
-    answers: {
-      writes: sortQuestionRows(writes),
-      unresolved: sortQuestionRows(unresolved2)
-    },
+    answers,
     evidenceSeeds: byPluginId(evidenceSeeds),
+    repairs: byPluginId(repairs),
     payloads: payloadPlan.preview,
     artifacts: artifactPlan.preview,
+    actions: completion.actions,
+    applicabilityBasis: completion.applicabilityBasis,
+    identity: completion.identity,
     findings: sortFindings(findings),
     inventory: input.inventory,
     byteInert: true
@@ -21268,90 +21898,6 @@ function planInstall(input) {
 import { execFileSync } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
-
-// src/resolver/paths.ts
-function registryPathShapeError(path) {
-  if (path.includes("\\")) return "contains a backslash (must use forward slashes)";
-  if (/^\//.test(path)) return "absolute path (leading '/')";
-  if (/^[A-Za-z]:/.test(path)) return "drive-prefixed path";
-  if (`/${path}/`.includes("/../")) return "contains a '..' segment";
-  return null;
-}
-function normalizeSlashes(p) {
-  return p.replace(/\\/g, "/");
-}
-function joinSlash(...segments) {
-  return segments.map((s, i) => {
-    let seg = normalizeSlashes(s);
-    if (i > 0) seg = seg.replace(/^\/+/, "");
-    if (i < segments.length - 1) seg = seg.replace(/\/+$/, "");
-    return seg;
-  }).filter((s) => s.length > 0).join("/");
-}
-function dirnameSlash(p) {
-  const normalized = normalizeSlashes(p).replace(/\/+$/, "");
-  const cut = normalized.lastIndexOf("/");
-  if (cut < 0) return normalized;
-  if (cut === 0) return "/";
-  return normalized.slice(0, cut);
-}
-function resolveContainedCapabilityPath(root, relative3) {
-  if (relative3.length === 0 || relative3.includes("\0") || relative3.includes("\\") || isAbsoluteRoot(relative3)) {
-    return null;
-  }
-  const segments = relative3.split("/");
-  if (segments.some(
-    (segment) => segment === "" || segment === "." || segment === ".." || segment.includes(":")
-  )) {
-    return null;
-  }
-  const normalizedRoot = normalizeSlashes(root).replace(/\/+$/, "");
-  const candidate = joinSlash(normalizedRoot, ...segments);
-  const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
-  return candidate.startsWith(prefix) ? candidate : null;
-}
-var PLUGIN_ANCHOR = /^plugin:([^/]+)\/(.+)$/;
-function parsePluginAnchor(registryPath) {
-  const m = PLUGIN_ANCHOR.exec(registryPath.trim());
-  if (!m) return null;
-  return { pluginName: m[1], relPath: m[2] };
-}
-function resolveCapabilityPath(registryPath, opts) {
-  const anchor = parsePluginAnchor(registryPath);
-  if (!anchor) {
-    const folder = joinSlash(opts.workspaceRoot, registryPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
-    }
-    return { resolvedPath: folder, manifestPath: null, provenance: "unrecoverable" };
-  }
-  const recorded = opts.recordedRoots.find((r) => r.plugin === anchor.pluginName);
-  if (recorded) {
-    const root = isAbsoluteRoot(recorded.root) ? normalizeSlashes(recorded.root) : joinSlash(opts.workspaceRoot, recorded.root);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "recorded" };
-    }
-  }
-  const installed = opts.installedRoots.find((r) => r.pluginName === anchor.pluginName);
-  if (installed) {
-    const root = normalizeSlashes(installed.installPath);
-    const folder = joinSlash(root, anchor.relPath);
-    const manifest = joinSlash(folder, "manifest.md");
-    if (opts.manifestExists(manifest)) {
-      return { resolvedPath: folder, manifestPath: manifest, provenance: "self-healed" };
-    }
-  }
-  return { resolvedPath: null, manifestPath: null, provenance: "unrecoverable" };
-}
-function isAbsoluteRoot(root) {
-  const n = normalizeSlashes(root);
-  return n.startsWith("/") || /^[A-Za-z]:/.test(n);
-}
-
-// src/git-workspace.ts
 function canonicalDirectory(path, label2) {
   if (!isAbsolute(path)) {
     throw new Error(`${label2} must be an absolute path.`);
@@ -22008,7 +22554,7 @@ function registerResolverTools(server, selectService) {
     "plan_install",
     {
       title: "plan install",
-      description: "Read-only, byte-inert preview of one explicit selected set (WF-447/WF-448/WF-449) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], payloads{actions,rejected,conflicts}, artifacts{deletable,retained,bootstrap,advance}, findings[], inventory, byteInert}`. ARTIFACTS: every managed destination the ledger records or an installed pack declares is classified into exactly one evidence-backed form, and nothing wider \u2014 pruning unlisted files is out of scope. DELETION ELIGIBILITY IS CONJUNCTIVE AND FAIL-SAFE: an artifact is `deletable` only when every recorded owner is EXPLICITLY deselected AND the current bytes match the PRIOR LEDGER HASH AND ownership is exclusive AND the declared removal semantics permit it. Every missing, conflicting, ambiguous, shared-incomplete, mismatching, or non-reproducible proof class RETAINS the artifact with a closed reason token and grants NO deletion authority \u2014 missing evidence never infers permission. Ownerless payloads follow the same rules: an empty owner set is incomplete, not exclusive, ownership. A missing-ledger BOOTSTRAP is previewable only when a trustworthy complete inventory holds AND validated declarations prove canonical destination, reproduced bytes, source fingerprint, complete owners, and the full semantic tuple; it records FUTURE authority and never permits deletion in the same plan. UPGRADE IS HASH-GATED: a source-changed artifact advances only when the current bytes still match the prior ledger hash, and a locally edited file stays `divergent` and not fully upgraded rather than being overwritten. Each decision carries `runnerCandidate` \u2014 Node-runner candidacy surfaced in this same plan, never a separate API. Every decision's `persisted` is the literal `false`. PAYLOADS: every acted-on capability's declared `## Payloads` row is previewed as an action carrying the declared destination, the canonical workspace-contained target, the produced-byte SHA-256 and length, the complete `{production, refresh, removal}` tuple, the FULL owner set, and whether the write would create or overwrite. Containment is measured against the admitted workspace root and canonicalized BEFORE the decision, without creating the path being tested \u2014 traversal, an absolute path, a symlink that escapes the root, and an out-of-workspace target each make the plan not applicable. Co-ownership of one target is accepted ONLY for byte-identical output AND field-for-field equal generation, refresh and removal semantics; any byte or semantic mismatch blocks deterministically, with no first-writer, registry-order, or model arbitration. Payload workspace containment is distinct from plugin-root validation, which this never performs. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
+      description: "Read-only, byte-inert preview of one explicit selected set (WF-447/WF-448/WF-449/WF-450) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, mode, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], repairs[], payloads{actions,rejected,conflicts}, artifacts{deletable,retained,bootstrap,advance}, actions[], applicabilityBasis{applicability,blockingFindings,blockingQuestions,blocked}, identity{planId,algorithm,coveredFactClasses,factCount}, findings[], inventory, byteInert}`. ONE SCHEMA, ONE IDENTITY: install, reconcile, bootstrap, deregistration, deletion, upgrade, retained-divergence and repair are `mode`s of this ONE envelope \u2014 there is no second schema and no per-mode response family, and `mode` is derived from the plan's own content, never asserted by a caller. `actions[]` integrates EVERY action class \u2014 evidence repair and seed, registration, deregistration, payload and project-override write, artifact advance, bootstrap and delete, answer binding, constitution recomposition, and non-mutating registry and artifact retentions \u2014 into one deterministically ordered list carrying `{kind, order, pluginId, destination, mutating, summary, persisted:false}`. `no-change` implies no action is `mutating`; `applicable` implies at least one is. REPAIR-CAPABLE: a drifted lifecycle comparison (`portable-mismatch`, `root-moved`, `local-mismatch`) yields an explicit previewed repair scoped to the portable or machine-binding half, so a plan reporting drift also carries the effect that resolves it. NO BLOCKING CONDITION IS EVER A SILENT OMISSION: `applicabilityBasis` enumerates every blocking finding and blocking question from the SAME inputs the applicability decision consumed, and an action whose exact proof predicate fails \u2014 a `binding-seed` comparison with no observed binding proposal, or a missing-evidence bootstrap without complete observed proof \u2014 produces an explicit error finding, a preserved registration, and `not-applicable`, never a silent no-op. IDENTITY: `identity.planId` is a SHA-256 over exactly the enumerated mutation-relevant fact classes reported in `coveredFactClasses`, so a no-change plan has a stable id with zero writes and any change to a covered hash, tuple, binding, owner set, answer, destination, containment, symlink, registry or evidence fact changes it; a finding's code, severity and attribution are covered, its human-readable message deliberately is not. ARTIFACTS: every managed destination the ledger records or an installed pack declares is classified into exactly one evidence-backed form, and nothing wider \u2014 pruning unlisted files is out of scope. DELETION ELIGIBILITY IS CONJUNCTIVE AND FAIL-SAFE: an artifact is `deletable` only when every recorded owner is EXPLICITLY deselected AND the current bytes match the PRIOR LEDGER HASH AND ownership is exclusive AND the declared removal semantics permit it. Every missing, conflicting, ambiguous, shared-incomplete, mismatching, or non-reproducible proof class RETAINS the artifact with a closed reason token and grants NO deletion authority \u2014 missing evidence never infers permission. Ownerless payloads follow the same rules: an empty owner set is incomplete, not exclusive, ownership. A missing-ledger BOOTSTRAP is previewable only when a trustworthy complete inventory holds AND validated declarations prove canonical destination, reproduced bytes, source fingerprint, complete owners, and the full semantic tuple; it records FUTURE authority and never permits deletion in the same plan. UPGRADE IS HASH-GATED: a source-changed artifact advances only when the current bytes still match the prior ledger hash, and a locally edited file stays `divergent` and not fully upgraded rather than being overwritten. Each decision carries `runnerCandidate` \u2014 Node-runner candidacy surfaced in this same plan, never a separate API. Every decision's `persisted` is the literal `false`. PAYLOADS: every acted-on capability's declared `## Payloads` row is previewed as an action carrying the declared destination, the canonical workspace-contained target, the produced-byte SHA-256 and length, the complete `{production, refresh, removal}` tuple, the FULL owner set, and whether the write would create or overwrite. Containment is measured against the admitted workspace root and canonicalized BEFORE the decision, without creating the path being tested \u2014 traversal, an absolute path, a symlink that escapes the root, and an out-of-workspace target each make the plan not applicable. Co-ownership of one target is accepted ONLY for byte-identical output AND field-for-field equal generation, refresh and removal semantics; any byte or semantic mismatch blocks deterministically, with no first-writer, registry-order, or model arbitration. Payload workspace containment is distinct from plugin-root validation, which this never performs. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
       inputSchema: planInstallInput
     },
     async (args) => guard(() => {
@@ -22828,24 +23374,6 @@ function parseCoreConfig(markdown) {
   };
 }
 
-// src/resolver/fingerprint.ts
-import { createHash } from "node:crypto";
-function sha256Hex(content) {
-  return createHash("sha256").update(content, "utf8").digest("hex");
-}
-function fingerprint(kind, path, content) {
-  if (content === null) {
-    return { kind, path, sha256: null, bytes: null, present: false };
-  }
-  return {
-    kind,
-    path,
-    sha256: sha256Hex(content),
-    bytes: Buffer.byteLength(content, "utf8"),
-    present: true
-  };
-}
-
 // src/resolver/freshness.ts
 var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
   "wf-config",
@@ -23041,7 +23569,7 @@ var CONTENT_REF_CLASSES = [
 ];
 var ALL_CONTENT_CLASSES = [...CONTENT_REF_CLASSES, "slot"];
 var CORE_PLUGIN_ALIASES = /* @__PURE__ */ new Set(["", "wf", "core"]);
-function isSafeRelPath(p) {
+function isSafeRelPath2(p) {
   if (p.length === 0) return false;
   const n = normalizeSlashes(p);
   if (n.includes("\\")) return false;
@@ -23049,7 +23577,7 @@ function isSafeRelPath(p) {
   return !n.split("/").some((seg) => seg === "." || seg === ".." || seg === "");
 }
 function isBareFilename(p) {
-  return isSafeRelPath(p) && !p.includes("/");
+  return isSafeRelPath2(p) && !p.includes("/");
 }
 function isSkillSlug(s) {
   return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
@@ -23059,7 +23587,7 @@ function baseName(p) {
   const i = n.lastIndexOf("/");
   return i >= 0 ? n.slice(i + 1) : n;
 }
-function toAbsolute(workspaceRoot, snapshotPath2) {
+function toAbsolute2(workspaceRoot, snapshotPath2) {
   return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
 }
 function refused(refClass, reason) {
@@ -23101,7 +23629,7 @@ function resolveFragment(ref, snapshot, workspaceRoot) {
   const cls = "fragment";
   const capability = ref.capability?.trim();
   if (!capability) return refused(cls, "a `fragment` ref requires a `capability` name.");
-  if (typeof ref.ref !== "string" || !isSafeRelPath(ref.ref)) {
+  if (typeof ref.ref !== "string" || !isSafeRelPath2(ref.ref)) {
     return refused(cls, "a `fragment` ref requires a safe relative `ref` (no `..`, no absolute path).");
   }
   if (baseName(ref.ref) === "SKILL.md") {
@@ -23123,7 +23651,7 @@ function resolveFragment(ref, snapshot, workspaceRoot) {
   return {
     kind: "path",
     refClass: cls,
-    path: joinSlash(toAbsolute(workspaceRoot, cap.resolvedPath), ref.ref)
+    path: joinSlash(toAbsolute2(workspaceRoot, cap.resolvedPath), ref.ref)
   };
 }
 function resolveProfileTemplate(ref, snapshot, workspaceRoot) {
@@ -23149,9 +23677,9 @@ function resolveProfileTemplate(ref, snapshot, workspaceRoot) {
       `capability \`${capability}\` has no resolved capability root \u2014 its profile template cannot be served.`
     );
   }
-  const resolvedRoot = toAbsolute(workspaceRoot, cap.resolvedPath);
+  const resolvedRoot = toAbsolute2(workspaceRoot, cap.resolvedPath);
   const capabilityRoot = resolvedRoot === "/" ? "/" : resolvedRoot.replace(/\/+$/, "");
-  const path = toAbsolute(workspaceRoot, cap.profileTemplatePath);
+  const path = toAbsolute2(workspaceRoot, cap.profileTemplatePath);
   const prefix = capabilityRoot === "/" ? "/" : `${capabilityRoot}/`;
   if (!path.startsWith(prefix)) {
     return unresolved(
@@ -23160,7 +23688,7 @@ function resolveProfileTemplate(ref, snapshot, workspaceRoot) {
     );
   }
   const selectedPath = path.slice(prefix.length);
-  if (!isSafeRelPath(selectedPath)) {
+  if (!isSafeRelPath2(selectedPath)) {
     return unresolved(
       cls,
       `capability \`${capability}\` has an invalid profile-template path.`
@@ -23193,7 +23721,7 @@ function resolveReferencesTemplate(ref, ctx) {
   if (!isSkillSlug(ref.skill)) {
     return refused(cls, "a `references-template` ref requires a `skill` slug (lowercase, hyphenated).");
   }
-  if (typeof ref.ref !== "string" || !isSafeRelPath(ref.ref)) {
+  if (typeof ref.ref !== "string" || !isSafeRelPath2(ref.ref)) {
     return refused(cls, "a `references-template` ref requires a safe relative `ref` (no `..`, no absolute path).");
   }
   if (baseName(ref.ref) === "SKILL.md") {
@@ -23214,7 +23742,7 @@ function resolveReferencesTemplate(ref, ctx) {
         `plugin \`${plugin}\` has no resolved root (unmapped, or its recorded root dangles and self-heal recovered nothing) \u2014 its skill references cannot be served.`
       );
     }
-    root = toAbsolute(workspaceRoot, rootRow.resolvedRoot);
+    root = toAbsolute2(workspaceRoot, rootRow.resolvedRoot);
   }
   return { kind: "path", refClass: cls, path: joinSlash(root, "skills", ref.skill, "references", ref.ref) };
 }
@@ -23298,208 +23826,6 @@ function locateInterface(skill, roots, readFile, joinSlash2) {
     return { root, path, declared };
   }
   return null;
-}
-
-// src/resolver/slot.ts
-var OVERRIDE_DIR = "_local/slots";
-var PROJECT_OVERRIDE_DIR = ".wf/slots";
-var OVERRIDE_TIER_RANK = 30;
-var PROJECT_TIER_RANK = 20;
-var PACK_TIER_RANK = 10;
-var APPEND_SEPARATOR = "\n\n";
-function isSegment(s) {
-  return typeof s === "string" && /^[a-z0-9][a-z0-9-]*$/.test(s);
-}
-var SLOT_ID = /^[a-z0-9][a-z0-9-]*\.[a-z0-9][a-z0-9-]*$/;
-function parseSlotDeclaration(interfaceMd) {
-  const lines = interfaceMd.split(/\r?\n/);
-  let inSection = false;
-  let sawSection = false;
-  const decl = /* @__PURE__ */ new Set();
-  for (const line of lines) {
-    const heading = /^\s*##\s+(.+?)\s*$/.exec(line);
-    if (heading) {
-      inSection = /^slots$/i.test(heading[1].trim());
-      if (inSection) sawSection = true;
-      continue;
-    }
-    if (!inSection) continue;
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("|")) continue;
-    const cells = trimmed.split("|").slice(1, -1).map((c) => c.trim());
-    if (cells.length < 1) continue;
-    if (cells.every((c) => /^:?-+:?$/.test(c) || c === "")) continue;
-    const id = cells[0].replace(/^`/, "").replace(/`$/, "").trim();
-    if (SLOT_ID.test(id)) decl.add(id);
-  }
-  return sawSection ? decl : null;
-}
-function locateSlotInterface(skill, roots, readFile, joinSlashFn) {
-  for (const root of roots) {
-    const path = joinSlashFn(root, "skills", skill, "interface.md");
-    const content = readFile(path);
-    if (content === null) continue;
-    const declared = parseSlotDeclaration(content);
-    if (declared === null) continue;
-    return { root, path, declared };
-  }
-  return null;
-}
-function slotPointFromOverrideFilename(filename) {
-  if (!filename.endsWith(".md")) return null;
-  const stem = filename.slice(0, -3);
-  const segs = stem.split(".");
-  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
-  return { skillPoint: stem, skill: segs[0], point: segs[1] };
-}
-function isSafeRelPath2(p) {
-  if (p.length === 0) return false;
-  const n = normalizeSlashes(p);
-  if (n.includes("\\")) return false;
-  if (n.startsWith("/") || isAbsoluteRoot(n)) return false;
-  return !n.split("/").some((seg) => seg === "." || seg === ".." || seg === "");
-}
-function toAbsolute2(workspaceRoot, snapshotPath2) {
-  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
-}
-function parseSlotScope(scope) {
-  if (!scope) return null;
-  const parts = scope.trim().split(/\s+/);
-  if (parts.length !== 2) return null;
-  const [id, policyRaw] = parts;
-  const segs = id.split(".");
-  if (segs.length !== 2 || !isSegment(segs[0]) || !isSegment(segs[1])) return null;
-  if (policyRaw !== "replace" && policyRaw !== "append") return null;
-  return { skillPoint: id, policy: policyRaw };
-}
-function parseInlineDispatch(dispatch) {
-  const m = /^inline:\s*(.+)$/i.exec(dispatch.trim());
-  if (!m) return null;
-  const rel = m[1].trim().replace(/^`/, "").replace(/`$/, "").trim();
-  return rel.length > 0 ? rel : null;
-}
-function findSlotFragments(snapshot, skillPoint) {
-  const out = [];
-  for (const cap of snapshot.capabilities) {
-    for (const f of cap.fragments) {
-      if (f.contributionKind !== "slot") continue;
-      const parsed = parseSlotScope(f.scope);
-      if (!parsed || parsed.skillPoint !== skillPoint) continue;
-      out.push({
-        capability: cap.name,
-        validity: cap.validity,
-        resolvedPath: cap.resolvedPath,
-        dispatchRel: parseInlineDispatch(f.dispatch),
-        policy: parsed.policy
-      });
-    }
-  }
-  return out;
-}
-var PACK_CONTRIBUTION_TIER = {
-  name: "pack-contribution",
-  rank: PACK_TIER_RANK,
-  gather(ctx) {
-    return findSlotFragments(ctx.snapshot, ctx.skillPoint).filter((m) => m.validity === "ok" && m.resolvedPath && m.dispatchRel).map((m) => ({
-      tier: "pack-contribution",
-      rank: PACK_TIER_RANK,
-      source: m.capability,
-      path: joinSlash(toAbsolute2(ctx.workspaceRoot, m.resolvedPath), m.dispatchRel),
-      optional: false
-    }));
-  }
-};
-var LOCAL_OVERRIDE_TIER = {
-  name: "local-override",
-  rank: OVERRIDE_TIER_RANK,
-  gather(ctx) {
-    return [
-      {
-        tier: "local-override",
-        rank: OVERRIDE_TIER_RANK,
-        source: "local-override",
-        path: joinSlash(ctx.workspaceRoot, OVERRIDE_DIR, `${ctx.skillPoint}.md`),
-        optional: true
-      }
-    ];
-  }
-};
-var PROJECT_OVERRIDE_TIER = {
-  name: "project-override",
-  rank: PROJECT_TIER_RANK,
-  gather(ctx) {
-    return [
-      {
-        tier: "project-override",
-        rank: PROJECT_TIER_RANK,
-        source: "project-override",
-        path: joinSlash(ctx.workspaceRoot, PROJECT_OVERRIDE_DIR, `${ctx.skillPoint}.md`),
-        optional: true
-      }
-    ];
-  }
-};
-var DEFAULT_TIERS = [
-  PACK_CONTRIBUTION_TIER,
-  PROJECT_OVERRIDE_TIER,
-  LOCAL_OVERRIDE_TIER
-];
-function planSlot(ref, snapshot, workspaceRoot, tiers = DEFAULT_TIERS) {
-  const skill = ref.skill?.trim();
-  const point = ref.point?.trim();
-  if (!isSegment(skill)) {
-    return { kind: "refused", reason: "a `slot` ref requires a `skill` segment (lowercase, hyphenated)." };
-  }
-  if (!isSegment(point)) {
-    return { kind: "refused", reason: "a `slot` ref requires a `point` segment (lowercase, hyphenated)." };
-  }
-  const skillPoint = `${skill}.${point}`;
-  const matches = findSlotFragments(snapshot, skillPoint);
-  for (const m of matches) {
-    if (!m.dispatchRel) {
-      return {
-        kind: "unresolved",
-        category: "registry-invalid",
-        message: `capability \`${m.capability}\` contributes to slot \`${skillPoint}\` with a non-inline dispatch \u2014 a slot body must use \`inline: <rel-path>\` to be composed.`
-      };
-    }
-    if (!isSafeRelPath2(m.dispatchRel)) {
-      return {
-        kind: "refused",
-        reason: `capability \`${m.capability}\` slot \`${skillPoint}\` dispatch is not a safe relative path.`
-      };
-    }
-  }
-  let policy = "replace";
-  if (matches.length > 0) {
-    const policies = new Set(matches.map((m) => m.policy));
-    if (policies.size > 1) {
-      return {
-        kind: "unresolved",
-        category: "registry-invalid",
-        message: `slot \`${skillPoint}\` has contributions declaring conflicting merge policies \u2014 a slot's policy must be consistent across contributors.`
-      };
-    }
-    policy = matches[0].policy;
-    if (policy === "replace" && matches.length > 1) {
-      return {
-        kind: "unresolved",
-        category: "registry-invalid",
-        message: `slot \`${skillPoint}\` is claimed \`replace\` by ${matches.length} capabilities (${matches.map((m) => m.capability).join(", ")}) \u2014 a replace slot has a single owner.`
-      };
-    }
-  }
-  const ctx = { skill, point, skillPoint, snapshot, workspaceRoot };
-  const ordered = [...tiers].sort((a, b) => a.rank - b.rank);
-  const contributions = ordered.flatMap((t) => t.gather(ctx));
-  return { kind: "compose", skillPoint, policy, contributions };
-}
-function composeSlotBody(policy, present) {
-  if (present.length === 0) return "";
-  if (policy === "replace") {
-    return present.reduce((a, b) => b.rank >= a.rank ? b : a).content;
-  }
-  return present.map((p) => p.content).join(APPEND_SEPARATOR);
 }
 
 // src/resolver/resolve.ts
@@ -25241,14 +25567,14 @@ function checkHeadingTypos(file, content, label2) {
     if (!line.startsWith("#")) return;
     if (CANONICAL_HEADINGS.includes(line)) return;
     const norm = line.replace(/^#{1,6}\s*/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-    const canonical = canonicalNorms.get(norm);
-    if (canonical) {
+    const canonical2 = canonicalNorms.get(norm);
+    if (canonical2) {
       out.push(
         finding(
           "CHECK-HEADING",
           file,
           i + 1,
-          `${label2} heading \`${line}\` looks like a typo of \`${canonical}\` \u2014 the exact heading is required, or the block parses to zero rows (a silent pass).`
+          `${label2} heading \`${line}\` looks like a typo of \`${canonical2}\` \u2014 the exact heading is required, or the block parses to zero rows (a silent pass).`
         )
       );
     }
@@ -26252,15 +26578,15 @@ function validateReferences(fs, opts) {
       let pm;
       const seenPaths = /* @__PURE__ */ new Set();
       while ((pm = pluginRootRe.exec(line)) !== null) {
-        const token = pm[0];
-        if (seenPaths.has(token)) continue;
-        seenPaths.add(token);
+        const token2 = pm[0];
+        if (seenPaths.has(token2)) continue;
+        seenPaths.add(token2);
         if (owner === null) {
           indeterminate++;
           continue;
         }
         checked++;
-        const rel = token.replace(/^\$\{CLAUDE_PLUGIN_ROOT\}\/?/, "");
+        const rel = token2.replace(/^\$\{CLAUDE_PLUGIN_ROOT\}\/?/, "");
         const abs = `${repoRoot}/plugins/${owner}/${rel}`;
         if (!fs.isFile(abs)) {
           findings.push(
@@ -26268,7 +26594,7 @@ function validateReferences(fs, opts) {
               "REF-2",
               file,
               ln,
-              `plugin-root path \`${token}\` resolves to nothing \u2014 \`${abs}\` does not exist in plugin \`${owner}\`.`
+              `plugin-root path \`${token2}\` resolves to nothing \u2014 \`${abs}\` does not exist in plugin \`${owner}\`.`
             )
           );
         }
