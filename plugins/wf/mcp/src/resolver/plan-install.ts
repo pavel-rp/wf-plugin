@@ -154,8 +154,13 @@ export interface PlanInstallInput {
  *  the deselection half, which only the plan itself may determine. */
 export type PlanArtifactFactInput = Omit<PlanArtifactFact, "deselectedOwners">;
 
-/** The zeroed inventory the `invalid-root` path reports: admission failed before
- *  anything was read, so claiming any observation would be a lie. */
+/** The zeroed inventory the two NOTHING-WAS-READ paths report — `invalid-root`
+ *  (admission failed before anything was read) and `unrecovered` (WF-452:
+ *  recovery did not proceed, so lifecycle state was never read). One rationale
+ *  covers both: claiming any observation would be a lie, and under WF-446's trust
+ *  asymmetry only a `trustworthy` inventory may turn "not listed" into
+ *  "orphaned", so neither path can ever be mistaken for an observation of
+ *  absence. */
 const UNOBSERVED_INVENTORY: DiscoveryInventory = {
   confidence: "unavailable",
   mayEstablishAbsence: false,
