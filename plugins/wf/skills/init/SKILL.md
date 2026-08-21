@@ -253,10 +253,8 @@ by default and nothing is selected automatically.
    user's action, outside this run. Selecting one anyway is the planner's error
    to raise, not this skill's to silently correct.
 4. **Zero selection is a first-class outcome**, not a degenerate one: the run
-   continues, the plan comes back with nothing to do, and the workspace is left
-   carrying the bare-core scaffold and nothing else.
-
-Hold the chosen set as `desired`.
+   continues, the plan comes back with nothing to do, and the workspace keeps
+   the bare-core scaffold and nothing else. Hold the chosen set as `desired`.
 
 ---
 
@@ -270,8 +268,8 @@ Hold the chosen set as `desired`.
 3. **Pre-fill from `suggestions[]` without treating one as an answer.** A
    suggestion — a shipped default, a pack-tier value, or a personal-tier value —
    makes accepting cheap; it never makes the question disappear. Only a valid
-   **persisted** value at the question's declared destination resolves it, and
-   that is a fact the envelope reports, not one to judge here.
+   **persisted** value at the declared destination resolves it, and that is a
+   fact the envelope reports, not one to judge here.
 4. **Never re-ask what the envelope already resolved.** A question absent from
    `answers.unresolved[]` is answered; asking it again is a defect.
 5. **One round.** Collect every answer before moving on. Do not ask, plan, and
@@ -398,8 +396,9 @@ the resolved registry and key on the presence of a declared field.
 ## Phase 10: Establish the constitution
 
 Route this fixed sibling-Skill edge immediately before work: call
-`resolve_routing` with `workspaceRoot: <the admitted root>`, `role:
-"constitution"`, `unitIds: ["init:constitution"]`, `shapeEvidence: { workSurface:
+`resolve_routing` with `workspaceRoot: <the admitted root>`,
+`role: "constitution"`, `unitIds: ["init:constitution"]`,
+`shapeEvidence: { workSurface:
 "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
 ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical",
 contextIsolation: "none", independentReview: false, returnContract:
@@ -435,17 +434,17 @@ stop the run on it.
 - **Zero packs selected:** a valid outcome. The plan comes back `no-change`,
   Phases 7 and 8 are skipped, and the workspace carries the scaffold and nothing
   else — no registry row, no payload, no seeded profile, no runner.
-- **Plan declined:** `INIT — declined`. The scaffold may remain; no lifecycle
+- **Plan declined:** `INIT — declined` — the scaffold may remain, no lifecycle
   mutation was performed.
 - **`apply/plan-stale`:** the workspace moved between the confirmation and the
   apply. Report it as the id check working, and tell the user to re-run.
-- **`_local/` is a regular file, not a directory:** stop and report. Do not
+- **`_local/` is a regular file, not a directory:** stop and report; do not
   delete.
-- **`.gitignore` or `.git/info/exclude` is read-only:** stop and report. Do not
+- **`.gitignore` or `.git/info/exclude` is read-only:** stop and report; do not
   chmod.
-- **`--force` passed but nothing needs rewriting:** continue; produce no diff.
-- **Repo already set up by an older version:** fill in missing pieces
-  idempotently; leave existing files alone unless `--force` is set.
+- **`--force` passed but nothing needs rewriting, or the repo was set up by an
+  older version:** fill in missing pieces idempotently and produce no diff;
+  leave existing files alone unless `--force`.
 - **Config values do not match the repo:** do not guess — write defaults and tell
   the user to edit.
 
