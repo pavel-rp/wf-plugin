@@ -77,18 +77,18 @@ function isAbsoluteRoot(root) {
 }
 
 // src/git-workspace.ts
-function canonicalDirectory(path, label) {
+function canonicalDirectory(path, label2) {
   if (!isAbsolute(path)) {
-    throw new Error(`${label} must be an absolute path.`);
+    throw new Error(`${label2} must be an absolute path.`);
   }
   let stat;
   try {
     stat = statSync(path);
   } catch {
-    throw new Error(`${label} does not exist: ${path}`);
+    throw new Error(`${label2} does not exist: ${path}`);
   }
   if (!stat.isDirectory()) {
-    throw new Error(`${label} must be a directory: ${path}`);
+    throw new Error(`${label2} must be a directory: ${path}`);
   }
   return normalizeSlashes(realpathSync(path));
 }
@@ -102,8 +102,8 @@ function gitOutput(directory, ...args) {
     throw new Error(`workspaceRoot is not inside a Git worktree: ${directory}`);
   }
 }
-function resolveGitIdentity(directory, label = "workspaceRoot") {
-  const canonicalInput = canonicalDirectory(directory, label);
+function resolveGitIdentity(directory, label2 = "workspaceRoot") {
+  const canonicalInput = canonicalDirectory(directory, label2);
   const topLevel = gitOutput(canonicalInput, "--show-toplevel");
   const canonicalTopLevel = canonicalDirectory(
     isAbsolute(topLevel) ? topLevel : resolve(canonicalInput, topLevel),
@@ -116,10 +116,10 @@ function resolveGitIdentity(directory, label = "workspaceRoot") {
   );
   return { worktreeRoot: canonicalTopLevel, commonDir: canonicalCommonDir };
 }
-function resolveWorkspaceIdentity(directory, label = "workspaceRoot") {
-  const canonicalInput = canonicalDirectory(directory, label);
+function resolveWorkspaceIdentity(directory, label2 = "workspaceRoot") {
+  const canonicalInput = canonicalDirectory(directory, label2);
   try {
-    const git = resolveGitIdentity(canonicalInput, label);
+    const git = resolveGitIdentity(canonicalInput, label2);
     return { kind: "git", root: git.worktreeRoot, commonDir: git.commonDir };
   } catch (err) {
     if (!(err instanceof Error) || !err.message.startsWith("workspaceRoot is not inside a Git worktree:")) {
@@ -127,6 +127,78 @@ function resolveWorkspaceIdentity(directory, label = "workspaceRoot") {
     }
     return { kind: "plain", root: canonicalInput };
   }
+}
+
+// src/workspace-admission.ts
+function label(source) {
+  if (source === "explicit") return "explicit workspace root";
+  if (source === "environment") return "WF_WORKSPACE_ROOT";
+  return "current working directory";
+}
+function failure(source, reason, diagnostic) {
+  return { ok: false, root: null, source, reason, diagnostic };
+}
+function reasonFromThrow(message) {
+  if (message.includes("must be an absolute path")) return "not-absolute";
+  if (message.includes("must be a directory")) return "not-a-directory";
+  if (message.includes("does not exist")) return "not-found";
+  return "not-found";
+}
+function admittedByFamily(identity, launch) {
+  if (launch === null) return true;
+  if (launch.kind === "git") {
+    return identity.kind === "git" && identity.commonDir === launch.commonDir;
+  }
+  return identity.root === launch.root;
+}
+function admit(source, candidate, launch) {
+  let identity;
+  try {
+    identity = resolveWorkspaceIdentity(candidate, label(source));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const classifiable = message.split(": ")[0] ?? message;
+    const diagnostic = message.includes(candidate) ? message : `${message} Received: \`${candidate}\`.`;
+    return failure(source, reasonFromThrow(classifiable), diagnostic);
+  }
+  if (!admittedByFamily(identity, launch)) {
+    return failure(
+      source,
+      "out-of-family",
+      `${label(source)} resolves to \`${identity.root}\`, which is outside the launch workspace family.`
+    );
+  }
+  return { ok: true, root: identity.root, source, identity };
+}
+function selectWorkspaceRoot(declaration, launch) {
+  const tiers = [
+    { source: "explicit", value: declaration.explicit },
+    { source: "environment", value: declaration.environment },
+    { source: "cwd", value: declaration.cwd }
+  ];
+  for (const tier of tiers) {
+    if (tier.value === null || tier.value === void 0) continue;
+    if (typeof tier.value !== "string") {
+      return failure(
+        tier.source,
+        "not-absolute",
+        `${label(tier.source)} is declared as a ${typeof tier.value}, not a string path; a declared workspace root is never replaced by a lower-precedence source.`
+      );
+    }
+    if (tier.value.trim().length === 0) {
+      return failure(
+        tier.source,
+        "declaration-empty",
+        `${label(tier.source)} is declared but blank; a declared workspace root is never replaced by a lower-precedence source.`
+      );
+    }
+    return admit(tier.source, tier.value, launch);
+  }
+  return failure(
+    "cwd",
+    "declaration-empty",
+    `${label("cwd")} is undeclared, so no workspace root could be selected.`
+  );
 }
 
 // src/resolver/types.ts
@@ -1250,18 +1322,18 @@ var FILE_SOURCE_KINDS = /* @__PURE__ */ new Set([
 function isAbsolute2(p) {
   return p.startsWith("/") || /^[A-Za-z]:\//.test(p);
 }
-function absOf(workspaceRoot2, recordedPath) {
+function absOf(workspaceRoot, recordedPath) {
   const p = normalizeSlashes(recordedPath);
-  return isAbsolute2(p) ? p : joinSlash(workspaceRoot2, p);
+  return isAbsolute2(p) ? p : joinSlash(workspaceRoot, p);
 }
-function profileTemplateContent(snapshot, workspaceRoot2, source, probe) {
+function profileTemplateContent(snapshot, workspaceRoot, source, probe) {
   if (!probe.readContainedFile) return null;
   const capability = snapshot.capabilities.find(
     (candidate) => candidate.profileTemplatePath === source.path
   );
   if (!capability?.resolvedPath) return null;
-  const capabilityRoot = absOf(workspaceRoot2, capability.resolvedPath);
-  const templatePath = absOf(workspaceRoot2, source.path);
+  const capabilityRoot = absOf(workspaceRoot, capability.resolvedPath);
+  const templatePath = absOf(workspaceRoot, source.path);
   const normalizedRoot = normalizeSlashes(capabilityRoot).replace(/\/+$/, "");
   const normalizedTemplate = normalizeSlashes(templatePath);
   const prefix = normalizedRoot === "/" ? "/" : `${normalizedRoot}/`;
@@ -1293,7 +1365,7 @@ function normalizePluginList(raw) {
   })).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   return JSON.stringify(projected);
 }
-function evaluateFreshness(snapshot, workspaceRoot2, probe) {
+function evaluateFreshness(snapshot, workspaceRoot, probe) {
   const reasons = [];
   if (snapshot.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
     reasons.push({
@@ -1312,7 +1384,7 @@ function evaluateFreshness(snapshot, workspaceRoot2, probe) {
   }
   for (const src of snapshot.sources) {
     if (!FILE_SOURCE_KINDS.has(src.kind)) continue;
-    const content = src.kind === "profile-template" ? profileTemplateContent(snapshot, workspaceRoot2, src, probe) : probe.readFile(absOf(workspaceRoot2, src.path));
+    const content = src.kind === "profile-template" ? profileTemplateContent(snapshot, workspaceRoot, src, probe) : probe.readFile(absOf(workspaceRoot, src.path));
     const now = fingerprint(src.kind, src.path, content);
     if (now.present !== src.present || now.sha256 !== src.sha256) {
       const change = !now.present ? "was removed" : !src.present ? "appeared" : "changed";
@@ -1489,15 +1561,15 @@ function parseSlotScope(scope) {
 }
 
 // src/resolver/resolve.ts
-function relativize(workspaceRoot2, absPath) {
+function relativize(workspaceRoot, absPath) {
   const abs = normalizeSlashes(absPath);
-  const root = normalizeSlashes(workspaceRoot2).replace(/\/+$/, "");
+  const root = normalizeSlashes(workspaceRoot).replace(/\/+$/, "");
   if (abs === root) return ".";
   if (abs.startsWith(root + "/")) return abs.slice(root.length + 1);
   return abs;
 }
-function toAbsolute(workspaceRoot2, snapshotPath2) {
-  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot2, snapshotPath2);
+function toAbsolute(workspaceRoot, snapshotPath2) {
+  return isAbsoluteRoot(snapshotPath2) ? normalizeSlashes(snapshotPath2) : joinSlash(workspaceRoot, snapshotPath2);
 }
 function questionPackName(resolvedPath, fallback) {
   const normalized = normalizeSlashes(resolvedPath).replace(/\/+$/, "");
@@ -1524,7 +1596,7 @@ function appendQuestionDiagnostics(target, questionDiagnostics) {
   }
 }
 function buildSnapshot(inputs, io) {
-  const { workspaceRoot: workspaceRoot2 } = inputs;
+  const { workspaceRoot } = inputs;
   const diagnostics = [];
   const sources = [];
   const registryPath = normalizeSlashes(inputs.registryPathValue);
@@ -1544,7 +1616,7 @@ function buildSnapshot(inputs, io) {
     fingerprint(
       "constitution",
       "_local/constitution.md",
-      io.readFile(joinSlash(workspaceRoot2, "_local/constitution.md"))
+      io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"))
     )
   );
   const registry = parseRegistry(inputs.registryContent ?? "");
@@ -1580,7 +1652,7 @@ function buildSnapshot(inputs, io) {
     const anchor = /^plugin:([^/]+)\//.exec(row.path);
     const pluginName = anchor ? anchor[1] : null;
     const resolved = resolveCapabilityPath(row.path, {
-      workspaceRoot: workspaceRoot2,
+      workspaceRoot,
       recordedRoots,
       installedRoots,
       manifestExists
@@ -1596,7 +1668,7 @@ function buildSnapshot(inputs, io) {
       const content = io.readFile(resolved.manifestPath);
       if (content !== null) {
         sources.push(
-          fingerprint("manifest", relativize(workspaceRoot2, resolved.manifestPath), content)
+          fingerprint("manifest", relativize(workspaceRoot, resolved.manifestPath), content)
         );
         const m = parseManifest(content);
         kind = m.kind;
@@ -1621,7 +1693,7 @@ function buildSnapshot(inputs, io) {
               }
             ]);
           } else {
-            profileTemplatePath = relativize(workspaceRoot2, profileTemplateAbs);
+            profileTemplatePath = relativize(workspaceRoot, profileTemplateAbs);
             const templateRead = io.readContainedFile ? io.readContainedFile(
               resolved.resolvedPath,
               m.profileTemplate,
@@ -1700,8 +1772,8 @@ function buildSnapshot(inputs, io) {
     return {
       name: row.name,
       registryPath: row.path,
-      resolvedPath: resolved.resolvedPath ? relativize(workspaceRoot2, resolved.resolvedPath) : null,
-      manifestPath: resolved.manifestPath ? relativize(workspaceRoot2, resolved.manifestPath) : null,
+      resolvedPath: resolved.resolvedPath ? relativize(workspaceRoot, resolved.resolvedPath) : null,
+      manifestPath: resolved.manifestPath ? relativize(workspaceRoot, resolved.manifestPath) : null,
       provenance: resolved.provenance,
       kind,
       fragments,
@@ -1719,15 +1791,15 @@ function buildSnapshot(inputs, io) {
     let resolvedRoot = recordedRoot;
     if (provenance === "self-healed") {
       const installed = installedRoots.find((ir) => ir.pluginName === r.plugin);
-      resolvedRoot = installed ? relativize(workspaceRoot2, installed.installPath) : null;
+      resolvedRoot = installed ? relativize(workspaceRoot, installed.installPath) : null;
     } else if (provenance === "unrecoverable") {
       resolvedRoot = null;
     } else {
-      resolvedRoot = relativize(workspaceRoot2, recordedRoot);
+      resolvedRoot = relativize(workspaceRoot, recordedRoot);
     }
     return {
       plugin: r.plugin,
-      recordedRoot: relativize(workspaceRoot2, recordedRoot),
+      recordedRoot: relativize(workspaceRoot, recordedRoot),
       resolvedRoot,
       provenance
     };
@@ -1751,7 +1823,7 @@ function buildSnapshot(inputs, io) {
       version: p.version,
       scope: p.scope,
       enablement: p.enabled ? "enabled" : "disabled",
-      installPath: relativize(workspaceRoot2, p.installPath),
+      installPath: relativize(workspaceRoot, p.installPath),
       state,
       registeredCapabilities: reg?.capabilities ?? [],
       diagnostics: state === "registered/unrecoverable" ? "registered capability manifest is unreadable under this installed pack \u2014 refresh its plugin root (re-run the pack init)." : null
@@ -1795,12 +1867,12 @@ function buildSnapshot(inputs, io) {
   const profiles = {};
   for (const cap of capabilities) {
     const profilePath = joinSlash(
-      workspaceRoot2,
+      workspaceRoot,
       "_local/profiles",
       `${cap.name}.profile.json`
     );
     const content = io.readFile(profilePath);
-    sources.push(fingerprint("profile", relativize(workspaceRoot2, profilePath), content));
+    sources.push(fingerprint("profile", relativize(workspaceRoot, profilePath), content));
     if (content === null) continue;
     try {
       const parsedProfile = JSON.parse(content);
@@ -1852,9 +1924,9 @@ function buildSnapshot(inputs, io) {
   const interfaceRoots = [];
   if (inputs.corePluginRoot) interfaceRoots.push(normalizeSlashes(inputs.corePluginRoot));
   for (const r of pluginRoots) {
-    if (r.resolvedRoot) interfaceRoots.push(toAbsolute(workspaceRoot2, r.resolvedRoot));
+    if (r.resolvedRoot) interfaceRoots.push(toAbsolute(workspaceRoot, r.resolvedRoot));
   }
-  const settingsDir = joinSlash(workspaceRoot2, SETTINGS_STORAGE_DIR);
+  const settingsDir = joinSlash(workspaceRoot, SETTINGS_STORAGE_DIR);
   const settingsFiles = io.listFiles ? io.listFiles(settingsDir) : [];
   const settingsOverrides = [];
   for (const filename of [...settingsFiles].sort()) {
@@ -1915,14 +1987,14 @@ function buildSnapshot(inputs, io) {
       if (!parsed) continue;
       const rel = inlineDispatchRel(frag.dispatch);
       if (!rel) continue;
-      const bodyAbs = joinSlash(toAbsolute(workspaceRoot2, cap.resolvedPath), rel);
+      const bodyAbs = joinSlash(toAbsolute(workspaceRoot, cap.resolvedPath), rel);
       packSlots.push({
         capability: cap.name,
         skillPoint: parsed.skillPoint,
         skill: parsed.skillPoint.split(".")[0],
         policy: parsed.policy,
         bodyPath: bodyAbs,
-        bodyRel: relativize(workspaceRoot2, bodyAbs)
+        bodyRel: relativize(workspaceRoot, bodyAbs)
       });
     }
   }
@@ -1942,7 +2014,7 @@ function buildSnapshot(inputs, io) {
       });
     }
   }
-  const slotOverrideDir = joinSlash(workspaceRoot2, OVERRIDE_DIR);
+  const slotOverrideDir = joinSlash(workspaceRoot, OVERRIDE_DIR);
   const slotOverrideFiles = io.listFiles ? io.listFiles(slotOverrideDir) : [];
   const overridePresent = /* @__PURE__ */ new Set();
   for (const filename of [...slotOverrideFiles].sort()) {
@@ -1965,7 +2037,7 @@ function buildSnapshot(inputs, io) {
       });
     }
   }
-  const projectOverrideDir = joinSlash(workspaceRoot2, PROJECT_OVERRIDE_DIR);
+  const projectOverrideDir = joinSlash(workspaceRoot, PROJECT_OVERRIDE_DIR);
   const projectOverrideFiles = io.listFiles ? io.listFiles(projectOverrideDir) : [];
   const projectOverridePresent = /* @__PURE__ */ new Set();
   for (const filename of [...projectOverrideFiles].sort()) {
@@ -2041,7 +2113,7 @@ function buildSnapshot(inputs, io) {
     schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     generatedAt: inputs.generatedAt,
     generator: inputs.generator,
-    workspaceRoot: normalizeSlashes(workspaceRoot2),
+    workspaceRoot: normalizeSlashes(workspaceRoot),
     registryPath,
     coreConfig,
     routing,
@@ -2086,11 +2158,11 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
-function snapshotPath(workspaceRoot2) {
-  return join(workspaceRoot2, SNAPSHOT_CACHE_RELPATH);
+function snapshotPath(workspaceRoot) {
+  return join(workspaceRoot, SNAPSHOT_CACHE_RELPATH);
 }
-function writeSnapshot(workspaceRoot2, snapshot) {
-  const target = snapshotPath(workspaceRoot2);
+function writeSnapshot(workspaceRoot, snapshot) {
+  const target = snapshotPath(workspaceRoot);
   const dir = dirname(target);
   mkdirSync(dir, { recursive: true });
   const tmp = join(dir, `.snapshot.${process.pid}.${randomBytes(6).toString("hex")}.tmp`);
@@ -2120,8 +2192,8 @@ var SnapshotSchemaError = class extends Error {
   found;
   expected;
 };
-function readSnapshot(workspaceRoot2) {
-  const target = snapshotPath(workspaceRoot2);
+function readSnapshot(workspaceRoot) {
+  const target = snapshotPath(workspaceRoot);
   let raw;
   try {
     raw = readFileSync(target, "utf8");
@@ -2284,7 +2356,7 @@ function runPluginList() {
   }
 }
 function resolveSnapshot(opts) {
-  const workspaceRoot2 = normalizeSlashes(opts.workspaceRoot);
+  const workspaceRoot = normalizeSlashes(opts.workspaceRoot);
   const io = opts.io ?? fsIO;
   const wfConfigContent = io.readFile(join2(opts.workspaceRoot, "wf.config.js"));
   const registryPathValue = extractRegistryPath(wfConfigContent);
@@ -2295,7 +2367,7 @@ function resolveSnapshot(opts) {
   const pluginListRaw = opts.pluginListRaw !== void 0 ? opts.pluginListRaw : runPluginList();
   const now = (opts.now ?? (() => /* @__PURE__ */ new Date()))();
   const inputs = {
-    workspaceRoot: workspaceRoot2,
+    workspaceRoot,
     registryPathValue,
     registryContent,
     wfConfigContent,
@@ -2349,9 +2421,15 @@ function composeSessionStartStdout(source, record) {
 }
 
 // src/refresh.ts
-function workspaceRoot() {
-  const configured = process.env.WF_WORKSPACE_ROOT || process.cwd();
-  return resolveWorkspaceIdentity(resolve3(configured)).root;
+function admittedRoot() {
+  return selectWorkspaceRoot(
+    {
+      explicit: null,
+      environment: process.env.WF_WORKSPACE_ROOT ?? null,
+      cwd: process.cwd()
+    },
+    null
+  );
 }
 function corePluginRoot() {
   if (process.env.WF_CORE_PLUGIN_ROOT) {
@@ -2414,9 +2492,15 @@ function refreshIfStale(root) {
   log(`refreshed snapshot; reasons: ${reasons.map((r) => r.code).join(", ")}.`);
 }
 try {
-  const root = workspaceRoot();
-  refreshIfStale(root);
-  emitConstitution(root);
+  const admitted = admittedRoot();
+  if (!admitted.ok) {
+    log(
+      `no work \u2014 ${admitted.source} workspace root rejected (${admitted.reason}): ${admitted.diagnostic}`
+    );
+  } else {
+    refreshIfStale(admitted.root);
+    emitConstitution(admitted.root);
+  }
 } catch (err) {
   process.stderr.write(
     `wf-resolver refresh-if-stale: skipped (${err instanceof Error ? err.message : String(err)}).
