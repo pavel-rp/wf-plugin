@@ -28167,6 +28167,7 @@ function renderRegistryMutation(current, supported, facts) {
   let content = current;
   let changed = false;
   for (const action2 of supported) {
+    if (action2.kind !== "registry-add" && action2.kind !== "registry-deregister") continue;
     const pluginId = action2.pluginId;
     if (pluginId === null) {
       return {
@@ -29711,7 +29712,8 @@ var ResolverService = class {
         inspected,
         supported: gate.screened.supported,
         registryRel,
-        registryContent: mutation.content
+        registryContent: mutation.content,
+        registryChanged: mutation.changed
       });
       if (!composed.ok) {
         return {
@@ -29938,15 +29940,9 @@ var ResolverService = class {
       answersByCapability.set(write.pack, bucket);
       answersRecorded.push({ capability: write.pack, destination: write.destination });
     }
-    const targets = [{ destination: input.registryRel, newContent: input.registryContent }];
-    const addRendered = (destination, render) => {
-      if (!render.ok) {
-        return {
-          ok: false,
-          reason: destination.endsWith(".profile.json") ? "apply/answer-invalid" : "apply/ledger-unresolvable",
-          detail: render.detail
-        };
-      }
+    const targets = input.registryChanged ? [{ destination: input.registryRel, newContent: input.registryContent }] : [];
+    const addRendered = (destination, render, reason) => {
+      if (!render.ok) return { ok: false, reason, detail: render.detail };
       if (!render.changed) return null;
       if (targets.some((target) => target.destination === destination)) {
         return {
@@ -29974,7 +29970,8 @@ var ResolverService = class {
     for (const [destination, updates] of byDestination) {
       const failure2 = addRendered(
         destination,
-        renderLedgerMutation(readRel(destination), updates, `the evidence ledger \`${destination}\``)
+        renderLedgerMutation(readRel(destination), updates, `the evidence ledger \`${destination}\``),
+        "apply/ledger-unresolvable"
       );
       if (failure2 !== null) return failure2;
     }
@@ -29982,9 +29979,17 @@ var ResolverService = class {
       const destination = capabilityProfileRelPath(capability);
       const failure2 = addRendered(
         destination,
-        renderProfileMutation(readRel(destination), updates, `the capability profile \`${destination}\``)
+        renderProfileMutation(readRel(destination), updates, `the capability profile \`${destination}\``),
+        "apply/answer-invalid"
       );
       if (failure2 !== null) return failure2;
+    }
+    if (targets.length === 0) {
+      return {
+        ok: false,
+        reason: "apply/plan-not-applicable",
+        detail: "every target this plan names already holds exactly the bytes it would be given, so there is nothing to write; no transaction was opened."
+      };
     }
     return { ok: true, targets, portableRecorded, bindingRecorded, answersRecorded };
   }

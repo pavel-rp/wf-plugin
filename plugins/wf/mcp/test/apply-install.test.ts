@@ -624,6 +624,64 @@ test("a deregistration of a pack contributing no capability names removes only i
   assert.ok(result.ok && result.content.includes("| alpha-one | plugin:alpha/capabilities/one |"));
 });
 
+test("A NON-REGISTRY SUPPORTED ACTION IS SKIPPED, never taken as a deregistration", () => {
+  // The regression this guard exists for. Before WF-454 the supported set WAS
+  // the registry pair, so "not an add" meant "a deregistration". With
+  // `evidence-seed` and `answer-write` also supported, an unguarded fall-through
+  // would remove the very rows the same plan had just added.
+  const result = renderRegistryMutation(
+    REGISTRY,
+    [
+      action({ kind: "evidence-seed", order: 0, pluginId: "beta@2" }),
+      action({ kind: "registry-add", order: 1, pluginId: "beta@2" }),
+      action({ kind: "answer-write", order: 2, pluginId: "beta@2", destination: "beta.token" }),
+    ],
+    facts({
+      pluginId: "beta@2",
+      pluginName: "beta",
+      installPath: "/packs/beta",
+      capabilities: [{ name: "beta-one", path: "plugin:beta/capabilities/one" }],
+    }),
+  );
+  assert.ok(result.ok);
+  assert.ok(
+    result.ok && result.content.includes("| beta-one | plugin:beta/capabilities/one |"),
+    "the added capability row SURVIVES the answer write that follows it",
+  );
+  assert.ok(result.ok && result.content.includes("| beta | /packs/beta |"));
+});
+
+test("a supported non-registry action naming an UNKNOWN pack is not a registry refusal", () => {
+  // An `answer-write` for a pack that is neither added nor deregistered supplies
+  // no registry fact, and must not be reported as an unresolvable registry row.
+  const result = renderRegistryMutation(
+    REGISTRY,
+    [action({ kind: "answer-write", pluginId: "elsewhere@1", destination: "x.y" })],
+    facts(),
+  );
+  assert.ok(result.ok);
+  assert.equal(result.ok && result.changed, false, "the registry is untouched");
+  assert.equal(result.ok && result.content, REGISTRY);
+});
+
+test("a binding-seed-only plan renders NO registry change at all", () => {
+  // The missing-binding path: only the local binding is seeded, so the registry
+  // is not a target and `_local/config.md` is never opened for writing.
+  const result = renderRegistryMutation(
+    REGISTRY,
+    [action({ kind: "evidence-seed", pluginId: "alpha@1" })],
+    facts({
+      pluginId: "alpha@1",
+      pluginName: "alpha",
+      installPath: "/packs/alpha",
+      capabilities: [{ name: "alpha-one", path: "plugin:alpha/capabilities/one" }],
+    }),
+  );
+  assert.ok(result.ok);
+  assert.equal(result.ok && result.changed, false);
+  assert.equal(result.ok && result.content, REGISTRY, "byte-identical");
+});
+
 test("removing an absent row is a no-op, so a re-entered transaction converges", () => {
   const deregister = [action({ kind: "registry-deregister", pluginId: "alpha@1" })];
   const fact = facts({

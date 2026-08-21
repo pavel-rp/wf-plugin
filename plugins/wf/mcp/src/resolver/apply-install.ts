@@ -333,6 +333,13 @@ const PLUGIN_ROOTS_SECTION = "Plugin Roots";
  * byte-for-byte.
  *
  * Pure: the current bytes go in, the new bytes come out, and nothing is written.
+ *
+ * ONLY THE TWO REGISTRY KINDS ARE ACTED ON, and that guard is load-bearing since
+ * WF-454. The supported set used to BE the registry pair, so "not an add" could
+ * safely mean "a deregistration"; now that `evidence-seed` and `answer-write`
+ * are also supported, an unguarded fall-through would take the deregistration
+ * branch for an answer write and REMOVE the rows the same plan had just added.
+ * Every other supported kind is skipped here and rendered by its own renderer.
  */
 export function renderRegistryMutation(
   current: string,
@@ -343,6 +350,7 @@ export function renderRegistryMutation(
   let changed = false;
 
   for (const action of supported) {
+    if (action.kind !== "registry-add" && action.kind !== "registry-deregister") continue;
     const pluginId = action.pluginId;
     if (pluginId === null) {
       return {

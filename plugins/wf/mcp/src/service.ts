@@ -1912,6 +1912,7 @@ export class ResolverService {
         supported: gate.screened.supported,
         registryRel,
         registryContent: mutation.content,
+        registryChanged: mutation.changed,
       });
       if (!composed.ok) {
         return {
@@ -2054,6 +2055,11 @@ export class ResolverService {
     supported: readonly PlanAction[];
     registryRel: string;
     registryContent: string;
+    /** Whether the rendered registry bytes DIFFER from the current ones. A
+     *  registry that would not change is not a target — the same rule every
+     *  other renderer obeys, and the reason a missing-binding seed leaves
+     *  `_local/config.md` untouched down to its inode. */
+    registryChanged: boolean;
   }):
     | {
         ok: true;
@@ -2210,22 +2216,22 @@ export class ResolverService {
     }
 
     // --- render every target --------------------------------------------------
-    const targets: ApplyTargetWrite[] = [{ destination: input.registryRel, newContent: input.registryContent }];
+    const targets: ApplyTargetWrite[] = input.registryChanged
+      ? [{ destination: input.registryRel, newContent: input.registryContent }]
+      : [];
 
-    /** Add one rendered target, dropping it when it would change nothing. */
+    /** Add one rendered target, dropping it when it would change nothing.
+     *
+     *  The refusal reason is passed in by the CALLER rather than inferred from
+     *  the destination's shape: which artifact class a path belongs to is
+     *  already known at the call site, and re-deriving it from a filename suffix
+     *  would be a second, silently-divergent answer to a settled question. */
     const addRendered = (
       destination: string,
       render: TargetRender,
+      reason: ApplyReason,
     ): { ok: false; reason: ApplyReason; detail: string } | null => {
-      if (!render.ok) {
-        return {
-          ok: false,
-          reason: destination.endsWith(".profile.json")
-            ? "apply/answer-invalid"
-            : "apply/ledger-unresolvable",
-          detail: render.detail,
-        };
-      }
+      if (!render.ok) return { ok: false, reason, detail: render.detail };
       if (!render.changed) return null;
       if (targets.some((target) => target.destination === destination)) {
         return {
@@ -2258,6 +2264,7 @@ export class ResolverService {
       const failure = addRendered(
         destination,
         renderLedgerMutation(readRel(destination), updates, `the evidence ledger \`${destination}\``),
+        "apply/ledger-unresolvable",
       );
       if (failure !== null) return failure;
     }
@@ -2267,8 +2274,22 @@ export class ResolverService {
       const failure = addRendered(
         destination,
         renderProfileMutation(readRel(destination), updates, `the capability profile \`${destination}\``),
+        "apply/answer-invalid",
       );
       if (failure !== null) return failure;
+    }
+
+    // An `applicable` plan that would change nothing is a contradiction the
+    // planner's own invariant forbids, but the mutator states it rather than
+    // discovering it: opening a transaction that writes nothing would take a
+    // lock, mint a journal, and claim a success over an unchanged workspace.
+    if (targets.length === 0) {
+      return {
+        ok: false,
+        reason: "apply/plan-not-applicable",
+        detail:
+          "every target this plan names already holds exactly the bytes it would be given, so there is nothing to write; no transaction was opened.",
+      };
     }
 
     return { ok: true, targets, portableRecorded, bindingRecorded, answersRecorded };
