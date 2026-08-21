@@ -19786,6 +19786,229 @@ function toError(value) {
   return value instanceof Error ? value : new Error(String(value));
 }
 
+// src/resolver/artifact-plan.ts
+var SHA256_RE = /^[a-f0-9]{64}$/;
+function emptyArtifactPreview() {
+  return { deletable: [], retained: [], bootstrap: [], advance: [] };
+}
+function hasPreviewedArtifactEffect(preview) {
+  return preview.deletable.length > 0 || preview.bootstrap.length > 0 || preview.advance.length > 0;
+}
+function ownerKey(owner) {
+  return `${owner.pluginId}\0${owner.capability}\0${owner.source}`;
+}
+function sortOwners(owners) {
+  return owners.map((owner) => ({
+    pluginId: owner.pluginId,
+    capability: owner.capability,
+    source: owner.source
+  })).sort(
+    (left, right) => left.pluginId.localeCompare(right.pluginId) || left.capability.localeCompare(right.capability) || left.source.localeCompare(right.source)
+  );
+}
+function includesOwner(set, owner) {
+  const key = ownerKey(owner);
+  return set.some((candidate) => ownerKey(candidate) === key);
+}
+function semanticsComplete(semantics) {
+  return semantics.production === "copy" && (semantics.refresh === "replace-if-unmodified" || semantics.refresh === "retain") && (semantics.removal === "delete-if-unmodified" || semantics.removal === "retain");
+}
+function tupleOf(semantics) {
+  return {
+    production: semantics.production,
+    refresh: semantics.refresh,
+    removal: semantics.removal
+  };
+}
+function classify(fact, inventoryTrustworthy) {
+  const canonicalTarget = fact.target.ok ? fact.target.canonicalTarget : null;
+  const currentContentHash = fact.current.ok ? fact.current.sha256 : null;
+  const recorded = fact.recorded;
+  const recordedOwners = recorded === null ? [] : sortOwners(recorded.owners);
+  const recordedContentHash = recorded === null ? null : recorded.producedContentHash;
+  const recordedSemantics = recorded === null ? null : tupleOf(recorded);
+  const bytesMatchLedger = recordedContentHash !== null && currentContentHash !== null && currentContentHash === recordedContentHash;
+  const retain = (reason, owners, semantics) => ({
+    destination: fact.destination,
+    canonicalTarget,
+    form: "retained",
+    reason,
+    owners,
+    semantics,
+    recordedContentHash,
+    currentContentHash,
+    bytesMatchLedger,
+    deletionAuthority: false,
+    fullyUpgraded: false,
+    runnerCandidate: false,
+    persisted: false
+  });
+  if (!fact.target.ok) return retain("destination-unsafe", recordedOwners, recordedSemantics);
+  if (!fact.current.ok) {
+    return retain("current-bytes-unreadable", recordedOwners, recordedSemantics);
+  }
+  if (recorded === null) {
+    const declared2 = fact.declared;
+    const declaredOwners = declared2 === null ? [] : sortOwners(declared2.owners);
+    const declaredSemantics = declared2 === null ? null : tupleOf(declared2);
+    if (!inventoryTrustworthy) {
+      return retain("inventory-untrustworthy", declaredOwners, declaredSemantics);
+    }
+    if (declared2 === null) return retain("no-recorded-proof", [], null);
+    if (declaredOwners.length === 0) {
+      return retain("ownership-incomplete", declaredOwners, declaredSemantics);
+    }
+    if (!SHA256_RE.test(declared2.declaredSourceFingerprint)) {
+      return retain("source-fingerprint-missing", declaredOwners, declaredSemantics);
+    }
+    if (!semanticsComplete(declared2)) {
+      return retain("semantics-incomplete", declaredOwners, null);
+    }
+    if (!SHA256_RE.test(declared2.producedContentHash) || currentContentHash !== declared2.producedContentHash) {
+      return retain("not-reproducible", declaredOwners, declaredSemantics);
+    }
+    const alsoDeselected = declaredOwners.every(
+      (owner) => includesOwner(fact.deselectedOwners, owner)
+    );
+    return {
+      destination: fact.destination,
+      canonicalTarget,
+      form: "bootstrap",
+      reason: alsoDeselected ? "bootstrap-defers-deletion" : "not-deselected",
+      owners: declaredOwners,
+      semantics: declaredSemantics,
+      recordedContentHash: null,
+      currentContentHash,
+      bytesMatchLedger: false,
+      deletionAuthority: false,
+      fullyUpgraded: false,
+      runnerCandidate: true,
+      persisted: false
+    };
+  }
+  if (recordedOwners.length === 0) {
+    return retain("ownership-incomplete", recordedOwners, recordedSemantics);
+  }
+  const deselectedCount = recordedOwners.filter(
+    (owner) => includesOwner(fact.deselectedOwners, owner)
+  ).length;
+  if (deselectedCount === recordedOwners.length) {
+    if (!bytesMatchLedger) {
+      return retain("current-bytes-mismatch", recordedOwners, recordedSemantics);
+    }
+    if (recorded.removal !== "delete-if-unmodified") {
+      return retain("removal-semantics-retain", recordedOwners, recordedSemantics);
+    }
+    return {
+      destination: fact.destination,
+      canonicalTarget,
+      form: "deletable",
+      reason: null,
+      owners: recordedOwners,
+      semantics: recordedSemantics,
+      recordedContentHash,
+      currentContentHash,
+      bytesMatchLedger,
+      deletionAuthority: true,
+      fullyUpgraded: false,
+      runnerCandidate: true,
+      persisted: false
+    };
+  }
+  if (deselectedCount > 0) {
+    return retain("shared-ownership", recordedOwners, recordedSemantics);
+  }
+  const declared = fact.declared;
+  const sourceChanged = declared !== null && declared.declaredSourceFingerprint !== recorded.declaredSourceFingerprint;
+  if (!sourceChanged) {
+    return retain(
+      bytesMatchLedger ? "not-deselected" : "current-bytes-mismatch",
+      recordedOwners,
+      recordedSemantics
+    );
+  }
+  if (!bytesMatchLedger) return retain("divergent", recordedOwners, recordedSemantics);
+  if (recorded.refresh !== "replace-if-unmodified") {
+    return retain("refresh-semantics-retain", recordedOwners, recordedSemantics);
+  }
+  return {
+    destination: fact.destination,
+    canonicalTarget,
+    form: "advance",
+    reason: "not-deselected",
+    owners: recordedOwners,
+    semantics: recordedSemantics,
+    recordedContentHash,
+    currentContentHash,
+    bytesMatchLedger,
+    deletionAuthority: false,
+    fullyUpgraded: true,
+    runnerCandidate: true,
+    persisted: false
+  };
+}
+function findingFor(decision) {
+  const pluginId = decision.owners.length > 0 ? decision.owners[0].pluginId : null;
+  if (decision.form === "deletable") {
+    return {
+      code: "plan/artifact-deletable",
+      severity: "warning",
+      pluginId,
+      message: `managed artifact \`${decision.destination}\` is eligible for removal: every recorded owner is explicitly deselected, the current bytes match the recorded hash, and the declared removal semantics permit it.`
+    };
+  }
+  if (decision.form === "bootstrap") {
+    return {
+      code: "plan/artifact-bootstrap-previewed",
+      severity: "info",
+      pluginId,
+      message: `managed artifact \`${decision.destination}\` has no recorded lifecycle evidence; complete observed proof makes a bootstrap reviewable. It records future authority and grants no deletion in this plan.`
+    };
+  }
+  if (decision.form === "advance") {
+    return {
+      code: "plan/artifact-advance",
+      severity: "info",
+      pluginId,
+      message: `managed artifact \`${decision.destination}\` advances: its declared source changed and the current bytes still match the prior ledger hash.`
+    };
+  }
+  if (decision.reason === "divergent") {
+    return {
+      code: "plan/artifact-divergent",
+      severity: "warning",
+      pluginId,
+      message: `managed artifact \`${decision.destination}\` is divergent: its declared source changed but the current bytes do not match the prior ledger hash, so it is retained and not fully upgraded.`
+    };
+  }
+  return {
+    code: "plan/artifact-retained",
+    severity: "info",
+    pluginId,
+    message: `managed artifact \`${decision.destination}\` is retained (\`${decision.reason}\`); it grants no deletion authority.`
+  };
+}
+function planArtifacts(facts, options) {
+  const preview = emptyArtifactPreview();
+  const findings = [];
+  for (const fact of facts) {
+    const decision = classify(fact, options.inventoryTrustworthy);
+    findings.push(findingFor(decision));
+    if (decision.form === "deletable") preview.deletable.push(decision);
+    else if (decision.form === "bootstrap") preview.bootstrap.push(decision);
+    else if (decision.form === "advance") preview.advance.push(decision);
+    else preview.retained.push(decision);
+  }
+  const byDestination = (left, right) => left.destination.localeCompare(right.destination);
+  preview.deletable.sort(byDestination);
+  preview.bootstrap.sort(byDestination);
+  preview.advance.sort(byDestination);
+  preview.retained.sort(
+    (left, right) => byDestination(left, right) || (left.reason ?? "").localeCompare(right.reason ?? "")
+  );
+  return { preview, findings };
+}
+
 // src/resolver/payload-plan.ts
 function emptyPayloadPreview() {
   return { actions: [], rejected: [], conflicts: [] };
@@ -20740,6 +20963,7 @@ function planInstall(input) {
       answers: { writes: [], unresolved: [] },
       evidenceSeeds: [],
       payloads: emptyPayloadPreview(),
+      artifacts: emptyArtifactPreview(),
       findings: [],
       inventory: UNOBSERVED_INVENTORY,
       byteInert: true
@@ -20990,6 +21214,19 @@ function planInstall(input) {
     (input.payloads ?? []).filter((fact) => actedOnIds.has(fact.pluginId))
   );
   for (const payloadFinding of payloadPlan.findings) findings.push(payloadFinding);
+  const deregisteredIds = new Set(deregistrations.map((entry) => entry.pluginId));
+  const isDeselected = (owner) => deregisteredIds.has(owner.pluginId) && !postPlanPacks.has(owner.pluginId);
+  const artifactPlan = planArtifacts(
+    (input.artifacts ?? []).map((fact) => ({
+      ...fact,
+      deselectedOwners: [
+        ...fact.recorded?.owners ?? [],
+        ...fact.declared?.owners ?? []
+      ].filter(isDeselected)
+    })),
+    { inventoryTrustworthy: input.inventory.mayEstablishAbsence }
+  );
+  for (const artifactFinding of artifactPlan.findings) findings.push(artifactFinding);
   const registryDelta = {
     additions: byPluginId(additions),
     retentions: byPluginId(retentions),
@@ -20999,7 +21236,11 @@ function planInstall(input) {
   // one is never `no-change`. Whether that write would be a no-op against
   // the target's current bytes is an eligibility question this slice
   // deliberately does not answer.
-  payloadPlan.preview.actions.length === 0 ? "no-change" : "applicable";
+  payloadPlan.preview.actions.length === 0 && // A previewed removal, bootstrap, or advance is a previewed EFFECT, so
+  // a plan carrying one is never `no-change`. A plan whose only artifact
+  // entries are RETENTIONS still is — retaining changes nothing, which is
+  // exactly why retention is the fail-safe default.
+  !hasPreviewedArtifactEffect(artifactPlan.preview) ? "no-change" : "applicable";
   return {
     planVersion: PLAN_ENVELOPE_VERSION,
     workspaceRoot: input.admission.root,
@@ -21012,6 +21253,7 @@ function planInstall(input) {
     },
     evidenceSeeds: byPluginId(evidenceSeeds),
     payloads: payloadPlan.preview,
+    artifacts: artifactPlan.preview,
     findings: sortFindings(findings),
     inventory: input.inventory,
     byteInert: true
@@ -21762,7 +22004,7 @@ function registerResolverTools(server, selectService) {
     "plan_install",
     {
       title: "plan install",
-      description: "Read-only, byte-inert preview of one explicit selected set (WF-447/WF-448) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], payloads{actions,rejected,conflicts}, findings[], inventory, byteInert}`. PAYLOADS: every acted-on capability's declared `## Payloads` row is previewed as an action carrying the declared destination, the canonical workspace-contained target, the produced-byte SHA-256 and length, the complete `{production, refresh, removal}` tuple, the FULL owner set, and whether the write would create or overwrite. Containment is measured against the admitted workspace root and canonicalized BEFORE the decision, without creating the path being tested \u2014 traversal, an absolute path, a symlink that escapes the root, and an out-of-workspace target each make the plan not applicable. Co-ownership of one target is accepted ONLY for byte-identical output AND field-for-field equal generation, refresh and removal semantics; any byte or semantic mismatch blocks deterministically, with no first-writer, registry-order, or model arbitration. Payload workspace containment is distinct from plugin-root validation, which this never performs. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
+      description: "Read-only, byte-inert preview of one explicit selected set (WF-447/WF-448/WF-449) \u2014 the SOLE public plan-response lineage. Returns the versioned envelope `{planVersion, workspaceRoot, admission, applicability, registryDelta{additions,retentions,deregistrations}, answers{writes,unresolved}, evidenceSeeds[], payloads{actions,rejected,conflicts}, artifacts{deletable,retained,bootstrap,advance}, findings[], inventory, byteInert}`. ARTIFACTS: every managed destination the ledger records or an installed pack declares is classified into exactly one evidence-backed form, and nothing wider \u2014 pruning unlisted files is out of scope. DELETION ELIGIBILITY IS CONJUNCTIVE AND FAIL-SAFE: an artifact is `deletable` only when every recorded owner is EXPLICITLY deselected AND the current bytes match the PRIOR LEDGER HASH AND ownership is exclusive AND the declared removal semantics permit it. Every missing, conflicting, ambiguous, shared-incomplete, mismatching, or non-reproducible proof class RETAINS the artifact with a closed reason token and grants NO deletion authority \u2014 missing evidence never infers permission. Ownerless payloads follow the same rules: an empty owner set is incomplete, not exclusive, ownership. A missing-ledger BOOTSTRAP is previewable only when a trustworthy complete inventory holds AND validated declarations prove canonical destination, reproduced bytes, source fingerprint, complete owners, and the full semantic tuple; it records FUTURE authority and never permits deletion in the same plan. UPGRADE IS HASH-GATED: a source-changed artifact advances only when the current bytes still match the prior ledger hash, and a locally edited file stays `divergent` and not fully upgraded rather than being overwritten. Each decision carries `runnerCandidate` \u2014 Node-runner candidacy surfaced in this same plan, never a separate API. Every decision's `persisted` is the literal `false`. PAYLOADS: every acted-on capability's declared `## Payloads` row is previewed as an action carrying the declared destination, the canonical workspace-contained target, the produced-byte SHA-256 and length, the complete `{production, refresh, removal}` tuple, the FULL owner set, and whether the write would create or overwrite. Containment is measured against the admitted workspace root and canonicalized BEFORE the decision, without creating the path being tested \u2014 traversal, an absolute path, a symlink that escapes the root, and an out-of-workspace target each make the plan not applicable. Co-ownership of one target is accepted ONLY for byte-identical output AND field-for-field equal generation, refresh and removal semantics; any byte or semantic mismatch blocks deterministically, with no first-writer, registry-order, or model arbitration. Payload workspace containment is distinct from plugin-root validation, which this never performs. `applicability` resolves FIRST-MATCH-WINS as `invalid-root` \u2192 `not-applicable` (a structural error finding) \u2192 `blocked` (a missing or invalid project answer) \u2192 `no-change` \u2192 `applicable`. OMISSION NEVER REMOVES: a registered pack absent from `desired` is retained, so an orphaned or disabled registration can never become an implicit removal \u2014 deregistration has its own explicit `deregister` input. A proposed answer is validated through the declared schema and reported as a PENDING write; it is not persisted evidence. A legacy registration's bootstrap seed is previewed only from complete observed proof \u2014 otherwise planning is not applicable and the registration is preserved. Writes nothing on any path: no ledger, no seed, no answer, no enablement change.",
       inputSchema: planInstallInput
     },
     async (args) => guard(() => {
@@ -22316,7 +22558,7 @@ function validatePayloadDeclarations(pluginId, capability, table) {
 // src/resolver/lifecycle-evidence.ts
 var COMMITTED_LEDGER_PATH = ".wf/install-state.json";
 var LOCAL_LEDGER_PATH = "_local/install-state.json";
-var SHA256_RE = /^[a-f0-9]{64}$/;
+var SHA256_RE2 = /^[a-f0-9]{64}$/;
 function nonEmpty(value) {
   return typeof value === "string" && value.length > 0;
 }
@@ -22329,7 +22571,7 @@ function orderedHashes(records) {
   const normalized = [];
   const paths = /* @__PURE__ */ new Set();
   for (const record2 of records) {
-    if (!nonEmpty(record2.path) || !SHA256_RE.test(record2.sha256) || paths.has(record2.path)) {
+    if (!nonEmpty(record2.path) || !SHA256_RE2.test(record2.sha256) || paths.has(record2.path)) {
       return null;
     }
     paths.add(record2.path);
@@ -22338,6 +22580,21 @@ function orderedHashes(records) {
   return normalized.sort(
     (left, right) => left.path.localeCompare(right.path) || left.sha256.localeCompare(right.sha256)
   );
+}
+function orderedOwners(owners) {
+  const normalized = owners.map((owner) => ({ ...owner }));
+  if (normalized.length === 0 || normalized.some(
+    (owner) => !nonEmpty(owner.pluginId) || !nonEmpty(owner.capability) || !nonEmpty(owner.source)
+  )) {
+    return null;
+  }
+  normalized.sort(
+    (left, right) => left.pluginId.localeCompare(right.pluginId) || left.capability.localeCompare(right.capability) || left.source.localeCompare(right.source)
+  );
+  const keys = normalized.map(
+    (owner) => `${owner.pluginId}\0${owner.capability}\0${owner.source}`
+  );
+  return new Set(keys).size === keys.length ? normalized : null;
 }
 function resolveLedgerHome(value) {
   const selected = value === void 0 || value === null || value === "" ? "committed" : value;
@@ -22394,6 +22651,21 @@ function createMachineBindingEvidence(inputs) {
     enablement: inputs.enablement,
     observedVersion: inputs.observedVersion,
     localFingerprints
+  };
+}
+function createArtifactEvidence(inputs) {
+  const owners = orderedOwners(inputs.owners);
+  if (!nonEmpty(inputs.destination) || owners === null || !SHA256_RE2.test(inputs.declaredSourceFingerprint) || !SHA256_RE2.test(inputs.producedContentHash) || inputs.production !== "copy" || inputs.refresh !== "replace-if-unmodified" && inputs.refresh !== "retain" || inputs.removal !== "delete-if-unmodified" && inputs.removal !== "retain") {
+    return null;
+  }
+  return {
+    destination: inputs.destination,
+    owners,
+    declaredSourceFingerprint: inputs.declaredSourceFingerprint,
+    producedContentHash: inputs.producedContentHash,
+    production: inputs.production,
+    refresh: inputs.refresh,
+    removal: inputs.removal
   };
 }
 function evidenceEqual(left, right) {
@@ -26119,7 +26391,7 @@ var OVERLAY_BY_COMPARISON = {
   equal: null
 };
 function emptyLedger() {
-  return { portable: /* @__PURE__ */ new Map(), binding: /* @__PURE__ */ new Map() };
+  return { portable: /* @__PURE__ */ new Map(), binding: /* @__PURE__ */ new Map(), artifacts: /* @__PURE__ */ new Map() };
 }
 function asRecord(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
@@ -26183,6 +26455,38 @@ function parseEvidenceLedger(raw) {
         localFingerprints: asHashRecords(row.localFingerprints)
       });
       if (evidence !== null) ledger.binding.set(pluginId, evidence);
+    }
+  }
+  const artifactSection = asRecord(root.artifacts);
+  if (artifactSection !== null) {
+    for (const [destination, entry] of Object.entries(artifactSection)) {
+      const row = asRecord(entry);
+      if (row === null) continue;
+      const owners = [];
+      if (Array.isArray(row.owners)) {
+        for (const candidate of row.owners) {
+          const owner = asRecord(candidate);
+          if (owner === null) continue;
+          if (typeof owner.pluginId !== "string" || typeof owner.capability !== "string" || typeof owner.source !== "string") {
+            continue;
+          }
+          owners.push({
+            pluginId: owner.pluginId,
+            capability: owner.capability,
+            source: owner.source
+          });
+        }
+      }
+      const evidence = createArtifactEvidence({
+        destination: asNullableString(row.destination) ?? destination,
+        owners,
+        declaredSourceFingerprint: asNullableString(row.declaredSourceFingerprint) ?? "",
+        producedContentHash: asNullableString(row.producedContentHash) ?? "",
+        production: row.production,
+        refresh: row.refresh,
+        removal: row.removal
+      });
+      if (evidence !== null) ledger.artifacts.set(destination, evidence);
     }
   }
   return ledger;
@@ -27203,7 +27507,8 @@ var ResolverService = class {
         packs
       }),
       inspected: inspectedByPluginId,
-      snapshot
+      snapshot,
+      recordedArtifacts: readLedger(home.portablePath).artifacts
     };
   }
   // --- WF-447: plan_install (read-only, byte-inert) -----------------------
@@ -27230,7 +27535,7 @@ var ResolverService = class {
         selection
       });
     }
-    const { response, inspected, snapshot } = this.discoverPacksWithInspection();
+    const { response, inspected, snapshot, recordedArtifacts } = this.discoverPacksWithInspection();
     const ownerOfCapability = /* @__PURE__ */ new Map();
     for (const pack of snapshot.packs) {
       for (const name of pack.registeredCapabilities) ownerOfCapability.set(name, pack.pluginId);
@@ -27266,14 +27571,75 @@ var ResolverService = class {
         });
       }
     }
+    const payloads = this.collectPayloadFacts(admission.root, inspected);
     return planInstall({
       admission,
       inventory: response.inventory,
       packs: response.packs,
       capabilities,
       selection,
-      payloads: this.collectPayloadFacts(admission.root, inspected)
+      payloads,
+      artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts)
     });
+  }
+  /**
+   * Answer every filesystem question one managed artifact raises, so the pure
+   * removal/upgrade join can decide without any IO of its own (WF-449).
+   *
+   * The fact set is the UNION of the destinations the ledger already records and
+   * the destinations the installed packs currently declare — nothing wider.
+   * Pruning unlisted files is explicitly out of scope, so a workspace file that
+   * neither names is never classified and never at risk.
+   *
+   * Nothing here writes or creates. The declared source's bytes are reused from
+   * the payload facts already collected (no second read), and the target's
+   * CURRENT bytes are read through the same contained raw-byte fingerprint
+   * boundary — no body crosses, and a read that fails becomes an explicit
+   * `current-bytes-unreadable` retention rather than a fabricated digest.
+   */
+  collectArtifactFacts(admittedRoot, payloads, recordedArtifacts) {
+    const fingerprint2 = this.ports.fingerprintContainedFile;
+    const resolveTarget = this.ports.resolvePayloadTarget;
+    if (fingerprint2 === void 0 || resolveTarget === void 0) return [];
+    const declaredByDestination = /* @__PURE__ */ new Map();
+    for (const payload of payloads) {
+      const rows = declaredByDestination.get(payload.destination);
+      if (rows === void 0) declaredByDestination.set(payload.destination, [payload]);
+      else rows.push(payload);
+    }
+    const destinations = [
+      .../* @__PURE__ */ new Set([...recordedArtifacts.keys(), ...declaredByDestination.keys()])
+    ].sort((left, right) => left.localeCompare(right));
+    const facts = [];
+    for (const destination of destinations) {
+      const target = resolveTarget(admittedRoot, destination);
+      const observed = fingerprint2(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
+      const rows = declaredByDestination.get(destination) ?? [];
+      const usable = rows.filter((row) => row.identity.ok);
+      const first = usable[0];
+      const agreed = first !== void 0 && usable.length === rows.length && usable.every(
+        (row) => row.identity.ok && first.identity.ok && row.identity.sha256 === first.identity.sha256 && row.semantics.production === first.semantics.production && row.semantics.refresh === first.semantics.refresh && row.semantics.removal === first.semantics.removal
+      );
+      facts.push({
+        destination,
+        target,
+        recorded: recordedArtifacts.get(destination) ?? null,
+        current: observed.status === "ok" ? { ok: true, sha256: observed.sha256, bytes: observed.bytes } : { ok: false, status: observed.status },
+        declared: agreed && first !== void 0 && first.identity.ok ? {
+          declaredSourceFingerprint: first.identity.sha256,
+          producedContentHash: first.identity.sha256,
+          owners: usable.map((row) => ({
+            pluginId: row.pluginId,
+            capability: row.capability,
+            source: row.source
+          })),
+          production: first.semantics.production,
+          refresh: first.semantics.refresh,
+          removal: first.semantics.removal
+        } : null
+      });
+    }
+    return facts;
   }
   /**
    * Answer every filesystem question one declared payload row raises, so the

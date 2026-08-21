@@ -33,11 +33,14 @@
 
 import {
   compareLifecycleEvidence,
+  createArtifactEvidence,
   createMachineBindingEvidence,
   createPortablePackEvidence,
 } from "./lifecycle-evidence.js";
 import type { InstalledPlugin, PluginListContractIssue } from "./plugin-list.js";
 import type {
+  ArtifactEvidence,
+  ArtifactOwner,
   DiscoverPacksResponse,
   DiscoveredPack,
   DiscoveryConfidence,
@@ -113,10 +116,16 @@ const OVERLAY_BY_COMPARISON: Record<
 export interface EvidenceLedger {
   portable: Map<string, PortablePackEvidence>;
   binding: Map<string, MachineBindingEvidence>;
+  /** Recorded proof for each produced workspace artifact, keyed by its declared
+   *  destination (WF-449). Portable, like the `portable` section: the produced
+   *  bytes and their owners are project facts, not machine facts. An entry that
+   *  fails `createArtifactEvidence` is DROPPED rather than half-trusted — a
+   *  malformed record must not become authority to delete the file it names. */
+  artifacts: Map<string, ArtifactEvidence>;
 }
 
 function emptyLedger(): EvidenceLedger {
-  return { portable: new Map(), binding: new Map() };
+  return { portable: new Map(), binding: new Map(), artifacts: new Map() };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -197,6 +206,48 @@ export function parseEvidenceLedger(raw: string | null): EvidenceLedger {
         localFingerprints: asHashRecords(row.localFingerprints),
       });
       if (evidence !== null) ledger.binding.set(pluginId, evidence);
+    }
+  }
+
+  // The artifact section (WF-449). Keyed by declared destination, because that is
+  // what a removal or an upgrade decision is ABOUT. `createArtifactEvidence`
+  // validates owners, both digests, and the full closed semantic tuple; anything
+  // it rejects is dropped, so a malformed record yields "no recorded proof"
+  // (retain) rather than partial authority over the file it names.
+  const artifactSection = asRecord(root.artifacts);
+  if (artifactSection !== null) {
+    for (const [destination, entry] of Object.entries(artifactSection)) {
+      const row = asRecord(entry);
+      if (row === null) continue;
+      const owners: ArtifactOwner[] = [];
+      if (Array.isArray(row.owners)) {
+        for (const candidate of row.owners) {
+          const owner = asRecord(candidate);
+          if (owner === null) continue;
+          if (
+            typeof owner.pluginId !== "string" ||
+            typeof owner.capability !== "string" ||
+            typeof owner.source !== "string"
+          ) {
+            continue;
+          }
+          owners.push({
+            pluginId: owner.pluginId,
+            capability: owner.capability,
+            source: owner.source,
+          });
+        }
+      }
+      const evidence = createArtifactEvidence({
+        destination: asNullableString(row.destination) ?? destination,
+        owners,
+        declaredSourceFingerprint: asNullableString(row.declaredSourceFingerprint) ?? "",
+        producedContentHash: asNullableString(row.producedContentHash) ?? "",
+        production: row.production as ArtifactEvidence["production"],
+        refresh: row.refresh as ArtifactEvidence["refresh"],
+        removal: row.removal as ArtifactEvidence["removal"],
+      });
+      if (evidence !== null) ledger.artifacts.set(destination, evidence);
     }
   }
 

@@ -97,6 +97,7 @@ import {
 } from "./resolver/discover-packs.js";
 import {
   planInstall as planInstallJoin,
+  type PlanArtifactFactInput,
   type PlanCapabilityInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
@@ -111,6 +112,7 @@ import type {
 } from "./resolver/plugin-list.js";
 import {
   RESOLVER_GENERATOR,
+  type ArtifactEvidence,
   type CapabilityRecord,
   type ContainedFileFingerprintResult,
   type Diagnostic,
@@ -1360,6 +1362,8 @@ export class ResolverService {
     response: DiscoverPacksResponse;
     inspected: Map<string, InspectPackResponse>;
     snapshot: ResolverSnapshot;
+    /** Recorded artifact proof, keyed by declared destination (WF-449). */
+    recordedArtifacts: Map<string, ArtifactEvidence>;
   } {
     const snapshot = this.ensure();
     const workspaceRoot = this.ports.workspaceRoot;
@@ -1416,6 +1420,7 @@ export class ResolverService {
       }),
       inspected: inspectedByPluginId,
       snapshot,
+      recordedArtifacts: readLedger(home.portablePath).artifacts,
     };
   }
 
@@ -1447,7 +1452,8 @@ export class ResolverService {
       });
     }
 
-    const { response, inspected, snapshot } = this.discoverPacksWithInspection();
+    const { response, inspected, snapshot, recordedArtifacts } =
+      this.discoverPacksWithInspection();
 
     // Which pack owns which registered capability. Derived from the snapshot's
     // own attribution — never re-parsed from a registry row.
@@ -1501,14 +1507,109 @@ export class ResolverService {
       }
     }
 
+    const payloads = this.collectPayloadFacts(admission.root, inspected);
     return planInstallJoin({
       admission,
       inventory: response.inventory,
       packs: response.packs,
       capabilities,
       selection,
-      payloads: this.collectPayloadFacts(admission.root, inspected),
+      payloads,
+      artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
     });
+  }
+
+  /**
+   * Answer every filesystem question one managed artifact raises, so the pure
+   * removal/upgrade join can decide without any IO of its own (WF-449).
+   *
+   * The fact set is the UNION of the destinations the ledger already records and
+   * the destinations the installed packs currently declare — nothing wider.
+   * Pruning unlisted files is explicitly out of scope, so a workspace file that
+   * neither names is never classified and never at risk.
+   *
+   * Nothing here writes or creates. The declared source's bytes are reused from
+   * the payload facts already collected (no second read), and the target's
+   * CURRENT bytes are read through the same contained raw-byte fingerprint
+   * boundary — no body crosses, and a read that fails becomes an explicit
+   * `current-bytes-unreadable` retention rather than a fabricated digest.
+   */
+  private collectArtifactFacts(
+    admittedRoot: string,
+    payloads: readonly PlanPayloadFact[],
+    recordedArtifacts: Map<string, ArtifactEvidence>,
+  ): PlanArtifactFactInput[] {
+    const fingerprint = this.ports.fingerprintContainedFile;
+    const resolveTarget = this.ports.resolvePayloadTarget;
+    if (fingerprint === undefined || resolveTarget === undefined) return [];
+
+    // Group the declared payloads by destination so a co-owned target yields ONE
+    // artifact fact carrying every owner. Production is `copy`, so the bytes a
+    // declaration would produce ARE its source bytes — the same equality WF-448
+    // already relies on when it compares co-owners.
+    const declaredByDestination = new Map<string, PlanPayloadFact[]>();
+    for (const payload of payloads) {
+      const rows = declaredByDestination.get(payload.destination);
+      if (rows === undefined) declaredByDestination.set(payload.destination, [payload]);
+      else rows.push(payload);
+    }
+
+    const destinations = [
+      ...new Set([...recordedArtifacts.keys(), ...declaredByDestination.keys()]),
+    ].sort((left, right) => left.localeCompare(right));
+
+    const facts: PlanArtifactFactInput[] = [];
+    for (const destination of destinations) {
+      const target = resolveTarget(admittedRoot, destination);
+      const observed = fingerprint(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
+
+      // A co-owned destination whose owners disagree on bytes or semantics is
+      // NOT a usable declaration: WF-448 already reports that collision as a
+      // blocking finding, and inventing one owner's digest here would be exactly
+      // the arbitration both slices refuse. It becomes `declared: null`, which
+      // the join reads as unreproducible — the fail-safe direction.
+      const rows = declaredByDestination.get(destination) ?? [];
+      const usable = rows.filter((row) => row.identity.ok);
+      const first = usable[0];
+      const agreed =
+        first !== undefined &&
+        usable.length === rows.length &&
+        usable.every(
+          (row) =>
+            row.identity.ok &&
+            first.identity.ok &&
+            row.identity.sha256 === first.identity.sha256 &&
+            row.semantics.production === first.semantics.production &&
+            row.semantics.refresh === first.semantics.refresh &&
+            row.semantics.removal === first.semantics.removal,
+        );
+
+      facts.push({
+        destination,
+        target,
+        recorded: recordedArtifacts.get(destination) ?? null,
+        current:
+          observed.status === "ok"
+            ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }
+            : { ok: false, status: observed.status },
+        declared:
+          agreed && first !== undefined && first.identity.ok
+            ? {
+                declaredSourceFingerprint: first.identity.sha256,
+                producedContentHash: first.identity.sha256,
+                owners: usable.map((row) => ({
+                  pluginId: row.pluginId,
+                  capability: row.capability,
+                  source: row.source,
+                })),
+                production: first.semantics.production,
+                refresh: first.semantics.refresh,
+                removal: first.semantics.removal,
+              }
+            : null,
+      });
+    }
+    return facts;
   }
 
   /**
