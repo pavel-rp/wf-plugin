@@ -136,6 +136,6 @@ resolved; hold a lock across host phases or nest one inside another; run
 builds, tests, linters, or installs; invoke any delivery write operation
 (`branch-create`, `commit`, `push-upstream`, `pr-create`) or any destructive
 version-control operation; probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive a
-plugin root, manifest path, or override-merged profile value by hand; name any
+plugin root, manifest path, or persisted profile value by hand; name any
 concrete pack, capability, stack, or project noun anywhere in this skill's
 behaviour.

@@ -1,6 +1,6 @@
 {
   "name": "wf-ado",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "wf tracker-provider pack: the ado capability owning the wf capability-registry's tracker surface (Azure DevOps work-item get/create/update/list-children/comment/status bindings and status/milestone/cycle queries, plus the AB#<id> PR-link autolink). Ships /wf-ado:init as a compatibility alias — it seeds wf-ado into /wf:init's selection round and relays that lifecycle's own result, registering nothing itself.",
   "author": {
     "name": "Pavel Kalabin",

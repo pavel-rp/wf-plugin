@@ -27,6 +27,7 @@
 //      reports both.
 
 import type {
+  ContainedFileFingerprintResult,
   PayloadSemantics,
   PlanFinding,
   PlanPayloadAction,
@@ -45,10 +46,16 @@ export type PayloadTargetResolution =
   | { ok: false; rejection: PlanPayloadRejection };
 
 /** The caller's fingerprint of one declared source. `status` carries the
- *  contained-read outcome verbatim when the bytes could not be observed. */
+ *  contained-read outcome verbatim when the bytes could not be observed.
+ *
+ *  The non-ok arm is the CLOSED fingerprint union minus `"ok"`, not a widened
+ *  `string`: the eligibility gate compares this status against `"missing"`,
+ *  its under-lock mirror in `service.ts` compares the fingerprint union itself,
+ *  and the build type-erases — a widened arm would leave exactly one of the two
+ *  mirrored fail-closed guards uncheckable, where a typo inverts it silently. */
 export type PayloadSourceIdentity =
   | { ok: true; sha256: string; bytes: number }
-  | { ok: false; status: string };
+  | { ok: false; status: Exclude<ContainedFileFingerprintResult["status"], "ok"> };
 
 /** One declared payload row, with every filesystem question already answered. */
 export interface PlanPayloadFact {
@@ -60,6 +67,15 @@ export interface PlanPayloadFact {
   semantics: PayloadSemantics;
   target: PayloadTargetResolution;
   identity: PayloadSourceIdentity;
+  /** The destination's bytes as they are RIGHT NOW — pre-answered, like every
+   *  other filesystem fact here, so the eligibility test below stays pure. The
+   *  sibling arm types its own `current` with this same shape
+   *  (`PlanArtifactFact.current`); one concept, one type. */
+  current: PayloadSourceIdentity;
+  /** The content hash the lifecycle ledger records for this destination, or
+   *  `null` when the ledger records nothing for it. Its presence is what makes
+   *  a hand-edit distinguishable from an unmanaged pre-existing file. */
+  recordedContentHash: string | null;
 }
 
 export interface PayloadPlanResult {
@@ -185,6 +201,77 @@ export function planPayloads(facts: readonly PlanPayloadFact[]): PayloadPlanResu
 
     if (bytesEqual && tupleEqual) {
       if (!first.identity.ok || !first.target.ok) continue; // unreachable; narrows the union
+
+      // --- ELIGIBILITY, DECIDED HERE AND NOWHERE ELSE (WF-476) ---------------
+      // The planner owns the question "would this write change anything, and is
+      // it allowed to?", because two things downstream depend on the answer and
+      // neither can re-derive it: `applicability` is stated over this preview,
+      // and the release's BYTE-INERT guarantee requires a no-drift run to
+      // compose zero mutating actions rather than compose them and no-op. The
+      // comparison below is therefore the ONE source of truth for both the
+      // action list and the preservation decision — which is precisely why they
+      // can no longer contradict each other.
+      // KEYED ON THE SAME SPELLING THE ACTION REPORTS (WF-476). `first` is
+      // OWNER-sorted while `destination` is the lexicographically smallest
+      // spelling, and two owners may reach one canonical target through
+      // different spellings — so reading the destination's state off `first`
+      // could consult a different ledger row than the one the emitted action,
+      // the under-lock re-proof and the ledger recording all key on. Read the
+      // observed bytes from the member the reported `destination` comes from,
+      // and treat the group as MANAGED if ANY member records a hash: a partial
+      // disagreement about managedness resolves toward deferral, never toward
+      // an overwrite.
+      const primary =
+        members.find((member) => member.destination === destination) ?? first;
+      const current = primary.current;
+      const recordedContentHash =
+        members.find((member) => member.recordedContentHash !== null)?.recordedContentHash ?? null;
+
+      // 1. The destination already holds exactly the declared bytes. There is
+      //    nothing to write, so nothing is previewed and the plan settles.
+      if (
+        current.ok &&
+        current.sha256 === first.identity.sha256 &&
+        current.bytes === first.identity.bytes
+      ) {
+        continue;
+      }
+
+      // 2. The destination is MANAGED — the ledger records a hash for it — so
+      //    every transition it can undergo belongs to the ARTIFACT arm, which
+      //    owns the ledger's evidence and already decides all three outcomes
+      //    from it: the hash-gated advance when the bytes still match what was
+      //    recorded (`artifact-plan.ts` rule 3), the `divergent` retention when
+      //    they do not (a hand-edit, which `replace-if-unmodified` promises to
+      //    preserve), and the `refresh-semantics-retain` retention. Composing a
+      //    payload write for the same destination would either contradict that
+      //    decision or put two actions on one destination, which apply refuses
+      //    outright. Deferring here is what keeps the two arms from disagreeing
+      //    inside one response.
+      //
+      //    A destination with no recorded hash is an unmanaged pre-existing
+      //    file rather than a hand-edit, and keeps its existing overwrite
+      //    behaviour — narrowing that is a separate question this fix
+      //    deliberately does not answer.
+      if (recordedContentHash !== null) {
+        // Observable bytes: the artifact arm has everything it needs.
+        if (current.ok) continue;
+        // Unobservable bytes prove NOTHING — `too-large`, `unsafe`,
+        // `unsupported` and `unreadable` are the states in which an overwrite could
+        // destroy content no one has read. Mirrors `artifact-plan.ts` rule 1's
+        // `current-bytes-unreadable` retention: withhold rather than assume. A
+        // genuinely ABSENT destination is the one safe exception, so a deleted
+        // managed artifact is still restored.
+        if (current.status !== "missing") continue;
+      }
+
+      // 3. `refresh: retain` never replaces content that is already there. The
+      //    sibling arm states this as its own rule (`artifact-plan.ts`'s
+      //    `refresh-semantics-retain`); stating it explicitly here keeps the
+      //    two arms readable side by side instead of leaving it implied by the
+      //    union happening to have only two members today.
+      if (first.semantics.refresh === "retain" && first.target.exists) continue;
+
       actions.push({
         destination,
         canonicalTarget,

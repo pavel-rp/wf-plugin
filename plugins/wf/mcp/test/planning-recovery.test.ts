@@ -678,6 +678,8 @@ const PAYLOAD_FACT: PlanPayloadFact = {
   semantics: { ...COPY },
   target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: false },
   identity: { ok: true, sha256: DIGEST_B, bytes: 12 },
+  current: { ok: false, status: "missing" },
+  recordedContentHash: null,
 };
 
 const ARTIFACT_FACT: PlanArtifactFactInput = {
@@ -692,6 +694,7 @@ const ARTIFACT_FACT: PlanArtifactFactInput = {
   },
   current: { ok: true, sha256: LEDGER_HASH, bytes: 10 },
   declared: null,
+  declaringOwners: [],
 };
 
 /**

@@ -114,6 +114,7 @@ export function divergenceClassFor(
     case "not-deselected":
       return null;
     case "shared-ownership":
+    case "unrecorded-declarer":
       return null;
     case "removal-semantics-retain":
       return null;

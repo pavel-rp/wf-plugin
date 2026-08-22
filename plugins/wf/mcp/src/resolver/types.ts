@@ -1024,6 +1024,13 @@ export type PlanArtifactRetentionReason =
   | "not-deselected"
   /** A recorded owner survives the plan — ownership is not exclusive. */
   | "shared-ownership"
+  /** A pack that declares this destination RIGHT NOW is not in the recorded
+   *  owner set and is not deselected by this plan, so the recorded set is known
+   *  to be incomplete and exclusivity cannot be established from it (WF-476).
+   *  Distinct from `shared-ownership`, which is about a recorded owner that
+   *  SURVIVES: here no recorded owner survives, and the blocking declarer is by
+   *  construction absent from the decision's `owners`. */
+  | "unrecorded-declarer"
   /** The recorded owner set is empty or not fully resolvable (ownerless payload). */
   | "ownership-incomplete"
   /** Current bytes differ from the prior ledger hash — the file was edited. */
@@ -2060,8 +2067,10 @@ export interface ResolverSnapshot {
   packs: PackRecord[];
   providerOwnership: ProviderOwnershipRecord[];
   idShape: IdShape;
-  /** Override-merged profile VALUES per capability (consumer inventory §7 field
-   *  #8) — never a template. Keyed by capability name. */
+  /** Persisted profile VALUES per capability (consumer inventory §7 field #8) —
+   *  the document as written; never a template, and no override tier merged in
+   *  (that is `resolve_settings`, which is a different surface). Keyed by
+   *  capability name. */
   profiles: Record<string, unknown>;
   /** Provider-scoped tracker config values (consumer inventory §7 field #9).
    *  Populated by the provider surface's own resolution (R3, WF-270) so core

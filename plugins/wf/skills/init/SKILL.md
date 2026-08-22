@@ -101,7 +101,7 @@ this body is its implementation.
 - Invoke a delivery write op (`branch-create`, `commit`, `push-upstream`,
   `pr-create`) or any destructive version-control operation.
 - Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive a plugin root, manifest path,
-  or override-merged profile value by hand.
+  or persisted profile value by hand.
 - Name any concrete pack, capability, stack, or project noun in this behaviour.
 
 ---

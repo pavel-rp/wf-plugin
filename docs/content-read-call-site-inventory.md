@@ -295,7 +295,7 @@ Init reads the capability's `profile.template.json` **body** to seed a downstrea
 | `wf-angular/skills/init` | `wf-angular/capabilities/angular/profile.template.json` |
 
 > `wf-angular/skills/qa-host` and `wf-angular/skills/test-page` do **not** read the template
-> — they call `resolve_profile({ workspaceRoot: "<Agent/session absolute current workspace directory>", capability: "angular" })` for override-merged **values** (C008 R4) and
+> — they call `resolve_profile({ workspaceRoot: "<Agent/session absolute current workspace directory>", capability: "angular" })` for the persisted profile's **values** as written (C008 R4) and
 > state "this skill performs no direct profile-file read." Their `profile.template.json`
 > mentions are precedence prose, not reads. Not call sites for this class.
 

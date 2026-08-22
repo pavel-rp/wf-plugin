@@ -70,6 +70,10 @@ function fact(over: Partial<PlanPayloadFact> = {}): PlanPayloadFact {
     semantics: { ...COPY },
     target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: false },
     identity: { ok: true, sha256: DIGEST_A, bytes: 12 },
+    // The default destination has no bytes and no ledger record — the ordinary
+    // first-install shape, on which the WF-476 eligibility test is inert.
+    current: { ok: false, status: "missing" },
+    recordedContentHash: null,
     ...over,
   };
 }
@@ -607,4 +611,135 @@ test("an inadmissible root carries the empty preview, claiming nothing it did no
   assert.equal(out.applicability, "invalid-root");
   assert.deepEqual(out.payloads, { actions: [], rejected: [], conflicts: [] });
   assert.deepEqual(out.findings, []);
+});
+
+// --- WF-476 follow-up: a MANAGED destination belongs to the artifact arm ------
+//
+// The two arms plan the same destination from different evidence. Once the
+// ledger records it, every transition it can undergo — advance, divergent
+// retention, refresh-retain — is the artifact arm's decision, made from that
+// record. The payload arm's job is to establish destinations the ledger does not
+// yet manage. Overlapping is not merely redundant: two actions on one
+// destination is a whole-plan refusal.
+
+test("a ledger-recorded destination whose SOURCE moved composes no payload action", () => {
+  // The ordinary upgrade. The destination still holds exactly what the lifecycle
+  // wrote (so it is not a hand-edit), and the pack now declares different bytes.
+  // The artifact arm composes its hash-gated advance for this; a payload write
+  // alongside it would put two actions on one destination and refuse the plan.
+  const recorded = "c".repeat(64);
+  const out = planPayloads([
+    fact({
+      identity: { ok: true, sha256: DIGEST_B, bytes: 20 },
+      current: { ok: true, sha256: recorded, bytes: 12 },
+      recordedContentHash: recorded,
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "the payload arm duplicated an artifact advance");
+  assert.deepEqual(out.findings, []);
+});
+
+test("a ledger-recorded destination with UNREADABLE bytes composes no payload action", () => {
+  // Fail-closed: `too-large` proves nothing about whether the file was edited, so
+  // it may not license an overwrite of a file the lifecycle manages.
+  const out = planPayloads([
+    fact({
+      current: { ok: false, status: "too-large" },
+      recordedContentHash: "c".repeat(64),
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "an unreadable managed destination was overwritten");
+});
+
+test("a ledger-recorded destination that is ABSENT is still restored", () => {
+  // The safe exception, pinned so a later tightening cannot swallow it.
+  const out = planPayloads([
+    fact({
+      current: { ok: false, status: "missing" },
+      recordedContentHash: "c".repeat(64),
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: false },
+    }),
+  ]);
+
+  assert.equal(out.preview.actions.length, 1, "a deleted managed artifact was not restored");
+  assert.equal(out.preview.actions[0]?.write, "create");
+});
+
+test("`refresh: retain` never overwrites a destination that already exists", () => {
+  const out = planPayloads([
+    fact({
+      semantics: { ...COPY, refresh: "retain" },
+      current: { ok: true, sha256: DIGEST_B, bytes: 9 },
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "a `retain` refresh composed an overwrite");
+});
+
+test("`refresh: retain` still CREATES a destination that does not exist yet", () => {
+  // `retain` governs replacement, not establishment — production is what decides
+  // whether the file appears at all.
+  const out = planPayloads([fact({ semantics: { ...COPY, refresh: "retain" } })]);
+
+  assert.equal(out.preview.actions.length, 1);
+  assert.equal(out.preview.actions[0]?.write, "create");
+});
+
+// --- WF-476: the group's state is keyed on the REPORTED spelling --------------
+//
+// Two owners can reach one canonical target through different declared
+// spellings. `first` is OWNER-sorted; the action's `destination` is the
+// LEXICOGRAPHICALLY SMALLEST spelling. Reading the destination's state off
+// `first` could therefore consult a different ledger row than the one the
+// emitted action, the under-lock re-proof and the ledger recording all key on.
+
+test("a multi-spelling group reads its bytes from the member the action names", () => {
+  // `zzz-owner` sorts FIRST by owner and declares `.wf/b.md`; the reported
+  // destination is `.wf/a.md`, whose bytes already match. Keyed on `first` this
+  // composes a write; keyed on the reported spelling it correctly composes none.
+  const out = planPayloads([
+    fact({
+      pluginId: "zzz-owner@local",
+      destination: ".wf/b.md",
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+      current: { ok: false, status: "missing" },
+    }),
+    fact({
+      pluginId: "aaa-owner@local",
+      destination: ".wf/a.md",
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+      current: { ok: true, sha256: DIGEST_A, bytes: 12 },
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "eligibility was keyed on the wrong spelling");
+});
+
+test("a multi-spelling group counts as MANAGED when any member records a hash", () => {
+  // A partial disagreement about managedness resolves toward deferral, never
+  // toward an overwrite — so the ledger row need not sit on the member that
+  // happens to sort first.
+  const out = planPayloads([
+    fact({
+      pluginId: "aaa-owner@local",
+      destination: ".wf/a.md",
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+      current: { ok: true, sha256: "c".repeat(64), bytes: 12 },
+      recordedContentHash: null,
+    }),
+    fact({
+      pluginId: "zzz-owner@local",
+      destination: ".wf/b.md",
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+      current: { ok: true, sha256: "c".repeat(64), bytes: 12 },
+      recordedContentHash: "c".repeat(64),
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "a managed destination was overwritten");
 });

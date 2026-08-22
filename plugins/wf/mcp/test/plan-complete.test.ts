@@ -208,6 +208,7 @@ function artifactFact(over: Partial<PlanArtifactFact> = {}): PlanArtifactFact {
     recorded: recorded(),
     current: { ok: true, sha256: LEDGER_HASH, bytes: 10 },
     declared: null,
+    declaringOwners: [],
     deselectedOwners: [],
     ...over,
   };
@@ -224,6 +225,8 @@ function payloadFact(over: Partial<PlanPayloadFact> = {}): PlanPayloadFact {
     semantics: { ...COPY },
     target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: false },
     identity: { ok: true, sha256: DIGEST_A, bytes: 12 },
+    current: { ok: false, status: "missing" },
+    recordedContentHash: null,
     ...over,
   };
 }

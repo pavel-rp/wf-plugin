@@ -82,7 +82,11 @@ export type PreservationClass =
   | "retained"
   /** The approved plan names no action for this destination at all (rule 5). */
   | "unlisted"
-  /** A recorded owner survives the plan — ownership is not exclusive. */
+  /** Ownership is not exclusive, so this plan may not delete. Two arms reach it:
+   *  a RECORDED owner survives (`shared-ownership`), or a current DECLARER that
+   *  the ledger never recorded survives (`unrecorded-declarer`) — the second
+   *  fires precisely when no recorded owner survives, so do not read this class
+   *  as "a recorded owner survives". */
   | "shared"
   /** Current bytes differ from the prior ledger hash — the file was edited. */
   | "edited"
@@ -105,6 +109,7 @@ export function preservationClassFor(
     case "not-deselected":
       return "retained";
     case "shared-ownership":
+    case "unrecorded-declarer":
       return "shared";
     case "current-bytes-mismatch":
     case "divergent":
@@ -422,10 +427,17 @@ export function decideRemovalGate(input: RemovalGateInput): RemovalGateDecision 
       decision.semantics === null ||
       decision.semantics.removal !== "delete-if-unmodified"
     ) {
-      // Every conjunct restated at the point of authorization rather than
-      // inherited from `planArtifacts`. Duplicating the test is deliberate: this
-      // is the last line before a file is destroyed, and a proof that is only
-      // asserted somewhere else is a proof one refactor can delete.
+      // Every BYTE-AND-SEMANTICS conjunct restated at the point of authorization
+      // rather than inherited from `planArtifacts`. Duplicating the test is
+      // deliberate: this is the last line before a file is destroyed, and a proof
+      // that is only asserted somewhere else is a proof one refactor can delete.
+      //
+      // The two OWNERSHIP conjuncts — exclusive deselection of the recorded set,
+      // and no surviving unrecorded declarer — are inherited, via
+      // `form === "deletable"`. They are re-established rather than trusted,
+      // because `currentDecision` above is `planArtifacts` re-run over CURRENT
+      // facts; restating them here would mean re-deriving the declarer set from
+      // an inspection this function does not hold.
       return {
         ok: false,
         reason: "apply/artifact-precondition",

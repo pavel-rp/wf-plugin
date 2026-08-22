@@ -84,6 +84,7 @@ import {
   MAX_NORMALIZED_QUESTION_BYTES,
   MAX_PROFILE_TEMPLATE_BYTES,
   MAX_QUESTION_DIAGNOSTICS,
+  applyQuestionValues,
   makeQuestionDiagnostic,
   parseQuestionDeclarations,
   validateQuestionValue,
@@ -164,6 +165,7 @@ import {
   type TargetRender,
 } from "./resolver/apply-targets.js";
 import type {
+  PayloadSourceIdentity,
   PayloadTargetResolution,
   PlanPayloadFact,
 } from "./resolver/payload-plan.js";
@@ -175,6 +177,7 @@ import type {
 import {
   RESOLVER_GENERATOR,
   type ArtifactEvidence,
+  type QuestionRecord,
   type CapabilityRecord,
   type ConstitutionInput,
   type ContainedFileFingerprintResult,
@@ -188,6 +191,7 @@ import {
   type PlanAction,
   type PlanAdmissionState,
   type PlanInstallResponse,
+  type PlanRegistryReason,
   type PlanRepairScope,
   APPLY_ENVELOPE_VERSION,
   type ApplyAppliedAction,
@@ -1481,6 +1485,60 @@ export class ResolverService {
   }
 
   /**
+   * Give one capability's declared questions the PERSISTED-ANSWER overlay the
+   * registry-composition read path already applies (WF-476).
+   *
+   * The lifecycle built its question records straight from the pack's profile
+   * TEMPLATE, so a question the project had already answered — and that apply
+   * itself had persisted — still read as `unresolved`. Every downstream
+   * consequence followed from that one omission: `plan/answer-missing` on every
+   * rerun, an unresolved question re-opened, and a `blocked` plan for a project
+   * that had answered everything asked of it.
+   *
+   * THE SAME HELPER, NOT A SECOND OVERLAY. `applyQuestionValues` is the one
+   * place a persisted value is validated against its declared schema, and
+   * provenance buys no shortcut past it there. Reusing it is what keeps the
+   * lifecycle path and the read path from drifting into two different answers to
+   * "is this question resolved?".
+   *
+   * FAILURE LEAVES THE QUESTION ASKED. An unparseable document, a non-object
+   * container, or a persisted value that fails its declared schema all return
+   * the questions UNTOUCHED — still unresolved, so still asked. Suppressing a
+   * question on the strength of a container that could not be read is the one
+   * outcome that would turn this fix into a worse defect than the one it closes.
+   *
+   * THE SILENCE IS A DECIDED DIVERGENCE, NOT AN OVERSIGHT (WF-476). The read
+   * path (`resolve.ts`) emits `question/persisted-container-invalid` and
+   * `question/persisted-unparseable` for these same four failure modes; this
+   * path emits nothing, so a corrupt profile re-asks its questions every run
+   * with no stated cause, and the fallback is all-or-nothing per capability
+   * rather than per question. Threading `DiscoverPacksResponse.diagnostics`
+   * through would fix that without changing the fail-safe behaviour above. It
+   * is deferred rather than forgotten — it widens a response contract, which is
+   * a call for the owner of that contract to make. Recorded here so the next
+   * reader does not re-derive it as a new finding.
+   */
+  private withPersistedAnswers(
+    capability: string,
+    questions: readonly QuestionRecord[],
+  ): readonly QuestionRecord[] {
+    if (questions.length === 0) return questions;
+    const raw = this.ports.readFile(
+      joinSlash(this.ports.workspaceRoot, capabilityProfileRelPath(capability)),
+    );
+    if (raw === null) return questions;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return questions;
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return questions;
+    const applied = applyQuestionValues(questions, { persisted: parsed as Record<string, unknown> });
+    return applied.ok ? applied.questions : questions;
+  }
+
+  /**
    * The discovery join PLUS the per-pack inspection results it already computed.
    *
    * `discoverPacks()` deliberately returns only the body-free response, but the
@@ -1534,7 +1592,9 @@ export class ResolverService {
         priorBinding: recordedBinding.get(record.pluginId) ?? null,
         observedBinding: inspected?.machineBinding ?? null,
         questions: inspected
-          ? inspected.capabilities.flatMap((capability) => capability.questions)
+          ? inspected.capabilities.flatMap((capability) =>
+              this.withPersistedAnswers(capability.name, capability.questions),
+            )
           : [],
         inspectionValid: inspected?.valid ?? false,
         inspectionIssues: inspected?.issues ?? [],
@@ -1729,7 +1789,7 @@ export class ResolverService {
       }
     }
 
-    const payloads = this.collectPayloadFacts(admission.root, inspected);
+    const payloads = this.collectPayloadFacts(admission.root, inspected, recordedArtifacts);
     return {
       input: {
         admission,
@@ -2343,7 +2403,7 @@ export class ResolverService {
     const currentFacts = resolveArtifactFacts(
       this.collectArtifactFacts(
         admittedRoot,
-        this.collectPayloadFacts(admittedRoot, inspected),
+        this.collectPayloadFacts(admittedRoot, inspected, ledger.artifacts),
         ledger.artifacts,
       ),
       deselectedOwnerPredicate(plan.registryDelta),
@@ -2546,7 +2606,8 @@ export class ResolverService {
       };
     }
 
-    const recordedPortable = parseEvidenceLedger(readRel(home.portablePath)).portable;
+    const portableLedger = parseEvidenceLedger(readRel(home.portablePath));
+    const recordedPortable = portableLedger.portable;
     const recordedBinding = parseEvidenceLedger(readRel(home.bindingPath)).binding;
 
     const portableUpdates: LedgerEvidenceUpdate[] = [];
@@ -2696,6 +2757,7 @@ export class ResolverService {
           input.admittedRoot,
           input.plan,
           input.inspected,
+          portableLedger.artifacts,
           action,
         );
         if (!rendered.ok) {
@@ -2765,9 +2827,16 @@ export class ResolverService {
       // REVALIDATED at apply time through the SAME declared-schema path a
       // persisted value takes. The plan validated it too, but a plan is an
       // approval, not evidence, and this mutator trusts current facts only.
+      // The SAME persisted-answer overlay the planner's question list carries
+      // (WF-476), so plan and mutator read one question state rather than two.
+      // The revalidation itself is untouched — a plan is an approval, not
+      // evidence — only the record it revalidates against is now the enriched
+      // one.
       const question = input.inspected
         .get(write.pluginId)
-        ?.capabilities.flatMap((capability) => capability.questions)
+        ?.capabilities.flatMap((capability) =>
+          this.withPersistedAnswers(capability.name, capability.questions),
+        )
         .find((candidate) => candidate.id === write.questionId);
       if (question === undefined) {
         return {
@@ -3493,6 +3562,7 @@ export class ResolverService {
     admittedRoot: string,
     plan: PlanInstallResponse,
     inspected: Map<string, InspectPackResponse>,
+    recordedArtifacts: Map<string, ArtifactEvidence>,
     action: PlanAction,
   ):
     | { ok: true; destination: string; content: string; sha256: string; evidence: ArtifactEvidence }
@@ -3551,12 +3621,103 @@ export class ResolverService {
       };
     }
 
+    // --- 1b. the destination has not been edited since the plan (WF-476) -------
+    // A DEFENSIVE UNDER-LOCK BACKSTOP, deliberately narrower than the planner.
+    // The planner defers EVERY ledger-recorded destination to the artifact arm
+    // (`payload-plan.ts` rule 2) EXCEPT a genuinely absent one, which it still
+    // restores — so the only well-formed plan that reaches this gate with
+    // `recordedHash !== null` is that restore, and it passes on `missing`. The
+    // gate exists for the window the plan cannot see: the destination is re-read here, under the lock, so a
+    // destination hand-edited between plan and apply is refused rather than
+    // overwritten — the same discipline `renderAdvanceWrite` applies to its own
+    // gate. Matching the planner's exact predicate is NOT the goal; failing
+    // closed on anything it cannot prove unmodified is.
+    const recordedHash = recordedArtifacts.get(destination)?.producedContentHash ?? null;
+    if (recordedHash !== null) {
+      const live = fingerprint(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
+      if (
+        live.status === "ok" &&
+        live.sha256 !== recordedHash &&
+        live.sha256 !== approved.identity.sha256
+      ) {
+        return {
+          ok: false,
+          detail: `the payload destination \`${destination}\` has been modified since the plan was approved (recorded content hash ${recordedHash}, observed sha256 ${live.sha256}); its declared \`${approved.semantics.refresh}\` refresh withholds the write, so nothing was written.`,
+        };
+      }
+      // The proof FAILS CLOSED. `too-large`, `unsafe`, `unsupported` and
+      // `unreadable` — every non-`missing` failure in the closed fingerprint
+      // union — mean the bytes were never observed, so "unmodified" was never
+      // established, and an
+      // overwrite would destroy content no one has read. Only a genuinely absent
+      // destination is safe to (re-)create, which is how a deleted managed
+      // artifact is still restored. Mirrors `artifact-plan.ts` rule 1's
+      // `current-bytes-unreadable` retention rather than assuming the write is
+      // fine because the comparison could not be made.
+      if (live.status !== "ok" && live.status !== "missing") {
+        return {
+          ok: false,
+          detail: `the payload destination \`${destination}\` is lifecycle-managed but its current bytes could not be read (${live.status}), so the plan's unmodified-destination proof could not be re-established under the lock; nothing was written.`,
+        };
+      }
+    }
+
     // --- 3 + 4. the currently-declared owner set and its tuple -----------------
     // Re-read from the CURRENT inspection rather than from the plan, because "who
     // declares this destination, and with what semantics" is precisely the fact a
-    // pack edited between plan and apply would have changed.
+    // pack edited between plan and apply would have changed. That re-read is the
+    // whole point of the precondition and is preserved verbatim.
+    //
+    // WHAT IS NARROWED IS THE COMPARISON SET, NEVER THE GUARD (WF-476). The
+    // approved owner set was built from the SELECTED packs only (`plan-install.ts`
+    // narrows the payload facts to the acted-on, surviving set), so comparing it
+    // against every INSPECTED pack compares two differently-scoped sets and makes
+    // an installed-but-unselected co-declarer look like an owner that "appeared"
+    // — refusing an ordinary install. Iterating this plan's own acted-on packs
+    // puts both sides on the same footing.
+    //
+    // THE GUARD STILL FAILS CLOSED IN BOTH DIRECTIONS. The scope is the plan's
+    // acted-on packs UNION the approved owners, so: a selected pack that changed
+    // its declarations is in scope and still trips; an approved owner that
+    // dropped or altered its declaration is in scope and still trips (it cannot
+    // hide by leaving the delta); and only a pack that is neither selected nor an
+    // approved owner is excluded — which is exactly the declaration the PLANNER
+    // also refused to consider, so plan and mutator now scope identically.
+    //
+    // "ACTED ON" IS THE PLANNER'S OWN PREDICATE, NOT A LOOSER PROXY. The planner
+    // admits a pack when `(wanted || removing)` AND it survives the plan
+    // (`plan-install.ts` — `acting`, intersected with `postPlanPacks`). Additions
+    // satisfy both by construction. DEREGISTRATIONS SATISFY ONLY THE FIRST: a
+    // pack named in `deregister` is acted on but does not survive, so the planner
+    // deliberately drops its declaration ("a pack named only in `deregister`
+    // would otherwise contribute a previewed WRITE — a placement the plan is not
+    // making"). Including it here would put a declaration in `declared` that can
+    // never be in `approved.owners`, refusing an ordinary install — the same
+    // defect this narrowing exists to fix, one case further along. The retentions
+    // bucket satisfies neither wholesale, because it mixes packs the user
+    // selected with packs merely left alone.
+    //
+    // Stated as an EXCLUSION of the three not-selected reasons rather than an
+    // allow-list of the selected ones, so the failure direction of a reason added
+    // later is a spurious refusal (loud, fail-closed) instead of a silently
+    // skipped check.
+    const NOT_ACTED_ON: ReadonlySet<PlanRegistryReason> = new Set([
+      "retained-by-omission",
+      "retained-orphaned",
+      "retained-absence-indeterminate",
+    ]);
+    const actedOn = new Set([
+      ...plan.registryDelta.additions.map((entry) => entry.pluginId),
+      ...plan.registryDelta.retentions
+        .filter((entry) => !NOT_ACTED_ON.has(entry.reason))
+        .map((entry) => entry.pluginId),
+      // An approved owner that is ALSO being deregistered stays in scope through
+      // this term, so dropping the deregistrations bucket above loses no coverage.
+      ...approved.owners.map((owner) => owner.pluginId),
+    ]);
     const declared: { pluginId: string; capability: string; source: string; semantics: PayloadSemantics }[] = [];
     for (const [pluginId, record] of inspected) {
+      if (!actedOn.has(pluginId)) continue;
       for (const capability of record.capabilities) {
         for (const payload of capability.payloads) {
           if (payload.destination !== destination) continue;
@@ -4135,6 +4296,16 @@ export class ResolverService {
         destination,
         target,
         recorded: recordedArtifacts.get(destination) ?? null,
+        // WHO declares it, from ALL rows — not from `usable`, and not gated on
+        // `agreed`. The reproducibility collapse below is a statement about the
+        // BYTES; erasing a declarer because its source could not be read, or
+        // because it disagrees with a co-owner, would hide precisely the owner
+        // the removal slice needs to see (WF-476).
+        declaringOwners: rows.map((row) => ({
+          pluginId: row.pluginId,
+          capability: row.capability,
+          source: row.source,
+        })),
         current:
           observed.status === "ok"
             ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }
@@ -4173,10 +4344,28 @@ export class ResolverService {
   private collectPayloadFacts(
     admittedRoot: string,
     inspected: Map<string, InspectPackResponse>,
+    recordedArtifacts: Map<string, ArtifactEvidence>,
   ): PlanPayloadFact[] {
     const resolveTarget = this.ports.resolvePayloadTarget;
     const fingerprint = this.ports.fingerprintContainedFile;
     if (resolveTarget === undefined || fingerprint === undefined) return [];
+
+    // One destination is fingerprinted ONCE however many capabilities declare
+    // it: the bytes on disk are a property of the destination, not of the row,
+    // and re-reading per row would make a co-owned target's facts depend on
+    // iteration order.
+    const currentByDestination = new Map<string, PayloadSourceIdentity>();
+    const currentBytesOf = (destination: string): PayloadSourceIdentity => {
+      const memo = currentByDestination.get(destination);
+      if (memo !== undefined) return memo;
+      const observed = fingerprint(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
+      const resolved: PayloadSourceIdentity =
+        observed.status === "ok"
+          ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }
+          : { ok: false, status: observed.status };
+      currentByDestination.set(destination, resolved);
+      return resolved;
+    };
 
     const facts: PlanPayloadFact[] = [];
     for (const [pluginId, record] of inspected) {
@@ -4205,6 +4394,9 @@ export class ResolverService {
               observed.status === "ok"
                 ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }
                 : { ok: false, status: observed.status },
+            current: currentBytesOf(payload.destination),
+            recordedContentHash:
+              recordedArtifacts.get(payload.destination)?.producedContentHash ?? null,
           });
         }
       }

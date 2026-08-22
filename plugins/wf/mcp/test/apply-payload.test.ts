@@ -27,6 +27,8 @@ import type {
   PlanAction,
   PlanInstallResponse,
   PlanPayloadAction,
+  PlanRegistryEntry,
+  PlanRegistryReason,
 } from "../src/resolver/types.js";
 import type { PayloadTargetResolution } from "../src/resolver/payload-plan.js";
 import { noRecoveryReport } from "../src/resolver/lifecycle-recovery.js";
@@ -130,14 +132,45 @@ function action(over: Partial<PlanAction> = {}): PlanAction {
   };
 }
 
-function plan(actions: PlanPayloadAction[]): PlanInstallResponse {
+/** A registry retention row for one pack. The mutator's declaring-capability
+ *  precondition scopes its comparison to the packs the plan ACTED ON (WF-476),
+ *  so a synthetic plan has to be able to say which those are — and, critically,
+ *  WITH WHICH REASON: `selected-retention` is an acted-on pack, while
+ *  `retained-by-omission` is a pack the plan merely left alone. Conflating the
+ *  two is precisely the defect the registered-co-declarer case below pins. */
+function retained(
+  pluginId: string,
+  reason: PlanRegistryReason = "selected-retention",
+): PlanRegistryEntry {
+  return {
+    pluginId,
+    pluginName: pluginId,
+    capabilities: [],
+    reason,
+    presence: "installed",
+    state: "enabled",
+    enablement: "enabled",
+    overlay: null,
+  };
+}
+
+function plan(
+  actions: PlanPayloadAction[],
+  actedOn: readonly string[] = [],
+  alsoRetained: readonly PlanRegistryEntry[] = [],
+  deregistered: readonly string[] = [],
+): PlanInstallResponse {
   return {
     planVersion: 1,
     workspaceRoot: ROOT,
     admission: { admitted: true, root: ROOT, source: "explicit", reason: null, diagnostic: null },
     applicability: "applicable",
     mode: "install",
-    registryDelta: { additions: [], retentions: [], deregistrations: [] },
+    registryDelta: {
+      additions: [],
+      retentions: [...actedOn.map((id) => retained(id)), ...alsoRetained],
+      deregistrations: deregistered.map((id) => retained(id, "explicit-deregistration")),
+    },
     answers: { writes: [], unresolved: [] },
     evidenceSeeds: [],
     repairs: [],
@@ -169,6 +202,10 @@ interface Scene {
   sources?: Map<string, string>;
   /** Current workspace bytes, keyed by absolute path. */
   files?: Map<string, string>;
+  /** Force a non-`ok` contained-read status for an absolute path, so the
+   *  unobservable-bytes arm can be exercised without a real oversized or
+   *  symlinked file. */
+  statuses?: Map<string, "unsafe" | "too-large" | "unsupported" | "unreadable">;
   target?: PayloadTargetResolution;
 }
 
@@ -198,6 +235,10 @@ function service(scene: Scene = {}): ResolverService {
       root: string,
       relPath: string,
     ): ContainedFileFingerprintResult => {
+      const forced = scene.statuses?.get(`${root}/${relPath}`);
+      if (forced !== undefined) {
+        return { status: forced, path: null, sha256: null, bytes: null };
+      }
       const body = sources.get(`${root}/${relPath}`);
       if (body === undefined) {
         return { status: "missing", path: null, sha256: null, bytes: null };
@@ -431,18 +472,41 @@ test("RE-BINDING 4/4: an owner that APPEARED since the plan refuses rather than 
   // destination would be recording an INCOMPLETE owner set — the exact defect the
   // self-check's owner assertion exists to catch, caught here instead, before any
   // write.
+  //
+  // Beta is SELECTED by this plan (it is in the registry delta) and picked up a
+  // declaration the approval never listed: a genuine mid-flight pack edit, which
+  // WF-476's narrowing deliberately leaves refusing.
   const sources = new Map([
     [`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY],
     [`${capabilityRoot(BETA)}/${BETA.source}`, BODY],
   ]);
   const result = compose(service({ sources }), {
-    plan: plan([payloadAction({ owners: [ALPHA] })]),
+    plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId, BETA.pluginId]),
     inspected: inspect([{ owner: ALPHA }, { owner: BETA }]),
     supported: [action()],
   });
 
   assert.equal(result.ok, false);
   assert.ok(!result.ok && result.detail.includes("has changed since the plan was approved"));
+});
+
+test("RE-BINDING 4/4c: an UNSELECTED co-declarer does not refuse an ordinary install", () => {
+  // WF-476 F-4, at the unit level. Beta is installed and co-declares the
+  // destination, but this plan does not act on it — so it was never in the scope
+  // the approved owner set was built from, and comparing against it compares two
+  // differently-scoped sets. The install proceeds; only the SELECTED packs are
+  // held to the approval.
+  const sources = new Map([
+    [`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY],
+    [`${capabilityRoot(BETA)}/${BETA.source}`, BODY],
+  ]);
+  const result = compose(service({ sources }), {
+    plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId]),
+    inspected: inspect([{ owner: ALPHA }, { owner: BETA }]),
+    supported: [action()],
+  });
+
+  assert.equal(result.ok, true, !result.ok ? result.detail : "");
 });
 
 test("RE-BINDING 4/4b: an owner that VANISHED since the plan refuses too", () => {
@@ -552,4 +616,150 @@ test("SC-1b: a selection carrying only a registry change writes no artifacts sec
     "only the registry is written; no ledger, no payload, no scaffolding",
   );
   assert.deepEqual(result.payloadsRecorded, []);
+});
+
+// ---------------------------------------------------------------------------
+// WF-476 follow-up — the cases the first pass left uncovered
+// ---------------------------------------------------------------------------
+
+/** A committed ledger recording ONE artifact at the shared destination, with the
+ *  content hash the lifecycle last produced there. This is what makes a
+ *  destination "managed": without it there is no recorded hash to compare
+ *  against, and an unmanaged pre-existing file keeps its overwrite behaviour. */
+function ledgerRecording(producedContentHash: string): Map<string, string> {
+  return new Map([
+    [
+      `${ROOT}/.wf/install-state.json`,
+      JSON.stringify({
+        artifacts: {
+          [DESTINATION]: {
+            destination: DESTINATION,
+            owners: [ALPHA],
+            declaredSourceFingerprint: BODY_SHA,
+            producedContentHash,
+            production: SEMANTICS.production,
+            refresh: SEMANTICS.refresh,
+            removal: SEMANTICS.removal,
+          },
+        },
+      }),
+    ],
+  ]);
+}
+
+test("RE-BINDING 4/4d: a REGISTERED-but-unselected co-declarer does not refuse either", () => {
+  // The other half of 4/4c, and the case the first WF-476 pass left open. Beta is
+  // co-declaring AND already registered, so it appears in the plan's retentions —
+  // but with reason `retained-by-omission`, because the user did not select it.
+  // The planner excludes exactly that pack from its payload facts, so a mutator
+  // that read the whole retentions bucket would compare two differently-scoped
+  // sets and refuse an ordinary install. 4/4c could never catch this: its beta is
+  // absent from the delta entirely.
+  const sources = new Map([
+    [`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY],
+    [`${capabilityRoot(BETA)}/${BETA.source}`, BODY],
+  ]);
+  const result = compose(service({ sources }), {
+    plan: plan(
+      [payloadAction({ owners: [ALPHA] })],
+      [ALPHA.pluginId],
+      [retained(BETA.pluginId, "retained-by-omission")],
+    ),
+    inspected: inspect([{ owner: ALPHA }, { owner: BETA }]),
+    supported: [action()],
+  });
+
+  assert.equal(result.ok, true, !result.ok ? result.detail : "");
+});
+
+test("RE-BINDING 4/4e: a co-declarer being DEREGISTERED in this run does not refuse", () => {
+  // The third shape of the same defect, introduced by the first WF-476 fix and
+  // caught by the round-2 audit. The planner scopes its payload facts to the
+  // acted-on packs that also SURVIVE (`actedOn ∩ postPlanPacks`), and a pack
+  // named in `deregister` does not survive — it deliberately contributes no
+  // previewed write. A mutator that put `registryDelta.deregistrations` in its
+  // comparison scope therefore admits a declaration into `declared` that can
+  // never be in `approved.owners`, and the set-compare refuses an otherwise
+  // ordinary install. Beta co-declares the destination and is on its way out.
+  const sources = new Map([
+    [`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY],
+    [`${capabilityRoot(BETA)}/${BETA.source}`, BODY],
+  ]);
+  const result = compose(service({ sources }), {
+    plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId], [], [BETA.pluginId]),
+    inspected: inspect([{ owner: ALPHA }, { owner: BETA }]),
+    supported: [action()],
+  });
+
+  assert.equal(result.ok, true, !result.ok ? result.detail : "");
+});
+
+test("a destination EDITED between plan and apply is refused under the lock", () => {
+  // The planner withholds this write, but the planner's verdict is an approval,
+  // not evidence — so the mutator re-derives it. Nothing exercised that branch
+  // before: the journey-level proof lands on `apply/plan-stale` first (editing a
+  // pack's source also moves its fingerprint), which leaves this gate's own
+  // fail-closed behaviour observable only here.
+  //
+  // The live bytes match NEITHER the recorded hash nor the approved digest — the
+  // signature of a hand-edit in the plan→apply window.
+  const edited = "hand-edited-between-plan-and-apply\n";
+  const sources = new Map([
+    [`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY],
+    [CANONICAL, edited],
+  ]);
+  const result = compose(
+    service({ sources, files: ledgerRecording(sha256("what-the-lifecycle-last-wrote\n")) }),
+    {
+      plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId]),
+      inspected: inspect([{ owner: ALPHA }]),
+      supported: [action()],
+    },
+  );
+
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok && result.reason === "apply/payload-precondition");
+  assert.ok(!result.ok && result.detail.includes("has been modified since the plan was approved"));
+  // The refusal names the destination's OWN declared refresh rather than a
+  // hardcoded token, so a second refresh value could not be described wrongly.
+  assert.ok(!result.ok && result.detail.includes(SEMANTICS.refresh));
+});
+
+test("a managed destination whose bytes cannot be READ is refused, not overwritten", () => {
+  // Fail-closed. `too-large` / `unsafe` / `unsupported` all mean the comparison
+  // was never made — and "we could not check" must never resolve to "go ahead"
+  // for a file the lifecycle is on record as managing. The sibling artifact arm
+  // states the same rule as its `current-bytes-unreadable` retention.
+  const sources = new Map([[`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY]]);
+  const result = compose(
+    service({
+      sources,
+      files: ledgerRecording(BODY_SHA),
+      statuses: new Map([[CANONICAL, "too-large"]]),
+    }),
+    {
+      plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId]),
+      inspected: inspect([{ owner: ALPHA }]),
+      supported: [action()],
+    },
+  );
+
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok && result.reason === "apply/payload-precondition");
+  assert.ok(!result.ok && result.detail.includes("could not be read"));
+});
+
+test("an ABSENT managed destination is still restored", () => {
+  // The one safe exception to the rule above, stated so a later tightening cannot
+  // quietly swallow it: `missing` is not an unreadable-bytes case, it is the
+  // deleted-managed-artifact case, and restoring it is the whole point of the
+  // lifecycle re-running.
+  const sources = new Map([[`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY]]);
+  const result = compose(service({ sources, files: ledgerRecording(BODY_SHA) }), {
+    plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId]),
+    inspected: inspect([{ owner: ALPHA }]),
+    supported: [action()],
+  });
+
+  assert.equal(result.ok, true, !result.ok ? result.detail : "");
 });

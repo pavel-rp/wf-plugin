@@ -20,6 +20,7 @@ identity below already exists and is consumed **unchanged**.
 - [Step R4 — Choose the one plan of record](#step-r4--choose-the-one-plan-of-record)
 - [Step R5 — Confirm once, apply once](#step-r5--confirm-once-apply-once)
 - [Step R6 — The settled exit, with no mutation stage](#step-r6--the-settled-exit-with-no-mutation-stage)
+- [The authoritative persisted-answer surface](#the-authoritative-persisted-answer-surface-wf-476)
 - [Edge cases specific to reconcile](#edge-cases-specific-to-reconcile)
 
 ---
@@ -71,6 +72,22 @@ that "no drift" is the exact collapse the mutator's own upgrade verdict refuses:
 a zero-write run over a divergent state is `retained-divergence`, never
 `no-drift`. Report **retained divergence** — still with no mutation stage,
 because nothing is authorized, but never under the words "no drift".
+
+**Where `applicability` is decided (WF-476).** The **planner** decides, per
+destination. The payload arm applies four rules in order; the first match wins:
+
+1. The destination already holds exactly the declared bytes → **no action**.
+2. The destination is recorded in the ledger → **no payload action**; the
+   artifact arm owns every transition, deciding advance, `divergent` retention and
+   `refresh-semantics-retain` from the ledger's evidence. The one exception is a
+   genuinely **absent** destination, which is still restored. Bytes that could not
+   be read at all (`too-large`, `unsafe`, `unsupported`, `unreadable`) withhold
+   the write.
+3. `refresh: retain` and the destination exists → **no action**.
+4. Otherwise → the ordinary create/overwrite.
+
+The mutator's zero-target refusal is a **defensive invariant**, not a decision
+point: a well-formed plan cannot reach it. Why → `reconcile-rationale.md`.
 
 ## Step R3 — Offer the desired set, once
 
@@ -169,6 +186,19 @@ exit — nothing is authorized, so nothing may be applied — but report
 drift.
 
 ---
+
+## The authoritative persisted-answer surface (WF-476)
+
+A question the lifecycle *asks* is persisted to
+`_local/profiles/<capability>.profile.json` and read back only through
+`resolve_profile`, which returns that document as written and merges in no
+template or override tier. `_local/config.md` is not an answer store.
+
+Precedence on an existing project is **read-through, not migration**: profile
+first, the capability's config section second, profile winning, nothing written
+back. A value the lifecycle does **not** ask never enters the profile, so it reads
+from its config section down to its own default — and a defaulted value never
+decides a configured/unconfigured gate. Why → `reconcile-rationale.md`.
 
 ## Edge cases specific to reconcile
 

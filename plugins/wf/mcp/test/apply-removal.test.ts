@@ -68,6 +68,7 @@ function fact(overrides: Partial<PlanArtifactFact> = {}): PlanArtifactFact {
     recorded: evidence({ destination }),
     current: { ok: true, sha256: HASH_A, bytes: 12 },
     declared: null,
+    declaringOwners: [],
     deselectedOwners: [ALPHA],
     ...overrides,
   };

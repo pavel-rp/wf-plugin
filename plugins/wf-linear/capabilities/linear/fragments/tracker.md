@@ -113,14 +113,39 @@ notes below record each binding's grounding status and the load-bearing choices 
   source inputs. The Linear fragment never reads the registry table, so it has no use for
   `registryPath` — an earlier revision (WF-282) wrongly anchored the section read to the
   resolver-supplied `registryPath`, which reads the wrong file whenever a project relocates
-  the registry, treating a validly configured tracker as unconfigured. The Linear section's
-  own values still remain a direct local read: the resolver's snapshot has a
-  `providerConfig` field reserved for exactly this (consumer inventory §7 field #9), but it
-  is deliberately left unpopulated by core — a provider-specific config-section name is
-  domain knowledge core doesn't carry — and no typed tool exposes it yet, so this fragment
-  reads its own section directly from `_local/config.md`.
-- **Grounding:** Grounded — a direct local read of `_local/config.md`, no resolver query
-  and no Linear tool involved.
+  the registry, treating a validly configured tracker as unconfigured.
+- **WF-476: `linear-team` moved to the profile, because that is where apply persists it.**
+  `linear-team` is a **declared question** (`profile.template.json` `ask[]`) that the
+  install lifecycle asks and then writes to `_local/profiles/linear.profile.json`. Reading
+  it back from the `## Linear` config section meant the answer was written to one surface
+  and read from another — the same class of defect as F-1 itself, where the lifecycle's own
+  question path was blind to the answer apply had just persisted. The fix is the one the
+  project settled on: **the capability profile is the authoritative persisted-answer
+  surface**, reached through the resolver's typed `resolve_profile` tool (the persisted
+  values as they stand — no template or override tier is merged in), and `_local/config.md`
+  stays the human-facing core/registry config
+  rather than an answer store.
+  - **Read-through, not migration.** Existing projects already carry `linear-team` in their
+    `## Linear` section, so the ops file documents a fallback read of that section when the
+    profile yields nothing — **profile first, config second**, with the profile winning when
+    both hold a value. Nothing writes the value back to `_local/config.md`, so the fallback
+    decays naturally as projects re-run init; a one-time migration was considered and
+    deliberately not taken (it would need a write path this capability does not own).
+  - **`linear-project` is not an asked answer**, and that is exactly why it may not be read
+    from the profile *alone*. It is template data with the default `none`, sitting outside
+    `ask[]`, and `resolve_profile` returns the persisted document as it stands — it merges
+    in no template tier — so nothing ever puts the key there. Reading it only from the
+    profile would therefore have silently dropped every existing project's configured
+    **Linear Project** to `none`: issues created unscoped, `list_milestones` empty, and no
+    error anywhere. It takes the same three-step read-through as `linear-team` (profile →
+    `## Linear` section → the literal `none`). The general rule: "where does the lifecycle
+    persist this?" decides which tier is *authoritative*, never which tiers are *read*.
+  - The resolver snapshot's `providerConfig` field (consumer inventory §7 field #9) remains
+    deliberately unpopulated by core — a provider-specific config-section name is domain
+    knowledge core doesn't carry — which is why the fallback read is a direct local read
+    rather than a typed query.
+- **Grounding:** Grounded — a typed `resolve_profile` query, with a documented direct-read
+  fallback to `_local/config.md`; no Linear tool involved.
 
 ## create_umbrella
 
