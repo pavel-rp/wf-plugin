@@ -391,6 +391,23 @@ export function decideUpgradeGate(input: UpgradeGateInput): UpgradeGateDecision 
     repairSeen.add(action.pluginId);
   }
 
+  // The inverse direction, and it is the one that silently half-applies a plan. An
+  // `evidence-repair` action with no matching previewed repair would be filtered
+  // out below, composed as nothing, and reported in `applied[]` as though it had
+  // landed — the WF-454 defect-(A) shape exactly. Refusing loudly is the only
+  // honest option.
+  const previewedRepairs = new Set(input.repairs.map((repair) => repair.pluginId));
+  const unbacked = [...repairSeen].filter((pluginId) => !previewedRepairs.has(pluginId)).sort();
+  if (unbacked.length > 0) {
+    return {
+      ok: false,
+      reason: "apply/evidence-precondition",
+      detail: `pack(s) ${unbacked
+        .map((pluginId) => `\`${pluginId}\``)
+        .join(", ")} carry an \`evidence-repair\` action with no previewed repair to bind it to, so applying this plan would silently omit it; the whole plan is refused and nothing was written.`,
+    };
+  }
+
   // --- rule 2: re-derive the classification from CURRENT facts --------------
   //
   // Re-derived, never trusted. The approved preview's `advance` bucket is an
@@ -491,8 +508,13 @@ export function decideUpgradeGate(input: UpgradeGateInput): UpgradeGateDecision 
   }
 
   // --- rule 7: the repairs, scoped from the RE-OBSERVED comparison ----------
+  //
+  // RULE 6 FOR THE REPAIR ARM. Only a pack the ACTION LIST names is authorized —
+  // `plan.repairs` is the previewed diagnosis, and the confirmation authorizes the
+  // integrated actions, not the preview. Reading the preview directly would let a
+  // repair the screen never admitted reach a ledger write.
   const repairs: AuthorizedRepair[] = [];
-  for (const approved of input.repairs) {
+  for (const approved of input.repairs.filter((repair) => repairSeen.has(repair.pluginId))) {
     const fact = input.repairFacts.find((candidate) => candidate.pluginId === approved.pluginId);
     if (fact === undefined) {
       return {
@@ -543,11 +565,54 @@ export function decideUpgradeGate(input: UpgradeGateInput): UpgradeGateDecision 
   }
 
   // --- rules 3, 5 and 6: what this run will NOT resolve ---------------------
-  const advancing = new Set(advances.map((advance) => advance.destination));
+  const remaining = collectRemainingDivergence({
+    currentFacts: input.currentFacts,
+    inventoryTrustworthy: input.inventoryTrustworthy,
+    advancing: advances.map((advance) => advance.destination),
+    removing: input.removalDestinations,
+    repairFacts: input.repairFacts,
+    repairing: repairs.map((repair) => repair.pluginId),
+  });
+
+  return { ok: true, advances, repairs, remaining };
+}
+
+/**
+ * Enumerate everything a run leaves divergent — rules 3, 5 and 6, as ONE pure
+ * function of the world plus the set of subjects this run resolves.
+ *
+ * SEPARATE FROM THE GATE ON PURPOSE. Divergence is a property of the WORKSPACE,
+ * not of the transaction, so it must be answerable on the paths where no
+ * transaction happens at all: a plan refused as `plan-not-applicable` because its
+ * only artifact content is retained divergence is precisely the run whose report
+ * must not read like a clean workspace's (rule 5). Calling this with empty
+ * `advancing` / `removing` / `repairing` gives the honest read-only answer for
+ * exactly that case.
+ */
+export function collectRemainingDivergence(input: {
+  currentFacts: readonly PlanArtifactFact[];
+  inventoryTrustworthy: boolean;
+  /** Destinations this run ADVANCES — resolved, so not remaining. */
+  advancing: readonly string[];
+  /** Destinations this run DELETES — WF-458's arm, not a source divergence. */
+  removing: readonly string[];
+  /** Every pack whose evidence comparison the caller re-observed. */
+  repairFacts: readonly RepairFact[];
+  /** Packs this run REPAIRS — resolved, so not remaining. */
+  repairing: readonly string[];
+}): RemainingDivergence[] {
+  const currentIndex = indexCurrent(
+    planArtifacts(input.currentFacts, {
+      inventoryTrustworthy: input.inventoryTrustworthy,
+    }).preview,
+  );
+  const advancing = new Set(input.advancing);
+  const removing = new Set(input.removing);
   const remaining: RemainingDivergence[] = [];
+
   for (const decision of currentIndex.values()) {
     if (advancing.has(decision.destination)) continue;
-    if (removalSet.has(decision.destination)) continue;
+    if (removing.has(decision.destination)) continue;
     if (decision.form === "advance") {
       // Rule 6. Advanceable NOW, but the confirmation does not list it — so it is
       // not authorized, and saying nothing about it would be exactly the silent
@@ -574,10 +639,8 @@ export function decideUpgradeGate(input: UpgradeGateInput): UpgradeGateDecision 
   }
 
   // A pack whose evidence is still drifted after this run is a remaining
-  // divergence too — the same honesty rule applied to the repair arm. Every
-  // repair this gate authorized resolves its own pack, so only the drifted packs
-  // this plan does NOT repair survive the filter.
-  const repairing = new Set(repairs.map((repair) => repair.pluginId));
+  // divergence too — the same honesty rule applied to the repair arm.
+  const repairing = new Set(input.repairing);
   for (const fact of input.repairFacts) {
     if (repairing.has(fact.pluginId)) continue;
     if (scopeForComparison(fact.comparison) === null) continue;
@@ -588,8 +651,7 @@ export function decideUpgradeGate(input: UpgradeGateInput): UpgradeGateDecision 
     (left, right) =>
       left.subject.localeCompare(right.subject) || left.class.localeCompare(right.class),
   );
-
-  return { ok: true, advances, repairs, remaining };
+  return remaining;
 }
 
 /**

@@ -266,6 +266,13 @@ function compose(
     removals: [],
     bootstraps: [],
     legacy: [],
+    // The WF-459 authorized sets, empty for exactly the same reason: a payload
+    // compose that started upgrading artifacts or rewriting evidence because a
+    // constructive set defaulted would be the same silent widening from the other
+    // direction. Stated rather than defaulted, so a future axis cannot arrive
+    // here as an implicit empty.
+    advances: [],
+    repairs: [],
   } satisfies Record<string, unknown> as unknown as ComposeInput);
 }
 
@@ -534,6 +541,8 @@ test("SC-1b: a selection carrying only a registry change writes no artifacts sec
     removals: [],
     bootstraps: [],
     legacy: [],
+    advances: [],
+    repairs: [],
   });
 
   assert.ok(result.ok, result.ok ? "" : result.detail);

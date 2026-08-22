@@ -185,6 +185,7 @@ import {
   type PlanAction,
   type PlanAdmissionState,
   type PlanInstallResponse,
+  type PlanRepairScope,
   APPLY_ENVELOPE_VERSION,
   type ApplyAppliedAction,
   type ApplyInstallResponse,
@@ -1792,6 +1793,11 @@ export class ResolverService {
         backupsRetained: false,
         detail: "no transaction was created.",
       },
+      // The default is deliberately the one that CLAIMS NOTHING (WF-459). A run
+      // refused here may never have read a managed artifact at all, and
+      // `noDrift: true` over an unread workspace would be the comfortable lie this
+      // slice exists to prevent. Callers that DID assess override it below.
+      upgrade: notAssessedUpgradeReport(),
       diagnostics,
     });
 
@@ -1848,11 +1854,55 @@ export class ResolverService {
         journalPresent: recoveryPorts.readJournal() !== null,
         constitutionRecordPresent: this.ports.readFile(constitutionAbs) !== null,
       });
+
+      // Step 3a1 — OBSERVE THE ARTIFACT WORLD ONCE, under the lock, and reuse the
+      // answers for every gate below (WF-458's second observation, widened by
+      // WF-459 to carry the re-derived lifecycle comparisons too). One observation
+      // rather than three is not an optimisation: three would let the world move
+      // BETWEEN the gates, and two gates disagreeing about the same destination is
+      // exactly how an arm acquires a laxer second opinion.
+      const world = this.observeArtifactWorld(admission.root, plan, inspected);
+
+      /** The honest divergence report for a run that never opens a transaction.
+       *
+       *  DIVERGENCE IS A PROPERTY OF THE WORKSPACE, NOT OF THE TRANSACTION. A plan
+       *  refused as `plan-not-applicable` because its only artifact content is
+       *  RETAINED DIVERGENCE is precisely the run whose report must not read like a
+       *  clean workspace's: both write zero bytes, and only one of them has nothing
+       *  left to do. Assessing here is what keeps the two distinguishable. When the
+       *  world itself could not be observed the report stays `not-assessed`, which
+       *  claims nothing. */
+      const assessedReport = (): UpgradeReport =>
+        world.ok
+          ? buildUpgradeReport({
+              advances: [],
+              repairs: [],
+              remaining: collectRemainingDivergence({
+                currentFacts: world.currentFacts,
+                inventoryTrustworthy: plan.inventory.mayEstablishAbsence,
+                advancing: [],
+                removing: [],
+                repairFacts: world.repairFacts,
+                repairing: [],
+              }),
+            })
+          : notAssessedUpgradeReport();
+
       if (!gate.ok) {
         const refused = halted("rejected", gate.reason, recovery, plan, [
           { code: gate.reason, message: gate.detail },
         ]);
-        return { ...refused, deferred: gate.screened.deferred };
+        return { ...refused, deferred: gate.screened.deferred, upgrade: assessedReport() };
+      }
+
+      if (!world.ok) {
+        return {
+          ...halted("rejected", world.reason, recovery, plan, [
+            { code: world.reason, message: world.detail },
+          ]),
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport(),
+        };
       }
 
       // The registry destination. A shape or containment failure is a refusal
@@ -1868,6 +1918,7 @@ export class ResolverService {
             },
           ]),
           deferred: gate.screened.deferred,
+          upgrade: assessedReport(),
         };
       }
 
@@ -1887,6 +1938,7 @@ export class ResolverService {
             },
           ]),
           deferred: gate.screened.deferred,
+          upgrade: assessedReport(),
         };
       }
 
@@ -1922,6 +1974,7 @@ export class ResolverService {
             { code: mutation.reason, message: mutation.detail },
           ]),
           deferred: gate.screened.deferred,
+          upgrade: assessedReport(),
         };
       }
 
@@ -1954,10 +2007,10 @@ export class ResolverService {
       // legacy seeds are still authorized by the world as it is right now. A
       // failure here rejects the whole plan and removes nothing.
       const removalGate = this.decideRemovals(
-        admission.root,
         plan,
         inspected,
         gate.screened.supported,
+        world,
       );
       if (!removalGate.ok) {
         return {
@@ -1965,8 +2018,43 @@ export class ResolverService {
             { code: removalGate.reason, message: removalGate.detail },
           ]),
           deferred: gate.screened.deferred,
+          upgrade: assessedReport(),
         };
       }
+
+      // Step 3a3 — the WF-459 constructive gate, a THIRD whole-plan gate in series
+      // and still before a single target is composed. It runs AFTER the removal
+      // gate because it consumes that gate's authorized deletions: an upgrade and a
+      // deletion of one destination in one plan is incoherent, and the check needs
+      // the arm that decided first. A failure here rejects the whole plan and
+      // replaces nothing.
+      //
+      // It also decides what this run will NOT resolve, which is the half with no
+      // analogue on the destructive side: an edited artifact that survives is
+      // REPORTED as a remaining divergence rather than silently absorbed into a
+      // comfortable success.
+      const upgradeGate = decideUpgradeGate({
+        approved: plan.artifacts,
+        supported: gate.screened.supported,
+        currentFacts: world.currentFacts,
+        inventoryTrustworthy: plan.inventory.mayEstablishAbsence,
+        repairs: plan.repairs,
+        repairFacts: world.repairFacts,
+        removalDestinations: removalGate.removals.map((removal) => removal.destination),
+      });
+      if (!upgradeGate.ok) {
+        return {
+          ...halted("rejected", upgradeGate.reason, recovery, plan, [
+            { code: upgradeGate.reason, message: upgradeGate.detail },
+          ]),
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport(),
+        };
+      }
+
+      // Derived ONCE, from what the gate authorized and what it found remaining.
+      // Every later reference reads this value; nothing recomputes or overrides it.
+      const upgradeReport = buildUpgradeReport(upgradeGate);
 
       // Step 3b — the WF-454 targets: lifecycle evidence and profile seeds.
       // Every refusal below still happens before `applyTransaction` is called, so
@@ -1982,6 +2070,8 @@ export class ResolverService {
         removals: removalGate.removals,
         bootstraps: removalGate.bootstraps,
         legacy: removalGate.legacy,
+        advances: upgradeGate.advances,
+        repairs: upgradeGate.repairs,
       });
       if (!composed.ok) {
         return {
@@ -1989,6 +2079,7 @@ export class ResolverService {
             { code: composed.reason, message: composed.detail },
           ]),
           deferred: gate.screened.deferred,
+          upgrade: assessedReport(),
         };
       }
 
@@ -2004,6 +2095,7 @@ export class ResolverService {
             },
           ]),
           deferred: gate.screened.deferred,
+          upgrade: assessedReport(),
         };
       }
 
@@ -2028,6 +2120,8 @@ export class ResolverService {
           // would assert an effect no target produces, and a self-check that can
           // pass without a write is exactly the thing it exists to prevent.
           legacyPortableRecorded: composed.legacyPortableRecorded,
+          artifactsAdvanced: composed.artifactsAdvanced,
+          evidenceRepaired: composed.evidenceRepaired,
         },
       });
 
@@ -2059,6 +2153,14 @@ export class ResolverService {
         },
         applied,
         deferred: gate.screened.deferred,
+        // THE GATE-DERIVED REPORT ONLY WHEN THE TRANSACTION ACTUALLY LANDED.
+        // `upgradeReport` names what was advanced and repaired; a rolled-back or
+        // failed transaction restored the prior state, so claiming those effects
+        // would be the exact "report success for work that did not happen" this
+        // item exists to prevent. On any non-`applied` status the honest answer is
+        // the READ-ONLY assessment of the world as it was observed under the lock —
+        // which is the state a successful rollback restored.
+        upgrade: result.status === "applied" ? upgradeReport : assessedReport(),
         rollback: result.rollback,
         selfCheck: result.selfCheck,
         refreshed: result.refreshed,
@@ -2134,18 +2236,16 @@ export class ResolverService {
    *
    * Nothing here writes, creates, or canonicalizes into existence.
    */
-  private decideRemovals(
+  private observeArtifactWorld(
     admittedRoot: string,
     plan: PlanInstallResponse,
     inspected: Map<string, InspectPackResponse>,
-    supported: readonly PlanAction[],
   ):
     | {
         ok: true;
-        removals: AuthorizedRemoval[];
-        bootstraps: AuthorizedBootstrap[];
-        legacy: AuthorizedLegacySeed[];
-        preserved: PreservedArtifact[];
+        currentFacts: PlanArtifactFactInput[];
+        repairFacts: RepairFact[];
+        ledger: EvidenceLedger;
       }
     | { ok: false; reason: ApplyReason; detail: string } {
     const home = resolveLedgerHome();
@@ -2161,6 +2261,18 @@ export class ResolverService {
     const ledger = parseEvidenceLedger(
       this.ports.readFile(joinSlash(this.ports.workspaceRoot, home.portablePath)),
     );
+    // The binding half may live in a DIFFERENT document from the portable half
+    // (`resolveLedgerHome` returns two paths, equal only when the declared home is
+    // `local`). Reading the portable document's `binding` section for a
+    // `committed` home would compare against a section that is always empty and
+    // report every pack as `binding-seed` — a repair scope decided from the wrong
+    // file. Read the binding document explicitly.
+    const bindingLedger =
+      home.bindingPath === home.portablePath
+        ? ledger
+        : parseEvidenceLedger(
+            this.ports.readFile(joinSlash(this.ports.workspaceRoot, home.bindingPath)),
+          );
 
     const currentFacts = resolveArtifactFacts(
       this.collectArtifactFacts(
@@ -2170,6 +2282,57 @@ export class ResolverService {
       ),
       deselectedOwnerPredicate(plan.registryDelta),
     );
+
+    // The packs the PLAN reasoned about — the same scope the planner's own
+    // evidence loop walks. Deliberately not every inspected pack: a pack this plan
+    // says nothing about has no previewed repair, so reporting its drift here
+    // would invent a divergence the confirmation never saw.
+    const scoped = [
+      ...plan.registryDelta.additions,
+      ...plan.registryDelta.retentions,
+      ...plan.registryDelta.deregistrations,
+    ].map((entry) => entry.pluginId);
+
+    const repairFacts: RepairFact[] = [];
+    for (const pluginId of [...new Set(scoped)].sort((left, right) => left.localeCompare(right))) {
+      const pack = inspected.get(pluginId);
+      const observedPortable = pack?.portableEvidence ?? null;
+      const observedBinding = pack?.machineBinding ?? null;
+      // Re-derived through the SAME pure comparison the planner used, from facts
+      // re-read under the lock. A repair whose drift resolved itself between plan
+      // and apply must reject, and only a fresh comparison can detect that.
+      const comparison = compareLifecycleEvidence(
+        ledger.portable.get(pluginId) ?? null,
+        observedPortable,
+        bindingLedger.binding.get(pluginId) ?? null,
+        observedBinding,
+      );
+      repairFacts.push({
+        pluginId,
+        comparison: comparison.state,
+        observedPortable,
+        observedBinding,
+      });
+    }
+
+    return { ok: true, currentFacts, repairFacts, ledger };
+  }
+
+  private decideRemovals(
+    plan: PlanInstallResponse,
+    inspected: Map<string, InspectPackResponse>,
+    supported: readonly PlanAction[],
+    world: { currentFacts: PlanArtifactFactInput[]; ledger: EvidenceLedger },
+  ):
+    | {
+        ok: true;
+        removals: AuthorizedRemoval[];
+        bootstraps: AuthorizedBootstrap[];
+        legacy: AuthorizedLegacySeed[];
+        preserved: PreservedArtifact[];
+      }
+    | { ok: false; reason: ApplyReason; detail: string } {
+    const { currentFacts, ledger } = world;
 
     // Only the legacy half. An ordinary binding seed is `composeApplyTargets`'
     // business and has been since WF-454; routing it through here too would give
@@ -2191,6 +2354,16 @@ export class ResolverService {
       inventoryTrustworthy: plan.inventory.mayEstablishAbsence,
       legacySeeds,
       legacyFacts,
+      // WF-459. Taken from the ACTION LIST rather than from the upgrade gate's
+      // authorized set, because the two gates run in series and this one runs
+      // first. A destination the plan LISTS for an upgrade is not preserved by
+      // this arm whatever the upgrade gate later decides about it — if that gate
+      // refuses, the whole plan is refused and no preservation report is emitted
+      // at all.
+      advanceDestinations: supported
+        .filter((action) => action.kind === "artifact-advance")
+        .map((action) => action.destination)
+        .filter((destination): destination is string => destination !== null),
     });
   }
 
@@ -2248,6 +2421,14 @@ export class ResolverService {
     bootstraps: readonly AuthorizedBootstrap[];
     /** The legacy portable seeds the same gate authorized, whole-tuple. */
     legacy: readonly AuthorizedLegacySeed[];
+    /** The artifact upgrades the WF-459 constructive gate AUTHORIZED. Composed
+     *  exactly as given, for the same reason the removals are: authority to
+     *  replace a user-visible file is granted in one place. */
+    advances: readonly AuthorizedAdvance[];
+    /** The lifecycle-evidence repairs the same gate authorized, already scoped.
+     *  A `binding` repair carries `portable: null`, so this method cannot write
+     *  the portable half from it even by mistake (rule 7). */
+    repairs: readonly AuthorizedRepair[];
   }):
     | {
         ok: true;
@@ -2268,6 +2449,17 @@ export class ResolverService {
           owners: { pluginId: string; capability: string; source: string }[];
         }[];
         legacyPortableRecorded: string[];
+        /** Every artifact this run UPGRADES, with the digest its destination must
+         *  hold and the complete owner set the ledger must name afterwards. */
+        artifactsAdvanced: {
+          destination: string;
+          sha256: string;
+          declaredSourceFingerprint: string;
+          owners: { pluginId: string; capability: string; source: string }[];
+        }[];
+        /** Every pack whose lifecycle evidence this run re-establishes, with the
+         *  scope that decides WHICH halves the self-check may read back. */
+        evidenceRepaired: { pluginId: string; scope: PlanRepairScope }[];
       }
     | { ok: false; reason: ApplyReason; detail: string } {
     const workspaceRoot = this.ports.workspaceRoot;
@@ -2466,7 +2658,19 @@ export class ResolverService {
       // did not authorize is already a whole-plan refusal rather than a target
       // this loop could quietly emit. Listed explicitly so the default arm below
       // still catches the next widening.
-      if (action.kind === "artifact-delete" || action.kind === "artifact-bootstrap") continue;
+      //
+      // WF-459 adds `artifact-advance` and `evidence-repair` on exactly the same
+      // terms: their targets come from the constructive gate's authorized sets
+      // below, never from this loop, so an action the gate declined can reach no
+      // write path here.
+      if (
+        action.kind === "artifact-delete" ||
+        action.kind === "artifact-bootstrap" ||
+        action.kind === "artifact-advance" ||
+        action.kind === "evidence-repair"
+      ) {
+        continue;
+      }
 
       // THE DEFAULT ARM (WF-456). `decideApplyGate` has already screened the whole
       // plan against `APPLY_SUPPORTED_ACTION_KINDS`, so reaching here means a kind
@@ -2647,6 +2851,88 @@ export class ResolverService {
       });
     }
 
+    // --- authorized artifact upgrades (WF-459) --------------------------------
+    // An advance REPLACES a file the ledger proved is still byte-identical to the
+    // bytes this installer last produced, with the bytes its owners declare now.
+    // It therefore composes BOTH a write target for the destination AND an
+    // artifact record carrying the NEW fingerprint — never one without the other.
+    // Recording the old proof over new bytes would make the very next run read the
+    // file as `edited` and retain it forever; writing the proof without the bytes
+    // would make it read as edited immediately. The two travel together through one
+    // transaction, which is what makes them atomic.
+    const advanceWrites: {
+      destination: string;
+      content: string;
+      sha256: string;
+      declaredSourceFingerprint: string;
+      evidence: ArtifactEvidence;
+    }[] = [];
+    for (const advance of input.advances) {
+      const rendered = this.renderAdvanceWrite(input.admittedRoot, input.inspected, advance);
+      if (!rendered.ok) {
+        return { ok: false, reason: "apply/artifact-precondition", detail: rendered.detail };
+      }
+      advanceWrites.push(rendered);
+      artifactUpdates.push({ destination: rendered.destination, evidence: rendered.evidence });
+    }
+
+    // --- authorized evidence repairs (WF-459) ---------------------------------
+    // RULE 7, EXECUTED. The scope decides which halves are written, and it is read
+    // off the gate's authorization — which derived it from the comparison observed
+    // under the lock, not from the approved action's assertion.
+    //
+    //   `portable` — the committed tuple disagrees with the pack that is installed,
+    //     so the portable evidence is re-established AND the applicable machine
+    //     binding with it: the local fingerprints were taken against the tuple that
+    //     just changed, so leaving them would make the very next comparison report
+    //     a fresh `local-mismatch` over a repair that just succeeded.
+    //   `binding` — a moved root or drifted local fingerprints. MACHINE-LOCAL FACTS
+    //     ONLY. The portable half is a shared, committed project fact, and writing
+    //     one machine's answer into it is how a repair on one developer's checkout
+    //     becomes a diff on everybody else's.
+    //
+    // The `portable === null` invariant the gate established is re-asserted rather
+    // than assumed, because this is the last line before the shared record is
+    // touched.
+    const evidenceRepaired: { pluginId: string; scope: PlanRepairScope }[] = [];
+    for (const repair of input.repairs) {
+      // A pack whose evidence another action in this same plan already records is
+      // not a repair candidate at all — two updates for one pack in one document
+      // means one of them silently loses, and which one depends on render order.
+      // Refusing is the only answer that does not depend on that order.
+      if (
+        portableRecorded.includes(repair.pluginId) ||
+        bindingRecorded.includes(repair.pluginId) ||
+        legacyPortableRecorded.includes(repair.pluginId)
+      ) {
+        return {
+          ok: false,
+          reason: "apply/evidence-precondition",
+          detail: `pack \`${repair.pluginId}\` is both recorded by another action and repaired in the same plan, so one of the two evidence writes would silently lose; nothing was written.`,
+        };
+      }
+      if (repair.scope === "portable") {
+        if (repair.portable === null) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `the portable evidence repair for pack \`${repair.pluginId}\` carries no portable tuple, so the shared record cannot be re-established completely; nothing was written.`,
+          };
+        }
+        portableUpdates.push({ pluginId: repair.pluginId, portable: repair.portable });
+        portableRecorded.push(repair.pluginId);
+      } else if (repair.portable !== null) {
+        return {
+          ok: false,
+          reason: "apply/evidence-precondition",
+          detail: `the machine-local evidence repair for pack \`${repair.pluginId}\` carries a portable tuple, which a \`binding\`-scoped repair may never write; nothing was written.`,
+        };
+      }
+      bindingUpdates.push({ pluginId: repair.pluginId, binding: repair.binding });
+      bindingRecorded.push(repair.pluginId);
+      evidenceRepaired.push({ pluginId: repair.pluginId, scope: repair.scope });
+    }
+
     // --- authorized removals (WF-458) -----------------------------------------
     // The proof is ERASED in the same transaction that removes the file. A
     // surviving ownership record over an absent artifact would re-propose the
@@ -2768,6 +3054,39 @@ export class ResolverService {
       });
     }
 
+    // --- artifact upgrades (WF-459) -------------------------------------------
+    // The SAME `addRendered` gate every other write passes through, so an advance
+    // shares one duplicate-destination check with the removals composed above and
+    // with the payloads composed just before it. The `changed` test cannot be
+    // false here — the gate proved the current bytes still hash to the recorded
+    // digest and that the new declared fingerprint differs from it — but it is
+    // still asked, because "cannot happen" is not a reason to open a second write
+    // path with different rules (WF-454 defect class B).
+    const artifactsAdvanced: {
+      destination: string;
+      sha256: string;
+      declaredSourceFingerprint: string;
+      owners: { pluginId: string; capability: string; source: string }[];
+    }[] = [];
+    for (const advance of advanceWrites) {
+      const failure = addRendered(
+        advance.destination,
+        {
+          ok: true,
+          content: advance.content,
+          changed: advance.content !== (readRel(advance.destination) ?? ""),
+        },
+        "apply/artifact-precondition",
+      );
+      if (failure !== null) return failure;
+      artifactsAdvanced.push({
+        destination: advance.destination,
+        sha256: advance.sha256,
+        declaredSourceFingerprint: advance.declaredSourceFingerprint,
+        owners: advance.evidence.owners.map((owner) => ({ ...owner })),
+      });
+    }
+
     // --- the composed constitution (WF-455) -----------------------------------
     let constitutionRecomposed = false;
     if (recomposeConstitution) {
@@ -2808,6 +3127,145 @@ export class ResolverService {
       constitutionRecomposed,
       artifactsBootstrapped,
       legacyPortableRecorded,
+      artifactsAdvanced,
+      evidenceRepaired,
+    };
+  }
+
+  /**
+   * Bind one AUTHORIZED artifact advance to the exact bytes its owners declare
+   * now, and refuse before mutation if anything it rests on has moved (WF-459).
+   *
+   * THE UPGRADE ARM IS HELD TO THE INSTALL ARM'S STANDARD, DELIBERATELY. This is
+   * `renderPayloadWrite`'s revalidation applied to a destination that already
+   * exists and already has an owner: containment re-resolved through the no-create
+   * boundary and required to canonicalize to the same target the gate proved,
+   * every owner's declared source re-fingerprinted and required to reproduce the
+   * SAME digest as every other owner's, and the bytes read from a source that
+   * passed that test. WF-449's lesson is that the destructive arm drifted laxer
+   * than the arm that reviewed it; the audit that closed it applies in both
+   * directions, and an upgrade replaces a file a user can see.
+   *
+   * WHAT IS NOT RE-DECIDED HERE. Whether this destination may be advanced at all —
+   * listed by the confirmation, byte-identical to the recorded proof, exclusively
+   * owned by an owner set that has not moved, declaring `replace-if-unmodified` —
+   * was settled by `decideUpgradeGate` over the whole plan. A second opinion in the
+   * composer could only ever be a laxer one.
+   */
+  private renderAdvanceWrite(
+    admittedRoot: string,
+    inspected: Map<string, InspectPackResponse>,
+    advance: AuthorizedAdvance,
+  ):
+    | {
+        ok: true;
+        destination: string;
+        content: string;
+        sha256: string;
+        declaredSourceFingerprint: string;
+        evidence: ArtifactEvidence;
+      }
+    | { ok: false; detail: string } {
+    const destination = advance.destination;
+    const fingerprint = this.ports.fingerprintContainedFile;
+    const read = this.ports.readContainedFile;
+    const resolveTarget = this.ports.resolvePayloadTarget;
+    if (fingerprint === undefined || read === undefined || resolveTarget === undefined) {
+      return {
+        ok: false,
+        detail: `the contained-source and containment boundaries are not both configured, so the upgrade of \`${destination}\` cannot be revalidated; nothing was written.`,
+      };
+    }
+
+    // --- containment, re-established rather than inherited ---------------------
+    const target = resolveTarget(admittedRoot, destination);
+    if (!target.ok) {
+      return {
+        ok: false,
+        detail: `the managed artifact \`${destination}\` is no longer a usable workspace target (\`${target.rejection}\`); nothing was written.`,
+      };
+    }
+    if (target.canonicalTarget !== advance.canonicalTarget) {
+      return {
+        ok: false,
+        detail: `the managed artifact \`${destination}\` now canonicalizes to a different target than the upgrade was authorized against; nothing was written.`,
+      };
+    }
+
+    // --- every owner still reproduces the ONE new digest -----------------------
+    // Production is `copy`, so the bytes an owner would produce ARE its source
+    // bytes and every co-owner must agree on them exactly. A co-owned destination
+    // whose owners have diverged is not a usable declaration (WF-448) — and
+    // arbitrating between them here is precisely what both slices refuse to do.
+    let content: string | null = null;
+    for (const owner of advance.owners) {
+      const capability = inspected
+        .get(owner.pluginId)
+        ?.capabilities.find((candidate) => candidate.name === owner.capability);
+      if (capability === undefined) {
+        return {
+          ok: false,
+          detail: `capability \`${owner.capability}\` of pack \`${owner.pluginId}\` owns the managed artifact \`${destination}\` but was not inspectable at apply time; nothing was written.`,
+        };
+      }
+      const capabilityRoot = dirnameSlash(capability.manifestPath);
+      const observed = fingerprint(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (observed.status !== "ok" || observed.sha256 !== advance.declaredSourceFingerprint) {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` no longer reproduces the fingerprint the upgrade of \`${destination}\` was authorized against (authorized sha256 ${advance.declaredSourceFingerprint}; observed ${observed.status === "ok" ? `sha256 ${observed.sha256}` : observed.status}); nothing was written.`,
+        };
+      }
+      if (content !== null) continue;
+      const body = read(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (body.status !== "ok") {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` could not be read (\`${body.status}\`), so the new bytes for \`${destination}\` are not available; nothing was written.`,
+        };
+      }
+      content = body.content;
+    }
+
+    if (content === null) {
+      return {
+        ok: false,
+        detail: `the authorized upgrade of \`${destination}\` names no owner, so the bytes it would receive cannot be resolved; nothing was written.`,
+      };
+    }
+
+    // The NEW proof. Built through `createArtifactEvidence`, so a partial or
+    // duplicated owner set is a refusal rather than a recorded half-truth — a later
+    // removal reads exactly this owner set to establish exclusivity, and an owner
+    // dropped by an upgrade would license destroying a file that owner still
+    // declares.
+    const evidence = createArtifactEvidence({
+      destination,
+      owners: advance.owners.map((owner) => ({
+        pluginId: owner.pluginId,
+        capability: owner.capability,
+        source: owner.source,
+      })),
+      declaredSourceFingerprint: advance.declaredSourceFingerprint,
+      producedContentHash: advance.producedContentHash,
+      production: advance.semantics.production,
+      refresh: advance.semantics.refresh,
+      removal: advance.semantics.removal,
+    });
+    if (evidence === null) {
+      return {
+        ok: false,
+        detail: `the ownership and hash evidence for the upgraded artifact \`${destination}\` could not be constructed completely, so the new bytes are not written without the proof that owns them; nothing was written.`,
+      };
+    }
+
+    return {
+      ok: true,
+      destination,
+      content,
+      sha256: advance.producedContentHash,
+      declaredSourceFingerprint: advance.declaredSourceFingerprint,
+      evidence,
     };
   }
 
@@ -3423,6 +3881,69 @@ export class ResolverService {
     // a failure names the migration path rather than an ordinary registration.
     const legacyMissing = expectation.legacyPortableRecorded.filter((id) => !portableBack.has(id));
 
+    // --- advanced artifacts (WF-459) -----------------------------------------
+    // THE ONE CHECK THAT MAKES AN UPGRADE ATOMIC RATHER THAN MERELY ORDERED.
+    // Three assertions per destination, and every one of them is about a state
+    // that reads as a DIFFERENT kind of drift on the next run:
+    //
+    //   (a) the file now hashes to the NEW produced digest — the bytes landed;
+    //   (b) the ledger's record names the NEW declared source fingerprint — so the
+    //       next run reads the artifact as settled rather than immediately
+    //       re-proposing the same upgrade; and
+    //   (c) the recorded owner set is still COMPLETE and unchanged — an upgrade
+    //       must never quietly narrow the set a later deletion reads to establish
+    //       exclusivity.
+    //
+    // (a) without (b) is new bytes under a stale proof, which every later decision
+    // reads as `edited` and then retains forever. (b) without (a) is the same
+    // failure with the halves swapped. Asserting both from disk is what turns "the
+    // two targets were in one transaction" into evidence.
+    const advanceMissing: string[] = [];
+    for (const advance of expectation.artifactsAdvanced) {
+      const back = readRel(advance.destination);
+      if (back === null || sha256Hex(back) !== advance.sha256) {
+        advanceMissing.push(`${advance.destination} (bytes not upgraded)`);
+        continue;
+      }
+      const recorded = artifactsBack.get(advance.destination) ?? null;
+      if (recorded === null) {
+        advanceMissing.push(`${advance.destination} (no ownership record)`);
+        continue;
+      }
+      if (
+        recorded.producedContentHash !== advance.sha256 ||
+        recorded.declaredSourceFingerprint !== advance.declaredSourceFingerprint
+      ) {
+        advanceMissing.push(`${advance.destination} (record still names the pre-upgrade digest)`);
+        continue;
+      }
+      const expectedOwners = JSON.stringify(
+        advance.owners.map((owner) => [owner.pluginId, owner.capability, owner.source]),
+      );
+      const recordedOwners = JSON.stringify(
+        recorded.owners.map((owner) => [owner.pluginId, owner.capability, owner.source]),
+      );
+      if (expectedOwners !== recordedOwners) {
+        advanceMissing.push(`${advance.destination} (incomplete owner set)`);
+      }
+    }
+
+    // --- repaired evidence (WF-459) ------------------------------------------
+    // SCOPE-DIRECTED, DELIBERATELY. Both scopes assert the machine-local half read
+    // back; only a `portable` repair asserts the shared half. Asserting the
+    // portable half for a `binding` repair would demand that a moved-root fix wrote
+    // a committed project fact — the exact scope confusion rule 7 exists to
+    // prevent — and would make the self-check enforce the bug.
+    const repairMissing: string[] = [];
+    for (const repair of expectation.evidenceRepaired) {
+      if (!bindingBack.has(repair.pluginId)) {
+        repairMissing.push(`${repair.pluginId} (machine binding)`);
+      }
+      if (repair.scope === "portable" && !portableBack.has(repair.pluginId)) {
+        repairMissing.push(`${repair.pluginId} (portable evidence)`);
+      }
+    }
+
     if (
       missing.length === 0 &&
       lingering.length === 0 &&
@@ -3434,7 +3955,9 @@ export class ResolverService {
       constitutionMissing.length === 0 &&
       removedLingering.length === 0 &&
       bootstrapMissing.length === 0 &&
-      legacyMissing.length === 0
+      legacyMissing.length === 0 &&
+      advanceMissing.length === 0 &&
+      repairMissing.length === 0
     ) {
       return { ok: true };
     }
@@ -3467,6 +3990,12 @@ export class ResolverService {
     }
     if (legacyMissing.length > 0) {
       parts.push(`legacy portable evidence did not read back: ${legacyMissing.join(", ")}`);
+    }
+    if (advanceMissing.length > 0) {
+      parts.push(`managed artifact upgrade did not converge: ${advanceMissing.join(", ")}`);
+    }
+    if (repairMissing.length > 0) {
+      parts.push(`lifecycle evidence repair did not read back: ${repairMissing.join(", ")}`);
     }
     return { ok: false, diagnostic: parts.join("; ") };
   }
