@@ -33,16 +33,20 @@ runtime**.
 ## Command Syntax
 
 ```
-/wf:init [--force]
+/wf:init [--force] [--seed <plugin-id>]
 ```
 
 | Argument  | Required | Description                                                        |
 | --------- | -------- | ------------------------------------------------------------------ |
 | `--force` | NO       | Overwrite `_local/config.md` and `_local/README.md` if they exist. |
+| `--seed <plugin-id>` | NO | One pack id to **preselect**, passed by a pack's own compatibility alias. Exactly one per invocation. |
 
-Selection, answers, and confirmation are taken interactively — no flag
-pre-selects a pack, pre-answers a question, or skips the confirmation. The
-declared externally-bindable surface (invocation shape, terminal-block status
+Answers and confirmation are taken interactively — no flag pre-answers a
+question or skips the confirmation, and `--seed` pre-ticks one box in the
+selection round rather than skipping it. Adding no phase and no status, its
+route lives at `alias-route.md`, obtained via `resolve_content({ workspaceRoot,
+class: "references-template", skill: "init", ref: "alias-route.md" })` on that
+path only. The declared externally-bindable surface (invocation shape, terminal-block status
 set, slots, settings) is `interface.md` beside this file: it is the contract,
 this body is its implementation.
 
@@ -74,6 +78,8 @@ this body is its implementation.
   enablement flipped, no answer persisted directly.
 - Call `apply_install` without a confirmation, more than once per run, or with a
   plan id other than the one confirmed.
+- Let a `--seed` id **replace** the selection rather than extend it, or read one
+  as an answer, a confirmation, an enablement, or evidence of a pack's state.
 - Derive a deregistration from anything but an **explicit deselection**: an
   omission, an orphaned registration, a disabled registration, and a missing
   durable record each **retain**, and none may place a pack in `deregister`.
@@ -270,6 +276,10 @@ by default and nothing is selected automatically.
 4. **Zero selection is a first-class outcome**, not a degenerate one: the run
    continues, the plan comes back with nothing to do, and the workspace keeps
    the bare-core scaffold and nothing else. Hold the chosen set as `desired`.
+5. **A `--seed` id joins that set additively** — union, never replacement; steps
+   2 and 3 still rule, so a disabled or unavailable seeded id is recorded *not
+   applied*, never enabled, and a seed marks nothing for removal. On the
+   reconcile fork it unions onto Step R3's preselection. See `alias-route.md`.
 
 ---
 
@@ -384,25 +394,11 @@ in Phase 3, which is bare-core only. This phase always runs, including after a
 
 ## Phase 10: Establish the constitution
 
-Route this fixed sibling-Skill edge immediately before work: call `resolve_routing`
-with `workspaceRoot: <the admitted root>`, `role: "constitution"`, `unitIds: ["init:constitution"]`,
-`shapeEvidence: { workSurface: "caller-context", atomicity: "atomic",
-unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low",
-toolWork: "none", validation: "mechanical", contextIsolation: "none",
-independentReview: false, returnContract: "mechanically-judgeable",
-requestedParallelism: 1 }`, `supportsModelSelector: false`, and
-`supportsEffortSelector: false`. Include `actualModel` only when the host
-exposes it; emit the compact operational record; pass no selector.
-
-On `status: stop` or a non-null `diagnostic`, keep this phase non-fatal: skip the
-constitution refresh, record the resolver's reason, and finish the run.
-Otherwise obey the selected `inline` shape and **unconditionally** invoke
-`/wf:constitution` through the Skill tool with no arguments. This skill carries
-**no existence check of its own** — `constitution`'s establish-or-update default
-handles both cases, writing a core-only record when the registry is empty and
-updating idempotently when the file exists. If invocation is unavailable, skip
-with a one-line note telling the user to run `/wf:constitution` manually — never
-stop the run on it.
+Hand off to `/wf:constitution`, routed as a fixed sibling-Skill edge and
+**non-fatal** on any routing stop. The routing evidence, the unconditional
+invocation, and the two degradations that finish the run rather than stop it
+live at `constitution-handoff.md`, obtained via `resolve_content({ workspaceRoot,
+class: "references-template", skill: "init", ref: "constitution-handoff.md" })`.
 
 ---
 
@@ -441,6 +437,11 @@ stop the run on it.
   diverged; never the words "no drift".
 - **An orphaned, disabled, or evidence-missing registration on a reconcile:**
   each is retained. Only an explicit deselection removes anything.
+- **`--seed` names a disabled, absent, or already-selected pack:** never an
+  error. Disabled or absent ⇒ *not applied* with the relayed reason, run
+  continues; already selected ⇒ a no-op union, which is what makes a repeat
+  alias run settled rather than a delta. Malformed or repeated ⇒ `INIT —
+  stopped` before any write.
 
 ---
 
@@ -459,6 +460,8 @@ Actions:
 - .git/info/exclude entry for _page-tests/ — <appended | already present | skipped>
 
 Registry: <resolved registry location> (<default | configured | rejected → fell back to default>)
+
+Seed: <none | <plugin-id> — applied | <plugin-id> — already selected | <plugin-id> — not applied (<relayed reason>)>
 
 Discovery: <inventory confidence>, <n> pack(s) observed; recovery <recovery state>
 Packs:
@@ -487,11 +490,7 @@ Verify Command: <detected command>
 Next: review `_local/config.md` — confirm the Verify Command matches what you actually run to typecheck the project. Then `/wf:spec <task-id>`.
 ```
 
-If detection fell back to the TODO placeholder, replace the `Verify Command` line with:
-
-```
-Verify Command: ⚠ NOT DETECTED — edit _local/config.md before running any other wf:* skill
-  Scanned: <list of package.json / framework-manifest paths found, or "none">
-```
+When detection fell back to its TODO placeholder, the `Verify Command` line is
+replaced by the not-detected form declared in `verify-command-detection.md`.
 
 **The final output block must always be the very last thing output to chat.**

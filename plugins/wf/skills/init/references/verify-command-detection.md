@@ -68,6 +68,12 @@ Detect in this order. Stop at the first rule that produces a concrete command.
    clear error.
 
 Record the chosen rule, and the rejected candidates if any, in the chat summary
-so the user can see the reasoning without opening the config file. When rule 7
-fired, the Final Output block replaces its `Verify Command` line with the
-not-detected form declared in the skill body.
+so the user can see the reasoning without opening the config file.
+
+When rule 7 fired, the Final Output block replaces its `Verify Command` line
+with this not-detected form, which this file declares:
+
+```
+Verify Command: ⚠ NOT DETECTED — edit _local/config.md before running any other wf:* skill
+  Scanned: <list of package.json / framework-manifest paths found, or "none">
+```
