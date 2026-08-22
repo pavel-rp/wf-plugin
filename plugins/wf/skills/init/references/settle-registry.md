@@ -50,7 +50,8 @@ Output row.
 ## Loop 2 — Append the page-test exclude (conditional)
 
 Per capability, call `resolve_profile({ workspaceRoot, capability: <name> })` —
-it returns the override-merged values, so there is no hand-merge here.
+it returns the capability's persisted profile as written (no template or
+override tier is merged in), so there is no hand-merge here.
 
 For any resolved profile declaring a `test-host-root`, check whether the
 conventional sandbox module-test folder under it exists in this checkout; if it

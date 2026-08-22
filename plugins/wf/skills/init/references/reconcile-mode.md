@@ -72,35 +72,37 @@ a zero-write run over a divergent state is `retained-divergence`, never
 `no-drift`. Report **retained divergence** — still with no mutation stage,
 because nothing is authorized, but never under the words "no drift".
 
-**Where `applicability` is decided (WF-476).** Conjunct 1 is stated over
-`plan.applicability`, so whatever answers "would this run change anything?" has
-to be the **planner**, and it has to answer from the destination's *bytes*. The
-payload arm therefore decides eligibility itself, per destination, three ways:
-the destination already holds the declared content → **no action** (this is what
-makes the settled exit reachable on a payload-bearing workspace, not only on a
-payload-free one); the destination is recorded in the ledger but holds neither
-the declared content nor the recorded hash → it was **edited outside the
-lifecycle**, so the write is withheld and the destination is reported as
-`edited`/`divergent`; otherwise the ordinary create/overwrite. The preservation
-decision and the emitted action fall out of that one comparison, which is why no
-response can report a destination preserved while having written it.
+**Where `applicability` is decided (WF-476).** The **planner** decides, per
+destination, from the destination's own bytes. The payload arm applies four rules
+in order, and the first that matches wins:
 
-The mutator keeps its own zero-target refusal, but it is now a **defensive
-invariant** rather than a decision point: a well-formed plan can no longer reach
-it, because the planner emits no action for a settled destination in the first
-place. Convergence is by construction — never a special case in the mutator, and
-never a second opinion that could disagree with the plan a reviewer approved.
+1. The destination already holds exactly the declared bytes → **no action**.
+2. The destination is recorded in the ledger → **no payload action**; every
+   transition belongs to the artifact arm, which decides advance, `divergent`
+   retention and `refresh-semantics-retain` from the ledger's own evidence. The
+   one exception is a destination that is genuinely **absent**, which is still
+   restored. Bytes that could not be read at all (`too-large`, `unsafe`,
+   `unsupported`, `unreadable`) withhold the write.
+3. `refresh: retain` and the destination exists → **no action**.
+4. Otherwise → the ordinary create/overwrite.
 
-**The authoritative persisted-answer surface (WF-476).** A question the install
-lifecycle *asks* is persisted to `_local/profiles/<capability>.profile.json`, and
-that profile is the **only** authoritative place to read it back from — reached
-through the resolver's typed `resolve_profile` query. `_local/config.md` stays
-human-facing core and registry config; it is not an answer store. A capability
-that reads an asked answer from its own config section re-asks a question the
-project already answered, which is exactly the defect this rule closes.
-Precedence for existing projects is **read-through, not migration**: profile
-first, the capability's config section second, with the profile winning when both
-carry a value and nothing writing the value back to the config section.
+The mutator's zero-target refusal is a **defensive invariant**, not a decision
+point: a well-formed plan cannot reach it. Why → `reconcile-rationale.md` §"Why
+the planner, not the mutator, decides payload eligibility".
+
+## The authoritative persisted-answer surface (WF-476)
+
+A question the lifecycle *asks* is persisted to
+`_local/profiles/<capability>.profile.json` and read back only through
+`resolve_profile`, which returns that document as written and merges in no
+template or override tier. `_local/config.md` is not an answer store.
+
+For existing projects the precedence is **read-through, not migration**: profile
+first, the capability's config section second, profile winning, nothing written
+back. A value the lifecycle does **not** ask is never in the profile at all, so it
+reads from its config section down to its own default — and a value with a working
+default never decides a configured/unconfigured gate. Why →
+`reconcile-rationale.md` §"Why one authoritative persisted-answer surface".
 
 ## Step R3 — Offer the desired set, once
 

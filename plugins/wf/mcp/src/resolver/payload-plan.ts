@@ -27,6 +27,7 @@
 //      reports both.
 
 import type {
+  ContainedFileFingerprintResult,
   PayloadSemantics,
   PlanFinding,
   PlanPayloadAction,
@@ -45,10 +46,16 @@ export type PayloadTargetResolution =
   | { ok: false; rejection: PlanPayloadRejection };
 
 /** The caller's fingerprint of one declared source. `status` carries the
- *  contained-read outcome verbatim when the bytes could not be observed. */
+ *  contained-read outcome verbatim when the bytes could not be observed.
+ *
+ *  The non-ok arm is the CLOSED fingerprint union minus `"ok"`, not a widened
+ *  `string`: the eligibility gate compares this status against `"missing"`,
+ *  its under-lock mirror in `service.ts` compares the fingerprint union itself,
+ *  and the build type-erases — a widened arm would leave exactly one of the two
+ *  mirrored fail-closed guards uncheckable, where a typo inverts it silently. */
 export type PayloadSourceIdentity =
   | { ok: true; sha256: string; bytes: number }
-  | { ok: false; status: string };
+  | { ok: false; status: Exclude<ContainedFileFingerprintResult["status"], "ok"> };
 
 /** One declared payload row, with every filesystem question already answered. */
 export interface PlanPayloadFact {
@@ -204,7 +211,21 @@ export function planPayloads(facts: readonly PlanPayloadFact[]): PayloadPlanResu
       // comparison below is therefore the ONE source of truth for both the
       // action list and the preservation decision — which is precisely why they
       // can no longer contradict each other.
-      const current = first.current;
+      // KEYED ON THE SAME SPELLING THE ACTION REPORTS (WF-476). `first` is
+      // OWNER-sorted while `destination` is the lexicographically smallest
+      // spelling, and two owners may reach one canonical target through
+      // different spellings — so reading the destination's state off `first`
+      // could consult a different ledger row than the one the emitted action,
+      // the under-lock re-proof and the ledger recording all key on. Read the
+      // observed bytes from the member the reported `destination` comes from,
+      // and treat the group as MANAGED if ANY member records a hash: a partial
+      // disagreement about managedness resolves toward deferral, never toward
+      // an overwrite.
+      const primary =
+        members.find((member) => member.destination === destination) ?? first;
+      const current = primary.current;
+      const recordedContentHash =
+        members.find((member) => member.recordedContentHash !== null)?.recordedContentHash ?? null;
 
       // 1. The destination already holds exactly the declared bytes. There is
       //    nothing to write, so nothing is previewed and the plan settles.
@@ -232,7 +253,7 @@ export function planPayloads(facts: readonly PlanPayloadFact[]): PayloadPlanResu
       //    file rather than a hand-edit, and keeps its existing overwrite
       //    behaviour — narrowing that is a separate question this fix
       //    deliberately does not answer.
-      if (first.recordedContentHash !== null) {
+      if (recordedContentHash !== null) {
         // Observable bytes: the artifact arm has everything it needs.
         if (current.ok) continue;
         // Unobservable bytes prove NOTHING — `too-large`, `unsafe` and

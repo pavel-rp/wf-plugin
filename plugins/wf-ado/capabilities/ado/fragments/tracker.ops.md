@@ -12,7 +12,7 @@
 
 **Tool-name grounding marker:** a `Tool:` line carrying the literal `<VERIFY: tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>` marker names an operation whose ADO MCP tool this codebase has never called — the marker must be replaced with the confirmed tool name (verified against a live ADO MCP catalog) before that binding is treated as final, never guessed. Grounded tool names are given verbatim.
 
-**Reducible probe list (spec pin):** none. Each write is a single MCP call, `get` is a single `expand: "all"` fetch, and `resolve_config` is one `wf-resolver` `resolve_config` (R1) call plus a local section read — there is no probe pair to consolidate. Every operation's call count is unchanged by this split.
+**Reducible probe list (spec pin):** none. Each write is a single MCP call, `get` is a single `expand: "all"` fetch, and `resolve_config` is one typed `resolve_profile` (R4) query plus, only when a value is missing from it, one `wf-resolver` `resolve_config` (R1) call and the local section read that fallback needs — there is no probe pair to consolidate. Every operation's call count is unchanged by this split.
 
 **Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles · list_blockers.
 

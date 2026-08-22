@@ -504,7 +504,7 @@ export function buildSnapshot(
     ? { source: `tracker:${trackerOwner.owner}`, scheme: null }
     : { source: "bare-core", scheme: "T<NNN>" };
 
-  // --- profiles (override-merged values; never a template) -----------------
+  // --- profiles (persisted values, as written; never a template) -----------
   const profiles: Record<string, unknown> = {};
   for (const cap of capabilities) {
     const profilePath = joinSlash(workspaceRoot, capabilityProfileRelPath(cap.name));

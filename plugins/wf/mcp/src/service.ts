@@ -1506,6 +1506,17 @@ export class ResolverService {
    * the questions UNTOUCHED — still unresolved, so still asked. Suppressing a
    * question on the strength of a container that could not be read is the one
    * outcome that would turn this fix into a worse defect than the one it closes.
+   *
+   * THE SILENCE IS A DECIDED DIVERGENCE, NOT AN OVERSIGHT (WF-476). The read
+   * path (`resolve.ts`) emits `question/persisted-container-invalid` and
+   * `question/persisted-unparseable` for these same four failure modes; this
+   * path emits nothing, so a corrupt profile re-asks its questions every run
+   * with no stated cause, and the fallback is all-or-nothing per capability
+   * rather than per question. Threading `DiscoverPacksResponse.diagnostics`
+   * through would fix that without changing the fail-safe behaviour above. It
+   * is deferred rather than forgotten — it widens a response contract, which is
+   * a call for the owner of that contract to make. Recorded here so the next
+   * reader does not re-derive it as a new finding.
    */
   private withPersistedAnswers(
     capability: string,
@@ -3611,12 +3622,15 @@ export class ResolverService {
     }
 
     // --- 1b. the destination has not been edited since the plan (WF-476) -------
-    // The planner withholds the write for a managed destination whose bytes match
-    // neither the declared content nor the recorded ledger hash. Re-derived here
-    // under the lock exactly as `renderAdvanceWrite` re-derives its own gate: the
-    // planner's decision is the source of truth, and the mutator RE-PROVES it
-    // rather than trusting it, so a destination hand-edited in the window between
-    // plan and apply is refused instead of overwritten.
+    // A DEFENSIVE UNDER-LOCK BACKSTOP, deliberately narrower than the planner.
+    // The planner defers EVERY ledger-recorded destination to the artifact arm
+    // (`payload-plan.ts` rule 2), so a well-formed plan never reaches this gate
+    // with `recordedHash !== null` at all. It exists for the window the plan
+    // cannot see: the destination is re-read here, under the lock, so a
+    // destination hand-edited between plan and apply is refused rather than
+    // overwritten — the same discipline `renderAdvanceWrite` applies to its own
+    // gate. Matching the planner's exact predicate is NOT the goal; failing
+    // closed on anything it cannot prove unmodified is.
     const recordedHash = recordedArtifacts.get(destination)?.producedContentHash ?? null;
     if (recordedHash !== null) {
       const live = fingerprint(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
@@ -3668,12 +3682,17 @@ export class ResolverService {
     // also refused to consider, so plan and mutator now scope identically.
     //
     // "ACTED ON" IS THE PLANNER'S OWN PREDICATE, NOT A LOOSER PROXY. The planner
-    // admits a pack when `(wanted || removing)` (`plan-install.ts` — the `acting`
-    // test). Additions and deregistrations satisfy that by construction; the
-    // retentions bucket does NOT, because it mixes packs the user selected with
-    // packs merely left alone. Reading it whole puts a registered-but-unselected
-    // co-declarer back in scope and refuses the very install this precondition
-    // was narrowed to allow — the same defect one step further in.
+    // admits a pack when `(wanted || removing)` AND it survives the plan
+    // (`plan-install.ts` — `acting`, intersected with `postPlanPacks`). Additions
+    // satisfy both by construction. DEREGISTRATIONS SATISFY ONLY THE FIRST: a
+    // pack named in `deregister` is acted on but does not survive, so the planner
+    // deliberately drops its declaration ("a pack named only in `deregister`
+    // would otherwise contribute a previewed WRITE — a placement the plan is not
+    // making"). Including it here would put a declaration in `declared` that can
+    // never be in `approved.owners`, refusing an ordinary install — the same
+    // defect this narrowing exists to fix, one case further along. The retentions
+    // bucket satisfies neither wholesale, because it mixes packs the user
+    // selected with packs merely left alone.
     //
     // Stated as an EXCLUSION of the three not-selected reasons rather than an
     // allow-list of the selected ones, so the failure direction of a reason added
@@ -3686,10 +3705,11 @@ export class ResolverService {
     ]);
     const actedOn = new Set([
       ...plan.registryDelta.additions.map((entry) => entry.pluginId),
-      ...plan.registryDelta.deregistrations.map((entry) => entry.pluginId),
       ...plan.registryDelta.retentions
         .filter((entry) => !NOT_ACTED_ON.has(entry.reason))
         .map((entry) => entry.pluginId),
+      // An approved owner that is ALSO being deregistered stays in scope through
+      // this term, so dropping the deregistrations bucket above loses no coverage.
       ...approved.owners.map((owner) => owner.pluginId),
     ]);
     const declared: { pluginId: string; capability: string; source: string; semantics: PayloadSemantics }[] = [];

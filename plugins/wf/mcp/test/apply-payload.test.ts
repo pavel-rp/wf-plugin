@@ -158,6 +158,7 @@ function plan(
   actions: PlanPayloadAction[],
   actedOn: readonly string[] = [],
   alsoRetained: readonly PlanRegistryEntry[] = [],
+  deregistered: readonly string[] = [],
 ): PlanInstallResponse {
   return {
     planVersion: 1,
@@ -168,7 +169,7 @@ function plan(
     registryDelta: {
       additions: [],
       retentions: [...actedOn.map((id) => retained(id)), ...alsoRetained],
-      deregistrations: [],
+      deregistrations: deregistered.map((id) => retained(id, "explicit-deregistration")),
     },
     answers: { writes: [], unresolved: [] },
     evidenceSeeds: [],
@@ -664,6 +665,28 @@ test("RE-BINDING 4/4d: a REGISTERED-but-unselected co-declarer does not refuse e
       [ALPHA.pluginId],
       [retained(BETA.pluginId, "retained-by-omission")],
     ),
+    inspected: inspect([{ owner: ALPHA }, { owner: BETA }]),
+    supported: [action()],
+  });
+
+  assert.equal(result.ok, true, !result.ok ? result.detail : "");
+});
+
+test("RE-BINDING 4/4e: a co-declarer being DEREGISTERED in this run does not refuse", () => {
+  // The third shape of the same defect, introduced by the first WF-476 fix and
+  // caught by the round-2 audit. The planner scopes its payload facts to the
+  // acted-on packs that also SURVIVE (`actedOn ∩ postPlanPacks`), and a pack
+  // named in `deregister` does not survive — it deliberately contributes no
+  // previewed write. A mutator that put `registryDelta.deregistrations` in its
+  // comparison scope therefore admits a declaration into `declared` that can
+  // never be in `approved.owners`, and the set-compare refuses an otherwise
+  // ordinary install. Beta co-declares the destination and is on its way out.
+  const sources = new Map([
+    [`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY],
+    [`${capabilityRoot(BETA)}/${BETA.source}`, BODY],
+  ]);
+  const result = compose(service({ sources }), {
+    plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId], [], [BETA.pluginId]),
     inspected: inspect([{ owner: ALPHA }, { owner: BETA }]),
     supported: [action()],
   });

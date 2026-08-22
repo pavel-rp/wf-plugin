@@ -19903,6 +19903,10 @@ function classify(fact, inventoryTrustworthy) {
     if (recorded.removal !== "delete-if-unmodified") {
       return retain("removal-semantics-retain", recordedOwners, recordedSemantics);
     }
+    const unrecordedDeclarer = fact.declared !== null && !fact.declared.owners.every((owner) => includesOwner(recordedOwners, owner));
+    if (unrecordedDeclarer) {
+      return retain("shared-ownership", recordedOwners, recordedSemantics);
+    }
     return {
       destination: fact.destination,
       canonicalTarget,
@@ -20089,11 +20093,13 @@ function planPayloads(facts) {
     const tupleEqual = members.every((member) => semanticsEqual(member.semantics, first.semantics));
     if (bytesEqual && tupleEqual) {
       if (!first.identity.ok || !first.target.ok) continue;
-      const current = first.current;
+      const primary = members.find((member) => member.destination === destination) ?? first;
+      const current = primary.current;
+      const recordedContentHash = members.find((member) => member.recordedContentHash !== null)?.recordedContentHash ?? null;
       if (current.ok && current.sha256 === first.identity.sha256 && current.bytes === first.identity.bytes) {
         continue;
       }
-      if (first.recordedContentHash !== null) {
+      if (recordedContentHash !== null) {
         if (current.ok) continue;
         if (current.status !== "missing") continue;
       }
@@ -23290,7 +23296,7 @@ function registerResolverTools(server, selectService) {
     "resolve_profile",
     {
       title: "resolve profile",
-      description: "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
+      description: "Persisted profile VALUES for a capability (R4) \u2014 the document as written, with no template tier and no override tier merged in (that is `resolve_settings`, a different surface). Values only; never a template or body.",
       inputSchema: capabilityInput
     },
     async (args) => selected(args, (service) => service.resolveProfile(args.capability))
@@ -30486,6 +30492,17 @@ var ResolverService = class {
    * the questions UNTOUCHED — still unresolved, so still asked. Suppressing a
    * question on the strength of a container that could not be read is the one
    * outcome that would turn this fix into a worse defect than the one it closes.
+   *
+   * THE SILENCE IS A DECIDED DIVERGENCE, NOT AN OVERSIGHT (WF-476). The read
+   * path (`resolve.ts`) emits `question/persisted-container-invalid` and
+   * `question/persisted-unparseable` for these same four failure modes; this
+   * path emits nothing, so a corrupt profile re-asks its questions every run
+   * with no stated cause, and the fallback is all-or-nothing per capability
+   * rather than per question. Threading `DiscoverPacksResponse.diagnostics`
+   * through would fix that without changing the fail-safe behaviour above. It
+   * is deferred rather than forgotten — it widens a response contract, which is
+   * a call for the owner of that contract to make. Recorded here so the next
+   * reader does not re-derive it as a new finding.
    */
   withPersistedAnswers(capability, questions) {
     if (questions.length === 0) return questions;
@@ -31928,8 +31945,9 @@ var ResolverService = class {
     ]);
     const actedOn = /* @__PURE__ */ new Set([
       ...plan.registryDelta.additions.map((entry) => entry.pluginId),
-      ...plan.registryDelta.deregistrations.map((entry) => entry.pluginId),
       ...plan.registryDelta.retentions.filter((entry) => !NOT_ACTED_ON.has(entry.reason)).map((entry) => entry.pluginId),
+      // An approved owner that is ALSO being deregistered stays in scope through
+      // this term, so dropping the deregistrations bucket above loses no coverage.
       ...approved.owners.map((owner) => owner.pluginId)
     ]);
     const declared = [];

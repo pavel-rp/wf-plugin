@@ -2060,8 +2060,10 @@ export interface ResolverSnapshot {
   packs: PackRecord[];
   providerOwnership: ProviderOwnershipRecord[];
   idShape: IdShape;
-  /** Override-merged profile VALUES per capability (consumer inventory §7 field
-   *  #8) — never a template. Keyed by capability name. */
+  /** Persisted profile VALUES per capability (consumer inventory §7 field #8) —
+   *  the document as written; never a template, and no override tier merged in
+   *  (that is `resolve_settings`, which is a different surface). Keyed by
+   *  capability name. */
   profiles: Record<string, unknown>;
   /** Provider-scoped tracker config values (consumer inventory §7 field #9).
    *  Populated by the provider surface's own resolution (R3, WF-270) so core

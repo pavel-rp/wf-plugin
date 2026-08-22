@@ -131,3 +131,57 @@ second one. What is lost is only the *preview* narrowing, which is why the
 withheld advances are relayed on both routes: the mutator's upgrade gate refuses
 those advances either way, so a preview that omitted them would be the one part
 of the confirmation that told the user something untrue.
+
+## Why the planner, not the mutator, decides payload eligibility
+
+`applicability` is stated over `plan.applicability`, so whatever answers "would
+this run change anything?" has to be the planner — and the release's byte-inert
+guarantee requires a no-drift run to compose *zero mutating actions* rather than
+compose them and no-op. Both the action list and the preservation decision
+therefore fall out of one comparison, in one place, which is precisely why they
+can no longer contradict each other.
+
+The rule that a ledger-recorded destination is deferred *wholesale* to the
+artifact arm looks broader than it needs to be, and is deliberate. The artifact
+arm already owns that destination's ledger evidence and already decides all three
+of its outcomes from it: the hash-gated advance, the `divergent` retention that
+`replace-if-unmodified` promises a hand-edit, and `refresh-semantics-retain`.
+Splitting the decision so the payload arm keeps "the easy case" is what produced
+the original defect: two arms composing two actions for one destination, which
+apply refuses outright, and a response that could report a destination preserved
+while having overwritten it. One rule closes the overwrite, the fail-open on
+unreadable bytes, and the duplicate-destination collision together.
+
+Unobservable bytes withhold rather than proceed because `too-large`, `unsafe` and
+`unsupported` mean the current content was never read — an overwrite would
+destroy content no one has seen, and "the comparison could not be made" is not
+evidence that there was nothing to compare. `missing` is the one safe exception:
+there is nothing to destroy, so a deleted managed artifact is still restored.
+
+The mutator keeps its own copy of the unmodified-destination proof anyway, and
+that copy is deliberately *narrower* than the planner's. It is not a second
+opinion that could disagree with the approved plan; it is a backstop over the
+window the plan cannot see — the interval between approval and the lock.
+
+## Why one authoritative persisted-answer surface
+
+A question the lifecycle asks is answered once. If the answer can be read back
+from two places, one of them is stale the moment the other is written, and the
+observable symptom is the lifecycle re-asking a question the project already
+answered. Naming the profile authoritative removes the ambiguity rather than
+arbitrating it.
+
+Read-through rather than migration, because migration is a write, and a write
+would have to happen on a *read* path — every consumer of the value would need to
+be a writer, and a project that never re-runs init would be left half-migrated.
+Reading the config section as a fallback costs one read and leaves existing
+projects working untouched.
+
+The rule is about *writes*, not about reads: a value the lifecycle never asks is
+never persisted to the profile, so reading it from the profile alone silently
+resolves it to its default and drops whatever the project configured. That is the
+failure this distinction exists to prevent — "where does the lifecycle persist
+this?" decides which tier is authoritative, never which tiers are read. A value
+with a working default must not decide a configured/unconfigured gate either: it
+always resolves, so gating on it reports an otherwise fully-configured project as
+unconfigured and degrades it silently.

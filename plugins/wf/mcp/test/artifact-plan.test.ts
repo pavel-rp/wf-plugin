@@ -153,6 +153,52 @@ test("dropping ANY ONE of the three conjuncts retains instead of deleting", () =
   );
 });
 
+test("a CURRENT declarer the ledger never recorded blocks deletion (WF-476)", () => {
+  // Exclusivity is proven against the LEDGER's owner set, and apply records that
+  // set from the acted-on packs only — so a still-registered pack that was never
+  // selected can declare this destination without ever being recorded against
+  // it. Read naively, its absence from `recordedOwners` says "not an owner"
+  // rather than "owner we failed to record", and deselecting the one recorded
+  // owner would delete a file the surviving co-declarer never agreed to remove.
+  // Exclusivity is therefore re-derived against the CURRENT declaration too.
+  const decision = only(
+    planArtifacts(
+      [
+        fact({
+          recorded: recorded({ owners: [OWNER_A] }),
+          declared: declared({ owners: [OWNER_A, OWNER_B] }),
+          deselectedOwners: [OWNER_A],
+        }),
+      ],
+      TRUST,
+    ),
+  );
+
+  assert.equal(decision.form, "retained");
+  assert.equal(decision.reason, "shared-ownership");
+  assert.equal(decision.deletionAuthority, false);
+});
+
+test("deletion still proceeds when every current declarer IS a recorded owner", () => {
+  // The control for the guard above: re-deriving exclusivity must not make the
+  // ordinary removal unreachable. Same shape, minus the unrecorded declarer.
+  const decision = only(
+    planArtifacts(
+      [
+        fact({
+          recorded: recorded({ owners: [OWNER_A] }),
+          declared: declared({ owners: [OWNER_A] }),
+          deselectedOwners: [OWNER_A],
+        }),
+      ],
+      TRUST,
+    ),
+  );
+
+  assert.equal(decision.form, "deletable");
+  assert.equal(decision.deletionAuthority, true);
+});
+
 // --- SC2 / SC3: edited and shared files are retained WITH REASONS ------------
 
 test("an edited file is retained with a reason and never deletable", () => {

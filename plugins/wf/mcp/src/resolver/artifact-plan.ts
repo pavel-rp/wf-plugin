@@ -284,6 +284,22 @@ function classify(fact: PlanArtifactFact, inventoryTrustworthy: boolean): PlanAr
     if (recorded.removal !== "delete-if-unmodified") {
       return retain("removal-semantics-retain", recordedOwners, recordedSemantics);
     }
+    // THE RECORDED SET MAY BE INCOMPLETE (WF-476). Exclusive deselection is
+    // proven against the LEDGER's owner set, and apply records that set from the
+    // acted-on packs only — so a still-registered pack that was never selected
+    // can declare this destination without ever being recorded against it. Its
+    // absence from `recordedOwners` then reads as "not an owner" rather than
+    // "owner we failed to record", and deselecting the one recorded owner would
+    // delete an artifact the surviving co-declarer never agreed to remove.
+    // Re-derive exclusivity against the CURRENT declaration too: every present
+    // declarer must already be a recorded owner. `declared === null` means
+    // nothing declares it now, which is not a shared claim.
+    const unrecordedDeclarer =
+      fact.declared !== null &&
+      !fact.declared.owners.every((owner) => includesOwner(recordedOwners, owner));
+    if (unrecordedDeclarer) {
+      return retain("shared-ownership", recordedOwners, recordedSemantics);
+    }
     return {
       destination: fact.destination,
       canonicalTarget,

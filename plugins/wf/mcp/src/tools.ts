@@ -745,7 +745,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     {
       title: "resolve profile",
       description:
-        "Override-merged profile VALUES for a capability (R4). Values only; never a template or body.",
+        "Persisted profile VALUES for a capability (R4) \u2014 the document as written, with no template tier and no override tier merged in (that is `resolve_settings`, a different surface). Values only; never a template or body.",
       inputSchema: capabilityInput,
     },
     async (args: WorkspaceArgs & { capability: string }) =>
