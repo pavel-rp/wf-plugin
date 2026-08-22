@@ -35,32 +35,38 @@ local-only rather than blocking.
 | `capabilities/linear/manifest.md` | the `linear` capability's manifest — one `provider` fragment row scoped `tracker`, seven `slot` fill rows, and one declared profile template |
 | `capabilities/linear/profile.template.json` | project-configuration metadata declaring exactly one string question, Linear Team; `linear-project: none` remains ordinary non-question data |
 | `capabilities/linear/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Linear MCP mechanics, with a completeness coverage table |
-| `/wf-linear:init` | one-command self-registration — records this pack's install root, registers the `linear` capability, interviews for (or carries forward) Linear Team, and carries forward or defaults Linear Project to `none` |
+| `/wf-linear:init` | a compatibility alias onto the shared setup lifecycle — it seeds `wf-linear` into the canonical `/wf:init` selection round and relays what comes back; it runs no interview and performs no registry write of its own |
 
 ## Declared project questions
 
-The profile template exposes the existing Linear Team interview as capability-owned metadata. It is
+The profile template exposes the Linear Team question as capability-owned metadata. It is
 a plain string, has no suggested answer, and remains unresolved until a project explicitly persists
 a value at the declared destination. The optional Linear Project default, `none`, stays outside
 `ask` and cannot resolve the Team question.
 
-This declaration does not yet run or persist the interview. `/wf-linear:init` remains the current
-onboarding path and continues to manage the same `## Linear` config rows until the separate
-init-alias migration. Packs that declare no questions remain silent. In particular, credentials
+The canonical question round asks this declaration and the canonical apply persists it. Only a
+persisted **project** answer resolves it: a shipped default, a pack-tier value and a personal-tier
+value are pre-fills, never answers. A question a project has already answered is not asked again.
+Packs that declare no questions remain silent. In particular, credentials
 collected by `wf-browser-qa` remain a separate pack-specific onboarding concern, outside this
 project-question inventory.
 
 ## Registering wf-linear downstream
 
-**One command (recommended): `/wf-linear:init`.** After `/wf:init` has bootstrapped
-the repo, run `/wf-linear:init` — it records this pack's install root in a
-gitignored `## Plugin Roots` mapping, registers the `linear` capability as a
-**plugin-anchored** row (`plugin:wf-linear/capabilities/linear`), and interviews
-for (or carries forward any already-set) `_local/config.md` `## Linear` values.
+**One command (recommended): `/wf:init`.** The canonical setup command runs the
+whole journey — discovery, selection, questions, one delta, one confirmation, one
+apply — for every installed pack in a single pass, registering the `linear`
+capability as a **plugin-anchored** row (`plugin:wf-linear/capabilities/linear`)
+and recording this pack's install root in a gitignored `## Plugin Roots` mapping.
 Core then resolves `tracker` operations through that mapping — no vendored
-`plugins/wf-linear/...` needed in the consuming repo. Re-run after a pack upgrade
-to refresh the install root; it is idempotent, and a re-run with both Linear
-values already set produces zero prompts.
+`plugins/wf-linear/...` needed in the consuming repo.
+
+**`/wf-linear:init` still works**, as a compatibility alias onto that same
+lifecycle: it seeds `wf-linear` into the selection round and relays the canonical
+result. The seed is **additive** — every registration the project already has is
+preserved and `wf-linear` is added to them. Re-run either command after a pack
+upgrade to refresh the install root; both are idempotent, and a re-run over a
+settled project reaches the settled exit with no mutation call at all.
 
 **Manual (escape hatch):** when the pack **is** vendored in the consuming repo,
 add a repo-relative row to the project's `_local/config.md` `## Capabilities`

@@ -47,7 +47,7 @@ attaches the fragment above via the registry. Documented for reference:
 
 ```
 skills:
-  - plugins/wf-ado/skills/init/   # /wf-ado:init — self-registering onboarding + ADO interview (follows the shared spine in plugins/wf/skills/_contracts/pack-onboarding.ops.md)
+  - plugins/wf-ado/skills/init/   # /wf-ado:init — compatibility alias: seeds wf-ado into the canonical /wf:init lifecycle and relays its block
 ```
 
 ## Profile template and declared interview
@@ -58,16 +58,24 @@ contains exactly the two questions the current init skill asks: `ado-organizatio
 keeps `work-item-id-prefix: ADO` as ordinary non-question data; the established prefix is not an
 interview answer.
 
-The declaration is metadata for the shared project-configuration lifecycle. It does **not** replace
-or suppress today's bespoke `/wf-ado:init` interview: that skill still carries forward or writes the
-`## Azure DevOps` rows in `_local/config.md` until the separate init-alias migration lands. An absent
-persisted profile answer therefore remains unresolved even though the pack ships this template.
+The declaration is metadata for the shared project-configuration lifecycle, and since the init-alias
+migration it is the **only** interview this pack has. `/wf-ado:init` is now a compatibility alias
+that seeds `wf-ado` into the canonical `/wf:init` selection round and relays the result; it runs no
+interview and writes nothing. The canonical question round asks the declarations and the canonical
+apply persists them at their declared destinations.
+
+Two halves of the suppression rule hold together. An absent persisted **project** answer leaves a
+question unresolved even though the pack ships this template and a personal profile may suggest a
+value — a shipped default, a pack-tier value and a personal-tier value are pre-fills, never answers.
+And a persisted project answer is **not** re-asked: the round asks exactly what is still unresolved,
+across the whole desired set rather than just this pack.
 
 ## Downstream registration
 
 This repo ships the capability + its skill; it does **not** carry a `_local/config.md` (that
-lives in each consuming project). To activate ado downstream, run `/wf-ado:init` (recommended
-— see `plugins/wf-ado/README.md`), or add a repo-relative row to the consuming project's
+lives in each consuming project). To activate ado downstream, run `/wf:init` (recommended
+— see `plugins/wf-ado/README.md`; `/wf-ado:init` enters the same lifecycle with this pack
+seeded), or add a repo-relative row to the consuming project's
 `_local/config.md` `## Capabilities` table by hand:
 
 ```markdown
@@ -78,8 +86,8 @@ lives in each consuming project). To activate ado downstream, run `/wf-ado:init`
 | ado        | plugins/wf-ado/capabilities/ado |
 ```
 
-(Or the plugin-anchored `Path` form `plugin:wf-ado/capabilities/ado`, which `/wf-ado:init`
-writes for you.) With `ado` registered, any core skill resolving the `tracker` surface
+(Or the plugin-anchored `Path` form `plugin:wf-ado/capabilities/ado`, which the canonical
+apply writes for you.) With `ado` registered, any core skill resolving the `tracker` surface
 dispatches work-item operations to this capability's fragment; with no `tracker` provider
 registered, core falls back silently to its own local `T<NNN>` id scheme, per
 `capability-registry.ops.md` §"The tracker provider surface".
