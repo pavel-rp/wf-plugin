@@ -258,20 +258,42 @@ test("NC-9: the fixtures module is not a suite, and both new modules are byte-cl
   const testFiles = readdirSync(join(MCP_DIR as string, "test")).filter((f) =>
     f.endsWith(".test.ts"),
   );
-  assert.ok(testFiles.includes("lifecycle-matrix.test.ts"), "the matrix must be discovered");
-  assert.equal(
-    testFiles.includes("lifecycle-matrix.fixtures.ts"),
-    false,
-    "the fixtures helper must NOT match the runner's suite glob",
-  );
+  for (const suite of [
+    "lifecycle-matrix.test.ts",
+    "lifecycle-matrix.journeys.test.ts",
+    "lifecycle-matrix.wire.test.ts",
+  ]) {
+    assert.ok(testFiles.includes(suite), `${suite} must be discovered by the runner`);
+  }
+  for (const helper of ["lifecycle-matrix.fixtures.ts", "lifecycle-matrix.harness.ts"]) {
+    assert.equal(
+      testFiles.includes(helper),
+      false,
+      `${helper} must NOT match the runner's suite glob — a helper run as a suite double-counts it`,
+    );
+  }
   // Neither new module may carry a control character — WF-449 nearly shipped two
   // literal NULs in an owner key, which makes a file register as BINARY to git.
   // The pattern is built from explicit escapes so this assertion cannot itself
   // smuggle in the bytes it forbids.
   const control = new RegExp("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]");
-  for (const file of ["lifecycle-matrix.test.ts", "lifecycle-matrix.fixtures.ts"]) {
+  const added = [
+    "lifecycle-matrix.test.ts",
+    "lifecycle-matrix.fixtures.ts",
+    "lifecycle-matrix.harness.ts",
+    "lifecycle-matrix.journeys.test.ts",
+    "lifecycle-matrix.wire.test.ts",
+  ];
+  for (const file of added) {
     const body = readFileSync(join(MCP_DIR as string, "test", file), "utf8");
     assert.equal(control.test(body), false, `${file} carries a control character`);
+  }
+  // And the shared guard's own traversal must REACH every one of them. Its
+  // recursion is not assumed to cover a module merely because the module exists
+  // — that assumption is exactly what a new file silently falls out of.
+  const reached = new Set(readdirSync(join(MCP_DIR as string, "test")));
+  for (const file of added) {
+    assert.ok(reached.has(file), `source-hygiene's traversal does not reach ${file}`);
   }
 });
 
