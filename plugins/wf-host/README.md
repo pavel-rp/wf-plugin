@@ -12,11 +12,15 @@ After installing the pack and running `/wf:init` in the target repository:
 /wf-host:init
 ```
 
-The init command calls the core resolver's `inspect_pack` and `register_pack` operations. It does
-not discover plugin paths or edit registry tables itself. On first registration it creates
-`_local/profiles/` as a private directory and atomically seeds a mode-`0600`
-`_local/profiles/host.profile.json` from the generic profile template. Fill only the command pairs
-that the project supports, then use `/wf:qa-auto` to dispatch host-dependent work.
+The init command is a compatibility alias onto the shared setup lifecycle: it seeds `wf-host` into
+`/wf:init`'s selection round and owns no lifecycle step of its own — no discovery, no registry
+write, no profile write. Registration and the seeding of
+`_local/profiles/host.profile.json` from the capability's declared profile template both happen
+inside the canonical run, which reports the profile on its `Capability profiles:` line. Fill only
+the command pairs that the project supports, then use `/wf:qa-auto` to dispatch host-dependent work.
+
+`/wf:init` is the canonical command and does the same thing for every installed pack at once;
+`/wf-host:init` remains a permanent entry point for anyone who already types it.
 
 ## Configuration
 

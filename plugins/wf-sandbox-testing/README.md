@@ -47,14 +47,19 @@ The pack is a marketplace-listed plugin. In a wf-initialized downstream repo:
 ```
 /wf:init                    # once per repo, if not already initialized
 # install wf-sandbox-testing from the wf marketplace, then:
-/wf-sandbox-testing:init    # self-registers the sandbox-testing capability via inspect_pack/register_pack
+/wf-sandbox-testing:init    # seeds sandbox-testing into the canonical /wf:init lifecycle
 ```
 
-`/wf-sandbox-testing:init` registers a **presence-only** capability row (the pack owns no provider
-surface and attaches no phase fragment) through core's resolver tools — no hand-edited registry, no
-`${CLAUDE_PLUGIN_ROOT}` probing. If the repo is not wf-initialized it stops and directs you to
-`/wf:init`; it never registers into a half-configured repo. Registry validation then acknowledges the
-pack and `/wf:resolve` reports it.
+`/wf-sandbox-testing:init` is a compatibility alias onto the shared setup lifecycle: it seeds
+`wf-sandbox-testing` into `/wf:init`'s selection round and owns no lifecycle step of its own — no
+hand-edited registry, no `${CLAUDE_PLUGIN_ROOT}` probing, no registry write. The canonical run
+registers a **presence-only** capability row (the pack owns no provider surface and attaches no
+phase fragment), scaffolding bare core itself when the repo is not yet initialized, so there is no
+half-configured stop to work around. Registry validation then acknowledges the pack and
+`/wf:resolve` reports it.
+
+`/wf:init` is the canonical command and does the same thing for every installed pack at once;
+`/wf-sandbox-testing:init` remains a permanent entry point for anyone who already types it.
 
 Fixtures that **script a provider** additionally need the **wf-fake** pack installed and registered —
 see [Scripting a provider with wf-fake](#scripting-a-provider-with-wf-fake).
