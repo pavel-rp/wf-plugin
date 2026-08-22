@@ -224,6 +224,8 @@ function payloadFact(over: Partial<PlanPayloadFact> = {}): PlanPayloadFact {
     semantics: { ...COPY },
     target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: false },
     identity: { ok: true, sha256: DIGEST_A, bytes: 12 },
+    current: { ok: false, status: "missing" },
+    recordedContentHash: null,
     ...over,
   };
 }

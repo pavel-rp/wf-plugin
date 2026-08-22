@@ -27,6 +27,7 @@ import type {
   PlanAction,
   PlanInstallResponse,
   PlanPayloadAction,
+  PlanRegistryEntry,
 } from "../src/resolver/types.js";
 import type { PayloadTargetResolution } from "../src/resolver/payload-plan.js";
 import { noRecoveryReport } from "../src/resolver/lifecycle-recovery.js";
@@ -130,14 +131,33 @@ function action(over: Partial<PlanAction> = {}): PlanAction {
   };
 }
 
-function plan(actions: PlanPayloadAction[]): PlanInstallResponse {
+/** A registry retention row for one pack. The mutator's declaring-capability
+ *  precondition scopes its comparison to the packs the plan ACTED ON (WF-476),
+ *  so a synthetic plan has to be able to say which those are. */
+function retained(pluginId: string): PlanRegistryEntry {
+  return {
+    pluginId,
+    pluginName: pluginId,
+    capabilities: [],
+    reason: "already-registered",
+    presence: "installed",
+    state: "enabled",
+    enablement: "enabled",
+    overlay: null,
+  };
+}
+
+function plan(
+  actions: PlanPayloadAction[],
+  actedOn: readonly string[] = [],
+): PlanInstallResponse {
   return {
     planVersion: 1,
     workspaceRoot: ROOT,
     admission: { admitted: true, root: ROOT, source: "explicit", reason: null, diagnostic: null },
     applicability: "applicable",
     mode: "install",
-    registryDelta: { additions: [], retentions: [], deregistrations: [] },
+    registryDelta: { additions: [], retentions: actedOn.map(retained), deregistrations: [] },
     answers: { writes: [], unresolved: [] },
     evidenceSeeds: [],
     repairs: [],
@@ -431,18 +451,41 @@ test("RE-BINDING 4/4: an owner that APPEARED since the plan refuses rather than 
   // destination would be recording an INCOMPLETE owner set — the exact defect the
   // self-check's owner assertion exists to catch, caught here instead, before any
   // write.
+  //
+  // Beta is SELECTED by this plan (it is in the registry delta) and picked up a
+  // declaration the approval never listed: a genuine mid-flight pack edit, which
+  // WF-476's narrowing deliberately leaves refusing.
   const sources = new Map([
     [`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY],
     [`${capabilityRoot(BETA)}/${BETA.source}`, BODY],
   ]);
   const result = compose(service({ sources }), {
-    plan: plan([payloadAction({ owners: [ALPHA] })]),
+    plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId, BETA.pluginId]),
     inspected: inspect([{ owner: ALPHA }, { owner: BETA }]),
     supported: [action()],
   });
 
   assert.equal(result.ok, false);
   assert.ok(!result.ok && result.detail.includes("has changed since the plan was approved"));
+});
+
+test("RE-BINDING 4/4c: an UNSELECTED co-declarer does not refuse an ordinary install", () => {
+  // WF-476 F-4, at the unit level. Beta is installed and co-declares the
+  // destination, but this plan does not act on it — so it was never in the scope
+  // the approved owner set was built from, and comparing against it compares two
+  // differently-scoped sets. The install proceeds; only the SELECTED packs are
+  // held to the approval.
+  const sources = new Map([
+    [`${capabilityRoot(ALPHA)}/${ALPHA.source}`, BODY],
+    [`${capabilityRoot(BETA)}/${BETA.source}`, BODY],
+  ]);
+  const result = compose(service({ sources }), {
+    plan: plan([payloadAction({ owners: [ALPHA] })], [ALPHA.pluginId]),
+    inspected: inspect([{ owner: ALPHA }, { owner: BETA }]),
+    supported: [action()],
+  });
+
+  assert.equal(result.ok, true, !result.ok ? result.detail : "");
 });
 
 test("RE-BINDING 4/4b: an owner that VANISHED since the plan refuses too", () => {

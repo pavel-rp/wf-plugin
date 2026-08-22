@@ -85,13 +85,36 @@ it.
   fallback — not rationale, an outcome. **WF-280:** the registry-location half now comes
   from the bundled `wf-resolver` MCP tool's typed `resolve_config({ workspaceRoot: <current Agent/session absolute workspace directory> })` query (`registryPath`),
   instead of assuming the `_local/config.md` literal — a project's `wf.config.js` may
-  relocate it. Only the Azure DevOps section's own values remain a direct local read: the
-  resolver's snapshot has a `providerConfig` field reserved for exactly this (consumer
-  inventory §7 field #9), but it is deliberately left unpopulated by core — a
-  provider-specific config-section name is domain knowledge core doesn't carry — and no
-  typed tool exposes it yet, so this fragment reads its own section directly, anchored to
-  the resolver-supplied path rather than a hardcoded one.
-- **Grounding:** Grounded — one resolver query plus a local read, no ADO tool involved.
+  relocate it.
+- **WF-476: the two ASKED values moved to the profile; the template value did not.**
+  `ado-organization` and `ado-project` are **declared questions** (`profile.template.json`
+  `ask[]`) that the install lifecycle asks and then writes to
+  `_local/profiles/ado.profile.json`. Reading them back from the `## Azure DevOps` config
+  section meant they were written to one surface and read from another — the same class of
+  defect as F-1 itself, where the lifecycle's own question path was blind to the answer
+  apply had just persisted. Both now come from the resolver's typed `resolve_profile`
+  query (values only, override-merged), under the project's settled decision that **the
+  capability profile is the authoritative persisted-answer surface** and `_local/config.md`
+  stays human-facing core/registry config rather than an answer store.
+  - **Each value was checked against the profile template before being moved.**
+    `Work Item ID Prefix` is *not* in `ask[]` — it is template data with the default `ADO` —
+    so it is not a persisted answer and deliberately keeps its config-section read. Moving
+    it would have been cargo-culting the fix rather than applying its rule.
+  - **Read-through, not migration.** Existing projects already carry both values in their
+    `## Azure DevOps` section, so the ops file documents a fallback read of that section
+    when the profile yields nothing — **profile first, config second**, with the profile
+    winning when both hold a value. Nothing writes these back to the config section, so the
+    fallback decays as projects re-run init; a one-time migration was considered and
+    deliberately not taken (it would need a write path this capability does not own).
+  - The fallback read still needs the registry location, so the `resolve_config` query
+    above is retained verbatim. The resolver snapshot's `providerConfig` field (consumer
+    inventory §7 field #9) remains deliberately unpopulated by core — a provider-specific
+    config-section name is domain knowledge core doesn't carry — which is why that half
+    stays a direct local read, anchored to the resolver-supplied path rather than a
+    hardcoded one.
+- **Grounding:** Grounded — a typed `resolve_profile` query, plus the existing
+  `resolve_config` query and a local read for the fallback and the prefix; no ADO tool
+  involved.
 
 ## create_umbrella
 

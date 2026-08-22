@@ -50,6 +50,13 @@ export type PayloadSourceIdentity =
   | { ok: true; sha256: string; bytes: number }
   | { ok: false; status: string };
 
+/** The caller's fingerprint of the destination's CURRENT bytes. `ok: false`
+ *  covers every reason the bytes are not there to compare — most ordinarily,
+ *  the destination does not exist yet. */
+export type PayloadCurrentBytes =
+  | { ok: true; sha256: string; bytes: number }
+  | { ok: false; status: string };
+
 /** One declared payload row, with every filesystem question already answered. */
 export interface PlanPayloadFact {
   pluginId: string;
@@ -60,6 +67,13 @@ export interface PlanPayloadFact {
   semantics: PayloadSemantics;
   target: PayloadTargetResolution;
   identity: PayloadSourceIdentity;
+  /** The destination's bytes as they are RIGHT NOW — pre-answered, like every
+   *  other filesystem fact here, so the eligibility test below stays pure. */
+  current: PayloadCurrentBytes;
+  /** The content hash the lifecycle ledger records for this destination, or
+   *  `null` when the ledger records nothing for it. Its presence is what makes
+   *  a hand-edit distinguishable from an unmanaged pre-existing file. */
+  recordedContentHash: string | null;
 }
 
 export interface PayloadPlanResult {
@@ -185,6 +199,46 @@ export function planPayloads(facts: readonly PlanPayloadFact[]): PayloadPlanResu
 
     if (bytesEqual && tupleEqual) {
       if (!first.identity.ok || !first.target.ok) continue; // unreachable; narrows the union
+
+      // --- ELIGIBILITY, DECIDED HERE AND NOWHERE ELSE (WF-476) ---------------
+      // The planner owns the question "would this write change anything, and is
+      // it allowed to?", because two things downstream depend on the answer and
+      // neither can re-derive it: `applicability` is stated over this preview,
+      // and the release's BYTE-INERT guarantee requires a no-drift run to
+      // compose zero mutating actions rather than compose them and no-op. The
+      // comparison below is therefore the ONE source of truth for both the
+      // action list and the preservation decision — which is precisely why they
+      // can no longer contradict each other.
+      const current = first.current;
+
+      // 1. The destination already holds exactly the declared bytes. There is
+      //    nothing to write, so nothing is previewed and the plan settles.
+      if (
+        current.ok &&
+        current.sha256 === first.identity.sha256 &&
+        current.bytes === first.identity.bytes
+      ) {
+        continue;
+      }
+
+      // 2. The destination is MANAGED (the ledger records a hash for it) and its
+      //    bytes are neither the declared content nor the content the ledger
+      //    recorded — so it was edited outside the lifecycle. `copy` +
+      //    `replace-if-unmodified` promises the refresh is withheld in exactly
+      //    this case; the artifact arm already withholds it (`artifact-plan.ts`
+      //    rule 3, `divergent`), and withholding it HERE is what stops the two
+      //    arms disagreeing inside one response. A destination with no recorded
+      //    hash is an unmanaged pre-existing file, not a hand-edit, and keeps
+      //    its existing overwrite behaviour — narrowing that is a separate
+      //    question this fix deliberately does not answer.
+      if (
+        current.ok &&
+        first.recordedContentHash !== null &&
+        current.sha256 !== first.recordedContentHash
+      ) {
+        continue;
+      }
+
       actions.push({
         destination,
         canonicalTarget,

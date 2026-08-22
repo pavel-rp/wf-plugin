@@ -9,20 +9,20 @@
 // guard binds the admissible root to the process launch directory BEFORE service
 // construction and so makes non-cwd admission unprovable over the wire.
 //
-// FOUR SCENARIOS BELOW ARE PINNED DEFECTS. They assert what the lifecycle
-// ACTUALLY does today and state, in the same place, what the criterion asked
-// for. Pinning rather than deleting is the point: a scenario that quietly
-// asserted the weaker property would go green over a data-loss bug, and a
-// scenario that asserted the intended property would sit red forever with
-// nobody able to tell a regression from a known gap. Pinned, the matrix trips
-// the moment the behaviour changes in EITHER direction. Each one names its
-// finding id, and every finding id is reported rather than fixed here — new
-// lifecycle behaviour is out of this item's scope.
+// WF-466 pinned four defects here rather than fixing them; WF-476 fixed all
+// four and retired the pins. The scenarios below now assert the INTENDED
+// property in each case, so they read as ordinary matrix coverage — nothing in
+// this file is pinned to observed-wrong behaviour any more:
 //
-//   F-1  a persisted project answer is invisible to the lifecycle path
-//   F-2  a payload-bearing settled workspace never satisfies the settled predicate
-//   F-3  a hand-edited artifact is overwritten while reported as preserved
-//   F-4  the known `service.ts:3025-3053` unselected-co-declarer refusal, tripped
+//   S-01   a persisted project answer resolves the question, which is asked once
+//          and never re-asked (`applyQuestionValues`, on the lifecycle path too)
+//   S-10b  a payload-bearing settled workspace satisfies the settled predicate,
+//          because the planner decides payload eligibility from the bytes
+//   S-13b  an installed-but-unselected co-declarer does not refuse an ordinary
+//          install; S-13c holds the other direction — a selected pack that moves
+//          between plan and apply is still refused, fail-closed
+//   S-24   a hand-edited artifact is preserved AND reported as preserved, both
+//          from one comparison, so the two can no longer contradict each other
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -76,15 +76,15 @@ function assertNoResidue(root: string, when: string): void {
 }
 
 /** A payload-free, question-free selection. `alpha` is the minimal registrable
- *  unit, and the ONLY equivalence class on which the settled predicate is
- *  reachable today (see S-10b / F-2). */
+ *  unit; the settled predicate is reachable on it (S-10a) and, since WF-476, on
+ *  the payload-bearing class too (S-10b). */
 const bare = { desired: select("alpha"), deregister: [], answers: [] };
 
 // ===========================================================================
 // SC-1 — the fresh multi-pack journey
 // ===========================================================================
 
-test("S-01 (SC-1): the journey presents ONE question round — and F-1: re-asks it after apply", () => {
+test("S-01 (SC-1): the journey presents ONE question round, and never re-asks it", () => {
   withMatrix({ packs: ["alpha", "beta", "gamma"] }, (ws) => {
     const discovery = ws.service.discoverPacks();
 
@@ -113,33 +113,37 @@ test("S-01 (SC-1): the journey presents ONE question round — and F-1: re-asks 
       "the persisted profile must hold the confirmed answer",
     );
 
-    // --- F-1, PINNED --------------------------------------------------------
-    // SC-1 asks that the journey ask ONCE. It does not. The persisted answer is
-    // applied to question state ONLY on the registry-composition read path
-    // (`resolve.ts` -> `applyQuestionValues`); the lifecycle path builds its
-    // question records in `service.ts` `inspectPack`, straight from the pack's
-    // profile TEMPLATE, and no persisted overlay is ever applied to them
-    // (`service.ts:1536`, `service.ts:2770`). So `plan_install` re-reads the
-    // question as unresolved on every subsequent run.
+    // ASKED ONCE, AND ONCE ONLY. The persisted answer is now visible to the
+    // lifecycle path — the same `applyQuestionValues` overlay the
+    // registry-composition read path applies — so the question reaches
+    // `resolved` and is never presented a second time.
     const after = ws.service.discoverPacks();
     const stillUnresolved = after.packs
       .flatMap((pack) => pack.questions)
       .filter((question) => question.state.status === "unresolved");
     assert.deepEqual(
       stillUnresolved.map((q) => q.id),
-      ["beta-mode"],
-      "F-1 CHANGED: the persisted answer is now visible to the lifecycle path — retire this pin and restore the ask-once assertion.",
+      [],
+      "an already-answered question was presented again",
     );
-    // And the consequence that actually bites: a re-plan supplying no answer is
-    // BLOCKED on a question the project already answered.
+
+    // And the consequence that used to bite: a re-plan supplying NO answer is no
+    // longer blocked on a question the project already answered — it emits no
+    // `plan/answer-missing` and opens no unresolved question for it.
     const replan = ws.service.planInstall(ws.admission, {
       desired: select("alpha", "beta", "gamma"),
       deregister: [],
       answers: [],
     });
-    assert.ok(
+    assert.equal(
       codes(replan).includes("plan/answer-missing"),
-      `F-1: expected the re-ask to surface as plan/answer-missing, got [${codes(replan)}]`,
+      false,
+      `a re-plan over an answered project re-asked: [${codes(replan)}]`,
+    );
+    assert.deepEqual(
+      replan.answers.unresolved.map((q) => q.questionId),
+      [],
+      "a re-plan over an answered project opened an unresolved question",
     );
   });
 });
@@ -428,9 +432,9 @@ test("S-09 (SC-2): `repair_packs` is byte-inert from the recovered baseline", ()
 // ===========================================================================
 
 test("S-10a (SC-3): a settled workspace satisfies the FOUR-CONJUNCT predicate", () => {
-  // The representative class on which the settled exit is reachable today: a
-  // pack with no payloads and no questions. See S-10b for why that is the only
-  // one, and why that is a finding rather than a fixture choice.
+  // The simplest class on which the settled exit is reachable: a pack with no
+  // payloads and no questions. S-10b covers the payload-bearing class, which
+  // reaches the same exit.
   withMatrix({ packs: ["alpha"] }, (ws) => {
     const plan = ws.service.planInstall(ws.admission, bare);
     expectGuard(guardActionablePlan(plan));
@@ -462,7 +466,7 @@ test("S-10a (SC-3): a settled workspace satisfies the FOUR-CONJUNCT predicate", 
   });
 });
 
-test("S-10b (SC-3): F-2 — a PAYLOAD-BEARING settled workspace never reaches settled", () => {
+test("S-10b (SC-3): a PAYLOAD-BEARING settled workspace satisfies the predicate too", () => {
   withMatrix({ packs: ["alpha", "gamma"] }, (ws) => {
     const selection = { desired: select("alpha", "gamma"), deregister: [], answers: [] };
     const first = ws.service.planInstall(ws.admission, selection);
@@ -479,42 +483,33 @@ test("S-10b (SC-3): F-2 — a PAYLOAD-BEARING settled workspace never reaches se
     assert.equal(retained.bytesMatchLedger, true, "the setup requires an unmodified artifact");
     assert.equal(retained.reason, "not-deselected");
 
-    // --- F-2, PINNED --------------------------------------------------------
-    // SC-3 asks that a settled project never enter the mutation stage. It does.
-    // `fullyUpgraded` never becomes true for a payload destination, so the
-    // planner re-composes a MUTATING `payload-write` on every run and reports
-    // the plan as `applicable` with no blocking findings at all.
-    assert.equal(retained.fullyUpgraded, false);
-    assert.equal(repair.plan.applicability, "applicable");
+    // The planner now answers the eligibility question itself: the destination
+    // already holds the declared bytes, so no `payload-write` is composed at all.
+    // The settled exit is reachable on a payload-bearing workspace, not only on
+    // the payload-free class S-10a covers.
+    assert.equal(repair.plan.applicability, "no-change");
     assert.deepEqual(repair.plan.applicabilityBasis.blockingFindings, []);
     assert.deepEqual(
       repair.plan.actions.filter((a) => a.mutating).map((a) => `${a.kind}:${a.destination}`),
-      [`payload-write:${SHARED_DESTINATION}`],
-      "F-2 CHANGED: the settled workspace no longer re-proposes its payload write — retire this pin.",
+      [],
+      "a settled payload-bearing workspace authorized a mutating action",
     );
-    // So conjunct 1 fails, and the settled exit is unreachable.
-    expectGuardRejects(isSettled(repair), "S-10b: a settled payload-bearing workspace");
-    assert.match(isSettled(repair).reason, /applicability is `applicable`/);
+    // The predicate is REUSED from `reconcile-mode.md` Step R2 verbatim, exactly
+    // as S-10a reuses it — not re-derived into something looser for this class.
+    expectGuard(isSettled(repair));
 
-    // The second half of the finding, and the sharper half: the mutator does NOT
-    // agree with the planner. Handed that very plan, it refuses it as NOT
-    // APPLICABLE — the same facts, two different applicability verdicts.
+    // Planner and mutator agree, which is the half that used to contradict: the
+    // very same plan is now `no-change`, so there is nothing for apply to refuse.
     const second = ws.service.planInstall(ws.admission, selection);
-    assert.equal(second.applicability, "applicable", "the planner says applicable");
-    const rejected = ws.service.applyInstall(ws.admission, selection, second.identity.planId);
-    assert.equal(rejected.status, "rejected");
-    assert.equal(
-      rejected.reason,
-      "apply/plan-not-applicable",
-      "F-2 CHANGED: the mutator now agrees with the planner — retire this pin.",
+    assert.equal(second.applicability, "no-change", "the planner settles");
+    assert.deepEqual(
+      second.actions.filter((a) => a.mutating),
+      [],
+      "a settled re-plan previewed a mutating action",
     );
 
-    // The saving grace, and the reason this is a convergence defect and not a
-    // corruption one: the refusal is byte-inert, and the upgrade verdict is
-    // honest that there was no drift to act on.
-    assert.deepEqual(rejected.applied, []);
-    assert.equal(rejected.upgrade.noDrift, true);
-    assert.equal(rejected.upgrade.outcome, "no-drift");
+    // And the property the whole slice exists to protect: a no-drift rerun writes
+    // ZERO bytes — proved against the digest witness, not assumed.
     expectGuard(guardDigestWitness(settledBytes, diffTrees(settledBytes, digestTree(ws.workspace))));
   });
 });
@@ -639,14 +634,12 @@ test("S-13a (SC-3): OMISSION IS NOT REMOVAL; only an explicit deselection remove
   });
 });
 
-test("S-13b (SC-3): F-4 — an UNSELECTED CO-DECLARER refuses the apply, fail-closed", () => {
-  // The known pre-existing defect at `service.ts:3025-3053`, reported by the
-  // WF-466 briefing and TRIPPED here: the declaring-capability precondition is
-  // built from every INSPECTED pack, while the approved plan carries only the
-  // SELECTED owners. `gamma` is installed but not selected, and it co-declares
-  // `beta`'s shared destination — so an otherwise ordinary two-pack install is
-  // refused. A multi-pack matrix is exactly what trips it. NOT FIXED HERE:
-  // widening a safety precondition is new lifecycle behaviour and out of scope.
+test("S-13b (SC-3): an UNSELECTED CO-DECLARER does not refuse an ordinary install", () => {
+  // The declaring-capability precondition compares the currently-declared owner
+  // set against the approved one. The approved set is built from the SELECTED
+  // packs only, so the comparison set must be scoped the same way: `gamma` is
+  // installed and co-declares `beta`'s shared destination, but this plan does not
+  // act on it, so it is not evidence that anything moved between plan and apply.
   withMatrix({ packs: ["alpha", "beta", "gamma"] }, (ws) => {
     const selection = {
       desired: select("alpha", "beta"),
@@ -654,29 +647,61 @@ test("S-13b (SC-3): F-4 — an UNSELECTED CO-DECLARER refuses the apply, fail-cl
       answers: answer("safe"),
     };
     const plan = ws.service.planInstall(ws.admission, selection);
-    // The PLAN is clean — the refusal lands only at the mutator.
     expectGuard(guardActionablePlan(plan));
+
+    const applied = ws.service.applyInstall(ws.admission, selection, plan.identity.planId);
+    assert.equal(
+      applied.status,
+      "applied",
+      applied.status === "rejected" ? `${applied.reason}: ${applied.detail ?? ""}` : "",
+    );
+    assert.equal(applied.residue.clean, true, applied.residue.detail);
+    assertNoResidue(ws.workspace, "a completed install");
+
+    // The control that keeps this a diagnosis rather than a coincidence:
+    // selecting the co-declarer too still succeeds, as it always did. It writes
+    // no payload bytes this time — the destinations already hold exactly the
+    // declared content, which is the settled case S-10b now covers — so no
+    // destination is expected to move.
+    install(ws, ["alpha", "beta", "gamma"]);
+  });
+});
+
+test("S-13c (SC-3): a SELECTED pack edited between plan and apply is still refused", () => {
+  // The second half of the criterion, and the reason S-13b is a narrowing of the
+  // COMPARISON SET rather than a weakening of the guard: a SELECTED pack that
+  // moves between plan and apply is still refused, before any write.
+  //
+  // WHICH TOKEN, AND WHY IT IS NOT `apply/payload-precondition` HERE. Editing a
+  // pack's declared source also moves that pack's fingerprint, so the plan's own
+  // staleness gate — an EARLIER and strictly broader guard — refuses first. That
+  // ordering is asserted rather than worked around: it is the honest description
+  // of the composed behaviour, and engineering an edit past it would only prove a
+  // scenario the lifecycle cannot actually reach. The payload precondition's own
+  // fail-closed behaviour on a selected owner that moved is proved directly, at
+  // the unit level, by `apply-payload.test.ts` RE-BINDING 4/4.
+  withMatrix({ packs: ["alpha", "beta", "gamma"] }, (ws) => {
+    const selection = {
+      desired: select("alpha", "beta", "gamma"),
+      deregister: [],
+      answers: answer("safe"),
+    };
+    const plan = ws.service.planInstall(ws.admission, selection);
+    expectGuard(guardActionablePlan(plan));
+
+    // A SELECTED pack's declared payload source moves after the approval.
+    ws.writePackSource("gamma", "assets/shared.bin", "edited-between-plan-and-apply\n");
 
     const before = postRecoveryBaseline(ws);
     const applied = ws.service.applyInstall(ws.admission, selection, plan.identity.planId);
 
     assert.equal(applied.status, "rejected");
-    assert.equal(
-      applied.reason,
-      "apply/payload-precondition",
-      "F-4 CHANGED: the unselected co-declarer no longer refuses the apply — retire this pin.",
-    );
-    // FAIL-CLOSED, BEFORE ANY WRITE — the redeeming property, asserted not assumed.
+    assert.equal(applied.reason, "apply/plan-stale");
+    // FAIL-CLOSED, BEFORE ANY WRITE — asserted, not assumed.
     assert.deepEqual(applied.applied, []);
     assert.equal(applied.residue.clean, true, applied.residue.detail);
     expectGuard(guardDigestWitness(before, diffTrees(before, digestTree(ws.workspace))));
     assertNoResidue(ws.workspace, "a precondition refusal");
-
-    // And the control that makes this a diagnosis rather than a coincidence:
-    // selecting the co-declarer too makes the very same install succeed.
-    install(ws, ["alpha", "beta", "gamma"], {
-      expectDestinations: [BETA_DESTINATION, SHARED_DESTINATION],
-    });
   });
 });
 
@@ -914,7 +939,7 @@ test("S-23 (SC-5): a SYMLINK SWAP between plan and apply is refused, window clos
 // SC-6 — preservation classes, and the double-jeopardy case
 // ===========================================================================
 
-test("S-24 (SC-6): F-3 — an EDITED artifact is OVERWRITTEN while reported as preserved", () => {
+test("S-24 (SC-6): an EDITED artifact is PRESERVED, and reported as preserved", () => {
   withMatrix({ packs: ["alpha", "gamma"] }, (ws) => {
     const selection = { desired: select("alpha", "gamma"), deregister: [], answers: [] };
     const first = ws.service.planInstall(ws.admission, selection);
@@ -939,36 +964,36 @@ test("S-24 (SC-6): F-3 — an EDITED artifact is OVERWRITTEN while reported as p
     assert.equal(retained.bytesMatchLedger, false);
     assert.notEqual(retained.reason, "not-deselected");
 
-    // …AND YET the planner still composes a mutating `payload-write` for it.
-    // That is the whole defect in one line: the preservation decision and the
-    // action list are computed independently, and the action list wins.
-    assert.ok(
+    // …and the action list AGREES with it. The preservation decision and the
+    // emitted action now fall out of ONE comparison, so the plan cannot withhold
+    // the refresh on one channel and authorize the write on another.
+    assert.equal(
       plan.actions.some((a) => a.mutating && a.destination === SHARED_DESTINATION),
-      "F-3 CHANGED: no mutating write is composed for an edited artifact — retire this pin.",
+      false,
+      "a mutating write was composed for an edited artifact",
     );
 
     const applied = ws.service.applyInstall(ws.admission, selection, plan.identity.planId);
     assert.equal(applied.status, "applied");
 
-    // --- F-3, PINNED --------------------------------------------------------
-    // SC-6 asks that the edited-and-source-changed case stay DIVERGENT. It does
-    // not. The declared `refresh: replace-if-unmodified` semantics promise the
-    // refresh is withheld when the destination was modified; the destination was
-    // modified, and the new source bytes landed anyway. The user's edit is gone.
+    // SC-6's actual ask: the edited-and-source-changed case stays DIVERGENT. The
+    // declared `refresh: replace-if-unmodified` semantics promise the refresh is
+    // withheld when the destination was modified — so the user's edit survives,
+    // byte for byte, and the newer source bytes do NOT land.
     assert.equal(
       readFileSync(join(ws.workspace, SHARED_DESTINATION), "utf8"),
-      "matrix-shared-payload-v2\n",
-      "F-3 CHANGED: the hand-edited artifact now survives — retire this pin and restore the preservation assertion.",
+      userBytes,
+      "the hand-edited artifact was overwritten",
     );
     assert.notEqual(
       readFileSync(join(ws.workspace, SHARED_DESTINATION), "utf8"),
-      userBytes,
-      "the user's edit was preserved",
+      "matrix-shared-payload-v2\n",
+      "the newer source bytes landed over a hand-edit",
     );
 
-    // And the reason this is not merely a policy choice: the SAME envelope
-    // simultaneously reports the artifact as preserved-and-divergent. Whichever
-    // half is intended, the two contradict each other in one response.
+    // And the report matches what happened, in the same envelope: the artifact is
+    // reported preserved-and-divergent BECAUSE it was withheld — no longer a
+    // claim contradicted by a write in the same response.
     assert.equal(applied.upgrade.noDrift, false);
     assert.notEqual(applied.upgrade.outcome, "fully-upgraded");
     assert.deepEqual(
@@ -981,7 +1006,7 @@ test("S-24 (SC-6): F-3 — an EDITED artifact is OVERWRITTEN while reported as p
       // `divergent`, not `current-bytes-mismatch`: the double-jeopardy reason,
       // distinct from S-11's edited-only reason. The two cases do not collapse.
       [`${SHARED_DESTINATION}:edited:divergent`],
-      "F-3 CHANGED: the upgrade verdict no longer claims the overwritten artifact was preserved.",
+      "the upgrade verdict must report the withheld artifact as edited/divergent",
     );
   });
 });

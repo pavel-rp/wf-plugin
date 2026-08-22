@@ -20089,6 +20089,13 @@ function planPayloads(facts) {
     const tupleEqual = members.every((member) => semanticsEqual(member.semantics, first.semantics));
     if (bytesEqual && tupleEqual) {
       if (!first.identity.ok || !first.target.ok) continue;
+      const current = first.current;
+      if (current.ok && current.sha256 === first.identity.sha256 && current.bytes === first.identity.bytes) {
+        continue;
+      }
+      if (current.ok && first.recordedContentHash !== null && current.sha256 !== first.recordedContentHash) {
+        continue;
+      }
       actions.push({
         destination,
         canonicalTarget,
@@ -30467,6 +30474,45 @@ var ResolverService = class {
    * `inspectListedPack` was split out to avoid — so the inspections are handed
    * back from the single run instead.
    */
+  /**
+   * Give one capability's declared questions the PERSISTED-ANSWER overlay the
+   * registry-composition read path already applies (WF-476).
+   *
+   * The lifecycle built its question records straight from the pack's profile
+   * TEMPLATE, so a question the project had already answered — and that apply
+   * itself had persisted — still read as `unresolved`. Every downstream
+   * consequence followed from that one omission: `plan/answer-missing` on every
+   * rerun, an unresolved question re-opened, and a `blocked` plan for a project
+   * that had answered everything asked of it.
+   *
+   * THE SAME HELPER, NOT A SECOND OVERLAY. `applyQuestionValues` is the one
+   * place a persisted value is validated against its declared schema, and
+   * provenance buys no shortcut past it there. Reusing it is what keeps the
+   * lifecycle path and the read path from drifting into two different answers to
+   * "is this question resolved?".
+   *
+   * FAILURE LEAVES THE QUESTION ASKED. An unparseable document, a non-object
+   * container, or a persisted value that fails its declared schema all return
+   * the questions UNTOUCHED — still unresolved, so still asked. Suppressing a
+   * question on the strength of a container that could not be read is the one
+   * outcome that would turn this fix into a worse defect than the one it closes.
+   */
+  withPersistedAnswers(capability, questions) {
+    if (questions.length === 0) return questions;
+    const raw = this.ports.readFile(
+      joinSlash(this.ports.workspaceRoot, capabilityProfileRelPath(capability))
+    );
+    if (raw === null) return questions;
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return questions;
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return questions;
+    const applied = applyQuestionValues(questions, { persisted: parsed });
+    return applied.ok ? applied.questions : questions;
+  }
   discoverPacksWithInspection(recovery = noRecoveryReport()) {
     const snapshot = this.ensure();
     const workspaceRoot = this.ports.workspaceRoot;
@@ -30488,7 +30534,9 @@ var ResolverService = class {
         observedPortable: inspected?.portableEvidence ?? null,
         priorBinding: recordedBinding.get(record2.pluginId) ?? null,
         observedBinding: inspected?.machineBinding ?? null,
-        questions: inspected ? inspected.capabilities.flatMap((capability) => capability.questions) : [],
+        questions: inspected ? inspected.capabilities.flatMap(
+          (capability) => this.withPersistedAnswers(capability.name, capability.questions)
+        ) : [],
         inspectionValid: inspected?.valid ?? false,
         inspectionIssues: inspected?.issues ?? []
       };
@@ -30638,7 +30686,7 @@ var ResolverService = class {
         });
       }
     }
-    const payloads = this.collectPayloadFacts(admission.root, inspected);
+    const payloads = this.collectPayloadFacts(admission.root, inspected, recordedArtifacts);
     return {
       input: {
         admission,
@@ -31093,7 +31141,7 @@ var ResolverService = class {
     const currentFacts = resolveArtifactFacts(
       this.collectArtifactFacts(
         admittedRoot,
-        this.collectPayloadFacts(admittedRoot, inspected),
+        this.collectPayloadFacts(admittedRoot, inspected, ledger.artifacts),
         ledger.artifacts
       ),
       deselectedOwnerPredicate(plan.registryDelta)
@@ -31190,7 +31238,8 @@ var ResolverService = class {
         detail: `the declared ledger home is not a legal policy: ${home.diagnostic ?? "unknown"}. Nothing was written.`
       };
     }
-    const recordedPortable = parseEvidenceLedger(readRel(home.portablePath)).portable;
+    const portableLedger = parseEvidenceLedger(readRel(home.portablePath));
+    const recordedPortable = portableLedger.portable;
     const recordedBinding = parseEvidenceLedger(readRel(home.bindingPath)).binding;
     const portableUpdates = [];
     const bindingUpdates = [];
@@ -31291,6 +31340,7 @@ var ResolverService = class {
           input.admittedRoot,
           input.plan,
           input.inspected,
+          portableLedger.artifacts,
           action2
         );
         if (!rendered.ok) {
@@ -31319,7 +31369,9 @@ var ResolverService = class {
       if (!input.supported.some((a) => a.kind === "answer-write" && a.destination === write.destination && a.pluginId === write.pluginId)) {
         continue;
       }
-      const question = input.inspected.get(write.pluginId)?.capabilities.flatMap((capability) => capability.questions).find((candidate) => candidate.id === write.questionId);
+      const question = input.inspected.get(write.pluginId)?.capabilities.flatMap(
+        (capability) => this.withPersistedAnswers(capability.name, capability.questions)
+      ).find((candidate) => candidate.id === write.questionId);
       if (question === void 0) {
         return {
           ok: false,
@@ -31807,7 +31859,7 @@ var ResolverService = class {
    * its closed vocabulary — so this renderer cannot emit a half-formed proof even
    * if every check above were to be weakened.
    */
-  renderPayloadWrite(admittedRoot, plan, inspected, action2) {
+  renderPayloadWrite(admittedRoot, plan, inspected, recordedArtifacts, action2) {
     const destination = action2.destination;
     if (destination === null) {
       return {
@@ -31851,8 +31903,24 @@ var ResolverService = class {
         detail: `the payload destination \`${destination}\` now canonicalizes to a different target than the approved plan previewed; nothing was written.`
       };
     }
+    const recordedHash = recordedArtifacts.get(destination)?.producedContentHash ?? null;
+    if (recordedHash !== null) {
+      const live = fingerprint2(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
+      if (live.status === "ok" && live.sha256 !== recordedHash && live.sha256 !== approved.identity.sha256) {
+        return {
+          ok: false,
+          detail: `the payload destination \`${destination}\` has been modified since the plan was approved (recorded content hash ${recordedHash}, observed sha256 ${live.sha256}); its declared \`replace-if-unmodified\` refresh withholds the write, so nothing was written.`
+        };
+      }
+    }
+    const actedOn = /* @__PURE__ */ new Set([
+      ...plan.registryDelta.additions.map((entry) => entry.pluginId),
+      ...plan.registryDelta.retentions.map((entry) => entry.pluginId),
+      ...approved.owners.map((owner) => owner.pluginId)
+    ]);
     const declared = [];
     for (const [pluginId, record2] of inspected) {
+      if (!actedOn.has(pluginId)) continue;
       for (const capability of record2.capabilities) {
         for (const payload of capability.payloads) {
           if (payload.destination !== destination) continue;
@@ -32280,10 +32348,19 @@ var ResolverService = class {
    * ADMITTED root. When either port is absent the preview yields nothing rather
    * than a fabricated digest or a guessed target.
    */
-  collectPayloadFacts(admittedRoot, inspected) {
+  collectPayloadFacts(admittedRoot, inspected, recordedArtifacts) {
     const resolveTarget = this.ports.resolvePayloadTarget;
     const fingerprint2 = this.ports.fingerprintContainedFile;
     if (resolveTarget === void 0 || fingerprint2 === void 0) return [];
+    const currentByDestination = /* @__PURE__ */ new Map();
+    const currentBytesOf = (destination) => {
+      const memo2 = currentByDestination.get(destination);
+      if (memo2 !== void 0) return memo2;
+      const observed = fingerprint2(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
+      const resolved = observed.status === "ok" ? { ok: true, sha256: observed.sha256, bytes: observed.bytes } : { ok: false, status: observed.status };
+      currentByDestination.set(destination, resolved);
+      return resolved;
+    };
     const facts = [];
     for (const [pluginId, record2] of inspected) {
       for (const capability of record2.capabilities) {
@@ -32305,7 +32382,9 @@ var ResolverService = class {
               removal: payload.removal
             },
             target: resolveTarget(admittedRoot, payload.destination),
-            identity: observed.status === "ok" ? { ok: true, sha256: observed.sha256, bytes: observed.bytes } : { ok: false, status: observed.status }
+            identity: observed.status === "ok" ? { ok: true, sha256: observed.sha256, bytes: observed.bytes } : { ok: false, status: observed.status },
+            current: currentBytesOf(payload.destination),
+            recordedContentHash: recordedArtifacts.get(payload.destination)?.producedContentHash ?? null
           });
         }
       }

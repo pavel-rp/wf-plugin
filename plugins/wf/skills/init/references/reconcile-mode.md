@@ -72,6 +72,36 @@ a zero-write run over a divergent state is `retained-divergence`, never
 `no-drift`. Report **retained divergence** — still with no mutation stage,
 because nothing is authorized, but never under the words "no drift".
 
+**Where `applicability` is decided (WF-476).** Conjunct 1 is stated over
+`plan.applicability`, so whatever answers "would this run change anything?" has
+to be the **planner**, and it has to answer from the destination's *bytes*. The
+payload arm therefore decides eligibility itself, per destination, three ways:
+the destination already holds the declared content → **no action** (this is what
+makes the settled exit reachable on a payload-bearing workspace, not only on a
+payload-free one); the destination is recorded in the ledger but holds neither
+the declared content nor the recorded hash → it was **edited outside the
+lifecycle**, so the write is withheld and the destination is reported as
+`edited`/`divergent`; otherwise the ordinary create/overwrite. The preservation
+decision and the emitted action fall out of that one comparison, which is why no
+response can report a destination preserved while having written it.
+
+The mutator keeps its own zero-target refusal, but it is now a **defensive
+invariant** rather than a decision point: a well-formed plan can no longer reach
+it, because the planner emits no action for a settled destination in the first
+place. Convergence is by construction — never a special case in the mutator, and
+never a second opinion that could disagree with the plan a reviewer approved.
+
+**The authoritative persisted-answer surface (WF-476).** A question the install
+lifecycle *asks* is persisted to `_local/profiles/<capability>.profile.json`, and
+that profile is the **only** authoritative place to read it back from — reached
+through the resolver's typed `resolve_profile` query. `_local/config.md` stays
+human-facing core and registry config; it is not an answer store. A capability
+that reads an asked answer from its own config section re-asks a question the
+project already answered, which is exactly the defect this rule closes.
+Precedence for existing projects is **read-through, not migration**: profile
+first, the capability's config section second, with the profile winning when both
+carry a value and nothing writing the value back to the config section.
+
 ## Step R3 — Offer the desired set, once
 
 Present **every** discovered pack and **every** registration. For each, carry the

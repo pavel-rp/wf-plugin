@@ -84,6 +84,7 @@ import {
   MAX_NORMALIZED_QUESTION_BYTES,
   MAX_PROFILE_TEMPLATE_BYTES,
   MAX_QUESTION_DIAGNOSTICS,
+  applyQuestionValues,
   makeQuestionDiagnostic,
   parseQuestionDeclarations,
   validateQuestionValue,
@@ -164,6 +165,7 @@ import {
   type TargetRender,
 } from "./resolver/apply-targets.js";
 import type {
+  PayloadCurrentBytes,
   PayloadTargetResolution,
   PlanPayloadFact,
 } from "./resolver/payload-plan.js";
@@ -175,6 +177,7 @@ import type {
 import {
   RESOLVER_GENERATOR,
   type ArtifactEvidence,
+  type QuestionRecord,
   type CapabilityRecord,
   type ConstitutionInput,
   type ContainedFileFingerprintResult,
@@ -1492,6 +1495,49 @@ export class ResolverService {
    * `inspectListedPack` was split out to avoid — so the inspections are handed
    * back from the single run instead.
    */
+  /**
+   * Give one capability's declared questions the PERSISTED-ANSWER overlay the
+   * registry-composition read path already applies (WF-476).
+   *
+   * The lifecycle built its question records straight from the pack's profile
+   * TEMPLATE, so a question the project had already answered — and that apply
+   * itself had persisted — still read as `unresolved`. Every downstream
+   * consequence followed from that one omission: `plan/answer-missing` on every
+   * rerun, an unresolved question re-opened, and a `blocked` plan for a project
+   * that had answered everything asked of it.
+   *
+   * THE SAME HELPER, NOT A SECOND OVERLAY. `applyQuestionValues` is the one
+   * place a persisted value is validated against its declared schema, and
+   * provenance buys no shortcut past it there. Reusing it is what keeps the
+   * lifecycle path and the read path from drifting into two different answers to
+   * "is this question resolved?".
+   *
+   * FAILURE LEAVES THE QUESTION ASKED. An unparseable document, a non-object
+   * container, or a persisted value that fails its declared schema all return
+   * the questions UNTOUCHED — still unresolved, so still asked. Suppressing a
+   * question on the strength of a container that could not be read is the one
+   * outcome that would turn this fix into a worse defect than the one it closes.
+   */
+  private withPersistedAnswers(
+    capability: string,
+    questions: readonly QuestionRecord[],
+  ): readonly QuestionRecord[] {
+    if (questions.length === 0) return questions;
+    const raw = this.ports.readFile(
+      joinSlash(this.ports.workspaceRoot, capabilityProfileRelPath(capability)),
+    );
+    if (raw === null) return questions;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return questions;
+    }
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return questions;
+    const applied = applyQuestionValues(questions, { persisted: parsed as Record<string, unknown> });
+    return applied.ok ? applied.questions : questions;
+  }
+
   private discoverPacksWithInspection(recovery: RecoveryReport = noRecoveryReport()): {
     response: DiscoverPacksResponse;
     inspected: Map<string, InspectPackResponse>;
@@ -1534,7 +1580,9 @@ export class ResolverService {
         priorBinding: recordedBinding.get(record.pluginId) ?? null,
         observedBinding: inspected?.machineBinding ?? null,
         questions: inspected
-          ? inspected.capabilities.flatMap((capability) => capability.questions)
+          ? inspected.capabilities.flatMap((capability) =>
+              this.withPersistedAnswers(capability.name, capability.questions),
+            )
           : [],
         inspectionValid: inspected?.valid ?? false,
         inspectionIssues: inspected?.issues ?? [],
@@ -1729,7 +1777,7 @@ export class ResolverService {
       }
     }
 
-    const payloads = this.collectPayloadFacts(admission.root, inspected);
+    const payloads = this.collectPayloadFacts(admission.root, inspected, recordedArtifacts);
     return {
       input: {
         admission,
@@ -2343,7 +2391,7 @@ export class ResolverService {
     const currentFacts = resolveArtifactFacts(
       this.collectArtifactFacts(
         admittedRoot,
-        this.collectPayloadFacts(admittedRoot, inspected),
+        this.collectPayloadFacts(admittedRoot, inspected, ledger.artifacts),
         ledger.artifacts,
       ),
       deselectedOwnerPredicate(plan.registryDelta),
@@ -2546,7 +2594,8 @@ export class ResolverService {
       };
     }
 
-    const recordedPortable = parseEvidenceLedger(readRel(home.portablePath)).portable;
+    const portableLedger = parseEvidenceLedger(readRel(home.portablePath));
+    const recordedPortable = portableLedger.portable;
     const recordedBinding = parseEvidenceLedger(readRel(home.bindingPath)).binding;
 
     const portableUpdates: LedgerEvidenceUpdate[] = [];
@@ -2696,6 +2745,7 @@ export class ResolverService {
           input.admittedRoot,
           input.plan,
           input.inspected,
+          portableLedger.artifacts,
           action,
         );
         if (!rendered.ok) {
@@ -2765,9 +2815,16 @@ export class ResolverService {
       // REVALIDATED at apply time through the SAME declared-schema path a
       // persisted value takes. The plan validated it too, but a plan is an
       // approval, not evidence, and this mutator trusts current facts only.
+      // The SAME persisted-answer overlay the planner's question list carries
+      // (WF-476), so plan and mutator read one question state rather than two.
+      // The revalidation itself is untouched — a plan is an approval, not
+      // evidence — only the record it revalidates against is now the enriched
+      // one.
       const question = input.inspected
         .get(write.pluginId)
-        ?.capabilities.flatMap((capability) => capability.questions)
+        ?.capabilities.flatMap((capability) =>
+          this.withPersistedAnswers(capability.name, capability.questions),
+        )
         .find((candidate) => candidate.id === write.questionId);
       if (question === undefined) {
         return {
@@ -3493,6 +3550,7 @@ export class ResolverService {
     admittedRoot: string,
     plan: PlanInstallResponse,
     inspected: Map<string, InspectPackResponse>,
+    recordedArtifacts: Map<string, ArtifactEvidence>,
     action: PlanAction,
   ):
     | { ok: true; destination: string; content: string; sha256: string; evidence: ArtifactEvidence }
@@ -3551,12 +3609,57 @@ export class ResolverService {
       };
     }
 
+    // --- 1b. the destination has not been edited since the plan (WF-476) -------
+    // The planner withholds the write for a managed destination whose bytes match
+    // neither the declared content nor the recorded ledger hash. Re-derived here
+    // under the lock exactly as `renderAdvanceWrite` re-derives its own gate: the
+    // planner's decision is the source of truth, and the mutator RE-PROVES it
+    // rather than trusting it, so a destination hand-edited in the window between
+    // plan and apply is refused instead of overwritten.
+    const recordedHash = recordedArtifacts.get(destination)?.producedContentHash ?? null;
+    if (recordedHash !== null) {
+      const live = fingerprint(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
+      if (
+        live.status === "ok" &&
+        live.sha256 !== recordedHash &&
+        live.sha256 !== approved.identity.sha256
+      ) {
+        return {
+          ok: false,
+          detail: `the payload destination \`${destination}\` has been modified since the plan was approved (recorded content hash ${recordedHash}, observed sha256 ${live.sha256}); its declared \`replace-if-unmodified\` refresh withholds the write, so nothing was written.`,
+        };
+      }
+    }
+
     // --- 3 + 4. the currently-declared owner set and its tuple -----------------
     // Re-read from the CURRENT inspection rather than from the plan, because "who
     // declares this destination, and with what semantics" is precisely the fact a
-    // pack edited between plan and apply would have changed.
+    // pack edited between plan and apply would have changed. That re-read is the
+    // whole point of the precondition and is preserved verbatim.
+    //
+    // WHAT IS NARROWED IS THE COMPARISON SET, NEVER THE GUARD (WF-476). The
+    // approved owner set was built from the SELECTED packs only (`plan-install.ts`
+    // narrows the payload facts to the acted-on, surviving set), so comparing it
+    // against every INSPECTED pack compares two differently-scoped sets and makes
+    // an installed-but-unselected co-declarer look like an owner that "appeared"
+    // — refusing an ordinary install. Iterating this plan's own acted-on packs
+    // puts both sides on the same footing.
+    //
+    // THE GUARD STILL FAILS CLOSED IN BOTH DIRECTIONS. The scope is the plan's
+    // acted-on packs UNION the approved owners, so: a selected pack that changed
+    // its declarations is in scope and still trips; an approved owner that
+    // dropped or altered its declaration is in scope and still trips (it cannot
+    // hide by leaving the delta); and only a pack that is neither selected nor an
+    // approved owner is excluded — which is exactly the declaration the PLANNER
+    // also refused to consider, so plan and mutator now scope identically.
+    const actedOn = new Set([
+      ...plan.registryDelta.additions.map((entry) => entry.pluginId),
+      ...plan.registryDelta.retentions.map((entry) => entry.pluginId),
+      ...approved.owners.map((owner) => owner.pluginId),
+    ]);
     const declared: { pluginId: string; capability: string; source: string; semantics: PayloadSemantics }[] = [];
     for (const [pluginId, record] of inspected) {
+      if (!actedOn.has(pluginId)) continue;
       for (const capability of record.capabilities) {
         for (const payload of capability.payloads) {
           if (payload.destination !== destination) continue;
@@ -4173,10 +4276,28 @@ export class ResolverService {
   private collectPayloadFacts(
     admittedRoot: string,
     inspected: Map<string, InspectPackResponse>,
+    recordedArtifacts: Map<string, ArtifactEvidence>,
   ): PlanPayloadFact[] {
     const resolveTarget = this.ports.resolvePayloadTarget;
     const fingerprint = this.ports.fingerprintContainedFile;
     if (resolveTarget === undefined || fingerprint === undefined) return [];
+
+    // One destination is fingerprinted ONCE however many capabilities declare
+    // it: the bytes on disk are a property of the destination, not of the row,
+    // and re-reading per row would make a co-owned target's facts depend on
+    // iteration order.
+    const currentByDestination = new Map<string, PayloadCurrentBytes>();
+    const currentBytesOf = (destination: string): PayloadCurrentBytes => {
+      const memo = currentByDestination.get(destination);
+      if (memo !== undefined) return memo;
+      const observed = fingerprint(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
+      const resolved: PayloadCurrentBytes =
+        observed.status === "ok"
+          ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }
+          : { ok: false, status: observed.status };
+      currentByDestination.set(destination, resolved);
+      return resolved;
+    };
 
     const facts: PlanPayloadFact[] = [];
     for (const [pluginId, record] of inspected) {
@@ -4205,6 +4326,9 @@ export class ResolverService {
               observed.status === "ok"
                 ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }
                 : { ok: false, status: observed.status },
+            current: currentBytesOf(payload.destination),
+            recordedContentHash:
+              recordedArtifacts.get(payload.destination)?.producedContentHash ?? null,
           });
         }
       }

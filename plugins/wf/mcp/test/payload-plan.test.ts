@@ -70,6 +70,10 @@ function fact(over: Partial<PlanPayloadFact> = {}): PlanPayloadFact {
     semantics: { ...COPY },
     target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: false },
     identity: { ok: true, sha256: DIGEST_A, bytes: 12 },
+    // The default destination has no bytes and no ledger record — the ordinary
+    // first-install shape, on which the WF-476 eligibility test is inert.
+    current: { ok: false, status: "missing" },
+    recordedContentHash: null,
     ...over,
   };
 }
