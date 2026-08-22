@@ -14,7 +14,8 @@ state), **3** scaffold the bare core idempotently outside the pack transaction,
 **4** take an explicit selection, **5** ask every unresolved question once, **6**
 re-plan with those answers, **7** confirm one plan identity, **8** apply one
 transaction, **9** settle the registry-derived scaffolding and inspect, **10**
-establish the constitution.
+establish the constitution. On a workspace that already carries lifecycle state,
+Phases 4–8 take their **reconcile** form instead (see "The fork" below).
 
 > **The two rules that make this safe.** **Relay, never infer** — every
 > lifecycle fact shown to the user is read out of a typed envelope, never
@@ -22,10 +23,10 @@ establish the constitution.
 > only lifecycle write, it runs at most once, and it carries the id of the exact
 > plan the user confirmed.
 
-Idempotent. Re-running against an already-set-up repo produces no diff unless
-`--force` is passed and nothing was selected to change. Rationale for the
-journey's shape lives in this skill's paired `fresh-init-journey.md` reference,
-**never read at runtime**.
+Idempotent, in both forms: a re-run over a settled workspace produces no diff and
+never reaches the mutation stage. Rationale lives in the paired
+`fresh-init-journey.md` and `reconcile-rationale.md` references, **never read at
+runtime**.
 
 ---
 
@@ -58,8 +59,8 @@ this body is its implementation.
   write outside `_local/`, since relocating the registry is that key's purpose.
 - Read-only resolution through the bundled `wf-resolver` MCP service:
   `resolve_config`, `resolve_registry`, `resolve_profile`, `resolve_content`,
-  `discover_packs`, `plan_install`, `resolve_inspect`, plus one explicit
-  `resolve_refresh` after the scaffold writes.
+  `discover_packs`, `plan_install`, `repair_packs`, `resolve_inspect`, plus one
+  explicit `resolve_refresh` after the scaffold writes.
 - **One** `apply_install` call per run, carrying the `expectedPlanId` of the plan
   the user confirmed — the sole lifecycle mutation this skill performs.
 - Invoke `/wf:constitution` through the **Skill** tool.
@@ -72,6 +73,13 @@ this body is its implementation.
   enablement flipped, no answer persisted directly.
 - Call `apply_install` without a confirmation, more than once per run, or with a
   plan id other than the one confirmed.
+- Derive a deregistration from anything but an **explicit deselection**: an
+  omission, an orphaned registration, a disabled registration, and a missing
+  durable record each **retain**, and none may place a pack in `deregister`.
+  Nor reconstruct a desired set by inference from machine-local state when the
+  durable record is absent — ask instead.
+- Report a workspace as settled, or as showing no drift, while an advance is
+  withheld or an artifact is retained under any class but the benign one.
 - Call `register_pack` — a pack registers its own capability; `init` establishes
   the substrate those registrations attach to.
 - **Infer** any lifecycle fact: presence, state, enablement, availability,
@@ -168,30 +176,16 @@ rollback never un-scaffolds it.
    escaping the workspace is a stop before any write. If `_local` exists as a
    regular file, stop and report the conflict.
 
-2. **Resolve the registry location** from `registryPath`. When no override is
-   configured the resolver's default is `_local/config.md`, so default behaviour
-   is byte-identical to a workspace that never set the key. Record the state for
-   the Final Output: `default`, `configured`, or `rejected → fell back to
-   default`.
-
-   **Defensive check.** Before writing to a non-default `registryPath`, confirm
-   it is a repo-relative, forward-slash file path with no `..` segment and no
-   absolute or drive prefix; then canonicalize the target (or its nearest
-   existing ancestor) and require it to stay under the canonical admitted root,
-   which catches a relative path escaping through a symlink. On failure, do not
-   write there: fall back to `_local/config.md`, record `rejected → fell back to
-   default`, and flag the rejected value loudly.
+2. **Resolve the registry location** from `registryPath`, apply its defensive
+   containment check, and place the `## Capabilities` table in exactly one
+   destination. The procedure — including the `default` / `configured` /
+   `rejected → fell back to default` state the Final Output reports — lives at
+   `registry-location.md`, obtained via `resolve_content({ workspaceRoot, class:
+   "references-template", skill: "init", ref: "registry-location.md" })` on this
+   write path only.
 
 3. **Write `_local/config.md`.** Skip if it exists and `--force` is not set
    ("config.md already present — left untouched").
-
-   **One registry, never two.** The `## Capabilities` section belongs to exactly
-   one destination. **Same-file case** (the resolved location *is*
-   `_local/config.md`) ⇒ the table rides inside the config template. **Relocated
-   case** ⇒ omit `## Capabilities` from the `_local/config.md` write entirely and
-   write that section only to the resolved location. The two writes skip
-   independently, each guarded on its own destination, so re-running after the
-   registry moved still creates it where it now belongs.
 
    The verbatim default content lives at `config-template.md`, obtained via
    `resolve_content({ workspaceRoot, class: "references-template", skill:
@@ -207,21 +201,11 @@ rollback never un-scaffolds it.
    hardcoded default; when detection falls back to its TODO placeholder, flag it
    prominently so the user fixes it before running any other skill.
 
-5. **Write `_local/README.md`** — skip if present and `--force` is unset.
-   Substitute the current model id:
-
-   ```markdown
-   # _local/
-
-   **Model:** <current model id>
-
-   Per-task artifacts managed by the wf:* skill suite. Everything here is gitignored.
-
-   - `T<NNN>/` — task folders (requirements, spec, plan, research, artifacts)
-   - `config.md` — project-specific values consumed by every wf:* skill
-
-   Safe to nuke if you want a clean slate. Nothing here is version-controlled.
-   ```
+5. **Write `_local/README.md`** — skip if present and `--force` is unset. The
+   verbatim content, and the model-id substitution it takes, live at
+   `local-readme-template.md`, obtained via `resolve_content({ workspaceRoot,
+   class: "references-template", skill: "init", ref:
+   "local-readme-template.md" })` on this write path only.
 
 6. **Gitignore `_local/`.** Create `.gitignore` with the single line `_local/`
    if absent; otherwise append `_local/` only when no line already matches
@@ -235,6 +219,35 @@ rollback never un-scaffolds it.
    surface and retry once. A second failure does **not** stop the run (the writes
    landed, and every typed query re-validates its own fingerprints); note that
    the explicit refresh did not confirm.
+
+---
+
+## The fork: fresh journey or reconcile
+
+Take the **reconcile** form when Phase 2 reported any pack already carrying
+lifecycle state — a non-empty `registeredCapabilities`, or any evidence
+comparison other than `evidence-missing`; otherwise take the fresh form below.
+Reconcile replaces Phase 4's selection and adds a diagnosis before it and a
+settled exit after it; Phases 5–8 (question round, plan, confirm, apply) and
+Phases 1–3 and 9–10 are the shared spine and are unchanged. Reconcile is not a
+flag and adds no status token. Its procedure lives at `reconcile-mode.md`,
+obtained via `resolve_content({ workspaceRoot, class: "references-template",
+skill: "init", ref: "reconcile-mode.md" })` on that path only. Follow it as
+written. Four invariants govern it; violating any is a defect, not a judgement:
+
+1. **Removal has exactly one source: an explicit deselection** — never a set
+   difference, never an omission. An orphaned registration, a disabled one, and
+   one whose durable record is missing each **retain**; the third bootstraps
+   *without* deletion.
+2. **A settled workspace never enters the mutation stage** — not "enters it and
+   does nothing": no plan call, no confirmation, no mutation call at all. And
+   settled is not one applicability read — a withheld advance, or an artifact
+   retained under any class but the benign one, is **retained divergence**, a
+   zero-write state that must never be reported as no drift.
+3. **Preselection comes from the durable committed record only.** Where there is
+   none, ask; machine-local state may not reconstruct a desired set.
+4. **Visible, selectable, deselectable and retained are four properties**, kept
+   separate and never collapsed into one value.
 
 ---
 
@@ -420,6 +433,12 @@ stop the run on it.
   leave existing files alone unless `--force`.
 - **Config values do not match the repo:** do not guess — write defaults and tell
   the user to edit.
+- **Reconcile over a settled workspace:** no plan call, no confirmation, no
+  mutation call — `already-initialized`, `Apply: not run — no drift`. If nothing
+  is authorized but something diverged, report retained divergence and what
+  diverged; never the words "no drift".
+- **An orphaned, disabled, or evidence-missing registration on a reconcile:**
+  each is retained. Only an explicit deselection removes anything.
 
 ---
 
@@ -441,14 +460,19 @@ Registry: <resolved registry location> (<default | configured | rejected → fel
 
 Discovery: <inventory confidence>, <n> pack(s) observed; recovery <recovery state>
 Packs:
-- <pluginId> — <relayed state> · <presence> · <enablement> · <selected | not selected | unavailable — disabled>
+- <pluginId> — <relayed state> · <presence> · <enablement> · <selected | not selected | unavailable — disabled> · <preselected — durable record | not preselected — no durable record | n/a — fresh> · <retained | deregistering — explicitly deselected>
   (repeat one line per discovered pack; "none" when none was discovered)
+
+Reconcile: <n/a — fresh journey | settled — no drift | retained divergence — <n> item(s) | delta — <a> addition(s), <d> explicit deselection(s)>
+Repair: <n> diagnosed · <n> withheld advance(s) · retained by class <retained/unlisted/shared/edited/ambiguous/unverifiable tally>
 
 Questions: <n> asked, <n> already resolved, <n> answered this run
 Plan: <applicability> · mode <mode> · <n> action(s) · planId <planId> (<factCount> facts)
-Apply: <applied | rejected | rolled-back | halted | not run — declined | not run — no change>
+  Source: <repair_packs (empty delta) | plan_install (desired-set delta) | none — no plan computed>
+Apply: <applied | rejected | rolled-back | halted | not run — declined | not run — no change | not run — no drift | not run — retained divergence, nothing authorized>
   Reason: <closed reason token, or "—">
   Applied: <n> · Deferred: <n> · Residue: <clean | retained — detail>
+  Upgrade: <no-drift | fully-upgraded | partial | retained-divergence | not-assessed | n/a — no apply> · remaining <n> <(class tally)>
 
 Capability profiles:
 - <capability-name> — <seeded override [seeded by <model id>] | default in use | skipped — no template | skipped — unsafe capability name | skipped — unreadable manifest>
