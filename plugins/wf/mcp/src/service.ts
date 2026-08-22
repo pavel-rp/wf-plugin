@@ -118,8 +118,10 @@ import {
   resolveArtifactFacts,
   type PlanArtifactFactInput,
   type PlanCapabilityInput,
+  type PlanInstallInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
+import { planRepair, type RepairPlanResult } from "./resolver/repair-plan.js";
 import {
   decideRemovalGate,
   type AuthorizedBootstrap,
@@ -1637,20 +1639,37 @@ export class ResolverService {
     selection: PlanSelectionInput,
     recovery: RecoveryReport,
   ): { plan: PlanInstallResponse; inspected: Map<string, InspectPackResponse> } {
+    const { input, inspected } = this.planInputFrom(admission, selection, recovery);
+    return { plan: planInstallJoin(input), inspected };
+  }
+
+  /**
+   * The assembled planner INPUT over an already-performed recovery.
+   *
+   * Split out of `planFrom` for WF-460 so the derived repair plan reads exactly
+   * the same facts through exactly the same code path. A second, independently
+   * written fact assembly is how a diagnosis surface drifts away from the plan it
+   * claims to produce, so there is only one.
+   */
+  private planInputFrom(
+    admission: Extract<PlanAdmissionState, { admitted: true }>,
+    selection: PlanSelectionInput,
+    recovery: RecoveryReport,
+  ): { input: PlanInstallInput; inspected: Map<string, InspectPackResponse> } {
     if (!recovery.proceeded) {
       // The fail-safe stop. Nothing below this line runs, so no lifecycle state
       // is read at all. The pure join composes the halted envelope from the same
       // gate, so the property holds whether a caller enters through this service
       // or drives the join directly.
       return {
-        plan: planInstallJoin({
+        input: {
           admission,
           inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
           packs: [],
           capabilities: [],
           selection,
           recovery,
-        }),
+        },
         inspected: new Map(),
       };
     }
@@ -1712,7 +1731,7 @@ export class ResolverService {
 
     const payloads = this.collectPayloadFacts(admission.root, inspected);
     return {
-      plan: planInstallJoin({
+      input: {
         admission,
         inventory: response.inventory,
         packs: response.packs,
@@ -1721,9 +1740,55 @@ export class ResolverService {
         payloads,
         artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
         recovery,
-      }),
+      },
       inspected,
     };
+  }
+
+  // --- WF-460: repair_packs (read-only, byte-inert) -----------------------
+  /**
+   * Produce the complete repair plan for registration and managed-artifact drift.
+   *
+   * BYTE-INERT FROM THE RECOVERED BASELINE, exactly as `plan_install` is, and for
+   * exactly the same reason: every step below reads. Recovery runs FIRST and
+   * EXACTLY ONCE, its report is threaded into the single fact assembly, and it is
+   * carried in the response's own SEPARATE `recovery` key — never folded into the
+   * plan and never folded into `identity`. Repair creates no journal, no backup,
+   * and no transaction of its own; like discovery and planning it is
+   * lock-acquiring but journal-free.
+   *
+   * IT PRODUCES AND NEVER EXECUTES. There is no repair mutator: a confirmed
+   * repair identity is executed by handing its `planId` to `apply_install`.
+   */
+  repairPacks(admission: PlanAdmissionState): RepairPlanResult {
+    if (!admission.admitted) {
+      return planRepair({
+        admission,
+        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+        packs: [],
+        capabilities: [],
+        recovery: invalidRootRecoveryReport(
+          admission.diagnostic ??
+            "the declared workspace root was not admitted, so no recovery was attempted.",
+        ),
+      });
+    }
+
+    const recovery = this.ports.recovery
+      ? recoverInterruptedTransaction(this.ports.recovery)
+      : noRecoveryReport();
+
+    // The selection is DERIVED inside `planRepair` from the observed facts, so
+    // the placeholder handed to the shared assembly is replaced there. Passing an
+    // empty one here keeps the assembly's signature honest: this call site
+    // asserts no selection of its own.
+    const { input } = this.planInputFrom(
+      admission,
+      { desired: [], deregister: [], answers: [] },
+      recovery,
+    );
+    const { selection: _ignored, ...facts } = input;
+    return planRepair(facts);
   }
 
   /**

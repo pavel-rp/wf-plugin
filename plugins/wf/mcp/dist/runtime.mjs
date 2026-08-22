@@ -21972,6 +21972,200 @@ function planInstall(input) {
   };
 }
 
+// src/resolver/repair-plan.ts
+var REPAIR_DRIFT_REMEDY = Object.freeze({
+  "source-drift": "evidence-repair:portable",
+  "root-map": "evidence-repair:binding",
+  "local-drift": "evidence-repair:binding",
+  "missing-binding": "evidence-seed:binding-seed",
+  "missing-legacy-evidence": "evidence-seed:legacy-bootstrap",
+  settled: "none",
+  indeterminate: "none"
+});
+function classifyRepairDrift(comparison) {
+  switch (comparison) {
+    case "portable-mismatch":
+      return "source-drift";
+    case "root-moved":
+      return "root-map";
+    case "local-mismatch":
+      return "local-drift";
+    case "binding-seed":
+      return "missing-binding";
+    case "evidence-missing":
+      return "missing-legacy-evidence";
+    case "equal":
+      return "settled";
+    default:
+      return "indeterminate";
+  }
+}
+function diagnoseRepairDrift(packs) {
+  return packs.map((pack) => {
+    const drift = classifyRepairDrift(pack.evidence.comparison);
+    return {
+      pluginId: pack.pluginId,
+      comparison: pack.evidence.comparison,
+      drift,
+      remedy: REPAIR_DRIFT_REMEDY[drift],
+      selected: pack.registeredCapabilities.length > 0
+    };
+  }).sort((left, right) => left.pluginId.localeCompare(right.pluginId));
+}
+function deriveRepairSelection(packs) {
+  const desired = [
+    ...new Set(
+      packs.filter((pack) => pack.registeredCapabilities.length > 0).map((pack) => pack.pluginId)
+    )
+  ].sort((left, right) => left.localeCompare(right));
+  return { desired, deregister: [], answers: [] };
+}
+var SHA256_RE2 = /^[a-f0-9]{64}$/;
+function ownerKey2(owner) {
+  return JSON.stringify([owner.pluginId, owner.capability, owner.source]);
+}
+function sameOwners(left, right) {
+  if (left.length !== right.length) return false;
+  const l = left.map(ownerKey2).sort();
+  const r = right.map(ownerKey2).sort();
+  return l.every((value, index) => value === r[index]);
+}
+function sameSemantics(left, right) {
+  return left.production === right.production && left.refresh === right.refresh && left.removal === right.removal;
+}
+function tupleOf2(semantics) {
+  return {
+    production: semantics.production,
+    refresh: semantics.refresh,
+    removal: semantics.removal
+  };
+}
+function agreesWithAdvanceConjuncts(recorded, declared) {
+  if (recorded === null || declared === null) return false;
+  if (recorded.owners.length === 0 || declared.owners.length === 0) return false;
+  if (!SHA256_RE2.test(declared.declaredSourceFingerprint)) return false;
+  if (!SHA256_RE2.test(declared.producedContentHash)) return false;
+  if (!sameOwners(recorded.owners, declared.owners)) return false;
+  return sameSemantics(tupleOf2(recorded), tupleOf2(declared));
+}
+function repairPlanDestructiveClaims(plan) {
+  const claims = /* @__PURE__ */ new Set();
+  for (const decision2 of plan.artifacts.deletable) claims.add(decision2.destination);
+  for (const decision2 of [
+    ...plan.artifacts.retained,
+    ...plan.artifacts.bootstrap,
+    ...plan.artifacts.advance
+  ]) {
+    if (decision2.deletionAuthority) claims.add(decision2.destination);
+  }
+  for (const action2 of plan.actions) {
+    if (action2.kind === "artifact-delete") claims.add(action2.destination ?? "");
+  }
+  return [...claims].sort((left, right) => left.localeCompare(right));
+}
+function sortFindings2(findings) {
+  return [...findings].sort(
+    (left, right) => (left.pluginId ?? "").localeCompare(right.pluginId ?? "") || left.code.localeCompare(right.code) || left.message.localeCompare(right.message)
+  );
+}
+function repairApplicability(plan, findings, artifacts) {
+  if (findings.some((finding2) => finding2.severity === "error")) return "not-applicable";
+  if (plan.answers.unresolved.length > 0) return "blocked";
+  const inert = plan.registryDelta.additions.length === 0 && plan.registryDelta.deregistrations.length === 0 && plan.answers.writes.length === 0 && plan.evidenceSeeds.length === 0 && plan.repairs.length === 0 && plan.payloads.actions.length === 0 && !hasPreviewedArtifactEffect(artifacts);
+  return inert ? "no-change" : "applicable";
+}
+function recompleted(plan, findings, artifacts) {
+  const sorted = sortFindings2(findings);
+  const applicability = repairApplicability(plan, sorted, artifacts);
+  const completionInput = {
+    planVersion: PLAN_ENVELOPE_VERSION,
+    admission: plan.admission,
+    workspaceRoot: plan.workspaceRoot,
+    applicability,
+    registryDelta: plan.registryDelta,
+    answers: plan.answers,
+    evidenceSeeds: plan.evidenceSeeds,
+    repairs: plan.repairs,
+    payloads: plan.payloads,
+    artifacts,
+    findings: sorted,
+    inventory: plan.inventory
+  };
+  const completion = completePlan(completionInput);
+  return {
+    ...plan,
+    applicability,
+    mode: completion.mode,
+    artifacts,
+    actions: completion.actions,
+    applicabilityBasis: completion.applicabilityBasis,
+    identity: completion.identity,
+    findings: sorted
+  };
+}
+function planRepair(input) {
+  const diagnosis = diagnoseRepairDrift(input.packs);
+  const withheldAdvances = [];
+  const artifactFacts = (input.artifacts ?? []).map((fact) => {
+    const recorded = fact.recorded;
+    const declared = fact.declared;
+    if (recorded === null || declared === null) return fact;
+    if (declared.declaredSourceFingerprint === recorded.declaredSourceFingerprint) return fact;
+    if (agreesWithAdvanceConjuncts(recorded, declared)) return fact;
+    withheldAdvances.push({
+      destination: fact.destination,
+      reason: sameOwners(recorded.owners, declared.owners) ? "declared-tuple-changed" : "owner-set-moved"
+    });
+    return { ...fact, declared: null };
+  });
+  withheldAdvances.sort((left, right) => left.destination.localeCompare(right.destination));
+  const base = planInstall({
+    ...input,
+    artifacts: artifactFacts,
+    selection: deriveRepairSelection(input.packs)
+  });
+  if (base.applicability === "invalid-root" || base.applicability === "unrecovered") {
+    return { plan: base, diagnosis: [], withheldAdvances: [] };
+  }
+  const findings = [...base.findings];
+  for (const withheld of withheldAdvances) {
+    findings.push({
+      code: "plan/artifact-retained",
+      severity: "warning",
+      pluginId: null,
+      message: `managed artifact \`${withheld.destination}\` has a newer declared source but is retained: \`${withheld.reason}\`, so an advance would not survive the mutator's upgrade gate.`
+    });
+  }
+  if (!input.inventory.mayEstablishAbsence) {
+    findings.push({
+      code: "plan/inventory-untrustworthy",
+      severity: "error",
+      pluginId: null,
+      message: `the pack inventory reads \`${input.inventory.confidence}\`, so absence of an owner cannot be established; the repair plan is not applicable and carries no destructive claim.`
+    });
+  }
+  let plan = recompleted(base, findings, base.artifacts);
+  if (repairPlanDestructiveClaims(plan).length > 0) {
+    const stripped = {
+      deletable: [],
+      retained: plan.artifacts.retained.map((decision2) => ({
+        ...decision2,
+        deletionAuthority: false
+      })),
+      bootstrap: plan.artifacts.bootstrap.map((decision2) => ({
+        ...decision2,
+        deletionAuthority: false
+      })),
+      advance: plan.artifacts.advance.map((decision2) => ({
+        ...decision2,
+        deletionAuthority: false
+      }))
+    };
+    plan = recompleted(base, findings, stripped);
+  }
+  return { plan, diagnosis, withheldAdvances };
+}
+
 // src/git-workspace.ts
 import { execFileSync } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
@@ -22105,7 +22299,7 @@ var LIFECYCLE_LOCK_PATH = "_local/lifecycle.lock";
 var LIFECYCLE_JOURNAL_PATH = "_local/lifecycle-journal.json";
 var LIFECYCLE_BACKUP_DIR = "_local/lifecycle-backups";
 var LIFECYCLE_JOURNAL_VERSION = 1;
-var SHA256_RE2 = /^[a-f0-9]{64}$/;
+var SHA256_RE3 = /^[a-f0-9]{64}$/;
 function nonEmpty(value) {
   return typeof value === "string" && value.length > 0;
 }
@@ -22114,7 +22308,7 @@ function asRecord(value) {
   return value;
 }
 function createLastWrittenIdentity(inputs) {
-  if (!SHA256_RE2.test(inputs.contentHash)) return null;
+  if (!SHA256_RE3.test(inputs.contentHash)) return null;
   if (!Number.isInteger(inputs.bytes) || inputs.bytes < 0) return null;
   return { contentHash: inputs.contentHash, bytes: inputs.bytes };
 }
@@ -22125,7 +22319,7 @@ function createJournalEntry(inputs) {
   if (inputs.priorExistence === "present") {
     if (inputs.priorContentHash === null) {
       if (!inputs.priorIsSymlink) return null;
-    } else if (!SHA256_RE2.test(inputs.priorContentHash)) {
+    } else if (!SHA256_RE3.test(inputs.priorContentHash)) {
       return null;
     }
   } else if (inputs.priorContentHash !== null) {
@@ -22714,6 +22908,15 @@ function planInstallEnvelopeForRejection(source, reason, diagnostic, args) {
     recovery: invalidRootRecoveryReport(diagnostic)
   });
 }
+function repairPacksEnvelopeForRejection(source, reason, diagnostic) {
+  return planRepair({
+    admission: { admitted: false, root: null, source, reason, diagnostic },
+    inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+    packs: [],
+    capabilities: [],
+    recovery: invalidRootRecoveryReport(diagnostic)
+  });
+}
 function discoverPacksEnvelopeForRejection(workspaceRoot, diagnostic) {
   return {
     workspaceRoot,
@@ -23199,6 +23402,44 @@ function registerResolverTools(server, selectService) {
         { admitted: true, root: declared.root, source: declared.source, reason: null, diagnostic: null },
         toPlanSelection(args)
       );
+    })
+  );
+  server.registerTool(
+    "repair_packs",
+    {
+      title: "repair packs",
+      description: "Recovery-first, then read-only byte-inert production of the COMPLETE repair plan for registration and managed-artifact drift (WF-460). It PRODUCES AND NEVER EXECUTES: there is no repair mutator, and a confirmed repair is executed by handing `plan.identity.planId` to `apply_install`, which re-derives every decision under the exclusive lock. Returns `{plan, diagnosis[], withheldAdvances[]}`, where `plan` is the SAME frozen `plan_install` envelope \u2014 `planVersion: 1`, the thirteen-kind ordered `actions[]`, and the SHA-256 `identity.planId` over the same sixteen mutation-relevant fact classes. THERE IS NO SECOND SCHEMA, no `planVersion: 2`, and no new identity fact class. THE SELECTION IS DERIVED, NOT SUPPLIED: `desired` is every REGISTERED pack, and `deregister` is ALWAYS THE EMPTY SET. That is a structural guarantee, not a policy \u2014 an artifact reaches the `deletable` form only when every recorded owner is deselected, so with nothing deselected a repair plan CANNOT CONTAIN A DESTRUCTIVE CLAIM AT ALL: no `artifact-delete` action, no `deletable` decision, and no `deletionAuthority: true` anywhere. An installed-but-unregistered pack is deliberately NOT adopted \u2014 that would be an install, and repair is not an install surface. FIVE DRIFT STATES THAT DO NOT COLLAPSE, each reported per pack in `diagnosis[]` with its own remedy token: a portable tuple mismatch is `source-drift` and yields a `portable`-scoped `evidence-repair` REGARDLESS OF ROOT; equal portable tuples plus a moved known root is `root-map` and yields a `binding`-scoped repair; equal tuples with an unmoved root and drifted local fingerprints is `local-drift`, also `binding`-scoped and NOT the same observation as a moved root; a missing machine binding is `missing-binding`, which RETAINS the registration and offers a `binding-seed`; and missing portable evidence is `missing-legacy-evidence`, where the pack stays SELECTED AND OPERATIONAL pending a strict `legacy-bootstrap` whose exact proof predicate must hold. A comparison this build does not recognise is `indeterminate` and authorizes NOTHING. AN UNTRUSTWORTHY INVENTORY IS NOT MERELY FLAGGED: only a `trustworthy` inventory may establish that nobody owns a file, so a `duplicate` (reported as `invalid`), `unavailable`, `malformed`, `invalid`, or `partial` inventory raises a plan-level `plan/inventory-untrustworthy` error, making the plan `not-applicable` and enumerating it in `applicabilityBasis.blockingFindings` \u2014 on top of the structural guarantee above, so a reader who ignores the flag still finds no destructive claim to act on. THE DIAGNOSIS AGREES WITH THE MUTATOR IT FEEDS: a source-changed artifact whose recorded owner set has MOVED relative to the currently-declared one, or whose declared `{production, refresh, removal}` tuple no longer equals the recorded one, has its advance WITHHELD here and reported in `withheldAdvances[]` as `owner-set-moved` or `declared-tuple-changed`, because `apply_install`'s upgrade gate is obliged to refuse it. Hash-matching source-changed artifacts still advance; an EDITED file stays retained as `divergent`, which is what denies a fully-upgraded claim. Ownerless artifacts follow the established rules unchanged \u2014 an empty owner set is INCOMPLETE ownership, never exclusive ownership. IDEMPOTENT, WITH RETAINED DIVERGENCE STILL VISIBLE: two runs over unchanged facts produce an identical `planId`, an identical ordered `actions[]`, and deep-equal responses apart from `recovery`; a retained divergence is reported on EVERY run, because there is no `already-reported` suppression and the retained decision is folded into `planId`. RECOVERY IS REPORTED SEPARATELY AND NEVER FOLDED INTO THE PLAN: before any lifecycle state is read it takes the SAME exclusive machine-local lock `discover_packs` and `plan_install` take and recovers an interrupted transaction from the versioned machine-local journal; `plan.recovery` carries `{state, proceeded, wroteBytes, ...}`, is excluded from `identity`, and when `proceeded` is `false` no lifecycle state is read at all, `mode` is `null`, and one `plan/halted-unrecovered` error is reported. REPAIR NEVER CREATES A JOURNAL, a backup, or a transaction of its own; with none present it acquires and releases the lock and is BYTE-INERT FROM THE RECOVERED BASELINE ONWARD \u2014 `plan.byteInert` is the literal `true`. Works against a non-cwd admitted workspace root; an inadmissible declaration returns the same typed `invalid-root` envelope rather than an error, and writes nothing on any path.",
+      inputSchema: workspaceOnlyInput
+    },
+    async (args) => guard(() => {
+      const declared = selectWorkspaceRoot(
+        { explicit: args.workspaceRoot, cwd: args.workspaceRoot },
+        null
+      );
+      if (!declared.ok) {
+        return repairPacksEnvelopeForRejection(
+          declared.source,
+          declared.reason,
+          declared.diagnostic
+        );
+      }
+      let service;
+      try {
+        service = selectService(args.workspaceRoot);
+      } catch (err) {
+        return repairPacksEnvelopeForRejection(
+          declared.source,
+          "out-of-family",
+          terminalSafeDiagnostic(err)
+        );
+      }
+      return service.repairPacks({
+        admitted: true,
+        root: declared.root,
+        source: declared.source,
+        reason: null,
+        diagnostic: null
+      });
     })
   );
   server.registerTool(
@@ -23777,7 +24018,7 @@ function validatePayloadDeclarations(pluginId, capability, table) {
 // src/resolver/lifecycle-evidence.ts
 var COMMITTED_LEDGER_PATH = ".wf/install-state.json";
 var LOCAL_LEDGER_PATH = "_local/install-state.json";
-var SHA256_RE3 = /^[a-f0-9]{64}$/;
+var SHA256_RE4 = /^[a-f0-9]{64}$/;
 function nonEmpty2(value) {
   return typeof value === "string" && value.length > 0;
 }
@@ -23790,7 +24031,7 @@ function orderedHashes(records) {
   const normalized = [];
   const paths = /* @__PURE__ */ new Set();
   for (const record2 of records) {
-    if (!nonEmpty2(record2.path) || !SHA256_RE3.test(record2.sha256) || paths.has(record2.path)) {
+    if (!nonEmpty2(record2.path) || !SHA256_RE4.test(record2.sha256) || paths.has(record2.path)) {
       return null;
     }
     paths.add(record2.path);
@@ -23874,7 +24115,7 @@ function createMachineBindingEvidence(inputs) {
 }
 function createArtifactEvidence(inputs) {
   const owners = orderedOwners(inputs.owners);
-  if (!nonEmpty2(inputs.destination) || owners === null || !SHA256_RE3.test(inputs.declaredSourceFingerprint) || !SHA256_RE3.test(inputs.producedContentHash) || inputs.production !== "copy" || inputs.refresh !== "replace-if-unmodified" && inputs.refresh !== "retain" || inputs.removal !== "delete-if-unmodified" && inputs.removal !== "retain") {
+  if (!nonEmpty2(inputs.destination) || owners === null || !SHA256_RE4.test(inputs.declaredSourceFingerprint) || !SHA256_RE4.test(inputs.producedContentHash) || inputs.production !== "copy" || inputs.refresh !== "replace-if-unmodified" && inputs.refresh !== "retain" || inputs.removal !== "delete-if-unmodified" && inputs.removal !== "retain") {
     return null;
   }
   return {
@@ -28091,7 +28332,7 @@ function discoverPacks(input) {
 }
 
 // src/resolver/apply-removal.ts
-var SHA256_RE4 = /^[a-f0-9]{64}$/;
+var SHA256_RE5 = /^[a-f0-9]{64}$/;
 function preservationClassFor(reason) {
   switch (reason) {
     case "not-deselected":
@@ -28119,7 +28360,7 @@ function preservationClassFor(reason) {
       return "unverifiable";
   }
 }
-function sameOwners(left, right) {
+function sameOwners2(left, right) {
   if (left.length !== right.length) return false;
   const key = (owner) => (
     // `JSON.stringify` over the triple is injective — its own quoting
@@ -28133,12 +28374,12 @@ function sameOwners(left, right) {
   const rightKeys = right.map(key).sort();
   return leftKeys.every((value, index) => value === rightKeys[index]);
 }
-function sameSemantics(left, right) {
+function sameSemantics2(left, right) {
   if (left === null || right === null) return left === right;
   return left.production === right.production && left.refresh === right.refresh && left.removal === right.removal;
 }
 function sameDecision(left, right) {
-  return left.destination === right.destination && left.canonicalTarget === right.canonicalTarget && left.form === right.form && left.reason === right.reason && left.recordedContentHash === right.recordedContentHash && left.currentContentHash === right.currentContentHash && left.bytesMatchLedger === right.bytesMatchLedger && left.deletionAuthority === right.deletionAuthority && sameOwners(left.owners, right.owners) && sameSemantics(left.semantics, right.semantics);
+  return left.destination === right.destination && left.canonicalTarget === right.canonicalTarget && left.form === right.form && left.reason === right.reason && left.recordedContentHash === right.recordedContentHash && left.currentContentHash === right.currentContentHash && left.bytesMatchLedger === right.bytesMatchLedger && left.deletionAuthority === right.deletionAuthority && sameOwners2(left.owners, right.owners) && sameSemantics2(left.semantics, right.semantics);
 }
 function indexPreview(preview) {
   const index = /* @__PURE__ */ new Map();
@@ -28168,7 +28409,7 @@ function portableComplete(portable) {
   if (portable.pluginId.length === 0 || portable.version.length === 0) return false;
   if (portable.capabilities.length === 0) return false;
   if (portable.manifestHashes.length === 0) return false;
-  const wellFormed = (rows) => rows.every((row) => row.path.length > 0 && SHA256_RE4.test(row.sha256));
+  const wellFormed = (rows) => rows.every((row) => row.path.length > 0 && SHA256_RE5.test(row.sha256));
   return wellFormed(portable.manifestHashes) && wellFormed(portable.declaredSourceHashes);
 }
 function decideRemovalGate(input) {
@@ -28236,7 +28477,7 @@ function decideRemovalGate(input) {
   for (const action2 of deleteActions) {
     const destination = action2.destination;
     const decision2 = currentIndex.get(destination);
-    if (decision2 === void 0 || decision2.form !== "deletable" || decision2.deletionAuthority !== true || decision2.canonicalTarget === null || decision2.recordedContentHash === null || decision2.currentContentHash === null || !SHA256_RE4.test(decision2.recordedContentHash) || !SHA256_RE4.test(decision2.currentContentHash) || decision2.recordedContentHash !== decision2.currentContentHash || decision2.owners.length === 0 || decision2.semantics === null || decision2.semantics.removal !== "delete-if-unmodified") {
+    if (decision2 === void 0 || decision2.form !== "deletable" || decision2.deletionAuthority !== true || decision2.canonicalTarget === null || decision2.recordedContentHash === null || decision2.currentContentHash === null || !SHA256_RE5.test(decision2.recordedContentHash) || !SHA256_RE5.test(decision2.currentContentHash) || decision2.recordedContentHash !== decision2.currentContentHash || decision2.owners.length === 0 || decision2.semantics === null || decision2.semantics.removal !== "delete-if-unmodified") {
       return {
         ok: false,
         reason: "apply/artifact-precondition",
@@ -28255,7 +28496,7 @@ function decideRemovalGate(input) {
     const destination = action2.destination;
     const decision2 = currentIndex.get(destination);
     const fact = input.currentFacts.find((candidate) => candidate.destination === destination);
-    if (decision2 === void 0 || decision2.form !== "bootstrap" || decision2.canonicalTarget === null || decision2.semantics === null || decision2.owners.length === 0 || decision2.currentContentHash === null || !SHA256_RE4.test(decision2.currentContentHash) || fact === void 0 || fact.declared === null || !SHA256_RE4.test(fact.declared.declaredSourceFingerprint)) {
+    if (decision2 === void 0 || decision2.form !== "bootstrap" || decision2.canonicalTarget === null || decision2.semantics === null || decision2.owners.length === 0 || decision2.currentContentHash === null || !SHA256_RE5.test(decision2.currentContentHash) || fact === void 0 || fact.declared === null || !SHA256_RE5.test(fact.declared.declaredSourceFingerprint)) {
       return {
         ok: false,
         reason: "apply/artifact-precondition",
@@ -28343,7 +28584,7 @@ function decideRemovalGate(input) {
 }
 
 // src/resolver/apply-upgrade.ts
-var SHA256_RE5 = /^[a-f0-9]{64}$/;
+var SHA256_RE6 = /^[a-f0-9]{64}$/;
 function divergenceClassFor(reason) {
   switch (reason) {
     // --- not a divergence: another arm's vocabulary ---
@@ -28392,14 +28633,14 @@ function resolveUpgradeOutcome(acted, remaining) {
   if (remaining > 0) return acted > 0 ? "partial" : "retained-divergence";
   return acted > 0 ? "fully-upgraded" : "no-drift";
 }
-function sameOwners2(left, right) {
+function sameOwners3(left, right) {
   if (left.length !== right.length) return false;
   const key = (owner) => JSON.stringify([owner.pluginId, owner.capability, owner.source]);
   const leftKeys = left.map(key).sort();
   const rightKeys = right.map(key).sort();
   return leftKeys.every((value, index) => value === rightKeys[index]);
 }
-function sameSemantics2(left, right) {
+function sameSemantics3(left, right) {
   return left.production === right.production && left.refresh === right.refresh && left.removal === right.removal;
 }
 function indexCurrent(preview) {
@@ -28495,7 +28736,7 @@ function decideUpgradeGate(input) {
     const destination = action2.destination;
     const decision2 = currentIndex.get(destination);
     const fact = input.currentFacts.find((candidate) => candidate.destination === destination);
-    if (decision2 === void 0 || decision2.form !== "advance" || decision2.canonicalTarget === null || decision2.recordedContentHash === null || decision2.currentContentHash === null || !SHA256_RE5.test(decision2.recordedContentHash) || !SHA256_RE5.test(decision2.currentContentHash) || decision2.recordedContentHash !== decision2.currentContentHash || decision2.bytesMatchLedger !== true || decision2.owners.length === 0 || decision2.semantics === null || decision2.semantics.production !== "copy" || decision2.semantics.refresh !== "replace-if-unmodified" || fact === void 0 || fact.declared === null || !SHA256_RE5.test(fact.declared.declaredSourceFingerprint) || !SHA256_RE5.test(fact.declared.producedContentHash) || fact.recorded === null || fact.declared.declaredSourceFingerprint === fact.recorded.declaredSourceFingerprint || // TWO CONJUNCTS `planArtifacts` DOES NOT ASSERT, ADDED BY THE RULE-2 AUDIT.
+    if (decision2 === void 0 || decision2.form !== "advance" || decision2.canonicalTarget === null || decision2.recordedContentHash === null || decision2.currentContentHash === null || !SHA256_RE6.test(decision2.recordedContentHash) || !SHA256_RE6.test(decision2.currentContentHash) || decision2.recordedContentHash !== decision2.currentContentHash || decision2.bytesMatchLedger !== true || decision2.owners.length === 0 || decision2.semantics === null || decision2.semantics.production !== "copy" || decision2.semantics.refresh !== "replace-if-unmodified" || fact === void 0 || fact.declared === null || !SHA256_RE6.test(fact.declared.declaredSourceFingerprint) || !SHA256_RE6.test(fact.declared.producedContentHash) || fact.recorded === null || fact.declared.declaredSourceFingerprint === fact.recorded.declaredSourceFingerprint || // TWO CONJUNCTS `planArtifacts` DOES NOT ASSERT, ADDED BY THE RULE-2 AUDIT.
     //
     // (a) THE OWNER SET MUST NOT HAVE MOVED. `classify`'s advance path reasons
     //     entirely from the RECORDED owners and never compares them with the
@@ -28516,7 +28757,7 @@ function decideUpgradeGate(input) {
     //
     // Bytes and semantics are independent axes (WF-448's rule), so both are
     // checked, and either one failing rejects the whole plan.
-    !sameOwners2(decision2.owners, fact.declared.owners) || !sameSemantics2(decision2.semantics, {
+    !sameOwners3(decision2.owners, fact.declared.owners) || !sameSemantics3(decision2.semantics, {
       production: fact.declared.production,
       refresh: fact.declared.refresh,
       removal: fact.declared.removal
@@ -30336,16 +30577,28 @@ var ResolverService = class {
    * shift mid-transaction.
    */
   planFrom(admission, selection, recovery) {
+    const { input, inspected } = this.planInputFrom(admission, selection, recovery);
+    return { plan: planInstall(input), inspected };
+  }
+  /**
+   * The assembled planner INPUT over an already-performed recovery.
+   *
+   * Split out of `planFrom` for WF-460 so the derived repair plan reads exactly
+   * the same facts through exactly the same code path. A second, independently
+   * written fact assembly is how a diagnosis surface drifts away from the plan it
+   * claims to produce, so there is only one.
+   */
+  planInputFrom(admission, selection, recovery) {
     if (!recovery.proceeded) {
       return {
-        plan: planInstall({
+        input: {
           admission,
           inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
           packs: [],
           capabilities: [],
           selection,
           recovery
-        }),
+        },
         inspected: /* @__PURE__ */ new Map()
       };
     }
@@ -30387,7 +30640,7 @@ var ResolverService = class {
     }
     const payloads = this.collectPayloadFacts(admission.root, inspected);
     return {
-      plan: planInstall({
+      input: {
         admission,
         inventory: response.inventory,
         packs: response.packs,
@@ -30396,9 +30649,45 @@ var ResolverService = class {
         payloads,
         artifacts: this.collectArtifactFacts(admission.root, payloads, recordedArtifacts),
         recovery
-      }),
+      },
       inspected
     };
+  }
+  // --- WF-460: repair_packs (read-only, byte-inert) -----------------------
+  /**
+   * Produce the complete repair plan for registration and managed-artifact drift.
+   *
+   * BYTE-INERT FROM THE RECOVERED BASELINE, exactly as `plan_install` is, and for
+   * exactly the same reason: every step below reads. Recovery runs FIRST and
+   * EXACTLY ONCE, its report is threaded into the single fact assembly, and it is
+   * carried in the response's own SEPARATE `recovery` key — never folded into the
+   * plan and never folded into `identity`. Repair creates no journal, no backup,
+   * and no transaction of its own; like discovery and planning it is
+   * lock-acquiring but journal-free.
+   *
+   * IT PRODUCES AND NEVER EXECUTES. There is no repair mutator: a confirmed
+   * repair identity is executed by handing its `planId` to `apply_install`.
+   */
+  repairPacks(admission) {
+    if (!admission.admitted) {
+      return planRepair({
+        admission,
+        inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+        packs: [],
+        capabilities: [],
+        recovery: invalidRootRecoveryReport(
+          admission.diagnostic ?? "the declared workspace root was not admitted, so no recovery was attempted."
+        )
+      });
+    }
+    const recovery = this.ports.recovery ? recoverInterruptedTransaction(this.ports.recovery) : noRecoveryReport();
+    const { input } = this.planInputFrom(
+      admission,
+      { desired: [], deregister: [], answers: [] },
+      recovery
+    );
+    const { selection: _ignored, ...facts } = input;
+    return planRepair(facts);
   }
   /**
    * The sole public mutator for an exact approved plan (WF-453, widened by
@@ -31580,9 +31869,9 @@ var ResolverService = class {
         }
       }
     }
-    const ownerKey2 = (owner) => JSON.stringify([owner.pluginId, owner.capability, owner.source]);
-    const declaredKeys = [...declared.map(ownerKey2)].sort();
-    const approvedKeys = [...approved.owners.map(ownerKey2)].sort();
+    const ownerKey3 = (owner) => JSON.stringify([owner.pluginId, owner.capability, owner.source]);
+    const declaredKeys = [...declared.map(ownerKey3)].sort();
+    const approvedKeys = [...approved.owners.map(ownerKey3)].sort();
     if (JSON.stringify(declaredKeys) !== JSON.stringify(approvedKeys)) {
       return {
         ok: false,

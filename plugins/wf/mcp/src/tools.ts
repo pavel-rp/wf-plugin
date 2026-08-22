@@ -19,6 +19,7 @@ import {
   planInstall as planInstallJoin,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
+import { planRepair, type RepairPlanResult } from "./resolver/repair-plan.js";
 import { selectWorkspaceRoot } from "./workspace-admission.js";
 import { invalidRootRecoveryReport } from "./resolver/lifecycle-recovery.js";
 import {
@@ -288,6 +289,27 @@ function planInstallEnvelopeForRejection(
     // carries (WF-452). An inadmissible root is rejected before any root-bound
     // port exists, so no recovery was attempted — and saying so explicitly is
     // what stops a reader inferring "nothing needed recovering".
+    recovery: invalidRootRecoveryReport(diagnostic),
+  });
+}
+
+/** The typed `invalid-root` repair envelope (WF-460).
+ *
+ *  Composed here for exactly the reason the planner's is: an inadmissible root
+ *  must never reach a root-bound service at all. The derived selection is empty
+ *  because nothing was observed, and the recovery report says explicitly that no
+ *  recovery was attempted rather than leaving a reader to infer that nothing
+ *  needed recovering. */
+function repairPacksEnvelopeForRejection(
+  source: string,
+  reason: string,
+  diagnostic: string,
+): RepairPlanResult {
+  return planRepair({
+    admission: { admitted: false, root: null, source, reason, diagnostic },
+    inventory: { confidence: "unavailable", mayEstablishAbsence: false, observedCount: 0, issues: [] },
+    packs: [],
+    capabilities: [],
     recovery: invalidRootRecoveryReport(diagnostic),
   });
 }
@@ -889,6 +911,57 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
           { admitted: true, root: declared.root, source: declared.source, reason: null, diagnostic: null },
           toPlanSelection(args),
         );
+      }),
+  );
+
+  // Deliberately NOT `RESIDENT`, for the same reason as `plan_install`: no skill
+  // body names `repair_packs` as a mandatory pre-step — it is a maintainer-
+  // initiated diagnosis, so it defers behind the host's tool-search surface.
+  server.registerTool(
+    "repair_packs",
+    {
+      title: "repair packs",
+      description:
+        "Recovery-first, then read-only byte-inert production of the COMPLETE repair plan for registration and managed-artifact drift (WF-460). It PRODUCES AND NEVER EXECUTES: there is no repair mutator, and a confirmed repair is executed by handing `plan.identity.planId` to `apply_install`, which re-derives every decision under the exclusive lock. Returns `{plan, diagnosis[], withheldAdvances[]}`, where `plan` is the SAME frozen `plan_install` envelope — `planVersion: 1`, the thirteen-kind ordered `actions[]`, and the SHA-256 `identity.planId` over the same sixteen mutation-relevant fact classes. THERE IS NO SECOND SCHEMA, no `planVersion: 2`, and no new identity fact class. THE SELECTION IS DERIVED, NOT SUPPLIED: `desired` is every REGISTERED pack, and `deregister` is ALWAYS THE EMPTY SET. That is a structural guarantee, not a policy — an artifact reaches the `deletable` form only when every recorded owner is deselected, so with nothing deselected a repair plan CANNOT CONTAIN A DESTRUCTIVE CLAIM AT ALL: no `artifact-delete` action, no `deletable` decision, and no `deletionAuthority: true` anywhere. An installed-but-unregistered pack is deliberately NOT adopted — that would be an install, and repair is not an install surface. FIVE DRIFT STATES THAT DO NOT COLLAPSE, each reported per pack in `diagnosis[]` with its own remedy token: a portable tuple mismatch is `source-drift` and yields a `portable`-scoped `evidence-repair` REGARDLESS OF ROOT; equal portable tuples plus a moved known root is `root-map` and yields a `binding`-scoped repair; equal tuples with an unmoved root and drifted local fingerprints is `local-drift`, also `binding`-scoped and NOT the same observation as a moved root; a missing machine binding is `missing-binding`, which RETAINS the registration and offers a `binding-seed`; and missing portable evidence is `missing-legacy-evidence`, where the pack stays SELECTED AND OPERATIONAL pending a strict `legacy-bootstrap` whose exact proof predicate must hold. A comparison this build does not recognise is `indeterminate` and authorizes NOTHING. AN UNTRUSTWORTHY INVENTORY IS NOT MERELY FLAGGED: only a `trustworthy` inventory may establish that nobody owns a file, so a `duplicate` (reported as `invalid`), `unavailable`, `malformed`, `invalid`, or `partial` inventory raises a plan-level `plan/inventory-untrustworthy` error, making the plan `not-applicable` and enumerating it in `applicabilityBasis.blockingFindings` — on top of the structural guarantee above, so a reader who ignores the flag still finds no destructive claim to act on. THE DIAGNOSIS AGREES WITH THE MUTATOR IT FEEDS: a source-changed artifact whose recorded owner set has MOVED relative to the currently-declared one, or whose declared `{production, refresh, removal}` tuple no longer equals the recorded one, has its advance WITHHELD here and reported in `withheldAdvances[]` as `owner-set-moved` or `declared-tuple-changed`, because `apply_install`'s upgrade gate is obliged to refuse it. Hash-matching source-changed artifacts still advance; an EDITED file stays retained as `divergent`, which is what denies a fully-upgraded claim. Ownerless artifacts follow the established rules unchanged — an empty owner set is INCOMPLETE ownership, never exclusive ownership. IDEMPOTENT, WITH RETAINED DIVERGENCE STILL VISIBLE: two runs over unchanged facts produce an identical `planId`, an identical ordered `actions[]`, and deep-equal responses apart from `recovery`; a retained divergence is reported on EVERY run, because there is no `already-reported` suppression and the retained decision is folded into `planId`. RECOVERY IS REPORTED SEPARATELY AND NEVER FOLDED INTO THE PLAN: before any lifecycle state is read it takes the SAME exclusive machine-local lock `discover_packs` and `plan_install` take and recovers an interrupted transaction from the versioned machine-local journal; `plan.recovery` carries `{state, proceeded, wroteBytes, ...}`, is excluded from `identity`, and when `proceeded` is `false` no lifecycle state is read at all, `mode` is `null`, and one `plan/halted-unrecovered` error is reported. REPAIR NEVER CREATES A JOURNAL, a backup, or a transaction of its own; with none present it acquires and releases the lock and is BYTE-INERT FROM THE RECOVERED BASELINE ONWARD — `plan.byteInert` is the literal `true`. Works against a non-cwd admitted workspace root; an inadmissible declaration returns the same typed `invalid-root` envelope rather than an error, and writes nothing on any path.",
+      inputSchema: workspaceOnlyInput,
+    },
+    async (args: WorkspaceArgs) =>
+      guard(() => {
+        // The same ONE canonical admission API and the same
+        // typed-envelope-not-error contract the planner uses. Repair recovers, so
+        // admitting the root before a root-bound service exists is not hygiene —
+        // it is what keeps a restore from being attempted against a root that was
+        // never admitted.
+        const declared = selectWorkspaceRoot(
+          { explicit: args.workspaceRoot, cwd: args.workspaceRoot },
+          null,
+        );
+        if (!declared.ok) {
+          return repairPacksEnvelopeForRejection(
+            declared.source,
+            declared.reason,
+            declared.diagnostic,
+          );
+        }
+
+        let service: ResolverService;
+        try {
+          service = selectService(args.workspaceRoot);
+        } catch (err) {
+          return repairPacksEnvelopeForRejection(
+            declared.source,
+            "out-of-family",
+            terminalSafeDiagnostic(err),
+          );
+        }
+
+        return service.repairPacks({
+          admitted: true,
+          root: declared.root,
+          source: declared.source,
+          reason: null,
+          diagnostic: null,
+        });
       }),
   );
 

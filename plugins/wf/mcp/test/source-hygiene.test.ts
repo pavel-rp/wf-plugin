@@ -192,6 +192,7 @@ test("no `src` file CALLS an export of this codebase it never imported", () => {
   const exported = exportedValueNames(files);
   assert.ok(exported.size > 0, "the codebase must export named values");
   assert.ok(exported.has("collectRemainingDivergence"), "the guard must see the WF-459 symbol");
+  assert.ok(exported.has("planRepair"), "the guard must see the WF-460 symbol");
 
   const offenders: string[] = [];
   for (const rel of files) {
@@ -256,4 +257,27 @@ test("the unimported-call guard itself detects a planted omission", () => {
     false,
     "a method definition is not a call",
   );
+});
+
+test("the newest module is inside the guard's scan set, not merely adjacent to it", () => {
+  // A `file:line` citation proves a line EXISTS, not that it is covered. The guard
+  // above recurses, so a new module is picked up automatically — but "automatically"
+  // is an assumption until something asserts it, and a mis-sited file (wrong folder,
+  // wrong extension) would silently drop out of the scan while still shipping.
+  const files = sourceFiles(join(MCP_DIR!, "src"), "");
+  assert.ok(
+    files.includes("resolver/repair-plan.ts"),
+    `the WF-460 module must be scanned; scanned set was:\n${files.join("\n")}`,
+  );
+  // Its own imports resolve: every codebase export it calls is one it imported.
+  const exported = exportedValueNames(files);
+  const text = codeOnly(readFileSync(join(MCP_DIR!, "src/resolver/repair-plan.ts"), "utf8"));
+  const available = locallyAvailable(text);
+  const missing: string[] = [];
+  for (const match of text.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+    const name = match[2]!;
+    if (available.has(name) || !exported.has(name)) continue;
+    missing.push(name);
+  }
+  assert.deepEqual(missing, []);
 });
