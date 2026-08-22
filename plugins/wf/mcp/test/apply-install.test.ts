@@ -151,7 +151,7 @@ function gate(
 // The closed action screen
 // ---------------------------------------------------------------------------
 
-test("the supported set is exactly the six unconditional kinds, and the conditional set exactly the constitution", () => {
+test("the supported set is exactly the eight unconditional kinds, and the conditional set exactly the constitution", () => {
   assert.deepEqual(
     [...APPLY_SUPPORTED_ACTION_KINDS],
     [
@@ -161,12 +161,32 @@ test("the supported set is exactly the six unconditional kinds, and the conditio
       "payload-write",
       "answer-write",
       "override-write",
+      // WF-458 — the destructive slice. Admitted to the action screen and then
+      // held to `decideRemovalGate`'s second whole-plan gate; admission is
+      // permission to be considered, never permission to delete.
+      "artifact-bootstrap",
+      "artifact-delete",
     ],
   );
   assert.deepEqual([...APPLY_CONDITIONAL_ACTION_KINDS], ["constitution-recompose"]);
   // The seed screen is the SECOND half of the action screen, because both seed
   // kinds wear the same `evidence-seed` action kind.
-  assert.deepEqual([...APPLY_SUPPORTED_SEED_KINDS], ["binding-seed"]);
+  assert.deepEqual([...APPLY_SUPPORTED_SEED_KINDS], ["binding-seed", "legacy-bootstrap"]);
+});
+
+test("SC-5: upgrade and repair remain out of scope, and stay out under BOTH constitution worlds", () => {
+  // The boundary WF-458 deliberately did NOT move. WF-459 owns these; a plan
+  // carrying either must still refuse before any journal exists.
+  for (const kind of ["artifact-advance", "evidence-repair"] as const) {
+    assert.ok(!APPLY_SUPPORTED_ACTION_KINDS.includes(kind), `${kind} stays unsupported`);
+    assert.ok(!APPLY_CONDITIONAL_ACTION_KINDS.includes(kind), `${kind} is not conditional`);
+    for (const facts of [NO_CONSTITUTION, HAS_CONSTITUTION]) {
+      assert.deepEqual(
+        screenPlanActions([action({ kind })], facts).unsupported.map((a) => a.kind),
+        [kind],
+      );
+    }
+  }
 });
 
 test("every mutating plan action kind outside the supported and conditional sets is unsupported", () => {
@@ -369,14 +389,14 @@ test("an unsupported action refuses the WHOLE plan — a registry action alongsi
     plan: plan({
       actions: [
         action({ kind: "registry-add", order: 0 }),
-        action({ kind: "artifact-delete", order: 1 }),
+        action({ kind: "artifact-advance", order: 1 }),
       ],
     }),
     expectedPlanId: PLAN_ID,
     journalPresent: false,
   });
   assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
-  assert.ok(!decision.ok && decision.detail.includes("artifact-delete"));
+  assert.ok(!decision.ok && decision.detail.includes("artifact-advance"));
   // The supported action was screened but the gate refused, so nothing renders.
   assert.ok(!decision.ok && decision.screened.supported.length === 1);
 });
@@ -399,7 +419,9 @@ test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY suppo
         action({ kind: "override-write", order: 4, destination: ".wf/slots/ship.review.md" }),
         action({ kind: "payload-write", order: 5, destination: "_local/tooling/helper.mjs" }),
         action({ kind: "constitution-recompose", order: 6, pluginId: null }),
-        action({ kind: "artifact-delete", order: 7, destination: "_local/tooling/helper.mjs" }),
+        action({ kind: "artifact-bootstrap", order: 7, destination: "_local/tooling/other.mjs" }),
+        action({ kind: "artifact-delete", order: 8, destination: "_local/tooling/gone.mjs" }),
+        action({ kind: "artifact-advance", order: 9, destination: "_local/tooling/helper.mjs" }),
       ],
       evidenceSeeds: [seed("binding-seed")],
     }),
@@ -408,25 +430,21 @@ test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY suppo
   });
 
   assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
-  assert.ok(!decision.ok && decision.detail.includes("artifact-delete"));
-  // All seven supported actions WERE screened — and none of them can be applied,
-  // because the gate did not return `ok`.
-  assert.ok(!decision.ok && decision.screened.supported.length === 7);
+  assert.ok(!decision.ok && decision.detail.includes("artifact-advance"));
+  // All nine supported actions WERE screened — including the two WF-458 admitted
+  // — and none of them can be applied, because the gate did not return `ok`.
+  assert.ok(!decision.ok && decision.screened.supported.length === 9);
 });
 
-test("SC-4: deletion, upgrade, bootstrap and repair each refuse a plan that ALSO carries a payload write (WF-456)", () => {
-  // The requirement stated at the level it is written: adding `payload-write` to
-  // the supported set must not open a door for the four out-of-scope modes to
-  // ride alongside it. Each is checked on its own, so a fix that happened to
-  // catch one of them cannot mask the other three — and each is checked in the
-  // presence of a supported payload, which is the combination a naive
-  // loop-with-early-return would apply half of.
-  for (const kind of [
-    "artifact-delete",
-    "artifact-advance",
-    "artifact-bootstrap",
-    "evidence-repair",
-  ] as const) {
+test("SC-5: upgrade and repair each refuse a plan that ALSO carries a payload write", () => {
+  // The requirement stated at the level it is written: adding `payload-write`
+  // (WF-456) and then the destructive slice (WF-458) to the supported set must
+  // not open a door for the two REMAINING out-of-scope modes to ride alongside
+  // them. Each is checked on its own, so a fix that happened to catch one of
+  // them cannot mask the other — and each is checked in the presence of a
+  // supported payload, which is the combination a naive loop-with-early-return
+  // would apply half of.
+  for (const kind of ["artifact-advance", "evidence-repair"] as const) {
     const decision = gate({
       ...HAS_CONSTITUTION,
       plan: plan({
@@ -475,9 +493,13 @@ test("EVERY out-of-scope kind refuses a plan that also carries a full supported 
   }
 });
 
-test("A LEGACY PORTABLE BOOTSTRAP is refused, though it wears a SUPPORTED action kind", () => {
-  // The screen the action list alone cannot perform: both seed kinds are
-  // integrated as `evidence-seed`, so only the seed FACTS distinguish them.
+test("WF-458: a LEGACY PORTABLE BOOTSTRAP now passes the action/seed screen and is gated downstream", () => {
+  // The boundary this item moves. The seed screen exists because both seed kinds
+  // are integrated as the single `evidence-seed` action, so only the seed FACTS
+  // distinguish them — and the legacy kind is now admitted there. It is NOT
+  // thereby applied: `decideRemovalGate`'s rule 6 requires the observed tuple to
+  // be complete and exactly equal to the approved one, with the pack still
+  // carrying no recorded portable evidence.
   const decision = gate({
     plan: plan({
       actions: [
@@ -489,16 +511,11 @@ test("A LEGACY PORTABLE BOOTSTRAP is refused, though it wears a SUPPORTED action
     expectedPlanId: PLAN_ID,
     journalPresent: false,
   });
-  assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
-  assert.ok(!decision.ok && decision.detail.includes("legacy-bootstrap"));
-  assert.ok(!decision.ok && decision.detail.includes("pack@1.0.0"));
-  // The action screen saw nothing wrong — which is exactly why the seed screen
-  // has to exist.
-  assert.equal(decision.ok, false);
-  assert.ok(!decision.ok && decision.screened.unsupported.length === 0);
+  assert.equal(decision.ok, true);
+  assert.equal(decision.screened.unsupported.length, 0);
 });
 
-test("a legacy bootstrap ANYWHERE in the seed list refuses, even beside an ordinary binding seed", () => {
+test("a legacy bootstrap beside an ordinary binding seed passes the screen; neither is refused", () => {
   const decision = gate({
     plan: plan({
       actions: [
@@ -510,9 +527,28 @@ test("a legacy bootstrap ANYWHERE in the seed list refuses, even beside an ordin
     expectedPlanId: PLAN_ID,
     journalPresent: false,
   });
+  assert.equal(decision.ok, true);
+});
+
+test("SC-5: an unsupported SEED kind would still refuse the whole plan before any journal", () => {
+  // The seed screen is not decorative now that both shipped kinds are supported:
+  // it is the fail-closed arm for a kind a later release adds. Asserted directly
+  // against `APPLY_SUPPORTED_SEED_KINDS` so the guard cannot rot into a no-op.
+  const decision = gate({
+    plan: plan({
+      actions: [
+        action({ kind: "evidence-seed", order: 0 }),
+        action({ kind: "registry-add", order: 1 }),
+      ],
+      evidenceSeeds: [
+        { ...seed("binding-seed", "future@1"), kind: "future-seed" as never },
+      ],
+    }),
+    expectedPlanId: PLAN_ID,
+    journalPresent: false,
+  });
   assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
-  assert.ok(!decision.ok && decision.detail.includes("legacy@1"));
-  assert.ok(!decision.ok && !decision.detail.includes("good@1"), "only the offender is named");
+  assert.ok(!decision.ok && decision.detail.includes("future-seed"));
 });
 
 test("an ordinary binding seed passes the gate", () => {

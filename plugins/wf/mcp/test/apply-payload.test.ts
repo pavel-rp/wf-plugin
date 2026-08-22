@@ -259,6 +259,13 @@ function compose(
     registryRel: "_local/config.md",
     registryContent: "# Config\n",
     registryChanged: false,
+    // The WF-458 authorized sets. Empty here on purpose: these are the PAYLOAD
+    // contract tests, and a payload compose that starts emitting removals because
+    // the destructive sets defaulted would be exactly the silent widening the
+    // whole-plan gate exists to prevent.
+    removals: [],
+    bootstraps: [],
+    legacy: [],
   } satisfies Record<string, unknown> as unknown as ComposeInput);
 }
 
@@ -524,6 +531,9 @@ test("SC-1b: a selection carrying only a registry change writes no artifacts sec
     registryRel: "_local/config.md",
     registryContent: "# Config\n\n## Capabilities\n",
     registryChanged: true,
+    removals: [],
+    bootstraps: [],
+    legacy: [],
   });
 
   assert.ok(result.ok, result.ok ? "" : result.detail);

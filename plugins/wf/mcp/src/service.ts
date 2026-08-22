@@ -112,11 +112,21 @@ import {
   type RecoveryPorts,
 } from "./resolver/lifecycle-recovery.js";
 import {
+  deselectedOwnerPredicate,
   planInstall as planInstallJoin,
+  resolveArtifactFacts,
   type PlanArtifactFactInput,
   type PlanCapabilityInput,
   type PlanSelectionInput,
 } from "./resolver/plan-install.js";
+import {
+  decideRemovalGate,
+  type AuthorizedBootstrap,
+  type AuthorizedLegacySeed,
+  type AuthorizedRemoval,
+  type LegacySeedFact,
+  type PreservedArtifact,
+} from "./resolver/apply-removal.js";
 import {
   isDeclaredProjectOverrideArtifact,
   isProjectOverrideDestination,
@@ -129,7 +139,7 @@ import {
 import {
   applyTransaction,
   type ApplyPorts,
-  type ApplyTargetWrite,
+  type ApplyTarget,
   type SelfCheckExpectation,
   type SelfCheckOutcome,
 } from "./resolver/apply-transaction.js";
@@ -1927,6 +1937,28 @@ export class ResolverService {
         else absent.push(...names);
       }
 
+      // Step 3a2 — the WF-458 destructive gate, run over the WHOLE plan before a
+      // single target is composed and therefore before any journal, backup or
+      // byte. It is a SECOND gate in series after `decideApplyGate`, not a wider
+      // first one: the action screen decides which kinds this mutator performs at
+      // all, and this decides whether the exact listed removals, bootstraps and
+      // legacy seeds are still authorized by the world as it is right now. A
+      // failure here rejects the whole plan and removes nothing.
+      const removalGate = this.decideRemovals(
+        admission.root,
+        plan,
+        inspected,
+        gate.screened.supported,
+      );
+      if (!removalGate.ok) {
+        return {
+          ...halted("rejected", removalGate.reason, recovery, plan, [
+            { code: removalGate.reason, message: removalGate.detail },
+          ]),
+          deferred: gate.screened.deferred,
+        };
+      }
+
       // Step 3b — the WF-454 targets: lifecycle evidence and profile seeds.
       // Every refusal below still happens before `applyTransaction` is called, so
       // it is byte-inert from the recovered baseline exactly like step 3.
@@ -1938,6 +1970,9 @@ export class ResolverService {
         registryRel,
         registryContent: mutation.content,
         registryChanged: mutation.changed,
+        removals: removalGate.removals,
+        bootstraps: removalGate.bootstraps,
+        legacy: removalGate.legacy,
       });
       if (!composed.ok) {
         return {
@@ -1977,6 +2012,13 @@ export class ResolverService {
           overridesRecorded: composed.overridesRecorded,
           payloadsRecorded: composed.payloadsRecorded,
           constitutionRecomposed: composed.constitutionRecomposed,
+          artifactsRemoved: removalGate.removals.map((removal) => removal.destination),
+          artifactsBootstrapped: composed.artifactsBootstrapped,
+          // Taken from what the compose step actually recorded, never from what
+          // the gate authorized: an expectation derived from the authorization
+          // would assert an effect no target produces, and a self-check that can
+          // pass without a write is exactly the thing it exists to prevent.
+          legacyPortableRecorded: composed.legacyPortableRecorded,
         },
       });
 
@@ -2013,7 +2055,23 @@ export class ResolverService {
         refreshed: result.refreshed,
         recovery,
         residue: result.residue,
-        diagnostics: result.diagnostics,
+        // Preservation is REPORTED, not merely performed — but only on a run that
+        // actually acted destructively, so an ordinary install's diagnostics are
+        // byte-identical to what they were before this item. On a destructive run
+        // every managed artifact that survived says which of the six named classes
+        // saved it, which is what turns "we did not delete your file" from an
+        // assurance into evidence.
+        diagnostics: [
+          ...result.diagnostics,
+          ...(removalGate.removals.length > 0 || removalGate.bootstraps.length > 0
+            ? removalGate.preserved.map((artifact) => ({
+                code: "apply/artifact-preserved",
+                message: `managed artifact \`${artifact.destination}\` was preserved (${artifact.class}${
+                  artifact.reason === null ? "" : `: ${artifact.reason}`
+                }).`,
+              }))
+            : []),
+        ],
       };
     } catch (err) {
       // An unexpected throw is reported as a halt, never as a success. A throw can
@@ -2046,6 +2104,85 @@ export class ResolverService {
     } finally {
       recoveryPorts.releaseLock();
     }
+  }
+
+  /**
+   * Answer every filesystem question the destructive gate raises, and run it
+   * (WF-458).
+   *
+   * THE SECOND OBSERVATION IS THE POINT. `planFrom` already read the workspace
+   * under the lock; this reads the managed-artifact half AGAIN, immediately
+   * before the gate decides, and hands the fresh answers to a pure function that
+   * re-derives the classification from scratch. So a plan whose identity still
+   * matches but whose files moved between the revalidation and the decision is
+   * caught here rather than at the moment of deletion — and the transaction's own
+   * S2 digest re-proof catches the narrower window after that.
+   *
+   * The deselection rule is IMPORTED from the planner rather than restated: a
+   * second, independently-written copy of "which owners does this plan remove" is
+   * exactly how the destructive path drifts laxer than the planning path that
+   * reviewed it (WF-449's lesson, generalized).
+   *
+   * Nothing here writes, creates, or canonicalizes into existence.
+   */
+  private decideRemovals(
+    admittedRoot: string,
+    plan: PlanInstallResponse,
+    inspected: Map<string, InspectPackResponse>,
+    supported: readonly PlanAction[],
+  ):
+    | {
+        ok: true;
+        removals: AuthorizedRemoval[];
+        bootstraps: AuthorizedBootstrap[];
+        legacy: AuthorizedLegacySeed[];
+        preserved: PreservedArtifact[];
+      }
+    | { ok: false; reason: ApplyReason; detail: string } {
+    const home = resolveLedgerHome();
+    if (!home.ok || home.portablePath === null) {
+      return {
+        ok: false,
+        reason: "apply/ledger-unresolvable",
+        detail: `the declared ledger home is not a legal policy: ${
+          home.diagnostic ?? "unknown"
+        }. Nothing was written and nothing was removed.`,
+      };
+    }
+    const ledger = parseEvidenceLedger(
+      this.ports.readFile(joinSlash(this.ports.workspaceRoot, home.portablePath)),
+    );
+
+    const currentFacts = resolveArtifactFacts(
+      this.collectArtifactFacts(
+        admittedRoot,
+        this.collectPayloadFacts(admittedRoot, inspected),
+        ledger.artifacts,
+      ),
+      deselectedOwnerPredicate(plan.registryDelta),
+    );
+
+    // Only the legacy half. An ordinary binding seed is `composeApplyTargets`'
+    // business and has been since WF-454; routing it through here too would give
+    // one action two authorities.
+    const legacySeeds = plan.evidenceSeeds.filter((seed) => seed.kind === "legacy-bootstrap");
+    const legacyFacts: LegacySeedFact[] = legacySeeds.map((seed) => ({
+      pluginId: seed.pluginId,
+      observed: inspected.get(seed.pluginId)?.portableEvidence ?? null,
+      // Re-read from the ledger just above, not carried from the plan: a pack that
+      // acquired portable evidence since the plan was approved must fail rule 6
+      // rather than be overwritten by a seed the confirmation never authorized.
+      portableAbsent: !ledger.portable.has(seed.pluginId),
+    }));
+
+    return decideRemovalGate({
+      approved: plan.artifacts,
+      supported,
+      currentFacts,
+      inventoryTrustworthy: plan.inventory.mayEstablishAbsence,
+      legacySeeds,
+      legacyFacts,
+    });
   }
 
   /**
@@ -2093,10 +2230,19 @@ export class ResolverService {
      *  other renderer obeys, and the reason a missing-binding seed leaves
      *  `_local/config.md` untouched down to its inode. */
     registryChanged: boolean;
+    /** The removals the WF-458 whole-plan gate AUTHORIZED. This method composes
+     *  exactly these and never re-decides one: the authority to delete is granted
+     *  in one place, and a second opinion here could only ever be a laxer one. */
+    removals: readonly AuthorizedRemoval[];
+    /** The ownership bootstraps the same gate authorized. Every one retains its
+     *  file; none grants a same-plan deletion. */
+    bootstraps: readonly AuthorizedBootstrap[];
+    /** The legacy portable seeds the same gate authorized, whole-tuple. */
+    legacy: readonly AuthorizedLegacySeed[];
   }):
     | {
         ok: true;
-        targets: ApplyTargetWrite[];
+        targets: ApplyTarget[];
         portableRecorded: string[];
         bindingRecorded: string[];
         answersRecorded: { capability: string; destination: string }[];
@@ -2107,6 +2253,12 @@ export class ResolverService {
           owners: { pluginId: string; capability: string; source: string }[];
         }[];
         constitutionRecomposed: boolean;
+        artifactsBootstrapped: {
+          destination: string;
+          sha256: string;
+          owners: { pluginId: string; capability: string; source: string }[];
+        }[];
+        legacyPortableRecorded: string[];
       }
     | { ok: false; reason: ApplyReason; detail: string } {
     const workspaceRoot = this.ports.workspaceRoot;
@@ -2134,6 +2286,10 @@ export class ResolverService {
     const bindingUpdates: LedgerEvidenceUpdate[] = [];
     const portableRecorded: string[] = [];
     const bindingRecorded: string[] = [];
+    /** Packs whose portable half a LEGACY bootstrap established (WF-458). Kept
+     *  apart from `portableRecorded` so a self-check failure sends a maintainer to
+     *  the migration path rather than to an ordinary registration. */
+    const legacyPortableRecorded: string[] = [];
 
     const seedByPluginId = new Map(input.plan.evidenceSeeds.map((seed) => [seed.pluginId, seed]));
 
@@ -2195,13 +2351,36 @@ export class ResolverService {
           };
         }
         const seed = seedByPluginId.get(pluginId);
-        if (seed === undefined || seed.kind !== "binding-seed") {
+        if (seed === undefined) {
           return {
             ok: false,
             reason: "apply/evidence-precondition",
-            detail: `pack \`${pluginId}\` carries an \`evidence-seed\` action with no matching binding-seed proposal at apply time; nothing was written.`,
+            detail: `pack \`${pluginId}\` carries an \`evidence-seed\` action with no matching seed proposal at apply time; nothing was written.`,
           };
         }
+
+        // THE LEGACY HALF (WF-458). A legacy bootstrap records the portable tuple
+        // AND the initial binding, and it composes ONLY from the tuple the
+        // whole-plan gate authorized — never from `seed.portable` directly. The
+        // gate proved that tuple complete, fresh, and exactly equal to the
+        // approved one; reading the plan's copy here would quietly restore the
+        // authority the gate exists to withhold.
+        if (seed.kind === "legacy-bootstrap") {
+          const authorized = input.legacy.find((entry) => entry.pluginId === pluginId);
+          if (authorized === undefined) {
+            return {
+              ok: false,
+              reason: "apply/evidence-precondition",
+              detail: `pack \`${pluginId}\` carries a legacy portable bootstrap that the removal gate did not authorize, so no portable tuple is recorded; the registration is preserved exactly as it was.`,
+            };
+          }
+          portableUpdates.push({ pluginId, portable: authorized.portable });
+          bindingUpdates.push({ pluginId, binding: seed.binding });
+          legacyPortableRecorded.push(pluginId);
+          bindingRecorded.push(pluginId);
+          continue;
+        }
+
         // THE EXACTNESS RULE, restated at apply time rather than inherited. A
         // missing-binding seed is legitimate ONLY when the committed portable
         // tuple and the observed one are exactly equal — not compatible, not a
@@ -2271,6 +2450,15 @@ export class ResolverService {
       // removal, and removals are out of scope.
       if (action.kind === "answer-write" || action.kind === "registry-deregister") continue;
 
+      // The two WF-458 artifact kinds. They contribute nothing HERE by design:
+      // their targets are composed below from the whole-plan gate's AUTHORIZED
+      // sets, not from the action list, so a destination reaches the removal or
+      // bootstrap composition only if the gate proved it — and an action the gate
+      // did not authorize is already a whole-plan refusal rather than a target
+      // this loop could quietly emit. Listed explicitly so the default arm below
+      // still catches the next widening.
+      if (action.kind === "artifact-delete" || action.kind === "artifact-bootstrap") continue;
+
       // THE DEFAULT ARM (WF-456). `decideApplyGate` has already screened the whole
       // plan against `APPLY_SUPPORTED_ACTION_KINDS`, so reaching here means a kind
       // was ADMITTED by the gate and then not handled by this loop — the exact
@@ -2326,8 +2514,14 @@ export class ResolverService {
     }
 
     // --- render every target --------------------------------------------------
-    const targets: ApplyTargetWrite[] = input.registryChanged
-      ? [{ destination: input.registryRel, newContent: input.registryContent }]
+    const targets: ApplyTarget[] = input.registryChanged
+      ? [
+          {
+            operation: "write",
+            destination: input.registryRel,
+            newContent: input.registryContent,
+          },
+        ]
       : [];
 
     /** Add one rendered target, dropping it when it would change nothing.
@@ -2355,7 +2549,39 @@ export class ResolverService {
           detail: `destination \`${destination}\` would be written twice in one transaction; nothing was written.`,
         };
       }
-      targets.push({ destination, newContent: render.content });
+      targets.push({ operation: "write", destination, newContent: render.content });
+      return null;
+    };
+
+    /** Add one REMOVAL target (WF-458), under the same duplicate-destination gate.
+     *
+     *  Deliberately a SEPARATE function rather than a flag on `addRendered`: a
+     *  removal has no rendered content and no `changed` question, so folding it in
+     *  would mean a shared body with two dead parameters and a branch deciding
+     *  whether a file survives. That is exactly the kind-dispatch shape WF-454's
+     *  defect (A) came from. The gate itself is shared, because a destination that
+     *  is both written and removed in one transaction is incoherent regardless of
+     *  which side proposed it. */
+    const addRemoval = (
+      removal: AuthorizedRemoval,
+      reason: ApplyReason,
+    ): { ok: false; reason: ApplyReason; detail: string } | null => {
+      if (targets.some((target) => target.destination === removal.destination)) {
+        return {
+          ok: false,
+          reason,
+          detail: `destination \`${removal.destination}\` is named by a removal and by another target in the same transaction; nothing was written and nothing was removed.`,
+        };
+      }
+      // The gate's PROVEN digest travels with the target, so the transaction can
+      // re-establish the file's identity at S2 — one stage before it is backed up
+      // and three before it is unlinked. A removal therefore carries strictly more
+      // proof into the transaction than a write does.
+      targets.push({
+        operation: "delete",
+        destination: removal.destination,
+        expectedContentHash: removal.contentHash,
+      });
       return null;
     };
 
@@ -2371,6 +2597,65 @@ export class ResolverService {
       destination: payload.destination,
       evidence: payload.evidence,
     }));
+
+    // --- ownership bootstraps (WF-458) ----------------------------------------
+    // A bootstrap RECONSTRUCTS the proof for a file that already exists and is
+    // already correct. It writes the ledger and NOT the artifact: the file is
+    // retained byte-for-byte, which is why a bootstrap composes no write target
+    // for its destination and grants no deletion in the same plan.
+    //
+    // The evidence is built through `createArtifactEvidence`, so a partial or
+    // duplicate owner set becomes a refusal rather than a recorded half-truth — a
+    // later removal reads this owner set to decide exclusivity, so an omitted
+    // owner would license a deletion the remaining owner never agreed to.
+    const artifactsBootstrapped: {
+      destination: string;
+      sha256: string;
+      owners: { pluginId: string; capability: string; source: string }[];
+    }[] = [];
+    for (const bootstrap of input.bootstraps) {
+      const evidence = createArtifactEvidence({
+        destination: bootstrap.destination,
+        owners: bootstrap.owners,
+        declaredSourceFingerprint: bootstrap.declaredSourceFingerprint,
+        producedContentHash: bootstrap.producedContentHash,
+        production: bootstrap.semantics.production,
+        refresh: bootstrap.semantics.refresh,
+        removal: bootstrap.semantics.removal,
+      });
+      if (evidence === null) {
+        return {
+          ok: false,
+          reason: "apply/artifact-precondition",
+          detail: `the ownership evidence for managed artifact \`${bootstrap.destination}\` could not be constructed completely, so no partial proof is recorded; nothing was written and nothing was removed.`,
+        };
+      }
+      artifactUpdates.push({ destination: bootstrap.destination, evidence });
+      artifactsBootstrapped.push({
+        destination: bootstrap.destination,
+        sha256: bootstrap.producedContentHash,
+        owners: evidence.owners.map((owner) => ({ ...owner })),
+      });
+    }
+
+    // --- authorized removals (WF-458) -----------------------------------------
+    // The proof is ERASED in the same transaction that removes the file. A
+    // surviving ownership record over an absent artifact would re-propose the
+    // artifact forever, and — worse — would carry a `recordedContentHash` no file
+    // can ever match again, which every later decision reads as `edited`.
+    const artifactRemovals = input.removals.map((removal) => removal.destination);
+
+    // Composed FIRST among the non-registry targets, deliberately. A removal is
+    // always pushed, while a rendered write is DROPPED when its bytes would not
+    // change — so composing removals first is what guarantees the shared
+    // duplicate-destination gate sees the destructive side of any collision. The
+    // reverse order would let an unchanged write slip past and leave a removal
+    // unopposed on a path something else believes it owns.
+    for (const removal of input.removals) {
+      const failure = addRemoval(removal, "apply/artifact-precondition");
+      if (failure !== null) return failure;
+    }
+
     const byDestination = new Map<string, LedgerEvidenceUpdate[]>();
     if (portableUpdates.length > 0) {
       byDestination.set(home.portablePath, [
@@ -2387,7 +2672,10 @@ export class ResolverService {
     // Artifact proof is PORTABLE: produced bytes and the capabilities that own
     // them are project facts, not machine facts, and `parseEvidenceLedger`
     // already reads the `artifacts` section from the portable document.
-    if (artifactUpdates.length > 0 && !byDestination.has(home.portablePath)) {
+    if (
+      (artifactUpdates.length > 0 || artifactRemovals.length > 0) &&
+      !byDestination.has(home.portablePath)
+    ) {
       byDestination.set(home.portablePath, []);
     }
     for (const [destination, updates] of byDestination) {
@@ -2398,6 +2686,7 @@ export class ResolverService {
           updates,
           `the evidence ledger \`${destination}\``,
           destination === home.portablePath ? artifactUpdates : [],
+          destination === home.portablePath ? artifactRemovals : [],
         ),
         "apply/ledger-unresolvable",
       );
@@ -2508,6 +2797,8 @@ export class ResolverService {
       overridesRecorded,
       payloadsRecorded,
       constitutionRecomposed,
+      artifactsBootstrapped,
+      legacyPortableRecorded,
     };
   }
 
@@ -3072,6 +3363,57 @@ export class ResolverService {
       }
     }
 
+    // --- removed artifacts (WF-458) ------------------------------------------
+    // TWO assertions, and the second is the one that matters. A removal that
+    // unlinked the file but left its ownership record behind has not converged:
+    // the record carries a `recordedContentHash` no file can ever match again, so
+    // every later decision reads the destination as an edited artifact and the
+    // deletion re-proposes itself forever. Asserting only "the file is gone"
+    // would leave that stuck state invisible until the next plan.
+    const removedLingering: string[] = [];
+    for (const destination of expectation.artifactsRemoved) {
+      if (readRel(destination) !== null) {
+        removedLingering.push(`${destination} (still present)`);
+        continue;
+      }
+      if (artifactsBack.has(destination)) {
+        removedLingering.push(`${destination} (ownership record survives)`);
+      }
+    }
+
+    // --- bootstrapped artifacts (WF-458) -------------------------------------
+    // A bootstrap RETAINS every candidate, so the file must still hold exactly
+    // the bytes the bootstrap was proven over. A bootstrap that changed a byte on
+    // disk is a failure, not a success — which is why the digest is asserted here
+    // and not merely the presence of a record.
+    const bootstrapMissing: string[] = [];
+    for (const bootstrap of expectation.artifactsBootstrapped) {
+      const back = readRel(bootstrap.destination);
+      if (back === null || sha256Hex(back) !== bootstrap.sha256) {
+        bootstrapMissing.push(`${bootstrap.destination} (bytes no longer as proven)`);
+        continue;
+      }
+      const recorded = artifactsBack.get(bootstrap.destination) ?? null;
+      if (recorded === null) {
+        bootstrapMissing.push(`${bootstrap.destination} (no ownership record)`);
+        continue;
+      }
+      const expectedOwners = JSON.stringify(
+        bootstrap.owners.map((owner) => [owner.pluginId, owner.capability, owner.source]),
+      );
+      const recordedOwners = JSON.stringify(
+        recorded.owners.map((owner) => [owner.pluginId, owner.capability, owner.source]),
+      );
+      if (expectedOwners !== recordedOwners) {
+        bootstrapMissing.push(`${bootstrap.destination} (incomplete owner set)`);
+      }
+    }
+
+    // --- legacy portable seeds (WF-458) --------------------------------------
+    // Read back from the PORTABLE section, kept apart from `portableRecorded` so
+    // a failure names the migration path rather than an ordinary registration.
+    const legacyMissing = expectation.legacyPortableRecorded.filter((id) => !portableBack.has(id));
+
     if (
       missing.length === 0 &&
       lingering.length === 0 &&
@@ -3080,7 +3422,10 @@ export class ResolverService {
       answerMissing.length === 0 &&
       overrideMissing.length === 0 &&
       payloadMissing.length === 0 &&
-      constitutionMissing.length === 0
+      constitutionMissing.length === 0 &&
+      removedLingering.length === 0 &&
+      bootstrapMissing.length === 0 &&
+      legacyMissing.length === 0
     ) {
       return { ok: true };
     }
@@ -3104,6 +3449,15 @@ export class ResolverService {
     }
     if (constitutionMissing.length > 0) {
       parts.push(`composed constitution did not read back: ${constitutionMissing.join(", ")}`);
+    }
+    if (removedLingering.length > 0) {
+      parts.push(`managed artifact removal did not converge: ${removedLingering.join(", ")}`);
+    }
+    if (bootstrapMissing.length > 0) {
+      parts.push(`ownership bootstrap did not read back: ${bootstrapMissing.join(", ")}`);
+    }
+    if (legacyMissing.length > 0) {
+      parts.push(`legacy portable evidence did not read back: ${legacyMissing.join(", ")}`);
     }
     return { ok: false, diagnostic: parts.join("; ") };
   }

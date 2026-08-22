@@ -26,14 +26,23 @@
 //      available to this family.
 //
 //      THE OUT-OF-SCOPE MODES ARE REFUSED BY THIS SAME SCREEN, NOT BY A SECOND
-//      ONE. Deletion (`artifact-delete`), upgrade (`artifact-advance`),
-//      evidence bootstrap (`artifact-bootstrap`, and the `legacy-bootstrap` seed
-//      kind) and repair (`evidence-repair`) are simply absent from both lists
-//      below, so a plan carrying any of them is `apply/unsupported-action`
-//      BEFORE `composeApplyTargets` runs and therefore before a single target is
-//      composed. That is why the screen must stay a whole-plan gate rather than
-//      a per-action early return inside the compose loop: an early return would
-//      already have written the actions it walked past.
+//      ONE. Upgrade (`artifact-advance`) and repair (`evidence-repair`) are
+//      simply absent from both lists below, so a plan carrying either is
+//      `apply/unsupported-action` BEFORE `composeApplyTargets` runs and therefore
+//      before a single target is composed. That is why the screen must stay a
+//      whole-plan gate rather than a per-action early return inside the compose
+//      loop: an early return would already have written the actions it walked
+//      past.
+//
+//      WF-458 MOVES DELETION AND BOOTSTRAP FROM "REFUSED HERE" TO "ADMITTED HERE
+//      AND GATED AGAIN". `artifact-delete`, `artifact-bootstrap` and the
+//      `legacy-bootstrap` seed kind are now supported — but admission is only
+//      permission to be CONSIDERED. They must additionally pass
+//      `decideRemovalGate` (`apply-removal.ts`), a second pure whole-plan gate
+//      that re-derives every artifact classification from facts re-observed under
+//      the lock and rejects the WHOLE plan on any drift. The two gates compose in
+//      series and both precede the first composed target, so the strictly
+//      stronger property — refuse before ANY write — is unchanged.
 //
 //   2. THE PLAN IS REVALIDATED AGAINST CURRENT FACTS, NEVER TRUSTED. The caller
 //      approves a `planId`; this module compares it to one recomputed from the
@@ -99,6 +108,17 @@ export const APPLY_SUPPORTED_ACTION_KINDS: readonly PlanActionKind[] = [
   "payload-write",
   "answer-write",
   "override-write",
+  // WF-458. The destructive slice, admitted to the SAME whole-plan screen as
+  // everything else — and then held to a SECOND whole-plan gate
+  // (`decideRemovalGate`) that re-derives every artifact classification from
+  // current facts before a single target is composed. Admission here is
+  // permission to be considered, never permission to delete.
+  //
+  // `artifact-advance` (upgrade) and `evidence-repair` stay deliberately ABSENT:
+  // WF-459 owns them, and a plan carrying one is still `apply/unsupported-action`
+  // before any journal exists.
+  "artifact-bootstrap",
+  "artifact-delete",
 ];
 
 /** The mutating action kinds this mutator applies ONLY when an enabling fact
@@ -232,7 +252,17 @@ export function screenPlanActions(
  *  list alone would silently admit a legacy bootstrap into a supported plan —
  *  exactly the half-understood application the ordering rule exists to prevent.
  *  The gate therefore screens the plan's own `evidenceSeeds` facts as well. */
-export const APPLY_SUPPORTED_SEED_KINDS: readonly PlanEvidenceSeedKind[] = ["binding-seed"];
+export const APPLY_SUPPORTED_SEED_KINDS: readonly PlanEvidenceSeedKind[] = [
+  "binding-seed",
+  // WF-458. A `legacy-bootstrap` records portable evidence for a pre-ledger
+  // registration from OBSERVED proof. It is admitted here and then held to
+  // `decideRemovalGate`'s rule 6, which requires the observed tuple to be
+  // COMPLETE and EXACTLY equal to the approved one and the pack to still have no
+  // recorded portable evidence. Incomplete or stale proof rejects the whole plan
+  // with the registration preserved byte-for-byte — a partially-seeded tuple is
+  // strictly worse than none, because it looks authoritative.
+  "legacy-bootstrap",
+];
 
 /** Everything the gate needs. Every member is a fact the caller already
  *  computed — the recomputed plan, the approved identity, and whether a journal

@@ -34,9 +34,20 @@
 //   S4  write the ONE journal, with every `lastWritten` ALREADY recorded
 //   S5  back EVERY target up, then prove each backup reproduces its prior hash
 //   S6  re-observe EVERY destination and compare against S2 (the TOCTOU guard)
-//   S7  atomic replacement of every target, in the caller's canonical order
+//   S7  atomic replacement / removal of every target, in the caller's canonical
+//       order
 //   S8  refresh, persist the snapshot, self-check
 //   S9  durable completion — discard the JOURNAL FIRST, then the backups
+//
+// WF-458 WIDENS THE DRIVER FROM WRITES TO WRITES-AND-REMOVALS, and again changes
+// nothing else. A removal is journalled, backed up, TOCTOU-guarded and rolled back
+// through exactly the stages above — it differs only in what S7 does and in the
+// `removesDestination` flag S4 records, which is what lets `decideEntryRecovery`
+// prove the absence is OURS and restore the file from its verified backup. That
+// flag is the whole adaptation; no stage was added, reordered, or relaxed. In
+// particular a removal is refused at S2b unless the destination is an existing
+// regular file, so the destructive path enters the transaction with strictly MORE
+// proof than a write does, never less.
 //
 // WHY EVERY TARGET IS OBSERVED, JOURNALLED, AND BACKED UP BEFORE ANY IS WRITTEN
 // (S2–S5 complete before S7 begins). This is the multi-target restatement of the
@@ -98,11 +109,44 @@ import type {
  *  what lets the whole multi-target transaction be tested with no filesystem and
  *  no knowledge of what a registry row or a ledger entry looks like. */
 export interface ApplyTargetWrite {
+  operation: "write";
   /** The workspace-relative destination. */
   destination: string;
   /** The exact bytes it will hold. Computed before entry. */
   newContent: string;
 }
+
+/** One destination this transaction REMOVES (WF-458).
+ *
+ *  Carries no content by construction, which is the point: a removal target
+ *  cannot accidentally be treated as a write, and a write target cannot
+ *  accidentally be treated as a removal, because neither shape satisfies the
+ *  other. That is the type-system half of the WF-454 kind-dispatch lesson, where
+ *  a render function read every non-`registry-add` action as a deregistration.
+ *
+ *  A removal is admitted ONLY over an existing regular file. An absent
+ *  destination is not "already done" — it is a target that changes nothing, and
+ *  composing one would mean the approved plan named an action the world no longer
+ *  supports. It is refused before a journal exists. */
+export interface ApplyTargetRemove {
+  operation: "delete";
+  /** The workspace-relative destination. */
+  destination: string;
+  /** The digest the removal gate PROVED this file holds. Re-compared against the
+   *  bytes observed at S2, inside the transaction, so the deletion is authorized
+   *  by the file's identity at the moment of removal rather than by an identity
+   *  established before the lock's decision phase ended.
+   *
+   *  This is the destructive path carrying strictly MORE proof than a write: a
+   *  write states the bytes it will produce and overwrites whatever is there; a
+   *  removal must additionally re-establish that what is there is exactly the
+   *  thing that was proven removable. */
+  expectedContentHash: string;
+}
+
+/** One destination this transaction acts on. Discriminated on `operation`, so
+ *  every consumer must decide explicitly which it is holding. */
+export type ApplyTarget = ApplyTargetWrite | ApplyTargetRemove;
 
 /** What the self-check must observe once the snapshot has been rebuilt. Stated
  *  as the intended END STATE rather than as "the actions succeeded", so a write
@@ -145,6 +189,26 @@ export interface SelfCheckExpectation {
    *  (WF-455). The check asserts the record reads back AND that the project's own
    *  clause section survived — the one property whose loss is unrecoverable. */
   constitutionRecomposed: boolean;
+  /** Managed artifacts this transaction REMOVED (WF-458). The check asserts each
+   *  is now absent from the workspace AND that its proof is gone from the
+   *  ledger's `artifacts` section, because a removed file whose ownership record
+   *  survives would re-propose itself forever. */
+  artifactsRemoved: readonly string[];
+  /** Managed artifacts whose ownership evidence this transaction RECONSTRUCTED
+   *  (WF-458). The check asserts each reads back from the ledger's `artifacts`
+   *  section with its COMPLETE owner set AND that the file itself still holds the
+   *  approved digest — a bootstrap retains every candidate, so a bootstrap that
+   *  changed a byte on disk is a failure, not a success. */
+  artifactsBootstrapped: readonly {
+    destination: string;
+    sha256: string;
+    owners: readonly { pluginId: string; capability: string; source: string }[];
+  }[];
+  /** Packs whose PORTABLE evidence was seeded by a legacy bootstrap (WF-458).
+   *  Kept apart from `portableRecorded` so the check can state which half of the
+   *  record a legacy migration established, and so a maintainer reading a failure
+   *  is sent to the legacy path rather than to an ordinary registration. */
+  legacyPortableRecorded: readonly string[];
 }
 
 /** The empty expectation. Exported so a caller widening only one axis does not
@@ -160,6 +224,9 @@ export function emptySelfCheckExpectation(): SelfCheckExpectation {
     overridesRecorded: [],
     payloadsRecorded: [],
     constitutionRecomposed: false,
+    artifactsRemoved: [],
+    artifactsBootstrapped: [],
+    legacyPortableRecorded: [],
   };
 }
 
@@ -218,6 +285,13 @@ export interface ApplyPorts {
    *  Creates any missing parent directory, since a first-run ledger or profile
    *  seed lands in a directory that may not exist yet. */
   atomicReplace(destination: string, content: string): WriteOutcome;
+  /** Remove one destination (WF-458). Must unlink WITHOUT following a terminal
+   *  symlink — though the driver has already refused a link at S2b, so reaching
+   *  this port over one is impossible by construction. Must NOT remove the parent
+   *  directory: emptied directories are reclaimed by `discardTransaction`'s
+   *  bounded, escape-refusing prune, which is the only component allowed to
+   *  decide a directory is disposable. */
+  removeDestination(destination: string): WriteOutcome;
   /** Rebuild + persist the snapshot, then check the intended end state. */
   refreshAndSelfCheck(expectation: SelfCheckExpectation): SelfCheckOutcome;
   /** Durable completion: remove the JOURNAL FIRST, then the named backups, then
@@ -232,7 +306,7 @@ export interface ApplyTransactionInput {
    *  order. MUST be non-empty and MUST NOT repeat a destination: two entries for
    *  one path would journal two prior states for the same file and make the
    *  rollback order-dependent. Both are checked before a journal exists. */
-  targets: readonly ApplyTargetWrite[];
+  targets: readonly ApplyTarget[];
   expectation: SelfCheckExpectation;
 }
 
@@ -251,6 +325,10 @@ export interface ApplyTransactionResult {
    *  on every non-`applied` outcome, so a caller can never read a write set out
    *  of a run that did not complete. */
   written: string[];
+  /** The destinations this transaction actually REMOVED, in removal order
+   *  (WF-458). Empty on every non-`applied` outcome, for the same reason: a run
+   *  that rolled back removed nothing that is still removed. */
+  removed: string[];
 }
 
 function issue(code: string, message: string): DiscoveryIssue {
@@ -272,6 +350,7 @@ function rejected(
     residue,
     diagnostics: [issue(reason, message)],
     written: [],
+    removed: [],
   };
 }
 
@@ -366,6 +445,7 @@ function failAfterJournal(
     ),
     diagnostics,
     written: [],
+    removed: [],
   };
 }
 
@@ -375,10 +455,14 @@ function failAfterJournal(
  *  set has passed the screen. */
 interface ScreenedTarget {
   destination: string;
-  newContent: string;
+  /** `null` exactly when `operation` is `delete` — a removal writes no bytes. */
+  newContent: string | null;
+  operation: ApplyTarget["operation"];
   observed: Extract<DestinationObservation, { kind: "file" | "absent" }>;
   inode: number | null;
-  willWrite: NonNullable<ReturnType<typeof createLastWrittenIdentity>>;
+  /** `null` exactly when `operation` is `delete`: absence has no identity, which
+   *  is precisely the gap `JournalEntry.removesDestination` closes. */
+  willWrite: NonNullable<ReturnType<typeof createLastWrittenIdentity>> | null;
 }
 
 /** A screened target once the transaction id exists: its backup path and its
@@ -459,6 +543,46 @@ export function applyTransaction(
     }
 
     // --- S3: compute the identity of what will be written, UP FRONT ----------
+    //
+    // Dispatched EXPLICITLY on `operation`, with no default arm that could read a
+    // removal as a write or the reverse. That is the WF-454 kind-dispatch lesson
+    // applied where it matters most: the two arms differ by whether a file
+    // survives.
+    if (target.operation === "delete") {
+      // A removal is admitted only over an existing regular file. An absent
+      // destination changes nothing, and a target that changes nothing is not a
+      // target (WF-454 defect B) — refused here, before a journal exists, rather
+      // than silently treated as already-done.
+      if (observed.kind !== "file") {
+        return rejected(
+          "apply/precondition-moved",
+          `\`${target.destination}\` is named by a removal but is not a regular file right now (${describe(observed)}); nothing was journalled and nothing was removed.`,
+          noTransactionResidue(),
+        );
+      }
+      // THE IDENTITY RE-PROOF. The gate proved a digest before the transaction
+      // opened; this compares that digest against the bytes observed HERE, inside
+      // the transaction, one stage before the backup is taken. A file whose
+      // content moved between the decision and the entry is not the file that was
+      // authorized for deletion, however unchanged its path and inode look.
+      if (observed.contentHash !== target.expectedContentHash) {
+        return rejected(
+          "apply/precondition-moved",
+          `\`${target.destination}\` no longer holds the bytes its removal was authorized over (expected sha256 ${target.expectedContentHash}, observed ${observed.contentHash}); nothing was journalled and nothing was removed.`,
+          noTransactionResidue(),
+        );
+      }
+      screened.push({
+        destination: target.destination,
+        newContent: null,
+        operation: "delete",
+        observed,
+        inode,
+        willWrite: null,
+      });
+      continue;
+    }
+
     const willWrite = createLastWrittenIdentity(ports.identify(target.newContent));
     if (willWrite === null) {
       return rejected(
@@ -471,6 +595,7 @@ export function applyTransaction(
     screened.push({
       destination: target.destination,
       newContent: target.newContent,
+      operation: "write",
       observed,
       inode,
       willWrite,
@@ -495,6 +620,13 @@ export function applyTransaction(
       priorIsSymlink: false,
       backupPath,
       lastWritten: target.willWrite,
+      // The removal's END STATE, recorded BEFORE the removal happens — the same
+      // pre-recording discipline `lastWritten` obeys, and for the same reason:
+      // recording it afterwards leaves a window in which the destination is
+      // already gone while the journal still describes an ordinary write, and
+      // recovery would then classify this transaction's own removal as an
+      // external edit and preserve the deletion forever.
+      removesDestination: target.operation === "delete",
     });
     if (entry === null) {
       return rejected(
@@ -606,9 +738,44 @@ export function applyTransaction(
     }
   }
 
-  // --- S7: atomic replacement, in the caller's canonical order ---------------
+  // --- S7: atomic replacement and removal, in the caller's canonical order ----
+  //
+  // Both operations are journalled, backed up and TOCTOU-guarded identically, so
+  // a kill anywhere in this loop leaves a state branch 5b or step 5 of
+  // `decideEntryRecovery` restores exactly — a removed file from its verified
+  // backup, a replaced file from its verified backup, and an untouched file by
+  // the idempotence guard.
   const written: string[] = [];
+  const removed: string[] = [];
   for (const target of prepared) {
+    if (target.operation === "delete") {
+      const result = ports.removeDestination(target.destination);
+      if (!result.ok) {
+        return failAfterJournal(
+          ports,
+          transactionId,
+          "apply/write-failed",
+          `\`${target.destination}\` could not be removed: ${result.diagnostic}`,
+          "skipped",
+          false,
+        );
+      }
+      removed.push(target.destination);
+      continue;
+    }
+    // `newContent` is non-null for every `write` target by construction at S3;
+    // asserted rather than coerced so a future editor cannot quietly write the
+    // string "null" over a destination.
+    if (target.newContent === null) {
+      return failAfterJournal(
+        ports,
+        transactionId,
+        "apply/write-failed",
+        `\`${target.destination}\` is a write target carrying no bytes; nothing further was written.`,
+        "skipped",
+        false,
+      );
+    }
     const result = ports.atomicReplace(target.destination, target.newContent);
     if (!result.ok) {
       return failAfterJournal(
@@ -632,7 +799,7 @@ export function applyTransaction(
       ports,
       transactionId,
       "apply/self-check-failed",
-      `the transaction wrote ${written.length} destination(s) but the self-check did not confirm the intended state: ${checked.diagnostic}`,
+      `the transaction wrote ${written.length} and removed ${removed.length} destination(s) but the self-check did not confirm the intended state: ${checked.diagnostic}`,
       "failed",
       true,
     );
@@ -654,6 +821,7 @@ export function applyTransaction(
     ),
     diagnostics: [],
     written,
+    removed,
   };
 }
 

@@ -114,6 +114,9 @@ export interface JournalEntryInputs {
   priorIsSymlink: boolean;
   backupPath: string | null;
   lastWritten: LastWrittenIdentity | null;
+  /** WF-458. Optional and default-`false`, so every existing caller and every
+   *  journal written before the field existed constructs an identical entry. */
+  removesDestination?: boolean;
 }
 
 /**
@@ -124,6 +127,12 @@ export interface JournalEntryInputs {
  * carry one. Without that, an entry could claim "there was nothing here before"
  * while also naming bytes to restore — an ambiguity that has no safe resolution
  * at recovery time.
+ *
+ * WF-458 adds one more invariant of the same kind, and for the same reason: a
+ * removal's intended end state is ABSENCE, so an entry may not simultaneously
+ * claim `removesDestination` and name bytes it last wrote. Nor may a removal
+ * claim an `absent` prior — there would be nothing to remove, and the entry would
+ * be authority to "restore" a file that never existed.
  */
 export function createJournalEntry(inputs: JournalEntryInputs): JournalEntry | null {
   if (!nonEmpty(inputs.destination)) return null;
@@ -146,6 +155,20 @@ export function createJournalEntry(inputs: JournalEntryInputs): JournalEntry | n
 
   if (inputs.backupPath !== null && !nonEmpty(inputs.backupPath)) return null;
 
+  const removesDestination = inputs.removesDestination === true;
+  if (removesDestination) {
+    // A removal's end state is absence, so it cannot also name written bytes,
+    // and it cannot claim there was nothing here to remove. Both are refused
+    // rather than normalized: a half-trusted removal entry is authority to
+    // destroy a file, which is the worst record this constructor could emit.
+    if (inputs.lastWritten !== null) return null;
+    if (inputs.priorExistence !== "present") return null;
+    // A prior symlink is preserved, never removed (`decideEntryRecovery` step 3),
+    // so a removal entry over one could never be rolled back.
+    if (inputs.priorIsSymlink) return null;
+    if (inputs.backupPath === null) return null;
+  }
+
   const lastWritten =
     inputs.lastWritten === null
       ? null
@@ -159,6 +182,7 @@ export function createJournalEntry(inputs: JournalEntryInputs): JournalEntry | n
     priorIsSymlink: inputs.priorIsSymlink,
     backupPath: inputs.backupPath,
     lastWritten,
+    removesDestination,
   };
 }
 
@@ -309,6 +333,10 @@ export function parseTransactionJournal(raw: string | null): JournalParseResult 
       priorIsSymlink: row.priorIsSymlink === true,
       backupPath: typeof row.backupPath === "string" ? row.backupPath : null,
       lastWritten,
+      // Read STRICTLY as `=== true`, so an absent field, a missing journal
+      // written before this release, and any non-boolean value all decide
+      // `false` — the pre-WF-458 behaviour, byte for byte.
+      removesDestination: row.removesDestination === true,
     });
     if (entry === null) {
       return {
@@ -405,6 +433,13 @@ function identityMatches(
  *   4. already at prior — THE IDEMPOTENCE GUARD. Checked BEFORE the ownership
  *                         test, so a re-entered recovery that already restored
  *                         this destination converges instead of re-writing.
+ *   5b. ours by absence — a journaled REMOVAL (WF-458). The destination is absent
+ *                         and the entry was constructed as a removal over a
+ *                         present non-symlink prior, so the transaction's own act
+ *                         is what made it absent and the verified backup restores
+ *                         it. Absence carries no bytes, so this is the one
+ *                         ownership proof that is structural rather than a digest
+ *                         comparison — see the branch's own note.
  *   5. ours, untouched  — the only path to a write, and only when the observed
  *                         identity is exactly what the transaction last wrote.
  *   6. anything else    — an external edit. Preserved.
@@ -463,6 +498,44 @@ export function decideEntryRecovery(
       "already-restored",
       "already-prior-content",
       `\`${entry.destination}\` already holds its prior bytes.`,
+    );
+  }
+
+  // 5b. OURS BY ABSENCE — a journaled removal (WF-458).
+  //
+  // The one ownership proof that cannot be a digest comparison, because the thing
+  // being proved is that nothing is there. Reached only when EVERY conjunct
+  // holds: the entry was constructed as a removal, its prior state was a present
+  // non-symlink file, and the destination is absent right now. Step 4 has already
+  // ruled out "already back at its prior bytes", and step 3 has already ruled out
+  // a link on either side.
+  //
+  // WHY THIS IS THE FAIL-SAFE DIRECTION, and why it does not weaken rule 2. The
+  // alternative reading of an absent destination is "someone else deleted it
+  // concurrently, so preserve the absence" — but the bytes restored here are
+  // exactly the bytes that were at the destination before this transaction ran,
+  // proven by a backup the driver verified against `priorContentHash` before it
+  // removed anything. Restoring a file a third party also wanted gone is
+  // recoverable; leaving a file this transaction destroyed is not. Ambiguity
+  // still retains the USER'S content — it just no longer retains OUR deletion.
+  if (
+    entry.removesDestination &&
+    entry.priorExistence === "present" &&
+    observation.kind === "absent"
+  ) {
+    if (entry.backupPath === null || entry.priorContentHash === null) {
+      return decision(
+        "none",
+        "unresolved",
+        "backup-missing",
+        `\`${entry.destination}\` was removed by the interrupted transaction but records no backup to restore its prior bytes from.`,
+      );
+    }
+    return decision(
+      "restore-content",
+      "restored",
+      "restored-content",
+      `\`${entry.destination}\` was removed by the interrupted transaction and is restored from its verified backup.`,
     );
   }
 

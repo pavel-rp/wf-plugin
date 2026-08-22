@@ -530,6 +530,18 @@ export interface JournalEntry {
   backupPath: string | null;
   /** What the transaction last wrote here, or `null` when it never got that far. */
   lastWritten: LastWrittenIdentity | null;
+  /** `true` when this transaction's intended END STATE for the destination is
+   *  ABSENCE — a journaled removal (WF-458).
+   *
+   *  ADDITIVE AND DEFAULT-`false`, deliberately. `LastWrittenIdentity` requires a
+   *  well-formed SHA-256 and a byte count, so absence is not expressible through
+   *  it: without this flag a removal leaves a `present` prior facing an `absent`
+   *  observation, which `decideEntryRecovery` resolves as `external-edit` and
+   *  PRESERVES — meaning a deleted file would never be restored on any crash path.
+   *  Because the default is `false`, every journal written before this field
+   *  existed decides byte-identically, so `LIFECYCLE_JOURNAL_VERSION` is NOT
+   *  bumped and an in-flight v1 journal keeps recovering exactly as before. */
+  removesDestination: boolean;
 }
 
 /** One interrupted transaction, as the machine-local journal records it. */
@@ -1496,6 +1508,28 @@ export type ApplyReason =
    *  precise class matters: a maintainer chasing a stale plan would never look at
    *  the pack's payload source. Nothing is written on this path. */
   | "apply/payload-precondition"
+  /** A bound MANAGED-ARTIFACT precondition no longer holds at apply time
+   *  (WF-458): the recorded owner set moved, a recorded or observed digest is not
+   *  a well-formed SHA-256 or no longer matches, the declared
+   *  `{production, refresh, removal}` tuple moved, the destination no longer
+   *  resolves to a workspace-contained target, or the plan's approved decision for
+   *  the destination is no longer the decision the current facts produce.
+   *
+   *  Its own token rather than `payload-precondition` (that is the INSTALL side's
+   *  narrower class) and rather than `plan-stale` (the approved plan may still be
+   *  current in every other respect). Reporting the precise class matters doubly
+   *  here: the class name is what tells a maintainer whether their file was
+   *  preserved or destroyed. THE WHOLE PLAN is rejected on this token and nothing
+   *  is written — a single stale precondition invalidates every action, not just
+   *  its own. */
+  | "apply/artifact-precondition"
+  /** One destination carries BOTH a bootstrap and a delete action in a single
+   *  plan (WF-458). Reconstructing ownership evidence never doubles as authority
+   *  to act on it, so the two may never coincide. Enforced as an explicit
+   *  whole-plan check with its own diagnostic rather than as an emergent property
+   *  of action ordering — an emergent guarantee is one refactor away from being no
+   *  guarantee. Nothing is written on this path. */
+  | "apply/bootstrap-delete-conflict"
   /** The composed constitution record cannot be recomposed without risking the
    *  project's own writing (WF-455): a section heading this composer needs is
    *  absent, duplicated, or out of order, or the record could not be read back

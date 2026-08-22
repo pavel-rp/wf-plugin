@@ -154,6 +154,49 @@ export interface PlanInstallInput {
  *  the deselection half, which only the plan itself may determine. */
 export type PlanArtifactFactInput = Omit<PlanArtifactFact, "deselectedOwners">;
 
+/** The DESELECTION rule, in exactly one place (WF-458).
+ *
+ *  An owner is deselected by a plan when that plan deregisters its pack AND the
+ *  pack does not survive the plan by some other route. Both halves matter: a pack
+ *  named in a deregistration but pushed back into retentions by incomplete proof
+ *  survives, and an owner whose pack survives never contributes deletion
+ *  authority.
+ *
+ *  Exported because the apply path must re-derive artifact facts under the lock
+ *  and a SECOND, independently-written copy of this rule is exactly how a
+ *  destructive path drifts laxer than the planning path that reviewed it. The
+ *  planner below is the other caller. */
+export function deselectedOwnerPredicate(delta: {
+  additions: readonly { pluginId: string }[];
+  retentions: readonly { pluginId: string }[];
+  deregistrations: readonly { pluginId: string }[];
+}): (owner: ArtifactOwner) => boolean {
+  const surviving = new Set<string>([
+    ...delta.additions.map((entry) => entry.pluginId),
+    ...delta.retentions.map((entry) => entry.pluginId),
+  ]);
+  const deregistered = new Set(delta.deregistrations.map((entry) => entry.pluginId));
+  return (owner: ArtifactOwner): boolean =>
+    deregistered.has(owner.pluginId) && !surviving.has(owner.pluginId);
+}
+
+/** Attach the deselection half to every caller-supplied artifact fact, using the
+ *  ONE predicate above. The union of recorded and declared owners is the widest
+ *  set any decision reads, so narrowing it here would hide a deselection from the
+ *  join rather than from the deletion. */
+export function resolveArtifactFacts(
+  facts: readonly PlanArtifactFactInput[],
+  isDeselected: (owner: ArtifactOwner) => boolean,
+): PlanArtifactFact[] {
+  return facts.map((fact) => ({
+    ...fact,
+    deselectedOwners: [
+      ...(fact.recorded?.owners ?? []),
+      ...(fact.declared?.owners ?? []),
+    ].filter(isDeselected),
+  }));
+}
+
 /** The zeroed inventory the two NOTHING-WAS-READ paths report — `invalid-root`
  *  (admission failed before anything was read) and `unrecovered` (WF-452:
  *  recovery did not proceed, so lifecycle state was never read). One rationale
@@ -725,18 +768,18 @@ export function planInstall(input: PlanInstallInput): PlanInstallResponse {
   // — rule 2 pushed that pack back into retentions — so an unprovable
   // registration can never contribute deletion authority. That composition is
   // the fail-safe direction and is deliberate.
-  const deregisteredIds = new Set(deregistrations.map((entry) => entry.pluginId));
-  const isDeselected = (owner: ArtifactOwner): boolean =>
-    deregisteredIds.has(owner.pluginId) && !postPlanPacks.has(owner.pluginId);
+  // The predicate and the fact resolution both come from the ONE shared
+  // definition above, which the apply path re-uses verbatim under the lock. Note
+  // `retentions` carries every surviving pack — including one a deregistration
+  // named but incomplete proof pushed back — so it IS the post-plan set here.
+  const isDeselected = deselectedOwnerPredicate({
+    additions,
+    retentions,
+    deregistrations,
+  });
 
   const artifactPlan = planArtifacts(
-    (input.artifacts ?? []).map((fact) => ({
-      ...fact,
-      deselectedOwners: [
-        ...(fact.recorded?.owners ?? []),
-        ...(fact.declared?.owners ?? []),
-      ].filter(isDeselected),
-    })),
+    resolveArtifactFacts(input.artifacts ?? [], isDeselected),
     { inventoryTrustworthy: input.inventory.mayEstablishAbsence },
   );
   for (const artifactFinding of artifactPlan.findings) findings.push(artifactFinding);

@@ -138,6 +138,15 @@ export function renderLedgerMutation(
   updates: readonly LedgerEvidenceUpdate[],
   label: string,
   artifacts: readonly LedgerArtifactUpdate[] = [],
+  /** Destinations whose artifact proof this transaction ERASES (WF-458).
+   *
+   *  Applied AFTER the update pass so a destination that is somehow both recorded
+   *  and removed ends erased rather than recorded — the fail-safe direction for a
+   *  file that is being deleted, since a surviving ownership record over an absent
+   *  file re-proposes the artifact forever. The whole-plan gate refuses that
+   *  combination outright; this ordering is what makes the refusal's absence
+   *  harmless rather than silently wrong. */
+  artifactRemovals: readonly string[] = [],
 ): TargetRender {
   const parsed = parseDocument(current, label);
   if (!parsed.ok) return parsed;
@@ -154,10 +163,16 @@ export function renderLedgerMutation(
   // Rule 2 restated for the third section: only the destinations this plan names
   // are replaced, so an artifact recorded by an earlier install keeps its proof.
   for (const update of artifacts) artifactSection[update.destination] = update.evidence;
+  for (const destination of artifactRemovals) delete artifactSection[destination];
 
   if (Object.keys(portable).length > 0) document.portable = portable;
   if (Object.keys(binding).length > 0) document.binding = binding;
+  // An artifacts section emptied by removals is DROPPED rather than written as an
+  // empty object, so erasing the last managed artifact leaves the same document a
+  // workspace that never had one would have. Two spellings of "no artifacts" would
+  // make an idempotent re-apply rewrite the file.
   if (Object.keys(artifactSection).length > 0) document.artifacts = artifactSection;
+  else delete document.artifacts;
 
   const content = stableStringify(document);
   // Compared against the CURRENT BYTES, not against the parsed data, because the
