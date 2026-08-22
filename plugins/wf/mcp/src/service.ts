@@ -95,6 +95,7 @@ import {
   validatePayloadDeclarations,
 } from "./resolver/payloads.js";
 import {
+  compareLifecycleEvidence,
   createArtifactEvidence,
   createMachineBindingEvidence,
   createPortablePackEvidence,
@@ -127,6 +128,14 @@ import {
   type LegacySeedFact,
   type PreservedArtifact,
 } from "./resolver/apply-removal.js";
+import {
+  buildUpgradeReport,
+  decideUpgradeGate,
+  notAssessedUpgradeReport,
+  type AuthorizedAdvance,
+  type AuthorizedRepair,
+  type RepairFact,
+} from "./resolver/apply-upgrade.js";
 import {
   isDeclaredProjectOverrideArtifact,
   isProjectOverrideDestination,

@@ -1556,6 +1556,82 @@ export type ApplyReason =
   | "apply/self-check-failed"
   | "apply/rollback-incomplete";
 
+/** Why one subject is STILL divergent after an apply run (WF-459).
+ *
+ *  A closed set, so a reader may switch on it exhaustively, and every artifact a
+ *  run leaves un-advanced carries exactly one — a divergence always states which
+ *  rule left it standing. */
+export type RemainingDivergenceClass =
+  /** Current bytes differ from the prior ledger hash — the file was EDITED. The
+   *  canonical retained divergence, and the one this slice exists to report. */
+  | "edited"
+  /** The declared source changed but the declared tuple says `refresh: retain`,
+   *  so an upgrade is never authorized for this destination. */
+  | "refresh-retained"
+  /** Advanceable NOW, but the approved plan lists no advance for it. One
+   *  confirmation authorizes only the exact listed actions. */
+  | "unlisted"
+  /** Ownership, a digest, or the semantic tuple is present but not trustworthy
+   *  enough to reason from. */
+  | "ambiguous"
+  /** The bytes, the destination, or the declaration could not be established. */
+  | "unverifiable"
+  /** A pack's lifecycle evidence is still drifted after this run. */
+  | "evidence-drifted";
+
+/** One thing an apply run did not resolve (WF-459). */
+export interface RemainingDivergence {
+  /** The workspace-relative destination, or the pack id for `evidence-drifted`. */
+  subject: string;
+  class: RemainingDivergenceClass;
+  /** The retention reason that produced the class, or `null` when the class was
+   *  derived from something other than an artifact retention. */
+  reason: PlanArtifactRetentionReason | null;
+}
+
+/** What an apply run can honestly claim about drift (WF-459).
+ *
+ *  DERIVED, NEVER ASSERTED. `resolveUpgradeOutcome` is the sole producer, and it
+ *  is a total function of two observable quantities. `fully-upgraded` is
+ *  UNREACHABLE while anything remains — which is the point: there must be no code
+ *  path, no "all applicable actions succeeded" and no "0 errors", that renders a
+ *  mixed run as full success.
+ *
+ *  `no-drift` and `retained-divergence` are the pair that must never collapse
+ *  into one another. Both can describe a run that wrote ZERO bytes; the first
+ *  says there was nothing to do, the second says nothing could be done. */
+export type UpgradeOutcome =
+  /** Nothing remained divergent and nothing needed to — a genuinely clean
+   *  workspace. */
+  | "no-drift"
+  /** Something was advanced or repaired AND nothing remains divergent. */
+  | "fully-upgraded"
+  /** Something was advanced or repaired AND something still remains. */
+  | "partial"
+  /** NOTHING was advanced or repaired and something still remains — zero bytes
+   *  written, and emphatically not the same as `no-drift`. */
+  | "retained-divergence"
+  /** The run never reached the gate (admission failed, recovery did not proceed,
+   *  or the plan was refused before the artifact arm was assessed), so no claim
+   *  about drift is made at all. Claiming `no-drift` here would be exactly the
+   *  comfortable lie this slice forbids. */
+  | "not-assessed";
+
+/** An apply run's honest statement about what it advanced, what it repaired, and
+ *  what it left divergent (WF-459). */
+export interface UpgradeReport {
+  /** `remaining.length === 0`, derived at ONE site. Never set by a code path
+   *  that thinks it is finished. */
+  noDrift: boolean;
+  outcome: UpgradeOutcome;
+  /** Every artifact and pack this run left divergent, sorted by subject. */
+  remaining: RemainingDivergence[];
+  /** Destinations this run ADVANCED. */
+  advanced: string[];
+  /** Packs whose evidence this run REPAIRED, with the half it re-established. */
+  repaired: { pluginId: string; scope: PlanRepairScope }[];
+}
+
 /** One action this run actually applied. Mirrors the plan action it came from,
  *  with `persisted` flipped to the literal `true` — the inverse of the plan
  *  envelope, where it is the literal `false`. */
@@ -1661,6 +1737,21 @@ export interface ApplyInstallResponse {
    *  never folded into it — the same discipline WF-452 gave the planners. */
   recovery: RecoveryReport;
   residue: ApplyResidueReport;
+  /** What this run advanced, what it repaired, and what it LEFT DIVERGENT
+   *  (WF-459).
+   *
+   *  Always present, on every path, because "we did not look" and "there was
+   *  nothing to see" are different statements and only one of them is safe to
+   *  make. A run that never reached the artifact gate carries
+   *  `outcome: "not-assessed"` with `noDrift: false`; a run that reached it
+   *  carries a `noDrift` derived from `remaining` being empty and nothing else.
+   *
+   *  DELIBERATELY SEPARATE FROM `status` AND FROM `applied[]`. `status: "applied"`
+   *  answers "did the transaction land?"; this answers "is the workspace now what
+   *  its declarations describe?". A mixed run where some actions advanced and an
+   *  edited file did not is `status: "applied"` AND `outcome: "partial"`, and
+   *  collapsing the two would be exactly the comfortable lie this slice forbids. */
+  upgrade: UpgradeReport;
   diagnostics: DiscoveryIssue[];
 }
 

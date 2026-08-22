@@ -80,6 +80,10 @@ import type {
   PlanRepairAction,
   PlanRepairScope,
   PortablePackEvidence,
+  RemainingDivergence,
+  RemainingDivergenceClass,
+  UpgradeOutcome,
+  UpgradeReport,
 } from "./types.js";
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
@@ -87,38 +91,6 @@ const SHA256_RE = /^[a-f0-9]{64}$/;
 // ---------------------------------------------------------------------------
 // Remaining divergence — the reporting half
 // ---------------------------------------------------------------------------
-
-/** Why one managed artifact is STILL divergent after this run.
- *
- *  A closed set, so a reader may switch on it exhaustively, and every artifact
- *  the run leaves un-advanced carries exactly one — a divergence always states
- *  which rule left it standing. */
-export type RemainingDivergenceClass =
-  /** Current bytes differ from the prior ledger hash — the file was EDITED. The
-   *  canonical retained divergence, and the one this item exists to report. */
-  | "edited"
-  /** The declared source changed but the declared tuple says `refresh: retain`,
-   *  so an upgrade is never authorized for this destination. */
-  | "refresh-retained"
-  /** Advanceable NOW, but the approved plan lists no advance for it (rule 6). */
-  | "unlisted"
-  /** Ownership, a digest, or the semantic tuple is present but not trustworthy
-   *  enough to reason from. */
-  | "ambiguous"
-  /** The bytes, the destination, or the declaration could not be established. */
-  | "unverifiable"
-  /** A pack's lifecycle evidence is still drifted after this run. */
-  | "evidence-drifted";
-
-/** One thing this run did not resolve. */
-export interface RemainingDivergence {
-  /** The workspace-relative destination, or the pack id for `evidence-drifted`. */
-  subject: string;
-  class: RemainingDivergenceClass;
-  /** The retention reason that produced the class, or `null` when the class was
-   *  derived from something other than an artifact retention. */
-  reason: PlanArtifactDecision["reason"];
-}
 
 /** Map one retention reason to the divergence class that would remain, or `null`
  *  when the reason does not describe a divergence at all.
@@ -178,44 +150,6 @@ export function divergenceClassFor(
       // state is that it is unresolved.
       return "unverifiable";
   }
-}
-
-/** The four outcomes a run can honestly claim, plus the one it claims when it
- *  never got far enough to look.
- *
- *  DERIVED, NEVER ASSERTED. `resolveUpgradeOutcome` is the sole producer, and it
- *  is a total function of two observable quantities. `fully-upgraded` is
- *  UNREACHABLE while anything remains — which is the whole point: there must be no
- *  code path, no "all applicable actions succeeded" and no "0 errors", that
- *  renders a mixed run as full success. */
-export type UpgradeOutcome =
-  /** Nothing remained divergent and nothing needed to — a genuinely clean
-   *  workspace. */
-  | "no-drift"
-  /** Something was advanced or repaired AND nothing remains divergent. */
-  | "fully-upgraded"
-  /** Something was advanced or repaired AND something still remains (rule 3). */
-  | "partial"
-  /** NOTHING was advanced or repaired and something still remains (rule 5) —
-   *  zero bytes written, and emphatically not the same as `no-drift`. */
-  | "retained-divergence"
-  /** The run never reached the gate (admission failed, recovery did not proceed,
-   *  or the plan was refused before the artifact arm was assessed), so no claim
-   *  about drift is made at all. Claiming `no-drift` here would be exactly the
-   *  comfortable lie this item forbids. */
-  | "not-assessed";
-
-/** The run's honest statement about what remained. */
-export interface UpgradeReport {
-  /** Rule 4: `remaining.length === 0`, derived at the single site below. */
-  noDrift: boolean;
-  outcome: UpgradeOutcome;
-  /** Every artifact and pack this run left divergent, sorted by subject. */
-  remaining: RemainingDivergence[];
-  /** Destinations this run ADVANCED. */
-  advanced: string[];
-  /** Packs whose evidence this run REPAIRED, with the half it re-established. */
-  repaired: { pluginId: string; scope: PlanRepairScope }[];
 }
 
 /** The report for a run that never assessed the artifact arm. `noDrift` is
@@ -324,6 +258,30 @@ export type UpgradeGateDecision =
       remaining: RemainingDivergence[];
     }
   | { ok: false; reason: ApplyReason; detail: string };
+
+/** Whether two owner sets are the same triple-for-triple, order-independently.
+ *
+ *  `JSON.stringify` over the triple is injective — its own quoting disambiguates a
+ *  value containing the delimiter — so no combination can forge another triple's
+ *  key. Deliberately NOT a raw control-byte separator: a literal control character
+ *  makes a source file "binary" to diff and search tooling and hides it from
+ *  review (the WF-449 near-miss). */
+function sameOwners(left: readonly ArtifactOwner[], right: readonly ArtifactOwner[]): boolean {
+  if (left.length !== right.length) return false;
+  const key = (owner: ArtifactOwner): string =>
+    JSON.stringify([owner.pluginId, owner.capability, owner.source]);
+  const leftKeys = left.map(key).sort();
+  const rightKeys = right.map(key).sort();
+  return leftKeys.every((value, index) => value === rightKeys[index]);
+}
+
+function sameSemantics(left: PayloadSemantics, right: PayloadSemantics): boolean {
+  return (
+    left.production === right.production &&
+    left.refresh === right.refresh &&
+    left.removal === right.removal
+  );
+}
 
 function indexCurrent(preview: PlanArtifactPreview): Map<string, PlanArtifactDecision> {
   const index = new Map<string, PlanArtifactDecision>();
@@ -469,7 +427,34 @@ export function decideUpgradeGate(input: UpgradeGateInput): UpgradeGateDecision 
       !SHA256_RE.test(fact.declared.declaredSourceFingerprint) ||
       !SHA256_RE.test(fact.declared.producedContentHash) ||
       fact.recorded === null ||
-      fact.declared.declaredSourceFingerprint === fact.recorded.declaredSourceFingerprint
+      fact.declared.declaredSourceFingerprint === fact.recorded.declaredSourceFingerprint ||
+      // TWO CONJUNCTS `planArtifacts` DOES NOT ASSERT, ADDED BY THE RULE-2 AUDIT.
+      //
+      // (a) THE OWNER SET MUST NOT HAVE MOVED. `classify`'s advance path reasons
+      //     entirely from the RECORDED owners and never compares them with the
+      //     currently-DECLARED ones, so a destination whose declaring-capability
+      //     set changed alongside its source would advance and silently rewrite
+      //     the ledger's owner set. A later deletion establishes exclusivity from
+      //     exactly that set, so an owner quietly dropped here would license
+      //     destroying a file a surviving owner still declares. WF-456's payload
+      //     precondition refuses the same drift on the install side; the upgrade
+      //     arm must not be laxer than it.
+      //
+      // (b) THE DECLARED TUPLE MUST STILL MATCH THE RECORDED ONE. `classify`
+      //     gates the advance on `recorded.refresh === "replace-if-unmodified"`
+      //     and never looks at the DECLARED refresh, so a pack that changed its
+      //     row to `refresh: retain` would still have its artifact replaced on the
+      //     authority of a stale recorded tuple — an upgrade performed against the
+      //     current declaration's explicit instruction not to.
+      //
+      // Bytes and semantics are independent axes (WF-448's rule), so both are
+      // checked, and either one failing rejects the whole plan.
+      !sameOwners(decision.owners, fact.declared.owners) ||
+      !sameSemantics(decision.semantics, {
+        production: fact.declared.production,
+        refresh: fact.declared.refresh,
+        removal: fact.declared.removal,
+      })
     ) {
       // EVERY conjunct restated at the point of authorization rather than
       // inherited from `planArtifacts`. Duplicating the test is deliberate and is
@@ -481,7 +466,7 @@ export function decideUpgradeGate(input: UpgradeGateInput): UpgradeGateDecision 
       return {
         ok: false,
         reason: "apply/artifact-precondition",
-        detail: `managed artifact \`${destination}\` is listed for an upgrade but does not currently satisfy every advance conjunct (listed, hash-proven with well-formed matching digests against the prior ledger hash, exclusively owned, \`refresh: replace-if-unmodified\`, and a well-formed declared source fingerprint that actually differs from the recorded one); the whole plan is refused and nothing was written.`,
+        detail: `managed artifact \`${destination}\` is listed for an upgrade but does not currently satisfy every advance conjunct (listed, hash-proven with well-formed matching digests against the prior ledger hash, exclusively owned by an owner set that has not moved, declaring the same \`{production, refresh, removal}\` tuple the ledger recorded with \`refresh: replace-if-unmodified\`, and a well-formed declared source fingerprint that actually differs from the recorded one); the whole plan is refused and nothing was written.`,
       };
     }
     // Rule 3 asserted as a POST-condition of the classification: an advance may
