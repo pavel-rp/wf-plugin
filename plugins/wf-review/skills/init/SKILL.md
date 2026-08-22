@@ -1,34 +1,46 @@
 ---
 name: init
-description: Onboards the wf-review pack into a wf-initialized repo in one command — self-registers the pack's pr-review capability into the wf capability registry by calling core's inspect_pack/register_pack resolver tools with the stable plugin id wf-review, no manual install-root discovery or hand-edited registry rows. Use once (after /wf:init) to register pr-review so a future contribution fragment resolves; re-run any time — register_pack is idempotent and self-checks the wiring.
-allowed-tools: [Read, Bash]
+description: Onboards the wf-review pack by entering the canonical /wf:init lifecycle with wf-review seeded into the selection round, so a project gets the same discovery, question, delta, confirmation and apply it would get from /wf:init itself. Preserves every registration the project already has and adds wf-review to them; it decides nothing about the pack's state, asks nothing of its own, and performs no registry write. The pack ships the pr-review capability. Use after /wf:init to register pr-review so a future contribution fragment resolves; re-run any time — a re-run over a settled project reports no drift and mutates nothing. /wf:init is the canonical command and does the same thing for every pack at once.
+allowed-tools: [Skill, Bash]
 ---
 
-# /wf-review:init — Onboard the wf-review pack (self-register via the resolver)
+# /wf-review:init — Onboard the wf-review pack (a compatibility alias onto the shared lifecycle)
 
-Collapse wf-review onboarding into **one command**, driven entirely by the core-bundled
-**wf-resolver** MCP service. Installing the plugin makes `/wf-review:init` (and
-`/wf-review:address-pr`, `/wf-review:review-pr`) discoverable (native composition) but
-registers **no** phase fragment — that still requires a row in the downstream
-`## Capabilities` registry. This skill performs that registration by calling core's typed
-`inspect_pack` / `register_pack` tools with wf-review's **stable plugin id, `wf-review`**
-— it never probes `${CLAUDE_PLUGIN_ROOT}`, never derives an install root itself, and never
-hand-edits `_local/config.md` or a `## Plugin Roots` mapping. Core resolves the install
-path (via `claude plugin list --json`), validates the pack's manifest, computes a
-fingerprint, and owns the registry write end-to-end — including the self-check that the
-capability now resolves.
+This skill is a **compatibility alias**: it contributes exactly one thing to the
+canonical setup lifecycle — "add `wf-review` to the desired set" — and then gets
+out of the way. Everything else, from admitting the workspace root to the single
+`apply_install` that registers the capability, belongs to `/wf:init` and happens
+there.
 
-**Why register a capability that ships no fragment yet.** `pr-review`'s two skills
-(`address-pr`, `review-pr`) already reach users by native plugin composition alone — no
-registry row is needed for *them* to run. But a future contribution (the `ship.review`
-gate) presupposes a registration path: without one, that fragment could never fire once
-added. Registering now makes `pr-review` a resolvable capability ahead of that fragment
-landing, so a later pack upgrade lights it up with no separate onboarding step.
+It follows the compatibility-alias route that core declares in `/wf:init`'s
+interface contract and defines procedurally in that skill's `alias-route.md`,
+matching the reference conversion in `plugins/wf-fake/skills/init/SKILL.md`.
 
-**This is fragment/registry-side onboarding only.** It cannot register a `/command` — a
-discoverable skill must live in a plugin's `skills/` dir (native discovery).
-`/wf-review:init` is already discoverable from installing the plugin; this skill wires the
-**registry** row.
+> **What this skill does not decide.** Whether `wf-review` is installed, enabled,
+> already registered, or drifted. Whether a repair is needed. What may be
+> deleted. Which questions are still unanswered. What the delta contains.
+> Whether to apply it. Every one of those is answered by the canonical
+> lifecycle, which this skill merely enters. There is deliberately **no
+> conditional in this body that reads existing state.**
+
+**This pack asks nothing.** The `pr-review` capability declares no interview
+question, so the canonical question round asks nothing on its behalf and this
+skill emits **no prompt of its own** — not a confirmation invented to fill the
+gap, not a "nothing to configure" acknowledgement, not a synthesized question
+about a value the pack could infer. Silence is the correct behaviour. The single
+canonical confirmation of the delta is the only interaction in the run, and it
+belongs to `/wf:init`.
+
+**Why register a capability that ships no fragment yet.** `pr-review`'s two
+skills already reach users by native plugin composition alone — no registry row
+is needed for *them* to run. A future contribution presupposes a registration
+path, so registering now makes `pr-review` resolvable ahead of that fragment
+landing. Registering it is exactly what the canonical apply does; this skill only
+names the pack.
+
+> **`/wf:init` is the canonical command.** It runs this same journey for every
+> installed pack in one pass, so it is the one to reach for. This alias remains a
+> legitimate permanent entry point for anyone who already types it.
 
 ---
 
@@ -38,8 +50,9 @@ discoverable skill must live in a plugin's `skills/` dir (native discovery).
 /wf-review:init
 ```
 
-Takes no arguments — it always registers the single `pr-review` capability this pack
-ships, under the stable plugin id `wf-review`.
+Takes no arguments — unchanged from before this skill became an alias. Selection
+and confirmation are taken interactively **by the canonical lifecycle**; this
+skill pre-ticks one box and passes nothing else.
 
 ---
 
@@ -47,104 +60,138 @@ ships, under the stable plugin id `wf-review`.
 
 **Allowed:**
 
-- Call the bundled `wf-resolver` MCP tools: `resolve_config`, `resolve_registry`,
-  `inspect_pack`, `register_pack`, and — on a failure — `resolve_gate`.
-- Read `_local/config.md` (or the `registryPath` `resolve_config` returns), and run
-  read-only `git rev-parse --git-dir`, only to confirm `/wf:init` has already run.
+- Run `pwd -P` once to obtain the absolute workspace root for the routing call.
+- Call the bundled `wf-resolver` `resolve_routing` tool to route the one
+  sibling-Skill edge below.
+- Invoke `/wf:init` through the **Skill** tool, with this pack's own stable
+  plugin id as the seed.
+- Relay the `INIT` terminal block that invocation returns.
 
 **Forbidden:**
 
-- Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive an install root by hand —
-  `inspect_pack`/`register_pack` resolve it.
-- Hand-edit `_local/config.md`, a `## Capabilities` row, or a `## Plugin Roots` row —
-  `register_pack` owns that write exclusively.
-- Modify any source file.
-- Register a `/command` (impossible — native discovery only; this skill wires the
-  fragment/registry).
-- Run builds, tests, installs, or any destructive git operation.
+- Call any lifecycle resolver tool — `discover_packs`, `plan_install`,
+  `apply_install`, `repair_packs`, `register_pack`, `inspect_pack`, or
+  `resolve_gate`. Registration happens inside the canonical apply, and nowhere
+  else.
+- Read, infer, or report any lifecycle fact of its own: presence, enablement,
+  registration, drift, recovery, or whether a question is answered.
+- Prompt for anything. This pack declares no question, so the correct output is
+  silence — never a substitute prompt, a placeholder check, or a value carried
+  forward.
+- Seed anything but this pack's own id, seed more than one id, or pass a
+  selection, an answer, or a confirmation on the command line.
+- Render a delta, take a confirmation, or emit a second terminal block.
+- Derive, validate, or second-guess the workspace root. The canonical route
+  admits the root; this skill enters that route and inherits the same admitted
+  workspace by identity, not by imitating the check.
+- Roll back, undo, or repair anything. Mutation and rollback are the canonical
+  transaction's, taken and released within it; this skill owns no undo and takes
+  no lock of its own.
+- Write or edit **any** file, including `_local/config.md` and any profile
+  override. This skill performs no write at all.
+- Filesystem-read a sibling skill's body — `/wf:init` is reached through the
+  **Skill** tool, and a failed invocation stops into the error block below rather
+  than falling back to a read.
+- Run builds, tests, installs, or any network or version-control operation.
 
 ---
 
 ## Onboarding procedure
 
-Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+One step, and it is the whole skill.
 
-1. **Precondition.** Confirm a git repository (`git rev-parse --git-dir`); if this fails,
-   stop: "`/wf-review:init` must run inside a git repository — run `/wf:init` first." Call
-   `resolve_config` for the resolved registry location and Read it to confirm the file
-   exists. If it does not, stop: "Run `/wf:init` first — `/wf-review:init` registers into
-   the registry that `/wf:init` creates."
-2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether
-   `pr-review` already appears with `validity: "ok"`. This never skips a later step — it
-   only decides whether the Final Output says `onboarded` or `already-registered`.
-3. **Inspect the pack.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-review" })`. Read-only;
-   returns `{ installed, enabled, installPath, capabilities[], fingerprint, valid,
-   issues[] }`.
-   - `valid: false` (not installed, disabled, no readable
-     `capabilities/pr-review/manifest.md`, or `claude plugin list --json` itself
-     unavailable) → go to **Failure path**; do not call `register_pack`.
-4. **Register.** Call
-   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-review", expectedFingerprint: <fingerprint from step 3> })`.
-   It writes the `## Plugin Roots` row and the `pr-review` `## Capabilities` row in a
-   single write (a plain file write, not a filesystem-atomic temp+rename swap), refreshes
-   the resolver snapshot, and self-checks that `pr-review` now resolves — returning
-   `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
-   - `status: "rejected"` → **Failure path**.
-   - `status: "registered"`, `selfCheck: "ok"` → success.
-   - `status: "registered"`, `selfCheck: "failed"` → report `partial`: the registry write
-     landed but `pr-review` still does not resolve; direct the user to re-run
-     `/wf-review:init` after checking the pack install.
+1. **Route the edge, then enter the lifecycle.** Run `pwd -P` once and hold the
+   absolute result as `<workspace-root>` — in a linked-worktree Agent that is the
+   Agent's own worktree, never a parent's. Call `resolve_routing` with
+   `workspaceRoot: "<workspace-root>"`, `role: "init"`,
+   `unitIds: ["pr-review:init"]`, `shapeEvidence: { workSurface:
+   "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
+   ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical",
+   contextIsolation: "none", independentReview: false, returnContract:
+   "mechanically-judgeable", requestedParallelism: 1 }`,
+   `supportsModelSelector: false`, and `supportsEffortSelector: false`. Emit the
+   compact operational record. On `status: stop` or a non-null `diagnostic`, stop
+   before the invocation and report the resolver's reason. Otherwise obey the
+   selected `inline` shape, pass no selector, and invoke
+   `/wf:init --seed wf-review` through the **Skill** tool.
 
-The `pr-review` capability's manifest declares **no** `profile-template:`, so the Final
-Output's `Profile:` row is always `skipped — no template` — a static fact, not a resolver
-call.
-
-### Failure path (SUB-4 / WF-272 diagnostics)
-
-Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a pack is a registry
-write). Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specific
-`issues[]` (from `inspect_pack`) or `reason` (from a rejected `register_pack`) — never a
-bare error. Finish with `partial`.
+2. **Relay what comes back, verbatim.** The `INIT` block is this skill's Final
+   Output. Add the review note below it and nothing else — no re-derived status,
+   no second block, no restated delta.
 
 ---
 
 ## Edge Cases
 
-- **Not a git repo / `/wf:init` not run:** stop per the precondition step above.
-- **`wf-review` not installed or disabled** (`inspect_pack.installed`/`enabled` false):
-  failure path; direct the user to install/enable the plugin, then re-run.
-- **`claude plugin list --json` unavailable:** `inspect_pack` reports `installed: false`
-  with an issue naming the CLI call as the cause (a broken/unavailable `claude` CLI, not a
-  missing plugin) — failure path; direct the user to check their `claude` CLI, then
-  re-run.
-- **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the
-  install looks corrupted — reinstall the plugin.
-- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run
-  `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-review" })` to get the
-  current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>",
-  pluginId: "wf-review", expectedFingerprint: <current fingerprint> })`.
-- **`pr-review` already registered:** `register_pack` upserts idempotently — re-running is
-  always safe; report `already-registered` per step 2's pre-check.
-- **`pr-review` carries no fragment rows yet:** expected — the capability registers ahead
-  of its first contribution (the `ship.review` gate, tracked separately). Registry
-  validation passes regardless; no review term surfaces in any core skill run until that
-  fragment lands.
-- **Self-check FAIL:** report `partial`; never claim success.
+- **`/wf:init` has not run yet:** not a precondition this skill checks. `/wf:init`
+  *is* what is being invoked, and it scaffolds the bare core itself before any
+  pack transaction.
+- **`wf-review` is disabled:** the seed is reported *not applied*; the pack stays
+  visible, retained and **unavailable**, and its enablement is never flipped.
+  Re-enabling the plugin is the user's action, outside this run. The rest of the
+  run proceeds normally.
+- **`wf-review` is already set up and the project is settled:** the canonical
+  settled exit — no plan call, no confirmation, no mutation call at all —
+  reported as `already-initialized` / `Apply: not run — no drift`. This is the
+  expected outcome of re-running, not a degenerate one.
+- **The question round asks nothing for this pack:** expected, and the whole
+  point. A pack that declares no question contributes none, and no prompt is
+  synthesized to stand in for one. Another pack in the same desired set may still
+  have its own question asked in that one round.
+- **`pr-review` carries no fragment rows yet:** expected — the capability registers
+  ahead of its first contribution. Registry validation passes regardless, and no
+  review term surfaces in any core skill run until that fragment lands.
+- **The project has drifted:** the canonical repair plan handles it. A withheld
+  advance or a retained-but-not-benign artifact is reported as retained
+  divergence, never as no drift.
+- **The project already has other packs set up:** they are all preserved. Entering
+  through this command **adds** `wf-review` to them and deregisters nothing —
+  omission is never a removal.
+- **A root override is in play:** it targets the same admitted workspace `/wf:init`
+  targets, because this skill enters that one route rather than re-deriving a root
+  of its own.
+- **Recovery ran before the route:** it is reported on its own channel, separately
+  from the delta, exactly as `/wf:init` reports it.
+- **The apply is rolled back:** the canonical transaction's rollback restores the
+  workspace and reports it on the canonical envelope. This skill neither performs
+  nor narrates an undo of its own.
+- **The plan is declined:** `INIT — declined`; nothing was registered and
+  re-running is safe.
+- **`/wf:init` cannot be invoked** (the Skill tool is unavailable, or the
+  invocation errors): stop and report it. Never substitute a registration of this
+  skill's own, and never fall back to reading the sibling body.
 
 ---
 
 ## Final Output
 
-```
-WF-REVIEW-INIT — <onboarded | already-registered | partial>
+Relay the canonical block verbatim — this skill runs the canonical lifecycle, so
+it reports the canonical contract:
 
-Registry:   <registryPath from resolve_config>
-Pack root:  <installPath from inspect_pack — may be null on the failure path>
-Registered: pr-review — <registered | already registered>
-Profile:    skipped — no template
-Self-check: <PASS — pr-review resolves | FAIL — <issues / reason>>
-
-Next: register a delivery provider if none is active yet (e.g. install wf-git and run /wf-git:init) — /wf-review:address-pr and /wf-review:review-pr route every host interaction through it. Re-run /wf-review:init any time — register_pack is idempotent.
 ```
+INIT — <initialized | already-initialized | declined | stopped | partial>
+
+<the block /wf:init returned, verbatim, including its Seed: line>
+
+Review note:
+- pr-review registers ahead of its first contribution fragment, so the row the canonical apply writes is what lets that fragment resolve when it lands.
+```
+
+If the routing call stopped the run, or `/wf:init` could not be invoked, emit
+instead:
+
+```
+INIT — stopped
+
+Seed: wf-review — not applied (alias could not enter the canonical lifecycle)
+Reason: <the resolver diagnostic, or the invocation error, verbatim>
+
+Next: resolve the reason above, then re-run /wf-review:init.
+```
+
+**Both blocks are breaking replacements for the previous
+`WF-REVIEW-INIT — <status>` block** (MINOR, pre-1.0): one shared route has one
+terminal contract. The command itself is unchanged — same name, same zero
+arguments, same end state.
 
 **The final-output block must always be the very last thing output to chat.**
