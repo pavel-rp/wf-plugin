@@ -208,6 +208,7 @@ function artifactFact(over: Partial<PlanArtifactFact> = {}): PlanArtifactFact {
     recorded: recorded(),
     current: { ok: true, sha256: LEDGER_HASH, bytes: 10 },
     declared: null,
+    declaringOwners: [],
     deselectedOwners: [],
     ...over,
   };

@@ -689,3 +689,57 @@ test("`refresh: retain` still CREATES a destination that does not exist yet", ()
   assert.equal(out.preview.actions.length, 1);
   assert.equal(out.preview.actions[0]?.write, "create");
 });
+
+// --- WF-476: the group's state is keyed on the REPORTED spelling --------------
+//
+// Two owners can reach one canonical target through different declared
+// spellings. `first` is OWNER-sorted; the action's `destination` is the
+// LEXICOGRAPHICALLY SMALLEST spelling. Reading the destination's state off
+// `first` could therefore consult a different ledger row than the one the
+// emitted action, the under-lock re-proof and the ledger recording all key on.
+
+test("a multi-spelling group reads its bytes from the member the action names", () => {
+  // `zzz-owner` sorts FIRST by owner and declares `.wf/b.md`; the reported
+  // destination is `.wf/a.md`, whose bytes already match. Keyed on `first` this
+  // composes a write; keyed on the reported spelling it correctly composes none.
+  const out = planPayloads([
+    fact({
+      pluginId: "zzz-owner@local",
+      destination: ".wf/b.md",
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+      current: { ok: false, status: "missing" },
+    }),
+    fact({
+      pluginId: "aaa-owner@local",
+      destination: ".wf/a.md",
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+      current: { ok: true, sha256: DIGEST_A, bytes: 12 },
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "eligibility was keyed on the wrong spelling");
+});
+
+test("a multi-spelling group counts as MANAGED when any member records a hash", () => {
+  // A partial disagreement about managedness resolves toward deferral, never
+  // toward an overwrite — so the ledger row need not sit on the member that
+  // happens to sort first.
+  const out = planPayloads([
+    fact({
+      pluginId: "aaa-owner@local",
+      destination: ".wf/a.md",
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+      current: { ok: true, sha256: "c".repeat(64), bytes: 12 },
+      recordedContentHash: null,
+    }),
+    fact({
+      pluginId: "zzz-owner@local",
+      destination: ".wf/b.md",
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+      current: { ok: true, sha256: "c".repeat(64), bytes: 12 },
+      recordedContentHash: "c".repeat(64),
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "a managed destination was overwritten");
+});

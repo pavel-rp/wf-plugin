@@ -105,6 +105,7 @@ export function preservationClassFor(
     case "not-deselected":
       return "retained";
     case "shared-ownership":
+    case "unrecorded-declarer":
       return "shared";
     case "current-bytes-mismatch":
     case "divergent":
@@ -422,10 +423,17 @@ export function decideRemovalGate(input: RemovalGateInput): RemovalGateDecision 
       decision.semantics === null ||
       decision.semantics.removal !== "delete-if-unmodified"
     ) {
-      // Every conjunct restated at the point of authorization rather than
-      // inherited from `planArtifacts`. Duplicating the test is deliberate: this
-      // is the last line before a file is destroyed, and a proof that is only
-      // asserted somewhere else is a proof one refactor can delete.
+      // Every BYTE-AND-SEMANTICS conjunct restated at the point of authorization
+      // rather than inherited from `planArtifacts`. Duplicating the test is
+      // deliberate: this is the last line before a file is destroyed, and a proof
+      // that is only asserted somewhere else is a proof one refactor can delete.
+      //
+      // The two OWNERSHIP conjuncts — exclusive deselection of the recorded set,
+      // and no surviving unrecorded declarer — are inherited, via
+      // `form === "deletable"`. They are re-established rather than trusted,
+      // because `currentDecision` above is `planArtifacts` re-run over CURRENT
+      // facts; restating them here would mean re-deriving the declarer set from
+      // an inspection this function does not hold.
       return {
         ok: false,
         reason: "apply/artifact-precondition",

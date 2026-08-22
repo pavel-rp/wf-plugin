@@ -82,6 +82,7 @@ function advanceFact(overrides: Partial<PlanArtifactFact> = {}): PlanArtifactFac
       refresh: "replace-if-unmodified",
       removal: "delete-if-unmodified",
     },
+    declaringOwners: [ALPHA],
     deselectedOwners: [],
     ...overrides,
   };
@@ -349,6 +350,7 @@ test("a deletion-only plan reports NO phantom drift", () => {
     recorded: evidence({ destination: "docs/gone.md" }),
     current: { ok: true, sha256: OLD_BYTES, bytes: 12 },
     declared: null,
+    declaringOwners: [],
     deselectedOwners: [ALPHA],
   };
   const decision = decideUpgradeGate(

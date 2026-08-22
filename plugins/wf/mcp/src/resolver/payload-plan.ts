@@ -256,8 +256,8 @@ export function planPayloads(facts: readonly PlanPayloadFact[]): PayloadPlanResu
       if (recordedContentHash !== null) {
         // Observable bytes: the artifact arm has everything it needs.
         if (current.ok) continue;
-        // Unobservable bytes prove NOTHING — `too-large`, `unsafe` and
-        // `unsupported` are exactly the states in which an overwrite could
+        // Unobservable bytes prove NOTHING — `too-large`, `unsafe`,
+        // `unsupported` and `unreadable` are the states in which an overwrite could
         // destroy content no one has read. Mirrors `artifact-plan.ts` rule 1's
         // `current-bytes-unreadable` retention: withhold rather than assume. A
         // genuinely ABSENT destination is the one safe exception, so a deleted

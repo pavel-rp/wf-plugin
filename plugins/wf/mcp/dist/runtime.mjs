@@ -19903,9 +19903,11 @@ function classify(fact, inventoryTrustworthy) {
     if (recorded.removal !== "delete-if-unmodified") {
       return retain("removal-semantics-retain", recordedOwners, recordedSemantics);
     }
-    const unrecordedDeclarer = fact.declared !== null && !fact.declared.owners.every((owner) => includesOwner(recordedOwners, owner));
-    if (unrecordedDeclarer) {
-      return retain("shared-ownership", recordedOwners, recordedSemantics);
+    const survivingUnrecorded = fact.declaringOwners.filter(
+      (owner) => !includesOwner(recordedOwners, owner) && !includesOwner(fact.deselectedOwners, owner)
+    );
+    if (survivingUnrecorded.length > 0) {
+      return retain("unrecorded-declarer", recordedOwners, recordedSemantics);
     }
     return {
       destination: fact.destination,
@@ -28353,6 +28355,7 @@ function preservationClassFor(reason) {
     case "not-deselected":
       return "retained";
     case "shared-ownership":
+    case "unrecorded-declarer":
       return "shared";
     case "current-bytes-mismatch":
     case "divergent":
@@ -28606,6 +28609,7 @@ function divergenceClassFor(reason) {
     case "not-deselected":
       return null;
     case "shared-ownership":
+    case "unrecorded-declarer":
       return null;
     case "removal-semantics-retain":
       return null;
@@ -32352,6 +32356,16 @@ var ResolverService = class {
         destination,
         target,
         recorded: recordedArtifacts.get(destination) ?? null,
+        // WHO declares it, from ALL rows — not from `usable`, and not gated on
+        // `agreed`. The reproducibility collapse below is a statement about the
+        // BYTES; erasing a declarer because its source could not be read, or
+        // because it disagrees with a co-owner, would hide precisely the owner
+        // the removal slice needs to see (WF-476).
+        declaringOwners: rows.map((row) => ({
+          pluginId: row.pluginId,
+          capability: row.capability,
+          source: row.source
+        })),
         current: observed.status === "ok" ? { ok: true, sha256: observed.sha256, bytes: observed.bytes } : { ok: false, status: observed.status },
         declared: agreed && first !== void 0 && first.identity.ok ? {
           declaredSourceFingerprint: first.identity.sha256,

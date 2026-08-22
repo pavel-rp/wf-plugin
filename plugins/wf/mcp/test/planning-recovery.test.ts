@@ -694,6 +694,7 @@ const ARTIFACT_FACT: PlanArtifactFactInput = {
   },
   current: { ok: true, sha256: LEDGER_HASH, bytes: 10 },
   declared: null,
+  declaringOwners: [],
 };
 
 /**

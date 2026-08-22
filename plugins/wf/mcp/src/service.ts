@@ -3624,9 +3624,10 @@ export class ResolverService {
     // --- 1b. the destination has not been edited since the plan (WF-476) -------
     // A DEFENSIVE UNDER-LOCK BACKSTOP, deliberately narrower than the planner.
     // The planner defers EVERY ledger-recorded destination to the artifact arm
-    // (`payload-plan.ts` rule 2), so a well-formed plan never reaches this gate
-    // with `recordedHash !== null` at all. It exists for the window the plan
-    // cannot see: the destination is re-read here, under the lock, so a
+    // (`payload-plan.ts` rule 2) EXCEPT a genuinely absent one, which it still
+    // restores — so the only well-formed plan that reaches this gate with
+    // `recordedHash !== null` is that restore, and it passes on `missing`. The
+    // gate exists for the window the plan cannot see: the destination is re-read here, under the lock, so a
     // destination hand-edited between plan and apply is refused rather than
     // overwritten — the same discipline `renderAdvanceWrite` applies to its own
     // gate. Matching the planner's exact predicate is NOT the goal; failing
@@ -3644,8 +3645,10 @@ export class ResolverService {
           detail: `the payload destination \`${destination}\` has been modified since the plan was approved (recorded content hash ${recordedHash}, observed sha256 ${live.sha256}); its declared \`${approved.semantics.refresh}\` refresh withholds the write, so nothing was written.`,
         };
       }
-      // The proof FAILS CLOSED. `too-large`, `unsafe` and `unsupported` mean the
-      // bytes were never observed, so "unmodified" was never established — and an
+      // The proof FAILS CLOSED. `too-large`, `unsafe`, `unsupported` and
+      // `unreadable` — every non-`missing` failure in the closed fingerprint
+      // union — mean the bytes were never observed, so "unmodified" was never
+      // established, and an
       // overwrite would destroy content no one has read. Only a genuinely absent
       // destination is safe to (re-)create, which is how a deleted managed
       // artifact is still restored. Mirrors `artifact-plan.ts` rule 1's
@@ -4293,6 +4296,16 @@ export class ResolverService {
         destination,
         target,
         recorded: recordedArtifacts.get(destination) ?? null,
+        // WHO declares it, from ALL rows — not from `usable`, and not gated on
+        // `agreed`. The reproducibility collapse below is a statement about the
+        // BYTES; erasing a declarer because its source could not be read, or
+        // because it disagrees with a co-owner, would hide precisely the owner
+        // the removal slice needs to see (WF-476).
+        declaringOwners: rows.map((row) => ({
+          pluginId: row.pluginId,
+          capability: row.capability,
+          source: row.source,
+        })),
         current:
           observed.status === "ok"
             ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }

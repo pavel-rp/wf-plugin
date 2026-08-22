@@ -1024,6 +1024,13 @@ export type PlanArtifactRetentionReason =
   | "not-deselected"
   /** A recorded owner survives the plan — ownership is not exclusive. */
   | "shared-ownership"
+  /** A pack that declares this destination RIGHT NOW is not in the recorded
+   *  owner set and is not deselected by this plan, so the recorded set is known
+   *  to be incomplete and exclusivity cannot be established from it (WF-476).
+   *  Distinct from `shared-ownership`, which is about a recorded owner that
+   *  SURVIVES: here no recorded owner survives, and the blocking declarer is by
+   *  construction absent from the decision's `owners`. */
+  | "unrecorded-declarer"
   /** The recorded owner set is empty or not fully resolvable (ownerless payload). */
   | "ownership-incomplete"
   /** Current bytes differ from the prior ledger hash — the file was edited. */

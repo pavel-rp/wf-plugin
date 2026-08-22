@@ -88,6 +88,7 @@ function fact(over: Partial<PlanArtifactFact> = {}): PlanArtifactFact {
     recorded: recorded(),
     current: { ok: true, sha256: LEDGER_HASH, bytes: 10 },
     declared: null,
+    declaringOwners: [],
     deselectedOwners: [],
     ...over,
   };
@@ -160,13 +161,13 @@ test("a CURRENT declarer the ledger never recorded blocks deletion (WF-476)", ()
   // it. Read naively, its absence from `recordedOwners` says "not an owner"
   // rather than "owner we failed to record", and deselecting the one recorded
   // owner would delete a file the surviving co-declarer never agreed to remove.
-  // Exclusivity is therefore re-derived against the CURRENT declaration too.
   const decision = only(
     planArtifacts(
       [
         fact({
           recorded: recorded({ owners: [OWNER_A] }),
           declared: declared({ owners: [OWNER_A, OWNER_B] }),
+          declaringOwners: [OWNER_A, OWNER_B],
           deselectedOwners: [OWNER_A],
         }),
       ],
@@ -175,9 +176,46 @@ test("a CURRENT declarer the ledger never recorded blocks deletion (WF-476)", ()
   );
 
   assert.equal(decision.form, "retained");
-  assert.equal(decision.reason, "shared-ownership");
+  assert.equal(decision.reason, "unrecorded-declarer");
   assert.equal(decision.deletionAuthority, false);
+  assert.ok(
+    !decision.owners.some((owner) => owner.pluginId === OWNER_B.pluginId),
+    "the RECORDED owner set cannot name the blocking declarer — which is exactly " +
+      "why this is a distinct token and not `shared-ownership`",
+  );
 });
+
+// The three shapes below are the reason the guard keys on `declaringOwners` and
+// NOT on `declared`. `declared` is a REPRODUCIBILITY channel: it collapses to
+// `null` when a declared source cannot be read, and when co-owners disagree on
+// bytes or on semantics. Every one of those collapses hides a real second owner,
+// and a guard reading ownership off it would fail OPEN — deleting the file in
+// precisely the configurations a co-declarer is most likely to be present in.
+for (const [label, over] of [
+  ["co-owners disagree on bytes", { declared: null }],
+  ["a declared source could not be read", { declared: null }],
+  ["co-owners disagree on semantics", { declared: null }],
+] as Array<[string, Partial<PlanArtifactFact>]>) {
+  test(`an unrecorded co-declarer still blocks deletion when ${label}`, () => {
+    const decision = only(
+      planArtifacts(
+        [
+          fact({
+            recorded: recorded({ owners: [OWNER_A] }),
+            declaringOwners: [OWNER_A, OWNER_B],
+            deselectedOwners: [OWNER_A],
+            ...over,
+          }),
+        ],
+        TRUST,
+      ),
+    );
+
+    assert.equal(decision.form, "retained", "an unreproducible declaration is still a CLAIM");
+    assert.equal(decision.reason, "unrecorded-declarer");
+    assert.equal(decision.deletionAuthority, false);
+  });
+}
 
 test("deletion still proceeds when every current declarer IS a recorded owner", () => {
   // The control for the guard above: re-deriving exclusivity must not make the
@@ -188,7 +226,31 @@ test("deletion still proceeds when every current declarer IS a recorded owner", 
         fact({
           recorded: recorded({ owners: [OWNER_A] }),
           declared: declared({ owners: [OWNER_A] }),
+          declaringOwners: [OWNER_A],
           deselectedOwners: [OWNER_A],
+        }),
+      ],
+      TRUST,
+    ),
+  );
+
+  assert.equal(decision.form, "deletable");
+  assert.equal(decision.deletionAuthority, true);
+});
+
+test("a declarer this plan DESELECTS does not block its own removal", () => {
+  // The other direction, and the reason the guard exempts `deselectedOwners`. A
+  // pack being deregistered still declares the destination right up until it is
+  // gone, so requiring every declarer to be a recorded owner without this
+  // exemption would make ordinary deregistration of an UNRECORDED owner
+  // unreachable — conservative past the point of usefulness.
+  const decision = only(
+    planArtifacts(
+      [
+        fact({
+          recorded: recorded({ owners: [OWNER_A] }),
+          declaringOwners: [OWNER_A, OWNER_B],
+          deselectedOwners: [OWNER_A, OWNER_B],
         }),
       ],
       TRUST,
@@ -482,6 +544,11 @@ test("the removal path is at least as strict as the bootstrap path on digests", 
 const EVERY_REASON: Array<[PlanArtifactRetentionReason, Partial<PlanArtifactFact>, boolean]> = [
   ["not-deselected", {}, true],
   ["shared-ownership", { recorded: recorded({ owners: [OWNER_A, OWNER_B] }), deselectedOwners: [OWNER_A] }, true],
+  [
+    "unrecorded-declarer",
+    { recorded: recorded({ owners: [OWNER_A] }), declaringOwners: [OWNER_B], deselectedOwners: [OWNER_A] },
+    true,
+  ],
   ["ownership-incomplete", { recorded: recorded({ owners: [] }) }, true],
   [
     "current-bytes-mismatch",
@@ -538,7 +605,7 @@ test("every retention reason in the closed vocabulary is reachable and grants no
   }
   // `bootstrap-defers-deletion` is the one non-retention reason; it is covered by
   // its own SC6 test and is deliberately absent from this retention walk.
-  assert.equal(seen.size, 15, "all 15 retention reasons are exercised");
+  assert.equal(seen.size, 16, "all 16 retention reasons are exercised");
 });
 
 // --- SC9 / SC11: byte-inert and order-independent ----------------------------
@@ -668,6 +735,7 @@ const DEMO_ARTIFACT = {
   recorded: recorded({ owners: [OWNER_DEMO] }),
   current: { ok: true as const, sha256: LEDGER_HASH, bytes: 10 },
   declared: null,
+  declaringOwners: [OWNER_DEMO],
 };
 
 test("a previewed artifact decision rides the SAME plan envelope — one lineage", () => {

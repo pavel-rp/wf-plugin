@@ -74,6 +74,15 @@ export interface PlanArtifactFact {
   current: PayloadSourceIdentity;
   /** What the current declaration would produce, or `null` when unreproducible. */
   declared: PlanArtifactDeclaration | null;
+  /** WHO declares this destination right now — every current declarer, verbatim
+   *  and unfiltered. Deliberately SEPARATE from `declared`, which is a
+   *  REPRODUCIBILITY channel and collapses to `null` on three distinct
+   *  conditions (a source whose bytes could not be read, co-owners that disagree
+   *  on bytes, co-owners that disagree on semantics). Reading ownership off that
+   *  collapse would erase exactly the co-declarers most likely to be real, so
+   *  the removal slice keys exclusivity on this channel instead. Empty means
+   *  genuinely nothing declares it. */
+  declaringOwners: readonly ArtifactOwner[];
   /** The owners this plan explicitly deregisters AND which do not survive it.
    *  Computed by the caller from the plan's own delta — never inferred here. */
   deselectedOwners: readonly ArtifactOwner[];
@@ -291,14 +300,30 @@ function classify(fact: PlanArtifactFact, inventoryTrustworthy: boolean): PlanAr
     // absence from `recordedOwners` then reads as "not an owner" rather than
     // "owner we failed to record", and deselecting the one recorded owner would
     // delete an artifact the surviving co-declarer never agreed to remove.
-    // Re-derive exclusivity against the CURRENT declaration too: every present
-    // declarer must already be a recorded owner. `declared === null` means
-    // nothing declares it now, which is not a shared claim.
-    const unrecordedDeclarer =
-      fact.declared !== null &&
-      !fact.declared.owners.every((owner) => includesOwner(recordedOwners, owner));
-    if (unrecordedDeclarer) {
-      return retain("shared-ownership", recordedOwners, recordedSemantics);
+    // Exclusivity is therefore re-derived against WHO DECLARES IT NOW.
+    //
+    // KEYED ON `declaringOwners`, NEVER ON `declared`. `declared` answers "what
+    // would this declaration produce", and collapses to `null` whenever the
+    // answer is not reproducible — including when co-owners DISAGREE, which is
+    // the case a second owner is most likely to be present in. Reading ownership
+    // off that collapse would fail OPEN in exactly the configuration this guard
+    // exists for, and delete the file.
+    //
+    // AN OWNER THIS PLAN DESELECTS IS NOT A SURVIVING CLAIM. It is on its way
+    // out, so requiring it to be recorded would let a pack block its own
+    // removal — the retention direction is fail-safe, but this one would make
+    // ordinary deregistration unreachable rather than merely conservative.
+    const survivingUnrecorded = fact.declaringOwners.filter(
+      (owner) =>
+        !includesOwner(recordedOwners, owner) && !includesOwner(fact.deselectedOwners, owner),
+    );
+    if (survivingUnrecorded.length > 0) {
+      // A DISTINCT token, not `shared-ownership`. That one means "a recorded
+      // owner survives"; here none does — the block comes from a declarer the
+      // ledger never recorded, which the decision's `owners` (the RECORDED set)
+      // cannot name. Reusing it would leave a report that states a cause its own
+      // owner list contradicts.
+      return retain("unrecorded-declarer", recordedOwners, recordedSemantics);
     }
     return {
       destination: fact.destination,

@@ -176,6 +176,7 @@ function artifactFact(over: Partial<PlanArtifactFactInput> = {}): PlanArtifactFa
       refresh: "replace-if-unmodified",
       removal: "delete-if-unmodified",
     },
+    declaringOwners: [OWNER],
     ...over,
   };
 }
