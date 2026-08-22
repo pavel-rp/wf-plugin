@@ -1,81 +1,202 @@
 ---
 name: init
-description: Onboards the wf-host pack into a wf-initialized repo in one command — self-registers the host capability through the bundled resolver's inspect_pack/register_pack flow, then seeds the generic host profile override when no local override exists. Use after /wf:init before running host-dependent QA.
-allowed-tools: [Read, Write, Edit, Bash, ToolSearch]
+description: Onboards the wf-host pack by entering the canonical /wf:init lifecycle with wf-host seeded into the selection round, so a project gets the same discovery, question, delta, confirmation and apply it would get from /wf:init itself. Preserves every registration the project already has and adds wf-host to them; it decides nothing about the pack's state, asks nothing of its own, and performs no registry write and no profile write. The pack ships the host capability, which owns the qa-execution host surface. Use after /wf:init before running host-dependent QA; re-run any time — a re-run over a settled project reports no drift and mutates nothing. /wf:init is the canonical command and does the same thing for every pack at once.
+allowed-tools: [Skill, Bash]
 ---
 
-# /wf-host:init — Onboard the generic host provider
+# /wf-host:init — Onboard the wf-host pack (a compatibility alias onto the shared lifecycle)
 
-Installing this pack makes `/wf-host:init` and `/wf-host:qa-host` discoverable, but does not activate
-its provider fragment. This command uses the core resolver to register the sole `host` capability.
-It never probes an install path or hand-edits `_local/config.md`, `## Plugin Roots`, or
-`## Capabilities`.
+This skill is a **compatibility alias**: it contributes exactly one thing to the
+canonical setup lifecycle — "add `wf-host` to the desired set" — and then gets
+out of the way. Everything else, from admitting the workspace root to the single
+`apply_install` that registers the capability, belongs to `/wf:init` and happens
+there.
 
-## Command syntax
+It follows the compatibility-alias route that core declares in `/wf:init`'s
+interface contract and defines procedurally in that skill's `alias-route.md`,
+matching the reference conversion in `plugins/wf-fake/skills/init/SKILL.md`.
+
+> **What this skill does not decide.** Whether `wf-host` is installed, enabled,
+> already registered, or drifted. Whether a repair is needed. What may be
+> deleted. Which questions are still unanswered. What the delta contains.
+> Whether to apply it. Every one of those is answered by the canonical
+> lifecycle, which this skill merely enters. There is deliberately **no
+> conditional in this body that reads existing state.**
+
+**This pack asks nothing.** The `host` capability declares no interview question,
+so the canonical question round asks nothing on its behalf and this skill emits
+**no prompt of its own** — not a confirmation invented to fill the gap, not a
+"nothing to configure" acknowledgement, not a synthesized question about a value
+the pack could infer. Silence is the correct behaviour. The single canonical
+confirmation of the delta is the only interaction in the run, and it belongs to
+`/wf:init`.
+
+**The profile is the canonical route's to seed.** The `host` capability declares
+a `profile-template:`, and the canonical lifecycle's own registry-derived settle
+step seeds `_local/profiles/host.profile.json` from it — creating the override
+only on divergence and never overwriting an existing one. This skill therefore
+performs **no** profile write of its own: the seed is inherited by identity, not
+reimplemented, and the `Capability profiles:` line of the canonical block is
+where its outcome is reported.
+
+> **`/wf:init` is the canonical command.** It runs this same journey for every
+> installed pack in one pass, so it is the one to reach for. This alias remains a
+> legitimate permanent entry point for anyone who already types it.
+
+---
+
+## Command Syntax
 
 ```
 /wf-host:init
 ```
 
-## Safety Rules
+Takes no arguments — unchanged from before this skill became an alias. Selection
+and confirmation are taken interactively **by the canonical lifecycle**; this
+skill pre-ticks one box and passes nothing else.
 
-**Allowed:** read project files and run read-only git checks; call `inspect_pack`, `resolve_gate`,
-`register_pack`, and `resolve_content`; securely create `_local/profiles/` and write only
-`_local/profiles/host.profile.json` when seeding.
+---
 
-**Forbidden:** modify source or registry tables directly; derive a plugin root; run installs, builds,
-tests, or destructive git operations; register any plugin id other than `wf-host`.
+## Safety Rules (NON-NEGOTIABLE)
 
-## Procedure
+**Allowed:**
 
-1. Run `pwd -P` and retain it as `<workspace-root>` for every resolver call. Confirm a git repo with
-   `git rev-parse --git-dir`. Resolve the registry location from `wf.config.js`'s `registryPath`,
-   defaulting to `_local/config.md`. If `_local/` or that registry is absent, stop: run `/wf:init`
-   first.
-2. Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-host" })`.
-   If `valid` is false, stop without registration, report every returned issue, and direct the user
-   to install, enable, or reinstall the pack as applicable. Retain its `fingerprint` and install path.
-3. Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })`. If it
-   reports unhealthy/block, stop before mutation and relay the categories, diagnostics, and recovery
-   paths verbatim. Never manually recover the registry.
-4. Call `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-host",
-   expectedFingerprint: "<fingerprint>" })`. On `rejected`, report its reason and direct the user
-   to rerun this command. On `registered`, retain the returned root and self-check result.
-5. Seed the profile only after successful registration. Use
-   `resolve_content({ workspaceRoot: "<workspace-root>", class: "profile-template", capability: "host" })`
-   to obtain the default template. Before any profile write, set `umask 077`, create
-   `_local/profiles/` as a real current-user-owned directory with mode `0700` (stop if it is a symlink,
-   not a directory, or cannot be secured), and preserve an existing profile unchanged. If
-   `_local/profiles/host.profile.json` is absent, write the template unchanged to a mode-`0600` temporary
-   file in that directory, then atomically rename it to the profile path and record `seeded override`;
-   otherwise record `default or local override in use`. Never read the installed pack's profile template
-   directly.
-6. If `selfCheck` is failed, report `partial`, call `resolve_gate` again for diagnostics, and direct
-   the user to `/wf:resolve refresh`; do not claim onboarding succeeded.
+- Run `pwd -P` once to obtain the absolute workspace root for the routing call.
+- Call the bundled `wf-resolver` `resolve_routing` tool to route the one
+  sibling-Skill edge below.
+- Invoke `/wf:init` through the **Skill** tool, with this pack's own stable
+  plugin id as the seed.
+- Relay the `INIT` terminal block that invocation returns.
+
+**Forbidden:**
+
+- Call any lifecycle resolver tool — `discover_packs`, `plan_install`,
+  `apply_install`, `repair_packs`, `register_pack`, `inspect_pack`, or
+  `resolve_gate`. Registration happens inside the canonical apply, and nowhere
+  else.
+- Read, infer, or report any lifecycle fact of its own: presence, enablement,
+  registration, drift, recovery, or whether a question is answered.
+- Prompt for anything. This pack declares no question, so the correct output is
+  silence — never a substitute prompt, a placeholder check, or a value carried
+  forward.
+- Seed anything but this pack's own id, seed more than one id, or pass a
+  selection, an answer, or a confirmation on the command line.
+- Render a delta, take a confirmation, or emit a second terminal block.
+- Derive, validate, or second-guess the workspace root. The canonical route
+  admits the root; this skill enters that route and inherits the same admitted
+  workspace by identity, not by imitating the check.
+- Roll back, undo, or repair anything. Mutation and rollback are the canonical
+  transaction's, taken and released within it; this skill owns no undo and takes
+  no lock of its own.
+- Write or edit **any** file, including `_local/config.md`, `_local/profiles/`,
+  and the host profile override. The canonical settle step owns the profile seed;
+  this skill performs no write at all.
+- Filesystem-read a sibling skill's body — `/wf:init` is reached through the
+  **Skill** tool, and a failed invocation stops into the error block below rather
+  than falling back to a read.
+- Run builds, tests, installs, or any network or version-control operation.
+
+---
+
+## Onboarding procedure
+
+One step, and it is the whole skill.
+
+1. **Route the edge, then enter the lifecycle.** Run `pwd -P` once and hold the
+   absolute result as `<workspace-root>` — in a linked-worktree Agent that is the
+   Agent's own worktree, never a parent's. Call `resolve_routing` with
+   `workspaceRoot: "<workspace-root>"`, `role: "init"`, `unitIds: ["host:init"]`,
+   `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic",
+   unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low",
+   toolWork: "none", validation: "mechanical", contextIsolation: "none",
+   independentReview: false, returnContract: "mechanically-judgeable",
+   requestedParallelism: 1 }`, `supportsModelSelector: false`, and
+   `supportsEffortSelector: false`. Emit the compact operational record. On
+   `status: stop` or a non-null `diagnostic`, stop before the invocation and
+   report the resolver's reason. Otherwise obey the selected `inline` shape, pass
+   no selector, and invoke `/wf:init --seed wf-host` through the **Skill** tool.
+
+2. **Relay what comes back, verbatim.** The `INIT` block is this skill's Final
+   Output. Add the host note below it and nothing else — no re-derived status,
+   no second block, no restated delta.
+
+---
 
 ## Edge Cases
 
-- **Resolver tools unavailable:** fetch the deferred resolver tool schema once through the host tool
-  search surface; if still unavailable, stop and direct the user to restart Claude Code.
-- **Stale fingerprint:** rerun `/wf-host:init`; do not retry registration using the old fingerprint.
-- **Existing registration:** registration is an idempotent upsert; report `registered` and preserve
-  any existing profile override.
-- **Placeholder profile remains:** onboarding is valid, but `/wf-host:qa-host` rejects requested
-  operations until the relevant command/teardown pairs are supplied.
+- **`/wf:init` has not run yet:** not a precondition this skill checks. `/wf:init`
+  *is* what is being invoked, and it scaffolds the bare core itself before any
+  pack transaction.
+- **`wf-host` is disabled:** the seed is reported *not applied*; the pack stays
+  visible, retained and **unavailable**, and its enablement is never flipped.
+  Re-enabling the plugin is the user's action, outside this run. The rest of the
+  run proceeds normally.
+- **`wf-host` is already set up and the project is settled:** the canonical
+  settled exit — no plan call, no confirmation, no mutation call at all —
+  reported as `already-initialized` / `Apply: not run — no drift`. This is the
+  expected outcome of re-running, not a degenerate one.
+- **The question round asks nothing for this pack:** expected, and the whole
+  point. The host profile's tunable values are profile data, not an interview
+  question, so no prompt is synthesized to stand in for one. Another pack in the
+  same desired set may still have its own question asked in that one round.
+- **A host profile override already exists:** it is preserved. The canonical seed
+  creates an override only where one is absent and never overwrites one, so an
+  edited profile survives a re-run untouched.
+- **The seeded profile still carries placeholder command/teardown pairs:**
+  onboarding is valid; the host provider rejects requested operations until those
+  pairs are supplied. That is the provider's behaviour at the point of use, not a
+  lifecycle state this skill reads.
+- **The project has drifted:** the canonical repair plan handles it. A withheld
+  advance or a retained-but-not-benign artifact is reported as retained
+  divergence, never as no drift.
+- **The project already has other packs set up:** they are all preserved. Entering
+  through this command **adds** `wf-host` to them and deregisters nothing —
+  omission is never a removal.
+- **A root override is in play:** it targets the same admitted workspace `/wf:init`
+  targets, because this skill enters that one route rather than re-deriving a root
+  of its own.
+- **Recovery ran before the route:** it is reported on its own channel, separately
+  from the delta, exactly as `/wf:init` reports it.
+- **The apply is rolled back:** the canonical transaction's rollback restores the
+  workspace and reports it on the canonical envelope. This skill neither performs
+  nor narrates an undo of its own.
+- **The plan is declined:** `INIT — declined`; nothing was registered and
+  re-running is safe.
+- **`/wf:init` cannot be invoked** (the Skill tool is unavailable, or the
+  invocation errors): stop and report it. Never substitute a registration of this
+  skill's own, and never fall back to reading the sibling body.
+
+---
 
 ## Final Output
 
+Relay the canonical block verbatim — this skill runs the canonical lifecycle, so
+it reports the canonical contract:
+
 ```
-WF-HOST-INIT — <onboarded | partial>
+INIT — <initialized | already-initialized | declined | stopped | partial>
 
-Registry:   <registry location>
-Pack root:  <install path>
-Registered: host — registered
-Profile:    <seeded override [seeded by <model id>] | default or local override in use>
-Self-check: <PASS — register_pack selfCheck: ok | FAIL — <diagnostics and recovery>>
+<the block /wf:init returned, verbatim, including its Seed: line>
 
-Next: fill the command/teardown pairs and review the default 120-second command timeout in _local/profiles/host.profile.json, then run /wf:qa-auto for a host-dependent QA plan.
+Host note:
+- the canonical run seeds the host profile from the capability's own template and reports it on its Capability profiles line; fill in the command/teardown pairs there before running a host-dependent QA plan.
 ```
 
-The final-output block is always last. Use the runtime model id for a newly seeded profile, or
-`unknown` when unavailable.
+If the routing call stopped the run, or `/wf:init` could not be invoked, emit
+instead:
+
+```
+INIT — stopped
+
+Seed: wf-host — not applied (alias could not enter the canonical lifecycle)
+Reason: <the resolver diagnostic, or the invocation error, verbatim>
+
+Next: resolve the reason above, then re-run /wf-host:init.
+```
+
+**Both blocks are breaking replacements for the previous
+`WF-HOST-INIT — <status>` block** (MINOR, pre-1.0): one shared route has one
+terminal contract. The command itself is unchanged — same name, same zero
+arguments, same end state.
+
+**The final-output block must always be the very last thing output to chat.**
