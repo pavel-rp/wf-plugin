@@ -27,6 +27,7 @@ import {
   applyTransaction,
   emptySelfCheckExpectation,
   type ApplyPorts,
+  type ApplyTarget,
   type ApplyTargetWrite,
   type SelfCheckExpectation,
   type SelfCheckOutcome,
@@ -72,6 +73,19 @@ const CONSTITUTION_NEW =
  *  workspace claiming to own a file that is not there. */
 const PAYLOAD = "_local/tooling/helper.mjs";
 const PAYLOAD_NEW = "export const answer = 42;\n";
+
+/** The target WF-458 adds — a managed artifact this transaction REMOVES. It is
+ *  PRESENT beforehand and its correct restoration after any interrupted removal
+ *  is its exact prior bytes, which is the hardest case in the whole matrix: the
+ *  destination's post-crash state is ABSENCE, so nothing on disk can be compared
+ *  against, and the verified backup is the only thing standing between an
+ *  interrupted delete and permanent data loss.
+ *
+ *  Its bytes are deliberately unlike every other fixture's, so a restore that
+ *  brought back the wrong file's contents would fail loudly rather than compare
+ *  equal by coincidence. */
+const MANAGED = "_local/tooling/managed.md";
+const MANAGED_PRIOR = "# managed\n\nInstalled by a pack that is now deregistered.\n";
 
 function sha256(text: string): string {
   return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
@@ -125,6 +139,7 @@ function newWorkspace(over: Partial<Workspace> = {}): Workspace {
     [DESTINATION, PRIOR_BYTES],
     [LEDGER, LEDGER_PRIOR],
     [CONSTITUTION, CONSTITUTION_PRIOR],
+    [MANAGED, MANAGED_PRIOR],
   ]);
   return {
     files,
@@ -133,8 +148,9 @@ function newWorkspace(over: Partial<Workspace> = {}): Workspace {
       [DESTINATION, 1],
       [LEDGER, 2],
       [CONSTITUTION, 3],
+      [MANAGED, 4],
     ]),
-    nextInode: 4,
+    nextInode: 5,
     journal: null,
     killAt: null,
     failAt: null,
@@ -912,6 +928,197 @@ crashMatrix("one target", ONE_TARGET);
 crashMatrix("two targets", TWO_TARGETS);
 crashMatrix("four targets, with the committed override and the constitution", FOUR_TARGETS);
 crashMatrix("five targets, with the pack payload", FIVE_TARGETS);
+
+// ---------------------------------------------------------------------------
+// THE DELETION CRASH MATRIX (WF-458) — the same axis, over a target set that
+// REMOVES a file
+// ---------------------------------------------------------------------------
+//
+// EXTENDED, NEVER REBUILT. The nine-stage axis above is reused verbatim and one
+// stage is added (`removeDestination`), because this is the case to test hardest:
+// on every other target a crash leaves SOMETHING at the destination to compare
+// against, while an interrupted removal leaves absence — and absence is
+// indistinguishable from "the user deleted it themselves" unless the journal says
+// otherwise. The whole `removesDestination` branch of the recovery decision exists
+// for exactly this window, and these tests are what hold it honest.
+
+const DELETION_STAGES: Stage[] = [...CRASH_STAGES, "removeDestination"];
+
+/** A write and a removal in ONE transaction — the real shape of a deregistration
+ *  that both rewrites the registry and removes the artifact it owned. The two
+ *  must be all-or-nothing: a crash may never leave the registry rewritten and the
+ *  file still present, nor the file removed and the registry unchanged. */
+const MIXED_TARGETS: readonly ApplyTarget[] = [
+  { operation: "write", destination: DESTINATION, newContent: NEW_BYTES },
+  { operation: "delete", destination: MANAGED, expectedContentHash: sha256(MANAGED_PRIOR) },
+];
+
+function runMixed(ws: Workspace) {
+  return applyTransaction(applyPortsFor(ws), {
+    targets: MIXED_TARGETS,
+    expectation: EXPECTATION,
+  });
+}
+
+test("a mixed write+delete transaction applies BOTH, and reports them on separate axes", () => {
+  const ws = newWorkspace();
+  const result = runMixed(ws);
+
+  assert.equal(result.status, "applied");
+  assert.equal(ws.files.get(DESTINATION), NEW_BYTES);
+  assert.equal(ws.files.has(MANAGED), false, "the removal actually removed the file");
+  assert.deepEqual(result.written, [DESTINATION], "a removal is never reported as a write");
+  assert.deepEqual(result.removed, [MANAGED]);
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), [], "the verified backup is discarded on success");
+  assert.equal(result.residue.clean, true);
+});
+
+for (const killAt of DELETION_STAGES) {
+  test(`deletion: a process killed at \`${killAt}\` restores the removed file's EXACT prior content`, () => {
+    const ws = newWorkspace({ killAt });
+    assert.throws(() => runMixed(ws), /killed at/);
+
+    const first = recoverInterruptedTransaction(recoveryPortsFor(ws));
+    assert.ok(
+      first.state === "recovered" || first.state === "no-journal",
+      `recovery after a kill at ${killAt} must resolve, got \`${first.state}\``,
+    );
+    assert.equal(first.proceeded, true);
+
+    // THE ASSERTION THIS WHOLE MATRIX EXISTS FOR: byte-exact content, not merely
+    // "the path exists again". A restore that recreated an empty file, or brought
+    // back another target's bytes, would satisfy a presence check and would still
+    // have destroyed the user's data.
+    assert.equal(
+      ws.files.get(MANAGED),
+      MANAGED_PRIOR,
+      `a kill at ${killAt} must restore \`${MANAGED}\` byte-for-byte`,
+    );
+    assert.equal(
+      ws.files.get(DESTINATION),
+      PRIOR_BYTES,
+      `a kill at ${killAt} must also restore the co-target — the transaction is all-or-nothing`,
+    );
+    assert.equal(ws.journal, null, "no journal survives a resolved recovery");
+    assert.deepEqual(backupsIn(ws), [], "no backup survives a resolved recovery");
+
+    // IDEMPOTENT: a second restart converges rather than re-restoring or refusing.
+    const second = recoverInterruptedTransaction(recoveryPortsFor(ws));
+    assert.equal(second.state, "no-journal");
+    assert.equal(second.proceeded, true);
+    assert.equal(ws.files.get(MANAGED), MANAGED_PRIOR);
+    assert.equal(ws.files.get(DESTINATION), PRIOR_BYTES);
+  });
+}
+
+test("deletion: a kill at `discardTransaction` leaves the removal DURABLY COMPLETE", () => {
+  // The one stage whose correct outcome is the NEW state. The journal goes first,
+  // so the instant it is gone the removal is complete — and a restart must not
+  // resurrect the file it deliberately removed.
+  const ws = newWorkspace({ killAt: "discardTransaction" });
+  assert.throws(() => runMixed(ws), /killed at/);
+
+  assert.equal(ws.files.has(MANAGED), false, "the removal survives the kill");
+  assert.equal(ws.files.get(DESTINATION), NEW_BYTES);
+  assert.equal(ws.journal, null, "the journal was discarded FIRST");
+
+  const recovery = recoverInterruptedTransaction(recoveryPortsFor(ws));
+  assert.equal(recovery.state, "no-journal");
+  assert.equal(
+    ws.files.has(MANAGED),
+    false,
+    "a restart must never undo a durably-completed removal",
+  );
+});
+
+test("deletion: a kill mid-transaction followed by recovery lets a RE-RUN remove cleanly", () => {
+  const ws = newWorkspace({ killAt: "removeDestination" });
+  assert.throws(() => runMixed(ws), /killed at/);
+  recoverInterruptedTransaction(recoveryPortsFor(ws));
+  assert.equal(ws.files.get(MANAGED), MANAGED_PRIOR, "recovered before the re-run");
+
+  ws.killAt = null;
+  ws.log = [];
+  ws.observed = new Set();
+  const result = runMixed(ws);
+  assert.equal(result.status, "applied");
+  assert.deepEqual(result.removed, [MANAGED]);
+  assert.equal(ws.files.has(MANAGED), false);
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), []);
+});
+
+test("deletion: an ordinary removal FAILURE rolls the whole transaction back", () => {
+  // Not a kill — a port that returns `{ ok: false }`. The write half has already
+  // landed by then, so this is the case where rollback must undo a SUCCEEDED
+  // sibling target rather than merely abandon an unstarted one.
+  const ws = newWorkspace({ failAt: "removeDestination" });
+  const result = runMixed(ws);
+
+  assert.notEqual(result.status, "applied");
+  assert.equal(ws.files.get(MANAGED), MANAGED_PRIOR, "the file was never removed");
+  assert.equal(ws.files.get(DESTINATION), PRIOR_BYTES, "the sibling write was rolled back");
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), []);
+  assert.equal(result.residue.clean, true);
+});
+
+test("deletion: a removal over an ABSENT destination is refused BEFORE any journal", () => {
+  // A target that changes nothing is not a target (WF-454 defect class B), and
+  // "already gone" is not the same fact as "removed by this transaction".
+  const ws = newWorkspace();
+  ws.files.delete(MANAGED);
+  const result = runMixed(ws);
+
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason, "apply/precondition-moved");
+  assert.equal(ws.files.get(DESTINATION), PRIOR_BYTES, "nothing was written either");
+  assert.equal(ws.journal, null, "no journal was created");
+  assert.deepEqual(backupsIn(ws), []);
+  assert.equal(result.residue.clean, true);
+});
+
+test("deletion: a removal over a SYMLINK is refused before any journal", () => {
+  const ws = newWorkspace();
+  ws.links.add(MANAGED);
+  const result = runMixed(ws);
+
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason, "apply/destination-symlink");
+  assert.equal(ws.journal, null);
+});
+
+test("deletion: bytes that MOVED since the gate proved them refuse before any journal", () => {
+  // The identity re-proof. The path is the same, the file is still a regular
+  // file, and its content is not what the removal was authorized over — so it is
+  // not the file that was authorized, and the transaction never opens.
+  const ws = newWorkspace();
+  ws.files.set(MANAGED, "someone edited this between the decision and the entry\n");
+  const result = runMixed(ws);
+
+  assert.equal(result.status, "rejected");
+  assert.equal(result.reason, "apply/precondition-moved");
+  assert.match(result.diagnostics[0]?.message ?? "", /no longer holds the bytes/);
+  assert.equal(ws.files.has(MANAGED), true, "the edited file is untouched");
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), []);
+});
+
+test("deletion: a failing self-check rolls the removal back too", () => {
+  // The removal has already happened when the self-check runs, so this proves the
+  // rollback restores an ABSENT destination from its backup — the path a
+  // write-only rollback never exercises.
+  const ws = newWorkspace({ selfCheck: { ok: false, diagnostic: "capability did not resolve" } });
+  const result = runMixed(ws);
+
+  assert.notEqual(result.status, "applied");
+  assert.equal(result.selfCheck, "failed");
+  assert.equal(ws.files.get(MANAGED), MANAGED_PRIOR, "the removed file came back, byte-exact");
+  assert.equal(ws.files.get(DESTINATION), PRIOR_BYTES);
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), []);
+});
 
 test("SC-5: a rolled-back payload transaction restores ALL FIVE surfaces, leaving no residue", () => {
   // The five surfaces named as five, at the point of failure rather than in the
