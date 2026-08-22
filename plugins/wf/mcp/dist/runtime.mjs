@@ -28594,7 +28594,7 @@ function decideUpgradeGate(input) {
       binding: fact.observedBinding
     });
   }
-  const remaining = collectRemainingDivergence2({
+  const remaining = collectRemainingDivergence({
     currentFacts: input.currentFacts,
     inventoryTrustworthy: input.inventoryTrustworthy,
     advancing: advances.map((advance) => advance.destination),
@@ -28604,7 +28604,7 @@ function decideUpgradeGate(input) {
   });
   return { ok: true, advances, repairs, remaining };
 }
-function collectRemainingDivergence2(input) {
+function collectRemainingDivergence(input) {
   const currentIndex = indexCurrent(
     planArtifacts(input.currentFacts, {
       inventoryTrustworthy: input.inventoryTrustworthy

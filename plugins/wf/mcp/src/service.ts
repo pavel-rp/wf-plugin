@@ -130,6 +130,7 @@ import {
 } from "./resolver/apply-removal.js";
 import {
   buildUpgradeReport,
+  collectRemainingDivergence,
   decideUpgradeGate,
   notAssessedUpgradeReport,
   type AuthorizedAdvance,
