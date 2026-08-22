@@ -100,6 +100,7 @@ import type {
   ApplyRollbackReport,
   DiscoveryIssue,
   JournalEntry,
+  PlanRepairScope,
   TransactionJournal,
 } from "./types.js";
 
@@ -209,6 +210,30 @@ export interface SelfCheckExpectation {
    *  record a legacy migration established, and so a maintainer reading a failure
    *  is sent to the legacy path rather than to an ordinary registration. */
   legacyPortableRecorded: readonly string[];
+  /** Managed artifacts this transaction UPGRADED (WF-459). The check asserts BOTH
+   *  halves of an advance landed together: the destination now holds the NEW
+   *  digest, and the ledger's `artifacts` record for it now names the new declared
+   *  source fingerprint and the complete owner set.
+   *
+   *  BOTH, BECAUSE EITHER ALONE IS WORSE THAN NEITHER. New bytes under the old
+   *  proof read as `edited` on the very next run and are then retained forever;
+   *  the new proof over the old bytes reads as `edited` immediately. An upgrade is
+   *  atomic or it is a defect, and this is where that is established from disk. */
+  artifactsAdvanced: readonly {
+    destination: string;
+    sha256: string;
+    declaredSourceFingerprint: string;
+    owners: readonly { pluginId: string; capability: string; source: string }[];
+  }[];
+  /** Packs whose lifecycle evidence this transaction REPAIRED (WF-459), carrying
+   *  the scope that decides WHICH halves are asserted.
+   *
+   *  The scope is load-bearing, not descriptive. A `portable` repair must read back
+   *  from the portable document AND the binding one; a `binding` repair must read
+   *  back from the binding document ONLY — asserting the portable half there would
+   *  be asserting that a machine-local repair wrote a shared project fact, which is
+   *  precisely the confusion the scope exists to prevent. */
+  evidenceRepaired: readonly { pluginId: string; scope: PlanRepairScope }[];
 }
 
 /** The empty expectation. Exported so a caller widening only one axis does not
@@ -227,6 +252,8 @@ export function emptySelfCheckExpectation(): SelfCheckExpectation {
     artifactsRemoved: [],
     artifactsBootstrapped: [],
     legacyPortableRecorded: [],
+    artifactsAdvanced: [],
+    evidenceRepaired: [],
   };
 }
 

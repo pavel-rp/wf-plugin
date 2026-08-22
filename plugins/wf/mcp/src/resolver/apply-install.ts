@@ -25,9 +25,8 @@
 //      would report success over a half-applied plan — the worst defect
 //      available to this family.
 //
-//      THE OUT-OF-SCOPE MODES ARE REFUSED BY THIS SAME SCREEN, NOT BY A SECOND
-//      ONE. Upgrade (`artifact-advance`) and repair (`evidence-repair`) are
-//      simply absent from both lists below, so a plan carrying either is
+//      A KIND THIS RELEASE DOES NOT UNDERSTAND IS REFUSED BY THIS SAME SCREEN,
+//      NOT BY A SECOND ONE. Anything absent from both lists below is
 //      `apply/unsupported-action` BEFORE `composeApplyTargets` runs and therefore
 //      before a single target is composed. That is why the screen must stay a
 //      whole-plan gate rather than a per-action early return inside the compose
@@ -93,9 +92,10 @@ import type {
  *  SAME confirmed transaction as its registration, or the project ends up
  *  registered against a capability whose payload never arrived.
  *
- *  The widening is exactly one kind. Deletion, upgrade, bootstrap, and repair
- *  stay absent from both lists, so a plan carrying one is refused before any
- *  target is composed — see rule 1 in the module header.
+ *  WF-458 added deletion and bootstrap; WF-459 adds upgrade and repair. Every
+ *  mutating kind the frozen plan schema defines is now either here or in the
+ *  conditional list below — which makes the fail-closed default the only thing
+ *  standing between a FUTURE kind and a silently half-applied plan.
  *
  *  Stated as data rather than as a comment so the contract tests can assert the
  *  boundary mechanically. EVERY kind absent from this list and from the
@@ -114,11 +114,22 @@ export const APPLY_SUPPORTED_ACTION_KINDS: readonly PlanActionKind[] = [
   // current facts before a single target is composed. Admission here is
   // permission to be considered, never permission to delete.
   //
-  // `artifact-advance` (upgrade) and `evidence-repair` stay deliberately ABSENT:
-  // WF-459 owns them, and a plan carrying one is still `apply/unsupported-action`
-  // before any journal exists.
   "artifact-bootstrap",
   "artifact-delete",
+  // WF-459. The constructive slice, admitted to the SAME whole-plan screen — and
+  // then held to a THIRD whole-plan gate (`decideUpgradeGate`, `apply-upgrade.ts`)
+  // that re-derives every artifact classification from facts re-observed under the
+  // lock and rejects the WHOLE plan on any drift. Admission here is permission to
+  // be considered, never permission to replace a user's file.
+  //
+  // The gate's second job has no analogue on the removal side: it also decides
+  // what this run will NOT resolve, so an edited artifact that survives is
+  // REPORTED as a remaining divergence rather than silently absorbed. Every
+  // mutating action kind is now supported, so `unsupported` is reachable only for
+  // a kind a FUTURE release adds — which is exactly the fail-closed posture the
+  // exhaustive partition below was built for.
+  "artifact-advance",
+  "evidence-repair",
 ];
 
 /** The mutating action kinds this mutator applies ONLY when an enabling fact

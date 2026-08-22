@@ -134,6 +134,15 @@ test("an inadmissible root returns the typed invalid-root envelope and reaches n
   assert.equal(counts.resolveFresh, 0);
   assert.equal(counts.writeFile, 0);
   assert.equal(counts.acquire, 0, "an inadmissible root never takes the lock");
+  // WF-459. A run that never read a managed artifact CLAIMS NOTHING about drift.
+  // `noDrift: true` over an unread workspace would be exactly the comfortable lie
+  // the upgrade report exists to prevent, so the default is `not-assessed` and its
+  // `noDrift` is false because nothing established it — not because drift was seen.
+  assert.equal(out.upgrade.outcome, "not-assessed");
+  assert.equal(out.upgrade.noDrift, false);
+  assert.deepEqual(out.upgrade.remaining, []);
+  assert.deepEqual(out.upgrade.advanced, []);
+  assert.deepEqual(out.upgrade.repaired, []);
 });
 
 test("with no lock primitive available the mutator REFUSES rather than mutating unserialized", () => {

@@ -162,6 +162,18 @@ export interface RemovalGateInput {
   legacySeeds: readonly PlanEvidenceSeed[];
   /** The caller's re-observation of each legacy seed, keyed by pack. */
   legacyFacts: readonly LegacySeedFact[];
+  /** Destinations this same plan lists for an UPGRADE (WF-459).
+   *
+   *  Excluded from the preservation partition below, because they are not
+   *  preserved — the constructive arm acts on them and reports them in its own
+   *  `upgrade` envelope. Before WF-459 an `advance` could only ever be something
+   *  this mutator declined to perform, so reporting it as `unlisted` was accurate;
+   *  reporting an artifact this run is about to replace as "preserved" would now
+   *  be a false assurance, which is the one thing this family may never emit.
+   *
+   *  Optional and defaulting to empty, so every pre-WF-459 caller and fixture
+   *  partitions byte-identically. */
+  advanceDestinations?: readonly string[];
 }
 
 /** One authorized removal. Reached only through the `ok` outcome. */
@@ -513,9 +525,14 @@ export function decideRemovalGate(input: RemovalGateInput): RemovalGateDecision 
     ...removals.map((removal) => removal.destination),
     ...bootstraps.map((bootstrap) => bootstrap.destination),
   ]);
+  const advancing = new Set(input.advanceDestinations ?? []);
   const preserved: PreservedArtifact[] = [];
   for (const decision of currentIndex.values()) {
     if (listed.has(decision.destination)) continue;
+    // WF-459. An artifact this plan will ADVANCE is acted on, not preserved, and
+    // the constructive arm reports it. Calling it preserved here would be a false
+    // assurance about a file that is about to be replaced.
+    if (advancing.has(decision.destination)) continue;
     if (decision.form === "deletable") {
       // Rule 5. Deletable NOW, but the confirmation does not list it — so it is
       // not authorized, however obviously the deselection implies it.
@@ -524,8 +541,10 @@ export function decideRemovalGate(input: RemovalGateInput): RemovalGateDecision 
     }
     if (decision.form === "bootstrap" || decision.form === "advance") {
       // Not a removal candidate at all, and not listed for action here. An
-      // `advance` in particular is an UPGRADE, which this mutator does not
-      // perform (SC-5) — it reaches this gate only as something to preserve.
+      // `advance` that reaches this arm is one the approved plan does NOT list —
+      // the constructive arm's `unlisted` class — so it is preserved here and
+      // reported as a remaining divergence there. The two arms agree because the
+      // caller passes the same authorized set to both.
       preserved.push({
         destination: decision.destination,
         class: "unlisted",

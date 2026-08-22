@@ -87,6 +87,26 @@ const PAYLOAD_NEW = "export const answer = 42;\n";
 const MANAGED = "_local/tooling/managed.md";
 const MANAGED_PRIOR = "# managed\n\nInstalled by a pack that is now deregistered.\n";
 
+/** The two targets WF-459 adds.
+ *
+ *  `UPGRADED` is a managed artifact this transaction ADVANCES: present beforehand,
+ *  replaced with the bytes its owners declare now. Unlike a payload (absent, so
+ *  its correct restoration is removal) an interrupted advance must restore
+ *  CONTENT — and unlike a removal it must never leave the destination absent at
+ *  any resolved point, which is the property the deletion-free assertions below
+ *  exist for.
+ *
+ *  `EDITED` is the artifact this transaction deliberately does NOT name: a file
+ *  the user changed by hand, retained rather than upgraded. It is in the workspace
+ *  precisely so every run in this matrix can prove it came through byte-identical
+ *  AND inode-identical — the WF-454 technique, because inode equality is what
+ *  catches an atomic-replace that happened to produce identical bytes. */
+const UPGRADED = "_local/tooling/upgraded.md";
+const UPGRADED_PRIOR = "# upgraded\n\nThe bytes this installer last produced.\n";
+const UPGRADED_NEW = "# upgraded\n\nThe bytes its owners declare now.\n";
+const EDITED = "_local/tooling/edited.md";
+const EDITED_PRIOR = "# edited\n\nChanged by hand. Never overwritten, always reported.\n";
+
 function sha256(text: string): string {
   return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
@@ -140,6 +160,8 @@ function newWorkspace(over: Partial<Workspace> = {}): Workspace {
     [LEDGER, LEDGER_PRIOR],
     [CONSTITUTION, CONSTITUTION_PRIOR],
     [MANAGED, MANAGED_PRIOR],
+    [UPGRADED, UPGRADED_PRIOR],
+    [EDITED, EDITED_PRIOR],
   ]);
   return {
     files,
@@ -149,8 +171,10 @@ function newWorkspace(over: Partial<Workspace> = {}): Workspace {
       [LEDGER, 2],
       [CONSTITUTION, 3],
       [MANAGED, 4],
+      [UPGRADED, 5],
+      [EDITED, 6],
     ]),
-    nextInode: 5,
+    nextInode: 7,
     journal: null,
     killAt: null,
     failAt: null,
@@ -366,6 +390,15 @@ const FOUR_TARGETS: readonly ApplyTargetWrite[] = [
 const FIVE_TARGETS: readonly ApplyTargetWrite[] = [
   ...FOUR_TARGETS,
   { operation: "write", destination: PAYLOAD, newContent: PAYLOAD_NEW },
+];
+/** The WF-459 width: the same five surfaces plus an artifact UPGRADE. Run through
+ *  the SAME matrix — extended, never rebuilt — so the advance is proved at every
+ *  kill stage rather than argued for, and so the retained `EDITED` artifact's
+ *  byte-and-inode identity is asserted under the widest target set this runtime
+ *  composes. */
+const SIX_TARGETS: readonly ApplyTargetWrite[] = [
+  ...FIVE_TARGETS,
+  { operation: "write", destination: UPGRADED, newContent: UPGRADED_NEW },
 ];
 
 function runTargets(ws: Workspace, targets: readonly ApplyTargetWrite[]) {
@@ -837,11 +870,13 @@ function crashMatrix(label: string, targets: readonly ApplyTargetWrite[]) {
     [DESTINATION, PRIOR_BYTES],
     [LEDGER, LEDGER_PRIOR],
     [CONSTITUTION, CONSTITUTION_PRIOR],
+    [UPGRADED, UPGRADED_PRIOR],
   ]);
 
   for (const killAt of CRASH_STAGES) {
     test(`${label}: a process killed at \`${killAt}\` restores the exact prior state, idempotently, on restart`, () => {
       const ws = newWorkspace({ killAt });
+      const editedInode = ws.inodes.get(EDITED);
 
       // The kill. `applyTransaction` does not catch a port throw, so what remains
       // is exactly the state that stage would leave on disk.
@@ -863,6 +898,18 @@ function crashMatrix(label: string, targets: readonly ApplyTargetWrite[]) {
       }
       assert.equal(ws.journal, null, `a kill at ${killAt} must leave no journal after recovery`);
       assert.deepEqual(backupsIn(ws), [], `a kill at ${killAt} must leave no backup after recovery`);
+
+      // BYTE-IDENTITY OF THE RETAINED ARTIFACT, PROVED THE WF-454 WAY. Equal bytes
+      // alone would be satisfied by an atomic replace that happened to write the
+      // same content; equal INODE is what proves the file was never replaced at
+      // all. Asserted at every kill stage, because a recovery that "restored" an
+      // untouched file is doing something it was never asked to do.
+      assert.equal(ws.files.get(EDITED), EDITED_PRIOR, `\`${EDITED}\` must be byte-identical`);
+      assert.equal(
+        ws.inodes.get(EDITED),
+        editedInode,
+        `\`${EDITED}\` must be the SAME file — a replace that reproduced its bytes is still a write`,
+      );
 
       // IDEMPOTENT: a second restart converges rather than re-restoring or refusing.
       const second = recoverInterruptedTransaction(recoveryPortsFor(ws));
@@ -928,6 +975,7 @@ crashMatrix("one target", ONE_TARGET);
 crashMatrix("two targets", TWO_TARGETS);
 crashMatrix("four targets, with the committed override and the constitution", FOUR_TARGETS);
 crashMatrix("five targets, with the pack payload", FIVE_TARGETS);
+crashMatrix("six targets, with the artifact upgrade", SIX_TARGETS);
 
 // ---------------------------------------------------------------------------
 // THE DELETION CRASH MATRIX (WF-458) — the same axis, over a target set that
@@ -1189,4 +1237,131 @@ test("a rolled-back four-target transaction leaves the project's clause section 
   assert.equal(ws.files.get(LEDGER), LEDGER_PRIOR);
   assert.equal(ws.journal, null);
   assert.deepEqual(backupsIn(ws), []);
+});
+
+// ---------------------------------------------------------------------------
+// THE UPGRADE WRITE HALF (WF-459)
+// ---------------------------------------------------------------------------
+//
+// The advance and the evidence repair both compose ORDINARY write targets, so the
+// stage machinery above already covers them — which is exactly why the matrix is
+// EXTENDED rather than rebuilt. What is asserted here is the handful of properties
+// that are specific to replacing a file a user can already see, and every one of
+// them is about a failure mode a "did it apply?" check would miss.
+
+test("the upgraded artifact and its ownership record land under ONE journal, or not at all", () => {
+  // The property that makes an upgrade atomic. The advance is the LAST target
+  // written, so at the moment it fails the ledger's NEW ownership record is
+  // already on disk — and must come back off. A surviving new record over the
+  // prior bytes reads as `edited` on the very next run, which is the stuck state
+  // this transaction boundary exists to prevent.
+  const ws = newWorkspace({ failAt: "atomicReplace", failFor: UPGRADED });
+  const result = runTargets(ws, SIX_TARGETS);
+
+  assert.equal(result.status, "rolled-back");
+  assert.equal(ws.files.get(UPGRADED), UPGRADED_PRIOR, "the artifact keeps its prior bytes");
+  assert.equal(
+    ws.files.get(LEDGER),
+    LEDGER_PRIOR,
+    "no post-upgrade ownership record survives an upgrade that did not land",
+  );
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), []);
+  assert.equal(result.residue.clean, true);
+});
+
+test("a rolled-back upgrade never DELETES the artifact — restoration is content, not absence", () => {
+  // The failure mode that separates the constructive arm from the destructive one.
+  // A rollback implemented as "undo the write" by removing the file would satisfy
+  // every "the new bytes are gone" assertion and would have destroyed the user's
+  // artifact. Presence is asserted before content, so a failure names the right
+  // defect.
+  const ws = newWorkspace({ selfCheck: { ok: false, diagnostic: "beta did not resolve" } });
+  const result = runTargets(ws, SIX_TARGETS);
+
+  assert.equal(result.status, "rolled-back");
+  assert.equal(result.selfCheck, "failed");
+  assert.equal(ws.files.has(UPGRADED), true, "the artifact is still THERE");
+  assert.equal(ws.files.get(UPGRADED), UPGRADED_PRIOR, "...and holds its exact prior bytes");
+  assert.equal(ws.files.has(MANAGED), true, "an unnamed managed artifact is untouched");
+  assert.equal(ws.files.get(EDITED), EDITED_PRIOR);
+  assert.deepEqual(result.removed, [], "an upgrade transaction removes nothing at all");
+  assert.equal(result.residue.clean, true);
+});
+
+test("EVERY stage of an upgrade rolls back without deleting, at every failure point", () => {
+  // The deletion-free property proved across the whole axis rather than at one
+  // convenient stage — the same "one test per rule" discipline the preservation
+  // classes get, applied to the stages a new write path introduces.
+  // `recheck` is deliberately absent: a re-observation cannot "fail", it can only
+  // find the world moved — which is its own test below, because its correct
+  // outcome is a PRESERVED edit and a retained journal rather than a clean
+  // rollback.
+  for (const failAt of ["writeBackup", "hashBackup", "atomicReplace"] as const) {
+    const ws = newWorkspace({ failAt, failFor: UPGRADED });
+    const result = runTargets(ws, SIX_TARGETS);
+
+    assert.notEqual(result.status, "applied", `\`${failAt}\` must not report success`);
+    assert.equal(ws.files.has(UPGRADED), true, `\`${failAt}\` must not delete the artifact`);
+    assert.equal(
+      ws.files.get(UPGRADED),
+      UPGRADED_PRIOR,
+      `\`${failAt}\` must restore the exact prior bytes`,
+    );
+    assert.equal(ws.files.get(LEDGER), LEDGER_PRIOR, `\`${failAt}\` must restore the ledger`);
+    assert.deepEqual(result.removed, [], `\`${failAt}\` must remove nothing`);
+    assert.equal(ws.journal, null);
+    assert.deepEqual(backupsIn(ws), []);
+  }
+});
+
+test("an artifact EDITED between the check and the write is preserved, and the upgrade refuses", () => {
+  // The narrowest window in the whole item: the gate proved the bytes matched the
+  // ledger, and the user saved the file a moment later. S6 re-observes without
+  // following links and refuses, so the edit survives and no journal is created.
+  const ws = newWorkspace({
+    recheckFor: UPGRADED,
+    beforeRecheck: () => {
+      ws.files.set(UPGRADED, "# upgraded\n\nSaved by hand a moment ago.\n");
+      ws.inodes.set(UPGRADED, ws.nextInode++);
+    },
+  });
+  const result = runTargets(ws, SIX_TARGETS);
+
+  assert.notEqual(result.status, "applied");
+  assert.equal(
+    ws.files.get(UPGRADED),
+    "# upgraded\n\nSaved by hand a moment ago.\n",
+    "the hand edit survives untouched — an upgrade never wins a race against the user",
+  );
+  assert.ok(result.diagnostics.some((d) => d.code === "apply/precondition-moved"));
+  // NO SUCCESS IS CLAIMED OVER PRESERVED WORK. The frozen recovery decision
+  // preserves the concurrent edit rather than clobbering it, so the rollback is
+  // deliberately INCOMPLETE and says so — journal and backups retained, residue
+  // not clean. An upgrade that reported a tidy rollback here would be claiming it
+  // had put the world back, over a file it correctly refused to touch.
+  assert.equal(result.reason, "apply/rollback-incomplete");
+  assert.ok((result.rollback?.preserved.length ?? 0) > 0);
+  assert.equal(result.residue.clean, false);
+  assert.equal(ws.files.has(UPGRADED), true, "and the artifact is still there");
+});
+
+test("a six-target upgrade applies, and the RETAINED artifact is the same file down to its inode", () => {
+  const ws = newWorkspace();
+  const editedInode = ws.inodes.get(EDITED);
+  const result = runTargets(ws, SIX_TARGETS);
+
+  assert.equal(result.status, "applied");
+  assert.equal(ws.files.get(UPGRADED), UPGRADED_NEW);
+  assert.ok(result.written.includes(UPGRADED));
+  assert.deepEqual(result.removed, []);
+  // The point of the whole slice, on the SUCCESS path: a run that upgraded one
+  // artifact left the edited one entirely alone. Bytes AND inode, because an
+  // atomic replace that reproduced the same content would pass a bytes-only check
+  // while having rewritten a file nobody authorized it to touch.
+  assert.equal(ws.files.get(EDITED), EDITED_PRIOR);
+  assert.equal(ws.inodes.get(EDITED), editedInode);
+  assert.equal(ws.journal, null);
+  assert.deepEqual(backupsIn(ws), []);
+  assert.equal(result.residue.clean, true);
 });

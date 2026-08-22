@@ -23205,7 +23205,7 @@ function registerResolverTools(server, selectService) {
     "apply_install",
     {
       title: "apply install",
-      description: "The SOLE public mutator for an EXACT approved plan (WF-453, widened by WF-454, WF-455, WF-456 and WF-458) \u2014 one guarded, crash-recoverable journaled transaction through refresh, snapshot, and self-check. Returns the versioned envelope `{applyVersion, workspaceRoot, admission, status, reason, transactionId, plan{planId,expectedPlanId,matched,applicability,mode}, applied[], deferred[], rollback, selfCheck, refreshed, recovery{...}, residue{clean,journalRetained,backupsRetained,detail}, diagnostics[]}`. `status` is one of `applied | rejected | rolled-back | halted | invalid-root`. RECOVERY-FIRST AND REPORTED SEPARATELY: before anything is decided it recovers an interrupted transaction through the SAME frozen protocol `discover_packs` and `plan_install` use, and carries that outcome in `recovery`, never folded into `status`; when `recovery.proceeded` is `false` it HALTS with `apply/halted-unrecovered` and mutates nothing. EXACT PLAN ONLY: it takes the exclusive machine-local lock, recomputes the plan UNDER that lock, and requires `identity.planId` to equal the supplied `expectedPlanId` \u2014 a mismatch is `apply/plan-stale`, an applicability other than `applicable` is `apply/plan-not-applicable`, and neither writes. A BOUNDED SUPPORTED SET, FAILING LOUDLY AND EARLY: the supported action set is exactly `registry-add`, `registry-deregister`, `evidence-seed`, `answer-write`, `override-write`, `payload-write`, and \u2014 since WF-458 \u2014 `artifact-bootstrap` and `artifact-delete`; within `evidence-seed` the supported seed kinds are `binding-seed` and, since WF-458, `legacy-bootstrap`. `constitution-recompose` is CONDITIONALLY supported (WF-455): it is applied when the composed constitution record is already present, and reported in `deferred[]` with reason `no-constitution-record` plus its `/wf:constitution` follow-up when it is not \u2014 so a project that has never composed the record behaves exactly as it did before. ANY other mutating action \u2014 an evidence repair (`evidence-repair`) or an artifact upgrade (`artifact-advance`) \u2014 is `apply/unsupported-action` BEFORE a journal exists, and an unsupported seed kind refuses the whole plan the same way. THE WHOLE PLAN IS SCREENED BEFORE THE FIRST BYTE IS COMPOSED, so an unsupported action can never follow a supported subset that was already written. WHAT A NEW REGISTRATION PERSISTS, TOGETHER OR NOT AT ALL: the pack's exact observed portable tuple, its initial machine binding, its registry rows, the revalidated project answers as capability profile seeds, the selected evidence ledger, and the refreshed snapshot \u2014 one ordered target set under ONE journal. WHAT AN EXISTING REGISTRATION PERSISTS: an `evidence-seed` seeds ONLY the missing machine binding, and only when the committed portable tuple and the observed one are EXACTLY equal \u2014 not compatible, not a superset. The committed portable half never becomes a target on that path, so committed evidence stays byte-identical down to its inode; a pack that already has a recorded binding, or whose tuple has moved, is `apply/evidence-precondition` and nothing is written. WHAT AN APPROVED OVERRIDE PERSISTS: an `override-write` composes ONLY a declared committed project-override artifact \u2014 `.wf/slots/<skill>.<point>.md` \u2014 whose authority comes from the resolver's lifecycle ownership PLUS that declared artifact class, never from the `.wf/` path prefix; every owner's declared source is re-fingerprinted under the lock against the approved `identity.sha256`/`bytes`, and any drift is `apply/override-precondition` with nothing written. WHAT AN APPROVED PACK PAYLOAD PERSISTS: a `payload-write` installs a declared `## Payloads` destination for the SELECTED owning capabilities only \u2014 a bare core with zero selected packs composes no payload target, records no artifact evidence, and creates no directory. Under the lock it re-derives four facts and refuses on any of them with `apply/payload-precondition`, writing nothing: the destination re-resolves through the no-create containment boundary to the SAME canonical target the plan previewed (traversal, an absolute path, a symlink escape, an out-of-workspace target, a non-regular file, and an unresolvable probe each report their own closed token), every owner's declared source still reproduces the approved `identity.sha256`/`bytes`, every owner's currently-declared `{production, refresh, removal}` tuple is FIELD-FOR-FIELD equal to the approved one, and the set of capabilities declaring the destination is EXACTLY the approved owner set \u2014 an owner that appeared and an owner that vanished both refuse. Bytes and semantics are independent axes and are checked independently. The complete owner set, both digests and the full tuple are recorded as `ArtifactEvidence` in the ledger's portable `artifacts` section, in the SAME transaction as the payload itself, so ownership can never be recorded for a file that was not installed. A payload aimed at the committed project-override tier is refused \u2014 that is a different declared artifact class with its own action kind. WHAT AN APPROVED REMOVAL DOES, AND THE SIX THINGS IT NEVER DOES (WF-458): removals, ownership bootstraps and legacy seeds pass a SECOND whole-plan gate, run after the action screen and before a single target is composed. Deletion requires POSITIVE PROOF, re-derived from facts re-observed under the lock: the artifact is listed by the approved plan, still classifies as `deletable`, carries two WELL-FORMED and equal SHA-256 digests, has a non-empty recorded owner set every member of which this plan deselects, and declares `removal: delete-if-unmodified`. Absence of proof PRESERVES, and every preserved artifact is reported in `diagnostics[]` under exactly one named class \u2014 `retained`, `unlisted` (deletable now, but the confirmation does not list it: one confirmation authorizes only the exact listed actions), `shared` (a recorded owner survives the plan), `edited` (current bytes differ from the prior ledger hash), `ambiguous` (ownership or a digest is present but not trustworthy), or `unverifiable` (the bytes or the destination could not be established). A destination carrying BOTH a bootstrap and a deletion in one plan is `apply/bootstrap-delete-conflict` \u2014 reconstructing evidence never doubles as authority to act on it \u2014 and an ownership bootstrap RETAINS every candidate, records the complete owner set, and grants no same-plan deletion even when every proven owner is also deselected. Any changed bound precondition rejects the WHOLE plan with `apply/artifact-precondition`; nothing is written and nothing is removed. The removal target carries the proven digest INTO the transaction and the bytes are re-compared at observation time, one stage before the backup, so a file whose content moved between the decision and the entry is `apply/precondition-moved` with no journal created. The artifact's ownership proof is erased in the SAME transaction that removes the file, so a removed artifact can never leave a record that re-proposes it forever. WHAT A LEGACY BOOTSTRAP PERSISTS: the observed portable tuple WHOLE or not at all, plus the initial binding. Proof that could not be reproduced under the lock, a pack that has ACQUIRED portable evidence since the plan was approved, an incomplete tuple, and a tuple that is not EXACTLY the approved one are each `apply/evidence-precondition` \u2014 and each PRESERVES the existing registration exactly as it was rather than recording a partial tuple, which would look authoritative. WHAT A RECOMPOSITION PERSISTS: only the composed constitution's derived capability-articles section is re-rendered \u2014 the preamble, the core articles, and the project's own clause section are carried across BYTE-FOR-BYTE \u2014 and a record whose structure the composer does not recognize is `apply/constitution-precondition` rather than a silent reset. A rendered target whose bytes would not change is DROPPED, and a plan whose every target is a no-op is `apply/plan-not-applicable` rather than an empty transaction. Every rejection above, plus a stale identity-bound precondition, a destination that is a symlink or does not resolve inside the admitted workspace, and a journal already present, is decided BEFORE journal creation and BEFORE any mutation, so nothing can be left half-undone. CONCURRENT LIFECYCLE ENTRY IS REFUSED: a lock already held is `apply/lock-held`, and with no lock primitive available it refuses with `apply/lock-unavailable` rather than mutating unserialized. THE TRANSACTION IS CRASH-RECOVERABLE AT EVERY STAGE: the journal (recording the prior existence, type, inode, hash and the exact bytes this transaction will write) is created and durable BEFORE the backup and BEFORE the destination is touched, the backup is verified against the recorded prior hash, the destination's type/inode/hash are RE-CHECKED without following links immediately before the write, the replacement is a create-exclusive fsynced sibling temp file renamed into place, and completion removes the journal BEFORE the backups. An ordinary failure or a process kill at ANY stage therefore restores the exact prior state idempotently \u2014 the same restore runs on a second entry and converges. A FAILED SELF-CHECK IS TRANSACTION FAILURE, NOT A WARNING: after the write it refreshes and re-resolves the registry, asserting that every added capability resolves `ok`, that every deregistered one is gone, that every written override hashes back to its approved digest AND is seen as the committed project tier for its slot, that every installed payload hashes back to its approved digest AND reads back from the ledger's `artifacts` section carrying its COMPLETE owner set, that a recomposed constitution reads back still carrying its project-clause section, and \u2014 since WF-458 \u2014 that every removed artifact is BOTH absent from the workspace AND gone from the ledger's `artifacts` section, that every bootstrapped artifact still holds the exact bytes it was proven over and reads back with its complete owner set, and that every legacy-seeded pack's portable half reads back; failure rolls back and reports `apply/self-check-failed`. NO SUCCESS IS CLAIMED WHEN ANYTHING IS UNRESOLVED: rollback runs through the frozen recovery decision \u2014 an external edit or a symlink swap is PRESERVED, an unaffected artifact is restored, an unverifiable one is left explicitly UNRESOLVED \u2014 and an incomplete rollback overrides the reported reason with `apply/rollback-incomplete`, retains the journal and backups, and reports `residue.clean:false`. `applied[]` is non-empty ONLY for `status: applied`, where the change is durable and the residue is clean. Works against a non-cwd admitted workspace. Out of scope, and never written by this operation: artifact UPGRADES (`artifact-advance`) and evidence REPAIR (`evidence-repair`), both of which refuse before any write; and pack evidence removal \u2014 a deregistration deliberately leaves the pack's own evidence record standing, since a stale record re-proposes a seed while a wrongly-erased one loses the only proof the pack was ever installed. Removal and bootstrap ELIGIBILITY also stays out of scope, exactly as payload eligibility does \u2014 this operation executes the plan's canonical decisions and revalidates every one of them against current facts; it never re-decides one, and never widens a plan on its own authority. Slot precedence is unchanged \u2014 personal `_local/` override over committed project override over pack contribution over inline default.",
+      description: "The SOLE public mutator for an EXACT approved plan (WF-453, widened by WF-454, WF-455, WF-456, WF-458 and WF-459) \u2014 one guarded, crash-recoverable journaled transaction through refresh, snapshot, and self-check. Returns the versioned envelope `{applyVersion, workspaceRoot, admission, status, reason, transactionId, plan{planId,expectedPlanId,matched,applicability,mode}, applied[], deferred[], upgrade{noDrift,outcome,remaining[],advanced[],repaired[]}, rollback, selfCheck, refreshed, recovery{...}, residue{clean,journalRetained,backupsRetained,detail}, diagnostics[]}`. `status` is one of `applied | rejected | rolled-back | halted | invalid-root`. `upgrade` IS A SEPARATE, DELIBERATELY UNFLATTERING VERDICT, NOT A RESTATEMENT OF `status` (WF-459): `outcome` is one of `no-drift | fully-upgraded | partial | retained-divergence | not-assessed`, and `noDrift` is derived from `remaining` being empty and from nothing else. DOING NOTHING IS NOT THE SAME AS THERE BEING NOTHING TO DO: a run that wrote no artifact because every divergence was RETAINED reports `retained-divergence` with a non-empty `remaining[]`, while a genuinely settled workspace reports `no-drift` with an empty one \u2014 the two zero-write states are never conflated. A run that advanced or repaired something AND left anything unresolved is `partial`; `fully-upgraded` is reachable only with `remaining[]` empty. Each `remaining[]` entry names its `subject` and one class \u2014 `edited` (the file was changed by hand and is preserved untouched), `refresh-retained` (the declaration forbids replacing it), `unlisted` (advanceable now, but the confirmation does not list it), `ambiguous`, `unverifiable`, or `evidence-drifted` \u2014 so a preserved edit is REPORTED rather than absorbed into success. `not-assessed` claims nothing: the artifact world could not be observed. RECOVERY-FIRST AND REPORTED SEPARATELY: before anything is decided it recovers an interrupted transaction through the SAME frozen protocol `discover_packs` and `plan_install` use, and carries that outcome in `recovery`, never folded into `status`; when `recovery.proceeded` is `false` it HALTS with `apply/halted-unrecovered` and mutates nothing. EXACT PLAN ONLY: it takes the exclusive machine-local lock, recomputes the plan UNDER that lock, and requires `identity.planId` to equal the supplied `expectedPlanId` \u2014 a mismatch is `apply/plan-stale`, an applicability other than `applicable` is `apply/plan-not-applicable`, and neither writes. A BOUNDED SUPPORTED SET, FAILING LOUDLY AND EARLY: the supported action set is exactly `registry-add`, `registry-deregister`, `evidence-seed`, `answer-write`, `override-write`, `payload-write`, since WF-458 `artifact-bootstrap` and `artifact-delete`, and since WF-459 `artifact-advance` and `evidence-repair`; within `evidence-seed` the supported seed kinds are `binding-seed` and, since WF-458, `legacy-bootstrap`. `constitution-recompose` is CONDITIONALLY supported (WF-455): it is applied when the composed constitution record is already present, and reported in `deferred[]` with reason `no-constitution-record` plus its `/wf:constitution` follow-up when it is not \u2014 so a project that has never composed the record behaves exactly as it did before. ANY other mutating action \u2014 a retain kind (`registry-retain`, `artifact-retain`) reaching this operation as mutating \u2014 is `apply/unsupported-action` BEFORE a journal exists, and an unsupported seed kind refuses the whole plan the same way. Admission to the screen is permission to be CONSIDERED by the whole-plan gate that follows, never permission to write. THE WHOLE PLAN IS SCREENED BEFORE THE FIRST BYTE IS COMPOSED, so an unsupported action can never follow a supported subset that was already written. WHAT A NEW REGISTRATION PERSISTS, TOGETHER OR NOT AT ALL: the pack's exact observed portable tuple, its initial machine binding, its registry rows, the revalidated project answers as capability profile seeds, the selected evidence ledger, and the refreshed snapshot \u2014 one ordered target set under ONE journal. WHAT AN EXISTING REGISTRATION PERSISTS: an `evidence-seed` seeds ONLY the missing machine binding, and only when the committed portable tuple and the observed one are EXACTLY equal \u2014 not compatible, not a superset. The committed portable half never becomes a target on that path, so committed evidence stays byte-identical down to its inode; a pack that already has a recorded binding, or whose tuple has moved, is `apply/evidence-precondition` and nothing is written. WHAT AN APPROVED OVERRIDE PERSISTS: an `override-write` composes ONLY a declared committed project-override artifact \u2014 `.wf/slots/<skill>.<point>.md` \u2014 whose authority comes from the resolver's lifecycle ownership PLUS that declared artifact class, never from the `.wf/` path prefix; every owner's declared source is re-fingerprinted under the lock against the approved `identity.sha256`/`bytes`, and any drift is `apply/override-precondition` with nothing written. WHAT AN APPROVED PACK PAYLOAD PERSISTS: a `payload-write` installs a declared `## Payloads` destination for the SELECTED owning capabilities only \u2014 a bare core with zero selected packs composes no payload target, records no artifact evidence, and creates no directory. Under the lock it re-derives four facts and refuses on any of them with `apply/payload-precondition`, writing nothing: the destination re-resolves through the no-create containment boundary to the SAME canonical target the plan previewed (traversal, an absolute path, a symlink escape, an out-of-workspace target, a non-regular file, and an unresolvable probe each report their own closed token), every owner's declared source still reproduces the approved `identity.sha256`/`bytes`, every owner's currently-declared `{production, refresh, removal}` tuple is FIELD-FOR-FIELD equal to the approved one, and the set of capabilities declaring the destination is EXACTLY the approved owner set \u2014 an owner that appeared and an owner that vanished both refuse. Bytes and semantics are independent axes and are checked independently. The complete owner set, both digests and the full tuple are recorded as `ArtifactEvidence` in the ledger's portable `artifacts` section, in the SAME transaction as the payload itself, so ownership can never be recorded for a file that was not installed. A payload aimed at the committed project-override tier is refused \u2014 that is a different declared artifact class with its own action kind. WHAT AN APPROVED REMOVAL DOES, AND THE SIX THINGS IT NEVER DOES (WF-458): removals, ownership bootstraps and legacy seeds pass a SECOND whole-plan gate, run after the action screen and before a single target is composed. Deletion requires POSITIVE PROOF, re-derived from facts re-observed under the lock: the artifact is listed by the approved plan, still classifies as `deletable`, carries two WELL-FORMED and equal SHA-256 digests, has a non-empty recorded owner set every member of which this plan deselects, and declares `removal: delete-if-unmodified`. Absence of proof PRESERVES, and every preserved artifact is reported in `diagnostics[]` under exactly one named class \u2014 `retained`, `unlisted` (deletable now, but the confirmation does not list it: one confirmation authorizes only the exact listed actions), `shared` (a recorded owner survives the plan), `edited` (current bytes differ from the prior ledger hash), `ambiguous` (ownership or a digest is present but not trustworthy), or `unverifiable` (the bytes or the destination could not be established). A destination carrying BOTH a bootstrap and a deletion in one plan is `apply/bootstrap-delete-conflict` \u2014 reconstructing evidence never doubles as authority to act on it \u2014 and an ownership bootstrap RETAINS every candidate, records the complete owner set, and grants no same-plan deletion even when every proven owner is also deselected. Any changed bound precondition rejects the WHOLE plan with `apply/artifact-precondition`; nothing is written and nothing is removed. The removal target carries the proven digest INTO the transaction and the bytes are re-compared at observation time, one stage before the backup, so a file whose content moved between the decision and the entry is `apply/precondition-moved` with no journal created. The artifact's ownership proof is erased in the SAME transaction that removes the file, so a removed artifact can never leave a record that re-proposes it forever. WHAT AN APPROVED UPGRADE DOES, AND WHAT IT NEVER OVERWRITES (WF-459): artifact upgrades and evidence repairs pass a THIRD whole-plan gate, run after the removal gate and before a single target is composed. An advance requires POSITIVE PROOF re-derived from facts re-observed under the lock: the destination is listed by the approved plan, still classifies as `advance`, its current bytes still hash EXACTLY to the prior ledger digest (both digests well-formed), its recorded owner set is non-empty and has NOT moved relative to the currently-declared one, its declared `{production, refresh, removal}` tuple still equals the recorded one with `refresh: replace-if-unmodified`, and the newly declared source fingerprint is well-formed AND actually different from the recorded one. AN EDITED ARTIFACT IS NEVER OVERWRITTEN AND NEVER CONVERTED INTO SUCCESS \u2014 it is preserved byte-for-byte and named in `upgrade.remaining[]` as `edited`. A destination carrying BOTH an upgrade and a deletion in one plan refuses the whole plan, and an advance grants no deletion authority. The new bytes and the NEW ownership record are composed into the SAME transaction, so an upgrade is atomic: new bytes under a stale proof, or a new proof over stale bytes, both read as `edited` on the next run and are refused here instead. AN EVIDENCE REPAIR IS SCOPED, AND THE SCOPE IS RE-DERIVED FROM THE COMPARISON OBSERVED UNDER THE LOCK, never trusted from the approved action: a `portable` repair (the committed tuple disagrees with the installed pack) re-establishes the portable evidence AND the applicable machine binding; a `binding` repair (a moved root, drifted local fingerprints) re-establishes ONLY machine-local facts and may not touch the shared portable half. A repair whose drift has resolved itself, changed shape, or whose halves could not be reproduced is `apply/evidence-precondition`, and the existing record is preserved exactly as it was. Every rejection above happens before any journal, backup, or byte. WHAT A LEGACY BOOTSTRAP PERSISTS: the observed portable tuple WHOLE or not at all, plus the initial binding. Proof that could not be reproduced under the lock, a pack that has ACQUIRED portable evidence since the plan was approved, an incomplete tuple, and a tuple that is not EXACTLY the approved one are each `apply/evidence-precondition` \u2014 and each PRESERVES the existing registration exactly as it was rather than recording a partial tuple, which would look authoritative. WHAT A RECOMPOSITION PERSISTS: only the composed constitution's derived capability-articles section is re-rendered \u2014 the preamble, the core articles, and the project's own clause section are carried across BYTE-FOR-BYTE \u2014 and a record whose structure the composer does not recognize is `apply/constitution-precondition` rather than a silent reset. A rendered target whose bytes would not change is DROPPED, and a plan whose every target is a no-op is `apply/plan-not-applicable` rather than an empty transaction. Every rejection above, plus a stale identity-bound precondition, a destination that is a symlink or does not resolve inside the admitted workspace, and a journal already present, is decided BEFORE journal creation and BEFORE any mutation, so nothing can be left half-undone. CONCURRENT LIFECYCLE ENTRY IS REFUSED: a lock already held is `apply/lock-held`, and with no lock primitive available it refuses with `apply/lock-unavailable` rather than mutating unserialized. THE TRANSACTION IS CRASH-RECOVERABLE AT EVERY STAGE: the journal (recording the prior existence, type, inode, hash and the exact bytes this transaction will write) is created and durable BEFORE the backup and BEFORE the destination is touched, the backup is verified against the recorded prior hash, the destination's type/inode/hash are RE-CHECKED without following links immediately before the write, the replacement is a create-exclusive fsynced sibling temp file renamed into place, and completion removes the journal BEFORE the backups. An ordinary failure or a process kill at ANY stage therefore restores the exact prior state idempotently \u2014 the same restore runs on a second entry and converges. A FAILED SELF-CHECK IS TRANSACTION FAILURE, NOT A WARNING: after the write it refreshes and re-resolves the registry, asserting that every added capability resolves `ok`, that every deregistered one is gone, that every written override hashes back to its approved digest AND is seen as the committed project tier for its slot, that every installed payload hashes back to its approved digest AND reads back from the ledger's `artifacts` section carrying its COMPLETE owner set, that a recomposed constitution reads back still carrying its project-clause section, and \u2014 since WF-458 \u2014 that every removed artifact is BOTH absent from the workspace AND gone from the ledger's `artifacts` section, that every bootstrapped artifact still holds the exact bytes it was proven over and reads back with its complete owner set, and that every legacy-seeded pack's portable half reads back; and \u2014 since WF-459 \u2014 that every UPGRADED artifact now holds the new produced digest AND that its ledger record names the new declared source fingerprint with an unchanged complete owner set, and that every REPAIRED pack's machine binding reads back (plus its portable half, for a `portable`-scoped repair only); failure rolls back and reports `apply/self-check-failed`. NO SUCCESS IS CLAIMED WHEN ANYTHING IS UNRESOLVED: rollback runs through the frozen recovery decision \u2014 an external edit or a symlink swap is PRESERVED, an unaffected artifact is restored, an unverifiable one is left explicitly UNRESOLVED \u2014 and an incomplete rollback overrides the reported reason with `apply/rollback-incomplete`, retains the journal and backups, and reports `residue.clean:false`. `applied[]` is non-empty ONLY for `status: applied`, where the change is durable and the residue is clean. Works against a non-cwd admitted workspace. Out of scope, and never written by this operation: pack evidence removal \u2014 a deregistration deliberately leaves the pack's own evidence record standing, since a stale record re-proposes a seed while a wrongly-erased one loses the only proof the pack was ever installed; and any automatic resolution of an edited artifact, which is preserved and reported, never merged, converted, or overwritten. Removal, bootstrap, upgrade and repair ELIGIBILITY also stays out of scope, exactly as payload eligibility does \u2014 this operation executes the plan's canonical decisions and revalidates every one of them against current facts; it never re-decides one, and never widens a plan on its own authority. Slot precedence is unchanged \u2014 personal `_local/` override over committed project override over pack contribution over inline default.",
       inputSchema: applyInstallInput
     },
     async (args) => guard(() => {
@@ -28315,9 +28315,11 @@ function decideRemovalGate(input) {
     ...removals.map((removal) => removal.destination),
     ...bootstraps.map((bootstrap) => bootstrap.destination)
   ]);
+  const advancing = new Set(input.advanceDestinations ?? []);
   const preserved = [];
   for (const decision2 of currentIndex.values()) {
     if (listed.has(decision2.destination)) continue;
+    if (advancing.has(decision2.destination)) continue;
     if (decision2.form === "deletable") {
       preserved.push({ destination: decision2.destination, class: "unlisted", reason: null });
       continue;
@@ -28338,6 +28340,323 @@ function decideRemovalGate(input) {
   }
   preserved.sort((left, right) => left.destination.localeCompare(right.destination));
   return { ok: true, removals, bootstraps, legacy, preserved };
+}
+
+// src/resolver/apply-upgrade.ts
+var SHA256_RE5 = /^[a-f0-9]{64}$/;
+function divergenceClassFor(reason) {
+  switch (reason) {
+    // --- not a divergence: another arm's vocabulary ---
+    case "not-deselected":
+      return null;
+    case "shared-ownership":
+      return null;
+    case "removal-semantics-retain":
+      return null;
+    case "bootstrap-defers-deletion":
+      return null;
+    // --- the file was edited ---
+    case "divergent":
+    case "current-bytes-mismatch":
+      return "edited";
+    // --- the declaration forbids replacing it ---
+    case "refresh-semantics-retain":
+      return "refresh-retained";
+    // --- present but not trustworthy ---
+    case "ownership-incomplete":
+    case "digest-malformed":
+    case "semantics-incomplete":
+    case "source-fingerprint-missing":
+      return "ambiguous";
+    // --- could not be established at all ---
+    case "current-bytes-unreadable":
+    case "destination-unsafe":
+    case "no-recorded-proof":
+    case "inventory-untrustworthy":
+    case "not-reproducible":
+      return "unverifiable";
+    default:
+      return "unverifiable";
+  }
+}
+function notAssessedUpgradeReport() {
+  return {
+    noDrift: false,
+    outcome: "not-assessed",
+    remaining: [],
+    advanced: [],
+    repaired: []
+  };
+}
+function resolveUpgradeOutcome(acted, remaining) {
+  if (remaining > 0) return acted > 0 ? "partial" : "retained-divergence";
+  return acted > 0 ? "fully-upgraded" : "no-drift";
+}
+function sameOwners2(left, right) {
+  if (left.length !== right.length) return false;
+  const key = (owner) => JSON.stringify([owner.pluginId, owner.capability, owner.source]);
+  const leftKeys = left.map(key).sort();
+  const rightKeys = right.map(key).sort();
+  return leftKeys.every((value, index) => value === rightKeys[index]);
+}
+function sameSemantics2(left, right) {
+  return left.production === right.production && left.refresh === right.refresh && left.removal === right.removal;
+}
+function indexCurrent(preview) {
+  const index = /* @__PURE__ */ new Map();
+  for (const decision2 of [
+    ...preview.deletable,
+    ...preview.bootstrap,
+    ...preview.advance,
+    ...preview.retained
+  ]) {
+    index.set(decision2.destination, decision2);
+  }
+  return index;
+}
+function scopeForComparison(comparison) {
+  switch (comparison) {
+    case "portable-mismatch":
+      return "portable";
+    case "root-moved":
+    case "local-mismatch":
+      return "binding";
+    case "equal":
+    case "binding-seed":
+    case "evidence-missing":
+      return null;
+    default:
+      return null;
+  }
+}
+function decideUpgradeGate(input) {
+  const advanceActions = input.supported.filter((action2) => action2.kind === "artifact-advance");
+  const repairActions = input.supported.filter((action2) => action2.kind === "evidence-repair");
+  const seen = /* @__PURE__ */ new Set();
+  for (const action2 of advanceActions) {
+    if (action2.destination === null) {
+      return {
+        ok: false,
+        reason: "apply/artifact-precondition",
+        detail: "an `artifact-advance` action names no destination, so the artifact it would upgrade cannot be resolved; the whole plan is refused and nothing was written."
+      };
+    }
+    if (seen.has(action2.destination)) {
+      return {
+        ok: false,
+        reason: "apply/artifact-precondition",
+        detail: `destination \`${action2.destination}\` is named by more than one advance in one plan; the whole plan is refused and nothing was written.`
+      };
+    }
+    seen.add(action2.destination);
+  }
+  const removalSet = new Set(input.removalDestinations);
+  const advanceDeleteConflict = [...seen].filter((destination) => removalSet.has(destination)).sort();
+  if (advanceDeleteConflict.length > 0) {
+    return {
+      ok: false,
+      reason: "apply/artifact-precondition",
+      detail: `destination(s) ${advanceDeleteConflict.map((destination) => `\`${destination}\``).join(", ")} carry both an upgrade and a deletion in one plan; the whole plan is refused before any journal, backup, or mutation.`
+    };
+  }
+  const repairSeen = /* @__PURE__ */ new Set();
+  for (const action2 of repairActions) {
+    if (action2.pluginId === null) {
+      return {
+        ok: false,
+        reason: "apply/evidence-precondition",
+        detail: "an `evidence-repair` action carries no pack attribution, so the evidence it would re-establish cannot be resolved; the whole plan is refused and nothing was written."
+      };
+    }
+    if (repairSeen.has(action2.pluginId)) {
+      return {
+        ok: false,
+        reason: "apply/evidence-precondition",
+        detail: `pack \`${action2.pluginId}\` is named by more than one evidence repair in one plan; the whole plan is refused and nothing was written.`
+      };
+    }
+    repairSeen.add(action2.pluginId);
+  }
+  const previewedRepairs = new Set(input.repairs.map((repair) => repair.pluginId));
+  const unbacked = [...repairSeen].filter((pluginId) => !previewedRepairs.has(pluginId)).sort();
+  if (unbacked.length > 0) {
+    return {
+      ok: false,
+      reason: "apply/evidence-precondition",
+      detail: `pack(s) ${unbacked.map((pluginId) => `\`${pluginId}\``).join(", ")} carry an \`evidence-repair\` action with no previewed repair to bind it to, so applying this plan would silently omit it; the whole plan is refused and nothing was written.`
+    };
+  }
+  const recomputed = planArtifacts(input.currentFacts, {
+    inventoryTrustworthy: input.inventoryTrustworthy
+  }).preview;
+  const currentIndex = indexCurrent(recomputed);
+  const advances = [];
+  for (const action2 of advanceActions) {
+    const destination = action2.destination;
+    const decision2 = currentIndex.get(destination);
+    const fact = input.currentFacts.find((candidate) => candidate.destination === destination);
+    if (decision2 === void 0 || decision2.form !== "advance" || decision2.canonicalTarget === null || decision2.recordedContentHash === null || decision2.currentContentHash === null || !SHA256_RE5.test(decision2.recordedContentHash) || !SHA256_RE5.test(decision2.currentContentHash) || decision2.recordedContentHash !== decision2.currentContentHash || decision2.bytesMatchLedger !== true || decision2.owners.length === 0 || decision2.semantics === null || decision2.semantics.production !== "copy" || decision2.semantics.refresh !== "replace-if-unmodified" || fact === void 0 || fact.declared === null || !SHA256_RE5.test(fact.declared.declaredSourceFingerprint) || !SHA256_RE5.test(fact.declared.producedContentHash) || fact.recorded === null || fact.declared.declaredSourceFingerprint === fact.recorded.declaredSourceFingerprint || // TWO CONJUNCTS `planArtifacts` DOES NOT ASSERT, ADDED BY THE RULE-2 AUDIT.
+    //
+    // (a) THE OWNER SET MUST NOT HAVE MOVED. `classify`'s advance path reasons
+    //     entirely from the RECORDED owners and never compares them with the
+    //     currently-DECLARED ones, so a destination whose declaring-capability
+    //     set changed alongside its source would advance and silently rewrite
+    //     the ledger's owner set. A later deletion establishes exclusivity from
+    //     exactly that set, so an owner quietly dropped here would license
+    //     destroying a file a surviving owner still declares. WF-456's payload
+    //     precondition refuses the same drift on the install side; the upgrade
+    //     arm must not be laxer than it.
+    //
+    // (b) THE DECLARED TUPLE MUST STILL MATCH THE RECORDED ONE. `classify`
+    //     gates the advance on `recorded.refresh === "replace-if-unmodified"`
+    //     and never looks at the DECLARED refresh, so a pack that changed its
+    //     row to `refresh: retain` would still have its artifact replaced on the
+    //     authority of a stale recorded tuple — an upgrade performed against the
+    //     current declaration's explicit instruction not to.
+    //
+    // Bytes and semantics are independent axes (WF-448's rule), so both are
+    // checked, and either one failing rejects the whole plan.
+    !sameOwners2(decision2.owners, fact.declared.owners) || !sameSemantics2(decision2.semantics, {
+      production: fact.declared.production,
+      refresh: fact.declared.refresh,
+      removal: fact.declared.removal
+    })) {
+      return {
+        ok: false,
+        reason: "apply/artifact-precondition",
+        detail: `managed artifact \`${destination}\` is listed for an upgrade but does not currently satisfy every advance conjunct (listed, hash-proven with well-formed matching digests against the prior ledger hash, exclusively owned by an owner set that has not moved, declaring the same \`{production, refresh, removal}\` tuple the ledger recorded with \`refresh: replace-if-unmodified\`, and a well-formed declared source fingerprint that actually differs from the recorded one); the whole plan is refused and nothing was written.`
+      };
+    }
+    if (decision2.deletionAuthority !== false) {
+      return {
+        ok: false,
+        reason: "apply/artifact-precondition",
+        detail: `managed artifact \`${destination}\` would be upgraded and would also carry deletion authority; an upgrade grants no deletion in the same plan, so the whole plan is refused.`
+      };
+    }
+    advances.push({
+      destination,
+      canonicalTarget: decision2.canonicalTarget,
+      owners: decision2.owners,
+      semantics: decision2.semantics,
+      priorContentHash: decision2.currentContentHash,
+      declaredSourceFingerprint: fact.declared.declaredSourceFingerprint,
+      producedContentHash: fact.declared.producedContentHash
+    });
+  }
+  const repairs = [];
+  for (const approved of input.repairs.filter((repair) => repairSeen.has(repair.pluginId))) {
+    const fact = input.repairFacts.find((candidate) => candidate.pluginId === approved.pluginId);
+    if (fact === void 0) {
+      return {
+        ok: false,
+        reason: "apply/evidence-precondition",
+        detail: `pack \`${approved.pluginId}\` is listed for an evidence repair but its lifecycle evidence could not be re-observed under the lock; the whole plan is refused and the existing record is preserved exactly as it was.`
+      };
+    }
+    if (fact.comparison !== approved.comparison) {
+      return {
+        ok: false,
+        reason: "apply/evidence-precondition",
+        detail: `pack \`${approved.pluginId}\` no longer compares as \`${approved.comparison}\` under the lock (now \`${fact.comparison}\`), so the approved repair is stale; the whole plan is refused and the existing record is preserved exactly as it was.`
+      };
+    }
+    const scope = scopeForComparison(fact.comparison);
+    if (scope === null || scope !== approved.scope) {
+      return {
+        ok: false,
+        reason: "apply/evidence-precondition",
+        detail: `the repair for pack \`${approved.pluginId}\` names scope \`${approved.scope}\`, which is not the scope comparison \`${fact.comparison}\` implies; portable and machine-local are different scopes, so the whole plan is refused and nothing was written.`
+      };
+    }
+    if (fact.observedBinding === null) {
+      return {
+        ok: false,
+        reason: "apply/evidence-precondition",
+        detail: `pack \`${approved.pluginId}\` is listed for an evidence repair but its machine binding could not be observed under the lock; a repair records complete evidence or none, so the whole plan is refused.`
+      };
+    }
+    if (scope === "portable" && fact.observedPortable === null) {
+      return {
+        ok: false,
+        reason: "apply/evidence-precondition",
+        detail: `pack \`${approved.pluginId}\` is listed for a portable evidence repair but its portable tuple could not be reproduced under the lock; a partial tuple is strictly worse than none, so the whole plan is refused and the existing record is preserved exactly as it was.`
+      };
+    }
+    repairs.push({
+      pluginId: approved.pluginId,
+      scope,
+      comparison: fact.comparison,
+      // Rule 7 in the type system: a `binding` repair carries NO portable half,
+      // so the composer cannot write machine-specific state into the shared
+      // record even by mistake.
+      portable: scope === "portable" ? fact.observedPortable : null,
+      binding: fact.observedBinding
+    });
+  }
+  const remaining = collectRemainingDivergence({
+    currentFacts: input.currentFacts,
+    inventoryTrustworthy: input.inventoryTrustworthy,
+    advancing: advances.map((advance) => advance.destination),
+    removing: input.removalDestinations,
+    repairFacts: input.repairFacts,
+    repairing: repairs.map((repair) => repair.pluginId)
+  });
+  return { ok: true, advances, repairs, remaining };
+}
+function collectRemainingDivergence(input) {
+  const currentIndex = indexCurrent(
+    planArtifacts(input.currentFacts, {
+      inventoryTrustworthy: input.inventoryTrustworthy
+    }).preview
+  );
+  const advancing = new Set(input.advancing);
+  const removing = new Set(input.removing);
+  const remaining = [];
+  for (const decision2 of currentIndex.values()) {
+    if (advancing.has(decision2.destination)) continue;
+    if (removing.has(decision2.destination)) continue;
+    if (decision2.form === "advance") {
+      remaining.push({
+        subject: decision2.destination,
+        class: "unlisted",
+        reason: decision2.reason
+      });
+      continue;
+    }
+    if (decision2.form === "deletable" || decision2.form === "bootstrap") {
+      continue;
+    }
+    const divergence = divergenceClassFor(decision2.reason);
+    if (divergence === null) continue;
+    remaining.push({
+      subject: decision2.destination,
+      class: divergence,
+      reason: decision2.reason
+    });
+  }
+  const repairing = new Set(input.repairing);
+  for (const fact of input.repairFacts) {
+    if (repairing.has(fact.pluginId)) continue;
+    if (scopeForComparison(fact.comparison) === null) continue;
+    remaining.push({ subject: fact.pluginId, class: "evidence-drifted", reason: null });
+  }
+  remaining.sort(
+    (left, right) => left.subject.localeCompare(right.subject) || left.class.localeCompare(right.class)
+  );
+  return remaining;
+}
+function buildUpgradeReport(decision2) {
+  const advanced = decision2.advances.map((advance) => advance.destination).sort();
+  const repaired = decision2.repairs.map((repair) => ({ pluginId: repair.pluginId, scope: repair.scope })).sort((left, right) => left.pluginId.localeCompare(right.pluginId));
+  const remaining = [...decision2.remaining];
+  return {
+    noDrift: remaining.length === 0,
+    outcome: resolveUpgradeOutcome(advanced.length + repaired.length, remaining.length),
+    remaining,
+    advanced,
+    repaired
+  };
 }
 
 // src/resolver/registry-edit.ts
@@ -28479,11 +28798,22 @@ var APPLY_SUPPORTED_ACTION_KINDS = [
   // current facts before a single target is composed. Admission here is
   // permission to be considered, never permission to delete.
   //
-  // `artifact-advance` (upgrade) and `evidence-repair` stay deliberately ABSENT:
-  // WF-459 owns them, and a plan carrying one is still `apply/unsupported-action`
-  // before any journal exists.
   "artifact-bootstrap",
-  "artifact-delete"
+  "artifact-delete",
+  // WF-459. The constructive slice, admitted to the SAME whole-plan screen — and
+  // then held to a THIRD whole-plan gate (`decideUpgradeGate`, `apply-upgrade.ts`)
+  // that re-derives every artifact classification from facts re-observed under the
+  // lock and rejects the WHOLE plan on any drift. Admission here is permission to
+  // be considered, never permission to replace a user's file.
+  //
+  // The gate's second job has no analogue on the removal side: it also decides
+  // what this run will NOT resolve, so an edited artifact that survives is
+  // REPORTED as a remaining divergence rather than silently absorbed. Every
+  // mutating action kind is now supported, so `unsupported` is reachable only for
+  // a kind a FUTURE release adds — which is exactly the fail-closed posture the
+  // exhaustive partition below was built for.
+  "artifact-advance",
+  "evidence-repair"
 ];
 var APPLY_CONDITIONAL_ACTION_KINDS = [
   "constitution-recompose"
@@ -30128,6 +30458,11 @@ var ResolverService = class {
         backupsRetained: false,
         detail: "no transaction was created."
       },
+      // The default is deliberately the one that CLAIMS NOTHING (WF-459). A run
+      // refused here may never have read a managed artifact at all, and
+      // `noDrift: true` over an unread workspace would be the comfortable lie this
+      // slice exists to prevent. Callers that DID assess override it below.
+      upgrade: notAssessedUpgradeReport(),
       diagnostics
     });
     if (!admission.admitted) {
@@ -30165,11 +30500,33 @@ var ResolverService = class {
         journalPresent: recoveryPorts.readJournal() !== null,
         constitutionRecordPresent: this.ports.readFile(constitutionAbs) !== null
       });
+      const world = this.observeArtifactWorld(admission.root, plan, inspected);
+      const assessedReport = () => world.ok ? buildUpgradeReport({
+        advances: [],
+        repairs: [],
+        remaining: collectRemainingDivergence({
+          currentFacts: world.currentFacts,
+          inventoryTrustworthy: plan.inventory.mayEstablishAbsence,
+          advancing: [],
+          removing: [],
+          repairFacts: world.repairFacts,
+          repairing: []
+        })
+      }) : notAssessedUpgradeReport();
       if (!gate.ok) {
         const refused2 = halted("rejected", gate.reason, recovery, plan, [
           { code: gate.reason, message: gate.detail }
         ]);
-        return { ...refused2, deferred: gate.screened.deferred };
+        return { ...refused2, deferred: gate.screened.deferred, upgrade: assessedReport() };
+      }
+      if (!world.ok) {
+        return {
+          ...halted("rejected", world.reason, recovery, plan, [
+            { code: world.reason, message: world.detail }
+          ]),
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport()
+        };
       }
       const registryRel = this.ports.registryRelPath();
       const shapeError = registryPathShapeError(registryRel);
@@ -30181,7 +30538,8 @@ var ResolverService = class {
               message: `registryPath \`${registryRel}\` is not a forward-slash repo-relative file path: ${shapeError}.`
             }
           ]),
-          deferred: gate.screened.deferred
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport()
         };
       }
       let registryAbs;
@@ -30195,7 +30553,8 @@ var ResolverService = class {
               message: `registryPath \`${registryRel}\` escapes the selected workspace: ${err instanceof Error ? err.message : String(err)}`
             }
           ]),
-          deferred: gate.screened.deferred
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport()
         };
       }
       const facts = /* @__PURE__ */ new Map();
@@ -30224,7 +30583,8 @@ var ResolverService = class {
           ...halted("rejected", mutation.reason, recovery, plan, [
             { code: mutation.reason, message: mutation.detail }
           ]),
-          deferred: gate.screened.deferred
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport()
         };
       }
       const present = [];
@@ -30238,19 +30598,39 @@ var ResolverService = class {
         else absent.push(...names);
       }
       const removalGate = this.decideRemovals(
-        admission.root,
         plan,
         inspected,
-        gate.screened.supported
+        gate.screened.supported,
+        world
       );
       if (!removalGate.ok) {
         return {
           ...halted("rejected", removalGate.reason, recovery, plan, [
             { code: removalGate.reason, message: removalGate.detail }
           ]),
-          deferred: gate.screened.deferred
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport()
         };
       }
+      const upgradeGate = decideUpgradeGate({
+        approved: plan.artifacts,
+        supported: gate.screened.supported,
+        currentFacts: world.currentFacts,
+        inventoryTrustworthy: plan.inventory.mayEstablishAbsence,
+        repairs: plan.repairs,
+        repairFacts: world.repairFacts,
+        removalDestinations: removalGate.removals.map((removal) => removal.destination)
+      });
+      if (!upgradeGate.ok) {
+        return {
+          ...halted("rejected", upgradeGate.reason, recovery, plan, [
+            { code: upgradeGate.reason, message: upgradeGate.detail }
+          ]),
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport()
+        };
+      }
+      const upgradeReport = buildUpgradeReport(upgradeGate);
       const composed = this.composeApplyTargets({
         plan,
         inspected,
@@ -30261,14 +30641,17 @@ var ResolverService = class {
         registryChanged: mutation.changed,
         removals: removalGate.removals,
         bootstraps: removalGate.bootstraps,
-        legacy: removalGate.legacy
+        legacy: removalGate.legacy,
+        advances: upgradeGate.advances,
+        repairs: upgradeGate.repairs
       });
       if (!composed.ok) {
         return {
           ...halted("rejected", composed.reason, recovery, plan, [
             { code: composed.reason, message: composed.detail }
           ]),
-          deferred: gate.screened.deferred
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport()
         };
       }
       const applyPorts = this.ports.createApply?.(
@@ -30283,7 +30666,8 @@ var ResolverService = class {
               message: "no apply ports are configured, so the registry cannot be mutated."
             }
           ]),
-          deferred: gate.screened.deferred
+          deferred: gate.screened.deferred,
+          upgrade: assessedReport()
         };
       }
       const result = applyTransaction(applyPorts, {
@@ -30303,7 +30687,9 @@ var ResolverService = class {
           // the gate authorized: an expectation derived from the authorization
           // would assert an effect no target produces, and a self-check that can
           // pass without a write is exactly the thing it exists to prevent.
-          legacyPortableRecorded: composed.legacyPortableRecorded
+          legacyPortableRecorded: composed.legacyPortableRecorded,
+          artifactsAdvanced: composed.artifactsAdvanced,
+          evidenceRepaired: composed.evidenceRepaired
         }
       });
       const applied = result.status === "applied" ? gate.screened.supported.map((action2) => ({
@@ -30330,6 +30716,14 @@ var ResolverService = class {
         },
         applied,
         deferred: gate.screened.deferred,
+        // THE GATE-DERIVED REPORT ONLY WHEN THE TRANSACTION ACTUALLY LANDED.
+        // `upgradeReport` names what was advanced and repaired; a rolled-back or
+        // failed transaction restored the prior state, so claiming those effects
+        // would be the exact "report success for work that did not happen" this
+        // item exists to prevent. On any non-`applied` status the honest answer is
+        // the READ-ONLY assessment of the world as it was observed under the lock —
+        // which is the state a successful rollback restored.
+        upgrade: result.status === "applied" ? upgradeReport : assessedReport(),
         rollback: result.rollback,
         selfCheck: result.selfCheck,
         refreshed: result.refreshed,
@@ -30392,7 +30786,7 @@ var ResolverService = class {
    *
    * Nothing here writes, creates, or canonicalizes into existence.
    */
-  decideRemovals(admittedRoot, plan, inspected, supported) {
+  observeArtifactWorld(admittedRoot, plan, inspected) {
     const home = resolveLedgerHome();
     if (!home.ok || home.portablePath === null) {
       return {
@@ -30404,6 +30798,9 @@ var ResolverService = class {
     const ledger = parseEvidenceLedger(
       this.ports.readFile(joinSlash(this.ports.workspaceRoot, home.portablePath))
     );
+    const bindingLedger = home.bindingPath === home.portablePath ? ledger : parseEvidenceLedger(
+      this.ports.readFile(joinSlash(this.ports.workspaceRoot, home.bindingPath))
+    );
     const currentFacts = resolveArtifactFacts(
       this.collectArtifactFacts(
         admittedRoot,
@@ -30412,6 +30809,33 @@ var ResolverService = class {
       ),
       deselectedOwnerPredicate(plan.registryDelta)
     );
+    const scoped = [
+      ...plan.registryDelta.additions,
+      ...plan.registryDelta.retentions,
+      ...plan.registryDelta.deregistrations
+    ].map((entry) => entry.pluginId);
+    const repairFacts = [];
+    for (const pluginId of [...new Set(scoped)].sort((left, right) => left.localeCompare(right))) {
+      const pack = inspected.get(pluginId);
+      const observedPortable = pack?.portableEvidence ?? null;
+      const observedBinding = pack?.machineBinding ?? null;
+      const comparison = compareLifecycleEvidence(
+        ledger.portable.get(pluginId) ?? null,
+        observedPortable,
+        bindingLedger.binding.get(pluginId) ?? null,
+        observedBinding
+      );
+      repairFacts.push({
+        pluginId,
+        comparison: comparison.state,
+        observedPortable,
+        observedBinding
+      });
+    }
+    return { ok: true, currentFacts, repairFacts, ledger };
+  }
+  decideRemovals(plan, inspected, supported, world) {
+    const { currentFacts, ledger } = world;
     const legacySeeds = plan.evidenceSeeds.filter((seed) => seed.kind === "legacy-bootstrap");
     const legacyFacts = legacySeeds.map((seed) => ({
       pluginId: seed.pluginId,
@@ -30427,7 +30851,14 @@ var ResolverService = class {
       currentFacts,
       inventoryTrustworthy: plan.inventory.mayEstablishAbsence,
       legacySeeds,
-      legacyFacts
+      legacyFacts,
+      // WF-459. Taken from the ACTION LIST rather than from the upgrade gate's
+      // authorized set, because the two gates run in series and this one runs
+      // first. A destination the plan LISTS for an upgrade is not preserved by
+      // this arm whatever the upgrade gate later decides about it — if that gate
+      // refuses, the whole plan is refused and no preservation report is emitted
+      // at all.
+      advanceDestinations: supported.filter((action2) => action2.kind === "artifact-advance").map((action2) => action2.destination).filter((destination) => destination !== null)
     });
   }
   /**
@@ -30584,7 +31015,9 @@ var ResolverService = class {
         continue;
       }
       if (action2.kind === "answer-write" || action2.kind === "registry-deregister") continue;
-      if (action2.kind === "artifact-delete" || action2.kind === "artifact-bootstrap") continue;
+      if (action2.kind === "artifact-delete" || action2.kind === "artifact-bootstrap" || action2.kind === "artifact-advance" || action2.kind === "evidence-repair") {
+        continue;
+      }
       return {
         ok: false,
         reason: "apply/unsupported-action",
@@ -30682,6 +31115,45 @@ var ResolverService = class {
         owners: evidence.owners.map((owner) => ({ ...owner }))
       });
     }
+    const advanceWrites = [];
+    for (const advance of input.advances) {
+      const rendered = this.renderAdvanceWrite(input.admittedRoot, input.inspected, advance);
+      if (!rendered.ok) {
+        return { ok: false, reason: "apply/artifact-precondition", detail: rendered.detail };
+      }
+      advanceWrites.push(rendered);
+      artifactUpdates.push({ destination: rendered.destination, evidence: rendered.evidence });
+    }
+    const evidenceRepaired = [];
+    for (const repair of input.repairs) {
+      if (portableRecorded.includes(repair.pluginId) || bindingRecorded.includes(repair.pluginId) || legacyPortableRecorded.includes(repair.pluginId)) {
+        return {
+          ok: false,
+          reason: "apply/evidence-precondition",
+          detail: `pack \`${repair.pluginId}\` is both recorded by another action and repaired in the same plan, so one of the two evidence writes would silently lose; nothing was written.`
+        };
+      }
+      if (repair.scope === "portable") {
+        if (repair.portable === null) {
+          return {
+            ok: false,
+            reason: "apply/evidence-precondition",
+            detail: `the portable evidence repair for pack \`${repair.pluginId}\` carries no portable tuple, so the shared record cannot be re-established completely; nothing was written.`
+          };
+        }
+        portableUpdates.push({ pluginId: repair.pluginId, portable: repair.portable });
+        portableRecorded.push(repair.pluginId);
+      } else if (repair.portable !== null) {
+        return {
+          ok: false,
+          reason: "apply/evidence-precondition",
+          detail: `the machine-local evidence repair for pack \`${repair.pluginId}\` carries a portable tuple, which a \`binding\`-scoped repair may never write; nothing was written.`
+        };
+      }
+      bindingUpdates.push({ pluginId: repair.pluginId, binding: repair.binding });
+      bindingRecorded.push(repair.pluginId);
+      evidenceRepaired.push({ pluginId: repair.pluginId, scope: repair.scope });
+    }
     const artifactRemovals = input.removals.map((removal) => removal.destination);
     for (const removal of input.removals) {
       const failure2 = addRemoval(removal, "apply/artifact-precondition");
@@ -30758,6 +31230,25 @@ var ResolverService = class {
         owners: payload.evidence.owners.map((owner) => ({ ...owner }))
       });
     }
+    const artifactsAdvanced = [];
+    for (const advance of advanceWrites) {
+      const failure2 = addRendered(
+        advance.destination,
+        {
+          ok: true,
+          content: advance.content,
+          changed: advance.content !== (readRel(advance.destination) ?? "")
+        },
+        "apply/artifact-precondition"
+      );
+      if (failure2 !== null) return failure2;
+      artifactsAdvanced.push({
+        destination: advance.destination,
+        sha256: advance.sha256,
+        declaredSourceFingerprint: advance.declaredSourceFingerprint,
+        owners: advance.evidence.owners.map((owner) => ({ ...owner }))
+      });
+    }
     let constitutionRecomposed = false;
     if (recomposeConstitution) {
       const composed = this.composeConstitutionTarget(input.plan, input.inspected);
@@ -30789,7 +31280,114 @@ var ResolverService = class {
       payloadsRecorded,
       constitutionRecomposed,
       artifactsBootstrapped,
-      legacyPortableRecorded
+      legacyPortableRecorded,
+      artifactsAdvanced,
+      evidenceRepaired
+    };
+  }
+  /**
+   * Bind one AUTHORIZED artifact advance to the exact bytes its owners declare
+   * now, and refuse before mutation if anything it rests on has moved (WF-459).
+   *
+   * THE UPGRADE ARM IS HELD TO THE INSTALL ARM'S STANDARD, DELIBERATELY. This is
+   * `renderPayloadWrite`'s revalidation applied to a destination that already
+   * exists and already has an owner: containment re-resolved through the no-create
+   * boundary and required to canonicalize to the same target the gate proved,
+   * every owner's declared source re-fingerprinted and required to reproduce the
+   * SAME digest as every other owner's, and the bytes read from a source that
+   * passed that test. WF-449's lesson is that the destructive arm drifted laxer
+   * than the arm that reviewed it; the audit that closed it applies in both
+   * directions, and an upgrade replaces a file a user can see.
+   *
+   * WHAT IS NOT RE-DECIDED HERE. Whether this destination may be advanced at all —
+   * listed by the confirmation, byte-identical to the recorded proof, exclusively
+   * owned by an owner set that has not moved, declaring `replace-if-unmodified` —
+   * was settled by `decideUpgradeGate` over the whole plan. A second opinion in the
+   * composer could only ever be a laxer one.
+   */
+  renderAdvanceWrite(admittedRoot, inspected, advance) {
+    const destination = advance.destination;
+    const fingerprint2 = this.ports.fingerprintContainedFile;
+    const read = this.ports.readContainedFile;
+    const resolveTarget = this.ports.resolvePayloadTarget;
+    if (fingerprint2 === void 0 || read === void 0 || resolveTarget === void 0) {
+      return {
+        ok: false,
+        detail: `the contained-source and containment boundaries are not both configured, so the upgrade of \`${destination}\` cannot be revalidated; nothing was written.`
+      };
+    }
+    const target = resolveTarget(admittedRoot, destination);
+    if (!target.ok) {
+      return {
+        ok: false,
+        detail: `the managed artifact \`${destination}\` is no longer a usable workspace target (\`${target.rejection}\`); nothing was written.`
+      };
+    }
+    if (target.canonicalTarget !== advance.canonicalTarget) {
+      return {
+        ok: false,
+        detail: `the managed artifact \`${destination}\` now canonicalizes to a different target than the upgrade was authorized against; nothing was written.`
+      };
+    }
+    let content = null;
+    for (const owner of advance.owners) {
+      const capability = inspected.get(owner.pluginId)?.capabilities.find((candidate) => candidate.name === owner.capability);
+      if (capability === void 0) {
+        return {
+          ok: false,
+          detail: `capability \`${owner.capability}\` of pack \`${owner.pluginId}\` owns the managed artifact \`${destination}\` but was not inspectable at apply time; nothing was written.`
+        };
+      }
+      const capabilityRoot = dirnameSlash(capability.manifestPath);
+      const observed = fingerprint2(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (observed.status !== "ok" || observed.sha256 !== advance.declaredSourceFingerprint) {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` no longer reproduces the fingerprint the upgrade of \`${destination}\` was authorized against (authorized sha256 ${advance.declaredSourceFingerprint}; observed ${observed.status === "ok" ? `sha256 ${observed.sha256}` : observed.status}); nothing was written.`
+        };
+      }
+      if (content !== null) continue;
+      const body = read(capabilityRoot, owner.source, MAX_DECLARED_SOURCE_BYTES);
+      if (body.status !== "ok") {
+        return {
+          ok: false,
+          detail: `the declared source \`${owner.source}\` of capability \`${owner.capability}\` could not be read (\`${body.status}\`), so the new bytes for \`${destination}\` are not available; nothing was written.`
+        };
+      }
+      content = body.content;
+    }
+    if (content === null) {
+      return {
+        ok: false,
+        detail: `the authorized upgrade of \`${destination}\` names no owner, so the bytes it would receive cannot be resolved; nothing was written.`
+      };
+    }
+    const evidence = createArtifactEvidence({
+      destination,
+      owners: advance.owners.map((owner) => ({
+        pluginId: owner.pluginId,
+        capability: owner.capability,
+        source: owner.source
+      })),
+      declaredSourceFingerprint: advance.declaredSourceFingerprint,
+      producedContentHash: advance.producedContentHash,
+      production: advance.semantics.production,
+      refresh: advance.semantics.refresh,
+      removal: advance.semantics.removal
+    });
+    if (evidence === null) {
+      return {
+        ok: false,
+        detail: `the ownership and hash evidence for the upgraded artifact \`${destination}\` could not be constructed completely, so the new bytes are not written without the proof that owns them; nothing was written.`
+      };
+    }
+    return {
+      ok: true,
+      destination,
+      content,
+      sha256: advance.producedContentHash,
+      declaredSourceFingerprint: advance.declaredSourceFingerprint,
+      evidence
     };
   }
   /**
@@ -31247,7 +31845,42 @@ var ResolverService = class {
       }
     }
     const legacyMissing = expectation.legacyPortableRecorded.filter((id) => !portableBack.has(id));
-    if (missing.length === 0 && lingering.length === 0 && portableMissing.length === 0 && bindingMissing.length === 0 && answerMissing.length === 0 && overrideMissing.length === 0 && payloadMissing.length === 0 && constitutionMissing.length === 0 && removedLingering.length === 0 && bootstrapMissing.length === 0 && legacyMissing.length === 0) {
+    const advanceMissing = [];
+    for (const advance of expectation.artifactsAdvanced) {
+      const back = readRel(advance.destination);
+      if (back === null || sha256Hex(back) !== advance.sha256) {
+        advanceMissing.push(`${advance.destination} (bytes not upgraded)`);
+        continue;
+      }
+      const recorded = artifactsBack.get(advance.destination) ?? null;
+      if (recorded === null) {
+        advanceMissing.push(`${advance.destination} (no ownership record)`);
+        continue;
+      }
+      if (recorded.producedContentHash !== advance.sha256 || recorded.declaredSourceFingerprint !== advance.declaredSourceFingerprint) {
+        advanceMissing.push(`${advance.destination} (record still names the pre-upgrade digest)`);
+        continue;
+      }
+      const expectedOwners = JSON.stringify(
+        advance.owners.map((owner) => [owner.pluginId, owner.capability, owner.source])
+      );
+      const recordedOwners = JSON.stringify(
+        recorded.owners.map((owner) => [owner.pluginId, owner.capability, owner.source])
+      );
+      if (expectedOwners !== recordedOwners) {
+        advanceMissing.push(`${advance.destination} (incomplete owner set)`);
+      }
+    }
+    const repairMissing = [];
+    for (const repair of expectation.evidenceRepaired) {
+      if (!bindingBack.has(repair.pluginId)) {
+        repairMissing.push(`${repair.pluginId} (machine binding)`);
+      }
+      if (repair.scope === "portable" && !portableBack.has(repair.pluginId)) {
+        repairMissing.push(`${repair.pluginId} (portable evidence)`);
+      }
+    }
+    if (missing.length === 0 && lingering.length === 0 && portableMissing.length === 0 && bindingMissing.length === 0 && answerMissing.length === 0 && overrideMissing.length === 0 && payloadMissing.length === 0 && constitutionMissing.length === 0 && removedLingering.length === 0 && bootstrapMissing.length === 0 && legacyMissing.length === 0 && advanceMissing.length === 0 && repairMissing.length === 0) {
       return { ok: true };
     }
     const parts = [];
@@ -31279,6 +31912,12 @@ var ResolverService = class {
     }
     if (legacyMissing.length > 0) {
       parts.push(`legacy portable evidence did not read back: ${legacyMissing.join(", ")}`);
+    }
+    if (advanceMissing.length > 0) {
+      parts.push(`managed artifact upgrade did not converge: ${advanceMissing.join(", ")}`);
+    }
+    if (repairMissing.length > 0) {
+      parts.push(`lifecycle evidence repair did not read back: ${repairMissing.join(", ")}`);
     }
     return { ok: false, diagnostic: parts.join("; ") };
   }

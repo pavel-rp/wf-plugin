@@ -81,3 +81,179 @@ test("the guard itself detects a planted control byte", () => {
   // And the textual three are NOT flagged.
   assert.equal(firstControlByte(Buffer.from("a\tb\r\nc\n", "utf8")), null);
 });
+
+// --- The unimported-call guard (WF-459) -------------------------------------
+//
+// The bundler does NOT typecheck, so a call to a sibling module's export that
+// was never imported survives the build intact and throws a `ReferenceError`
+// only when that exact line is first reached at runtime. WF-459 shipped one:
+// `service.ts` called `collectRemainingDivergence` on every NON-`applied` return
+// without importing it, so every rejection turned into `apply/write-failed` with
+// an `apply-threw` diagnostic — the right refusal reported under the WRONG class,
+// which is precisely the confusion the frozen protocol forbids. The unit suite
+// could not see it: every service-level double stops the run before the planner,
+// so that line was never executed.
+//
+// The guard is therefore static and narrow. It flags only a bare call to a name
+// that THIS codebase exports somewhere and that the calling file has neither
+// imported nor declared — a shape that cannot be anything but the defect above.
+
+/** `export function NAME` / `export const NAME` / `export class NAME`, anywhere
+ *  under `src`. Types are excluded: a type is erased and can never throw. */
+function exportedValueNames(files: readonly string[]): Set<string> {
+  const names = new Set<string>();
+  for (const rel of files) {
+    const text = readFileSync(join(MCP_DIR!, "src", rel), "utf8");
+    for (const match of text.matchAll(/^export\s+(?:async\s+)?(?:function|const|class)\s+([A-Za-z_$][\w$]*)/gm)) {
+      names.add(match[1]!);
+    }
+  }
+  return names;
+}
+
+/** Replace every comment, string, template and regex literal with spaces, so
+ *  only executable code is scanned. Prose ABOUT a symbol, and a symbol's name
+ *  inside a message, are not calls — flagging either would make the guard noise
+ *  rather than signal. Newlines survive, so reported line numbers stay true. */
+function codeOnly(text: string): string {
+  const out = text.split("");
+  const blank = (from: number, to: number): void => {
+    for (let i = from; i < to && i < out.length; i++) if (out[i] !== "\n") out[i] = " ";
+  };
+  let i = 0;
+  let prevCode = "";
+  while (i < text.length) {
+    const ch = text[i]!;
+    const next = text[i + 1];
+    if (ch === "/" && next === "/") {
+      const end = text.indexOf("\n", i);
+      blank(i, end === -1 ? text.length : end);
+      i = end === -1 ? text.length : end;
+    } else if (ch === "/" && next === "*") {
+      const end = text.indexOf("*/", i + 2);
+      const stop = end === -1 ? text.length : end + 2;
+      blank(i, stop);
+      i = stop;
+    } else if (ch === '"' || ch === "'" || ch === "`") {
+      let j = i + 1;
+      while (j < text.length) {
+        if (text[j] === "\\") j += 2;
+        else if (text[j] === ch) break;
+        else if (ch !== "`" && text[j] === "\n") break;
+        else j++;
+      }
+      // The delimiters SURVIVE: `from "./x.js"` must still read as an import.
+      blank(i + 1, j);
+      i = j + 1;
+    } else if (ch === "/" && /[(,=:[!&|?{};+\n]|^$/.test(prevCode)) {
+      let j = i + 1;
+      let inClass = false;
+      while (j < text.length) {
+        if (text[j] === "\\") j += 2;
+        else if (text[j] === "[") (inClass = true), j++;
+        else if (text[j] === "]") (inClass = false), j++;
+        else if (text[j] === "/" && !inClass) break;
+        else if (text[j] === "\n") break;
+        else j++;
+      }
+      blank(i, j + 1);
+      i = j + 1;
+    } else {
+      if (!/\s/.test(ch)) prevCode = ch;
+      i++;
+    }
+  }
+  return out.join("");
+}
+
+/** Every name the file can legally reference bare: imported bindings plus any
+ *  local declaration or binding-position occurrence. Deliberately generous —
+ *  the guard must never flag a shadowed local, only a genuinely absent name. */
+function locallyAvailable(text: string): Set<string> {
+  const names = new Set<string>();
+  for (const match of text.matchAll(/import\s+(?:type\s+)?([\s\S]*?)\s+from\s+["']/g)) {
+    for (const part of match[1]!.replace(/[{}*]/g, " ").split(",")) {
+      const token = part.trim().split(/\s+as\s+/).pop()?.trim() ?? "";
+      if (/^[A-Za-z_$][\w$]*$/.test(token) && token !== "type") names.add(token);
+    }
+  }
+  for (const match of text.matchAll(
+    /\b(?:function|const|let|var|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/g,
+  )) {
+    names.add(match[1]!);
+  }
+  // Destructured bindings and parameters, e.g. `const { a, b } = x` or `(a, b) =>`.
+  for (const match of text.matchAll(/[({,]\s*([A-Za-z_$][\w$]*)\s*[,)}:=]/g)) names.add(match[1]!);
+  return names;
+}
+
+test("no `src` file CALLS an export of this codebase it never imported", () => {
+  const files = sourceFiles(join(MCP_DIR!, "src"), "");
+  const exported = exportedValueNames(files);
+  assert.ok(exported.size > 0, "the codebase must export named values");
+  assert.ok(exported.has("collectRemainingDivergence"), "the guard must see the WF-459 symbol");
+
+  const offenders: string[] = [];
+  for (const rel of files) {
+    const text = codeOnly(readFileSync(join(MCP_DIR!, "src", rel), "utf8"));
+    const available = locallyAvailable(text);
+    const seen = new Set<string>();
+    for (const match of text.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      const name = match[2]!;
+      if (seen.has(name) || available.has(name) || !exported.has(name)) continue;
+      // A class or object-literal METHOD DEFINITION shares the `name(` shape but
+      // only ever at line start, after optional modifiers. Skipped per OCCURRENCE,
+      // never per name: the same name called elsewhere in the file is still checked.
+      const before = text.slice(text.lastIndexOf("\n", match.index) + 1, match.index + match[1]!.length);
+      if (/^\s*(?:(?:public|private|protected|static|async|readonly|get|set)\s+)*$/.test(before)) continue;
+      seen.add(name);
+      const line = text.slice(0, match.index).split("\n").length;
+      offenders.push(`src/${rel}:${line}: calls \`${name}\` without importing it`);
+    }
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `the build does not typecheck, so an unimported call ships and throws only when that line is first reached:\n${offenders.join("\n")}`,
+  );
+});
+
+test("the unimported-call guard itself detects a planted omission", () => {
+  // Guarding the guard, as above: the detector is exercised against the exact
+  // shape of the WF-459 defect and against every shape it must NOT flag — each
+  // of the four negatives below is a real occurrence this codebase contains.
+  const exported = new Set(["collectRemainingDivergence"]);
+  const flag = (raw: string): boolean => {
+    const text = codeOnly(raw);
+    const available = locallyAvailable(text);
+    for (const match of text.matchAll(/(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      if (available.has(match[2]!) || !exported.has(match[2]!)) continue;
+      const before = text.slice(text.lastIndexOf("\n", match.index) + 1, match.index + match[1]!.length);
+      if (/^\s*(?:(?:public|private|protected|static|async|readonly|get|set)\s+)*$/.test(before)) continue;
+      return true;
+    }
+    return false;
+  };
+  assert.equal(flag("const r = collectRemainingDivergence({ a: 1 });\n"), true, "the defect");
+  assert.equal(
+    flag('import { collectRemainingDivergence } from "./x.js";\nconst r = collectRemainingDivergence({});\n'),
+    false,
+    "an imported call is fine",
+  );
+  assert.equal(flag("const r = ports.collectRemainingDivergence();\n"), false, "a member call is fine");
+  assert.equal(
+    flag("// `collectRemainingDivergence()` is the explicit way to say so.\n"),
+    false,
+    "prose about a symbol is not a call",
+  );
+  assert.equal(
+    flag("const m = `${n} collectRemainingDivergence(s) checked`;\n"),
+    false,
+    "a symbol's name inside a message is not a call",
+  );
+  assert.equal(
+    flag("class X {\n  collectRemainingDivergence(): number {\n    return 1;\n  }\n}\n"),
+    false,
+    "a method definition is not a call",
+  );
+});

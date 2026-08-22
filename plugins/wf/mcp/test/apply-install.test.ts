@@ -151,7 +151,7 @@ function gate(
 // The closed action screen
 // ---------------------------------------------------------------------------
 
-test("the supported set is exactly the eight unconditional kinds, and the conditional set exactly the constitution", () => {
+test("the supported set is exactly the ten unconditional kinds, and the conditional set exactly the constitution", () => {
   assert.deepEqual(
     [...APPLY_SUPPORTED_ACTION_KINDS],
     [
@@ -166,6 +166,10 @@ test("the supported set is exactly the eight unconditional kinds, and the condit
       // permission to be considered, never permission to delete.
       "artifact-bootstrap",
       "artifact-delete",
+      // WF-459 — the constructive slice, admitted on exactly the same terms and
+      // held to `decideUpgradeGate`'s third whole-plan gate.
+      "artifact-advance",
+      "evidence-repair",
     ],
   );
   assert.deepEqual([...APPLY_CONDITIONAL_ACTION_KINDS], ["constitution-recompose"]);
@@ -174,15 +178,25 @@ test("the supported set is exactly the eight unconditional kinds, and the condit
   assert.deepEqual([...APPLY_SUPPORTED_SEED_KINDS], ["binding-seed", "legacy-bootstrap"]);
 });
 
-test("SC-5: upgrade and repair remain out of scope, and stay out under BOTH constitution worlds", () => {
-  // The boundary WF-458 deliberately did NOT move. WF-459 owns these; a plan
-  // carrying either must still refuse before any journal exists.
+test("WF-459: upgrade and repair are admitted UNCONDITIONALLY, under BOTH constitution worlds", () => {
+  // The boundary WF-458 deliberately did not move, and WF-459 moves it — but only
+  // as far as ADMISSION. Passing the screen is permission to be CONSIDERED by
+  // `decideUpgradeGate`, never permission to replace a file or rewrite evidence,
+  // exactly as `artifact-delete`'s admission is not permission to delete.
+  //
+  // Admitted unconditionally on purpose: the constitution condition exists because
+  // a recompose has nothing to write when the record is absent. Neither of these
+  // kinds depends on that record, so gating them on it would defer a legitimate
+  // upgrade for an unrelated reason.
   for (const kind of ["artifact-advance", "evidence-repair"] as const) {
-    assert.ok(!APPLY_SUPPORTED_ACTION_KINDS.includes(kind), `${kind} stays unsupported`);
+    assert.ok(APPLY_SUPPORTED_ACTION_KINDS.includes(kind), `${kind} is supported`);
     assert.ok(!APPLY_CONDITIONAL_ACTION_KINDS.includes(kind), `${kind} is not conditional`);
     for (const facts of [NO_CONSTITUTION, HAS_CONSTITUTION]) {
+      const screened = screenPlanActions([action({ kind })], facts);
+      assert.deepEqual(screened.unsupported, []);
+      assert.deepEqual(screened.deferred, []);
       assert.deepEqual(
-        screenPlanActions([action({ kind })], facts).unsupported.map((a) => a.kind),
+        screened.supported.map((a) => a.kind),
         [kind],
       );
     }
@@ -389,14 +403,14 @@ test("an unsupported action refuses the WHOLE plan — a registry action alongsi
     plan: plan({
       actions: [
         action({ kind: "registry-add", order: 0 }),
-        action({ kind: "artifact-advance", order: 1 }),
+        action({ kind: "artifact-retain", order: 1 }),
       ],
     }),
     expectedPlanId: PLAN_ID,
     journalPresent: false,
   });
   assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
-  assert.ok(!decision.ok && decision.detail.includes("artifact-advance"));
+  assert.ok(!decision.ok && decision.detail.includes("artifact-retain"));
   // The supported action was screened but the gate refused, so nothing renders.
   assert.ok(!decision.ok && decision.screened.supported.length === 1);
 });
@@ -422,6 +436,8 @@ test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY suppo
         action({ kind: "artifact-bootstrap", order: 7, destination: "_local/tooling/other.mjs" }),
         action({ kind: "artifact-delete", order: 8, destination: "_local/tooling/gone.mjs" }),
         action({ kind: "artifact-advance", order: 9, destination: "_local/tooling/helper.mjs" }),
+        action({ kind: "evidence-repair", order: 10 }),
+        action({ kind: "artifact-retain", order: 11, destination: "_local/tooling/kept.mjs" }),
       ],
       evidenceSeeds: [seed("binding-seed")],
     }),
@@ -430,21 +446,22 @@ test("THE ORDERING RULE: an unsupported kind refuses a plan carrying EVERY suppo
   });
 
   assert.ok(!decision.ok && decision.reason === "apply/unsupported-action");
-  assert.ok(!decision.ok && decision.detail.includes("artifact-advance"));
-  // All nine supported actions WERE screened — including the two WF-458 admitted
-  // — and none of them can be applied, because the gate did not return `ok`.
-  assert.ok(!decision.ok && decision.screened.supported.length === 9);
+  assert.ok(!decision.ok && decision.detail.includes("artifact-retain"));
+  // All eleven supported actions WERE screened — including the two WF-458 and the
+  // two WF-459 admitted — and none of them can be applied, because the gate did
+  // not return `ok`.
+  assert.ok(!decision.ok && decision.screened.supported.length === 11);
 });
 
-test("SC-5: upgrade and repair each refuse a plan that ALSO carries a payload write", () => {
-  // The requirement stated at the level it is written: adding `payload-write`
-  // (WF-456) and then the destructive slice (WF-458) to the supported set must
-  // not open a door for the two REMAINING out-of-scope modes to ride alongside
-  // them. Each is checked on its own, so a fix that happened to catch one of
-  // them cannot mask the other — and each is checked in the presence of a
-  // supported payload, which is the combination a naive loop-with-early-return
-  // would apply half of.
-  for (const kind of ["artifact-advance", "evidence-repair"] as const) {
+test("the remaining out-of-scope kinds each refuse a plan that ALSO carries a payload write", () => {
+  // The requirement stated at the level it is written: widening the supported set
+  // — `payload-write` (WF-456), the destructive slice (WF-458), and now the
+  // constructive slice (WF-459) — must not open a door for whatever remains
+  // out of scope to ride alongside it. Each is checked on its own, so a fix that
+  // happened to catch one of them cannot mask the other — and each is checked in
+  // the presence of a supported payload, which is the combination a naive
+  // loop-with-early-return would apply half of.
+  for (const kind of ["registry-retain", "artifact-retain"] as const) {
     const decision = gate({
       ...HAS_CONSTITUTION,
       plan: plan({
