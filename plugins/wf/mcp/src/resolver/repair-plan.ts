@@ -425,7 +425,12 @@ export function planRepair(input: RepairPlanInput): RepairPlanResult {
   // construction. Amending either would be claiming an observation that was never
   // made, so both are returned exactly as the planner produced them.
   if (base.applicability === "invalid-root" || base.applicability === "unrecovered") {
-    return { plan: base, diagnosis, withheldAdvances };
+    // A halted run asserts NOTHING. The envelope already carries no action and no
+    // decision, so the derived channels are emptied to match: a diagnosis or a
+    // withheld-advance row surviving here would be a claim about a workspace whose
+    // lifecycle state was never established, which is exactly the shape of claim
+    // this task exists to make unrepresentable.
+    return { plan: base, diagnosis: [], withheldAdvances: [] };
   }
 
   const findings: PlanFinding[] = [...base.findings];

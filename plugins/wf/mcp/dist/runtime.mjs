@@ -22125,7 +22125,7 @@ function planRepair(input) {
     selection: deriveRepairSelection(input.packs)
   });
   if (base.applicability === "invalid-root" || base.applicability === "unrecovered") {
-    return { plan: base, diagnosis, withheldAdvances };
+    return { plan: base, diagnosis: [], withheldAdvances: [] };
   }
   const findings = [...base.findings];
   for (const withheld of withheldAdvances) {
