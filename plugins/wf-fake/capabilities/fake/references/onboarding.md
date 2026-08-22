@@ -38,13 +38,19 @@ skills:
 ## Profile seed template
 
 This capability ships **no** `profile-template:`. The fixture-tunable values (scripts path, op-log
-path) are plain `## Fake` config-section keys `/wf-fake:init` writes, with working defaults — not a
-profile slot. Per the contract's seeding convention, a capability that declares no
+path) are plain `## Fake` config-section keys with **working defaults** — not a profile slot, and
+not questions. Per the contract's seeding convention, a capability that declares no
 `profile-template:` seeds nothing.
 
-## Config the init skill writes
+A pack whose fixture-tunable value had **no** working default would take the other route: declare
+it as an `ask[]` entry on a `profile.template.json`, so the canonical `/wf:init` question round
+asks it once and the canonical apply persists it. fake needs neither, because both defaults work.
 
-`/wf-fake:init` writes a `## Fake` section to `_local/config.md`:
+## Config the fixture sets
+
+Since WF-462 the init skill writes **nothing** — it is a compatibility alias over the canonical
+lifecycle. The `## Fake` section is fixture-owned, and both keys have working defaults the
+fragments fall back to when the section is absent:
 
 ```markdown
 ## Fake
@@ -55,18 +61,27 @@ profile slot. Per the contract's seeding convention, a capability that declares 
 | **Fake Op Log**  | `_local/fake/op-log.jsonl` |
 ```
 
-Both default to fixture-local paths; a fixture author edits them only to relocate the files. The
-scripts/op-log format is `scripts-format.md`.
+Both default to fixture-local paths; a fixture author writes the section only to relocate the
+files. The scripts/op-log format is `scripts-format.md`.
 
 ## Downstream registration
 
-Run `/wf-fake:init` inside a **fixture** project (after `/wf:init`) — it records this pack's install
-root in the gitignored `## Plugin Roots` mapping and registers the `fake` capability as a
-plugin-anchored row (`plugin:wf-fake/capabilities/fake`) via core's `inspect_pack`/`register_pack`
-resolver tools, then writes the `## Fake` config section. Never register fake in a non-fixture
-project.
+Run `/wf-fake:init` inside a **fixture** project — it is a compatibility alias that invokes
+`/wf:init` with `wf-fake` seeded into the selection round. The canonical lifecycle then does
+everything: it scaffolds the bare core if needed, discovers packs, asks any unresolved questions
+once, shows one delta, takes one confirmation, and registers the `fake` capability as a
+plugin-anchored row (`plugin:wf-fake/capabilities/fake`) — recording this pack's install root in
+the gitignored `## Plugin Roots` mapping — through its single `apply_install`. The alias itself
+decides nothing and writes nothing.
+
+Entering through the alias is **additive**: a fixture that already has other packs set up keeps
+every one of them and gains `wf-fake`. Re-running over a settled fixture reports no drift and makes
+no mutation call at all. Never register fake in a non-fixture project.
 
 ## Version history
 
 - **WF-344** — initial hermetic in-memory dual-surface (delivery + tracker) provider capability
   (OUT-1 of charter C016).
+- **WF-462** — `/wf-fake:init` became the reference compatibility alias over the canonical
+  `/wf:init` lifecycle: seed only, no registration call of its own, no config write, canonical
+  `INIT — <status>` terminal block.
