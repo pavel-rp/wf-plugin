@@ -50,13 +50,6 @@ export type PayloadSourceIdentity =
   | { ok: true; sha256: string; bytes: number }
   | { ok: false; status: string };
 
-/** The caller's fingerprint of the destination's CURRENT bytes. `ok: false`
- *  covers every reason the bytes are not there to compare — most ordinarily,
- *  the destination does not exist yet. */
-export type PayloadCurrentBytes =
-  | { ok: true; sha256: string; bytes: number }
-  | { ok: false; status: string };
-
 /** One declared payload row, with every filesystem question already answered. */
 export interface PlanPayloadFact {
   pluginId: string;
@@ -68,8 +61,10 @@ export interface PlanPayloadFact {
   target: PayloadTargetResolution;
   identity: PayloadSourceIdentity;
   /** The destination's bytes as they are RIGHT NOW — pre-answered, like every
-   *  other filesystem fact here, so the eligibility test below stays pure. */
-  current: PayloadCurrentBytes;
+   *  other filesystem fact here, so the eligibility test below stays pure. The
+   *  sibling arm types its own `current` with this same shape
+   *  (`PlanArtifactFact.current`); one concept, one type. */
+  current: PayloadSourceIdentity;
   /** The content hash the lifecycle ledger records for this destination, or
    *  `null` when the ledger records nothing for it. Its presence is what makes
    *  a hand-edit distinguishable from an unmanaged pre-existing file. */
@@ -221,23 +216,40 @@ export function planPayloads(facts: readonly PlanPayloadFact[]): PayloadPlanResu
         continue;
       }
 
-      // 2. The destination is MANAGED (the ledger records a hash for it) and its
-      //    bytes are neither the declared content nor the content the ledger
-      //    recorded — so it was edited outside the lifecycle. `copy` +
-      //    `replace-if-unmodified` promises the refresh is withheld in exactly
-      //    this case; the artifact arm already withholds it (`artifact-plan.ts`
-      //    rule 3, `divergent`), and withholding it HERE is what stops the two
-      //    arms disagreeing inside one response. A destination with no recorded
-      //    hash is an unmanaged pre-existing file, not a hand-edit, and keeps
-      //    its existing overwrite behaviour — narrowing that is a separate
-      //    question this fix deliberately does not answer.
-      if (
-        current.ok &&
-        first.recordedContentHash !== null &&
-        current.sha256 !== first.recordedContentHash
-      ) {
-        continue;
+      // 2. The destination is MANAGED — the ledger records a hash for it — so
+      //    every transition it can undergo belongs to the ARTIFACT arm, which
+      //    owns the ledger's evidence and already decides all three outcomes
+      //    from it: the hash-gated advance when the bytes still match what was
+      //    recorded (`artifact-plan.ts` rule 3), the `divergent` retention when
+      //    they do not (a hand-edit, which `replace-if-unmodified` promises to
+      //    preserve), and the `refresh-semantics-retain` retention. Composing a
+      //    payload write for the same destination would either contradict that
+      //    decision or put two actions on one destination, which apply refuses
+      //    outright. Deferring here is what keeps the two arms from disagreeing
+      //    inside one response.
+      //
+      //    A destination with no recorded hash is an unmanaged pre-existing
+      //    file rather than a hand-edit, and keeps its existing overwrite
+      //    behaviour — narrowing that is a separate question this fix
+      //    deliberately does not answer.
+      if (first.recordedContentHash !== null) {
+        // Observable bytes: the artifact arm has everything it needs.
+        if (current.ok) continue;
+        // Unobservable bytes prove NOTHING — `too-large`, `unsafe` and
+        // `unsupported` are exactly the states in which an overwrite could
+        // destroy content no one has read. Mirrors `artifact-plan.ts` rule 1's
+        // `current-bytes-unreadable` retention: withhold rather than assume. A
+        // genuinely ABSENT destination is the one safe exception, so a deleted
+        // managed artifact is still restored.
+        if (current.status !== "missing") continue;
       }
+
+      // 3. `refresh: retain` never replaces content that is already there. The
+      //    sibling arm states this as its own rule (`artifact-plan.ts`'s
+      //    `refresh-semantics-retain`); stating it explicitly here keeps the
+      //    two arms readable side by side instead of leaving it implied by the
+      //    union happening to have only two members today.
+      if (first.semantics.refresh === "retain" && first.target.exists) continue;
 
       actions.push({
         destination,

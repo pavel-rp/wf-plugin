@@ -612,3 +612,80 @@ test("an inadmissible root carries the empty preview, claiming nothing it did no
   assert.deepEqual(out.payloads, { actions: [], rejected: [], conflicts: [] });
   assert.deepEqual(out.findings, []);
 });
+
+// --- WF-476 follow-up: a MANAGED destination belongs to the artifact arm ------
+//
+// The two arms plan the same destination from different evidence. Once the
+// ledger records it, every transition it can undergo — advance, divergent
+// retention, refresh-retain — is the artifact arm's decision, made from that
+// record. The payload arm's job is to establish destinations the ledger does not
+// yet manage. Overlapping is not merely redundant: two actions on one
+// destination is a whole-plan refusal.
+
+test("a ledger-recorded destination whose SOURCE moved composes no payload action", () => {
+  // The ordinary upgrade. The destination still holds exactly what the lifecycle
+  // wrote (so it is not a hand-edit), and the pack now declares different bytes.
+  // The artifact arm composes its hash-gated advance for this; a payload write
+  // alongside it would put two actions on one destination and refuse the plan.
+  const recorded = "c".repeat(64);
+  const out = planPayloads([
+    fact({
+      identity: { ok: true, sha256: DIGEST_B, bytes: 20 },
+      current: { ok: true, sha256: recorded, bytes: 12 },
+      recordedContentHash: recorded,
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "the payload arm duplicated an artifact advance");
+  assert.deepEqual(out.findings, []);
+});
+
+test("a ledger-recorded destination with UNREADABLE bytes composes no payload action", () => {
+  // Fail-closed: `too-large` proves nothing about whether the file was edited, so
+  // it may not license an overwrite of a file the lifecycle manages.
+  const out = planPayloads([
+    fact({
+      current: { ok: false, status: "too-large" },
+      recordedContentHash: "c".repeat(64),
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "an unreadable managed destination was overwritten");
+});
+
+test("a ledger-recorded destination that is ABSENT is still restored", () => {
+  // The safe exception, pinned so a later tightening cannot swallow it.
+  const out = planPayloads([
+    fact({
+      current: { ok: false, status: "missing" },
+      recordedContentHash: "c".repeat(64),
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: false },
+    }),
+  ]);
+
+  assert.equal(out.preview.actions.length, 1, "a deleted managed artifact was not restored");
+  assert.equal(out.preview.actions[0]?.write, "create");
+});
+
+test("`refresh: retain` never overwrites a destination that already exists", () => {
+  const out = planPayloads([
+    fact({
+      semantics: { ...COPY, refresh: "retain" },
+      current: { ok: true, sha256: DIGEST_B, bytes: 9 },
+      target: { ok: true, canonicalTarget: "/ws/.wf/thing.md", exists: true },
+    }),
+  ]);
+
+  assert.deepEqual(out.preview.actions, [], "a `retain` refresh composed an overwrite");
+});
+
+test("`refresh: retain` still CREATES a destination that does not exist yet", () => {
+  // `retain` governs replacement, not establishment — production is what decides
+  // whether the file appears at all.
+  const out = planPayloads([fact({ semantics: { ...COPY, refresh: "retain" } })]);
+
+  assert.equal(out.preview.actions.length, 1);
+  assert.equal(out.preview.actions[0]?.write, "create");
+});

@@ -121,8 +121,9 @@ notes below record each binding's grounding status and the load-bearing choices 
   and read from another — the same class of defect as F-1 itself, where the lifecycle's own
   question path was blind to the answer apply had just persisted. The fix is the one the
   project settled on: **the capability profile is the authoritative persisted-answer
-  surface**, reached through the resolver's typed `resolve_profile` tool (values only,
-  override-merged), and `_local/config.md` stays the human-facing core/registry config
+  surface**, reached through the resolver's typed `resolve_profile` tool (the persisted
+  values as they stand — no template or override tier is merged in), and `_local/config.md`
+  stays the human-facing core/registry config
   rather than an answer store.
   - **Read-through, not migration.** Existing projects already carry `linear-team` in their
     `## Linear` section, so the ops file documents a fallback read of that section when the
@@ -130,10 +131,15 @@ notes below record each binding's grounding status and the load-bearing choices 
     both hold a value. Nothing writes the value back to `_local/config.md`, so the fallback
     decays naturally as projects re-run init; a one-time migration was considered and
     deliberately not taken (it would need a write path this capability does not own).
-  - **`linear-project` is not an asked answer** and was checked against the profile template
-    before being touched: it is template data with the default `none`. It moves to the same
-    `resolve_profile` values view because that is where the template's own data lives — not
-    because it is a persisted answer.
+  - **`linear-project` is not an asked answer**, and that is exactly why it may not be read
+    from the profile *alone*. It is template data with the default `none`, sitting outside
+    `ask[]`, and `resolve_profile` returns the persisted document as it stands — it merges
+    in no template tier — so nothing ever puts the key there. Reading it only from the
+    profile would therefore have silently dropped every existing project's configured
+    **Linear Project** to `none`: issues created unscoped, `list_milestones` empty, and no
+    error anywhere. It takes the same three-step read-through as `linear-team` (profile →
+    `## Linear` section → the literal `none`). The general rule: "where does the lifecycle
+    persist this?" decides which tier is *authoritative*, never which tiers are *read*.
   - The resolver snapshot's `providerConfig` field (consumer inventory §7 field #9) remains
     deliberately unpopulated by core — a provider-specific config-section name is domain
     knowledge core doesn't carry — which is why the fallback read is a direct local read

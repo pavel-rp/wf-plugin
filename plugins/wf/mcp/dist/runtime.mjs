@@ -20093,9 +20093,11 @@ function planPayloads(facts) {
       if (current.ok && current.sha256 === first.identity.sha256 && current.bytes === first.identity.bytes) {
         continue;
       }
-      if (current.ok && first.recordedContentHash !== null && current.sha256 !== first.recordedContentHash) {
-        continue;
+      if (first.recordedContentHash !== null) {
+        if (current.ok) continue;
+        if (current.status !== "missing") continue;
       }
+      if (first.semantics.refresh === "retain" && first.target.exists) continue;
       actions.push({
         destination,
         canonicalTarget,
@@ -30463,18 +30465,6 @@ var ResolverService = class {
     return this.discoverPacksWithInspection(recovery).response;
   }
   /**
-   * The discovery join PLUS the per-pack inspection results it already computed.
-   *
-   * `discoverPacks()` deliberately returns only the body-free response, but the
-   * planner (WF-447) needs one more fact discovery does not surface: the resolved
-   * `manifestPath` of a pack that is installed but NOT yet registered, so its
-   * `requires` / `conflicts` / provider scopes can join the post-plan capability
-   * set. Re-inspecting through `inspectPack()` would re-run the `claude` CLI once
-   * per pack and let the inventory shift mid-run — the exact cost
-   * `inspectListedPack` was split out to avoid — so the inspections are handed
-   * back from the single run instead.
-   */
-  /**
    * Give one capability's declared questions the PERSISTED-ANSWER overlay the
    * registry-composition read path already applies (WF-476).
    *
@@ -30513,6 +30503,18 @@ var ResolverService = class {
     const applied = applyQuestionValues(questions, { persisted: parsed });
     return applied.ok ? applied.questions : questions;
   }
+  /**
+   * The discovery join PLUS the per-pack inspection results it already computed.
+   *
+   * `discoverPacks()` deliberately returns only the body-free response, but the
+   * planner (WF-447) needs one more fact discovery does not surface: the resolved
+   * `manifestPath` of a pack that is installed but NOT yet registered, so its
+   * `requires` / `conflicts` / provider scopes can join the post-plan capability
+   * set. Re-inspecting through `inspectPack()` would re-run the `claude` CLI once
+   * per pack and let the inventory shift mid-run — the exact cost
+   * `inspectListedPack` was split out to avoid — so the inspections are handed
+   * back from the single run instead.
+   */
   discoverPacksWithInspection(recovery = noRecoveryReport()) {
     const snapshot = this.ensure();
     const workspaceRoot = this.ports.workspaceRoot;
@@ -31909,13 +31911,25 @@ var ResolverService = class {
       if (live.status === "ok" && live.sha256 !== recordedHash && live.sha256 !== approved.identity.sha256) {
         return {
           ok: false,
-          detail: `the payload destination \`${destination}\` has been modified since the plan was approved (recorded content hash ${recordedHash}, observed sha256 ${live.sha256}); its declared \`replace-if-unmodified\` refresh withholds the write, so nothing was written.`
+          detail: `the payload destination \`${destination}\` has been modified since the plan was approved (recorded content hash ${recordedHash}, observed sha256 ${live.sha256}); its declared \`${approved.semantics.refresh}\` refresh withholds the write, so nothing was written.`
+        };
+      }
+      if (live.status !== "ok" && live.status !== "missing") {
+        return {
+          ok: false,
+          detail: `the payload destination \`${destination}\` is lifecycle-managed but its current bytes could not be read (${live.status}), so the plan's unmodified-destination proof could not be re-established under the lock; nothing was written.`
         };
       }
     }
+    const NOT_ACTED_ON = /* @__PURE__ */ new Set([
+      "retained-by-omission",
+      "retained-orphaned",
+      "retained-absence-indeterminate"
+    ]);
     const actedOn = /* @__PURE__ */ new Set([
       ...plan.registryDelta.additions.map((entry) => entry.pluginId),
-      ...plan.registryDelta.retentions.map((entry) => entry.pluginId),
+      ...plan.registryDelta.deregistrations.map((entry) => entry.pluginId),
+      ...plan.registryDelta.retentions.filter((entry) => !NOT_ACTED_ON.has(entry.reason)).map((entry) => entry.pluginId),
       ...approved.owners.map((owner) => owner.pluginId)
     ]);
     const declared = [];

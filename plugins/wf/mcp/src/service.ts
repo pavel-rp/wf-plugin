@@ -165,7 +165,7 @@ import {
   type TargetRender,
 } from "./resolver/apply-targets.js";
 import type {
-  PayloadCurrentBytes,
+  PayloadSourceIdentity,
   PayloadTargetResolution,
   PlanPayloadFact,
 } from "./resolver/payload-plan.js";
@@ -191,6 +191,7 @@ import {
   type PlanAction,
   type PlanAdmissionState,
   type PlanInstallResponse,
+  type PlanRegistryReason,
   type PlanRepairScope,
   APPLY_ENVELOPE_VERSION,
   type ApplyAppliedAction,
@@ -1484,18 +1485,6 @@ export class ResolverService {
   }
 
   /**
-   * The discovery join PLUS the per-pack inspection results it already computed.
-   *
-   * `discoverPacks()` deliberately returns only the body-free response, but the
-   * planner (WF-447) needs one more fact discovery does not surface: the resolved
-   * `manifestPath` of a pack that is installed but NOT yet registered, so its
-   * `requires` / `conflicts` / provider scopes can join the post-plan capability
-   * set. Re-inspecting through `inspectPack()` would re-run the `claude` CLI once
-   * per pack and let the inventory shift mid-run — the exact cost
-   * `inspectListedPack` was split out to avoid — so the inspections are handed
-   * back from the single run instead.
-   */
-  /**
    * Give one capability's declared questions the PERSISTED-ANSWER overlay the
    * registry-composition read path already applies (WF-476).
    *
@@ -1538,6 +1527,18 @@ export class ResolverService {
     return applied.ok ? applied.questions : questions;
   }
 
+  /**
+   * The discovery join PLUS the per-pack inspection results it already computed.
+   *
+   * `discoverPacks()` deliberately returns only the body-free response, but the
+   * planner (WF-447) needs one more fact discovery does not surface: the resolved
+   * `manifestPath` of a pack that is installed but NOT yet registered, so its
+   * `requires` / `conflicts` / provider scopes can join the post-plan capability
+   * set. Re-inspecting through `inspectPack()` would re-run the `claude` CLI once
+   * per pack and let the inventory shift mid-run — the exact cost
+   * `inspectListedPack` was split out to avoid — so the inspections are handed
+   * back from the single run instead.
+   */
   private discoverPacksWithInspection(recovery: RecoveryReport = noRecoveryReport()): {
     response: DiscoverPacksResponse;
     inspected: Map<string, InspectPackResponse>;
@@ -3626,7 +3627,20 @@ export class ResolverService {
       ) {
         return {
           ok: false,
-          detail: `the payload destination \`${destination}\` has been modified since the plan was approved (recorded content hash ${recordedHash}, observed sha256 ${live.sha256}); its declared \`replace-if-unmodified\` refresh withholds the write, so nothing was written.`,
+          detail: `the payload destination \`${destination}\` has been modified since the plan was approved (recorded content hash ${recordedHash}, observed sha256 ${live.sha256}); its declared \`${approved.semantics.refresh}\` refresh withholds the write, so nothing was written.`,
+        };
+      }
+      // The proof FAILS CLOSED. `too-large`, `unsafe` and `unsupported` mean the
+      // bytes were never observed, so "unmodified" was never established — and an
+      // overwrite would destroy content no one has read. Only a genuinely absent
+      // destination is safe to (re-)create, which is how a deleted managed
+      // artifact is still restored. Mirrors `artifact-plan.ts` rule 1's
+      // `current-bytes-unreadable` retention rather than assuming the write is
+      // fine because the comparison could not be made.
+      if (live.status !== "ok" && live.status !== "missing") {
+        return {
+          ok: false,
+          detail: `the payload destination \`${destination}\` is lifecycle-managed but its current bytes could not be read (${live.status}), so the plan's unmodified-destination proof could not be re-established under the lock; nothing was written.`,
         };
       }
     }
@@ -3652,9 +3666,30 @@ export class ResolverService {
     // hide by leaving the delta); and only a pack that is neither selected nor an
     // approved owner is excluded — which is exactly the declaration the PLANNER
     // also refused to consider, so plan and mutator now scope identically.
+    //
+    // "ACTED ON" IS THE PLANNER'S OWN PREDICATE, NOT A LOOSER PROXY. The planner
+    // admits a pack when `(wanted || removing)` (`plan-install.ts` — the `acting`
+    // test). Additions and deregistrations satisfy that by construction; the
+    // retentions bucket does NOT, because it mixes packs the user selected with
+    // packs merely left alone. Reading it whole puts a registered-but-unselected
+    // co-declarer back in scope and refuses the very install this precondition
+    // was narrowed to allow — the same defect one step further in.
+    //
+    // Stated as an EXCLUSION of the three not-selected reasons rather than an
+    // allow-list of the selected ones, so the failure direction of a reason added
+    // later is a spurious refusal (loud, fail-closed) instead of a silently
+    // skipped check.
+    const NOT_ACTED_ON: ReadonlySet<PlanRegistryReason> = new Set([
+      "retained-by-omission",
+      "retained-orphaned",
+      "retained-absence-indeterminate",
+    ]);
     const actedOn = new Set([
       ...plan.registryDelta.additions.map((entry) => entry.pluginId),
-      ...plan.registryDelta.retentions.map((entry) => entry.pluginId),
+      ...plan.registryDelta.deregistrations.map((entry) => entry.pluginId),
+      ...plan.registryDelta.retentions
+        .filter((entry) => !NOT_ACTED_ON.has(entry.reason))
+        .map((entry) => entry.pluginId),
       ...approved.owners.map((owner) => owner.pluginId),
     ]);
     const declared: { pluginId: string; capability: string; source: string; semantics: PayloadSemantics }[] = [];
@@ -4286,12 +4321,12 @@ export class ResolverService {
     // it: the bytes on disk are a property of the destination, not of the row,
     // and re-reading per row would make a co-owned target's facts depend on
     // iteration order.
-    const currentByDestination = new Map<string, PayloadCurrentBytes>();
-    const currentBytesOf = (destination: string): PayloadCurrentBytes => {
+    const currentByDestination = new Map<string, PayloadSourceIdentity>();
+    const currentBytesOf = (destination: string): PayloadSourceIdentity => {
       const memo = currentByDestination.get(destination);
       if (memo !== undefined) return memo;
       const observed = fingerprint(admittedRoot, destination, MAX_DECLARED_SOURCE_BYTES);
-      const resolved: PayloadCurrentBytes =
+      const resolved: PayloadSourceIdentity =
         observed.status === "ok"
           ? { ok: true, sha256: observed.sha256, bytes: observed.bytes }
           : { ok: false, status: observed.status };

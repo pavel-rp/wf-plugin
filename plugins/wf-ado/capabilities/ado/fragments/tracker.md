@@ -93,13 +93,23 @@ it.
   section meant they were written to one surface and read from another — the same class of
   defect as F-1 itself, where the lifecycle's own question path was blind to the answer
   apply had just persisted. Both now come from the resolver's typed `resolve_profile`
-  query (values only, override-merged), under the project's settled decision that **the
+  query (the persisted values as they stand — no template or override tier is merged in),
+  under the project's settled decision that **the
   capability profile is the authoritative persisted-answer surface** and `_local/config.md`
   stays human-facing core/registry config rather than an answer store.
   - **Each value was checked against the profile template before being moved.**
-    `Work Item ID Prefix` is *not* in `ask[]` — it is template data with the default `ADO` —
-    so it is not a persisted answer and deliberately keeps its config-section read. Moving
-    it would have been cargo-culting the fix rather than applying its rule.
+    `work-item-id-prefix` is *not* in `ask[]` — it is template data with the default `ADO` —
+    so it is not a persisted answer, and moving it onto the profile alone would have been
+    cargo-culting the fix rather than applying its rule. It takes the **same** three-step
+    read-through as the asked values (profile → config section → shipped default), for the
+    same reason: `resolve_profile` returns the persisted document as it stands and merges
+    in no template, so a key nothing writes is simply absent there.
+  - **A value with a working default may not decide `unconfigured`.** The prefix therefore
+    sits outside the configured/unconfigured gate entirely. Leaving it in was a live defect,
+    not a stylistic one: nothing writes the `## Azure DevOps` section any more
+    (`plugins/wf-ado/skills/init/SKILL.md` — "This skill performs no write at all"), so a
+    fresh project that answered both lifecycle questions still resolved `unconfigured` and
+    degraded to the local-only fallback silently.
   - **Read-through, not migration.** Existing projects already carry both values in their
     `## Azure DevOps` section, so the ops file documents a fallback read of that section
     when the profile yields nothing — **profile first, config second**, with the profile
