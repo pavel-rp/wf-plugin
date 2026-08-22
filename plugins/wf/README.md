@@ -25,6 +25,8 @@ Some skills delegate work to **subagents** (the `*.md` files in this plugin's `a
 
 Sets the repo up in one journey: it admits the workspace root, discovers the installed capability packs, scaffolds `_local/` with a default config and gitignores it, then takes an explicit pack selection, asks every unresolved setup question **once** in a single batch, and confirms **one** plan before applying it in **one** transaction. Selecting nothing is a valid outcome and leaves the bare-core scaffold and nothing else. Declining the plan leaves that scaffold intact and performs no lifecycle change. Idempotent — safe to re-run.
 
+**Re-running reconciles.** Once the repo carries lifecycle state, the same command shows one delta covering additions, drift repairs and explicit removals, and applies it after one confirmation in the same single transaction. There is no `--remove` flag: **removal has exactly one surface — deselecting a pack in that round.** An orphaned registration, a disabled one, and one whose durable record is missing are each shown and **retained**; a missing record is bootstrapped *without* deleting anything. A settled repo reports no drift and never enters the mutation stage at all — and a repo where nothing can be applied but something has diverged (a hand-edited managed artifact, a withheld advance) says *retained divergence* rather than pretending to be clean.
+
 ### Configure child routing (optional)
 
 `/wf:init` writes an empty `## Routing` override table in `_local/config.md`:

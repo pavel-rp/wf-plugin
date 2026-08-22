@@ -1,6 +1,6 @@
 ---
 name: init
-description: Sets up a repository for the wf:* skill suite in one journey — admitting the workspace root, discovering installed capability packs, scaffolding the _local/ task folder and default config, taking an explicit pack selection, asking every unresolved setup question once, confirming one plan, and applying it in a single transaction. Use once per new repository before running /wf:spec; idempotent on subsequent runs.
+description: Sets up a repository for the wf:* skill suite in one journey — admitting the workspace root, discovering installed capability packs, scaffolding the _local/ task folder and default config, taking an explicit pack selection, asking every unresolved setup question once, confirming one plan, and applying it in a single transaction. Re-running an already-set-up repository reconciles it instead, showing one delta of additions, drift repairs and explicitly deselected removals and applying it after the same single confirmation; a settled repository reports no drift and mutates nothing. Use once per new repository before running /wf:spec, and again to add, remove, upgrade or repair packs.
 allowed-tools: [Read, Write, Edit, Glob, Bash, AskUserQuestion, Skill, ToolSearch]
 ---
 
