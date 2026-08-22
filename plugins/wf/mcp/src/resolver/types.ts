@@ -839,7 +839,18 @@ export type PlanFindingCode =
   /** An interrupted transaction could not be fully recovered before entry, so no
    *  lifecycle state was read and no plan was generated (WF-452). Plan-level:
    *  `pluginId` is `null`, because the halt precedes any per-pack classification. */
-  | "plan/halted-unrecovered";
+  | "plan/halted-unrecovered"
+  /** The pack inventory is not trustworthy enough to establish that anything is
+   *  unowned, so a plan derived from it is NOT APPLICABLE (WF-460). Plan-level:
+   *  `pluginId` is `null`, because the inventory is a whole-run fact.
+   *
+   *  ADDITIVE WITHIN THE ALREADY-FROZEN `finding` FACT CLASS, and deliberately
+   *  not an envelope extension: `PLAN_ENVELOPE_VERSION`, `PLAN_ACTION_ORDER`, and
+   *  `PLAN_IDENTITY_FACT_CLASSES` are all unchanged, and `plan_install` never
+   *  emits this code — so every plan that could be produced before is produced
+   *  byte-identically, down to its `planId`. Only the derived repair plan of
+   *  WF-460 raises it. */
+  | "plan/inventory-untrustworthy";
 
 /** One planning finding. `pluginId` is `null` for a plan-level finding. */
 export interface PlanFinding {
