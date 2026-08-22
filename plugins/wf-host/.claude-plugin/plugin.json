@@ -1,6 +1,6 @@
 {
   "name": "wf-host",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "wf generic host-provider pack — the host capability owns only the qa-execution host surface. Ships /wf-host:qa-host for profile-driven, bounded temporary exposure, augmentation, synthetic fixtures, transactional seed operations, and durable reverse-order teardown recovery, plus /wf-host:init for resolver-owned self-registration. Stack- and tracker-agnostic.",
   "author": {
     "name": "Pavel Kalabin",

@@ -1,27 +1,46 @@
 ---
 name: init
-description: Onboards the wf-sandbox-testing pack into a wf-initialized repo in one command — self-registers the pack's sandbox-testing capability into the wf capability registry by calling core's inspect_pack/register_pack resolver tools with the stable plugin id wf-sandbox-testing, no manual install-root discovery or hand-edited registry rows. Use once (after /wf:init) to record the skill-eval harness as an active capability so registry validation and /wf:resolve see it; re-run any time — register_pack is idempotent and self-checks the wiring. Fails loudly directing the user to /wf:init when the repo is not wf-initialized.
-allowed-tools: [Read, Bash]
+description: Onboards the wf-sandbox-testing pack by entering the canonical /wf:init lifecycle with wf-sandbox-testing seeded into the selection round, so a project gets the same discovery, question, delta, confirmation and apply it would get from /wf:init itself. Preserves every registration the project already has and adds wf-sandbox-testing to them; it decides nothing about the pack's state, asks nothing of its own, and performs no registry write. The pack ships the sandbox-testing capability as a presence-only feature. Use after /wf:init to record the skill-eval harness as an active capability; re-run any time — a re-run over a settled project reports no drift and mutates nothing. /wf:init is the canonical command and does the same thing for every pack at once.
+allowed-tools: [Skill, Bash]
 ---
 
-# /wf-sandbox-testing:init — Onboard the skill-eval harness pack (self-register via the resolver)
+# /wf-sandbox-testing:init — Onboard the wf-sandbox-testing pack (a compatibility alias onto the shared lifecycle)
 
-Collapse wf-sandbox-testing onboarding into **one command**, driven by the core-bundled
-**wf-resolver** MCP service. Installing the plugin makes `/wf-sandbox-testing:init` discoverable
-and the harness scripts (`assert/`, `corpus/`, `runner/`, `fixtures/`) available by native
-composition — but it registers **no** capability row on its own. That requires a row in the
-downstream `## Capabilities` registry. This skill performs that registration by calling core's typed
-`inspect_pack` / `register_pack` tools with the pack's **stable plugin id, `wf-sandbox-testing`** —
-it never probes `${CLAUDE_PLUGIN_ROOT}`, never derives an install root itself, and never hand-edits
-the `## Capabilities` table or the `## Plugin Roots` mapping. Core resolves the install path,
-validates the manifest, computes a fingerprint, and owns the registry write end-to-end — then
-self-checks that the capability resolves.
+This skill is a **compatibility alias**: it contributes exactly one thing to the
+canonical setup lifecycle — "add `wf-sandbox-testing` to the desired set" — and
+then gets out of the way. Everything else, from admitting the workspace root to
+the single `apply_install` that registers the capability, belongs to `/wf:init`
+and happens there.
 
-The `sandbox-testing` capability is a **feature** capability: it owns no provider surface and
-attaches no phase fragment. Its registry row is a **presence-only** declaration so registry
-validation acknowledges the harness and `/wf:resolve` reports it — no capability-aware phase changes
-whether the row is present or absent. The harness itself is invoked as scripts (see the pack README),
-never fired by a phase.
+It follows the compatibility-alias route that core declares in `/wf:init`'s
+interface contract and defines procedurally in that skill's `alias-route.md`,
+matching the reference conversion in `plugins/wf-fake/skills/init/SKILL.md`.
+
+> **What this skill does not decide.** Whether `wf-sandbox-testing` is installed,
+> enabled, already registered, or drifted. Whether a repair is needed. What may
+> be deleted. Which questions are still unanswered. What the delta contains.
+> Whether to apply it. Every one of those is answered by the canonical
+> lifecycle, which this skill merely enters. There is deliberately **no
+> conditional in this body that reads existing state.**
+
+**This pack asks nothing.** The `sandbox-testing` capability declares no
+interview question, so the canonical question round asks nothing on its behalf
+and this skill emits **no prompt of its own** — not a confirmation invented to
+fill the gap, not a "nothing to configure" acknowledgement, not a synthesized
+question about a value the pack could infer. Silence is the correct behaviour.
+The single canonical confirmation of the delta is the only interaction in the
+run, and it belongs to `/wf:init`.
+
+**A presence-only feature capability.** `sandbox-testing` owns no provider
+surface and attaches no phase fragment; its registry row is a presence
+declaration so registry validation acknowledges the harness and `/wf:resolve`
+reports it. The harness scripts themselves reach users by native plugin
+composition and are invoked directly — nothing about their availability is this
+skill's to check or report.
+
+> **`/wf:init` is the canonical command.** It runs this same journey for every
+> installed pack in one pass, so it is the one to reach for. This alias remains a
+> legitimate permanent entry point for anyone who already types it.
 
 ---
 
@@ -31,8 +50,9 @@ never fired by a phase.
 /wf-sandbox-testing:init
 ```
 
-Takes no arguments — it always registers the single `sandbox-testing` capability this pack ships,
-under the stable plugin id `wf-sandbox-testing`.
+Takes no arguments — unchanged from before this skill became an alias. Selection
+and confirmation are taken interactively **by the canonical lifecycle**; this
+skill pre-ticks one box and passes nothing else.
 
 ---
 
@@ -40,98 +60,140 @@ under the stable plugin id `wf-sandbox-testing`.
 
 **Allowed:**
 
-- Call the bundled `wf-resolver` MCP tools: `resolve_config`, `resolve_registry`, `inspect_pack`,
-  `register_pack`, and — on a failure — `resolve_gate`.
-- Read `_local/config.md` (or the `registryPath` `resolve_config` returns) to confirm `/wf:init` has
-  already run.
+- Run `pwd -P` once to obtain the absolute workspace root for the routing call.
+- Call the bundled `wf-resolver` `resolve_routing` tool to route the one
+  sibling-Skill edge below.
+- Invoke `/wf:init` through the **Skill** tool, with this pack's own stable
+  plugin id as the seed.
+- Relay the `INIT` terminal block that invocation returns.
 
 **Forbidden:**
 
-- Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive an install root by hand —
-  `inspect_pack`/`register_pack` resolve it.
-- Hand-edit the `## Capabilities` table or a `## Plugin Roots` row — `register_pack` owns that write
-  exclusively.
-- Modify any source file, or write anywhere at all — this skill only calls resolver tools and reads
-  config. It seeds **no** config section (the harness reads no `_local/config.md` key) and needs no
-  profile (the capability declares no `profile-template:`).
-- Register a `/command` (impossible — native discovery only; this skill wires the registry row).
-- Run builds, tests, installs, container runs, or any network/version-control operation.
+- Call any lifecycle resolver tool — `discover_packs`, `plan_install`,
+  `apply_install`, `repair_packs`, `register_pack`, `inspect_pack`, or
+  `resolve_gate`. Registration happens inside the canonical apply, and nowhere
+  else.
+- Read, infer, or report any lifecycle fact of its own: presence, enablement,
+  registration, drift, recovery, or whether a question is answered.
+- Prompt for anything. This pack declares no question, so the correct output is
+  silence — never a substitute prompt, a placeholder check, or a value carried
+  forward.
+- Seed anything but this pack's own id, seed more than one id, or pass a
+  selection, an answer, or a confirmation on the command line.
+- Render a delta, take a confirmation, or emit a second terminal block.
+- Derive, validate, or second-guess the workspace root. The canonical route
+  admits the root; this skill enters that route and inherits the same admitted
+  workspace by identity, not by imitating the check.
+- Roll back, undo, or repair anything. Mutation and rollback are the canonical
+  transaction's, taken and released within it; this skill owns no undo and takes
+  no lock of its own.
+- Write or edit **any** file, including `_local/config.md` and any profile
+  override. This skill performs no write at all.
+- Filesystem-read a sibling skill's body — `/wf:init` is reached through the
+  **Skill** tool, and a failed invocation stops into the error block below rather
+  than falling back to a read.
+- Run builds, tests, installs, container runs, or any network or version-control
+  operation.
 
 ---
 
 ## Onboarding procedure
 
-Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+One step, and it is the whole skill.
 
-1. **Precondition.** Call `resolve_config({ workspaceRoot: "<workspace-root>" })` for the resolved registry location and Read it to confirm
-   `_local/config.md` exists. If the resolver reports the project is uninitialized (no resolved
-   config / absent `_local/config.md`), **stop loudly**: "Run `/wf:init` first —
-   `/wf-sandbox-testing:init` registers into the registry that `/wf:init` creates. It never registers
-   into a half-configured repo." Do not call `inspect_pack` or `register_pack`.
-2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether `sandbox-testing`
-   already appears with `validity: "ok"`. This never skips a later step — it only decides whether the
-   Final Output says `onboarded` or `already-registered`.
-3. **Inspect the pack.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-sandbox-testing" })`. Read-only; returns
-   `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
-   - `valid: false` (not installed, disabled, no readable
-     `capabilities/sandbox-testing/manifest.md`, or `claude plugin list --json` itself unavailable) →
-     go to **Failure path**; do not call `register_pack`.
-4. **Register.** Call
-   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-sandbox-testing", expectedFingerprint: <fingerprint from step 3> })`.
-   It writes the `## Plugin Roots` row and the `sandbox-testing` `## Capabilities` row in a single
-   write, refreshes the resolver snapshot, and self-checks that `sandbox-testing` now resolves —
-   returning `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
-   - `status: "rejected"` → **Failure path**.
-   - `status: "registered"`, `selfCheck: "ok"` → success; report `onboarded` (or
-     `already-registered` per step 2).
-   - `status: "registered"`, `selfCheck: "failed"` → report `partial`: the registry write landed but
-     `sandbox-testing` still does not resolve; direct the user to re-run `/wf-sandbox-testing:init`
-     after checking the pack install.
+1. **Route the edge, then enter the lifecycle.** Run `pwd -P` once and hold the
+   absolute result as `<workspace-root>` — in a linked-worktree Agent that is the
+   Agent's own worktree, never a parent's. Call `resolve_routing` with
+   `workspaceRoot: "<workspace-root>"`, `role: "init"`,
+   `unitIds: ["sandbox-testing:init"]`, `shapeEvidence: { workSurface:
+   "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
+   ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical",
+   contextIsolation: "none", independentReview: false, returnContract:
+   "mechanically-judgeable", requestedParallelism: 1 }`,
+   `supportsModelSelector: false`, and `supportsEffortSelector: false`. Emit the
+   compact operational record. On `status: stop` or a non-null `diagnostic`, stop
+   before the invocation and report the resolver's reason. Otherwise obey the
+   selected `inline` shape, pass no selector, and invoke
+   `/wf:init --seed wf-sandbox-testing` through the **Skill** tool.
 
-The `sandbox-testing` capability's manifest declares **no** `profile-template:`, so the Final
-Output's `Profile:` row is always `skipped — no template` — a static fact, not a resolver call.
-
-### Failure path (WF-272 diagnostics)
-
-Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a pack is a registry write). Report
-its `categories`, `diagnostics`, and `recovery` alongside the pack-specific `issues[]` (from
-`inspect_pack`) or `reason` (from a rejected `register_pack`) — never a bare error. Finish with
-`partial`.
+2. **Relay what comes back, verbatim.** The `INIT` block is this skill's Final
+   Output. Add the harness note below it and nothing else — no re-derived status,
+   no second block, no restated delta.
 
 ---
 
 ## Edge Cases
 
-- **`/wf:init` not run:** stop per the precondition step above, directing the user to `/wf:init` —
-  never register into a half-configured repo (success criterion 5).
-- **wf-sandbox-testing not installed or disabled** (`inspect_pack.installed`/`enabled` false):
-  failure path; direct the user to install/enable the plugin, then re-run.
-- **`claude plugin list --json` unavailable:** `inspect_pack` reports `installed: false` with an
-  issue naming the CLI call as the cause — failure path; check the `claude` CLI, then re-run.
-- **No readable pack manifest** (`inspect_pack.capabilities` empty): failure path; the install looks
-  corrupted — reinstall the plugin.
-- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run
-  `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-sandbox-testing" })` to
-  get the current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>",
-  pluginId: "wf-sandbox-testing", expectedFingerprint: <current fingerprint> })`.
-- **`sandbox-testing` already registered:** `register_pack` upserts idempotently — re-running is
-  always safe; report `already-registered` per step 2's pre-check.
-- **Self-check FAIL:** report `partial`; never claim success.
+- **`/wf:init` has not run yet:** not a precondition this skill checks. `/wf:init`
+  *is* what is being invoked, and it scaffolds the bare core itself before any
+  pack transaction. The previous alias stopped loudly here; the canonical route
+  removes the condition rather than reporting on it.
+- **`wf-sandbox-testing` is disabled:** the seed is reported *not applied*; the
+  pack stays visible, retained and **unavailable**, and its enablement is never
+  flipped. Re-enabling the plugin is the user's action, outside this run. The rest
+  of the run proceeds normally.
+- **`wf-sandbox-testing` is already set up and the project is settled:** the
+  canonical settled exit — no plan call, no confirmation, no mutation call at all
+  — reported as `already-initialized` / `Apply: not run — no drift`. This is the
+  expected outcome of re-running, not a degenerate one.
+- **The question round asks nothing for this pack:** expected, and the whole
+  point. A pack that declares no question contributes none, and no prompt is
+  synthesized to stand in for one. Another pack in the same desired set may still
+  have its own question asked in that one round.
+- **The capability attaches no fragment and owns no surface:** expected. A
+  presence-only row changes no phase behaviour, and no capability term surfaces in
+  any core skill run because of it.
+- **The project has drifted:** the canonical repair plan handles it. A withheld
+  advance or a retained-but-not-benign artifact is reported as retained
+  divergence, never as no drift.
+- **The project already has other packs set up:** they are all preserved. Entering
+  through this command **adds** `wf-sandbox-testing` to them and deregisters
+  nothing — omission is never a removal.
+- **A root override is in play:** it targets the same admitted workspace `/wf:init`
+  targets, because this skill enters that one route rather than re-deriving a root
+  of its own.
+- **Recovery ran before the route:** it is reported on its own channel, separately
+  from the delta, exactly as `/wf:init` reports it.
+- **The apply is rolled back:** the canonical transaction's rollback restores the
+  workspace and reports it on the canonical envelope. This skill neither performs
+  nor narrates an undo of its own.
+- **The plan is declined:** `INIT — declined`; nothing was registered and
+  re-running is safe.
+- **`/wf:init` cannot be invoked** (the Skill tool is unavailable, or the
+  invocation errors): stop and report it. Never substitute a registration of this
+  skill's own, and never fall back to reading the sibling body.
 
 ---
 
 ## Final Output
 
-```
-WF-SANDBOX-TESTING-INIT — <onboarded | already-registered | partial>
+Relay the canonical block verbatim — this skill runs the canonical lifecycle, so
+it reports the canonical contract:
 
-Registry:   <registryPath from resolve_config>
-Pack root:  <installPath from inspect_pack — may be null on the failure path>
-Registered: sandbox-testing — <registered | already registered> (feature; no provider surface, no phase fragment)
-Profile:    skipped — no template
-Self-check: <PASS — sandbox-testing resolves | FAIL — <issues / reason>>
-
-Next: author a fixture and run a tier — see the pack README for the runner, the assertion tiers, the corpus, and the findings-loop procedure. Fixtures that script a provider also need the wf-fake pack installed and registered (the runner fails loudly naming wf-fake when it is absent). Re-run /wf-sandbox-testing:init any time — register_pack is idempotent.
 ```
+INIT — <initialized | already-initialized | declined | stopped | partial>
+
+<the block /wf:init returned, verbatim, including its Seed: line>
+
+Harness note:
+- sandbox-testing is a presence-only feature capability — no provider surface, no phase fragment; see the pack README for the runner, the assertion tiers and the corpus.
+```
+
+If the routing call stopped the run, or `/wf:init` could not be invoked, emit
+instead:
+
+```
+INIT — stopped
+
+Seed: wf-sandbox-testing — not applied (alias could not enter the canonical lifecycle)
+Reason: <the resolver diagnostic, or the invocation error, verbatim>
+
+Next: resolve the reason above, then re-run /wf-sandbox-testing:init.
+```
+
+**Both blocks are breaking replacements for the previous
+`WF-SANDBOX-TESTING-INIT — <status>` block** (MINOR, pre-1.0): one shared route
+has one terminal contract. The command itself is unchanged — same name, same zero
+arguments, same end state.
 
 **The final-output block must always be the very last thing output to chat.**

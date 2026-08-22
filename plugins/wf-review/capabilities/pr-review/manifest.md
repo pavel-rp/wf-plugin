@@ -23,9 +23,9 @@ abstract `delivery` operations (`review-threads-read`, `pr-comments-read`, `revi
 — no concrete host tool.
 
 **Registration in the `## Capabilities` registry is required** — run `/wf-review:init` once after
-`/wf:init`. The `ship.review` fill fires only through a registered row; `/wf-review:init`
-self-registers via the resolver's `inspect_pack`/`register_pack` tools (idempotent), refreshing the
-snapshot so the `slot` row resolves.
+`/wf:init`. The `ship.review` fill fires only through a registered row; `/wf-review:init` is a
+compatibility alias that seeds this pack into the canonical `/wf:init` lifecycle, whose apply is
+idempotent and refreshes the snapshot so the `slot` row resolves.
 
 ## Fragments
 

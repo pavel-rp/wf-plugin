@@ -1,6 +1,6 @@
 {
   "name": "wf-sandbox-testing",
-  "version": "0.13.2",
+  "version": "0.14.0",
   "description": "wf skill-eval harness pack — the sandbox-testing capability. Runs real headless wf:* skill invocations hermetically in a fingerprinted container, judges the runner's structural outputs (terminal block, workspace file set, invoked contract-op set) statistically over N runs, and emits a variance-aware report separating drift from regression. Ships the SMOKE/STATISTICAL tier commands, the baseline-comparison primitive, the behavioral-regression corpus mined retrofit-first from observed failures, and the findings-loop procedure that turns a new observed failure into an assertion. Downstream fixtures that script providers pair with the wf-fake pack. Ships /wf-sandbox-testing:new-experiment, an interview-driven scaffolder that emits a runnable experiment kit — manifest, kit-root files, and an engine-derived runbook — for the shared experiment engine, plus /wf-sandbox-testing:init for one-command self-registration.",
   "author": {
     "name": "Pavel Kalabin",
