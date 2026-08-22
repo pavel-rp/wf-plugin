@@ -61,14 +61,15 @@ this body is its implementation.
   `resolve_config`, `resolve_registry`, `resolve_profile`, `resolve_content`,
   `discover_packs`, `plan_install`, `repair_packs`, `resolve_inspect`, plus one
   explicit `resolve_refresh` after the scaffold writes.
-- **One** `apply_install` call per run, carrying the `expectedPlanId` of the plan
-  the user confirmed — the sole lifecycle mutation this skill performs.
+- **At most one** `apply_install` call per run — none at all on a settled exit —
+  carrying the `expectedPlanId` of the plan the user confirmed, and the sole
+  lifecycle mutation this skill performs.
 - Invoke `/wf:constitution` through the **Skill** tool.
 
 **Forbidden:**
 
 - Write or edit any file outside the scaffold writes named above.
-- Mutate lifecycle state by any path other than that single `apply_install` —
+- Mutate lifecycle state by any path other than that sanctioned `apply_install` —
   no hand-written ledger, no registry row written on a pack's behalf, no
   enablement flipped, no answer persisted directly.
 - Call `apply_install` without a confirmation, more than once per run, or with a

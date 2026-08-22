@@ -61,10 +61,11 @@ to a **configured `registryPath`** location that passes the defensive check —
 the one sanctioned scaffold write outside `_local/`, since relocating the
 registry is that key's whole purpose; read-only resolution through the bundled
 `wf-resolver` service (`resolve_config`, `resolve_registry`, `resolve_profile`,
-`resolve_inspect`, `discover_packs`, `plan_install`, `repair_packs`) and the one
-explicit `resolve_refresh` after the scaffold writes; **one** `apply_install` call per
-run, carrying the `expectedPlanId` of the exact plan the user confirmed — the
-sole lifecycle mutation this skill performs, and the sole writer of any
+`resolve_content`, `resolve_inspect`, `discover_packs`, `plan_install`,
+`repair_packs`) and the one explicit `resolve_refresh` after the scaffold writes;
+**at most one** `apply_install` call per run — none at all on a settled exit —
+carrying the `expectedPlanId` of the exact plan the user confirmed, the
+sole lifecycle mutation this skill performs and the sole writer of any
 lifecycle artifact; invoke the sibling `/wf:constitution` through the **Skill**
 tool; and pass `workspaceRoot` explicitly on every resolver call.
 
