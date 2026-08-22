@@ -12,10 +12,10 @@ of the way. Everything else, from admitting the workspace root to the single
 `apply_install` that registers the capability, belongs to `/wf:init` and happens
 there.
 
-It is the **reference implementation** of the alias route declared in core's
-`skills/init/interface.md` and procedurally defined in that skill's
-`references/alias-route.md`. A pack author converting their own setup command
-should read the conversion table in core's `references/alias-rationale.md` and
+It is the **reference implementation** of the compatibility-alias route that core
+declares in `/wf:init`'s interface contract and defines procedurally in that
+skill's `alias-route.md`. A pack author converting their own setup command will
+find the conversion table in core's paired `alias-rationale.md`, and should
 mirror what this file does.
 
 > **What this skill does not decide.** Whether `wf-fake` is installed, enabled,

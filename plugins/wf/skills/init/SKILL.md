@@ -310,14 +310,11 @@ Call `plan_install({ workspaceRoot, desired, answers })`. This is the plan the
 user will confirm and the plan that will be applied — recomputed over the
 answers, not patched from the Phase 5 probe.
 
-Relay from the envelope, without recomputing any of it: `applicability` with its
-`applicabilityBasis` (the explicit enumeration of every blocking finding and
-every blocking question, so no blocking condition is a silent omission); `mode`,
-the dominant lifecycle effect; `actions[]`, every action class in one
-deterministic order, saying which are mutating; `registryDelta`, `payloads`,
-`artifacts`, `repairs`, `evidenceSeeds`, and `answers.writes[]` — what would
-change and what would be retained; `findings[]` with each code and severity; and
-`recovery` / `inventory` on their own channels as in Phase 2.
+Relay from the envelope without recomputing any of it. The field list — down to
+`applicabilityBasis`'s enumeration of every blocking finding and question, and
+`recovery`/`inventory` on their own channels as in Phase 2 — lives at
+`envelope-relay.md`, obtained via `resolve_content({ workspaceRoot, class:
+"references-template", skill: "init", ref: "envelope-relay.md" })`.
 
 Branch on `applicability`:
 
@@ -356,20 +353,10 @@ Call `apply_install({ workspaceRoot, desired, answers, expectedPlanId })` —
 the run. Locks are taken and released inside the call; never hold one across a
 host phase.
 
-Relay the envelope: `status` — `applied`, `rejected`, `rolled-back`, `halted`, or
-`invalid-root` — with its single closed `reason` token on every non-`applied`
-outcome, reported verbatim and never translated into a plausible neighbouring
-class; `applied[]`, what changed, and `deferred[]`, what was deliberately not
-changed, each with its own reason; `rollback`, how far a guarded rollback got;
-`selfCheck`, `refreshed`, and `residue`, where `residue.clean` is the observable
-statement that no journal, backup, or empty backup directory was left behind; and
-`recovery` on its own channel as always.
-
-Outcomes: `applied` continues to Phase 9. `rejected` (including
-`apply/plan-stale`, the id check doing its job) and `halted` continue to Phase 9
-as well, but the run ends `partial` — relay the reason and say the workspace is
-unchanged except for the scaffold. `rolled-back` likewise, adding the rollback
-disposition. `invalid-root` ends `stopped`.
+Relay the envelope verbatim and branch on its `status` — every field to report,
+including `recovery` on its own channel and `upgrade`'s `remaining[]`, and the
+outcome table deciding which statuses end the run `partial`, lives at
+`envelope-relay.md`, obtained as in Phase 6. Follow it; it adds no second call.
 
 ---
 
@@ -394,11 +381,25 @@ in Phase 3, which is bare-core only. This phase always runs, including after a
 
 ## Phase 10: Establish the constitution
 
-Hand off to `/wf:constitution`, routed as a fixed sibling-Skill edge and
-**non-fatal** on any routing stop. The routing evidence, the unconditional
-invocation, and the two degradations that finish the run rather than stop it
-live at `constitution-handoff.md`, obtained via `resolve_content({ workspaceRoot,
-class: "references-template", skill: "init", ref: "constitution-handoff.md" })`.
+Route this fixed sibling-Skill edge immediately before work: call `resolve_routing`
+with `workspaceRoot: <the admitted root>`, `role: "constitution"`, `unitIds: ["init:constitution"]`,
+`shapeEvidence: { workSurface: "caller-context", atomicity: "atomic",
+unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low",
+toolWork: "none", validation: "mechanical", contextIsolation: "none",
+independentReview: false, returnContract: "mechanically-judgeable",
+requestedParallelism: 1 }`, `supportsModelSelector: false`, and
+`supportsEffortSelector: false`. Include `actualModel` only when the host
+exposes it; emit the compact operational record; pass no selector.
+
+On `status: stop` or a non-null `diagnostic`, keep this phase non-fatal: skip the
+constitution refresh, record the resolver's reason, and finish the run.
+Otherwise obey the selected `inline` shape and **unconditionally** invoke
+`/wf:constitution` through the Skill tool with no arguments. This skill carries
+**no existence check of its own** — `constitution`'s establish-or-update default
+handles both cases, writing a core-only record when the registry is empty and
+updating idempotently when the file exists. If invocation is unavailable, skip
+with a one-line note telling the user to run `/wf:constitution` manually — never
+stop the run on it.
 
 ---
 
