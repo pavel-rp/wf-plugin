@@ -82,7 +82,11 @@ export type PreservationClass =
   | "retained"
   /** The approved plan names no action for this destination at all (rule 5). */
   | "unlisted"
-  /** A recorded owner survives the plan — ownership is not exclusive. */
+  /** Ownership is not exclusive, so this plan may not delete. Two arms reach it:
+   *  a RECORDED owner survives (`shared-ownership`), or a current DECLARER that
+   *  the ledger never recorded survives (`unrecorded-declarer`) — the second
+   *  fires precisely when no recorded owner survives, so do not read this class
+   *  as "a recorded owner survives". */
   | "shared"
   /** Current bytes differ from the prior ledger hash — the file was edited. */
   | "edited"
