@@ -227,10 +227,11 @@ rollback never un-scaffolds it.
 Take the **reconcile** form when Phase 2 reported any pack already carrying
 lifecycle state — a non-empty `registeredCapabilities`, or any evidence
 comparison other than `evidence-missing`; otherwise take the fresh form below.
-Reconcile replaces Phase 4's selection and adds a diagnosis before it and a
-settled exit after it; Phases 5–8 (question round, plan, confirm, apply) and
-Phases 1–3 and 9–10 are the shared spine and are unchanged. Reconcile is not a
-flag and adds no status token. Its procedure lives at `reconcile-mode.md`,
+Reconcile replaces Phases 4–8 — a diagnosis before the selection, a desired-set
+round instead of a fresh one, and a settled exit that may reach no plan at all;
+Phases 1–3 and 9–10 are the shared spine. It adds no flag and no status token,
+and its steps defer to Phases 5, 6 and 8 by name. Its procedure lives at
+`reconcile-mode.md`,
 obtained via `resolve_content({ workspaceRoot, class: "references-template",
 skill: "init", ref: "reconcile-mode.md" })` on that path only. Follow it as
 written. Four invariants govern it; violating any is a defect, not a judgement:
@@ -464,7 +465,7 @@ Packs:
   (repeat one line per discovered pack; "none" when none was discovered)
 
 Reconcile: <n/a — fresh journey | settled — no drift | retained divergence — <n> item(s) | delta — <a> addition(s), <d> explicit deselection(s)>
-Repair: <n> diagnosed · <n> withheld advance(s) · retained by class <retained/unlisted/shared/edited/ambiguous/unverifiable tally>
+Repair: <n> diagnosed · <n> withheld advance(s) · retained by class <retained/shared/edited/ambiguous/unverifiable tally>
 
 Questions: <n> asked, <n> already resolved, <n> answered this run
 Plan: <applicability> · mode <mode> · <n> action(s) · planId <planId> (<factCount> facts)

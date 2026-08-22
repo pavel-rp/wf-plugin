@@ -11,6 +11,17 @@ lifecycle state. Phases 1–3 (admit, discover, scaffold) and Phases 9–10 (set
 constitution) run unchanged either way. Nothing here is a new mechanism: every
 identity below already exists and is consumed **unchanged**.
 
+## Contents
+
+- [The four invariants](#the-four-invariants)
+- [Step R1 — Diagnose, once](#step-r1--diagnose-once)
+- [Step R2 — Decide whether the workspace is settled](#step-r2--decide-whether-the-workspace-is-settled)
+- [Step R3 — Offer the desired set, once](#step-r3--offer-the-desired-set-once)
+- [Step R4 — Choose the one plan of record](#step-r4--choose-the-one-plan-of-record)
+- [Step R5 — Confirm once, apply once](#step-r5--confirm-once-apply-once)
+- [Step R6 — The settled exit, with no mutation stage](#step-r6--the-settled-exit-with-no-mutation-stage)
+- [Edge cases specific to reconcile](#edge-cases-specific-to-reconcile)
+
 ---
 
 ## The four invariants
