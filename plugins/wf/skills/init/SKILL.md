@@ -33,16 +33,20 @@ runtime**.
 ## Command Syntax
 
 ```
-/wf:init [--force]
+/wf:init [--force] [--seed <plugin-id>]
 ```
 
 | Argument  | Required | Description                                                        |
 | --------- | -------- | ------------------------------------------------------------------ |
 | `--force` | NO       | Overwrite `_local/config.md` and `_local/README.md` if they exist. |
+| `--seed <plugin-id>` | NO | One pack id to **preselect**, passed by a pack's own compatibility alias. Exactly one per invocation. |
 
-Selection, answers, and confirmation are taken interactively — no flag
-pre-selects a pack, pre-answers a question, or skips the confirmation. The
-declared externally-bindable surface (invocation shape, terminal-block status
+Answers and confirmation are taken interactively — no flag pre-answers a
+question or skips the confirmation, and `--seed` pre-ticks one box in the
+selection round rather than skipping it. Adding no phase and no status, its
+route lives at `alias-route.md`, obtained via `resolve_content({ workspaceRoot,
+class: "references-template", skill: "init", ref: "alias-route.md" })` on that
+path only. The declared externally-bindable surface (invocation shape, terminal-block status
 set, slots, settings) is `interface.md` beside this file: it is the contract,
 this body is its implementation.
 
@@ -74,6 +78,8 @@ this body is its implementation.
   enablement flipped, no answer persisted directly.
 - Call `apply_install` without a confirmation, more than once per run, or with a
   plan id other than the one confirmed.
+- Let a `--seed` id **replace** the selection rather than extend it, or read one
+  as an answer, a confirmation, an enablement, or evidence of a pack's state.
 - Derive a deregistration from anything but an **explicit deselection**: an
   omission, an orphaned registration, a disabled registration, and a missing
   durable record each **retain**, and none may place a pack in `deregister`.
@@ -270,6 +276,10 @@ by default and nothing is selected automatically.
 4. **Zero selection is a first-class outcome**, not a degenerate one: the run
    continues, the plan comes back with nothing to do, and the workspace keeps
    the bare-core scaffold and nothing else. Hold the chosen set as `desired`.
+5. **A `--seed` id joins that set additively** — union, never replacement; steps
+   2 and 3 still rule, so a disabled or unavailable seeded id is recorded *not
+   applied*, never enabled, and a seed marks nothing for removal. On the
+   reconcile fork it unions onto Step R3's preselection. See `alias-route.md`.
 
 ---
 
@@ -300,14 +310,11 @@ Call `plan_install({ workspaceRoot, desired, answers })`. This is the plan the
 user will confirm and the plan that will be applied — recomputed over the
 answers, not patched from the Phase 5 probe.
 
-Relay from the envelope, without recomputing any of it: `applicability` with its
-`applicabilityBasis` (the explicit enumeration of every blocking finding and
-every blocking question, so no blocking condition is a silent omission); `mode`,
-the dominant lifecycle effect; `actions[]`, every action class in one
-deterministic order, saying which are mutating; `registryDelta`, `payloads`,
-`artifacts`, `repairs`, `evidenceSeeds`, and `answers.writes[]` — what would
-change and what would be retained; `findings[]` with each code and severity; and
-`recovery` / `inventory` on their own channels as in Phase 2.
+Relay from the envelope without recomputing any of it. The field list — down to
+`applicabilityBasis`'s enumeration of every blocking finding and question, and
+`recovery`/`inventory` on their own channels as in Phase 2 — lives at
+`envelope-relay.md`, obtained via `resolve_content({ workspaceRoot, class:
+"references-template", skill: "init", ref: "envelope-relay.md" })`.
 
 Branch on `applicability`:
 
@@ -346,20 +353,10 @@ Call `apply_install({ workspaceRoot, desired, answers, expectedPlanId })` —
 the run. Locks are taken and released inside the call; never hold one across a
 host phase.
 
-Relay the envelope: `status` — `applied`, `rejected`, `rolled-back`, `halted`, or
-`invalid-root` — with its single closed `reason` token on every non-`applied`
-outcome, reported verbatim and never translated into a plausible neighbouring
-class; `applied[]`, what changed, and `deferred[]`, what was deliberately not
-changed, each with its own reason; `rollback`, how far a guarded rollback got;
-`selfCheck`, `refreshed`, and `residue`, where `residue.clean` is the observable
-statement that no journal, backup, or empty backup directory was left behind; and
-`recovery` on its own channel as always.
-
-Outcomes: `applied` continues to Phase 9. `rejected` (including
-`apply/plan-stale`, the id check doing its job) and `halted` continue to Phase 9
-as well, but the run ends `partial` — relay the reason and say the workspace is
-unchanged except for the scaffold. `rolled-back` likewise, adding the rollback
-disposition. `invalid-root` ends `stopped`.
+Relay the envelope verbatim and branch on its `status` — every field to report,
+including `recovery` on its own channel and `upgrade`'s `remaining[]`, and the
+outcome table deciding which statuses end the run `partial`, lives at
+`envelope-relay.md`, obtained as in Phase 6. Follow it; it adds no second call.
 
 ---
 
@@ -441,6 +438,11 @@ stop the run on it.
   diverged; never the words "no drift".
 - **An orphaned, disabled, or evidence-missing registration on a reconcile:**
   each is retained. Only an explicit deselection removes anything.
+- **`--seed` names a disabled, absent, or already-selected pack:** never an
+  error. Disabled or absent ⇒ *not applied* with the relayed reason, run
+  continues; already selected ⇒ a no-op union, which is what makes a repeat
+  alias run settled rather than a delta. Malformed or repeated ⇒ `INIT —
+  stopped` before any write.
 
 ---
 
@@ -459,6 +461,8 @@ Actions:
 - .git/info/exclude entry for _page-tests/ — <appended | already present | skipped>
 
 Registry: <resolved registry location> (<default | configured | rejected → fell back to default>)
+
+Seed: <none | <plugin-id> — applied | <plugin-id> — already selected | <plugin-id> — not applied (<relayed reason>)>
 
 Discovery: <inventory confidence>, <n> pack(s) observed; recovery <recovery state>
 Packs:
@@ -487,11 +491,7 @@ Verify Command: <detected command>
 Next: review `_local/config.md` — confirm the Verify Command matches what you actually run to typecheck the project. Then `/wf:spec <task-id>`.
 ```
 
-If detection fell back to the TODO placeholder, replace the `Verify Command` line with:
-
-```
-Verify Command: ⚠ NOT DETECTED — edit _local/config.md before running any other wf:* skill
-  Scanned: <list of package.json / framework-manifest paths found, or "none">
-```
+When detection fell back to its TODO placeholder, the `Verify Command` line is
+replaced by the not-detected form declared in `verify-command-detection.md`.
 
 **The final output block must always be the very last thing output to chat.**

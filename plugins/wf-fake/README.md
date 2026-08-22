@@ -23,7 +23,7 @@ fixture-local scripts file and appends its invocation to a machine-readable **op
 | `capabilities/fake/fixtures/sample-scripts.json` | reference sample scripting every op (incl. a review-thread scenario) |
 | `capabilities/fake/fixtures/op-vocabulary.txt` | canonical op oracle the self-checks assert against |
 | `capabilities/fake/fixtures/run.sh` | deterministic self-checks (no-egress, completeness, loud-failure, sanity), CI-auto-discovered |
-| `/wf-fake:init` | one-command self-registration into a fixture registry + `## Fake` config seed |
+| `/wf-fake:init` | the reference compatibility alias — seeds `wf-fake` into `/wf:init`'s selection round and relays its block |
 
 ## The scripted-response protocol
 
@@ -47,9 +47,13 @@ deliverable, not this pack's.
 ## Fixture-only registration
 
 `fake` is registered **only inside fixture registries**, where it is the **sole owner of both
-surfaces**. Run `/wf-fake:init` inside a fixture project (after `/wf:init`) — it registers the
-`fake` capability as a plugin-anchored row (`plugin:wf-fake/capabilities/fake`) via core's
-`inspect_pack`/`register_pack` resolver tools and seeds the `## Fake` config section.
+surfaces**. Run `/wf-fake:init` inside a fixture project — since WF-462 it is the **reference
+compatibility alias**: it invokes `/wf:init` with `wf-fake` seeded into the selection round and
+relays the canonical `INIT — <status>` block. The canonical lifecycle registers the `fake`
+capability as a plugin-anchored row (`plugin:wf-fake/capabilities/fake`) through its single
+`apply_install`; the alias itself decides nothing, writes nothing, and asks nothing of its own.
+Entering this way is additive — packs already set up in the fixture are preserved — and a re-run
+over a settled fixture reports no drift and makes no mutation call.
 
 **Never register `fake` in a real project.** Alongside `git` (delivery) or `linear`/`ado`
 (tracker) it correctly trips the registry's partitioned-ownership overlap validation — failing

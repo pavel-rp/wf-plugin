@@ -5,7 +5,11 @@ lives in `../fragments/delivery.ops.md` / `../fragments/tracker.ops.md`. Both fi
 fixture's own `_local/`; a fixture seeds the scripts file, and assertion scripts (WF-346) read the
 op log.
 
-## Config keys (`## Fake` section of `_local/config.md`, written by `/wf-fake:init`)
+## Config keys (`## Fake` section of `_local/config.md`, written by the fixture)
+
+Both keys have working defaults; the section is needed only to relocate the files. `/wf-fake:init`
+does not write it — since WF-462 that skill is a compatibility alias that writes nothing at all.
+
 
 | Key | Default | Meaning |
 |-----|---------|---------|

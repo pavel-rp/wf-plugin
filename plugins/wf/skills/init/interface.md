@@ -9,11 +9,45 @@ keys, safety rules).
 
 ## Invocation
 
-`/wf:init [--force]`
+`/wf:init [--force] [--seed <plugin-id>]`
 
 `--force` overwrites `_local/config.md` and `_local/README.md` when they already
-exist. It is the only argument, and the setup journey adds none: selection,
-answers, and confirmation are taken interactively, never from the command line.
+exist. Neither argument pre-answers a question or skips the confirmation:
+answers and confirmation are taken interactively, never from the command line.
+
+**`--seed <plugin-id>` is the compatibility-alias entry point.** A pack may ship
+an alias skill whose entire lifecycle behaviour is to invoke this command with
+its own stable plugin id and relay the terminal block below. Exactly one id per
+invocation. The contract that alias binds to, stated so a pack can be converted
+against it without reading the body:
+
+1. **A seed is an explicit selection, and it is additive.** It enters the
+   selection round as a preselected tick, unioned onto whatever that round
+   already preselects — nothing on a fresh journey, the durable committed record
+   on a reconcile. The seed adds exactly one member and removes none;
+   `deregister` stays the literal empty list, so an omission still never implies
+   a removal.
+2. **A seed authorizes nothing else.** It does not answer or suppress a
+   question, confirm a plan, enable a pack, bypass the selection round's
+   presentation, or assert that its pack is present, absent, registered, or
+   drifted. Only a persisted project answer suppresses a question.
+3. **Availability is unchanged by a seed.** Availability is keyed on the relayed
+   `enablement`/`presence`, never on a seed and never on `selectable`. A seed
+   naming a **disabled** pack is reported as *not applied*: the pack stays
+   visible, retained and unavailable, and its `enablement` is never flipped.
+4. **A seed is inert until recovery has been relayed on its own channel.** An
+   unrecovered baseline stops the run before the seed reaches the desired set,
+   and the recovery report is never folded into the delta.
+5. **An alias owns no lifecycle logic** — no discovery, plan, apply, repair, or
+   registration call of its own, no root derivation, no drift computation, no
+   rollback handling, no diagnostics rendering. Root handling, rollback and
+   diagnostics therefore match this command by identity, not by imitation.
+6. **The argument is optional and the surface is inert without it.** Omitted,
+   this command behaves exactly as it did before the argument existed, and no
+   alias term surfaces anywhere.
+
+The route's operative procedure is `references/alias-route.md`; a pack names
+only its own id, and this contract names no pack.
 
 **Reconcile is not an argument.** A re-run over a workspace that already carries
 lifecycle state reconciles its desired set; that is what the same journey does
@@ -35,6 +69,12 @@ explicit deselection taken in the same interactive round as an addition.
 
 `declined` and `stopped` are new in this contract, so the status set is a
 breaking change to a grepped final-output block shape (MINOR, pre-1.0).
+
+**A seed adds no status.** An entry through `--seed` is the same journey and
+reports the same five statuses; the seed's own disposition (`applied`, or *not
+applied* for an unavailable pack) rides an **additive body line** below the
+grepped status line. A compatibility alias emits this block and no second
+terminal block of its own — it is this lifecycle, so it reports this contract.
 
 **Reconcile adds no status.** The five above are the whole set; a reconciling
 re-run maps onto them unchanged — a settled workspace is `already-initialized`,
@@ -69,7 +109,10 @@ sole lifecycle mutation this skill performs and the sole writer of any
 lifecycle artifact; invoke the sibling `/wf:constitution` through the **Skill**
 tool; and pass `workspaceRoot` explicitly on every resolver call.
 
-**Forbidden:** derive a deregistration from anything but an **explicit
+**Forbidden:** let a `--seed` value **replace** rather than extend the
+preselected desired set, or treat it as an answer, a confirmation, an
+enablement, or evidence of any pack's presence, registration, or drift;
+derive a deregistration from anything but an **explicit
 deselection** taken in the reconcile round — an omission from the desired set, an
 orphaned registration, a disabled registration, and a registration whose durable
 evidence is missing each **retain**, and none of them may ever place a pack in
