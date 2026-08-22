@@ -229,6 +229,28 @@ export interface MatrixOptions {
   /** Extra files seeded into the workspace, `relPath -> bytes`. Used for the
    *  external-bytes scenario, whose file the lifecycle must never own. */
   readonly seedFiles?: Readonly<Record<string, string>>;
+  /** Replace a fixture's manifest body wholesale. Used to reach the partition
+   *  half of precedence (two packs claiming ONE provider surface) without adding
+   *  a sixth fixture pack, which the bounded-classes constraint forbids. */
+  readonly manifestOverrides?: Partial<Record<FixtureName, string>>;
+}
+
+/** A manifest whose single fragment claims a PROVIDER surface. Partition kinds
+ *  admit only the owning capability, so two packs carrying this are a
+ *  registry-validation error rather than an aggregation. */
+export function providerManifest(capability: string, surface: string): string {
+  return `# ${capability} capability
+
+**Kind:** adapter
+
+article: ${capability}-rule = required
+
+## Fragments
+
+| phase | contribution-kind | dispatch | scope |
+|-------|-------------------|----------|-------|
+| qa-execution | provider | \`inline: fragments/${capability}.ops.md\` | ${surface} |
+`;
 }
 
 export function makeMatrixWorkspace(options: MatrixOptions): MatrixWorkspace {
@@ -242,7 +264,10 @@ export function makeMatrixWorkspace(options: MatrixOptions): MatrixWorkspace {
     const packRoot = normalizeSlashes(join(root, `wf-${name}`));
     const capabilityRoot = join(packRoot, "capabilities", spec.capability);
     mkdirSync(capabilityRoot, { recursive: true });
-    writeFileSync(join(capabilityRoot, "manifest.md"), spec.manifest);
+    writeFileSync(
+      join(capabilityRoot, "manifest.md"),
+      options.manifestOverrides?.[name] ?? spec.manifest,
+    );
     if (spec.profileTemplate !== null) {
       writeFileSync(join(capabilityRoot, "profile.template.json"), spec.profileTemplate);
     }
@@ -466,12 +491,17 @@ export function guardQualifiedSelection(
 /**
  * G2 — a plan claimed SUCCESSFUL must really be actionable.
  *
- * The fourth conjunct is the one that matters. A blocked plan and a well-formed
- * `no-change` plan both carry an empty `actions[]`, so a scenario asserting "the
- * plan did X" against an empty action list asserts nothing at all. NC-2 feeds
- * this a blocked plan and NC-3 feeds it a REAL, well-formed, SUCCESSFUL
- * `no-change` plan — the control that proves the guard rejects success, not just
- * garbage.
+ * The fourth conjunct is the one that matters, and it is deliberately STRONGER
+ * than WF-465's bar. WF-465 required a non-empty `actions[]`; measured here, that
+ * is not sufficient — a BLOCKED plan over a workspace with managed artifacts
+ * still carries non-mutating `artifact-retain` entries, so `actions[]` is
+ * non-empty and the weaker conjunct passes. This guard requires at least one
+ * MUTATING action, which is the thing a scenario claiming "the plan did X" is
+ * actually relying on.
+ *
+ * NC-2 feeds this a blocked plan and NC-3 feeds it a REAL, well-formed,
+ * SUCCESSFUL `no-change` plan — the control that proves the guard rejects
+ * success, not just garbage.
  */
 export function guardActionablePlan(plan: PlanInstallResponse): GuardOutcome {
   if (plan.applicability !== "applicable") {
@@ -486,10 +516,13 @@ export function guardActionablePlan(plan: PlanInstallResponse): GuardOutcome {
   if (errors.length > 0) {
     return fail(`G2: ${errors.length} error finding(s): ${errors.map((f) => f.code).join(", ")}.`);
   }
-  if (plan.actions.length === 0) {
-    return fail("G2: the plan carries no actions — an empty action list can assert nothing.");
+  const mutating = plan.actions.filter((action) => action.mutating);
+  if (mutating.length === 0) {
+    return fail(
+      `G2: the plan authorizes no MUTATING action (${plan.actions.length} non-mutating entr(ies)) — nothing to assert against.`,
+    );
   }
-  return pass(`G2: applicable, unblocked, ${plan.actions.length} action(s).`);
+  return pass(`G2: applicable, unblocked, ${mutating.length} mutating action(s).`);
 }
 
 /**
@@ -526,9 +559,16 @@ export function guardAppliedForReal(
 export const BLOCK_CLASS_TOKENS = {
   conflicts: "plan/capability-conflict",
   duplicateInventory: "plan/inventory-untrustworthy",
-  unsafeDestination: "apply/payload-precondition",
-  unequalSharedTarget: "plan/payload-conflict",
-  invalidAnswer: "plan/unresolved-question",
+  /** The CONTAINMENT refusal, reached by a lexically-valid destination whose
+   *  canonical target escapes the workspace (a symlinked parent). The other,
+   *  earlier unsafe-destination sub-class — a LEXICALLY invalid destination
+   *  (`..`, absolute, backslash, NUL) — never reaches this code at all: it is
+   *  refused during manifest validation, which invalidates the pack. S-16 and
+   *  S-16b prove the two separately rather than letting either stand in for the
+   *  other. */
+  unsafeDestination: "plan/payload-unsafe-target",
+  unequalSharedTarget: "plan/payload-conflict-bytes",
+  invalidAnswer: "plan/answer-invalid",
   stalePlan: "apply/plan-stale",
 } as const;
 
