@@ -38,7 +38,7 @@ route.** The `node-ts` capability declares one `## Payloads` row — its own
 canonical apply installs that payload as part of the same single transaction that
 writes the registry row, for **selected owners only**. This skill therefore never
 copies, writes, refreshes, repairs, or verifies the runner, and it holds **no
-fallback**: there is no "if the payload did not arrive, write it ourselves" path,
+fallback**: there is no "write it ourselves when the payload did not arrive" path,
 because a second route would be a second implementation of a transaction that has
 exactly one. The runner's own behaviour is untouched by this change — only the
 route by which it arrives is now the shared one.
