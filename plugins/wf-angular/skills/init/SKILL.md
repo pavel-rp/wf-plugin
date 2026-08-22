@@ -1,32 +1,41 @@
 ---
 name: init
-description: Onboards the wf-angular pack into a wf-initialized repo in one command — self-registers the pack's angular capability into the wf capability registry by calling the bundled resolver's inspect_pack/register_pack tools with the pack's stable plugin id, then seeds the angular profile override on divergence. Use once (after /wf:init) to activate the Angular test-host execution provider (qa-host + test-page) without hand-editing _local/config.md or probing the plugin install path; re-run only if register_pack reports the pack unrecoverable or after relocating the pack.
-allowed-tools: [Read, Write, Edit, Bash]
+description: Onboards the wf-angular pack by entering the canonical /wf:init lifecycle with wf-angular seeded into the selection round, so a project gets the same discovery, question, delta, confirmation and apply it would get from /wf:init itself. Preserves every registration the project already has and adds wf-angular to them; it decides nothing about the pack's state, asks nothing of its own, and performs no registry write. The angular capability supplies the qa-execution host surface. Use after /wf:init to activate the test-host execution provider; re-run any time — a re-run over a settled project reports no drift and mutates nothing. /wf:init is the canonical command and does the same thing for every pack at once.
+allowed-tools: [Skill, Bash]
 ---
 
-# /wf-angular:init — Onboard the wf-angular pack (self-register via inspect_pack/register_pack)
+# /wf-angular:init — Onboard the wf-angular pack (a compatibility alias onto the shared lifecycle)
 
-Collapse wf-angular onboarding into **one command**. Installing the plugin makes
-`/wf-angular:init`, `/wf-angular:qa-host`, and `/wf-angular:test-page` discoverable
-(native composition) but registers **no** phase fragment — that still requires a row in
-the downstream `## Capabilities` table and a plugin-root entry. This skill does that
-registration for you by calling the core plugin's bundled **wf-resolver** MCP tools —
-`inspect_pack` then `register_pack` — passing wf-angular's own stable plugin id
-(`wf-angular`). Those tools resolve the pack's install path via `claude plugin list
---json`, validate its manifest, and own the registry write themselves; this skill never
-probes `${CLAUDE_PLUGIN_ROOT}` and never hand-edits the `## Plugin Roots` / `##
-Capabilities` tables.
+This skill is a **compatibility alias**: it contributes exactly one thing to the
+canonical setup lifecycle — "add `wf-angular` to the desired set" — and then gets
+out of the way. Everything else, from admitting the workspace root to the single
+`apply_install` that registers the capability, belongs to `/wf:init` and happens
+there.
 
-This mirrors `/wf-ado:init` for a single-capability pack: there is no capability-subset
-argument, because wf-angular ships exactly one capability, and neither skill attempts to
-distinguish "already registered" from "registered" — both report `registered` on any
-successful upsert. This differs from `/wf-browser-qa:init`, which adds a separate
-`resolve_registry` pre-check specifically to make that distinction.
+It follows the compatibility-alias route that core declares in `/wf:init`'s
+interface contract and defines procedurally in that skill's `alias-route.md`,
+matching the reference conversion in `plugins/wf-fake/skills/init/SKILL.md`.
 
-**This is fragment/registry-side onboarding only.** It cannot register a `/command` — a
-discoverable skill must live in a plugin's `skills/` dir (native discovery).
-`/wf-angular:*` commands are already discoverable from installing the plugin; this skill
-wires the **fragment + registry** via the resolver tools.
+> **What this skill does not decide.** Whether `wf-angular` is installed, enabled,
+> already registered, or drifted. Whether a repair is needed. What may be
+> deleted. Which questions are still unanswered. What the delta contains.
+> Whether to apply it. Every one of those is answered by the canonical
+> lifecycle, which this skill merely enters. There is deliberately **no
+> conditional in this body that reads existing state.**
+
+**This pack asks nothing.** The `angular` capability declares no interview
+question, so the canonical question round asks nothing on its behalf and this
+skill emits **no prompt of its own** — not a confirmation invented to fill the
+gap, not a "nothing to configure" acknowledgement, not a synthesized question
+about a value the pack could infer. Silence is the correct behaviour. The single
+canonical confirmation of the delta is the only interaction in the run, and it
+belongs to `/wf:init`. Profile data the capability ships keeps its working
+defaults and is not a question; a project that wants to override it edits its own
+profile override, outside this run.
+
+> **`/wf:init` is the canonical command.** It runs this same journey for every
+> installed pack in one pass, so it is the one to reach for. This alias remains a
+> legitimate permanent entry point for anyone who already types it.
 
 ---
 
@@ -36,8 +45,9 @@ wires the **fragment + registry** via the resolver tools.
 /wf-angular:init
 ```
 
-Takes no arguments — it always registers the single `angular` capability this pack
-ships, under the fixed plugin id `wf-angular`.
+Takes no arguments — unchanged from before this skill became an alias. Selection
+and confirmation are taken interactively **by the canonical lifecycle**; this
+skill pre-ticks one box and passes nothing else.
 
 ---
 
@@ -45,158 +55,127 @@ ships, under the fixed plugin id `wf-angular`.
 
 **Allowed:**
 
-- Read any file; read-only `git` (`git rev-parse`).
-- Call the bundled `wf-resolver` MCP tools `inspect_pack`, `resolve_gate`, and
-  `register_pack` — always with `pluginId: "wf-angular"`, wf-angular's own exact stable
-  plugin id — plus `resolve_content` (the profile-template body at seed time, Phase 3).
-- Write/edit files under `_local/` — including seeding the profile override (Phase 3).
+- Run `pwd -P` once to obtain the absolute workspace root for the routing call.
+- Call the bundled `wf-resolver` `resolve_routing` tool to route the one
+  sibling-Skill edge below.
+- Invoke `/wf:init` through the **Skill** tool, with this pack's own stable
+  plugin id as the seed.
+- Relay the `INIT` terminal block that invocation returns.
 
 **Forbidden:**
 
-- Modify any source file except the writes named above.
-- Probe `${CLAUDE_PLUGIN_ROOT}`, derive an install root by any other means, or
-  hand-edit the `## Plugin Roots` / `## Capabilities` tables directly — that write
-  belongs solely to `register_pack`.
-- Register a `/command` (impossible — native discovery only; this skill wires the
-  fragment/registry).
-- Call `inspect_pack` / `register_pack` for any `pluginId` other than `wf-angular`.
-- Run builds, tests, installs, or any destructive git operation.
+- Call any lifecycle resolver tool — `discover_packs`, `plan_install`,
+  `apply_install`, `repair_packs`, `register_pack`, `inspect_pack`, or
+  `resolve_gate`. Registration happens inside the canonical apply, and nowhere
+  else.
+- Read, infer, or report any lifecycle fact of its own: presence, enablement,
+  registration, drift, recovery, or whether a question is answered.
+- Prompt for anything. This pack declares no question, so the correct output is
+  silence — never a substitute prompt, a placeholder check, or a value carried
+  forward.
+- Seed anything but this pack's own id, seed more than one id, or pass a
+  selection, an answer, or a confirmation on the command line.
+- Render a delta, take a confirmation, or emit a second terminal block.
+- Derive, validate, or second-guess the workspace root. The canonical route
+  admits the root; this skill enters that route and inherits the same admitted
+  workspace by identity, not by imitating the check.
+- Write or edit **any** file, including `_local/config.md` and any profile
+  override. This skill performs no write at all.
+- Filesystem-read a sibling skill's body — `/wf:init` is reached through the
+  **Skill** tool, and a failed invocation stops into the error block below rather
+  than falling back to a read.
+- Run builds, tests, installs, or any network or version-control operation.
 
 ---
 
-## Phase 0: Preconditions
+## Onboarding procedure
 
-Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+One step, and it is the whole skill.
 
-1. **Confirm a git repo:** `git rev-parse --git-dir`. If not, stop: "`/wf-angular:init`
-   must run inside a git repository — run `/wf:init` first."
-2. **Resolve the registry location** exactly as `/wf:init` does — read `wf.config.js` at
-   the workspace directory (`pwd -P`) and use its optional `registryPath`
-   key, **defaulting to `_local/config.md`** when absent. Call this `<registry-location>`.
-3. **Require `/wf:init` first.** If `_local/` is absent, or `<registry-location>` does not
-   exist, stop: "Run `/wf:init` first — `/wf-angular:init` registers into the registry
-   that `/wf:init` creates." (This skill augments a registry; it never bootstraps one.)
+1. **Route the edge, then enter the lifecycle.** Run `pwd -P` once and hold the
+   absolute result as `<workspace-root>` — in a linked-worktree Agent that is the
+   Agent's own worktree, never a parent's. Call `resolve_routing` with
+   `workspaceRoot: "<workspace-root>"`, `role: "init"`, `unitIds: ["angular:init"]`,
+   `shapeEvidence: { workSurface: "caller-context", atomicity: "atomic",
+   unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "low",
+   toolWork: "none", validation: "mechanical", contextIsolation: "none",
+   independentReview: false, returnContract: "mechanically-judgeable",
+   requestedParallelism: 1 }`, `supportsModelSelector: false`, and
+   `supportsEffortSelector: false`. Emit the compact operational record. On
+   `status: stop` or a non-null `diagnostic`, stop before the invocation and
+   report the resolver's reason. Otherwise obey the selected `inline` shape, pass
+   no selector, and invoke `/wf:init --seed wf-angular` through the **Skill** tool.
 
-## Phase 1: Inspect the pack (read-only)
-
-1. Call `inspect_pack` with `{ workspaceRoot: "<workspace-root>", pluginId: "wf-angular" }`. It returns `{ pluginId,
-   pluginName, installed, enabled, version, installPath, capabilities[], fingerprint,
-   valid, issues[] }` — resolved via `claude plugin list --json`, no environment probing
-   of any kind on wf-angular's part.
-2. **If `valid` is `false`**, stop before attempting registration. Report every string in
-   `issues` verbatim, plus the concrete remedy per cause:
-   - `installed: false` — the wf-angular plugin isn't installed; install it from the
-     marketplace, then re-run `/wf-angular:init`.
-   - `enabled: false` — the plugin is installed but disabled; enable it, then re-run.
-   - `capabilities` empty / no readable manifest — the install looks corrupted or
-     incomplete; reinstall the plugin, then re-run.
-3. Keep the returned `fingerprint` for Phase 2 — it proves to `register_pack` that
-   nothing about the pack changed between inspection and registration.
-
-## Phase 2: Resolver health gate (SUB-4 / WF-272 diagnostics) + registration
-
-Registering a pack **writes** the shared registry, so it uses the same
-block-before-mutation policy as any other registry-mutating write.
-
-1. Call `resolve_gate` with `{ workspaceRoot: "<workspace-root>", surface: "delivery-write" }`.
-2. **If `healthy` is `false`**, STOP — do not call `register_pack`. Report, verbatim:
-   - `reaction` (will read `block`),
-   - each `categories` entry (one or more of `snapshot-missing`, `snapshot-malformed`,
-     `schema-incompatible`, `fingerprint-unresolvable`, `cli-unavailable`,
-     `registry-invalid`),
-   - every diagnostic's message, and
-   - every `recovery` line (each names a `/wf:resolve refresh` or `/wf:resolve
-     invalidate` action).
-
-   This is the resolver itself being unhealthy — a different failure class from an
-   uninstalled/disabled pack (Phase 1). Do not attempt any manual fallback discovery;
-   direct the user to the named `/wf:resolve` recovery, then re-run `/wf-angular:init`.
-3. If `healthy` is `true`, call `register_pack` with `{ workspaceRoot: "<workspace-root>", pluginId: "wf-angular",
-   expectedFingerprint: <fingerprint from Phase 1> }`. It re-validates internally, then —
-   on success — owns the entire `## Plugin Roots` + `## Capabilities` write and refreshes
-   the resolver snapshot. This skill performs none of that writing itself.
-4. **`status: "rejected"`** — stop, report `reason` verbatim, plus the remedy:
-   - stale fingerprint (pack changed between Phase 1 and now) — just re-run
-     `/wf-angular:init`; it re-inspects and gets a fresh fingerprint automatically.
-   - not installed / disabled / no valid manifest — same remedies as Phase 1.
-5. **`status: "registered"`** — `register_pack` **upserts by key**, not skip-if-present:
-   for each row in `preview`, an existing row with that key gets its value **replaced**
-   (a differing `Root`/`Path` is overwritten); only a row whose existing value is already
-   byte-identical is left untouched (a no-op write). The response carries no signal for
-   which of these happened — `preview` always lists every capability the pack provides,
-   whether its row was inserted fresh, replaced, or left as a no-op.
-6. **`selfCheck: "failed"`** on an otherwise-successful registration means the write
-   landed but resolution still doesn't resolve `angular` to `ok`. Treat this as a
-   SUB-4-style diagnosis, not a silent partial success: call `resolve_gate` with
-   `{ surface: "delivery-write" }` again, report its diagnostics + recovery, and direct
-   the user to `/wf:resolve refresh` before re-running `/wf-angular:init`.
-
-## Phase 3: Seed profile
-
-Apply the **profile-seeding convention by name** — the same convention `/wf:init` Phase
-2.5 follows, defined in `plugins/wf/skills/_contracts/capability-registry.contract.md`
-§"The profile-seeding convention". Do **not** re-derive its rules here.
-
-- **angular** (run every time Phase 2 succeeds — `preview` always contains a
-  `Capabilities`/`angular` row whether the underlying registry row was inserted fresh,
-  replaced, or left as a no-op, so its presence is never a signal that this is a first
-  registration): resolve its manifest path from `register_pack`'s `root`
-  (`<root>/capabilities/angular/manifest.md`). It declares
-  `profile-template: profile.template.json` — seed a downstream **override** at
-  `_local/profiles/angular.profile.json` **only on divergence** from the capability's
-  default template. Obtain that default **template body** to compare against through the
-  resolver — `resolve_content` (`workspaceRoot: "<workspace-root>"`, `class: profile-template`, `capability: angular`) — never a
-  raw `Read`/`Glob` of the pack's version-pinned plugin-cache path (this ref serves the
-  template *body* needed at seed time; C008's `resolve_profile` serves override-merged
-  profile *values*, a different thing). **Idempotent** — never overwrite an existing
-  override (skip-if-present, decided by reading `_local/profiles/angular.profile.json`
-  itself, not by inferring anything from `register_pack`'s response). Record `seeded
-  override` or `default in use`.
-
-This is exactly what `/wf:init` would do on its next run now that the row resolves — doing
-it here keeps onboarding to one command.
+2. **Relay what comes back, verbatim.** The `INIT` block is this skill's Final
+   Output. Add the host note below it and nothing else — no re-derived status,
+   no second block, no restated delta.
 
 ---
 
 ## Edge Cases
 
-- **`/wf:init` not run yet** (no `_local/` or no resolved registry): stop and direct to
-  `/wf:init` (Phase 0).
-- **Re-running on an already-onboarded repo**: `register_pack` upserts by key, so
-  re-running is safe — an unchanged `## Capabilities`/`## Plugin Roots` row is left
-  byte-identical, a drifted one is corrected. The response gives no signal for whether
-  the row pre-existed, so report `registered` for the capability row (never `already
-  registered` — that state can't be determined from `register_pack`); Phase 3 still runs
-  (its own skip-if-present, keyed on the profile file's existence, handles idempotency).
-- **Pack not installed / disabled / manifest-invalid** (Phase 1 `valid: false`): stop
-  before any resolver-health or registration call; report the concrete remedy and do not
-  proceed to Phases 2–3.
-- **Resolver unhealthy** (Phase 2 `resolve_gate` returns `healthy: false`): stop before
-  calling `register_pack`; report the categorized diagnostics + `/wf:resolve` recovery
-  verbatim — never fall back to hand-walking the registry.
-- **Stale fingerprint** (Phase 2's `register_pack` call rejects because the pack changed
-  since Phase 1): re-run `/wf-angular:init` — no manual recovery needed.
-- **`register_pack` self-check FAIL**: report it as the final state (`partial`); do not
-  claim success. Direct to `/wf:resolve refresh`.
+- **`/wf:init` has not run yet:** not a precondition this skill checks. `/wf:init`
+  *is* what is being invoked, and it scaffolds the bare core itself before any
+  pack transaction.
+- **`wf-angular` is disabled:** the seed is reported *not applied*; the pack stays
+  visible, retained and **unavailable**, and its enablement is never flipped.
+  Re-enabling the plugin is the user's action, outside this run. The rest of the
+  run proceeds normally.
+- **`wf-angular` is already set up and the project is settled:** the canonical
+  settled exit — no plan call, no confirmation, no mutation call at all —
+  reported as `already-initialized` / `Apply: not run — no drift`. This is the
+  expected outcome of re-running, not a degenerate one.
+- **The question round asks nothing for this pack:** expected, and the whole
+  point. A pack that declares no question contributes none, and no prompt is
+  synthesized to stand in for one. Another pack in the same desired set may still
+  have its own question asked in that one round.
+- **The project has drifted:** the canonical repair plan handles it. A withheld
+  advance or a retained-but-not-benign artifact is reported as retained
+  divergence, never as no drift.
+- **The project already has other packs set up:** they are all preserved. Entering
+  through this command **adds** `wf-angular` to them and deregisters nothing —
+  omission is never a removal.
+- **A root override is in play:** it targets the same admitted workspace `/wf:init`
+  targets, because this skill enters that one route rather than re-deriving a root
+  of its own.
+- **Recovery ran before the route:** it is reported on its own channel, separately
+  from the delta, exactly as `/wf:init` reports it.
+- **The plan is declined:** `INIT — declined`; nothing was registered and
+  re-running is safe.
+- **`/wf:init` cannot be invoked** (the Skill tool is unavailable, or the
+  invocation errors): stop and report it. Never substitute a registration of this
+  skill's own, and never fall back to reading the sibling body.
 
 ---
 
 ## Final Output
 
+Relay the canonical block verbatim — this skill runs the canonical lifecycle, so
+it reports the canonical contract:
+
 ```
-WF-ANGULAR-INIT — <onboarded | partial>
+INIT — <initialized | already-initialized | declined | stopped | partial>
 
-Registry:   <registry-location>
-Pack root:  <installPath from inspect_pack/register_pack>
-Registered: angular — registered
-Profile:    <seeded override [seeded by <model id>] | default in use>
-Self-check: <PASS — register_pack selfCheck: ok | FAIL — <resolve_gate/register_pack diagnostics + recovery>>
+<the block /wf:init returned, verbatim, including its Seed: line>
 
-Next: run /wf:qa-auto for a task with a QA plan — core resolves the angular capability, finds the qa-execution provider owning surface: host, and dispatches test-host scaffolding to /wf-angular:qa-host. Fill the profile slots in _local/profiles/angular.profile.json before first scaffold. Re-run /wf-angular:init only if register_pack reports the pack unrecoverable, or after relocating the pack.
+Host note:
+- angular owns the qa-execution host surface — do not register it alongside another pack claiming that surface, which would overlap partitioned ownership.
 ```
 
-Attach `seeded by <model id>` only to a `seeded override` whose profile format has no
-schema-permitted attribution slot (per the seeding convention); use the current model id
-from the runtime, or `unknown`.
+If the routing call stopped the run, or `/wf:init` could not be invoked, emit
+instead:
+
+```
+INIT — stopped
+
+Seed: wf-angular — not applied (alias could not enter the canonical lifecycle)
+Reason: <the resolver diagnostic, or the invocation error, verbatim>
+
+Next: resolve the reason above, then re-run /wf-angular:init.
+```
+
+**Both blocks are breaking replacements for the previous `WF-ANGULAR-INIT — <status>`
+block** (MINOR, pre-1.0): one shared route has one terminal contract. The command
+itself is unchanged — same name, same zero arguments, same end state.
 
 **The final-output block must always be the very last thing output to chat.**

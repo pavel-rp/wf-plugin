@@ -1,35 +1,44 @@
 ---
 name: init
-description: Onboards the wf-core-authoring pack into a wf-initialized repo in one command — self-registers the pack's core-authoring capability into the wf capability registry by calling core's inspect_pack/register_pack resolver tools with the stable plugin id wf-core-authoring, no manual install-root discovery or hand-edited registry rows. Use once (after /wf:init) to register core-authoring so its future authoring contributions resolve; re-run any time — register_pack is idempotent and self-checks the wiring.
-allowed-tools: [Read, Bash]
+description: Onboards the wf-core-authoring pack by entering the canonical /wf:init lifecycle with wf-core-authoring seeded into the selection round, so a project gets the same discovery, question, delta, confirmation and apply it would get from /wf:init itself. Preserves every registration the project already has and adds wf-core-authoring to them; it decides nothing about the pack's state, asks nothing of its own, and performs no registry write. Use after /wf:init to register core-authoring so its future authoring contributions resolve; re-run any time — a re-run over a settled project reports no drift and mutates nothing. /wf:init is the canonical command and does the same thing for every pack at once.
+allowed-tools: [Skill, Bash]
 ---
 
-# /wf-core-authoring:init — Onboard the core-authoring pack (self-register via the resolver)
+# /wf-core-authoring:init — Onboard the core-authoring pack (a compatibility alias onto the shared lifecycle)
 
-Collapse onboarding into **one command**, driven entirely by the core-bundled **wf-resolver** MCP
-service. Installing the plugin makes this skill discoverable by native composition, but registers
-**no** phase contribution. That still requires a row in the downstream `## Capabilities` registry.
-This skill performs that registration by calling core's typed `inspect_pack` / `register_pack` tools
-with the **stable plugin id, `wf-core-authoring`** — it never probes `${CLAUDE_PLUGIN_ROOT}`, never
-derives an install root itself, and never hand-edits `_local/config.md` or a `## Plugin Roots`
-mapping. Core resolves the install path, validates the manifest, computes a fingerprint, and owns the
-registry write end-to-end — including the self-check that the capability now resolves.
+This skill is a **compatibility alias**: it contributes exactly one thing to the
+canonical setup lifecycle — "add `wf-core-authoring` to the desired set" — and
+then gets out of the way. Everything else, from admitting the workspace root to
+the single `apply_install` that registers the capability, belongs to `/wf:init`
+and happens there.
 
-**Why register a capability whose fragments table is still empty.** The pack is a skeleton: its
-`core-authoring` capability declares no phase contribution yet. Registering now proves the
-registration path before the first fragment depends on it, so a row added later fires the moment it
-lands rather than waiting on an onboarding step nobody has run.
+It follows the compatibility-alias route that core declares in `/wf:init`'s
+interface contract and defines procedurally in that skill's `alias-route.md`,
+matching the reference conversion in `plugins/wf-fake/skills/init/SKILL.md`.
 
-**This is registry-side onboarding only.** It cannot register a `/command` — a discoverable skill
-must live in a plugin's `skills/` directory (native discovery). This skill wires the **registry** row.
+> **What this skill does not decide.** Whether `wf-core-authoring` is installed,
+> enabled, already registered, or drifted. Whether a repair is needed. What may
+> be deleted. Which questions are still unanswered. What the delta contains.
+> Whether to apply it. Every one of those is answered by the canonical
+> lifecycle, which this skill merely enters. There is deliberately **no
+> conditional in this body that reads existing state.**
 
-## Contents
+**This pack asks nothing.** The `core-authoring` capability declares no interview
+question, so the canonical question round asks nothing on its behalf and this
+skill emits **no prompt of its own** — not a confirmation invented to fill the
+gap, not a "nothing to configure" acknowledgement, not a synthesized question
+about a value the pack could infer. Silence is the correct behaviour. The single
+canonical confirmation of the delta is the only interaction in the run, and it
+belongs to `/wf:init`.
 
-- [Command Syntax](#command-syntax)
-- [Safety Rules](#safety-rules-non-negotiable)
-- [Onboarding procedure](#onboarding-procedure)
-- [Edge Cases](#edge-cases)
-- [Final Output](#final-output)
+**Why enter the lifecycle for a capability whose contributions are still few.**
+Registering proves the registration path before the first contribution depends on
+it, so a row added later fires the moment it lands rather than waiting on an
+onboarding step nobody has run.
+
+> **`/wf:init` is the canonical command.** It runs this same journey for every
+> installed pack in one pass, so it is the one to reach for. This alias remains a
+> legitimate permanent entry point for anyone who already types it.
 
 ---
 
@@ -39,8 +48,9 @@ must live in a plugin's `skills/` directory (native discovery). This skill wires
 /wf-core-authoring:init
 ```
 
-Takes no arguments — it always registers the single `core-authoring` capability this plugin ships,
-under the stable plugin id `wf-core-authoring`.
+Takes no arguments — unchanged from before this skill became an alias. Selection
+and confirmation are taken interactively **by the canonical lifecycle**; this
+skill pre-ticks one box and passes nothing else.
 
 ---
 
@@ -48,100 +58,133 @@ under the stable plugin id `wf-core-authoring`.
 
 **Allowed:**
 
-- Call the bundled `wf-resolver` MCP tools: `resolve_config`, `resolve_registry`, `inspect_pack`,
-  `register_pack`, and — on a failure — `resolve_gate`.
-- Read `_local/config.md` (or the `registryPath` `resolve_config` returns), and run read-only
-  `git rev-parse --git-dir`, only to confirm `/wf:init` has already run.
+- Run `pwd -P` once to obtain the absolute workspace root for the routing call.
+- Call the bundled `wf-resolver` `resolve_routing` tool to route the one
+  sibling-Skill edge below.
+- Invoke `/wf:init` through the **Skill** tool, with this pack's own stable
+  plugin id as the seed.
+- Relay the `INIT` terminal block that invocation returns.
 
 **Forbidden:**
 
-- Probe `${CLAUDE_PLUGIN_ROOT}` or otherwise derive an install root by hand —
-  `inspect_pack`/`register_pack` resolve it.
-- Hand-edit `_local/config.md`, a `## Capabilities` row, or a `## Plugin Roots` row —
-  `register_pack` owns that write exclusively.
-- Modify any source file.
-- Register a `/command` (impossible — native discovery only; this skill wires the registry).
-- Run builds, tests, installs, or any destructive version-control operation.
+- Call any lifecycle resolver tool — `discover_packs`, `plan_install`,
+  `apply_install`, `repair_packs`, `register_pack`, `inspect_pack`, or
+  `resolve_gate`. Registration happens inside the canonical apply, and nowhere
+  else.
+- Read, infer, or report any lifecycle fact of its own: presence, enablement,
+  registration, drift, recovery, or whether a question is answered.
+- Prompt for anything. This pack declares no question, so the correct output is
+  silence — never a substitute prompt, a placeholder check, or a value carried
+  forward.
+- Seed anything but this pack's own id, seed more than one id, or pass a
+  selection, an answer, or a confirmation on the command line.
+- Render a delta, take a confirmation, or emit a second terminal block.
+- Derive, validate, or second-guess the workspace root. The canonical route
+  admits the root; this skill enters that route and inherits the same admitted
+  workspace by identity, not by imitating the check.
+- Write or edit **any** file, including `_local/config.md` and any profile
+  override. This skill performs no write at all.
+- Filesystem-read a sibling skill's body — `/wf:init` is reached through the
+  **Skill** tool, and a failed invocation stops into the error block below rather
+  than falling back to a read.
+- Run builds, tests, installs, or any network or version-control operation.
 
 ---
 
 ## Onboarding procedure
 
-Before any resolver MCP call, run `pwd -P` once and use the returned absolute current Agent/session workspace directory as `<workspace-root>`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit the primary checkout's or a parent Agent's root. Every resolver call below must explicitly include `workspaceRoot: "<workspace-root>"`; omission is a hard schema error, with no default or fallback.
+One step, and it is the whole skill.
 
-1. **Precondition.** Confirm a git repository (`git rev-parse --git-dir`); if this fails, stop:
-   "`/wf-core-authoring:init` must run inside a git repository — run `/wf:init` first." Call
-   `resolve_config` for the resolved registry location and Read it to confirm the file exists. If it
-   does not, stop: "Run `/wf:init` first — `/wf-core-authoring:init` registers into the registry that
-   `/wf:init` creates."
-2. **Check prior state (reporting only).** Call `resolve_registry({ workspaceRoot: "<workspace-root>" })`; note whether `core-authoring`
-   already appears with `validity: "ok"`. This never skips a later step — it only decides whether the
-   Final Output says `onboarded` or `already-registered`.
-3. **Inspect the plugin.** Call `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-core-authoring" })`. Read-only; returns
-   `{ installed, enabled, installPath, capabilities[], fingerprint, valid, issues[] }`.
-   - `valid: false` (not installed, disabled, no readable
-     `capabilities/core-authoring/manifest.md`, or the plugin listing itself unavailable) → go to
-     **Failure path**; **do not call `register_pack`**, so nothing is written.
-4. **Register.** Call
-   `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-core-authoring", expectedFingerprint: <fingerprint from step 3> })`.
-   It writes the `## Plugin Roots` row and the `core-authoring` `## Capabilities` row in a single
-   write, refreshes the resolver snapshot, and self-checks that `core-authoring` now resolves —
-   returning `{ status, reason, capabilities[], root, selfCheck, preview[] }`.
-   - `status: "rejected"` → **Failure path**. The rejection happens *before* any write, so the
-     registry is untouched.
-   - `status: "registered"`, `selfCheck: "ok"` → success.
-   - `status: "registered"`, `selfCheck: "failed"` → report `partial`: the registry write landed but
-     `core-authoring` still does not resolve; direct the user to re-run `/wf-core-authoring:init`
-     after checking the install.
+1. **Route the edge, then enter the lifecycle.** Run `pwd -P` once and hold the
+   absolute result as `<workspace-root>` — in a linked-worktree Agent that is the
+   Agent's own worktree, never a parent's. Call `resolve_routing` with
+   `workspaceRoot: "<workspace-root>"`, `role: "init"`,
+   `unitIds: ["core-authoring:init"]`, `shapeEvidence: { workSurface:
+   "caller-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
+   ambiguity: "none", risk: "low", toolWork: "none", validation: "mechanical",
+   contextIsolation: "none", independentReview: false, returnContract:
+   "mechanically-judgeable", requestedParallelism: 1 }`,
+   `supportsModelSelector: false`, and `supportsEffortSelector: false`. Emit the
+   compact operational record. On `status: stop` or a non-null `diagnostic`, stop
+   before the invocation and report the resolver's reason. Otherwise obey the
+   selected `inline` shape, pass no selector, and invoke
+   `/wf:init --seed wf-core-authoring` through the **Skill** tool.
 
-The capability's manifest declares **no** `profile-template:`, so the Final Output's `Profile:` row
-is always `skipped — no template` — a static fact, not a resolver call.
-
-### Failure path
-
-Call `resolve_gate({ workspaceRoot: "<workspace-root>", surface: "delivery-write" })` (registering a capability is a registry write).
-Report its `categories`, `diagnostics`, and `recovery` alongside the pack-specific `issues[]` (from
-`inspect_pack`) or `reason` (from a rejected `register_pack`) — never a bare error. Finish with
-`partial`, and state explicitly that nothing was registered.
+2. **Relay what comes back, verbatim.** The `INIT` block is this skill's Final
+   Output. Add the authoring note below it and nothing else — no re-derived
+   status, no second block, no restated delta.
 
 ---
 
 ## Edge Cases
 
-- **Not a git repo / `/wf:init` not run:** stop per the precondition step above.
-- **Plugin not installed or disabled** (`inspect_pack.installed`/`enabled` false): failure path;
-  direct the user to install or enable the plugin, then re-run. Nothing is written.
-- **The plugin listing is unavailable:** `inspect_pack` reports `installed: false` with an issue
-  naming the listing call as the cause (a broken or unavailable CLI, not a missing plugin) — failure
-  path; direct the user to check their CLI, then re-run.
-- **No readable manifest** (`inspect_pack.capabilities` empty): failure path; the install looks
-  corrupted — reinstall the plugin.
-- **Path-invalid install** (`register_pack` rejects on an install path that fails validation): the
-  rejection precedes the write, so the registry is untouched — failure path; report the typed
-  `reason` and re-run after fixing the install.
-- **Stale fingerprint** (`register_pack` rejects on a fingerprint mismatch): re-run `inspect_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-core-authoring" })`
-  to get the current fingerprint, then retry `register_pack({ workspaceRoot: "<workspace-root>", pluginId: "wf-core-authoring", expectedFingerprint: <current fingerprint> })`.
-- **`core-authoring` already registered:** `register_pack` upserts idempotently — re-running is
-  always safe; report `already-registered` per step 2's pre-check.
-- **A declared fragment row resolves nothing before registration:** expected — the capability's rows
-  are reached only through the registry, so until this skill writes the registry row the point they
-  target resolves unfilled and no authoring term of this capability surfaces anywhere.
-- **Self-check FAIL:** report `partial`; never claim success.
+- **`/wf:init` has not run yet:** not a precondition this skill checks. `/wf:init`
+  *is* what is being invoked, and it scaffolds the bare core itself before any
+  pack transaction.
+- **`wf-core-authoring` is disabled:** the seed is reported *not applied*; the pack
+  stays visible, retained and **unavailable**, and its enablement is never
+  flipped. Re-enabling the plugin is the user's action, outside this run. The rest
+  of the run proceeds normally.
+- **`wf-core-authoring` is already set up and the project is settled:** the
+  canonical settled exit — no plan call, no confirmation, no mutation call at all
+  — reported as `already-initialized` / `Apply: not run — no drift`. This is the
+  expected outcome of re-running, not a degenerate one.
+- **The question round asks nothing for this pack:** expected, and the whole
+  point. A pack that declares no question contributes none, and no prompt is
+  synthesized to stand in for one. Another pack in the same desired set may still
+  have its own question asked in that one round.
+- **A declared contribution resolves nothing before registration:** expected — the
+  capability's rows are reached only through the registry, so until the canonical
+  apply writes that row the point they target resolves unfilled and no authoring
+  term of this capability surfaces anywhere.
+- **The project has drifted:** the canonical repair plan handles it. A withheld
+  advance or a retained-but-not-benign artifact is reported as retained
+  divergence, never as no drift.
+- **The project already has other packs set up:** they are all preserved. Entering
+  through this command **adds** `wf-core-authoring` to them and deregisters nothing
+  — omission is never a removal.
+- **A root override is in play:** it targets the same admitted workspace `/wf:init`
+  targets, because this skill enters that one route rather than re-deriving a root
+  of its own.
+- **Recovery ran before the route:** it is reported on its own channel, separately
+  from the delta, exactly as `/wf:init` reports it.
+- **The plan is declined:** `INIT — declined`; nothing was registered and
+  re-running is safe.
+- **`/wf:init` cannot be invoked** (the Skill tool is unavailable, or the
+  invocation errors): stop and report it. Never substitute a registration of this
+  skill's own, and never fall back to reading the sibling body.
 
 ---
 
 ## Final Output
 
-```
-WF-CORE-AUTHORING-INIT — <onboarded | already-registered | partial>
+Relay the canonical block verbatim — this skill runs the canonical lifecycle, so
+it reports the canonical contract:
 
-Registry:   <registryPath from resolve_config>
-Pack root:  <installPath from inspect_pack — may be null on the failure path>
-Registered: core-authoring — <registered | already registered | nothing written>
-Profile:    skipped — no template
-Self-check: <PASS — core-authoring resolves | FAIL — <issues / reason>>
-
-Next: none — terminus. Re-run /wf-core-authoring:init any time; register_pack is idempotent and self-checks the wiring.
 ```
+INIT — <initialized | already-initialized | declined | stopped | partial>
+
+<the block /wf:init returned, verbatim, including its Seed: line>
+
+Authoring note:
+- core-authoring's contributions are reached only through the registry, so they resolve once the canonical apply has written its row.
+```
+
+If the routing call stopped the run, or `/wf:init` could not be invoked, emit
+instead:
+
+```
+INIT — stopped
+
+Seed: wf-core-authoring — not applied (alias could not enter the canonical lifecycle)
+Reason: <the resolver diagnostic, or the invocation error, verbatim>
+
+Next: resolve the reason above, then re-run /wf-core-authoring:init.
+```
+
+**Both blocks are breaking replacements for the previous
+`WF-CORE-AUTHORING-INIT — <status>` block** (MINOR, pre-1.0): one shared route has
+one terminal contract. The command itself is unchanged — same name, same zero
+arguments, same end state.
 
 **The final-output block must always be the very last thing output to chat.**
