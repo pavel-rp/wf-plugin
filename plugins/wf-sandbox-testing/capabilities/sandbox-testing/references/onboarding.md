@@ -75,12 +75,15 @@ committed default). Per the contract's seeding convention, a capability that dec
 
 ## Downstream registration
 
-Run `/wf-sandbox-testing:init` inside a wf-initialized project (after `/wf:init`) — it records this
+Run `/wf-sandbox-testing:init` — a compatibility alias that seeds `wf-sandbox-testing` into
+`/wf:init`'s selection round and owns no lifecycle step of its own. The canonical run records this
 pack's install root in the gitignored `## Plugin Roots` mapping and registers the `sandbox-testing`
-capability as a plugin-anchored row (`plugin:wf-sandbox-testing/capabilities/sandbox-testing`) via
-core's `inspect_pack`/`register_pack` resolver tools. It never probes `${CLAUDE_PLUGIN_ROOT}` and
-never hand-edits the registry. If the project is not wf-initialized, `init` stops and directs the
-user to `/wf:init` — it never registers into a half-configured repo (success criterion 5).
+capability as a plugin-anchored row (`plugin:wf-sandbox-testing/capabilities/sandbox-testing`). The
+alias never probes `${CLAUDE_PLUGIN_ROOT}` and never hand-edits the registry. There is no
+half-configured-repo stop to work around: the canonical lifecycle scaffolds bare core itself before
+any pack transaction, so running it in a not-yet-initialized project is the ordinary path rather
+than an error (which supersedes the original success criterion 5, written against the pre-alias
+body). `/wf:init` is the canonical command and does the same for every installed pack at once.
 
 ## Version history
 

@@ -56,8 +56,9 @@ coherent behaviour with one owner, not an additive list, so a fill supersedes th
 default wholesale rather than appending to it. Homing the fill in `pr-review` (charter
 Assumption #2, confirmed at spec time) keeps every review term inside the contributing pack:
 `ship`'s core body names no reviewer, and a project that has not registered `pr-review` sees a
-review-free `/wf:ship`. Registration is via `/wf-review:init` (WF-325), whose `register_pack`
-is idempotent and refreshes the resolver snapshot so the new `slot` row resolves.
+review-free `/wf:ship`. Registration is via `/wf-review:init` (WF-325), a compatibility alias
+onto the canonical `/wf:init` lifecycle whose apply is idempotent and refreshes the resolver
+snapshot so the new `slot` row resolves.
 
 ## Interaction with `ship`'s own invariants
 

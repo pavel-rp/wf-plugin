@@ -64,11 +64,12 @@ presupposes a registration path — without one, that fragment could never fire 
 corrects an earlier claim in this doc and in `manifest.md` that registration was unnecessary; that
 was true only while the capability carried no fragment and no forthcoming one was scoped.
 
-`/wf-review:init` follows the established pack-init pattern (`wf-git`/`wf-audit`): it calls core's
-typed `inspect_pack`/`register_pack` resolver tools with the stable plugin id `wf-review`, which
-resolves the install path, validates the manifest, and writes the `## Plugin Roots` + `##
-Capabilities` rows in one idempotent, self-checking call — no hand-edited `_local/config.md`, no
-`${CLAUDE_PLUGIN_ROOT}` probing. See `plugins/wf-review/skills/init/SKILL.md`.
+`/wf-review:init` follows the established pack-init pattern (`wf-git`/`wf-audit`): it is a
+compatibility alias that seeds the stable plugin id `wf-review` into `/wf:init`'s selection round
+and owns no lifecycle step of its own. The canonical run resolves the install path, validates the
+manifest, and writes the `## Plugin Roots` + `## Capabilities` rows inside one idempotent
+transaction — no hand-edited `_local/config.md`, no `${CLAUDE_PLUGIN_ROOT}` probing, and no
+registry write by the alias. See `plugins/wf-review/skills/init/SKILL.md`.
 
 To route `address-pr`/`review-pr` through a live host, also register a **delivery** provider
 downstream (e.g. install the wf-git pack and run `/wf-git:init`); that registration is independent

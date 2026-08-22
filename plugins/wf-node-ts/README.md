@@ -26,6 +26,10 @@ row (`plugin:wf-node-ts/capabilities/node-ts`). Core then resolves the `implemen
 fragment through that mapping — no vendored `plugins/wf-node-ts/...` needed in the
 consuming repo. Re-run after a pack upgrade to refresh the install root; it is idempotent.
 
+The same run also installs the test runner to `_local/_testkit/run.mjs`, from the `node-ts`
+capability's declared payload row and only for a selected owner. The payload transaction is the
+runner's sole route into a workspace — neither this command nor any other writes it directly.
+
 **Manual (escape hatch):** when the pack **is** vendored in the consuming repo, add a
 repo-relative row to the project's `_local/config.md` `## Capabilities` table by hand
 (forward slashes):

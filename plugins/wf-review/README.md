@@ -58,9 +58,11 @@ though: run `/wf-review:init` once after `/wf:init` to register the `pr-review` 
 the `## Capabilities` registry. Registration is what makes the `ship.review` gate resolve and
 fire in `/wf:ship` — without it, the fragment stays inert and `/wf:ship` runs with no review
 step. `/wf-review:init` follows the established pack-init pattern
-(`wf-git`/`wf-audit`): it calls core's `inspect_pack`/`register_pack` resolver tools with the
-stable plugin id `wf-review` — no hand-edited `_local/config.md`, no `${CLAUDE_PLUGIN_ROOT}`
-probing. Idempotent — safe to re-run any time.
+(`wf-git`/`wf-audit`): it is a compatibility alias that seeds the stable plugin id `wf-review`
+into `/wf:init`'s selection round and owns no lifecycle step of its own — no hand-edited
+`_local/config.md`, no `${CLAUDE_PLUGIN_ROOT}` probing, no registry write. Idempotent — safe to
+re-run any time. `/wf:init` is the canonical command and does the same for every installed pack
+at once.
 
 To give the skills a **live host** to route through, also register a **delivery** provider
 downstream — install the wf-git pack and run `/wf-git:init`. With no delivery provider
