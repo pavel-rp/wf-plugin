@@ -1,7 +1,7 @@
 {
   "name": "wf-fake",
-  "version": "0.1.1",
-  "description": "wf hermetic fixture-provider pack — the fake capability owning BOTH the wf capability-registry's delivery AND tracker surfaces with an in-memory, scripted, op-recording binding. Every abstract delivery/tracker operation returns a scripted response from a fixture-local scripts file and appends its invocation to a machine-readable op log; no network, git, gh, or tracker MCP is ever reached. Registered only inside fixture registries as the sole owner of both surfaces (real-project co-registration correctly trips overlap validation). The C016 skill-eval test seam. Ships /wf-fake:init for one-command self-registration.",
+  "version": "0.2.0",
+  "description": "wf hermetic fixture-provider pack — the fake capability owning BOTH the wf capability-registry's delivery AND tracker surfaces with an in-memory, scripted, op-recording binding. Every abstract delivery/tracker operation returns a scripted response from a fixture-local scripts file and appends its invocation to a machine-readable op log; no network, git, gh, or tracker MCP is ever reached. Registered only inside fixture registries as the sole owner of both surfaces (real-project co-registration correctly trips overlap validation). The C016 skill-eval test seam. Ships /wf-fake:init as the reference compatibility alias — it seeds wf-fake into /wf:init's selection round and relays that lifecycle's own result, registering nothing itself.",
   "author": {
     "name": "Pavel Kalabin",
     "url": "https://github.com/pavel-rp"
