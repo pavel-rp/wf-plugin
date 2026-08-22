@@ -132,6 +132,16 @@ export interface ApplyTargetRemove {
   operation: "delete";
   /** The workspace-relative destination. */
   destination: string;
+  /** The digest the removal gate PROVED this file holds. Re-compared against the
+   *  bytes observed at S2, inside the transaction, so the deletion is authorized
+   *  by the file's identity at the moment of removal rather than by an identity
+   *  established before the lock's decision phase ended.
+   *
+   *  This is the destructive path carrying strictly MORE proof than a write: a
+   *  write states the bytes it will produce and overwrites whatever is there; a
+   *  removal must additionally re-establish that what is there is exactly the
+   *  thing that was proven removable. */
+  expectedContentHash: string;
 }
 
 /** One destination this transaction acts on. Discriminated on `operation`, so
@@ -547,6 +557,18 @@ export function applyTransaction(
         return rejected(
           "apply/precondition-moved",
           `\`${target.destination}\` is named by a removal but is not a regular file right now (${describe(observed)}); nothing was journalled and nothing was removed.`,
+          noTransactionResidue(),
+        );
+      }
+      // THE IDENTITY RE-PROOF. The gate proved a digest before the transaction
+      // opened; this compares that digest against the bytes observed HERE, inside
+      // the transaction, one stage before the backup is taken. A file whose
+      // content moved between the decision and the entry is not the file that was
+      // authorized for deletion, however unchanged its path and inode look.
+      if (observed.contentHash !== target.expectedContentHash) {
+        return rejected(
+          "apply/precondition-moved",
+          `\`${target.destination}\` no longer holds the bytes its removal was authorized over (expected sha256 ${target.expectedContentHash}, observed ${observed.contentHash}); nothing was journalled and nothing was removed.`,
           noTransactionResidue(),
         );
       }
