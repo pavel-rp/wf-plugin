@@ -18,18 +18,19 @@ dispatch to.
 | `capabilities/ado/profile.template.json` | project-configuration metadata declaring exactly two ordered string questions: ADO Organization, then ADO Project; `work-item-id-prefix: ADO` remains ordinary non-question data |
 | `capabilities/ado/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Azure DevOps mechanics, with a completeness coverage table |
 | seven `capabilities/ado/fragments/*-*.md` slot fills | the conveyor tracker mirror — `spec.questions`, `spec.publish`, `plan.publish`, `tasks.publish`, `implement.start`, `implement.milestone`, `implement.finish` |
-| `/wf-ado:init` | one-command self-registration — records this pack's install root, registers the `ado` capability, and interviews for (or carries forward) ADO organization/project, mirroring `/wf-git:init` (WF-122) |
+| `/wf-ado:init` | a compatibility alias onto the shared setup lifecycle — it seeds `wf-ado` into the canonical `/wf:init` selection round and relays what comes back; it runs no interview and performs no registry write of its own |
 
 ## Declared project questions
 
-The profile template exposes the existing ADO Organization and ADO Project interview as ordered,
+The profile template exposes the ADO Organization and ADO Project questions as ordered,
 capability-owned metadata. Both are plain strings, have no suggested answer, and remain unresolved
 until a project explicitly persists a value at the declared destination. The established Work Item
 ID Prefix default, `ADO`, stays outside `ask` and cannot resolve either question.
 
-This declaration does not yet run or persist the interview. `/wf-ado:init` remains the current
-onboarding path and continues to manage the same `## Azure DevOps` config rows until the separate
-init-alias migration. Packs that declare no questions remain silent. In particular, credentials
+The canonical question round asks these declarations and the canonical apply persists them. Only a
+persisted **project** answer resolves one: a shipped default, a pack-tier value and a personal-tier
+value are pre-fills, never answers. A question a project has already answered is not asked again.
+Packs that declare no questions remain silent. In particular, credentials
 collected by `wf-browser-qa` remain a separate pack-specific onboarding concern, outside this
 project-question inventory.
 
@@ -51,15 +52,20 @@ extension.
 
 ## Registering wf-ado downstream
 
-**One command (recommended): `/wf-ado:init`.** After `/wf:init` has bootstrapped the
-repo, run `/wf-ado:init` — it records this pack's install root in a gitignored
-`## Plugin Roots` mapping, registers the `ado` capability as a **plugin-anchored**
-row (`plugin:wf-ado/capabilities/ado`), and interviews for (or carries forward
-any already-set) `_local/config.md` `## Azure DevOps` values. Core then resolves
-`tracker` operations through that mapping — no vendored `plugins/wf-ado/...`
-needed in the consuming repo. Re-run after a pack upgrade to refresh the install
-root; it is idempotent, and a re-run with all three ADO values already set
-produces zero prompts.
+**One command (recommended): `/wf:init`.** The canonical setup command runs the
+whole journey — discovery, selection, questions, one delta, one confirmation, one
+apply — for every installed pack in a single pass, registering the `ado`
+capability as a **plugin-anchored** row (`plugin:wf-ado/capabilities/ado`) and
+recording this pack's install root in a gitignored `## Plugin Roots` mapping.
+Core then resolves `tracker` operations through that mapping — no vendored
+`plugins/wf-ado/...` needed in the consuming repo.
+
+**`/wf-ado:init` still works**, as a compatibility alias onto that same
+lifecycle: it seeds `wf-ado` into the selection round and relays the canonical
+result. The seed is **additive** — every registration the project already has is
+preserved and `wf-ado` is added to them. Re-run either command after a pack
+upgrade to refresh the install root; both are idempotent, and a re-run over a
+settled project reaches the settled exit with no mutation call at all.
 
 **Manual (escape hatch):** when the pack **is** vendored in the consuming repo,
 add a repo-relative row to the project's `_local/config.md` `## Capabilities`
