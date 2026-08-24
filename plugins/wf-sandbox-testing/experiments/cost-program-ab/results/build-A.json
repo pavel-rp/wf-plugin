@@ -1,0 +1,10 @@
+{
+  "arm": "A",
+  "image": "cost-program-ab:armA",
+  "wf_ref": "554f7c4",
+  "cli_version": "2.1.218",
+  "fingerprints": {
+    "kit": "50f2c3f1f7da9ad1ca54ede309a05907537942229c4b5fe75603f2af67626c56",
+    "runner": "b413ed8a4859e2fdbce00a9cb696780efa16e343322c70a518dffba1be21d32e"
+  }
+}

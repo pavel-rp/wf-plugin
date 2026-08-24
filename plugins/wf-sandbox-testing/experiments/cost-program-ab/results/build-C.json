@@ -1,0 +1,10 @@
+{
+  "arm": "C",
+  "image": "cost-program-ab:armC",
+  "wf_ref": "3b9f00b",
+  "cli_version": "2.1.218",
+  "fingerprints": {
+    "kit": "51d6ad157ea861281daaa5217678498195f48acf0d437d26851fc948e45a7cc4",
+    "runner": "b413ed8a4859e2fdbce00a9cb696780efa16e343322c70a518dffba1be21d32e"
+  }
+}
