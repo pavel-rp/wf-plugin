@@ -118,9 +118,10 @@ Next: /wf:pr <id>
 
 `Branch-switch:` is how Step 2's mismatch report reaches the caller: this agent emits only its
 Final Output block, so the report is a **named field inside that block**, never loose narrative.
-It reads `none` whenever the gate matched and no dispatch occurred; on a `BRANCH — created`/
-`switched` it names the non-matching branch left and the branch now active. The line is always
-present so the block's shape is fixed.
+It reads `none` on **any** path where no branch was created or switched — the gate matched, or the
+dispatch returned `BRANCH — already-active`; on a `BRANCH — created`/`switched` it names the
+non-matching branch left and the branch now active. The line is always present so the block's
+shape is fixed.
 
 Nothing to commit:
 

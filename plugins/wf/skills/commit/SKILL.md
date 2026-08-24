@@ -80,9 +80,12 @@ COMMIT — <committed | nothing-to-commit>
 Task: {task-id} — <title or n/a>
 Subject: <id>: <subject>          (omitted when nothing-to-commit)
 Files: <n> changed (+<a> -<d>)    (omitted when nothing-to-commit)
+Branch-switch: <none | left <non-matching-branch>, now on <branch-name>>
 Push: <pushed (<remote>/<remote-branch>) | up-to-date (<remote>/<remote-branch>) | not-pushed | failed (<reason>)>
 Next: /wf:pr <id>
 ```
+
+`Branch-switch:` is always present in both success shapes. It reads `none` whenever no branch was created or switched — the gate matched, or the dispatch returned `already-active` — and otherwise names the non-matching branch the gate left and the branch now active, so a branch dispatch is never silent to a caller that only sees this block.
 
 Error:
 

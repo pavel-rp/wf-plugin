@@ -47,7 +47,7 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 - If no `01_spec.md` but `00_reqs.md` exists, use that.
 - If neither exists, stop: "No spec or requirements found. Run `/wf:spec {id}` first."
 - **Task title:** read from `01_spec.md` heading, or from `00_reqs.md` (synthesize a short title, 5-8 words max). First available wins.
-- **Branch-name matching tokens.** Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. The Phase 0 branch-gate quick-check matches an already-existing branch name against **either** `{task-id}` or `{numeric-id}`, compared case-insensitively; both are used **only** there. `{numeric-id}` plays no role in the task folder, the task id, or any tracker operation — the lower-casing is for comparison only and never changes what is written or emitted.
+- **Branch-name matching tokens.** Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. The Phase 0 branch-gate quick-check matches an already-existing branch name against **either** `{task-id}` or `{numeric-id}`, compared case-insensitively; `{numeric-id}` is used **only** there — it plays no role in the task folder, the task id, or any tracker operation — the lower-casing is for comparison only and never changes what is written or emitted.
 
 **Type resolution:** If `--type` is provided, use it (treat as `Confidence: high`). Otherwise, defer until Phase 0.5, which prefers `01_spec.md` metadata and falls back to `/wf:classify`. Do NOT keyword-scan inline — the rubric lives in the classifier.
 
