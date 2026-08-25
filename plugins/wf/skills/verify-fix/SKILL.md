@@ -89,9 +89,9 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 
 ## Phase 1: Branch Gate
 
-Before editing any code, verify the current branch matches the audit's target. Extract the first 3+-digit run from `{task-id}` — call it `{numeric-id}`; it is used **only** for the branch-name match below, never for the task folder or any operation.
+Before editing any code, verify the current branch matches the audit's target. Extract the first 3+-digit run from `{task-id}` — call it `{numeric-id}`; it and `{task-id}` are the two tokens the branch-name match below accepts. `{numeric-id}` is used **only** there, never for the task folder or any operation, while `{task-id}` stays the verbatim id everywhere else.
 
-Gate on the task branch per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` (extracted above) for the branch-name match. On the bare-core skip, report it and proceed (the gate is satisfied).
+Gate on the task branch per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{task-id}` and `{numeric-id}` (extracted above) for the branch-name match. On the bare-core skip, report it and proceed (the gate is satisfied).
 
 Rationale: the audit's evidence lines (`file:line`) are only meaningful on the branch that produced them. Fixing on `main` or an unrelated branch edits the wrong state.
 

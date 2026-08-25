@@ -31,7 +31,7 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 
 1. Obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md`. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), return `COMMIT — Error` with reason "Run /wf:init first." If the `wf-resolver` service is unavailable, return `COMMIT — Error` with reason "resolver runtime not loaded (restart Claude Code)."
 2. Take `{task-root}` from `coreConfig.taskRoot`. Never hardcode it.
-3. **Resolve `{task-id}`** (the opaque task id): use `<id>` verbatim when passed. When inferring, extract the first 3+-digit run from the current branch (via `current-branch-query`) as a token and resolve it against `{task-root}` by first-3+-digit-run folder-name matching, comparing it to each existing folder's name. **Exactly one match** — reuse that folder's full name as `{task-id}` (never reconstruct from a prefix). **More than one match** — return `COMMIT — Error` with reason "Ambiguous id: the branch-inferred token matches more than one task folder; pass the id explicitly." **Zero matches** (e.g. a first commit before `/wf:spec`) — hold the bare token as `{task-id}`; the title source is unavailable anyway, and Step 4 falls back. If no token can be extracted at all, return `COMMIT — Error` with reason "No task id provided and none could be inferred from the current branch." Also derive **`{numeric-id}`** — the first 3+-digit run of `{task-id}` — used only for the branch-name match (Step 2) and the commit subject (Step 4), never for the task folder.
+3. **Resolve `{task-id}`** (the opaque task id): use `<id>` verbatim when passed. When inferring, extract the first 3+-digit run from the current branch (via `current-branch-query`) as a token and resolve it against `{task-root}` by first-3+-digit-run folder-name matching, comparing it to each existing folder's name. **Exactly one match** — reuse that folder's full name as `{task-id}` (never reconstruct from a prefix). **More than one match** — return `COMMIT — Error` with reason "Ambiguous id: the branch-inferred token matches more than one task folder; pass the id explicitly." **Zero matches** (e.g. a first commit before `/wf:spec`) — hold the bare token as `{task-id}`; the title source is unavailable anyway, and Step 4 falls back. If no token can be extracted at all, return `COMMIT — Error` with reason "No task id provided and none could be inferred from the current branch." Also derive **`{numeric-id}`** — the first 3+-digit run of `{task-id}` — used only for the branch-name match (Step 2), where it is one of the two tokens accepted alongside `{task-id}` itself, and for the commit subject (Step 4); never for the task folder.
 4. Take the absolute workspace root from the `resolve_config({ workspaceRoot, ... })` `workspaceRoot` value (its already-normalized `workspace-root-resolve` result). With no delivery provider registered this is the plain-directory resolution (not an error); with a provider registered but no working tree to resolve, return `COMMIT — Error` with reason "Not inside a resolvable workspace."
 5. Compute the task folder: if `{task-root}` is absolute, use it as-is; otherwise join with the resolved workspace root → `<workspace-root>/{task-root}/{task-id}/`. Hold as `<task-folder-abs>`. It may not exist yet (commit can run before `/wf:spec`) — that is not fatal here; it only limits the first-commit title source (Step 4).
 6. `{task-id}` is the opaque id resolved in step 3 (used in the `Task:` line).
@@ -39,9 +39,9 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 ## Step 2 — Branch gate
 
 1. Resolve the current branch via `current-branch-query`. Its detached-HEAD signal (the literal `HEAD`) → return `COMMIT — Error` with reason "Detached HEAD; cannot commit task work from this state."
-2. If the branch name contains `/{numeric-id}-` (e.g. `feature/6396-…`, `fix/6396-…`), you are on the task branch — continue to Step 3.
+2. If the branch name contains `/{task-id}-` or `/{numeric-id}-`, compared case-insensitively (e.g. `feat/{task-id}-…`, `<prefix>/{task-id}-…` in any letter case, or `feature/{numeric-id}-…`), you are on the task branch — continue to Step 3. The lower-casing is for comparison only and never changes what is written or emitted — the commit subject, the `Task:` line, and every tracker operation keep `{task-id}` verbatim.
 3. Otherwise call `resolve_routing` immediately before dispatch with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "branch"`, `unitIds: ["commit:branch"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded", validation: "mechanical", contextIsolation: "useful", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit its compact metadata. If `status: stop` or `diagnostic` is non-null, return `COMMIT — Error` with the routing diagnostic and do not dispatch. Otherwise obey the returned `executionShape` per `invocation-runtime.ops.md` §"Resolver call root"; this evidence selects `isolated`, so invoke one **Task** with `subagent_type: wf:branch`, passing the task id `{task-id}` **and the forwarded `delivery` resolution record** from the Provider-resolution section above (the optional spawn extension — `invocation-runtime.ops.md` §"Run-scoped provider forwarding"). Pass a non-null model selector and preserve inherited effort when null.
-   - On `BRANCH — created`/`switched`/`already-active` with `Carry: none` or `Carry: applied`, continue to Step 3.
+   - On `BRANCH — created`/`switched`/`already-active` with `Carry: none` or `Carry: applied`, continue to Step 3. On `BRANCH — created`/`switched`, **record the mismatch** for Step 7's `Branch-switch:` field — the non-matching branch left and the branch now active — so the dispatch is never silent. Do not emit it as narrative here; this agent emits only its Final Output block. Control flow is unchanged: no new prompt, no new stop.
    - On a successful branch block whose `Carry:` names a preserved entry/manual follow-up, return `COMMIT — Error` with reason "Task branch is active, but preserved work still needs the stated manual carry follow-up before commit." Preserve the branch success; do not relabel it `BRANCH — Error`, and do not read or commit the incomplete working set.
    - On `BRANCH — Error`, return `COMMIT — Error` with the subagent's reason. Ordinary dirty work never produces this result: the branch operation captures and reapplies it.
 
@@ -111,9 +111,17 @@ COMMIT — committed
 Task: <task-id> — <title or n/a>
 Subject: <id>: <subject>
 Files: <n> changed (+<a> -<d>)
+Branch-switch: <none | left <non-matching-branch>, now on <branch-name>>
 Push: <pushed (<remote>/<remote-branch>) | up-to-date (<remote>/<remote-branch>) | not-pushed | failed (<reason>)>
 Next: /wf:pr <id>
 ```
+
+`Branch-switch:` is how Step 2's mismatch report reaches the caller: this agent emits only its
+Final Output block, so the report is a **named field inside that block**, never loose narrative.
+It reads `none` on **any** path where no branch was created or switched — the gate matched, or the
+dispatch returned `BRANCH — already-active`; on a `BRANCH — created`/`switched` it names the
+non-matching branch left and the branch now active. The line is always present so the block's
+shape is fixed.
 
 Nothing to commit:
 
@@ -121,9 +129,14 @@ Nothing to commit:
 COMMIT — nothing-to-commit
 
 Task: <task-id>
+Branch-switch: <none | left <non-matching-branch>, now on <branch-name>>
 Push: <pushed (<remote>/<remote-branch>) | up-to-date (<remote>/<remote-branch>) | not-pushed | failed (<reason>)>
 Next: /wf:pr <id>
 ```
+
+`Branch-switch:` carries the same meaning here as in the committed block above — Step 2's gate runs
+before commit detection, so a dispatch can precede a nothing-to-commit outcome and must not go
+unreported on that path either.
 
 Error:
 

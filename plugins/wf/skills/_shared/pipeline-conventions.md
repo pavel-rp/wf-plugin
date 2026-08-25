@@ -49,8 +49,10 @@ When a skill is invoked with **no explicit id**, infer it from the branch. Subst
 An explicit `<id>` argument is used verbatim as `{task-id}` — opaque, whatever shape the
 active tracker capability produces, or the local `T<NNN>` scheme — with no normalization
 and no branch read. After resolving `{task-id}` (either path), a skill that needs a
-branch-name match extracts the first 3+-digit run from it — `{numeric-id}` — used **only**
-for the branch-gate match, never for the task folder or any operation.
+branch-name match uses two tokens: `{task-id}` itself, and the first 3+-digit run
+extracted from it — `{numeric-id}`. Both are accepted by the branch-gate match;
+`{numeric-id}` is used **only** there, never for the task folder or any operation, while
+`{task-id}` stays the verbatim id everywhere else.
 
 Skills that verify a required artifact exists after resolving the id (e.g. `00_reqs.md`,
 `04_verify.md`) keep that confirmation step in their own body — it is skill-specific.
@@ -59,9 +61,11 @@ Skills that verify a required artifact exists after resolving the id (e.g. `00_r
 
 ## Branch gate (bare-core aware)
 
-Before mutating anything, a skill confirms the working branch matches the task. It uses
-`{numeric-id}` (the first 3+-digit run of `{task-id}`, above) **only** for the
-branch-name match.
+Before mutating anything, a skill confirms the working branch matches the task. It matches
+the branch name against `{task-id}` and `{numeric-id}` (its first 3+-digit run, above),
+comparing both **case-insensitively**; `{numeric-id}` is used **only** here. The
+lower-casing is **for comparison only** — the task folder, every tracker operation, and
+every emitted `Task:` line keep `{task-id}` verbatim.
 
 1. **Resolve delivery-surface ownership first** — the scope-equality filter
    (`contribution-kind = provider` **and** `scope = delivery`) of direct provider
@@ -70,7 +74,8 @@ branch-name match.
    error and no stop. Report "Branch gate skipped — no delivery provider registered
    (bare-core mode)." and continue. **One matching row** — resolve the current branch via
    `current-branch-query` and apply step 2.
-2. **If the resolved branch name contains `/{numeric-id}-`** — proceed. **Otherwise** —
+2. **If the resolved branch name contains `/{task-id}-` or `/{numeric-id}-`**, compared
+   case-insensitively — proceed. **Otherwise** —
    call `resolve_routing` immediately before dispatch with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "branch"`, `unitIds: ["pipeline:branch"]`,
    `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
    unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded",
@@ -95,6 +100,10 @@ branch-name match.
    branch success but the caller stops its source-mutating work and surfaces the required
    follow-up through its own existing blocked/error outcome. On `BRANCH — Error`, stop and
    surface the subagent's reason.
+3. **Report the mismatch.** Whenever step 2's dispatch branch ran and returned
+   `BRANCH — created`/`switched`, the caller reports **one line** naming the non-matching
+   branch it left, `{task-id}`, and the branch now active — the dispatch is never silent.
+   Control flow is otherwise unchanged: no new prompt, no new stop.
 
 Each skill keeps its own behavior for **Task-tool unavailability** (some skills skip the
 gate with a stated reason and proceed on the current branch; others treat it as a hard

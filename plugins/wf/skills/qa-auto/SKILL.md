@@ -106,9 +106,9 @@ Id inference and the Phase 2 branch gate both reach `current-branch-query` by ca
 
 ## Phase 2: Branch gate
 
-Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. This token is used **only** for the branch-name match below; it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
+Extract the first 3+-digit run from `<id>` (whatever its shape) — call it `{numeric-id}`. It and `{task-id}` are the two tokens the branch-name match below accepts; `{numeric-id}` is used **only** there — it plays no role in the task folder, the task id, or any tracker operation, all of which use the opaque `<id>`/`{task-id}` form verbatim.
 
-Gate on the task branch per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{numeric-id}` for the branch-name match. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch — auto runs commonly happen on the task branch anyway)." and continue.
+Gate on the task branch per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Branch gate (bare-core aware)", using `{task-id}` and `{numeric-id}` for the branch-name match. If subagent invocation of `wf:branch` is unavailable, skip the gate instead of blocking: report "Branch gate skipped — Task tool unavailable to invoke wf:branch (proceeding on the current branch — auto runs commonly happen on the task branch anyway)." and continue.
 
 ---
 

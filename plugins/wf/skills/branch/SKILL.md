@@ -42,7 +42,7 @@ Emit the subagent's Final Output block (`BRANCH — created`, `BRANCH — switch
 
 The subagent owns every stop condition; each surfaces through the Final Output block below. It returns:
 
-- **Already on the task branch** — `BRANCH — already-active`; no new branch is created (the current branch already carries `/{id}-`).
+- **Already on the task branch** — `BRANCH — already-active`; no new branch is created. The subagent recognises this two ways: the delivery provider's exact-name match on a name it derived itself, and — for a branch whose shape it would not have derived, such as a tracker-prefixed `feat/{task-id}-…` — a current-branch check on `/{task-id}-`, compared case-insensitively and gated on `{task-id}` differing from `{numeric-id}` (when the two are equal the id is a bare numeric token, so the check is skipped rather than risking a collision). That check is deliberately narrower than the shared branch gate's two-arm predicate: a bare-numeric arm cannot distinguish two tasks sharing a numeric run, so it would risk handing back another task's branch.
 - **Branch already exists for this task** — `BRANCH — switched`; checks out the existing branch rather than recreating it.
 - **Dirty working tree** — uncommitted changes do not block the switch: the delivery provider captures and reapplies them. Clean reapply returns success with `Carry: applied`; a conflicting reapply still returns branch success with a preserved entry and an explicit manual follow-up to finish reapplying and resolve it.
 - **Detached HEAD** — `BRANCH — Error`; branches cannot be created from a detached HEAD.
