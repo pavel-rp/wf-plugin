@@ -373,7 +373,8 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 ### Full report shape (`04_verify.md`)
 
 The verbatim `04_verify.md` output shape — the report header, `## Requirements`,
-`## Capability findings`, `## Deviations`, and `## Recommended next actions` structure —
+`## Capability findings`, `## Adversarial findings`, `## Deviations`, and
+`## Recommended next actions` structure —
 lives at `verify-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })`
 (`class: references-template`, `skill: verify-spec`, `ref: verify-template.md`), never a
 raw `Read` of the plugin-cache path. It is read only on this write path, so it stays out of
@@ -423,7 +424,7 @@ End with the final-output block (see below).
   as capability `finding`s at the `verify` phase, not as fabricated requirement-list rows.
 - Will NOT name, require, or assume any capability. It iterates the registry and
   aggregates whatever is contributed; with none registered, it produces the generic
-  verdict alone.
+  verdict plus the lean adversarial pass alone.
 
 ---
 

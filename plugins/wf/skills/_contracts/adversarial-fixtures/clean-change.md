@@ -51,7 +51,9 @@ changed/retry-policy.txt
 
 ---
 
-## EXPECT: findings=0
+## Expected result
+
+EXPECT: findings=0
 
 Neither defect class is present, and each suppressed form is baited and unsupported:
 

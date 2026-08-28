@@ -77,7 +77,13 @@ if ! grep -q 'requirements, capability findings <none | N across M capabilities>
 fi
 
 # --- 3. It adds no dispatch ----------------------------------------------------
-# Extract just the pass section and prove it invokes nothing.
+# Extract just the pass section and prove it invokes nothing. Both the start heading
+# and the terminator must exist: without the terminator the awk range would run to EOF
+# and sweep in the dispatch section, misattributing its tokens to this one.
+if ! grep -q '^## Fire the `verify` phase' "$VERIFY"; then
+  report_fail "the pass section's terminator heading is missing — extraction would overrun"
+fi
+
 section="$(awk '/^## The lean adversarial pass$/{f=1} /^## Fire the `verify` phase/{f=0} f' "$VERIFY")"
 
 if [ -z "$section" ]; then
@@ -97,13 +103,23 @@ if ! printf '%s' "$section" | grep -qF 'runs inline, in this skill'; then
 fi
 
 # --- 4. Core names no capability; the fixtures exist ---------------------------
-# The pass section must name no capability shipped in this marketplace.
-for cap in audit sr git linear browser-qa pr-review author-caps sandbox-testing fake; do
+# The pass section must name no capability shipped in this marketplace. The list is
+# DERIVED from the tree, never transcribed — a hardcoded list silently stops covering
+# every pack added after it was written.
+caps_checked=0
+for cap_dir in "$ROOT"/plugins/*/capabilities/*/; do
+  [ -d "$cap_dir" ] || continue
+  cap="$(basename "$cap_dir")"
+  caps_checked=$((caps_checked + 1))
   case "$section" in
     *"\`$cap\`"*)
       report_fail "the lean adversarial pass names the capability '$cap' (Core Article 8)" ;;
   esac
 done
+
+if [ "$caps_checked" -eq 0 ]; then
+  report_fail "derived zero capability names — the capability-noun check would pass vacuously"
+fi
 
 need "$VERIFY" "the pass must state that dedup against registered contributors is out of scope" \
   'is out of scope here'
@@ -148,7 +164,11 @@ fi
 if [ ! -f "$CLEAN" ]; then
   report_fail "the paired defect-free fixture is missing"
 else
-  need "$CLEAN" "the clean fixture must expect zero findings" 'EXPECT: findings=0'
+  # Both checks anchor identically, so the negative one cannot go inert while the
+  # positive one still passes on a differently-shaped marker.
+  if ! grep -q '^EXPECT: findings=0$' "$CLEAN"; then
+    report_fail "the clean fixture must expect zero findings on a bare EXPECT line"
+  fi
   if grep -q '^EXPECT: class=' "$CLEAN"; then
     report_fail "the clean fixture must declare no defect class"
   fi

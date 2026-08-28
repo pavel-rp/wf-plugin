@@ -5,7 +5,6 @@ The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.
 ## Contents
 
 - [Full output shape](#full-output-shape-04_verifymd) — the full fenced block
-- [Adversarial findings](#adversarial-findings) — the lean pass's section, omitted when clean
 
 ## Full output shape (`04_verify.md`)
 

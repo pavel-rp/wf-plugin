@@ -91,15 +91,15 @@ class.
 Running inline over the diff the audit has already gathered adds none of those. It also
 keeps the pass structurally outside the invariants
 `plugins/wf/skills/_contracts/verify-dispatch-cost-guard.sh` protects: every one of them
-constrains the *capability lens dispatch* path — the contributor gate preceding any
-routing or Task call, caller-side profile resolution, the inlined finding contract, and
-the five lens agents and manifest rows. A pass that performs no dispatch cannot weaken a
-guarantee about how dispatch is performed.
+constrains the *contributor dispatch* path — the contributor gate preceding any routing or
+Task call, caller-side profile resolution, and the inlined finding contract. A pass that
+performs no dispatch cannot weaken a guarantee about how dispatch is performed.
 
-For the same reason the pass is strictly additive to the five-lens fan-out rather than a
-reshaping of it. That fan-out's shape is settled by `docs/verify-fanout-decision.md`,
-which records an explicit decision not to collapse it without affirmative evidence; this
-change supplies no such evidence and makes no such attempt.
+For the same reason the pass is strictly additive to whatever contributors are registered
+at the `verify` phase, rather than a reshaping of them. Their dispatch shape is settled
+elsewhere, by a recorded decision not to change it without affirmative evidence; this
+change supplies no such evidence and makes no such attempt. Core states no count and no
+list here — how many contributors exist, and what they are, is the registry's business.
 
 ## Worked examples
 
