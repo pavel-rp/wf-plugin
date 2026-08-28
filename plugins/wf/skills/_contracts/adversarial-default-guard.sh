@@ -227,9 +227,15 @@ LENS_FAIL="$FIX_DIR/lens-failure.md"
 if [ ! -f "$AUDIT_REG" ]; then
   report_fail "the purpose-built one-capability registry fixture is missing"
 else
+  if ! grep -q '^## Capabilities$' "$AUDIT_REG"; then
+    report_fail "the audit-only registry fixture has no ## Capabilities heading"
+  fi
   # Exactly ONE data row — the whole point of the fixture. This repo's own eight-row
-  # registry would pollute the non-duplication comparison.
-  areg_rows="$(grep -E '^\|' "$AUDIT_REG" | grep -vcE '^\|[[:space:]]*(Capability|Registry|-|`)')"
+  # registry would pollute the non-duplication comparison. Scope the count to the
+  # `## Capabilities` table: the fixture's prose carries other tables, and counting those
+  # too would make this assertion depend on how the prose happens to be formatted.
+  areg_rows="$(awk '/^## Capabilities$/{f=1; next} /^## /{f=0} f' "$AUDIT_REG" \
+    | grep -E '^\|' | grep -vcE '^\|[[:space:]]*(Capability|-)')"
   if [ "$areg_rows" -ne 1 ]; then
     report_fail "the audit-only registry fixture must carry exactly one capability row (found $areg_rows)"
   fi
