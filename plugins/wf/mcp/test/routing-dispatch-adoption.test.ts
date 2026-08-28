@@ -56,7 +56,7 @@ test("authoritative dispatch inventory is normalized and bidirectional", () => {
   assert.equal(new Set(inventory.map((row) => row.id)).size, inventory.length, "inventory ids must be unique");
   assert.equal(inventory.filter((row) => row.classification === "excluded").length, 5, "only the revised-spec structural exclusions are allowed");
   const included = inventory.filter((row) => row.classification === "included");
-  assert.equal(included.length, 64, "fixed core dispatch inventory changed; review and guard update required");
+  assert.equal(included.length, 65, "fixed core dispatch inventory changed; review and guard update required");
   for (const row of included) {
     const source = readFileSync(join(repoRoot, row.file), "utf8");
     assert.ok(exactInventoryTargetIsPresent(source, row.target), `${row.id} exact target is stale`);

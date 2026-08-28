@@ -19,15 +19,22 @@
 # It also asserts the two structural properties those outcomes depend on:
 #
 #   * the destination lies in the orchestrator's own workspace, so it survives a
-#     prune — and names no committed-lifecycle path, since that route would
-#     require the resolver to be the writer;
-#   * `index.md` is never in the persistence write set and the row is reached
-#     ONLY by invoking the index writer, so its sole-writer invariant holds.
+#     prune — and the path the step actually WRITES is checked against the
+#     declared one, so neither half can drift to a committed-lifecycle path
+#     (which would require the resolver to be the writer) while the other stays
+#     honest;
+#   * `index.md` is never in the persistence write set and every row is reached
+#     ONLY by invoking the index writer, ONCE PER ARTIFACT — that writer edits
+#     exactly one row per call, so a single call for an N-artifact folder would
+#     leave a record strictly worse than the one the worktree held;
+#   * the shipper's own prohibition is asserted as a whole sentence INSIDE the
+#     dispatch template, not anywhere in the document.
 #
-# --selftest runs the same evaluator over eight seeded synthetic contracts,
-# including the exact pre-fix shape (no persistence step at all), and requires
-# the evaluator to reject every defective one and accept the sound one. A lint
-# that scans a clean tree and finds nothing is indistinguishable from a lint that
+# --selftest runs the same evaluator over sixteen seeded synthetic contracts,
+# including the exact pre-fix shape (no persistence step at all) and the mirror
+# pair (a deleted failure clause AND a deleted success clause), and requires the
+# evaluator to reject every defective one and accept the sound one. A lint that
+# scans a clean tree and finds nothing is indistinguishable from a lint that
 # does nothing; the selftest is what makes a green live-tree run mean something.
 # Rejections are checked for the evaluator's own violation exit (1), never a
 # harness error (2), so a broken fixture cannot masquerade as a caught defect.
@@ -67,8 +74,11 @@ if [ "${1:-}" = "--selftest" ]; then
   fi
 
   selftest_fail=0
-  for name in no-persistence index-copied silent-failure failure-contaminates \
-              committed-path shipper-writes unreported row-written-directly; do
+  for name in no-persistence index-copied silent-failure silent-success \
+              failure-contaminates committed-path step-writes-committed-path \
+              shipper-writes unreported row-written-directly single-index-call \
+              no-artifacts-as-failure unstaged-write delivery-outcome-only \
+              no-denominator unmarked-attempt unbounded-write-scope; do
     evaluate "$tmp/$name.md" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -ne 1 ]; then
@@ -87,7 +97,7 @@ if [ "${1:-}" = "--selftest" ]; then
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "task-artifact-persistence-guard: self-test passed — eight seeded defects rejected (no persistence step, a copied index row, a silent failure, a failure that stops the other items, a committed-lifecycle destination, a relaxed shipper prohibition, an unreported outcome, a directly-written row) and the sound contract accepted."
+  echo "task-artifact-persistence-guard: self-test passed — sixteen seeded defects rejected (no persistence step, a copied index row, a silent failure, a silent success, a failure that stops the other items, a committed-lifecycle declaration, a committed-lifecycle write path behind an honest declaration, a relaxed shipper prohibition, an unreported outcome, a directly-written row, one index call for a whole folder, a never-had-a-worktree item counted as a failure, an unstaged write, capture on the delivery outcome alone, a tally with no terminal denominator, an unmarked in-flight attempt, and a destination untied from the write-scope boundary) and the sound contract accepted."
   exit 0
 fi
 
@@ -98,9 +108,15 @@ if [ ! -f "$FLEET" ]; then
   exit 2
 fi
 
-if evaluate "$FLEET"; then
+evaluate "$FLEET"
+rc=$?
+if [ "$rc" -eq 0 ]; then
   echo "task-artifact-persistence-guard: PASS — the run's task artifacts and index rows outlive the worktrees that produced them."
   exit 0
+fi
+if [ "$rc" -eq 2 ]; then
+  err "could not run the evaluator against $FLEET"
+  exit 2
 fi
 err "FAIL — the task-artifact persistence contract does not hold."
 exit 1
