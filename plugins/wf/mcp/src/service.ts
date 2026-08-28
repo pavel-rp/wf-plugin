@@ -733,6 +733,20 @@ function boundInspectionPayloadDiagnostics(
   return bounded;
 }
 
+/** Upper bound on a rendered core-version string (WF-488).
+ *
+ *  The value is not merely returned — it is rendered verbatim into two grepped,
+ *  column-aligned blocks and a durable scoreboard header. Bounding it here, at
+ *  the single point it enters the response, is what keeps every render site from
+ *  having to defend itself. Generous enough for any real semver with a
+ *  pre-release and build suffix. */
+const MAX_CORE_VERSION_CHARS = 64;
+
+/** Any C0 control character or DEL. A newline here is the dangerous one: the
+ *  value is rendered into line-oriented blocks that consumers parse line by
+ *  line, so an interior newline could forge a label line inside a block. */
+const CONTROL_CHARACTER = /\p{Cc}/u;
+
 /**
  * Read the declared `version` of the core plugin at `corePluginRoot` (WF-488).
  *
@@ -753,7 +767,7 @@ export function readDeclaredCoreVersion(
 ): string | null {
   let raw: string | null;
   try {
-    raw = readFile(joinSlash(normalizeSlashes(corePluginRoot), ".claude-plugin", "plugin.json"));
+    raw = readFile(joinSlash(corePluginRoot, ".claude-plugin", "plugin.json"));
   } catch {
     return null;
   }
@@ -773,7 +787,18 @@ export function readDeclaredCoreVersion(
   // trim only removes surrounding whitespace, which would otherwise misalign the
   // fixed value column of the blocks that render this.
   const trimmed = version.trim();
-  return trimmed.length === 0 ? null : trimmed;
+  if (trimmed.length === 0) return null;
+
+  // BOUNDED BEFORE IT IS SERVED. The manifest is external input and this value is
+  // rendered verbatim into blocks that downstream skills grep line-by-line, so an
+  // interior newline or control character could forge a line inside a consumed
+  // block — `trim()` strips only SURROUNDING whitespace and would not catch it.
+  // An unrenderable version is reported as absent, which the callers already
+  // render as their stated fallback token; that is strictly safer than emitting
+  // a value that could restructure the record it appears in.
+  if (trimmed.length > MAX_CORE_VERSION_CHARS) return null;
+  if (CONTROL_CHARACTER.test(trimmed)) return null;
+  return trimmed;
 }
 
 export class ResolverService {
@@ -782,8 +807,16 @@ export class ResolverService {
   /** Memoized result of the core-version read (WF-488). `undefined` means "not
    *  read yet"; `null` is a RESOLVED, cached "not determinable" — so an install
    *  with no readable manifest is probed once per process, not once per query.
-   *  Deliberately independent of the snapshot's freshness fingerprints: the
-   *  executing plugin root cannot change without restarting the server. */
+   *
+   *  It is NOT tied to the snapshot's freshness fingerprints, because the manifest
+   *  is not one of the snapshot's inputs. It IS cleared by `refresh()` and
+   *  `invalidate()`: the memo caches the manifest's CONTENT, and while the
+   *  executing root is stable for a process, its content is not — an in-tree
+   *  install's version changes on every release. Clearing it there costs one read
+   *  per EXPLICIT lifecycle call and none per query, so the per-query path stays
+   *  read-free while the documented "force a rebuild" escape hatch actually
+   *  rebuilds this field. Without that, the resolver would keep reporting a
+   *  superseded version — the exact failure this field exists to expose. */
   private coreVersionMemo: string | null | undefined = undefined;
   /** Reasons the pending/last (in)validation was triggered — surfaced as
    *  diagnostics so every refresh/invalidation is explainable, never silent. */
@@ -1291,6 +1324,7 @@ export class ResolverService {
     this.pendingReasons = reasons.length
       ? reasons
       : [{ code: "explicit-request", message: "explicit refresh requested." }];
+    this.coreVersionMemo = undefined;
     this.rebuild();
     return this.inspect();
   }
@@ -1301,6 +1335,7 @@ export class ResolverService {
    *  in-memory flag flips; the persisted cache is untouched until the rebuild). */
   invalidate(reasons: StaleReason[] = []): LifecycleResponse {
     this.invalidated = true;
+    this.coreVersionMemo = undefined;
     this.pendingReasons = reasons.length
       ? reasons
       : [

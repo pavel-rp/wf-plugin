@@ -157,9 +157,8 @@ a plain-directory-safe timestamp read — no VCS invocation of any kind.
 
 The **run blocks** are the multi-run terminal blocks whose bodies are label-and-value
 tables read by downstream consumers: the fan-out orchestrator's block and the single-task
-shipper's block. This section is the contract for **adding a field to one of them**. It is
-authoring guidance, not a per-run procedure — a skill follows it when its block gains a
-slot, not on every emission.
+shipper's block. This section governs **how such a block is emitted** — every rule below
+applies on every emission — and, in the same breath, how a field is added to one.
 
 A run block is: the `NAME — <status>` line, a blank line, then one `Label: value` line per
 **slot**, inside a fence.
@@ -170,10 +169,12 @@ A run block is: the `NAME — <status>` line, a blank line, then one `Label: val
    a position.
 2. **`Next:` is always last.** No slot is ever placed below it. Any continuation lines a
    block indents beneath `Next:` stay attached to it.
-3. **The value column is per-block and fixed.** Every value in a block starts at that
+3. **The value column is per-block and pinned.** Every value in a block starts at that
    block's own column; a new label is padded with spaces to reach it. **A label that does
    not fit is rejected — that is never a reason to widen the column.** Widening rewrites
-   every existing line, which is a shape change rather than an addition.
+   every existing line, which is a shape change rather than an addition. The column is
+   *pinned*, not merely self-consistent: it is asserted against a fixed expected value, so
+   shifting a whole block uniformly is caught rather than silently accepted.
 4. **A slot always renders.** Every declared slot appears on **every** emission of the
    block. When its value is unavailable the slot renders a **stated fallback token** — never
    an omitted line and never a blank value. Absence is information, so it is stated, not

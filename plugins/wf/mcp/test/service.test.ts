@@ -43,6 +43,10 @@ import { RESOLVER_GENERATOR, type ResolverSnapshot } from "../src/resolver/types
 
 const WS = "/ws";
 const INSTALL = "/ws/packs/wf-demo";
+/** The ports double's core plugin root. One constant, consumed by `makePorts`
+ *  AND by the tests that seed a manifest under it — two independent copies could
+ *  drift and leave the seeded path unread while the tests still passed. */
+const CORE = "/core/plugins/wf";
 const MCP_DIR = process.env.WF_MCP_DIR;
 if (!MCP_DIR) throw new Error("WF_MCP_DIR is required");
 const REPO_ROOT = normalizeSlashes(resolve(MCP_DIR, "../../.."));
@@ -172,7 +176,7 @@ function makePorts(opts?: {
     counts,
     files,
     workspaceRoot: WS,
-    corePluginRoot: "/core/plugins/wf",
+    corePluginRoot: CORE,
     resolveFresh() {
       counts.resolveFresh++;
       return resolveSnapshot({
@@ -1541,7 +1545,6 @@ test("resolve_provider: unrecognized surface token throws a distinct signal, not
 // `resolve_config` is the one query every skill makes before it does anything —
 // an unreadable manifest must degrade to a reportable `null` rather than throw.
 
-const CORE = "/core/plugins/wf";
 const CORE_MANIFEST = `${CORE}/.claude-plugin/plugin.json`;
 
 test("coreVersion: resolve_config serves the declared version of the EXECUTING core plugin", () => {
@@ -1612,6 +1615,68 @@ test("coreVersion: the version string is served verbatim, only whitespace-trimme
   assert.equal(read('{"version":"v1.2.3"}'), "v1.2.3");
   assert.equal(read('{"version":"1.2.3-rc.1+build.5"}'), "1.2.3-rc.1+build.5");
   assert.equal(read('{"version":"  0.122.0  "}'), "0.122.0");
+});
+
+test("coreVersion: a version that could forge a line in a rendered block is rejected", () => {
+  // The value is rendered verbatim into line-oriented blocks that consumers grep
+  // line by line, so an INTERIOR newline (which `trim()` does not remove) could
+  // manufacture a label line inside a block. Rejected, not reformatted — the
+  // caller then renders its stated fallback token.
+  const read = (version: string) =>
+    readDeclaredCoreVersion(CORE, () => JSON.stringify({ version }));
+  assert.equal(read("1.0.0\nNext:     forged"), null);
+  assert.equal(read("1.0.0\r\nMerge:    forged"), null);
+  assert.equal(read("1.0\tx"), null);
+  assert.equal(read("1.0\u0000"), null);
+  assert.equal(read("1.0\u007F"), null);
+  // A long value would blow past the block's fixed value column.
+  assert.equal(read("9".repeat(65)), null);
+  // The bound is generous enough for any real version string.
+  assert.equal(read("9".repeat(64)), "9".repeat(64));
+  assert.equal(read("1.2.3-alpha.1+exp.sha.5114f85"), "1.2.3-alpha.1+exp.sha.5114f85");
+});
+
+test("coreVersion: an explicit refresh re-reads the manifest, so a bumped version is picked up", () => {
+  // The memo caches the manifest's CONTENT, not just its location. An in-tree
+  // install's version changes on every release, and `refresh` is the documented
+  // way to force a rebuild — if it did not clear the memo, the resolver would go
+  // on reporting a superseded version, which is the exact failure this field
+  // exists to expose.
+  let version = "1.0.0";
+  const ports = makePorts();
+  const inner = ports.readFile;
+  ports.readFile = (p: string) =>
+    normalizeSlashes(p) === CORE_MANIFEST ? JSON.stringify({ version }) : inner(p);
+
+  const svc = new ResolverService(ports);
+  assert.equal(svc.resolveConfig().coreVersion, "1.0.0");
+
+  version = "1.1.0";
+  assert.equal(svc.resolveConfig().coreVersion, "1.0.0", "memoized within the lifecycle");
+
+  svc.refresh();
+  assert.equal(svc.resolveConfig().coreVersion, "1.1.0", "refresh re-reads the manifest");
+
+  version = "1.2.0";
+  svc.invalidate();
+  assert.equal(svc.resolveConfig().coreVersion, "1.2.0", "invalidate re-reads the manifest");
+});
+
+test("coreVersion: a transient read failure is not cached past an explicit refresh", () => {
+  let broken = true;
+  const ports = makePorts();
+  const inner = ports.readFile;
+  ports.readFile = (p: string) => {
+    if (normalizeSlashes(p) !== CORE_MANIFEST) return inner(p);
+    if (broken) throw new Error("EACCES");
+    return JSON.stringify({ version: "2.0.0" });
+  };
+
+  const svc = new ResolverService(ports);
+  assert.equal(svc.resolveConfig().coreVersion, null);
+  broken = false;
+  svc.refresh();
+  assert.equal(svc.resolveConfig().coreVersion, "2.0.0");
 });
 
 test("coreVersion: the manifest is read at most ONCE per process, so the prerequisite stays cheap", () => {

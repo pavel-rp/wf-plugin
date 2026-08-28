@@ -308,7 +308,9 @@ test("the core-version read resolves to the live plugin manifest's declared vers
   const manifestPath = join(corePluginRoot, ".claude-plugin", "plugin.json");
   assert.ok(existsSync(manifestPath), `the core plugin manifest is missing at ${manifestPath}`);
 
-  const declared = JSON.parse(readFileSync(manifestPath, "utf8")).version;
+  const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+  assert.ok(typeof parsed === "object" && parsed !== null);
+  const declared = (parsed as { version?: unknown }).version;
   const served = readDeclaredCoreVersion(corePluginRoot, realFs.readFile);
 
   // The point of the field: what a run REPORTS must equal what the install it is
