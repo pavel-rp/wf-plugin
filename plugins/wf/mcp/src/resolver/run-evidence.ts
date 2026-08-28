@@ -47,7 +47,7 @@
 //      record is `unmatched` with a stated reason. The fail-safe direction for a
 //      proof mechanism is to prove nothing, never to assume everything.
 
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 // ---------------------------------------------------------------------------
 // Frozen version, destinations and vocabulary
@@ -572,4 +572,17 @@ export function parseRunEvidenceIssuer(raw: string | null): RunEvidenceIssuer | 
 /** Serialize a freshly minted issuer binding. */
 export function serializeRunEvidenceIssuer(key: string): string {
   return `${JSON.stringify({ issuerVersion: RUN_EVIDENCE_FORMAT_VERSION, key }, null, 2)}\n`;
+}
+
+/**
+ * Mint a fresh issuer key.
+ *
+ * THE ONE NON-DETERMINISTIC FUNCTION IN THIS MODULE, and deliberately so: the
+ * key's unpredictability IS the forgery resistance, so it belongs beside the seal
+ * it feeds rather than in a port a test double could make predictable. Every
+ * other function here is a total function of its inputs, which is what lets the
+ * match, refusal and version behaviours be asserted without a filesystem.
+ */
+export function mintRunEvidenceIssuerKey(): string {
+  return randomBytes(32).toString("hex");
 }

@@ -169,6 +169,24 @@ import type {
   PayloadTargetResolution,
   PlanPayloadFact,
 } from "./resolver/payload-plan.js";
+import {
+  RECEIPT_BEARING_PHASES,
+  RUN_EVIDENCE_FORMAT_VERSION,
+  RUN_EVIDENCE_ISSUER_PATH,
+  RUN_EVIDENCE_KINDS,
+  createRunEvidenceRecord,
+  isAdmissibleSubject,
+  matchRunEvidence,
+  mintRunEvidenceIssuerKey,
+  parseRunEvidenceIssuer,
+  parseRunEvidenceLedger,
+  provenPhases,
+  runEvidenceDestination,
+  serializeRunEvidenceIssuer,
+  serializeRunEvidenceLedger,
+  type RunEvidenceArtifact,
+  type RunEvidenceKind,
+} from "./resolver/run-evidence.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type {
   InstalledPlugin,
@@ -799,6 +817,59 @@ export function readDeclaredCoreVersion(
   if (trimmed.length > MAX_CORE_VERSION_CHARS) return null;
   if (CONTROL_CHARACTER.test(trimmed)) return null;
   return trimmed;
+}
+
+// --- run evidence (WF-490) -------------------------------------------------
+//
+// The two bounded response shapes for the machine-emitted run-evidence class.
+// Both are metadata: a receipt names what completed, never the content of what
+// completed, so neither response ever carries an artifact body.
+
+export interface RecordRunEvidenceInput {
+  kind: string;
+  subject: string;
+  taskId: string;
+  /** Workspace-relative path of the artifact the phase produced, when it produced
+   *  one. The resolver reads and digests it ITSELF — a caller-supplied digest is
+   *  never accepted, because a caller that could supply one could supply a
+   *  receipt. */
+  artifactPath?: string | null;
+}
+
+export interface RecordRunEvidenceResponse {
+  status: "recorded" | "refused";
+  runId: string;
+  destination: string;
+  formatVersion: number;
+  kind: string;
+  subject: string;
+  sequence: number | null;
+  issuedAt: string | null;
+  artifact: RunEvidenceArtifact | null;
+  diagnostic: string | null;
+}
+
+export interface ReadRunEvidenceResponse {
+  status: "ok" | "absent" | "unsupported" | "malformed";
+  runId: string;
+  destination: string;
+  formatVersion: number | null;
+  observedVersion: number | null;
+  matched: Array<{
+    kind: string;
+    subject: string;
+    taskId: string;
+    issuedAt: string;
+    sequence: number;
+    artifact: RunEvidenceArtifact | null;
+  }>;
+  unmatched: Array<{ kind: string; subject: string; sequence: number; reason: string }>;
+  /** Records too malformed to even read a subject from. Counted, never dropped
+   *  silently — a ledger that has been tampered with says so. */
+  unreadableRecords: number;
+  provenPhases: string[];
+  receiptBearingPhases: string[];
+  diagnostic: string | null;
 }
 
 export class ResolverService {
@@ -5047,6 +5118,251 @@ export class ResolverService {
    *  invalidates, and the renderer itself performs no I/O at all. */
   previewComposition(phase?: string | null): CompositionPreview {
     return previewComposition(this.ensure(), phase ?? null);
+  }
+
+  // --- run evidence (WF-490) -----------------------------------------------
+
+  /**
+   * Derive the run identity from facts the RESOLVER holds.
+   *
+   * DELIBERATELY NOT A CALLER INPUT. A caller that could assert a run identity
+   * could file a receipt against any run it liked, which is the original defect
+   * one level down. Deriving it from the admitted workspace root and the task id
+   * also makes it stable across the separate invocations one run's phases execute
+   * in, which is what lets a later reader join them.
+   */
+  private runEvidenceRunId(taskId: string): string {
+    // `JSON.stringify` over a pair is injective — its own quoting disambiguates a
+    // value containing the delimiter — so no workspace root can collide with a
+    // task id. Deliberately NOT a raw control-byte separator: a literal control
+    // character makes the source file "binary" to diff and search tooling, which
+    // silently hides it from review (the same reasoning `plan-complete.ts`'s fact
+    // tokens record, and enforced by the source-hygiene suite).
+    return sha256Hex(JSON.stringify([this.ports.workspaceRoot, taskId])).slice(0, 32);
+  }
+
+  /** Load the machine-local issuer binding, minting one on first use when asked.
+   *  The READ path never mints: a reader that minted a key would manufacture an
+   *  issuer that never issued anything and then prove nothing with it. */
+  private runEvidenceIssuerKey(mint: boolean): string | null {
+    const abs = this.absolutize(RUN_EVIDENCE_ISSUER_PATH);
+    const existing = parseRunEvidenceIssuer(this.ports.readFile(abs));
+    if (existing !== null) return existing.key;
+    if (!mint) return null;
+    const key = mintRunEvidenceIssuerKey();
+    this.ports.writeFile(abs, serializeRunEvidenceIssuer(key));
+    return key;
+  }
+
+  /** Workspace-relative, non-escaping, non-absolute. A path failing this is
+   *  refused rather than normalized — the artifact reference comes from a caller,
+   *  and a receipt must never be authority to read outside the workspace. */
+  private static containedRelPath(p: string): string | null {
+    const norm = p.replace(/\\/g, "/").replace(/^\.\//, "");
+    if (norm.length === 0) return null;
+    if (/^(\/|[A-Za-z]:)/.test(norm)) return null;
+    if (norm.split("/").some((seg) => seg === "..")) return null;
+    return norm;
+  }
+
+  /**
+   * Record one run-evidence entry — THE EMISSION PATH for this artifact class.
+   *
+   * The caller supplies only what it alone knows. Everything attested is derived
+   * here: the run identity, the workspace root, the clock, the sequence, and the
+   * artifact digest (read from disk, never accepted from the caller). The record
+   * is then sealed with the machine-local issuer key, which no tool serves.
+   *
+   * REFUSES rather than improvises, in every ambiguous case: an inadmissible
+   * subject or kind, a named artifact that is not there (so a phase that did not
+   * actually produce its output gets no receipt), and — following
+   * `parseTransactionJournal` — a ledger whose declared version this release does
+   * not understand or whose shape is broken. Refusing to append to a ledger it
+   * cannot read is what keeps this from clobbering evidence it did not write.
+   */
+  recordRunEvidence(input: RecordRunEvidenceInput): RecordRunEvidenceResponse {
+    const runId = this.runEvidenceRunId(input.taskId);
+    const destination = runEvidenceDestination(runId);
+    const base = {
+      runId,
+      destination,
+      formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
+      kind: input.kind,
+      subject: input.subject,
+    };
+    const refuse = (diagnostic: string): RecordRunEvidenceResponse => ({
+      ...base,
+      status: "refused",
+      sequence: null,
+      issuedAt: null,
+      artifact: null,
+      diagnostic,
+    });
+
+    if (!(RUN_EVIDENCE_KINDS as readonly string[]).includes(input.kind)) {
+      return refuse(
+        `unknown run-evidence kind \`${input.kind}\`; expected one of: ${RUN_EVIDENCE_KINDS.join(", ")}.`,
+      );
+    }
+    const kind = input.kind as RunEvidenceKind;
+    if (!isAdmissibleSubject(kind, input.subject)) {
+      return refuse(
+        kind === "phase-receipt"
+          ? `\`${input.subject}\` is not a receipt-bearing phase; the set is closed at: ${RECEIPT_BEARING_PHASES.join(", ")}.`
+          : `\`${input.subject}\` is not a well-formed subject token.`,
+      );
+    }
+
+    // The named artifact is read and digested HERE. Its absence is a refusal, not
+    // a receipt with a null artifact: a phase that names an output it did not
+    // write has not completed.
+    let artifact: RunEvidenceArtifact | null = null;
+    const named = input.artifactPath ?? null;
+    if (named !== null && named.length > 0) {
+      const rel = ResolverService.containedRelPath(named);
+      if (rel === null) {
+        return refuse(
+          `\`${named}\` is not a workspace-relative path; a receipt never names an artifact outside the workspace.`,
+        );
+      }
+      const content = this.ports.readFile(this.absolutize(rel));
+      if (content === null) {
+        return refuse(
+          `the named artifact \`${rel}\` does not exist; no receipt is issued for a phase whose output is absent.`,
+        );
+      }
+      artifact = { path: rel, sha256: sha256Hex(content), bytes: Buffer.byteLength(content, "utf8") };
+    }
+
+    const absLedger = this.absolutize(destination);
+    const parsed = parseRunEvidenceLedger(this.ports.readFile(absLedger));
+    if (parsed.status === "unsupported" || parsed.status === "malformed") {
+      return refuse(parsed.diagnostic);
+    }
+    const existing = parsed.status === "ok" ? parsed.ledger.records : [];
+
+    const issuerKey = this.runEvidenceIssuerKey(true);
+    if (issuerKey === null) {
+      return refuse("the machine-local run-evidence issuer binding could not be established.");
+    }
+
+    const issuedAt = new Date().toISOString();
+    const record = createRunEvidenceRecord(
+      {
+        kind,
+        subject: input.subject,
+        taskId: input.taskId,
+        runId,
+        workspaceRoot: this.ports.workspaceRoot,
+        issuedAt,
+        sequence: existing.length,
+        artifact,
+      },
+      issuerKey,
+    );
+    if (record === null) {
+      return refuse("the run-evidence record is incomplete or self-contradictory.");
+    }
+
+    this.ports.writeFile(
+      absLedger,
+      serializeRunEvidenceLedger({
+        formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
+        runId,
+        records: [...existing, record],
+      }),
+    );
+
+    return {
+      ...base,
+      status: "recorded",
+      sequence: record.sequence,
+      issuedAt: record.issuedAt,
+      artifact: record.artifact,
+      diagnostic: null,
+    };
+  }
+
+  /**
+   * Read and match one run's evidence — THE READ/MATCH API consumers call.
+   *
+   * Reports three separate populations, never one blended count: records whose
+   * seal this issuer PROVED, records it could not prove (each with its own stated
+   * reason), and records too malformed to read at all. A consumer that wants a
+   * proven/unproven verdict derives it from `provenPhases`; nothing here rounds an
+   * unmatched record up to a receipt.
+   */
+  readRunEvidence(taskId: string): ReadRunEvidenceResponse {
+    const runId = this.runEvidenceRunId(taskId);
+    const destination = runEvidenceDestination(runId);
+    const receiptBearingPhases = [...RECEIPT_BEARING_PHASES];
+    const base = {
+      runId,
+      destination,
+      matched: [] as ReadRunEvidenceResponse["matched"],
+      unmatched: [] as ReadRunEvidenceResponse["unmatched"],
+      unreadableRecords: 0,
+      provenPhases: [] as string[],
+      receiptBearingPhases,
+    };
+
+    const parsed = parseRunEvidenceLedger(this.ports.readFile(this.absolutize(destination)));
+    if (parsed.status === "absent") {
+      return {
+        ...base,
+        status: "absent",
+        formatVersion: null,
+        observedVersion: null,
+        diagnostic: null,
+      };
+    }
+    if (parsed.status === "unsupported") {
+      return {
+        ...base,
+        status: "unsupported",
+        formatVersion: null,
+        observedVersion: parsed.observedVersion,
+        diagnostic: parsed.diagnostic,
+      };
+    }
+    if (parsed.status === "malformed") {
+      return {
+        ...base,
+        status: "malformed",
+        formatVersion: null,
+        observedVersion: null,
+        diagnostic: parsed.diagnostic,
+      };
+    }
+
+    const matches = matchRunEvidence(parsed.ledger, this.runEvidenceIssuerKey(false));
+    return {
+      ...base,
+      status: "ok",
+      formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
+      observedVersion: RUN_EVIDENCE_FORMAT_VERSION,
+      unreadableRecords: parsed.unreadableRecords,
+      matched: matches
+        .filter((match) => match.matched)
+        .map((match) => ({
+          kind: match.record.kind,
+          subject: match.record.subject,
+          taskId: match.record.taskId,
+          issuedAt: match.record.issuedAt,
+          sequence: match.record.sequence,
+          artifact: match.record.artifact,
+        })),
+      unmatched: matches
+        .filter((match) => !match.matched)
+        .map((match) => ({
+          kind: match.record.kind,
+          subject: match.record.subject,
+          sequence: match.record.sequence,
+          reason: match.reason ?? "unmatched",
+        })),
+      provenPhases: provenPhases(matches),
+      diagnostic: null,
+    };
   }
 
   /** Resolve a caller-supplied path against the workspace root when relative. */
