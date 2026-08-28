@@ -144,7 +144,16 @@ Apply the **supervision playbook** (below) to every `in-flight` or `awaiting-con
 
 ### 4. REPORT
 
-One line: `<merged>/<total> done — merged this tick: … — in-flight: … — awaiting-confirmation: … — dispatched: … — waiting: …`. Note any takeover or recycle.
+One line: `<merged>/<total> done — merged this tick: … — in-flight: … — awaiting-confirmation: … — dispatched: … — waiting: … — ceremony: <p> proven (<a> artifact-backed, <i> invocation-only) / <u> unproven`. Note any takeover or recycle.
+
+**Tick REPORT line slot convention.** This line is a grepped shape that no earlier convention governs, so the rules below are the ones that govern it; a later addition **extends** them rather than redefining them. The line is the leading `<merged>/<total> done` count followed by ` — <label>: <value>` segments, and:
+
+1. **Append at the tail.** A new segment goes after the last existing one. No segment is ever reordered, renamed, or removed, so two independent additions append in merge order and cannot contend for a position.
+2. **Every declared segment renders on every tick**, with a **stated fallback token** when it has nothing to report — never an omitted segment, never a blank value. Absence is information, so it is stated rather than conveyed by a missing segment.
+3. **One label token per concept**, matching the corresponding `FLEET —` slot's label lower-cased, so a concept stays one grep across both shapes.
+4. **No pinned value column.** The line is separator-delimited rather than padded, so a new segment carries no alignment obligation and never reflows the line.
+
+This is deliberately weaker than the run-block slot convention the terminal blocks follow — that one pins a column, this one has none to pin — and the two are not interchangeable.
 
 ### 5. RE-ARM
 
@@ -224,7 +233,7 @@ Spawn each shipper with the **Agent tool**: `subagent_type: general-purpose`, `i
 >
 > `<ITEM-SPECIFIC BINDING CONTEXT>` — the spec-of-record (fetch the item's tracker brief), plus any coordination notes: which files already changed under recent merges that you must preserve-and-compose-on-top-of rather than revert; pinned budgets; naming to mirror from a just-merged sibling.
 >
-> **REPORT (final message):** status (merged/blocked), pull-request URL, one-line change summary, **the ceremony's Final-output block pasted verbatim as proof you ran it — the `/wf:ship` `SHIP — <status>` block, or the `TF — <status>` block when you took the documented fallback path** — and — if your worktree ever moved — its exact absolute path. A report that claims a merge without that block is a ceremony failure, not a success.
+> **REPORT (final message):** status (merged/blocked), pull-request URL, one-line change summary, **the ceremony's Final-output block pasted verbatim — the `/wf:ship` `SHIP — <status>` block, or the `TF — <status>` block when you took the documented fallback path** — and — if your worktree ever moved — its exact absolute path. That block is your **report** of the outcome, not proof of it: whether the ceremony actually ran is established by the receipts it files, which you neither write nor can author. Omitting it is still an incomplete report.
 
 ---
 
@@ -292,7 +301,8 @@ The shipper model is set per dispatch via the Agent tool's `model` field. The **
 - **Same-file collision slips through (not serialized):** the losing agent hits a content conflict at merge. Let it rebase-and-resolve; if it can't autonomously, take over the rebase or serialize the remainder.
 - **All shippers idle but nothing ready:** every unmerged item is blocked by an unmerged item that itself is blocked → deadlock or an unfinished blocker; report the frontier and stop re-arming if truly deadlocked.
 - **`/wf:ship` absent in a shipper:** it falls back to the gated-loop pipeline (`/wf:run` loop → `/wf:pr` → `/wf:tf`); if neither exists, it reports and stops — `/wf:fleet` orchestrates shippers, it does not reimplement them.
-- **Shipper merged without the ceremony block:** the shipper's report carries no `SHIP —`/`TF —` block — either it hand-rolled the build/merge with raw `git`/`gh`, or it ran `/wf:ship` (or the `/wf:run`-loop→`/wf:pr`→`/wf:tf` fallback) but omitted the proof block from its report. Either way the ceremony is unproven: the OBSERVE proof-of-ceremony check records a ceremony violation (missing proof, cause unasserted) in that row's `notes` and surfaces it in REPORT. The merge stands (it cannot be undone), but it is never reported as a clean ceremony run, and the item's possibly-skipped gates (verify, QA) are flagged for a follow-up pass.
+- **An item's ceremony cannot be proven:** the receipt read returned a status other than `ok`, a required subject is missing, a record fell outside the run's receipt window, the route was undecidable, or a record came back `unmatched` — including the case where a shipper wrote a receipt-shaped file itself, which the resolver refuses to admit. The item is recorded **unproven** with that mechanical reason in its row's `notes`, counted in the `Ceremony:` tally and the tick REPORT line, and never logged as a clean run. A well-formed reported block changes none of this — it was never the evidence. The merge stands (it cannot be undone), and the item's possibly-skipped gates are flagged for a follow-up pass. The cause is never asserted.
+- **A whole run reports zero proven:** receipt verifiability is scoped to the workspace that issued the receipt, so receipts filed inside a shipper's own isolated worktree are not matchable from the orchestrator's workspace; and a resolver runtime that does not expose the run-evidence class returns a stated unsupported status for every item. In either case **every item is legitimately unproven**, and the block says so in explicit zeros. That is the check working as designed — it proves nothing rather than assuming everything — and it is **never** remedied by widening the match, reading another workspace root, dropping the window, or falling back to the reported block. Report it honestly and escalate the underlying condition instead.
 - **Undeleted remote branches / un-swept worktrees:** merged branches and clean worktrees often survive (destructive version control is barred) — closeout lists them from the scoreboard for one manual sweep by the user, never a raw query.
 - **Mid-run interruption:** re-invoking `/wf:fleet` with no arguments resumes from `_local/fleet/scoreboard.md`.
 
@@ -315,6 +325,7 @@ Branches to list: <merged remote branches from the scoreboard, or —>
 Worktrees:        <un-swept paths from the scoreboard | kept (uncommitted work): <paths>, or —>
 Version:          <the run-scoped resolved version | unknown>
 Currency:         <current | trailing (running <v>, published <v>) | provider-less | not checked — <reason>>
+Ceremony:         <p> proven (<a> artifact-backed, <i> invocation-only) / <u> unproven — unproven: <ids | none>
 Next:             <exactly one of>
   re-armed — <k> item(s) still moving
   none — complete, all <n> items merged
@@ -326,6 +337,8 @@ Next:             <exactly one of>
 `Currency:` is the outcome of the Prerequisites currency check, in that step's grammar, rendered verbatim on **every** pass — including a `Blocked` one. Only `current` says the harness is not behind, and only a performed read can produce it: `provider-less` and `not checked` name what did **not** happen and are never rounded up to a pass here.
 
 **Adding a slot to this block?** Follow the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Run-block slot convention" — never a raw `Read` of the plugin-cache path: append the slot immediately above `Next:`, pad its value to this block's column 19, and always render it with a stated fallback token.
+
+`Ceremony:` is the proof-of-ceremony tally from OBSERVE, rendered verbatim on **every** pass. It always states all three counts and omits none: a run in which nothing could be proven reports `0 proven (0 artifact-backed, 0 invocation-only)` alongside a non-zero unproven count — an explicit zero, rather than the silence an auditor would read as a clean run. The two proven counts are never summed, because `invocation-only` is the weaker attestation and is reported as itself. `unproven: none` is the stated fallback when every item is proven.
 
 `In flight:` is the lossless active-activation projection, despite its retained label: include every `dispatched`, `in-flight`, and `awaiting-confirmation` scoreboard row with its state tag. A row without a persisted `agentId` is still listed by `activationIntent`; never omit it or collapse it into `Waiting on deps:`.
 
