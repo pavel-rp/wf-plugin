@@ -128,8 +128,15 @@ constitution regardless of the registry:
 
 1. **The spec is the single source of truth.** A derived artifact (plan, task list) never
    overrides the spec; conformance is judged against the spec.
-2. **No phase skips its gate.** Every phase is a human-approved artifact that feeds the
-   next; nothing advances past an unapproved gate.
+2. **No phase skips its gate.** Every phase produces an artifact that feeds the next, and
+   nothing advances past an unapproved gate. A gate is approved by a human, or — in an
+   **unattended run**, where no human is present to approve — by a **recorded
+   self-approval**: a machine-checkable record, issued by the resolver into its declared
+   run-evidence class, naming the gate it clears and filed before the next phase begins. An
+   unattended run does not thereby skip the gate; it satisfies it with evidence. The record
+   is requested by the agent it authorises and never written by it, so a self-approval that
+   is absent, unmatched, or unverifiable leaves the gate **unapproved**, and the run is
+   reported as unproven rather than as complete.
 3. **Nothing writes outside `_local/`** except the designated source-mutating skills, and
    except the declared committed lifecycle artifacts the resolver runtime owns and manages
    under `.wf/`. That home is not a general writable one: an artifact is admitted only when it
@@ -239,12 +246,24 @@ and `update` was passed explicitly, stop and tell the user to run with no argume
 instead. Mirror the update-merge / skip-if-present idempotency of `qa-gen` and `init`:
 
 1. Read the existing `_local/constitution.md`.
-2. **Re-compose** the core articles (verbatim — they don't drift) and the **capability
-   articles** (re-query `resolve_registry({ workspaceRoot, ... })`; refresh to match the current registered
-   capabilities).
+2. **Re-compose** the **core articles** and the **capability articles** (re-query
+   `resolve_registry({ workspaceRoot, ... })`; refresh to match the current registered
+   capabilities). **Core article text does change between releases** — an amended article
+   reaches an already-composed record only here, so replace the whole
+   `## Core articles (provenance: core)` section with the articles above **as this release
+   states them**, rather than assuming what is already in the file is current. A record
+   composed against an earlier release is the ordinary case, not an error.
 3. **Preserve the project clauses** exactly as authored. Never silently overwrite a
    user-authored clause — if a re-compose would change or drop anything inside the project
-   section, **ask before overwriting**; default to keeping the existing text.
+   section, **ask before overwriting**; default to keeping the existing text. Replacing the
+   core section never touches it: everything from the `## Project clauses (provenance:
+   project)` heading to end of file is carried across verbatim.
+   **Refuse rather than reset.** If the existing record does not carry the three sections in
+   the template's order — core articles, then capability articles, then project clauses,
+   with nothing unrecognized between them — do not rewrite it. Report the structure you did
+   not recognize, leave the file exactly as it is, and let the user reconcile it; a record
+   this skill cannot place is never regenerated, because regenerating it is what would
+   destroy the project's own writing.
 4. **Idempotent:** on an unchanged registry and unchanged project clauses, the re-composed
    file is byte-identical to the existing one — **produce no diff**. Refresh the `**Model:**`
    line and any timestamp only when something else actually changed.
@@ -308,6 +327,16 @@ the registry.
   with no argument (which updates). Don't clobber.
 - **`update` passed but no constitution exists.** Stop and tell the user to run with no
   argument (which establishes). Don't fabricate an empty update.
+- **The existing record carries superseded core article text.** The ordinary case for a
+  project composed against an earlier release — not an error and not a conflict. Replace the
+  core-articles section with this release's articles, leave the project clauses untouched,
+  and report the refresh in the chat summary. Nothing detects this state on its own: it
+  surfaces only when this skill re-runs.
+- **The existing record's structure is not the template's.** A missing, duplicated, or
+  out-of-order section heading, or an unrecognized section between two this skill composes
+  → **refuse**: leave the file byte-for-byte as it is, name the structure that was not
+  recognized, and stop. Never regenerate a record you cannot place — that is the one path
+  that would destroy the project's own clauses.
 - **Project clauses would change on re-compose.** Never silently overwrite — ask first;
   default to preserving the existing text. The project section is user-owned.
 - **Unchanged project on re-run.** Produce **no diff** — same registry + same project clauses

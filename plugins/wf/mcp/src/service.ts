@@ -49,6 +49,7 @@ import {
   articlesByCapability,
   composeConstitutionRecord,
 } from "./resolver/constitution-compose.js";
+import { CORE_ARTICLES_BODY } from "./resolver/constitution-core.js";
 import {
   SETTINGS_STORAGE_DIR,
   capabilityProfileRelPath,
@@ -4106,6 +4107,11 @@ export class ResolverService {
       current,
       capabilities: articlesByCapability(inputs),
       registryNames,
+      // WF-492: an install that recomposes the record also carries THIS release's
+      // core article text. Omitting it would leave a project that installs a pack
+      // holding whichever article wording first composed its constitution, which is
+      // the drift this parameter exists to close.
+      coreArticles: CORE_ARTICLES_BODY,
     });
     if (!composed.ok) return { ok: false, detail: composed.detail };
     return { ok: true, render: composed };
