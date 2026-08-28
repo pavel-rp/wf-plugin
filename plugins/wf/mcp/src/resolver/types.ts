@@ -1913,7 +1913,12 @@ export interface SlotProvenanceRecord {
   winningSource: string | null;
 }
 
-export type RoutingSource = "host" | "invocation" | "project" | "shipped-default" | "inheritance";
+/** WF-498: `complexity-derived` sits BELOW `shipped-default` and ABOVE `inheritance`.
+ *  It marks a selection the resolver computed itself from the call site's normalized
+ *  shape evidence — never one a caller supplied — so a consumer can carry a
+ *  resolver-derived selection forward with its provenance intact and tell it apart
+ *  from an ordinary caller-selected `invocation` value. */
+export type RoutingSource = "host" | "invocation" | "project" | "shipped-default" | "complexity-derived" | "inheritance";
 export interface RoutingRow { model: string | null; effort: string | null }
 export type RoutingProjectConfig = Record<string, RoutingRow>;
 export interface RoutingChoice {

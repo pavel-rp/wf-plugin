@@ -30,6 +30,28 @@ const MAX_EFFORT_LENGTH = 16;
 const MAX_ROUTING_METADATA_LENGTH = 256;
 const MAX_ROLE_LENGTH = 64;
 const MODEL_TIERS = ["haiku", "sonnet", "opus"] as const;
+// WF-498: the roles whose model the resolver DERIVES from the call site's own
+// complexity evidence when no higher-precedence choice wins. Deliberately a
+// CLOSED, EXPLICIT set rather than "every role that has no static default":
+// every role named here has a matching published disposition row that says so,
+// and a role holding no such row must never silently start receiving a derived
+// value. `branch` and `classify` are absent because their `DEFAULTS` entry
+// already wins above this tier — which is precisely how this change leaves the
+// two shipped-static rows byte-identical in behaviour. `pr` and `commit` are
+// absent because their published matrix rows still read `inherit`; `index` is
+// absent because its published inlined-role entry claims no static default; and
+// `shipper` is absent because it has no published entry at all yet. The matrix
+// and the runtime may never disagree, so a role earns a derived value only once
+// something published says it does.
+const DERIVATION_ELIGIBLE_ROLES = new Set(["phase-runner", "finalize"]);
+// Evidence weights. ONLY the five dimensions describing how much REASONING a
+// unit needs are scored: `ambiguity`, `toolWork`, `risk`, `validation`,
+// `returnContract`. The other seven — `workSurface`, `contextIsolation`,
+// `independentReview`, `atomicity`, `unitCount`, `unitsIndependent`,
+// `requestedParallelism` — describe how to RUN the unit rather than how hard it
+// is, and belong to `selectShape`.
+const AMBIGUITY_WEIGHT = { none: 0, bounded: 1, material: 2 } as const;
+const TOOL_WORK_WEIGHT = { none: 0, bounded: 1, material: 2 } as const;
 const INSUFFICIENCY_SIGNALS = new Set<RoutingInsufficiencySignal>([
   "low-confidence",
   "failed-validation",
@@ -204,25 +226,109 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
   };
 }
 
+// THE COMPLEXITY LADDER. Scores the NORMALIZED evidence — never the caller's raw
+// input — so a caller cannot launder a selection in through a contradictory
+// field: by the time this runs `selectShape` has already derived
+// `atomicity`/`unitsIndependent` from the authoritative `unitCount`.
+//
+// This is a MECHANISM, not a shipped constant. It introduces no per-role
+// default: the same evidence yields the same tier for every eligible role, and
+// a role's selection changes only when the evidence at its call site changes.
+// That is what keeps it outside the calibration gate, which governs static
+// per-role defaults.
+function deriveModelFromEvidence(evidence: NormalizedRoutingShapeEvidence): { model: ModelTier; basis: string } {
+  const score = AMBIGUITY_WEIGHT[evidence.ambiguity] +
+    TOOL_WORK_WEIGHT[evidence.toolWork] +
+    (evidence.risk === "elevated" ? 1 : 0) +
+    (evidence.validation === "judgment" ? 1 : 0) +
+    (evidence.returnContract === "judgment" ? 1 : 0);
+  // THE CEILING IS DELIBERATE. The ladder tops out at `sonnet`; nothing derives
+  // `opus`. The reason is blast radius, not cost squeamishness: `phase-runner`
+  // is reached by `/wf:run`'s `run:phase` edge, which is the INTERACTIVE
+  // single-task path as well as the unattended one, and whose evidence literal
+  // lives in a file this change may not touch. No core call site anywhere
+  // supplies `availableModels`, so the resolver's unavailability degradation is
+  // unreachable by construction — a derived top tier on a host without it would
+  // hard-fail a path that previously always worked, with no fallback and no
+  // diagnostic. A mechanism that opens a new failure mode on an untouched
+  // surface has not earned its ceiling yet.
+  //
+  // This bounds the MECHANISM's range on its first release; it is not a shipped
+  // per-role static default and introduces none. Raising the ceiling is a
+  // separate, evidence-backed decision.
+  const model: ModelTier = score === 0 ? "haiku" : "sonnet";
+  return {
+    model,
+    basis: `complexity-derived score ${score}: ambiguity=${evidence.ambiguity}, toolWork=${evidence.toolWork}, ` +
+      `risk=${evidence.risk}, validation=${evidence.validation}, returnContract=${evidence.returnContract}`,
+  };
+}
+
 function choose(
   kind: "model" | "effort",
   inputs: RoutingInputs,
   project: RoutingProjectConfig,
-): { choice: RoutingChoice; stop: string | null } {
+  normalizedEvidence: NormalizedRoutingShapeEvidence,
+  evidenceValid: boolean,
+): { choice: RoutingChoice; stop: string | null; derivedBasis?: string } {
   const selectorSupported = kind === "model" ? inputs.supportsModelSelector : inputs.supportsEffortSelector;
   const host = kind === "model" ? inputs.hostModel : inputs.hostEffort;
   const invocation = kind === "model" ? inputs.invocationModel : inputs.invocationEffort;
   const configured = project[inputs.role]?.[kind] ?? null;
   const shipped = DEFAULTS[inputs.role]?.[kind] ?? null;
   const required = kind === "model" ? inputs.requireModel : inputs.requireEffort;
-  const requested = invocation ?? configured ?? shipped;
+  // WF-498: the derived tier sits BELOW every stated choice and ABOVE bare
+  // inheritance. It is computed only when nothing higher-precedence was stated,
+  // so `classify`/`branch` keep resolving their `DEFAULTS` entry unchanged, and
+  // it is never derived for effort — every published row's effort still inherits.
+  //
+  // The retry path re-enters here and re-derives, exactly as it re-reads
+  // `DEFAULTS` and the project table. That is deliberate and it is SAFE, not a
+  // second decision: retry narrowing only ever changes `unitCount` and
+  // `requestedParallelism`, and the ladder scores neither, so re-derivation over
+  // retained evidence provably reproduces the prior attempt's own tier. Special-
+  // casing derivation here would instead make it the ONE source that silently
+  // evaporates on retry, dropping an eligible role back to bare inheritance for
+  // the very attempt that matters most. When the escalation lever does apply it
+  // passes `invocationModel`, which outranks this and leaves the tier advance
+  // exactly as WF-497 specified.
+  // `evidenceValid` is load-bearing, not defensive noise. `selectShape` fills
+  // `normalizedEvidence` with `?? "none"` defaults BEFORE it validates the
+  // enums, so a caller sending `ambiguity: "bogus"` reaches here with that value
+  // intact; scoring it would index the weight tables to `undefined`, make the
+  // whole score NaN, fail both tier comparisons, and silently land on `opus` —
+  // the most expensive tier, chosen by a malformed input. A call whose evidence
+  // was rejected derives nothing at all.
+  // `selectorSupported` is part of the guard, not just a later rejection. An edge
+  // that declares it cannot honor a selector is left EXACTLY as it was before
+  // this change: deriving there would push its record from `fallback: null` to
+  // `fallback: "selector-unsupported"`, which silently rewrites the compact
+  // operational record of every frozen `model=false` edge — including
+  // `agents/phase-runner.md`, a surface this change is not allowed to touch.
+  // Derivation is strictly additive to edges that can actually use it.
+  const derived = kind === "model" && evidenceValid && selectorSupported &&
+    !invocation && !configured && !shipped &&
+    DERIVATION_ELIGIBLE_ROLES.has(inputs.role)
+    ? deriveModelFromEvidence(normalizedEvidence)
+    : null;
+  // `|| null` rather than `??`: an empty-string selector is schema-valid but
+  // meaningless, and mixing `??` here with the truthiness guards above would let
+  // `invocationModel: ""` silently discard a derived selection with no
+  // diagnostic and no fallback token.
+  const requested = (invocation || null) ?? (configured || null) ?? (shipped || null) ?? derived?.model ?? null;
   const requestedSource: RoutingSource = invocation
     ? "invocation"
     : configured
       ? "project"
       : shipped
         ? "shipped-default"
-        : "inheritance";
+        : derived
+          ? "complexity-derived"
+          : "inheritance";
+  // Reported only when the derived value is the one that actually survives to
+  // the decision; every early return below drops it, so a rejected or masked
+  // call never claims a basis it did not act on.
+  const derivedBasis = derived ? derived.basis : null;
 
   const maximum = kind === "model" ? MAX_MODEL_ID_LENGTH : MAX_EFFORT_LENGTH;
   if (host && UNSAFE_ROUTING_CHARACTER.test(host)) {
@@ -275,7 +381,13 @@ function choose(
     const stop = required ? `model choice \`${requested}\` is required but unavailable` : null;
     return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "unavailable" }, stop };
   }
-  return { choice: { value: requested, source: requestedSource, requested, requestedSource, masked: false, fallback: null }, stop: null };
+  return {
+    choice: { value: requested, source: requestedSource, requested, requestedSource, masked: false, fallback: null },
+    stop: null,
+    // Only this path actually delivers the derived value, so only this path
+    // reports the basis it was derived from.
+    ...(derivedBasis ? { derivedBasis } : {}),
+  };
 }
 
 function modelTier(value: string | null | undefined): ModelTier | null {
@@ -331,10 +443,35 @@ function routingScalarProblem(inputs: RoutingInputs): string | null {
   return null;
 }
 
-function routingChoiceProblem(choice: RoutingChoice | undefined, field: string, maximum: number): string | null {
+function routingChoiceProblem(choice: RoutingChoice | undefined, field: string, maximum: number, role: string): string | null {
   if (!choice) return `post-attempt prior ${field} choice is required`;
-  return boundedOptionalString(choice.value, `post-attempt prior ${field}.value`, maximum) ??
+  const bounded = boundedOptionalString(choice.value, `post-attempt prior ${field}.value`, maximum) ??
     boundedOptionalString(choice.requested, `post-attempt prior ${field}.requested`, maximum);
+  if (bounded) return bounded;
+  // WF-498: `complexity-derived` is a provenance only THIS resolver can mint. A
+  // caller may faithfully restate one the resolver issued to it, but may never
+  // invent one — the whole point of the source is that the value was computed
+  // here from evidence rather than supplied. `priorTerminalDecision` copies
+  // `prior.model.source` straight onto a returned decision and
+  // `projectRoutingMeasurement` publishes it as the canonical operational
+  // record, so an unchecked claim would put a provenance the resolver could not
+  // have produced into a dispatched decision. That is the forged-provenance
+  // class WF-497 removed on the neighbouring path; it is refused here rather
+  // than reintroduced.
+  const claimsDerived = choice.source === "complexity-derived" || choice.requestedSource === "complexity-derived";
+  if (claimsDerived && field !== "model") {
+    return `post-attempt prior ${field} cannot claim complexity-derived provenance; the resolver derives only a model`;
+  }
+  if (claimsDerived && !DERIVATION_ELIGIBLE_ROLES.has(role)) {
+    return `post-attempt prior ${field} claims complexity-derived provenance for role \`${role}\`, which the resolver never derives`;
+  }
+  // A DELIVERED derived selection is only ever produced on `choose`'s success
+  // path, which cannot be masked and carries no fallback. A prior asserting all
+  // three at once describes a decision this resolver cannot emit.
+  if (choice.source === "complexity-derived" && (choice.masked || choice.fallback)) {
+    return `post-attempt prior ${field} claims a delivered complexity-derived selection but reports it masked or fallen back`;
+  }
+  return null;
 }
 
 function availableModelsProblem(availableModels: unknown): string | null {
@@ -385,8 +522,8 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
   if (!prior.model || !prior.effort || !prior.shapeEvidence || !prior.executionShape) {
     return "post-attempt prior routing context is incomplete";
   }
-  const priorStringProblem = routingChoiceProblem(prior.model, "model", MAX_MODEL_ID_LENGTH) ??
-    routingChoiceProblem(prior.effort, "effort", MAX_EFFORT_LENGTH) ??
+  const priorStringProblem = routingChoiceProblem(prior.model, "model", MAX_MODEL_ID_LENGTH, inputs.role) ??
+    routingChoiceProblem(prior.effort, "effort", MAX_EFFORT_LENGTH, inputs.role) ??
     boundedOptionalString(prior.basis, "post-attempt prior basis", MAX_ROUTING_METADATA_LENGTH) ??
     boundedOptionalString(prior.escalationOrigin, "post-attempt prior escalationOrigin", MAX_ROUTING_METADATA_LENGTH) ??
     boundedOptionalString(prior.actualModel, "post-attempt prior actualModel", MAX_MODEL_ID_LENGTH);
@@ -526,8 +663,8 @@ function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): Rou
   } : inputs;
   const availableStop = availableModelsProblem(inputs.availableModels);
   const selectorInputs = availableStop ? { ...boundedInputs, availableModels: null } : boundedInputs;
-  const model = choose("model", selectorInputs, project);
-  const effort = choose("effort", selectorInputs, project);
+  const model = choose("model", selectorInputs, project, shape.normalizedEvidence, shape.stop === null);
+  const effort = choose("effort", selectorInputs, project, shape.normalizedEvidence, shape.stop === null);
   const unitStop = inputs.unitIds !== undefined || shape.normalizedEvidence.unitCount > 1
     ? unitIdsProblem(inputs.unitIds, shape.normalizedEvidence.unitCount)
     : null;
@@ -542,7 +679,9 @@ function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): Rou
     model: model.choice,
     effort: effort.choice,
     source: model.choice.source,
-    basis: selectorInputs.basis ?? null,
+    // A caller-stated basis always wins; the derived one only fills the gap it
+    // would otherwise leave, so a retry re-stating the prior's basis is stable.
+    basis: selectorInputs.basis ?? model.derivedBasis ?? null,
     attempt: Number.isInteger(selectorInputs.attempt) && (selectorInputs.attempt ?? 0) >= 1 && (selectorInputs.attempt ?? 0) <= 3 ? selectorInputs.attempt! : 1,
     escalationOrigin: selectorInputs.escalationOrigin ?? null,
     fallback: model.choice.fallback ?? effort.choice.fallback,

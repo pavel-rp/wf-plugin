@@ -60,7 +60,7 @@ test("authoritative dispatch inventory is normalized and bidirectional", () => {
   for (const row of included) {
     const source = readFileSync(join(repoRoot, row.file), "utf8");
     assert.ok(exactInventoryTargetIsPresent(source, row.target), `${row.id} exact target is stale`);
-    assert.ok(["shared-branch-gate", "index-wrapper-mediated", "fixed-skill-route", "fleet-cardinality-route", "fleet-recovery-route"].includes(row.evidence) || row.evidence.split(",").length === 12, `${row.id} requires complete shape evidence`);
+    assert.ok(["shared-branch-gate", "index-wrapper-mediated", "fixed-skill-route", "shipper-path-complexity-route", "fleet-cardinality-route", "fleet-recovery-route"].includes(row.evidence) || row.evidence.split(",").length === 12, `${row.id} requires complete shape evidence`);
     assert.match(row.selectors, /^(?:model=(?:true|false);effort=(?:true|false)|mixed)$/);
     assert.ok(row.retryOwner, `${row.id} requires explicit retry ownership`);
   }
