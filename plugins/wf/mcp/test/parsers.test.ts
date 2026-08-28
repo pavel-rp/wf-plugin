@@ -102,12 +102,33 @@ test("parseCoreConfig reads values and treats placeholders as unset", () => {
 | **QA Rules** | \`<none>\` |
 | **Architecture Doc** | \`<ARCHITECTURE_DOC: path>\` |
 | **Context Ceiling** | \`150000\` |
+| **Version Declaration** | \`plugins/unit/manifest.json\` |
 `);
   assert.equal(cfg.taskRoot, "_local");
   assert.equal(cfg.verifyCommand, "npm run typecheck");
   assert.equal(cfg.qaRules, null);
   assert.equal(cfg.seedArchitectureDoc, null);
   assert.equal(cfg.contextCeiling, "150000");
+  assert.equal(cfg.versionDeclaration, "plugins/unit/manifest.json");
+});
+
+test("parseCoreConfig leaves an unset version declaration null rather than guessing", () => {
+  // The currency check must be able to say "not configured" — an absent key and
+  // an explicit `<none>` both have to reach the caller as `null`, never as an
+  // empty string a comparison could mistake for a real declaration.
+  const absent = parseCoreConfig(`
+| Key | Value |
+|-----|-------|
+| **Task Root** | \`_local\` |
+`);
+  assert.equal(absent.versionDeclaration, null);
+
+  const none = parseCoreConfig(`
+| Key | Value |
+|-----|-------|
+| **Version Declaration** | \`<none>\` |
+`);
+  assert.equal(none.versionDeclaration, null);
 });
 
 test("parsePluginAnchor recognizes plugin-anchored tokens", () => {

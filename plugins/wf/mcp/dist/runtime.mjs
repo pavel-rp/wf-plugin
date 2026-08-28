@@ -24297,7 +24297,8 @@ function parseCoreConfig(markdown) {
     seedArchitectureDoc: normalizeValue(kv.get("architecture doc")),
     seedBacklogPath: normalizeValue(kv.get("backlog path")),
     standupStatuses: normalizeValue(kv.get("standup statuses")),
-    contextCeiling: normalizeValue(kv.get("context ceiling"))
+    contextCeiling: normalizeValue(kv.get("context ceiling")),
+    versionDeclaration: normalizeValue(kv.get("version declaration"))
   };
 }
 

@@ -73,5 +73,6 @@ export function parseCoreConfig(markdown: string): CoreConfig {
     seedBacklogPath: normalizeValue(kv.get("backlog path")),
     standupStatuses: normalizeValue(kv.get("standup statuses")),
     contextCeiling: normalizeValue(kv.get("context ceiling")),
+    versionDeclaration: normalizeValue(kv.get("version declaration")),
   };
 }
