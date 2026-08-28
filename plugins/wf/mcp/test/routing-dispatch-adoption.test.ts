@@ -287,6 +287,133 @@ test("singleton shipper wave uses valid atomic isolated evidence", () => {
   assert.equal(singleton.normalizedEvidence.unitsIndependent, false);
 });
 
+// WF-497 / ESC-6. The exact edge every fixed sibling-Skill call on the shipper path
+// passes: the fixed caller-context evidence that selects `inline`, plus
+// `supportsModelSelector: false`, so the resolver selects nothing and the prior model
+// is `null`/`inheritance`. Before this fixture existed the gate returned
+// `invalid-stop` here, which made the escalation gate unreachable for the entire
+// single-task ceremony path — `ship:branch`, `ship:run-initial`, `ship:run-resume`,
+// `ship:phase`, `ship:ci-commit`, `ship:pr` and `ship:finalize` in `ship/SKILL.md`,
+// and the same fixed edges repeated in `fleet/SKILL.md`'s dispatch brief.
+test("the gate opens for a shipper-path edge that cannot honor a model selector", () => {
+  const first = resolveRouting({}, {
+    role: "shipper",
+    shapeEvidence: indexEvidence,
+    unitIds: ["ship:finalize"],
+    supportsModelSelector: false,
+    supportsEffortSelector: false,
+  });
+  assert.equal(first.status, "dispatch");
+  assert.equal(first.executionShape, "inline", "the fixed shipper edge routes inline");
+  assert.equal(first.model.value, null);
+  assert.equal(first.model.source, "inheritance");
+
+  const priorAttempt = {
+    role: first.role, attempt: first.attempt, executionShape: first.executionShape,
+    shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds, model: first.model, effort: first.effort,
+    basis: first.basis, escalationOrigin: first.escalationOrigin,
+  };
+  const retry = resolveRouting({}, {
+    role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
+    supportsModelSelector: false, supportsEffortSelector: false,
+    postAttempt: { sufficient: false, signals: ["failed-validation"], prior: priorAttempt },
+  });
+
+  assert.equal(retry.status, "dispatch", "reporting a genuine failure must not be rejected as invalid");
+  assert.equal(retry.disposition, "retry");
+  assert.deepEqual(retry.retry?.unitIds, ["ship:finalize"]);
+  assert.equal(retry.retry?.attempt, 2);
+  assert.equal(retry.retry?.escalation, "selector-unsupported");
+  assert.equal(retry.retry?.nextTier, null);
+  assert.equal(retry.retry?.priorTier, null);
+  assert.ok(retry.retry?.escalationOrigin);
+  assert.equal(
+    retry.diagnostic, null,
+    "a non-null diagnostic on a retry would make every conforming caller stop and drop the work",
+  );
+  assert.deepEqual(retry.model, priorAttempt.model, "the prior selection is carried forward verbatim");
+  assert.equal(retry.source, priorAttempt.model.source);
+
+  // The gate is bounded, not a loop: the second failure exhausts the budget.
+  const exhausted = resolveRouting({}, {
+    role: "shipper", shapeEvidence: retry.normalizedEvidence, unitIds: retry.retry!.unitIds,
+    supportsModelSelector: false, supportsEffortSelector: false,
+    postAttempt: {
+      sufficient: false, signals: ["repeated-failure"],
+      prior: {
+        role: retry.role, attempt: retry.attempt, executionShape: retry.executionShape,
+        shapeEvidence: retry.normalizedEvidence, unitIds: retry.retry!.unitIds, model: retry.model,
+        effort: retry.effort, basis: retry.basis, escalationOrigin: retry.escalationOrigin,
+      },
+    },
+  });
+  assert.equal(exhausted.status, "stop");
+  assert.equal(exhausted.disposition, "exhausted");
+  assert.equal(exhausted.retry, null);
+});
+
+// The companion to the case above: a gate that opens on success is as useless as one
+// that never opens, so the all-sufficient path must stay a pure retain.
+test("an all-sufficient report retains and records no escalation", () => {
+  const first = resolveRouting({}, {
+    role: "shipper", shapeEvidence: indexEvidence, unitIds: ["ship:finalize"],
+    supportsModelSelector: false, supportsEffortSelector: false,
+  });
+  const retained = resolveRouting({}, {
+    role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
+    supportsModelSelector: false, supportsEffortSelector: false,
+    postAttempt: {
+      sufficient: true, signals: [],
+      prior: {
+        role: first.role, attempt: first.attempt, executionShape: first.executionShape,
+        shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds, model: first.model,
+        effort: first.effort, basis: first.basis, escalationOrigin: first.escalationOrigin,
+      },
+    },
+  });
+  assert.equal(retained.status, "retain");
+  assert.equal(retained.disposition, "retain");
+  assert.equal(retained.retry, null);
+  assert.deepEqual(retained.retainedUnitIds, ["ship:finalize"]);
+  assert.equal(retained.escalationOrigin, null, "a retained attempt records no escalation");
+  assert.equal(retained.attempt, 1, "retaining must not consume a retry");
+});
+
+// Unit narrowing must behave identically whether or not a tier moves — the retention
+// half of the gate is independent of the escalation lever.
+test("mixed bounded-parallel units narrow identically without a tier advance", () => {
+  const first = resolveRouting({}, {
+    role: "shipper",
+    shapeEvidence: { ...atomicEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true, toolWork: "material", contextIsolation: "required", requestedParallelism: 2 },
+    unitIds: ["a", "b"],
+    supportsModelSelector: false, supportsEffortSelector: false,
+  });
+  assert.equal(first.executionShape, "bounded-parallel");
+  const retry = resolveRouting({}, {
+    role: "shipper", shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds,
+    supportsModelSelector: false, supportsEffortSelector: false,
+    postAttempt: {
+      sufficient: false, signals: [],
+      prior: {
+        role: first.role, attempt: first.attempt, executionShape: first.executionShape,
+        shapeEvidence: first.normalizedEvidence, unitIds: first.unitIds, model: first.model,
+        effort: first.effort, basis: first.basis, escalationOrigin: first.escalationOrigin,
+      },
+      units: [
+        { unitId: "a", sufficient: true, signals: [] },
+        { unitId: "b", sufficient: false, signals: ["failed-validation"] },
+      ],
+    },
+  });
+  assert.equal(retry.disposition, "retry");
+  assert.deepEqual(retry.retainedUnitIds, ["a"], "successful work is retained, never rerun");
+  assert.deepEqual(retry.retry?.unitIds, ["b"], "only the insufficient unit is retried");
+  assert.equal(retry.retry?.escalation, "selector-unsupported");
+  assert.equal(retry.retry?.nextTier, null);
+  assert.equal(retry.normalizedEvidence.unitCount, 1, "the narrowed set re-derives through the shared count rule");
+  assert.equal(retry.normalizedEvidence.atomicity, "atomic");
+});
+
 test("isolated singleton recovery omits units and authorizes one exact-tier retry", () => {
   const first = resolveRouting({}, {
     role: "shipper",
@@ -319,7 +446,7 @@ test("isolated singleton recovery omits units and authorizes one exact-tier retr
   assert.equal(retry.retry?.nextTier, "sonnet");
 });
 
-test("fleet replacement retries only failed bounded units at the exact next tier", () => {
+test("fleet replacement retries only failed bounded units, advancing a tier only when one exists", () => {
   const first = resolveRouting({}, {
     role: "shipper",
     shapeEvidence: { ...atomicEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true, toolWork: "material", contextIsolation: "required", requestedParallelism: 2 },
@@ -370,7 +497,10 @@ test("fleet replacement retries only failed bounded units at the exact next tier
     role: "shipper", shapeEvidence: atomicEvidence, unitIds: ["highest"],
     invocationModel: "opus", supportsModelSelector: true, supportsEffortSelector: false,
   });
-  const exhausted = resolveRouting({}, {
+  // WF-497: sitting at the top tier means the model lever has nowhere to go, not
+  // that the failure is unreportable. The gate opens and the unit is retried at the
+  // tier it already holds, bounded by the same attempt budget.
+  const atTopTier = resolveRouting({}, {
     role: "shipper", shapeEvidence: highest.normalizedEvidence, unitIds: highest.unitIds,
     supportsModelSelector: true, supportsEffortSelector: false,
     postAttempt: {
@@ -382,10 +512,13 @@ test("fleet replacement retries only failed bounded units at the exact next tier
       },
     },
   });
-  assert.equal(exhausted.status, "stop");
-  assert.equal(exhausted.disposition, "invalid-stop");
-  assert.match(exhausted.diagnostic ?? "", /highest stable tier/);
-  assert.equal(exhausted.retry, null);
+  assert.equal(atTopTier.status, "dispatch");
+  assert.equal(atTopTier.disposition, "retry");
+  assert.equal(atTopTier.retry?.escalation, "top-tier");
+  assert.equal(atTopTier.retry?.priorTier, "opus");
+  assert.equal(atTopTier.retry?.nextTier, null);
+  assert.equal(atTopTier.diagnostic, null);
+  assert.equal(atTopTier.model.value, "opus", "the prior tier is carried forward, not downgraded");
 });
 
 test("bounded unit identities reject forged sets and reordered evaluations", () => {

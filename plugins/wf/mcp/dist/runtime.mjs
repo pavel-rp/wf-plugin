@@ -23194,13 +23194,14 @@ var routingOutput = fromJsonSchema2({
             attempt: { type: "integer", minimum: 2, maximum: 3 },
             signals: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
             unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
-            priorTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
-            nextTier: { type: "string", enum: ["haiku", "sonnet", "opus"] },
+            escalation: { type: "string", enum: ["next-stable-tier", "selector-unsupported", "prior-tier-unknown", "top-tier"], description: "The lever this retry pulls. `next-stable-tier` advances one stable tier; the other three name why no tier lever applied and the narrowed units re-run under the prior attempt's own selection." },
+            priorTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "The tier the attempt that already ran mapped to, reported whenever it resolves. Evidence about the past; carries no invariant." },
+            nextTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "Non-null exactly when the resolver advanced the selection one stable tier above priorTier. Null means no advance was requested and the narrowed units re-run at the prior selection, re-resolved through the ordinary precedence chain \u2014 so a host pin may still change the model even when this is null." },
             escalationOrigin: { type: "string", minLength: 1, maxLength: 256, pattern: safeRoutingStringPattern },
             priorExecutionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
             shapeChanged: { type: "boolean" }
           },
-          required: ["attempt", "signals", "unitIds", "priorTier", "nextTier", "escalationOrigin", "priorExecutionShape", "shapeChanged"],
+          required: ["attempt", "signals", "unitIds", "escalation", "priorTier", "nextTier", "escalationOrigin", "priorExecutionShape", "shapeChanged"],
           additionalProperties: false
         }
       ]
@@ -23419,7 +23420,7 @@ function registerResolverTools(server, selectService) {
     "resolve_routing",
     {
       title: "resolve routing",
-      description: 'Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` \xA7"Resolver call root". Body-free.',
+      description: 'Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned retry for only insufficient units, or stops on invalid/exhausted state. The model tier is one escalation lever, not the gate: when the lever does not apply \u2014 the edge cannot honor a model selector, the prior model maps to no stable tier, or it is already at the highest one \u2014 the gate still opens and the narrowed units re-run under the prior attempt\'s own selection, re-resolved through the ordinary precedence chain so a host pin still binds, with `retry.escalation` naming why and `retry.nextTier` null exactly when no advance was requested. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` \xA7"Resolver call root". Body-free.',
       inputSchema: routingInput,
       outputSchema: routingOutput,
       _meta: RESIDENT
@@ -26753,31 +26754,11 @@ function resolveRouting(project, inputs) {
       retainedUnitIds
     );
   }
-  const priorSelector = evaluation.prior.actualModel ?? evaluation.prior.model.value;
+  const priorSelector = evaluation.prior.model.value ?? evaluation.prior.actualModel;
   const priorTier = modelTier(priorSelector);
-  if (!priorTier) {
-    return priorTerminalDecision(
-      current,
-      evaluation.prior,
-      priorShape,
-      "stop",
-      "invalid-stop",
-      "prior model does not map unambiguously to a stable tier",
-      retainedUnitIds
-    );
-  }
-  const nextTier = MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1];
-  if (!nextTier) {
-    return priorTerminalDecision(
-      current,
-      evaluation.prior,
-      priorShape,
-      "stop",
-      "invalid-stop",
-      "prior model is already at the highest stable tier",
-      retainedUnitIds
-    );
-  }
+  const nextTier = priorTier !== null ? MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1] ?? null : null;
+  const escalation = !inputs.supportsModelSelector ? "selector-unsupported" : priorTier === null ? "prior-tier-unknown" : nextTier === null ? "top-tier" : "next-stable-tier";
+  const tierAdvanceAvailable = escalation === "next-stable-tier";
   const attempt = evaluation.prior.attempt + 1;
   const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
   const insufficientUnitIds = new Set(evaluation.units ? evaluation.units.filter((unit) => !unit.sufficient).map((unit) => unit.unitId) : evaluation.prior.unitIds);
@@ -26797,9 +26778,17 @@ function resolveRouting(project, inputs) {
     shapeEvidence: retryShapeEvidence,
     unitIds: retryUnitIds.length ? retryUnitIds : void 0,
     postAttempt: void 0,
-    invocationModel: nextTier,
+    // Only an applicable lever requests a tier. When none applies the retry re-states
+    // the prior attempt's own REQUEST and lets `choose()` resolve it through the very
+    // same validated pipeline the initial path uses. It is deliberately NOT a verbatim
+    // copy of caller-supplied `prior.model`: host enforcement still wins (WF-394) and
+    // still records `masked`, a malformed or unavailable id is still rejected, and a
+    // caller cannot launder forged provenance into a dispatched decision.
+    ...tierAdvanceAvailable ? { invocationModel: nextTier, requireModel: true } : {
+      invocationModel: evaluation.prior.model.requestedSource === "invocation" ? evaluation.prior.model.requested : void 0,
+      requireModel: false
+    },
     invocationEffort: void 0,
-    requireModel: true,
     requireEffort: false,
     supportsEffortSelector: true,
     hostEffort: void 0,
@@ -26825,7 +26814,7 @@ function resolveRouting(project, inputs) {
     fallback: retryDecision.model.fallback ?? retryEffort.fallback,
     masked: retryDecision.model.masked || retryEffort.masked
   };
-  if (retryDecision.status === "stop" || retryDecision.model.masked || retryDecision.model.fallback || modelTier(retryDecision.model.value) !== nextTier) {
+  if (retryDecision.status === "stop" || tierAdvanceAvailable && (retryDecision.model.masked || retryDecision.model.fallback || modelTier(retryDecision.model.value) !== nextTier)) {
     const reason = retryDecision.diagnostic ?? (retryDecision.model.masked ? "next model tier was masked by host enforcement" : retryDecision.model.fallback ? `next model tier fell back: ${retryDecision.model.fallback}` : "next model tier did not advance exactly one stable tier");
     return priorTerminalDecision(
       retryDecision,
@@ -26846,8 +26835,13 @@ function resolveRouting(project, inputs) {
       attempt,
       signals,
       unitIds: retryUnitIds,
+      escalation,
+      // `priorTier` is a fact about the attempt that ALREADY RAN, so it is reported
+      // whenever it resolves — including on `top-tier`, and on `selector-unsupported`
+      // where the prior attempt's own model may still map even though this edge
+      // cannot honor a selector. Only `nextTier` carries the caller invariant.
       priorTier,
-      nextTier,
+      nextTier: tierAdvanceAvailable ? nextTier : null,
       escalationOrigin,
       priorExecutionShape,
       shapeChanged

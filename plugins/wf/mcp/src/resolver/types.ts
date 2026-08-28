@@ -1960,8 +1960,26 @@ export interface RoutingRetryInstruction {
   attempt: number;
   signals: RoutingInsufficiencySignal[];
   unitIds: string[];
-  priorTier: "haiku" | "sonnet" | "opus";
-  nextTier: "haiku" | "sonnet" | "opus";
+  /** Which escalation lever this retry actually pulls. `next-stable-tier` advances
+   *  exactly one stable tier. The other three name the reason no tier lever applied,
+   *  in the precedence order the resolver classifies them: the edge declared it
+   *  cannot honor a model selector, the prior attempt maps to no stable tier, or the
+   *  prior attempt already sits at the highest one. The model tier is ONE lever, not
+   *  the gate itself — an inapplicable lever narrows and re-dispatches the failed
+   *  units rather than refusing to acknowledge the failure. */
+  escalation: "next-stable-tier" | "selector-unsupported" | "prior-tier-unknown" | "top-tier";
+  /** The tier the attempt that ALREADY RAN mapped to, reported whenever it resolves
+   *  — including when no advance was requested. Null only when the prior model maps
+   *  to no stable tier. It is evidence about the past, and carries no invariant. */
+  priorTier: "haiku" | "sonnet" | "opus" | null;
+  /** THE CALLER INVARIANT: `nextTier` is non-null exactly when the resolver advanced
+   *  the selection one stable tier above `priorTier`; null means it requested no
+   *  advance and the narrowed units re-run at the prior attempt's own selection,
+   *  re-resolved through the ordinary precedence chain so host enforcement still
+   *  wins. A null `nextTier` together with `shapeChanged: false` is a deliberate
+   *  zero-delta repeat — bounded by the attempt budget, and worth re-dispatching only
+   *  when the failure was plausibly transient rather than a property of the work. */
+  nextTier: "haiku" | "sonnet" | "opus" | null;
   escalationOrigin: string;
   priorExecutionShape: ExecutionShape;
   shapeChanged: boolean;
@@ -2047,6 +2065,10 @@ export interface RoutingMeasurement {
   escalationOrigin: string | null;
   modelFallback: RoutingChoice["fallback"];
   effortFallback: RoutingChoice["fallback"];
+  /** Which escalation lever a retry pulled, or null when this record is not a retry.
+   *  Without it a zero-delta same-model retry is indistinguishable in the log from
+   *  the first attempt it repeats. */
+  escalation: RoutingRetryInstruction["escalation"] | null;
   masked: boolean;
   actualModel?: string;
 }

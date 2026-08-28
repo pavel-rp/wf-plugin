@@ -199,11 +199,33 @@ test("compact measurement projection preserves routing evidence without artifact
     escalationOrigin: null,
     modelFallback: null,
     effortFallback: null,
+    escalation: null,
     masked: false,
     actualModel: "claude-sonnet-4-6",
   });
   assert.ok(!Object.hasOwn(projectRoutingMeasurement({ ...decision, actualModel: undefined }), "actualModel"));
   assert.ok(!Object.hasOwn(projectRoutingMeasurement(decision), "Model"), "artifact Model attribution is not routing metadata");
+
+  // A zero-delta retry is otherwise indistinguishable in the record from the attempt
+  // it repeats, so the lever that explains it has to reach the projection.
+  const carried = resolveRouting({}, {
+    role: "charter-reviewer",
+    shapeEvidence: decision.normalizedEvidence,
+    unitIds: ["unit-a"],
+    supportsModelSelector: false,
+    supportsEffortSelector: true,
+    postAttempt: {
+      sufficient: false,
+      signals: ["repeated-failure"],
+      prior: {
+        role: "charter-reviewer", attempt: 1, executionShape: "isolated",
+        shapeEvidence: decision.normalizedEvidence, unitIds: ["unit-a"],
+        model: decision.model, effort: decision.effort, basis: decision.basis, escalationOrigin: null,
+      },
+    },
+  });
+  assert.equal(carried.disposition, "retry");
+  assert.equal(projectRoutingMeasurement(carried).escalation, "selector-unsupported");
 });
 
 test("matrix pins only the WF-394 bootstrap Haiku defaults", () => {
