@@ -21,6 +21,7 @@ import {
 } from "./resolver/plan-install.js";
 import { planRepair, type RepairPlanResult } from "./resolver/repair-plan.js";
 import { selectWorkspaceRoot } from "./workspace-admission.js";
+import { describeCallerRoot } from "./git-workspace.js";
 import { invalidRootRecoveryReport } from "./resolver/lifecycle-recovery.js";
 import {
   APPLY_ENVELOPE_VERSION,
@@ -769,10 +770,21 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       title: "resolve config",
       inputSchema: workspaceOnlyInput,
       description:
-        "Resolved core config + workspace root + registry location + id shape + the executing core plugin's declared version (`coreVersion`, null when unreadable) (R1). Metadata only; no fragment bodies.",
+        "Resolved core config + workspace root + registry location + id shape + the executing core plugin's declared version (`coreVersion`, null when unreadable) (R1). Also reports how the caller's own request relates to that resolved root: `callerRoot` is the canonicalized directory the caller passed, and `rootRedirected` is true when the resolved `workspaceRoot` is not that directory — the designated predicate a caller reads to detect that it is resolving an enclosing checkout rather than its own directory. Read `rootRedirected`; never compare the two paths caller-side. Metadata only; no fragment bodies.",
       _meta: RESIDENT,
     },
-    async (args: WorkspaceArgs) => selected(args, (service) => service.resolveConfig()),
+    // The caller-root signal is composed HERE, and only here, because this is the
+    // one layer holding both the raw request argument and the resolved response:
+    // `WorkspaceServiceRegistry.select` consumes the argument inside
+    // `resolveWorkspaceIdentity` and then discards it, keying and passing only the
+    // resolved root, so a root-bound service can never produce these fields.
+    // Composing after `select` returns changes neither admission nor keying, and no
+    // existing field's value or meaning moves (WF-495).
+    async (args: WorkspaceArgs) =>
+      selected(args, (service) => {
+        const config = service.resolveConfig();
+        return { ...config, ...describeCallerRoot(args.workspaceRoot, config.workspaceRoot) };
+      }),
   );
 
   server.registerTool(

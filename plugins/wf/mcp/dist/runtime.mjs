@@ -22229,6 +22229,10 @@ function resolveGitIdentity(directory, label2 = "workspaceRoot") {
   );
   return { worktreeRoot: canonicalTopLevel, commonDir: canonicalCommonDir };
 }
+function describeCallerRoot(requestedWorkspaceRoot, resolvedWorkspaceRoot, label2 = "workspaceRoot") {
+  const callerRoot = canonicalDirectory(requestedWorkspaceRoot, label2);
+  return { callerRoot, rootRedirected: callerRoot !== resolvedWorkspaceRoot };
+}
 function resolveWorkspaceIdentity(directory, label2 = "workspaceRoot") {
   const canonicalInput = canonicalDirectory(directory, label2);
   try {
@@ -23315,10 +23319,20 @@ function registerResolverTools(server, selectService) {
     {
       title: "resolve config",
       inputSchema: workspaceOnlyInput,
-      description: "Resolved core config + workspace root + registry location + id shape + the executing core plugin's declared version (`coreVersion`, null when unreadable) (R1). Metadata only; no fragment bodies.",
+      description: "Resolved core config + workspace root + registry location + id shape + the executing core plugin's declared version (`coreVersion`, null when unreadable) (R1). Also reports how the caller's own request relates to that resolved root: `callerRoot` is the canonicalized directory the caller passed, and `rootRedirected` is true when the resolved `workspaceRoot` is not that directory \u2014 the designated predicate a caller reads to detect that it is resolving an enclosing checkout rather than its own directory. Read `rootRedirected`; never compare the two paths caller-side. Metadata only; no fragment bodies.",
       _meta: RESIDENT
     },
-    async (args) => selected(args, (service) => service.resolveConfig())
+    // The caller-root signal is composed HERE, and only here, because this is the
+    // one layer holding both the raw request argument and the resolved response:
+    // `WorkspaceServiceRegistry.select` consumes the argument inside
+    // `resolveWorkspaceIdentity` and then discards it, keying and passing only the
+    // resolved root, so a root-bound service can never produce these fields.
+    // Composing after `select` returns changes neither admission nor keying, and no
+    // existing field's value or meaning moves (WF-495).
+    async (args) => selected(args, (service) => {
+      const config2 = service.resolveConfig();
+      return { ...config2, ...describeCallerRoot(args.workspaceRoot, config2.workspaceRoot) };
+    })
   );
   server.registerTool(
     "resolve_registry",
