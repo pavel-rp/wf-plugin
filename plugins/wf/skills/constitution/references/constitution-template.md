@@ -38,7 +38,11 @@ numbered 1–9>
 ## Capability articles (provenance: each capability)
 
 <one subsection per registered capability that declares articles, tagged with its name from
-the registry; omit this whole section when no capability contributed (core-only)>
+the registry. This heading is ALWAYS written, core-only records included — it is the
+structural landmark a later re-composition locates the record by, so an absent section makes
+the record unrecognizable rather than merely empty. When no capability contributed, write the
+heading with this single line as its body and no subsections:
+`No registered capability declares a constitution article.`>
 
 ### <capability name>
 

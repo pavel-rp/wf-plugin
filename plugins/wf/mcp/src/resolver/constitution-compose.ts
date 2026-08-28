@@ -43,8 +43,6 @@
 import type { ConstitutionInput } from "./types.js";
 import { CORE_ARTICLES_HEADING } from "./constitution-core.js";
 
-export { CORE_ARTICLES_HEADING };
-
 /** The heading whose BODY this composer renders. Exported so the contract tests
  *  assert the boundary mechanically rather than trusting a comment. */
 export const CAPABILITY_ARTICLES_HEADING = "## Capability articles (provenance: each capability)";
@@ -100,9 +98,12 @@ export type ConstitutionComposition =
 
 /** Index of a top-level heading line, or a refusal when it is absent or repeated.
  *
- *  Matched at the START of a line and on the WHOLE line (after trailing
- *  whitespace), so a heading quoted inside a fenced block or referenced mid-prose
- *  cannot be mistaken for the section boundary. */
+ *  Matched on the WHOLE line (after trailing whitespace), so an INDENTED mention —
+ *  the ordinary way a heading is quoted in prose or inside a fence — cannot be
+ *  mistaken for the section boundary. An UNINDENTED heading line inside a fenced
+ *  block still matches: fences are not tracked. That is deliberate rather than
+ *  overlooked, and it is the fail-closed direction, because the real heading is
+ *  then seen twice and the duplicate branch below refuses. */
 function locateHeading(
   lines: readonly string[],
   heading: string,
@@ -170,14 +171,19 @@ function refreshRegistryLine(preamble: readonly string[], registryNames: readonl
   }
   if (hits.length !== 1) return [...preamble];
   const out = [...preamble];
-  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}`;
+  // Carry the line's own trailing `\r`. Rewriting it without one would leave a
+  // single bare LF in an otherwise-CRLF record — the mixed-ending defect one line
+  // wide, in the only preamble line this function is allowed to touch.
+  const eol = preamble[hits[0]].endsWith("\r") ? "\r" : "";
+  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}${eol}`;
   return out;
 }
 
 /**
- * Compose the record: replace only the capability-articles body, preserve
- * everything else, and refuse rather than reset a document this composer does not
- * recognize.
+ * Compose the record: always render the capability-articles body, render the
+ * core-articles body when — and only when — the caller carries one, preserve the
+ * preamble and the project's own clauses unconditionally, and refuse rather than
+ * reset a document this composer does not recognize.
  *
  * Pure: identical inputs always produce a deep-equal result, and no input is
  * mutated.
@@ -220,7 +226,15 @@ export function composeConstitutionRecord(
   // capability heading and the emitted document is byte-for-byte the pre-WF-492
   // one — which is what keeps a caller holding no core body from newly refusing a
   // record it used to compose.
-  const coreArticles = input.coreArticles ?? null;
+  // AN EMPTY ARRAY IS ABSENT, NOT "RENDER NOTHING". `??` alone would take `[]` as a
+  // value and emit the heading with no body — silently deleting the whole core
+  // section and reporting `ok: true`. A caller with nothing to carry means "leave it
+  // alone"; a caller that genuinely wanted the section emptied would have to say so
+  // some other way, and no caller does.
+  const coreArticles =
+    input.coreArticles !== undefined && input.coreArticles !== null && input.coreArticles.length > 0
+      ? input.coreArticles
+      : null;
   let coreStart = articles.index;
   let coreSection: string[] = [];
 
@@ -249,15 +263,31 @@ export function composeConstitutionRecord(
     coreSection = [lines[core.index].trimEnd(), ...coreArticles];
   }
 
-  const preamble = refreshRegistryLine(lines.slice(0, coreStart), input.registryNames);
+  // THE REGISTRY LINE IS SEARCHED OVER THE SAME REGION AS BEFORE — everything above
+  // the capability heading — and only THEN split at `coreStart`. Narrowing the search
+  // to the preamble would change two behaviours silently: a `**Registry:**` line
+  // sitting inside the core section would stop being found (and then be destroyed by
+  // the replacement below rather than refreshed), and a record carrying two such
+  // lines would drop from the deliberate "ambiguous, so leave it alone" branch back
+  // into being rewritten. Neither is this change's business.
+  const refreshed = refreshRegistryLine(lines.slice(0, articles.index), input.registryNames);
+  const preamble = refreshed.slice(0, coreStart);
   // RULE 1, mechanically: the tail is sliced, never parsed and never re-rendered.
   const preservedClauses = lines.slice(clauses.index);
 
+  // PRESERVE THE RECORD'S OWN LINE ENDING. `split("\n")` leaves a trailing `\r` on
+  // every line of a CRLF record; joining with a bare `\n` would emit the rendered
+  // sections LF while the sliced preamble and tail stayed CRLF, quietly turning a
+  // user-owned file mixed. The record's dominant ending is used instead, and the
+  // rendered lines are normalized to match it.
+  const crlf = /\r\n/.test(input.current) && !/(^|[^\r])\n/.test(input.current);
+  const emit = (line: string): string => (crlf ? `${line.replace(/\r$/, "")}\r` : line);
+
   const content = [
     ...preamble,
-    ...coreSection,
-    lines[articles.index].trimEnd(),
-    ...renderArticleBody(input.capabilities),
+    ...coreSection.map(emit),
+    emit(lines[articles.index].trimEnd()),
+    ...renderArticleBody(input.capabilities).map(emit),
     ...preservedClauses,
   ].join("\n");
 

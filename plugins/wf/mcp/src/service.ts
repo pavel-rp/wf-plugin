@@ -4050,12 +4050,23 @@ export class ResolverService {
    * write produces it: existing rows keep their positions, deregistered ones are
    * removed, and additions append in the plan's own canonical action order.
    *
-   * THE RESOLVER RENDERS ONLY THE DERIVED SECTION. Everything else in the record —
-   * the preamble, the core articles, and above all the project's own
-   * `## Project clauses (provenance: project)` section — is preserved
-   * byte-for-byte by `composeConstitutionRecord`. That section is human-authored
-   * content no other copy exists of; a composition that regenerated the document
-   * would destroy it.
+   * THE RESOLVER RENDERS THE DERIVED SECTION, AND CARRIES THE CORE ONE. The
+   * capability-articles section is a pure function of the registered set, so it is
+   * always rendered. Since WF-492 this call also carries THIS release's core article
+   * body, so an install re-composition refreshes that section too rather than
+   * freezing a project at whichever article wording first composed its record. The
+   * preamble and, above all, the project's own
+   * `## Project clauses (provenance: project)` section are preserved byte-for-byte
+   * by `composeConstitutionRecord`. That section is human-authored content no other
+   * copy exists of; a composition that regenerated the document would destroy it.
+   *
+   * A CORE-SECTION MISMATCH DEGRADES, IT DOES NOT ABORT THE INSTALL. The core
+   * refresh is opportunistic — the transaction needs the capability section, not the
+   * core one — so a record whose core structure this composer cannot place falls
+   * back to the preserved composition instead of failing the whole apply. Blocking a
+   * pack install on a heading the user hand-edited in a gitignored file would be a
+   * far worse outcome than an unrefreshed article, and the fall-back path is exactly
+   * the pre-WF-492 behaviour.
    */
   private composeConstitutionTarget(
     plan: PlanInstallResponse,
@@ -4103,18 +4114,27 @@ export class ResolverService {
       }
     }
 
-    const composed = composeConstitutionRecord({
+    const base = {
       current,
       capabilities: articlesByCapability(inputs),
       registryNames,
-      // WF-492: an install that recomposes the record also carries THIS release's
-      // core article text. Omitting it would leave a project that installs a pack
-      // holding whichever article wording first composed its constitution, which is
-      // the drift this parameter exists to close.
-      coreArticles: CORE_ARTICLES_BODY,
-    });
-    if (!composed.ok) return { ok: false, detail: composed.detail };
-    return { ok: true, render: composed };
+    };
+
+    // WF-492: an install that recomposes the record also carries THIS release's core
+    // article text, so a project that installs a pack does not stay frozen at
+    // whichever article wording first composed its constitution.
+    const withCore = composeConstitutionRecord({ ...base, coreArticles: CORE_ARTICLES_BODY });
+    if (withCore.ok) return { ok: true, render: withCore };
+
+    // The core refresh is opportunistic. A record whose CORE structure this composer
+    // cannot place still has a capability section the transaction genuinely needs, so
+    // fall back to the composition that preserves the core section untouched — the
+    // pre-WF-492 behaviour, which by construction cannot refuse anything it used to
+    // compose. Only a fault in a section the transaction must actually write is a
+    // precondition failure.
+    const preserved = composeConstitutionRecord(base);
+    if (!preserved.ok) return { ok: false, detail: preserved.detail };
+    return { ok: true, render: preserved };
   }
 
   /**

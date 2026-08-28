@@ -26746,8 +26746,8 @@ function resolveRouting(project, inputs) {
 
 // src/resolver/constitution-core.ts
 var CORE_ARTICLES_HEADING = "## Core articles (provenance: core)";
-var UNATTENDED_GATE_CLAUSE = "A gate is approved by a human, or \u2014 in an **unattended run**, where no human is present to approve \u2014 by a **recorded self-approval**: a machine-checkable record, issued by the resolver into its declared run-evidence class, naming the gate it clears and filed before the next phase begins. An unattended run does not thereby skip the gate; it satisfies it with evidence. The record is requested by the agent it authorises and never written by it, so a self-approval that is absent, unmatched, or unverifiable leaves the gate **unapproved**, and the run is reported as unproven rather than as complete.";
-var CORE_ARTICLES_BODY = [
+var UNATTENDED_GATE_CLAUSE = "A gate is approved by a human, or \u2014 in an **unattended run** \u2014 by a **recorded self-approval**: a machine-checkable record the resolver issues into its declared run-evidence class, naming the gate it clears, **binding by digest the artifact it approves**, filed before the next phase begins, and valid only within the run that requested it. The record is requested by the agent it authorises and never written by it, and the run's unattended mode is **not the requesting agent's to assert** \u2014 where that mode cannot be established independently of the agent, the gate is not satisfied. An approval that is absent, unmatched, unverifiable, filed for another run, or whose approved artifact has since changed leaves the gate **unapproved**: the run **halts at that gate** and is reported unproven. An unattended run does not skip the gate \u2014 it satisfies the gate with evidence, or it stops.";
+var CORE_ARTICLES_BODY = Object.freeze([
   "",
   "1. **The spec is the single source of truth.** A derived artifact (plan, task list) never overrides the spec; conformance is judged against the spec.",
   `2. **No phase skips its gate.** Every phase produces an artifact that feeds the next, and nothing advances past an unapproved gate. ${UNATTENDED_GATE_CLAUSE}`,
@@ -26757,13 +26757,13 @@ var CORE_ARTICLES_BODY = [
   "6. **Never commit to `main`.** All work happens on a feature branch (`feat/\u2026`, `fix/\u2026`, `chore/\u2026`); pushing to `main` is forbidden regardless of registered capabilities. This holds even in bare-core mode, where every branch gate skips with a stated reason rather than silently permitting a `main` commit.",
   "7. **Project configuration lives in `_local/config.md`.** Project-specific values are read from config, never hardcoded into a skill.",
   "8. **Core never requires a capability.** Every core extension point ships a lean default and runs inert when no capability is registered; core never names or hard-depends on a specific capability.",
-  "9. **Temp and scratch files live under `_local/`, and nothing is left behind.** Working, temporary, and scratch files route to a dedicated scratch area under `_local/` (`_local/scratch/`) \u2014 never the repo root, a system temp directory, or anywhere alongside tracked files. This *complements* the write-scope article above: that one bounds where writes may land; this one routes every throwaway to a single gitignored home inside that boundary. Placement alone does not discharge the article: every scratch file also carries a lifecycle, and both deletion obligations below are mandatory.",
-  "   - **(a) Per-consumer immediate deletion.** Each scratch file is deleted the moment its consumer has run \u2014 deletion is that consumer's own last act on the file, in the same run that consumed it.",
-  "   - **(b) Breadcrumb deletion by the run-ending skill.** Every run-scoped breadcrumb \u2014 the state, handoff, ledger, lock, and marker files a multi-step run writes to coordinate itself \u2014 is deleted by the skill that ends the run, whether the run ended in success or in failure.",
+  "9. **Temp and scratch files live under `_local/`, and nothing is left behind.** Working, temporary, and scratch files route to a dedicated scratch area under `_local/` (`_local/scratch/`) \u2014 never the repo root, a system temp directory, or anywhere alongside tracked files. This *complements* the write-scope article above: that one bounds where writes may land; this one routes every throwaway to a single gitignored home inside that boundary. Placement alone does not discharge the article: every scratch file also carries a lifecycle, and the two deletion obligations below are **separate, and both mandatory**.",
+  "   - **(a) Per-consumer immediate deletion.** Each scratch file is deleted the moment its consumer has run \u2014 deletion is that consumer's own last act on the file, performed in the same run that consumed it. It is never deferred to a later sweep, never postponed to the end of the chain, and never left for another skill to notice.",
+  "   - **(b) Breadcrumb deletion by the run-ending skill.** Every run-scoped breadcrumb \u2014 the state, handoff, ledger, lock, and marker files a multi-step run writes to coordinate itself \u2014 is deleted by the skill that ends the run, as part of ending it, whether the run ended in success or in failure.",
   "",
-  "   The finalize-time scratch sweep is a **backstop, not a substitute**: it exists only to remove residue obligation (a) or (b) failed to remove, and neither obligation may be skipped, deferred, or weakened on the grounds that the sweep will catch it.",
+  "   The finalize-time scratch sweep is a **backstop, not a substitute**: it exists only to remove residue that obligation (a) or (b) failed to remove, and neither obligation may be skipped, deferred, or weakened on the grounds that the sweep will catch it.",
   ""
-];
+]);
 
 // src/resolver/constitution-compose.ts
 var CAPABILITY_ARTICLES_HEADING = "## Capability articles (provenance: each capability)";
@@ -26816,7 +26816,8 @@ function refreshRegistryLine(preamble, registryNames) {
   }
   if (hits.length !== 1) return [...preamble];
   const out = [...preamble];
-  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}`;
+  const eol = preamble[hits[0]].endsWith("\r") ? "\r" : "";
+  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}${eol}`;
   return out;
 }
 function composeConstitutionRecord(input) {
@@ -26838,7 +26839,7 @@ function composeConstitutionRecord(input) {
       detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
     };
   }
-  const coreArticles = input.coreArticles ?? null;
+  const coreArticles = input.coreArticles !== void 0 && input.coreArticles !== null && input.coreArticles.length > 0 ? input.coreArticles : null;
   let coreStart = articles.index;
   let coreSection = [];
   if (coreArticles !== null) {
@@ -26859,13 +26860,16 @@ function composeConstitutionRecord(input) {
     coreStart = core.index;
     coreSection = [lines[core.index].trimEnd(), ...coreArticles];
   }
-  const preamble = refreshRegistryLine(lines.slice(0, coreStart), input.registryNames);
+  const refreshed = refreshRegistryLine(lines.slice(0, articles.index), input.registryNames);
+  const preamble = refreshed.slice(0, coreStart);
   const preservedClauses = lines.slice(clauses.index);
+  const crlf = /\r\n/.test(input.current) && !/(^|[^\r])\n/.test(input.current);
+  const emit = (line) => crlf ? `${line.replace(/\r$/, "")}\r` : line;
   const content = [
     ...preamble,
-    ...coreSection,
-    lines[articles.index].trimEnd(),
-    ...renderArticleBody(input.capabilities),
+    ...coreSection.map(emit),
+    emit(lines[articles.index].trimEnd()),
+    ...renderArticleBody(input.capabilities).map(emit),
     ...preservedClauses
   ].join("\n");
   return { ok: true, content, changed: content !== input.current };
@@ -32525,12 +32529,23 @@ var ResolverService = class _ResolverService {
    * write produces it: existing rows keep their positions, deregistered ones are
    * removed, and additions append in the plan's own canonical action order.
    *
-   * THE RESOLVER RENDERS ONLY THE DERIVED SECTION. Everything else in the record —
-   * the preamble, the core articles, and above all the project's own
-   * `## Project clauses (provenance: project)` section — is preserved
-   * byte-for-byte by `composeConstitutionRecord`. That section is human-authored
-   * content no other copy exists of; a composition that regenerated the document
-   * would destroy it.
+   * THE RESOLVER RENDERS THE DERIVED SECTION, AND CARRIES THE CORE ONE. The
+   * capability-articles section is a pure function of the registered set, so it is
+   * always rendered. Since WF-492 this call also carries THIS release's core article
+   * body, so an install re-composition refreshes that section too rather than
+   * freezing a project at whichever article wording first composed its record. The
+   * preamble and, above all, the project's own
+   * `## Project clauses (provenance: project)` section are preserved byte-for-byte
+   * by `composeConstitutionRecord`. That section is human-authored content no other
+   * copy exists of; a composition that regenerated the document would destroy it.
+   *
+   * A CORE-SECTION MISMATCH DEGRADES, IT DOES NOT ABORT THE INSTALL. The core
+   * refresh is opportunistic — the transaction needs the capability section, not the
+   * core one — so a record whose core structure this composer cannot place falls
+   * back to the preserved composition instead of failing the whole apply. Blocking a
+   * pack install on a heading the user hand-edited in a gitignored file would be a
+   * far worse outcome than an unrefreshed article, and the fall-back path is exactly
+   * the pre-WF-492 behaviour.
    */
   composeConstitutionTarget(plan, inspected) {
     const current = this.ports.readFile(
@@ -32568,18 +32583,16 @@ var ResolverService = class _ResolverService {
         }
       }
     }
-    const composed = composeConstitutionRecord({
+    const base = {
       current,
       capabilities: articlesByCapability(inputs),
-      registryNames,
-      // WF-492: an install that recomposes the record also carries THIS release's
-      // core article text. Omitting it would leave a project that installs a pack
-      // holding whichever article wording first composed its constitution, which is
-      // the drift this parameter exists to close.
-      coreArticles: CORE_ARTICLES_BODY
-    });
-    if (!composed.ok) return { ok: false, detail: composed.detail };
-    return { ok: true, render: composed };
+      registryNames
+    };
+    const withCore = composeConstitutionRecord({ ...base, coreArticles: CORE_ARTICLES_BODY });
+    if (withCore.ok) return { ok: true, render: withCore };
+    const preserved = composeConstitutionRecord(base);
+    if (!preserved.ok) return { ok: false, detail: preserved.detail };
+    return { ok: true, render: preserved };
   }
   /**
    * The post-write self-check: refresh discovery, then assert the resolved view

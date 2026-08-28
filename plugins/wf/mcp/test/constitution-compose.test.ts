@@ -15,7 +15,6 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   CAPABILITY_ARTICLES_HEADING,
-  CORE_ARTICLES_HEADING,
   PROJECT_CLAUSES_HEADING,
   articlesByCapability,
   composeConstitutionRecord,
@@ -23,6 +22,7 @@ import {
 } from "../src/resolver/constitution-compose.js";
 import {
   CORE_ARTICLES_BODY,
+  CORE_ARTICLES_HEADING,
   UNATTENDED_GATE_CLAUSE,
 } from "../src/resolver/constitution-core.js";
 import type { ConstitutionInput } from "../src/resolver/types.js";
@@ -444,14 +444,80 @@ test("the core section is held to the same structural discipline as the derived 
   assert.ok(!afterResult.ok && afterResult.detail.includes("at or after"));
 });
 
-test("the shipped core body and the skill's own prose state the SAME unattended-gate clause", () => {
-  // The article's authoring source is the skill body; this constant mirrors it so a
+test("EVERY shipped core-body entry appears verbatim in the skill's own prose", () => {
+  // The article's authoring source is the skill body; the constant mirrors it so a
   // re-composition can carry it. Two copies with no guard is the drift defect one
-  // level up, so the agreement is asserted rather than assumed.
+  // level up — so the agreement is asserted over the WHOLE body, not over the one
+  // article this release happened to change. Pinning a single clause would leave the
+  // other eight free to drift, which is exactly how the first draft of this change
+  // shipped four divergences in article 9.
   const skill = readFileSync(join(MCP_DIR, "../skills/constitution/SKILL.md"), "utf8");
   const flatten = (value: string): string => value.replace(/\s+/g, " ").trim();
+  const flatSkill = flatten(skill);
+
+  const entries = CORE_ARTICLES_BODY.filter((line) => line.trim().length > 0);
+  assert.ok(entries.length >= 9, "the body must carry at least the nine core articles");
+  for (const entry of entries) {
+    assert.ok(
+      flatSkill.includes(flatten(entry)),
+      `skills/constitution/SKILL.md must state this core-body entry verbatim:\n${entry}`,
+    );
+  }
+  // And the amended clause specifically, named so a failure reads clearly.
+  assert.ok(flatSkill.includes(flatten(UNATTENDED_GATE_CLAUSE)));
+});
+
+test("an EMPTY core body is treated as absent, never as 'render nothing'", () => {
+  // `?? null` alone would take `[]` as a value and emit the heading with no body —
+  // silently deleting the core section while reporting success.
+  const stale = readFixture(STALE_PATH);
+  const result = composeConstitutionRecord({
+    current: stale,
+    capabilities: [SR],
+    registryNames: ["git", "audit", "sr"],
+    coreArticles: [],
+  });
+  assert.ok(result.ok);
   assert.ok(
-    flatten(skill).includes(flatten(UNATTENDED_GATE_CLAUSE)),
-    "skills/constitution/SKILL.md must state the same Article 2 clause the resolver carries",
+    result.ok && result.content.includes(PRE_AMENDMENT_ARTICLE_2),
+    "an empty body must preserve the core section, not empty it",
   );
+});
+
+test("a duplicated core heading refuses — an ambiguous boundary is not guessed at", () => {
+  const stale = readFixture(STALE_PATH);
+  const doubled = stale.replace(
+    `${CORE_ARTICLES_HEADING}\n`,
+    `${CORE_ARTICLES_HEADING}\n\n${CORE_ARTICLES_HEADING}\n`,
+  );
+  const result = composeWithCore(doubled);
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok && result.detail.includes("2 `"));
+  assert.ok(!result.ok && result.detail.includes(CORE_ARTICLES_HEADING));
+});
+
+test("a CRLF record keeps CRLF throughout — a rewrite never leaves it mixed", () => {
+  const stale = readFixture(STALE_PATH).replace(/\n/g, "\r\n");
+  const result = composeWithCore(stale);
+  assert.ok(result.ok);
+  assert.ok(result.ok && result.content.includes(UNATTENDED_GATE_CLAUSE));
+  assert.ok(
+    result.ok && !/(^|[^\r])\n/.test(result.content),
+    "no bare LF may survive in a record that arrived as CRLF",
+  );
+});
+
+test("a `**Registry:**` line inside the core section is still found and refreshed", () => {
+  // The search region must stay the whole pre-capability span. Narrowing it to the
+  // preamble would let this line fall inside the replaced region and be destroyed.
+  const stale = readFixture(STALE_PATH)
+    .replace("**Registry:** git, audit, sr\n", "")
+    .replace(`${CORE_ARTICLES_HEADING}\n`, `${CORE_ARTICLES_HEADING}\n**Registry:** git, audit, sr\n`);
+  const result = composeConstitutionRecord({
+    current: stale,
+    capabilities: [SR],
+    registryNames: ["git", "audit", "linear"],
+  });
+  assert.ok(result.ok);
+  assert.ok(result.ok && result.content.includes("**Registry:** git, audit, linear"));
 });
