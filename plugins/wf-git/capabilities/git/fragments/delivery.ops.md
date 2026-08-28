@@ -1,6 +1,6 @@
 # git delivery provider — runtime ops
 
-**Version:** 1.7.0 (WF-283 — `branch-create`'s dirty-worktree guard replaced with a stash-based carry across both the `switched` and `created` outcomes, adding a `<carry>` output field; WF-221 — `default-base-query` read operation added so core commit/pr obtain the base branch through the contract instead of hardcoding a trunk name; WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — the branch-changes enumeration read operation bound: `branch-changes-read`; WF-324 — two review-thread operations bound: `review-threads-read` (HEAD_SHA-scoped review-thread read via GraphQL, typed with `<read-performed>`) and `review-thread-reply` (per-thread GraphQL reply keyed by the thread node id))
+**Version:** 1.8.0 (WF-483 — the newest-published-version read bound: `newest-published-version-read` reads the version an already-resolved declaration carries at the published tip of the default base, and returns it typed with `<read-performed>` plus a closed `<reason>` token — the same typing discipline as `review-threads-read`, so a provider-side failure or a value-less declaration can never be read as "the installation is current"; WF-283 — `branch-create`'s dirty-worktree guard replaced with a stash-based carry across both the `switched` and `created` outcomes, adding a `<carry>` output field; WF-221 — `default-base-query` read operation added so core commit/pr obtain the base branch through the contract instead of hardcoding a trunk name; WF-211 — split out of the delivery fragment as the bounded runtime-ops half; push-upstream probe consolidation; WF-157 — six PR-interaction/merge/activity operations bound: `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`, `activity-read`; WF-176 — the branch-changes enumeration read operation bound: `branch-changes-read`; WF-324 — two review-thread operations bound: `review-threads-read` (HEAD_SHA-scoped review-thread read via GraphQL, typed with `<read-performed>`) and `review-thread-reply` (per-thread GraphQL reply keyed by the thread node id))
 **Role:** the runtime-read half of the git delivery provider — every input, guard, error path, and outcome mapping a delivery operation follows. Read at every delivery-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, rationale, edge-case matrix — never read at boot):** `delivery.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = delivery`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -10,7 +10,7 @@
 
 **Consumes, never derives:** every operation takes an already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>`; composing those from a tracker work item is the caller's job, not this file's.
 
-**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · default-base-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · review-threads-read · pr-comment-post · checks-read · review-thread-resolve · review-thread-reply · pr-merge · activity-read.
+**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · default-base-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · review-threads-read · pr-comment-post · checks-read · review-thread-resolve · review-thread-reply · pr-merge · activity-read · newest-published-version-read.
 
 ## branch-create
 
@@ -266,3 +266,19 @@
 3. **Merge** the two streams into a recent-activity view.
 
 **Output:** the recent commits + pull-request activity, or an empty result.
+
+## newest-published-version-read (read)
+
+**Inputs:** `<version-declaration>` (already-resolved workspace-relative path of the file that declares the unit's version, required). `<version-field>` (optional; the key inside that declaration holding the version — default: the declaration's **top-level `version` key**, read as JSON).
+
+**Procedure:**
+
+1. **Resolve the published base.** Run `default-base-query` for `<base>`.
+2. **Refresh the published tip.** `git fetch --quiet origin <base>`. Non-zero (not inside a git working tree, no `origin` remote, or the fetch failed) → `<read-performed>` = false, `<reason>` = `read-failed`, no `<version>`. This is deliberately **not** the plain environment error `last-commit-timestamp-query` raises: a currency comparison must be able to say "the check did not run", so the failure is returned typed, never thrown.
+3. **Read the declaration at the published tip.** `git show FETCH_HEAD:<version-declaration>`. Non-zero (the declaration does not exist in the published state) → `<read-performed>` = false, `<reason>` = `none-published`, no `<version>`.
+4. **Extract the value** at `<version-field>` (default: the top-level `version` key). Unparseable, key absent, or the value blank → `<read-performed>` = false, `<reason>` = `none-published`, no `<version>`. A performed read with no value is **never** a bare `<read-performed>` = true.
+5. Otherwise → `<read-performed>` = true, `<version>` = the extracted value, no `<reason>`.
+
+**Never derives.** It neither chooses `<version-declaration>` nor reads the local working copy's own value — the caller supplies the first and owns the comparison. Step 2 fetches but touches no branch, no worktree, and no checked-out state.
+
+**Output:** `<read-performed>` (bool — true **only** when a concrete published version value was obtained), `<version>` (present only when `<read-performed>` = true), `<reason>` (present only when false; one of `read-failed` | `none-published` — `no-provider` is core's bare-core result, which this file does not implement).

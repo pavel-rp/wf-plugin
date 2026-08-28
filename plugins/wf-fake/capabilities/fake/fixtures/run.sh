@@ -13,6 +13,10 @@
 #   3. LOUD-FAILURE GUARD — each fragment fails loudly on an unscripted op.
 #   4. MANIFEST SURFACE SANITY — one delivery provider row and one tracker provider row.
 #   5. SAMPLE-SCRIPTS JSON VALIDITY — sample-scripts.json parses (when jq is present).
+#   6. TYPED-RESULT COVERAGE — every typed read op documents its <read-performed> flag in
+#      its fragment; newest-published-version-read additionally scripts BOTH polarities
+#      (a performed return AND a degraded one carrying a closed reason and no version),
+#      so its typed degradation is fixture-covered, not merely asserted in prose.
 #
 # Usage:  run.sh            run every check (default; used by CI)
 #         run.sh --selftest run only the no-egress regex scoping self-test
@@ -95,6 +99,45 @@ check_manifest() {
   [ "$fail" = "$before" ] && ok "manifest: sole owner of both delivery and tracker provider surfaces"
 }
 
+# Delivery reads whose result is TYPED with a <read-performed> flag, so a degraded result
+# can never be mistaken for a performed read (capability-registry contract, "Degradation
+# shape"). Each must document the flag in its fragment.
+TYPED_READS=(review-threads-read newest-published-version-read)
+# Of those, the ops whose typed degradation is itself scripted evidence: sample-scripts.json
+# must carry both a performed and a degraded return.
+BOTH_POLARITY_READS=(newest-published-version-read)
+# The contract's closed <reason> token set for a degraded newest-published-version read.
+REASON_TOKENS='^(no-provider|read-failed|none-published)$'
+
+check_typed_results() {
+  local op before=$fail frag="$FRAG_DIR/delivery.ops.md"
+  for op in "${TYPED_READS[@]}"; do
+    grep -qF -- "$op" "$frag" || { err "typed-result: op '$op' not listed in delivery.ops.md"; continue; }
+    grep -qF -- 'read-performed' "$frag" \
+      || err "typed-result: delivery.ops.md documents no 'read-performed' flag for '$op'"
+  done
+  if [ "$HAVE_JQ" = 1 ]; then
+    for op in "${BOTH_POLARITY_READS[@]}"; do
+      jq -e --arg o "$op" '
+        (.delivery[$o] | if type == "array" then . else [.] end) as $seq
+        | ([$seq[] | select(."read-performed" == true)] | length > 0)
+          and ([$seq[] | select(."read-performed" == false)] | length > 0)
+      ' "$SCRIPTS" >/dev/null 2>&1 \
+        || err "typed-result: scripts.delivery.$op scripts no performed AND degraded pair"
+      jq -r --arg o "$op" '
+        (.delivery[$o] | if type == "array" then . else [.] end)[]
+        | select(."read-performed" == false)
+        | (.reason // "<missing>") + "|" + (if has("version") then "has-version" else "no-version" end)
+      ' "$SCRIPTS" 2>/dev/null | while IFS='|' read -r reason ver; do
+        printf '%s\n' "$reason" | grep -Eq "$REASON_TOKENS" \
+          || echo "BADREASON $reason"
+        [ "$ver" = "no-version" ] || echo "BADVERSION $reason"
+      done | grep -q . && err "typed-result: a degraded scripts.delivery.$op element carries an out-of-set reason or a version"
+    done
+  fi
+  [ "$fail" = "$before" ] && ok "typed-result: every typed read documents read-performed; the version read scripts both polarities"
+}
+
 check_json() {
   if [ "$HAVE_JQ" = 1 ]; then
     jq empty "$SCRIPTS" 2>/dev/null && ok "json: sample-scripts.json parses" \
@@ -133,6 +176,7 @@ else
   check_loud_failure
   check_manifest
   check_json
+  check_typed_results
   selftest
 fi
 

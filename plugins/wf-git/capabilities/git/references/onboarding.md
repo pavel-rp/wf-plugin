@@ -91,6 +91,11 @@ delivery provider surface".
   `pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`, `pr-merge`,
   `activity-read`.
 - **WF-176** — bind the branch-changes enumeration read operation: `branch-changes-read`.
+- **WF-483** — bind the newest-published-version read operation:
+  `newest-published-version-read`, returning the version an already-resolved declaration
+  carries at the published tip of the default base, typed with `<read-performed>` plus a
+  closed `<reason>` token so a failed or value-less read is never mistaken for a passed
+  currency check.
 - **WF-239** — remove the redundant `never-commit-to-main` constitution `article:`
   declaration (core constitution article 3 is authoritative; the premature destination copy
   was flagged as relying on the pre-WF-239 undocumented mechanism).
