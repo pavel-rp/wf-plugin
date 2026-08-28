@@ -381,6 +381,34 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-487 (C029 OUT-9): the fallback chain halts a non-success item -----------
+# The fleet dispatch brief's project-pipeline fallback chain must halt a
+# `RUN — blocked` / `RUN — error` item BEFORE its pull-request and finalize
+# edges. The guard is a reachability assertion over the chain's decision graph
+# — it resolves each routed step by its role/unitIds tokens and asserts the
+# recorded per-item outcome for every driver outcome — not a re-read of the
+# chain's wording. Its self-test seeds the exact pre-fix shape (both trailing
+# steps unconditional) and requires the evaluator to reject it.
+echo ""
+echo "=== Fleet fallback halt guard — seeded self-test ==="
+if bash "$DIR/../fleet-fallback-halt-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "fleet fallback halt guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "fleet fallback halt guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Fleet fallback halt guard — real dispatch-brief scan ==="
+if bash "$DIR/../fleet-fallback-halt-guard.sh"; then
+  printf 'PASS: %s\n' "fleet fallback halt guard real dispatch-brief scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "fleet fallback halt guard real dispatch-brief scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
