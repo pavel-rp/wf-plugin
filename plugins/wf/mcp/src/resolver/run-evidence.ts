@@ -31,10 +31,10 @@
 //
 //   1. THE CALLER ASSERTS NOTHING THE RESOLVER CAN DERIVE. A skill supplies only
 //      what it alone knows — which phase it is, which task, and which artifact it
-//      wrote. The run identity, the workspace binding, the clock, the sequence and
-//      the artifact digest are all derived by the resolver. A caller that could
-//      assert them could assert a receipt, which is the original defect one level
-//      down.
+//      wrote. The run identity, the workspace binding, the clock, the sequence, the
+//      artifact digest and the run mode are all derived by the resolver. A caller
+//      that could assert them could assert a receipt, which is the original defect
+//      one level down.
 //
 //   2. A MALFORMED RECORD IS REPORTED, NOT DISCARDED — and this is the DELIBERATE
 //      INVERSE of `parseTransactionJournal`'s whole-file strictness. There, a bad
@@ -86,6 +86,37 @@
 //     de-duplicates, so a verdict is unaffected. Growth is bounded by
 //     `MAX_RUN_EVIDENCE_RECORDS` and a further append is refused with a stated
 //     reason rather than growing without limit.
+//
+//   * THE RECORDING TOOL IS CALLABLE BY THE AGENT BEING ATTESTED, so a record is
+//     NOT a proof that the work happened. It proves that the RESOLVER — not the
+//     caller — digested the named artifact, stamped the identity, sequence and
+//     clock, observed the run mode, and sealed the result. That defeats a
+//     hand-written receipt-shaped file and binds the record to bytes a later
+//     reader can re-check; it does not make the record unforgeable, and no prose
+//     built on this module may say that it does.
+//
+//   * A GATE APPROVAL AND A PHASE RECEIPT ARE DIFFERENT CLAIMS (WF-493). A
+//     `gate-approval` says a named artifact was approved at a GATE before the next
+//     phase began; a `phase-receipt` says a PHASE completed. Neither satisfies the
+//     other's requirement, which is why `provenPhases` filters on the kind rather
+//     than on the subject: counting an approval as a receipt would readmit exactly
+//     the agent-authored evidence this module exists to exclude.
+//
+//   * FRESHNESS IS A READ-TIME FACT, NOT A SEALED ONE (WF-493). The seal proves
+//     what the artifact's bytes were AT ISSUE and says nothing about what they are
+//     now, so "has the approved artifact since changed" can only be answered by
+//     re-observing. `classifyArtifactState` does that against a freshly supplied
+//     digest, and its result is deliberately OUTSIDE the seal — sealing a function
+//     of mutable state would report the first legitimate edit as forgery.
+//
+//   * THE RUN MODE IS OBSERVED, SEALED, AND FAILS CLOSED (WF-493). It is never a
+//     caller input: the service reads it from a signal the resolver process holds
+//     and the requesting agent cannot reach, and an absent or unrecognized signal
+//     is `unestablished` rather than a guess in either direction. Sealing it is
+//     what makes "which mode was this issued under" durable rather than a
+//     transient claim about the record. It is a LABEL PLACED OUT OF THE DISPATCHED
+//     AGENT'S HANDS, not an authenticated assertion — an operator who declares it
+//     falsely gets a falsely-labelled record.
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { sha256Hex } from "./fingerprint.js";
@@ -94,8 +125,22 @@ import { sha256Hex } from "./fingerprint.js";
 // Frozen version, destinations and vocabulary
 // ---------------------------------------------------------------------------
 
-/** The only run-evidence ledger version this release understands. */
-export const RUN_EVIDENCE_FORMAT_VERSION = 1 as const;
+/**
+ * The only run-evidence ledger version this release understands.
+ *
+ * BUMPED TO 2 BY WF-493, and the bump is forced rather than chosen: the observed
+ * run mode joins the canonical sealed body, so every version-1 seal is computed
+ * over a strictly smaller field set and can never verify here. Silently reading a
+ * v1 ledger would therefore reclassify genuine records as `record-inadmissible` —
+ * `matchRunEvidence`'s admissibility gate rejects an empty/absent `runMode` BEFORE
+ * the seal is even recomputed, so a v1 record never reaches the seal comparison at
+ * all. That is a distinct outcome from `seal-mismatch`, but the refusal argument is
+ * unchanged (arguably stronger: the ledger is rejected on shape, not merely on a
+ * digest that happens not to verify). The reader already refuses an unsupported
+ * version with a stated reason, so the degradation is honest and no data is
+ * destroyed.
+ */
+export const RUN_EVIDENCE_FORMAT_VERSION = 2 as const;
 
 /** The declared committed artifact class. `.wf/` is not a general writable home —
  *  authority comes from the resolver's lifecycle ownership PLUS this declared
@@ -148,17 +193,36 @@ export const RECEIPT_BEARING_PHASES = [
 
 export type ReceiptBearingPhase = (typeof RECEIPT_BEARING_PHASES)[number];
 
-/** The record kinds that travel this one emission path. `phase-receipt` is this
- *  release's own; `gate-approval` is reserved for the per-gate self-approval
- *  records, which write into this same class rather than inventing a second
- *  route. A gate approval is a claim about a GATE, not a phase, so its subject is
- *  not constrained to the receipt-bearing set. */
+/** The record kinds that travel this one emission path. `phase-receipt` is
+ *  WF-490's own; `gate-approval`, added by WF-493, is now actively issued for the
+ *  per-gate self-approval records — both kinds write into this same class rather
+ *  than either inventing a second route. A gate approval is a claim about a GATE,
+ *  not a phase, so its subject is not constrained to the receipt-bearing set. */
 export const RUN_EVIDENCE_KINDS = ["phase-receipt", "gate-approval"] as const;
 export type RunEvidenceKind = (typeof RUN_EVIDENCE_KINDS)[number];
 
 /** How much the resolver itself observed. See the header's "what a receipt does
  *  and does not claim". */
 export type RunEvidenceClass = "artifact-backed" | "invocation-only";
+
+/**
+ * The run's attendance mode, AS THE RESOLVER OBSERVED IT (WF-493).
+ *
+ * The amended process article says a gate may be satisfied by a recorded
+ * self-approval only in an unattended run, and that the run's unattended mode is
+ * NOT THE REQUESTING AGENT'S TO ASSERT. So this is never a caller input: the
+ * service derives it from a signal the resolver process holds and the requesting
+ * agent cannot reach, and an absent or unrecognized signal is `unestablished`
+ * rather than a guess in either direction.
+ *
+ * It is SEALED INTO THE BODY, not merely reported alongside it. A mode returned
+ * only in a response would be gone the moment the record is read back by anyone
+ * else, leaving the very clause it exists to answer uncheckable; sealing it makes
+ * "which mode was this approval issued under" a durable, verifiable property of
+ * the record rather than a transient claim about it.
+ */
+export const RUN_EVIDENCE_RUN_MODES = ["unattended", "attended", "unestablished"] as const;
+export type RunEvidenceRunMode = (typeof RUN_EVIDENCE_RUN_MODES)[number];
 
 const HEX64_RE = /^[a-f0-9]{64}$/;
 const RUN_ID_RE = /^[a-f0-9]{32}$/;
@@ -259,6 +323,9 @@ export interface RunEvidenceRecord {
   /** Derived from `artifact`, sealed alongside it so it cannot be edited after the
    *  fact to make an invocation-only receipt look artifact-backed. */
   evidenceClass: RunEvidenceClass;
+  /** The run mode the RESOLVER observed when it issued this record — never what
+   *  the caller said it was. Sealed for the same reason `evidenceClass` is. */
+  runMode: RunEvidenceRunMode;
   /** The keyed digest over every field above. This is the whole mechanism: a
    *  record written by anything other than the issuer carries no valid seal. */
   seal: string;
@@ -268,9 +335,13 @@ export interface RunEvidenceRecord {
  *  parse path deliberately does NOT validate it (module rule 2) — keeping the
  *  union off this type is what stops `RunEvidenceRecord` from lying about a
  *  guarantee the parser never checked. */
-export type RawRunEvidenceRecord = Omit<RunEvidenceRecord, "kind" | "evidenceClass"> & {
+export type RawRunEvidenceRecord = Omit<
+  RunEvidenceRecord,
+  "kind" | "evidenceClass" | "runMode"
+> & {
   kind: string;
   evidenceClass: string;
+  runMode: string;
 };
 
 export interface RunEvidenceLedger {
@@ -305,6 +376,7 @@ export function canonicalRunEvidenceBody(body: RunEvidenceBody): string {
     ["issuedAt", body.issuedAt],
     ["sequence", body.sequence],
     ["evidenceClass", body.evidenceClass],
+    ["runMode", body.runMode],
     [
       "artifact",
       body.artifact === null
@@ -346,6 +418,9 @@ export interface RunEvidenceRecordInputs {
   issuedAt: string;
   sequence: number;
   artifact: RunEvidenceArtifact | null;
+  /** Supplied by the SERVICE from its own observation, never forwarded from a
+   *  tool caller — see `RunEvidenceRunMode`. */
+  runMode: RunEvidenceRunMode;
 }
 
 /** True when `subject` is admissible for `kind`. A `phase-receipt` is constrained
@@ -371,6 +446,7 @@ export function createRunEvidenceRecord(
   issuerKey: string,
 ): RunEvidenceRecord | null {
   if (!(RUN_EVIDENCE_KINDS as readonly string[]).includes(inputs.kind)) return null;
+  if (!(RUN_EVIDENCE_RUN_MODES as readonly string[]).includes(inputs.runMode)) return null;
   if (!isAdmissibleSubject(inputs.kind, inputs.subject)) return null;
   if (!TASK_ID_RE.test(inputs.taskId)) return null;
   if (!RUN_ID_RE.test(inputs.runId)) return null;
@@ -396,6 +472,7 @@ export function createRunEvidenceRecord(
     sequence: inputs.sequence,
     artifact,
     evidenceClass: artifact === null ? "invocation-only" : "artifact-backed",
+    runMode: inputs.runMode,
   };
   const seal = sealRunEvidenceBody(body, issuerKey);
   if (seal === null) return null;
@@ -471,6 +548,7 @@ function readRecord(value: unknown): RawRunEvidenceRecord | null {
       typeof row.sequence === "number" && Number.isInteger(row.sequence) ? row.sequence : -1,
     artifact,
     evidenceClass: typeof row.evidenceClass === "string" ? row.evidenceClass : "",
+    runMode: typeof row.runMode === "string" ? row.runMode : "",
     seal: typeof row.seal === "string" ? row.seal : "",
   };
 }
@@ -627,6 +705,7 @@ export function matchRunEvidence(
       isAdmissibleSubject(record.kind as RunEvidenceKind, record.subject) &&
       (record.evidenceClass === "artifact-backed" ||
         record.evidenceClass === "invocation-only") &&
+      (RUN_EVIDENCE_RUN_MODES as readonly string[]).includes(record.runMode) &&
       TASK_ID_RE.test(record.taskId) &&
       RUN_ID_RE.test(record.runId) &&
       HEX64_RE.test(record.workspaceFingerprint) &&
@@ -647,6 +726,7 @@ export function matchRunEvidence(
         sequence: record.sequence,
         artifact: record.artifact,
         evidenceClass: record.evidenceClass as RunEvidenceClass,
+        runMode: record.runMode as RunEvidenceRunMode,
       },
       issuerKey,
     );
@@ -668,6 +748,75 @@ export function provenPhases(matches: readonly RunEvidenceMatch[]): ReceiptBeari
       .map((match) => match.record.subject),
   );
   return RECEIPT_BEARING_PHASES.filter((phase) => proven.has(phase));
+}
+
+// ---------------------------------------------------------------------------
+// Artifact freshness — the "has since changed" test (WF-493)
+// ---------------------------------------------------------------------------
+
+/**
+ * How the approved artifact stands NOW, relative to the digest sealed into the
+ * record when it was issued.
+ *
+ * `n/a` is a distinct value rather than a null, because "this record never named
+ * an artifact" and "this record's artifact could not be checked" are different
+ * facts and collapsing them would let an invocation-only record read as an
+ * unchanged artifact-backed one.
+ */
+export type RunEvidenceArtifactState = "fresh" | "stale" | "missing" | "n/a";
+
+/**
+ * Classify one record's artifact against a freshly observed digest.
+ *
+ * WHY THIS EXISTS. The amended process article invalidates an approval "whose
+ * approved artifact has since changed". Nothing in the issued record can answer
+ * that on its own — the seal proves what the bytes were AT ISSUE, and says
+ * nothing about what they are now. So the check has to re-observe, and the
+ * re-observation has to happen where the caller cannot influence it.
+ *
+ * DELIBERATELY NOT SEALED, and this is the one place that asymmetry matters:
+ * every other field on the record is a fact frozen at issue, but freshness is a
+ * function of mutable state that can differ on two reads a second apart. Sealing
+ * it would assert permanence for something inherently impermanent, and the first
+ * legitimate edit would present as forgery rather than as staleness.
+ *
+ * Pure, like everything else in this module: the caller performs the read and
+ * hands in the digest (or `null` when the path no longer reads), so the whole
+ * matrix is assertable without a filesystem.
+ */
+export function classifyArtifactState(
+  artifact: RunEvidenceArtifact | null,
+  observedSha256: string | null,
+): RunEvidenceArtifactState {
+  if (artifact === null) return "n/a";
+  if (observedSha256 === null) return "missing";
+  if (!HEX64_RE.test(observedSha256)) return "missing";
+  return observedSha256 === artifact.sha256 ? "fresh" : "stale";
+}
+
+/**
+ * Normalize the machine-supplied run-mode signal into the closed vocabulary.
+ *
+ * FAIL-CLOSED IN BOTH DIRECTIONS. An absent signal is `unestablished`, and so is
+ * an unrecognized one — never `attended` and never `unattended`. Guessing
+ * `unattended` would hand a self-approval the very authority the article withholds;
+ * guessing `attended` would assert a human was present who was not. Only the exact
+ * tokens are honoured, and the comparison is case-insensitive with surrounding
+ * whitespace trimmed because a launcher-set environment value routinely carries both.
+ *
+ * `raw` is `string | null`, not `string | null | undefined`: the port contract
+ * (`ResolverServicePorts.runModeSignal`) already returns `string | null`, and the
+ * sole call site collapses an absent port to `null` before this runs — the same
+ * two-value shape `parseRunEvidenceLedger` and `parseRunEvidenceIssuer` take.
+ * Widening the parameter to accept `undefined` would admit a value no caller can
+ * ever actually produce.
+ */
+export function normalizeRunModeSignal(raw: string | null): RunEvidenceRunMode {
+  if (typeof raw !== "string") return "unestablished";
+  const token = raw.trim().toLowerCase();
+  if (token === "unattended") return "unattended";
+  if (token === "attended") return "attended";
+  return "unestablished";
 }
 
 // ---------------------------------------------------------------------------

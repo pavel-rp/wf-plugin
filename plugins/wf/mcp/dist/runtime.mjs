@@ -20154,6 +20154,9 @@ import { createHash } from "node:crypto";
 function sha256Hex(content) {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
+function sha256Bytes(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
 function fingerprint(kind, path, content) {
   if (content === null) {
     return { kind, path, sha256: null, bytes: null, present: false };
@@ -23634,7 +23637,7 @@ function registerResolverTools(server, selectService) {
     "record_run_evidence",
     {
       title: "record run evidence",
-      description: "Record one machine-emitted run-evidence entry \u2014 the resolver-issued receipt a receipt-bearing phase files at its actual completion point, and the same path a per-gate self-approval record travels. The caller names only `kind`, `subject` (the receipt-bearing phase, or the gate token) and `taskId`, plus the workspace-relative `artifactPath` the phase wrote when it wrote one; the resolver derives the run identity, workspace, timestamp and sequence itself, reads and digests the named artifact itself, and seals the record with a machine-local issuer binding no tool serves. Returns `recorded` with the sealed entry's metadata, or `refused` with a stated reason \u2014 an unknown kind, a subject outside the closed receipt-bearing set, a named artifact that is absent (so an incomplete phase yields no receipt), or a ledger whose declared version this release does not understand. Never returns a body, and never accepts a caller-supplied digest, identity or seal.",
+      description: "Record one machine-emitted run-evidence entry \u2014 the resolver-issued receipt a receipt-bearing phase files at its actual completion point, and the same path a per-gate self-approval record travels. The caller names only `kind`, `subject` (the receipt-bearing phase, or the gate token) and `taskId`, plus the workspace-relative `artifactPath` the phase wrote when it wrote one; the resolver derives the run identity, workspace, timestamp, sequence and run mode itself, reads and digests the named artifact itself (over raw bytes, and only after resolving it inside the workspace), and seals the record with a machine-local issuer binding no tool serves. Returns `recorded` with the sealed entry's metadata \u2014 including `runMode` (`unattended` | `attended` | `unestablished`), the mode the resolver OBSERVED and sealed, never one the caller supplied \u2014 or `refused` with a stated reason: an unknown kind, a subject outside the closed receipt-bearing set, a named artifact that is absent or resolves outside the workspace (so an incomplete phase yields no receipt), or a ledger this release cannot read, whose refusal names the ledger destination and the remedy. Never returns a body, and never accepts a caller-supplied digest, identity, mode or seal.",
       inputSchema: recordRunEvidenceInput
     },
     async (args) => selected(
@@ -23651,7 +23654,7 @@ function registerResolverTools(server, selectService) {
     "read_run_evidence",
     {
       title: "read run evidence",
-      description: "Read and match one task's run evidence \u2014 the read side of the resolver-issued receipt class. Returns three separate populations, never one blended count: `matched` receipts whose seal the machine-local issuer proved, `unmatched` entries each carrying its own stated reason (`seal-absent` for a hand-written artifact, `seal-mismatch`, `record-inadmissible`, `run-mismatch`, or `issuer-unavailable`), and a count of records too malformed to read at all. `provenPhases` lists only the receipt-bearing phases actually proven, and `receiptBearingPhases` states the closed set they are drawn from. A ledger declaring an unrecognised `formatVersion` returns `unsupported` and refuses rather than improvising a match; an absent ledger returns `absent`. Nothing here rounds an unmatched entry up to a receipt.",
+      description: "Read and match one task's run evidence \u2014 the read side of the resolver-issued receipt class. Returns three separate populations, never one blended count: `matched` entries whose seal the machine-local issuer proved, `unmatched` entries each carrying its own stated reason (`seal-absent` for a hand-written artifact, `seal-mismatch`, `record-inadmissible`, `run-mismatch`, `task-mismatch`, or `issuer-unavailable`), and a count of records too malformed to read at all. Each `matched` entry carries its sealed `kind`, `subject`, `evidenceClass` (`artifact-backed` | `invocation-only`) and `runMode` \u2014 the mode THAT record was issued under \u2014 plus `artifactState`, which the resolver computes at READ time by re-reading and re-digesting the named artifact: `fresh` (unchanged since it was approved), `stale` (the bytes have since changed), `missing` (no longer readable, or no longer resolving inside the workspace), or `n/a` (the record named no artifact). A consumer gating on an approval must check `artifactState`; nothing else reports that the approved artifact has since changed. The top-level `observedRunMode` is a different fact \u2014 the mode of the READING session \u2014 and the two legitimately differ. `provenPhases` lists only the receipt-bearing phases actually proven, counting `phase-receipt` records alone, so a `gate-approval` never proves a phase; `receiptBearingPhases` states the closed set they are drawn from. A ledger declaring an unrecognised `formatVersion` returns `unsupported` and refuses rather than improvising a match; an absent ledger returns `absent`. Nothing here rounds an unmatched entry up to a receipt.",
       inputSchema: readRunEvidenceInput
     },
     async (args) => selected(args, (service) => service.readRunEvidence(args.taskId))
@@ -25775,6 +25778,18 @@ function createDefaultPorts(workspaceRoot) {
       }
     },
     readFile: (absPath) => fsIO.readFile(absPath),
+    /** Raw bytes, for the one caller that digests a file as EVIDENCE rather than
+     *  reading it as text (WF-493's artifact observation). No encoding argument,
+     *  so nothing is decoded and nothing is lost. A failure is `null` — the same
+     *  answer as absence, because an artifact that cannot be re-read cannot be
+     *  proved unchanged either way. */
+    readFileBytes: (absPath) => {
+      try {
+        return readFileSync3(absPath);
+      } catch {
+        return null;
+      }
+    },
     readContainedFile: (capabilityRoot, selectedPath, maxBytes) => fsIO.readContainedFile(capabilityRoot, selectedPath, maxBytes),
     fingerprintContainedFile: (capabilityRoot, selectedPath, maxBytes) => fingerprintContainedCapabilityFile(capabilityRoot, selectedPath, maxBytes),
     resolvePayloadTarget: (admittedRoot, destination) => resolveContainedPayloadTarget(admittedRoot, destination),
@@ -25800,6 +25815,32 @@ function createDefaultPorts(workspaceRoot) {
       mkdirSync2(dirname2(absPath), { recursive: true, mode: 448 });
       writeFileSync2(absPath, content, { encoding: "utf8", mode: 384 });
     },
+    /**
+     * The run's attendance mode, as declared to THIS PROCESS at launch (WF-493).
+     *
+     * WHY THE PROCESS ENVIRONMENT, AND WHY THAT IS NOT CIRCULAR. The amended
+     * process article says the run's unattended mode is not the requesting
+     * agent's to assert, so the fact has to come from somewhere the requesting
+     * agent cannot reach. This resolver runs as its own long-lived server
+     * process, launched by the harness before any agent is dispatched: its
+     * environment is fixed at spawn, and an agent that can write files and run
+     * shell commands still cannot mutate an already-running process's
+     * environment. So whoever launched the session sets this, and the agent
+     * asking for an approval cannot.
+     *
+     * It is NOT a claim that the value is authenticated — an operator who sets it
+     * falsely gets a falsely-labelled record. What it does deliver is that the
+     * label is out of the *dispatched agent's* hands, which is the specific gap
+     * the article names. The service normalizes anything unrecognized (including
+     * absence) to `unestablished` rather than guessing in either direction.
+     *
+     * The port returns the signal RAW. Normalizing here — collapsing an empty
+     * string, lower-casing, trimming — would put half the closed vocabulary in
+     * the port and half in the service, and a port has no business knowing that
+     * vocabulary at all. `normalizeRunModeSignal` owns every one of those
+     * decisions, and already maps `""` and `null` to the same answer.
+     */
+    runModeSignal: () => process.env.WF_RUN_MODE ?? null,
     /** The machine-local home for bindings that must live OUTSIDE the audited
      *  workspace. `os.homedir()` throws on some exotic environments and can
      *  legitimately be unset, so a failure is reported as `null` rather than
@@ -25849,7 +25890,7 @@ function errno(err) {
 function message(err) {
   return err instanceof Error ? err.message : String(err);
 }
-function sha256Bytes(bytes) {
+function sha256Bytes2(bytes) {
   return createHash3("sha256").update(bytes).digest("hex");
 }
 function createRecoveryPorts(workspaceRoot) {
@@ -25917,7 +25958,7 @@ function createRecoveryPorts(workspaceRoot) {
       }
       try {
         const bytes = readFileSync3(literal2);
-        return { kind: "file", contentHash: sha256Bytes(bytes), bytes: bytes.byteLength };
+        return { kind: "file", contentHash: sha256Bytes2(bytes), bytes: bytes.byteLength };
       } catch (err) {
         return { kind: "observation-failed", diagnostic: message(err) };
       }
@@ -25932,7 +25973,7 @@ function createRecoveryPorts(workspaceRoot) {
         };
       }
       try {
-        return { ok: true, contentHash: sha256Bytes(readFileSync3(target.target)) };
+        return { ok: true, contentHash: sha256Bytes2(readFileSync3(target.target)) };
       } catch (err) {
         if (errno(err) === "ENOENT") {
           return {
@@ -26013,7 +26054,7 @@ function createRecoveryPorts(workspaceRoot) {
 }
 function backupSlug(destination) {
   const flattened = destination.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80);
-  const digest = sha256Bytes(Buffer.from(destination, "utf8")).slice(0, 16);
+  const digest = sha256Bytes2(Buffer.from(destination, "utf8")).slice(0, 16);
   return `${flattened}.${digest}`;
 }
 function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) {
@@ -26094,7 +26135,7 @@ function createApplyPorts(workspaceRoot, _registryRelPath, refreshAndSelfCheck) 
     },
     identify: (content) => {
       const bytes = Buffer.from(content, "utf8");
-      return { contentHash: sha256Bytes(bytes), bytes: bytes.byteLength };
+      return { contentHash: sha256Bytes2(bytes), bytes: bytes.byteLength };
     },
     writeJournal: (journal) => atomicWrite(journalPath, Buffer.from(`${JSON.stringify(journal, null, 2)}
 `, "utf8")),
@@ -29853,7 +29894,7 @@ function renderProfileMutation(current, updates, label2) {
 
 // src/resolver/run-evidence.ts
 import { createHmac, randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
-var RUN_EVIDENCE_FORMAT_VERSION = 1;
+var RUN_EVIDENCE_FORMAT_VERSION = 2;
 var RUN_EVIDENCE_DIR = ".wf/run-evidence";
 var RUN_EVIDENCE_ISSUER_DIR = ".wf-run-evidence";
 var MAX_RUN_EVIDENCE_RECORDS = 512;
@@ -29867,6 +29908,7 @@ var RECEIPT_BEARING_PHASES = [
   "tf"
 ];
 var RUN_EVIDENCE_KINDS = ["phase-receipt", "gate-approval"];
+var RUN_EVIDENCE_RUN_MODES = ["unattended", "attended", "unestablished"];
 var HEX64_RE = /^[a-f0-9]{64}$/;
 var RUN_ID_RE = /^[a-f0-9]{32}$/;
 var SUBJECT_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
@@ -29911,6 +29953,7 @@ function canonicalRunEvidenceBody(body) {
     ["issuedAt", body.issuedAt],
     ["sequence", body.sequence],
     ["evidenceClass", body.evidenceClass],
+    ["runMode", body.runMode],
     [
       "artifact",
       body.artifact === null ? null : [body.artifact.path, body.artifact.sha256, body.artifact.bytes]
@@ -29937,6 +29980,7 @@ function isAdmissibleSubject(kind, subject) {
 }
 function createRunEvidenceRecord(inputs, issuerKey) {
   if (!RUN_EVIDENCE_KINDS.includes(inputs.kind)) return null;
+  if (!RUN_EVIDENCE_RUN_MODES.includes(inputs.runMode)) return null;
   if (!isAdmissibleSubject(inputs.kind, inputs.subject)) return null;
   if (!TASK_ID_RE.test(inputs.taskId)) return null;
   if (!RUN_ID_RE.test(inputs.runId)) return null;
@@ -29959,7 +30003,8 @@ function createRunEvidenceRecord(inputs, issuerKey) {
     issuedAt: inputs.issuedAt,
     sequence: inputs.sequence,
     artifact,
-    evidenceClass: artifact === null ? "invocation-only" : "artifact-backed"
+    evidenceClass: artifact === null ? "invocation-only" : "artifact-backed",
+    runMode: inputs.runMode
   };
   const seal = sealRunEvidenceBody(body, issuerKey);
   if (seal === null) return null;
@@ -30006,6 +30051,7 @@ function readRecord(value) {
     sequence: typeof row.sequence === "number" && Number.isInteger(row.sequence) ? row.sequence : -1,
     artifact,
     evidenceClass: typeof row.evidenceClass === "string" ? row.evidenceClass : "",
+    runMode: typeof row.runMode === "string" ? row.runMode : "",
     seal: typeof row.seal === "string" ? row.seal : ""
   };
 }
@@ -30078,7 +30124,7 @@ function matchRunEvidence(ledger, issuerKey, expected) {
     if (record2.taskId !== expected.taskId) {
       return { record: record2, matched: false, reason: "task-mismatch" };
     }
-    const admissible = RUN_EVIDENCE_KINDS.includes(record2.kind) && isAdmissibleSubject(record2.kind, record2.subject) && (record2.evidenceClass === "artifact-backed" || record2.evidenceClass === "invocation-only") && TASK_ID_RE.test(record2.taskId) && RUN_ID_RE.test(record2.runId) && HEX64_RE.test(record2.workspaceFingerprint) && nonEmpty3(record2.issuedAt) && Number.isInteger(record2.sequence) && record2.sequence >= 0;
+    const admissible = RUN_EVIDENCE_KINDS.includes(record2.kind) && isAdmissibleSubject(record2.kind, record2.subject) && (record2.evidenceClass === "artifact-backed" || record2.evidenceClass === "invocation-only") && RUN_EVIDENCE_RUN_MODES.includes(record2.runMode) && TASK_ID_RE.test(record2.taskId) && RUN_ID_RE.test(record2.runId) && HEX64_RE.test(record2.workspaceFingerprint) && nonEmpty3(record2.issuedAt) && Number.isInteger(record2.sequence) && record2.sequence >= 0;
     if (!admissible) {
       return { record: record2, matched: false, reason: "record-inadmissible" };
     }
@@ -30092,7 +30138,8 @@ function matchRunEvidence(ledger, issuerKey, expected) {
         issuedAt: record2.issuedAt,
         sequence: record2.sequence,
         artifact: record2.artifact,
-        evidenceClass: record2.evidenceClass
+        evidenceClass: record2.evidenceClass,
+        runMode: record2.runMode
       },
       issuerKey
     );
@@ -30107,6 +30154,19 @@ function provenPhases(matches) {
     matches.filter((match) => match.matched && match.record.kind === "phase-receipt").map((match) => match.record.subject)
   );
   return RECEIPT_BEARING_PHASES.filter((phase) => proven.has(phase));
+}
+function classifyArtifactState(artifact, observedSha256) {
+  if (artifact === null) return "n/a";
+  if (observedSha256 === null) return "missing";
+  if (!HEX64_RE.test(observedSha256)) return "missing";
+  return observedSha256 === artifact.sha256 ? "fresh" : "stale";
+}
+function normalizeRunModeSignal(raw) {
+  if (typeof raw !== "string") return "unestablished";
+  const token2 = raw.trim().toLowerCase();
+  if (token2 === "unattended") return "unattended";
+  if (token2 === "attended") return "attended";
+  return "unestablished";
 }
 var RUN_EVIDENCE_ISSUER_VERSION = 1;
 function parseRunEvidenceIssuer(raw) {
@@ -33385,6 +33445,21 @@ var ResolverService = class _ResolverService {
     return runEvidenceRunId(this.ports.workspaceRoot, taskId);
   }
   /**
+   * Observe the run's attendance mode (WF-493).
+   *
+   * DELIBERATELY NOT A CALLER INPUT, for exactly the reason the run identity is
+   * not: the amended process article says the run's unattended mode is not the
+   * requesting agent's to assert, and an agent that could assert it could
+   * manufacture the precondition for its own self-approval. The signal comes from
+   * the resolver process's own launch environment, which the dispatched agent
+   * cannot mutate; an absent port, an absent signal, and an unrecognized signal
+   * all normalize to `unestablished` rather than to a guess in either direction.
+   */
+  runEvidenceRunMode() {
+    const raw = this.ports.runModeSignal ? this.ports.runModeSignal() : null;
+    return normalizeRunModeSignal(raw);
+  }
+  /**
    * Read a run-evidence file, treating an I/O failure exactly like absence.
    *
    * The whole class is EVIDENCE: an unreadable ledger proves nothing, which is the
@@ -33409,7 +33484,8 @@ var ResolverService = class _ResolverService {
       else this.ports.writeFile(absPath, content);
       return null;
     } catch (err) {
-      return err instanceof Error ? err.message : String(err);
+      const code = err?.code;
+      return typeof code === "string" && code.length > 0 ? code : "unknown-write-failure";
     }
   }
   /**
@@ -33465,6 +33541,75 @@ var ResolverService = class _ResolverService {
     }
     return { key, diagnostic: null };
   }
+  /**
+   * THE ONE artifact observation, shared by the issue path and the read path.
+   *
+   * WHY ONE. The digest sealed at issue and the digest re-computed at read must
+   * agree byte for byte, or every artifact reads `stale` the moment the two
+   * drift. Two independent copies of "resolve, contain, read, digest" is exactly
+   * the shape that drifts, and the drift would present as tampering rather than
+   * as a bug — so the agreement is made structural instead of coincidental.
+   *
+   * CONTAINMENT IS CANONICAL, NOT LEXICAL. `containedRelPath` rejects `..` and
+   * absolute prefixes but never resolves the filesystem, so a workspace-relative
+   * path that IS a symlink to anywhere on the host passes it. The caller supplies
+   * this path, and a record must never become authority to read outside the
+   * workspace, so the resolved target is canonicalized and required to sit inside
+   * the canonical root. An escape is reported, never followed.
+   *
+   * BYTES, NOT TEXT. `readFile` decodes as UTF-8, which collapses invalid byte
+   * sequences to U+FFFD and would let two byte-distinct files digest identically
+   * — unacceptable for a value whose whole job is to bind one exact artifact.
+   * When the optional byte port is absent (an in-memory port double), this falls
+   * back to the text read: still correct for text artifacts, still exposed to
+   * that gap, and stated here rather than hidden.
+   */
+  observeArtifact(namedPath) {
+    const rel = _ResolverService.containedRelPath(namedPath);
+    if (rel === null) return { ok: false, reason: "outside" };
+    const abs = this.absolutize(rel);
+    if (this.ports.canonicalizeRoot) {
+      const canonicalTarget = this.ports.canonicalizeRoot(abs);
+      if (canonicalTarget === null) return { ok: false, reason: "missing" };
+      const canonicalRoot = this.ports.canonicalizeRoot(this.ports.workspaceRoot) ?? this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+      if (canonicalTarget !== canonicalRoot && !canonicalTarget.startsWith(`${canonicalRoot}/`)) {
+        return { ok: false, reason: "outside" };
+      }
+    }
+    if (this.ports.readFileBytes) {
+      let bytes = null;
+      try {
+        bytes = this.ports.readFileBytes(abs);
+      } catch {
+        bytes = null;
+      }
+      if (bytes === null) return { ok: false, reason: "missing" };
+      return { ok: true, rel, sha256: sha256Bytes(bytes), bytes: bytes.byteLength };
+    }
+    const content = this.runEvidenceRead(abs);
+    if (content === null) return { ok: false, reason: "missing" };
+    return { ok: true, rel, sha256: sha256Hex(content), bytes: Buffer.byteLength(content, "utf8") };
+  }
+  /**
+   * Re-observe one record's approved artifact and classify it (WF-493).
+   *
+   * Memoized per call through `cache`: one ledger can carry hundreds of records,
+   * many naming the same artifact, and every one of them would otherwise cost its
+   * own read and digest — up to `MAX_RUN_EVIDENCE_RECORDS` of them per read. The
+   * cache is per `readRunEvidence` call, never longer-lived: all records in one
+   * ledger are judged against one instant, but two calls are two instants and
+   * must be free to disagree.
+   */
+  runEvidenceArtifactState(artifact, cache) {
+    if (artifact === null) return "n/a";
+    let observed = cache.get(artifact.path);
+    if (observed === void 0) {
+      const result = this.observeArtifact(artifact.path);
+      observed = result.ok ? result.sha256 : null;
+      cache.set(artifact.path, observed);
+    }
+    return classifyArtifactState(artifact, observed);
+  }
   /** Workspace-relative, non-escaping, non-absolute. A path failing this is
    *  refused rather than normalized — the artifact reference comes from a caller,
    *  and a receipt must never be authority to read outside the workspace. */
@@ -33493,12 +33638,14 @@ var ResolverService = class _ResolverService {
   recordRunEvidence(input) {
     const runId = this.runEvidenceRunId(input.taskId);
     const destination = runEvidenceDestination(runId);
+    const runMode = this.runEvidenceRunMode();
     const base = {
       runId,
       destination,
       formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
       kind: input.kind,
-      subject: input.subject
+      subject: input.subject,
+      runMode
     };
     const refuse = (diagnostic) => ({
       ...base,
@@ -33522,19 +33669,13 @@ var ResolverService = class _ResolverService {
     let artifact = null;
     const named = input.artifactPath ?? null;
     if (named !== null && named.length > 0) {
-      const rel = _ResolverService.containedRelPath(named);
-      if (rel === null) {
+      const observed = this.observeArtifact(named);
+      if (!observed.ok) {
         return refuse(
-          `\`${named}\` is not a workspace-relative path; a receipt never names an artifact outside the workspace.`
+          observed.reason === "outside" ? `\`${named}\` does not resolve inside the workspace; a receipt never names an artifact outside it, and a contained path that resolves outside is refused rather than followed.` : `the named artifact \`${named}\` does not exist; no receipt is issued for a phase whose output is absent.`
         );
       }
-      const content = this.runEvidenceRead(this.absolutize(rel));
-      if (content === null) {
-        return refuse(
-          `the named artifact \`${rel}\` does not exist; no receipt is issued for a phase whose output is absent.`
-        );
-      }
-      artifact = { path: rel, sha256: sha256Hex(content), bytes: Buffer.byteLength(content, "utf8") };
+      artifact = { path: observed.rel, sha256: observed.sha256, bytes: observed.bytes };
     }
     if (!isDeclaredRunEvidenceArtifact(destination)) {
       return refuse(
@@ -33544,17 +33685,19 @@ var ResolverService = class _ResolverService {
     const absLedger = this.absolutize(destination);
     const parsed = parseRunEvidenceLedger(this.runEvidenceRead(absLedger));
     if (parsed.status === "unsupported" || parsed.status === "malformed") {
-      return refuse(parsed.diagnostic);
+      return refuse(
+        `${parsed.diagnostic} The ledger is at \`${destination}\`; it holds machine-emitted evidence only, so removing that file clears this condition and the next phase files a fresh record.`
+      );
     }
     const existing = parsed.status === "ok" ? parsed.ledger.records : [];
     if (parsed.status === "ok" && parsed.unreadableRecords > 0) {
       return refuse(
-        `the run-evidence ledger carries ${parsed.unreadableRecords} unreadable record(s); appending would erase them, so it is refused rather than rewritten.`
+        `the run-evidence ledger carries ${parsed.unreadableRecords} unreadable record(s); appending would erase them, so it is refused rather than rewritten. The ledger is at \`${destination}\` \u2014 inspect those records first, since an unreadable record is this class's own tamper signal; removing that file clears the condition and discards the evidence with it.`
       );
     }
     if (existing.length >= MAX_RUN_EVIDENCE_RECORDS) {
       return refuse(
-        `the run-evidence ledger already holds ${existing.length} records (the bound is ${MAX_RUN_EVIDENCE_RECORDS}); a further append is refused rather than growing without limit.`
+        `the run-evidence ledger already holds ${existing.length} records (the bound is ${MAX_RUN_EVIDENCE_RECORDS}); a further append is refused rather than growing without limit. The bound is per TASK, not per run, and the ledger at \`${destination}\` accumulates across every run of this task; removing that file resets it.`
       );
     }
     const issuer = this.runEvidenceIssuerKey(true);
@@ -33573,7 +33716,8 @@ var ResolverService = class _ResolverService {
         workspaceFingerprint: workspaceFingerprint(this.ports.workspaceRoot),
         issuedAt,
         sequence: existing.length,
-        artifact
+        artifact,
+        runMode
       },
       issuer.key
     );
@@ -33620,7 +33764,8 @@ var ResolverService = class _ResolverService {
       unmatched: [],
       unreadableRecords: 0,
       provenPhases: [],
-      receiptBearingPhases
+      receiptBearingPhases,
+      observedRunMode: this.runEvidenceRunMode()
     };
     const parsed = parseRunEvidenceLedger(this.runEvidenceRead(this.absolutize(destination)));
     if (parsed.status === "absent") {
@@ -33654,6 +33799,7 @@ var ResolverService = class _ResolverService {
       runId,
       taskId
     });
+    const artifactObservations = /* @__PURE__ */ new Map();
     return {
       ...base,
       status: "ok",
@@ -33667,7 +33813,13 @@ var ResolverService = class _ResolverService {
         issuedAt: match.record.issuedAt,
         sequence: match.record.sequence,
         evidenceClass: match.record.evidenceClass,
-        artifact: match.record.artifact
+        artifact: match.record.artifact,
+        runMode: match.record.runMode,
+        // The "has since changed" test, performed HERE rather than trusted from
+        // anywhere: the resolver re-reads the named artifact and re-digests it
+        // now, and compares against the digest sealed at issue. A caller that
+        // could supply this could declare its own stale approval fresh.
+        artifactState: this.runEvidenceArtifactState(match.record.artifact, artifactObservations)
       })),
       unmatched: matches.filter((match) => !match.matched).map((match) => ({
         kind: match.record.kind,
