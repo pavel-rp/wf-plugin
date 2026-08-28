@@ -81,7 +81,7 @@ alone) was **not** needed — every verdict below carries a real 0.116.0-vs-`mai
 | **B1** | `wf:phase-runner` cwd fallback (the F2/F3 cause) | **still-broken (conditional)** — unchanged in wf; reproduces only in the unisolated dispatch shape | **none** — `agents/phase-runner.md` is byte-identical | source diff + contract read + live probe |
 | **B2** | `Agent(isolation: "worktree")` | **fixed** | host-side; not wf-versioned | live probe |
 | **B3** | `EnterWorktree` | **fixed** | host-side; not wf-versioned | live probe (tool schema) |
-| **B4** | `/wf:branch`'s base switch checking out trunk | **never-was** | none — no cached version ever checked out a base | contract read (all cached versions) |
+| **B4** | `/wf:branch`'s base switch checking out trunk | **never-was** | none — no cached version ever checked out a base | contract read (all cached versions) + live probe |
 
 **Three of the four prohibitions in the dispatch brief are stale.** One behaviour remains live, and
 it is the one the charter deliberately defers.
@@ -271,7 +271,7 @@ point was `main` checked out. The operation also **completed successfully inside
 worktree** — it did not "break in a worktree" as `:167` alleges. Both halves of the prohibition are
 false, observed live on current `main`, not merely inferred from the contract.
 
-**An adjacent defect surfaced by the same probe — see ESC-5.** The invocation did *not* return
+**An adjacent defect surfaced by the same probe — see ESC-4.** The invocation did *not* return
 `already-active` as expected. Because no task folder existed for the id, `agents/branch.md` step 1's
 zero-folder-match path held the **bare numeric token** as `{task-id}`, collapsing `{task-id}` onto
 `{numeric-id}`; the WF-479 already-active substitution is gated on those two **differing**, so the
@@ -368,7 +368,7 @@ recorded **`unverifiable` within this sub-task's scope**, with the reason: estab
 running a full fleet dispatch, which WF-481's Scope OUT excludes and which no desk read can
 substitute for.
 
-**ESC-5 — `/wf:branch` mints a redundant branch when the task folder is absent.** Newly discovered
+**ESC-4 — `/wf:branch` mints a redundant branch when the task folder is absent.** Newly discovered
 while live-probing B4; **not** a §10 behaviour and **not** in any C029 outcome, so it is raised, not
 absorbed.
 
@@ -391,7 +391,7 @@ removed. A candidate direction is to make the substitution consult the **id as p
 rather than the folder-resolved `{task-id}`, so an explicitly supplied tracker-shaped id keeps its
 prefix and stays collision-proof. Not designed or implemented here.
 
-**ESC-4 — the diagnostic's own §10 advice is now partly spent.** §10 closes with *"A diff of `main`
+**ESC-5 — the diagnostic's own §10 advice is now partly spent.** §10 closes with *"A diff of `main`
 against the cached 0.116.0 for these specific behaviours is the cheapest next step."* For B1 and B4
 the diff was decisive. For B2 and B3 it was **vacuous** — both are host-runtime behaviours carried
 in no wf version, so a plugin diff can never settle them. Any future re-test of a §10-style list
