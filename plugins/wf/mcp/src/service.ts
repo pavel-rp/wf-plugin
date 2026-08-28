@@ -325,6 +325,18 @@ export interface ConfigResponse {
   registryPath: string;
   coreConfig: ResolverSnapshot["coreConfig"];
   idShape: ResolverSnapshot["idShape"];
+  /** The declared `version` of the core plugin THIS SERVER IS RUNNING FROM, or
+   *  `null` when it cannot be determined (WF-488).
+   *
+   *  It rides this already-mandatory query rather than a tool of its own: every
+   *  skill calls `resolve_config` at its Prerequisites, so reporting the running
+   *  version costs no additional round trip — the constraint that a cheap
+   *  prerequisite must not become an expensive one.
+   *
+   *  `null` is a REPORTABLE outcome, never an error: a caller renders a stated
+   *  fallback token and continues. A version is never guessed, and never
+   *  inferred from an install path or a timestamp. */
+  coreVersion: string | null;
 }
 
 export interface RegistryResponse {
@@ -721,9 +733,58 @@ function boundInspectionPayloadDiagnostics(
   return bounded;
 }
 
+/**
+ * Read the declared `version` of the core plugin at `corePluginRoot` (WF-488).
+ *
+ * The root is the EXECUTING install — `resolveCorePluginRoot()` derives it from
+ * the server bundle's own module URL — so this reports the version actually
+ * running, which is the whole point: a cached install trailing trunk is exactly
+ * the condition that went unnoticed for a full unattended run.
+ *
+ * Every failure mode collapses to `null` and NOTHING throws. A version that
+ * cannot be read is a fact to report, not a fault to raise: a throw here would
+ * take down `resolve_config` — the one query every skill makes before it does
+ * anything — and turn a cosmetic gap into a total stop. Pure and port-injected
+ * so both branches are testable without a filesystem.
+ */
+export function readDeclaredCoreVersion(
+  corePluginRoot: string,
+  readFile: (absPath: string) => string | null,
+): string | null {
+  let raw: string | null;
+  try {
+    raw = readFile(joinSlash(normalizeSlashes(corePluginRoot), ".claude-plugin", "plugin.json"));
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+
+  const version = (parsed as { version?: unknown }).version;
+  if (typeof version !== "string") return null;
+  // Trimmed, not decorated: no `v` prefix is added and no shape is imposed. The
+  // trim only removes surrounding whitespace, which would otherwise misalign the
+  // fixed value column of the blocks that render this.
+  const trimmed = version.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
 export class ResolverService {
   private current: ResolverSnapshot | null = null;
   private invalidated = false;
+  /** Memoized result of the core-version read (WF-488). `undefined` means "not
+   *  read yet"; `null` is a RESOLVED, cached "not determinable" — so an install
+   *  with no readable manifest is probed once per process, not once per query.
+   *  Deliberately independent of the snapshot's freshness fingerprints: the
+   *  executing plugin root cannot change without restarting the server. */
+  private coreVersionMemo: string | null | undefined = undefined;
   /** Reasons the pending/last (in)validation was triggered — surfaced as
    *  diagnostics so every refresh/invalidation is explainable, never silent. */
   private pendingReasons: StaleReason[] = [];
@@ -791,6 +852,18 @@ export class ResolverService {
     }
   }
 
+  /** The executing core plugin's declared version, read at most once per process
+   *  (WF-488). Memoized because `resolve_config` is on every skill's Prerequisites
+   *  path and this must not add a per-call read. */
+  private coreVersion(): string | null {
+    if (this.coreVersionMemo === undefined) {
+      this.coreVersionMemo = readDeclaredCoreVersion(this.ports.corePluginRoot, (p) =>
+        this.ports.readFile(p),
+      );
+    }
+    return this.coreVersionMemo;
+  }
+
   // --- R1 -----------------------------------------------------------------
   resolveConfig(): ConfigResponse {
     const s = this.ensure();
@@ -799,6 +872,7 @@ export class ResolverService {
       registryPath: s.registryPath,
       coreConfig: s.coreConfig,
       idShape: s.idShape,
+      coreVersion: this.coreVersion(),
     };
   }
 

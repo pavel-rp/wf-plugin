@@ -710,7 +710,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
       title: "resolve config",
       inputSchema: workspaceOnlyInput,
       description:
-        "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
+        "Resolved core config + workspace root + registry location + id shape + the executing core plugin's declared version (`coreVersion`, null when unreadable) (R1). Metadata only; no fragment bodies.",
       _meta: RESIDENT,
     },
     async (args: WorkspaceArgs) => selected(args, (service) => service.resolveConfig()),

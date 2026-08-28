@@ -23269,7 +23269,7 @@ function registerResolverTools(server, selectService) {
     {
       title: "resolve config",
       inputSchema: workspaceOnlyInput,
-      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
+      description: "Resolved core config + workspace root + registry location + id shape + the executing core plugin's declared version (`coreVersion`, null when unreadable) (R1). Metadata only; no fragment bodies.",
       _meta: RESIDENT
     },
     async (args) => selected(args, (service) => service.resolveConfig())
@@ -29835,6 +29835,26 @@ function boundInspectionPayloadDiagnostics(pluginId, capabilities) {
   }
   return bounded;
 }
+function readDeclaredCoreVersion(corePluginRoot, readFile) {
+  let raw;
+  try {
+    raw = readFile(joinSlash(normalizeSlashes(corePluginRoot), ".claude-plugin", "plugin.json"));
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const version2 = parsed.version;
+  if (typeof version2 !== "string") return null;
+  const trimmed = version2.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
 var ResolverService = class {
   constructor(ports) {
     this.ports = ports;
@@ -29842,6 +29862,12 @@ var ResolverService = class {
   ports;
   current = null;
   invalidated = false;
+  /** Memoized result of the core-version read (WF-488). `undefined` means "not
+   *  read yet"; `null` is a RESOLVED, cached "not determinable" — so an install
+   *  with no readable manifest is probed once per process, not once per query.
+   *  Deliberately independent of the snapshot's freshness fingerprints: the
+   *  executing plugin root cannot change without restarting the server. */
+  coreVersionMemo = void 0;
   /** Reasons the pending/last (in)validation was triggered — surfaced as
    *  diagnostics so every refresh/invalidation is explainable, never silent. */
   pendingReasons = [];
@@ -29897,6 +29923,18 @@ var ResolverService = class {
       return { snapshot: this.current, failure: classifyThrow(err) };
     }
   }
+  /** The executing core plugin's declared version, read at most once per process
+   *  (WF-488). Memoized because `resolve_config` is on every skill's Prerequisites
+   *  path and this must not add a per-call read. */
+  coreVersion() {
+    if (this.coreVersionMemo === void 0) {
+      this.coreVersionMemo = readDeclaredCoreVersion(
+        this.ports.corePluginRoot,
+        (p) => this.ports.readFile(p)
+      );
+    }
+    return this.coreVersionMemo;
+  }
   // --- R1 -----------------------------------------------------------------
   resolveConfig() {
     const s = this.ensure();
@@ -29904,7 +29942,8 @@ var ResolverService = class {
       workspaceRoot: s.workspaceRoot,
       registryPath: s.registryPath,
       coreConfig: s.coreConfig,
-      idShape: s.idShape
+      idShape: s.idShape,
+      coreVersion: this.coreVersion()
     };
   }
   // --- R2 -----------------------------------------------------------------
