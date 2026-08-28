@@ -30,6 +30,23 @@ const MAX_EFFORT_LENGTH = 16;
 const MAX_ROUTING_METADATA_LENGTH = 256;
 const MAX_ROLE_LENGTH = 64;
 const MODEL_TIERS = ["haiku", "sonnet", "opus"] as const;
+// WF-498: the roles whose model the resolver DERIVES from the call site's own
+// complexity evidence when no higher-precedence choice wins. Deliberately a
+// CLOSED, EXPLICIT set rather than "every role that has no static default":
+// every role named here has a matching published disposition row that says so,
+// and a role holding no such row must never silently start receiving a derived
+// value. `branch` and `classify` are absent because their `DEFAULTS` entry
+// already wins above this tier — which is precisely how this change leaves the
+// two shipped-static rows byte-identical in behaviour. `pr`, `commit`,
+// `shipper` and `index` are absent because their published rows still read
+// `inherit`, and the matrix and the runtime may never disagree.
+const DERIVATION_ELIGIBLE_ROLES = new Set(["phase-runner", "finalize"]);
+// Evidence weights. ONLY the dimensions describing how much REASONING a unit
+// needs are scored. `workSurface`, `contextIsolation`, `unitCount` and
+// `independentReview` describe how to RUN it, not how hard it is, and are
+// consumed by `selectShape` instead.
+const AMBIGUITY_WEIGHT = { none: 0, bounded: 1, material: 2 } as const;
+const TOOL_WORK_WEIGHT = { none: 0, bounded: 1, material: 2 } as const;
 const INSUFFICIENCY_SIGNALS = new Set<RoutingInsufficiencySignal>([
   "low-confidence",
   "failed-validation",
@@ -204,25 +221,68 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
   };
 }
 
+// THE COMPLEXITY LADDER. Scores the NORMALIZED evidence — never the caller's raw
+// input — so a caller cannot launder a selection in through a contradictory
+// field: by the time this runs `selectShape` has already derived
+// `atomicity`/`unitsIndependent` from the authoritative `unitCount`.
+//
+// This is a MECHANISM, not a shipped constant. It introduces no per-role
+// default: the same evidence yields the same tier for every eligible role, and
+// a role's selection changes only when the evidence at its call site changes.
+// That is what keeps it outside the calibration gate, which governs static
+// per-role defaults.
+function deriveModelFromEvidence(evidence: NormalizedRoutingShapeEvidence): { model: ModelTier; basis: string } {
+  const score = AMBIGUITY_WEIGHT[evidence.ambiguity] +
+    TOOL_WORK_WEIGHT[evidence.toolWork] +
+    (evidence.risk === "elevated" ? 1 : 0) +
+    (evidence.validation === "judgment" ? 1 : 0) +
+    (evidence.returnContract === "judgment" ? 1 : 0);
+  const model: ModelTier = score === 0 ? "haiku" : score <= 3 ? "sonnet" : "opus";
+  return {
+    model,
+    basis: `complexity-derived score ${score}: ambiguity=${evidence.ambiguity}, toolWork=${evidence.toolWork}, ` +
+      `risk=${evidence.risk}, validation=${evidence.validation}, returnContract=${evidence.returnContract}`,
+  };
+}
+
 function choose(
   kind: "model" | "effort",
   inputs: RoutingInputs,
   project: RoutingProjectConfig,
-): { choice: RoutingChoice; stop: string | null } {
+  normalizedEvidence: NormalizedRoutingShapeEvidence,
+): { choice: RoutingChoice; stop: string | null; derivedBasis?: string } {
   const selectorSupported = kind === "model" ? inputs.supportsModelSelector : inputs.supportsEffortSelector;
   const host = kind === "model" ? inputs.hostModel : inputs.hostEffort;
   const invocation = kind === "model" ? inputs.invocationModel : inputs.invocationEffort;
   const configured = project[inputs.role]?.[kind] ?? null;
   const shipped = DEFAULTS[inputs.role]?.[kind] ?? null;
   const required = kind === "model" ? inputs.requireModel : inputs.requireEffort;
-  const requested = invocation ?? configured ?? shipped;
+  // WF-498: the derived tier sits BELOW every stated choice and ABOVE bare
+  // inheritance. It is computed only when nothing higher-precedence was stated,
+  // so `classify`/`branch` keep resolving their `DEFAULTS` entry unchanged, and
+  // it is never derived for effort — every published row's effort still
+  // inherits. Suppressed wholesale on the retry path, where the retained prior's
+  // own selection is the only thing that may be re-stated.
+  const derived = kind === "model" &&
+    !inputs.suppressDerivedSelection &&
+    !invocation && !configured && !shipped &&
+    DERIVATION_ELIGIBLE_ROLES.has(inputs.role)
+    ? deriveModelFromEvidence(normalizedEvidence)
+    : null;
+  const requested = invocation ?? configured ?? shipped ?? derived?.model ?? null;
   const requestedSource: RoutingSource = invocation
     ? "invocation"
     : configured
       ? "project"
       : shipped
         ? "shipped-default"
-        : "inheritance";
+        : derived
+          ? "complexity-derived"
+          : "inheritance";
+  // Reported only when the derived value is the one that actually survives to
+  // the decision; every early return below drops it, so a rejected or masked
+  // call never claims a basis it did not act on.
+  const derivedBasis = derived ? derived.basis : null;
 
   const maximum = kind === "model" ? MAX_MODEL_ID_LENGTH : MAX_EFFORT_LENGTH;
   if (host && UNSAFE_ROUTING_CHARACTER.test(host)) {
@@ -275,7 +335,13 @@ function choose(
     const stop = required ? `model choice \`${requested}\` is required but unavailable` : null;
     return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "unavailable" }, stop };
   }
-  return { choice: { value: requested, source: requestedSource, requested, requestedSource, masked: false, fallback: null }, stop: null };
+  return {
+    choice: { value: requested, source: requestedSource, requested, requestedSource, masked: false, fallback: null },
+    stop: null,
+    // Only this path actually delivers the derived value, so only this path
+    // reports the basis it was derived from.
+    ...(derivedBasis ? { derivedBasis } : {}),
+  };
 }
 
 function modelTier(value: string | null | undefined): ModelTier | null {
@@ -526,8 +592,8 @@ function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): Rou
   } : inputs;
   const availableStop = availableModelsProblem(inputs.availableModels);
   const selectorInputs = availableStop ? { ...boundedInputs, availableModels: null } : boundedInputs;
-  const model = choose("model", selectorInputs, project);
-  const effort = choose("effort", selectorInputs, project);
+  const model = choose("model", selectorInputs, project, shape.normalizedEvidence);
+  const effort = choose("effort", selectorInputs, project, shape.normalizedEvidence);
   const unitStop = inputs.unitIds !== undefined || shape.normalizedEvidence.unitCount > 1
     ? unitIdsProblem(inputs.unitIds, shape.normalizedEvidence.unitCount)
     : null;
@@ -542,7 +608,9 @@ function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): Rou
     model: model.choice,
     effort: effort.choice,
     source: model.choice.source,
-    basis: selectorInputs.basis ?? null,
+    // A caller-stated basis always wins; the derived one only fills the gap it
+    // would otherwise leave, so a retry re-stating the prior's basis is stable.
+    basis: selectorInputs.basis ?? model.derivedBasis ?? null,
     attempt: Number.isInteger(selectorInputs.attempt) && (selectorInputs.attempt ?? 0) >= 1 && (selectorInputs.attempt ?? 0) <= 3 ? selectorInputs.attempt! : 1,
     escalationOrigin: selectorInputs.escalationOrigin ?? null,
     fallback: model.choice.fallback ?? effort.choice.fallback,
@@ -684,6 +752,11 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     shapeEvidence: retryShapeEvidence,
     unitIds: retryUnitIds.length ? retryUnitIds : undefined,
     postAttempt: undefined,
+    // A retry re-dispatches a RETAINED prior, so the only selection it may carry
+    // is that prior's own (or the tier the escalation lever explicitly asks for).
+    // Re-deriving here would let narrowed retry evidence silently pick a
+    // different tier than the attempt whose failure authorized the retry.
+    suppressDerivedSelection: true,
     // Only an applicable lever requests a tier. When none applies the retry re-states
     // the prior attempt's own REQUEST and lets `choose()` resolve it through the very
     // same validated pipeline the initial path uses. It is deliberately NOT a verbatim

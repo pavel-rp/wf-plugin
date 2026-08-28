@@ -1913,9 +1913,18 @@ export interface SlotProvenanceRecord {
   winningSource: string | null;
 }
 
-export type RoutingSource = "host" | "invocation" | "project" | "shipped-default" | "inheritance";
+/** WF-498: `complexity-derived` sits BELOW `shipped-default` and ABOVE `inheritance`.
+ *  It marks a selection the resolver computed itself from the call site's normalized
+ *  shape evidence — never one a caller supplied — so a consumer can carry a
+ *  resolver-derived selection forward with its provenance intact and tell it apart
+ *  from an ordinary caller-selected `invocation` value. */
+export type RoutingSource = "host" | "invocation" | "project" | "shipped-default" | "complexity-derived" | "inheritance";
 export interface RoutingRow { model: string | null; effort: string | null }
 export type RoutingProjectConfig = Record<string, RoutingRow>;
+/** WF-498, INTERNAL ONLY. Set by the resolver on its own retry path to suppress
+ *  complexity derivation; the `resolve_routing` input schema declares
+ *  `additionalProperties: false`, so no caller can reach it. */
+export interface RoutingDerivationControl { suppressDerivedSelection?: boolean }
 export interface RoutingChoice {
   value: string | null;
   source: RoutingSource;
@@ -2007,7 +2016,7 @@ export interface RoutingShapeEvidence {
 export interface NormalizedRoutingShapeEvidence extends RoutingShapeEvidence {
   requestedParallelism: number;
 }
-export interface RoutingInputs {
+export interface RoutingInputs extends RoutingDerivationControl {
   role: string;
   shapeEvidence: RoutingShapeEvidence;
   unitIds?: string[];
