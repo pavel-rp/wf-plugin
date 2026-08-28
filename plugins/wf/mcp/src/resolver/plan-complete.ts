@@ -311,6 +311,16 @@ function integrateActions(input: PlanCompletionInput): PlanAction[] {
   // A retention — including a proof-incomplete retention that PRESERVED a
   // registration the caller asked to remove — changes nothing, so it does not
   // trigger a recomposition.
+  //
+  // SINCE WF-492 THE RECORD IS ALSO A FUNCTION OF THIS RELEASE'S CORE ARTICLE TEXT,
+  // and this trigger is deliberately NOT widened to cover it. An upgrade that changes
+  // only article wording produces no registry delta, so no recomposition is planned
+  // and the amendment reaches the project on its next `/wf:constitution` run instead.
+  // Noticing that a record has fallen behind without re-composing it is drift
+  // DETECTION, recorded as out of scope in
+  // `docs/constitution-core-article-drift-decision.md` and raised as its own item; a
+  // trigger keyed on article text here would be that mechanism, built in the wrong
+  // place and with no acceptance of its own.
   if (
     input.registryDelta.additions.length > 0 ||
     input.registryDelta.deregistrations.length > 0

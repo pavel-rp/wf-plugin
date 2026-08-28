@@ -128,8 +128,19 @@ constitution regardless of the registry:
 
 1. **The spec is the single source of truth.** A derived artifact (plan, task list) never
    overrides the spec; conformance is judged against the spec.
-2. **No phase skips its gate.** Every phase is a human-approved artifact that feeds the
-   next; nothing advances past an unapproved gate.
+2. **No phase skips its gate.** Every phase produces an artifact that feeds the next, and
+   nothing advances past an unapproved gate. A gate is approved by a human, or — in an
+   **unattended run** — by a **recorded self-approval**: a machine-checkable record the
+   resolver issues into its declared run-evidence class, naming the gate it clears,
+   **binding by digest the artifact it approves**, filed before the next phase begins, and
+   valid only within the run that requested it. The record is requested by the agent it
+   authorises and never written by it, and the run's unattended mode is **not the
+   requesting agent's to assert** — where that mode cannot be established independently of
+   the agent, the gate is not satisfied. An approval that is absent, unmatched,
+   unverifiable, filed for another run, or whose approved artifact has since changed leaves
+   the gate **unapproved**: the run **halts at that gate** and is reported unproven. An
+   unattended run does not skip the gate — it satisfies the gate with evidence, or it
+   stops.
 3. **Nothing writes outside `_local/`** except the designated source-mutating skills, and
    except the declared committed lifecycle artifacts the resolver runtime owns and manages
    under `.wf/`. That home is not a general writable one: an artifact is admitted only when it
@@ -190,8 +201,15 @@ taxonomy by **contribution-kind name** (`article`), never by heading:
 
 **No-op (the only permitted branch is "zero capability articles" vs "one or more"):** if
 `resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]`, or a capability declares no `article`, that
-contributor — or the whole group — produces **nothing**. The constitution is then **core-only**:
-no capability section, no capability/stack/domain term surfaced, no STOP. Never hardcode or
+contributor — or the whole group — produces **nothing**. The constitution is then
+**core-only**. **The `## Capability articles (provenance: each capability)` heading is still
+written** — always, in every record, core-only included — carrying the single line
+`No registered capability declares a constitution article.` in place of a body. It is a
+**section that is empty, never a section that is absent**: the heading is a structural
+landmark every later re-composition locates the record by, so omitting it would make a
+core-only project's own record unrecognizable to the very re-composition that must later
+carry an amended core article into it. No capability/stack/domain term surfaces either way,
+and there is no STOP. Never hardcode or
 special-case a concrete capability, count the registry, or carry a per-capability code path
 (a capability's name still appears as a provenance tag when it contributes articles — that is
 the registry-driven composition, not a hardcoded branch).
@@ -239,17 +257,39 @@ and `update` was passed explicitly, stop and tell the user to run with no argume
 instead. Mirror the update-merge / skip-if-present idempotency of `qa-gen` and `init`:
 
 1. Read the existing `_local/constitution.md`.
-2. **Re-compose** the core articles (verbatim — they don't drift) and the **capability
-   articles** (re-query `resolve_registry({ workspaceRoot, ... })`; refresh to match the current registered
-   capabilities).
+2. **Re-compose** the **core articles** and the **capability articles** (re-query
+   `resolve_registry({ workspaceRoot, ... })`; refresh to match the current registered
+   capabilities). **Core article text does change between releases** — an amended article
+   reaches an already-composed record only here, so replace the whole
+   `## Core articles (provenance: core)` section with the articles above **as this release
+   states them**, rather than assuming what is already in the file is current. A record
+   composed against an earlier release is the ordinary case, not an error.
 3. **Preserve the project clauses** exactly as authored. Never silently overwrite a
    user-authored clause — if a re-compose would change or drop anything inside the project
-   section, **ask before overwriting**; default to keeping the existing text.
-4. **Idempotent:** on an unchanged registry and unchanged project clauses, the re-composed
-   file is byte-identical to the existing one — **produce no diff**. Refresh the `**Model:**`
-   line and any timestamp only when something else actually changed.
-5. Maintain the `## Capabilities` table in `_local/config.md` (below).
-6. Emit the final-output block (`CONSTITUTION — updated` or `CONSTITUTION — unchanged`).
+   section, **ask before overwriting**; default to keeping the existing text. Replacing the
+   core section never touches it: everything from the `## Project clauses (provenance:
+   project)` heading to end of file is carried across verbatim.
+   **Refuse rather than reset.** If the existing record does not carry the three sections in
+   the template's order — core articles, then capability articles, then project clauses,
+   with nothing unrecognized between them — do not rewrite it. Report the structure you did
+   not recognize, leave the file exactly as it is, and let the user reconcile it; a record
+   this skill cannot place is never regenerated, because regenerating it is what would
+   destroy the project's own writing.
+4. **Idempotent:** on an unchanged registry, unchanged core articles and unchanged project
+   clauses, the re-composed file is byte-identical to the existing one — **produce no diff**.
+   Emit each core article as **one unwrapped line**, exactly as the section above states it,
+   so that a re-run over an already-current record reproduces the same bytes rather than
+   merely equivalent ones. Refresh the `**Model:**` line and the `**Composed:**` timestamp
+   whenever anything else actually changed — **a refreshed core-articles section counts**,
+   because a record must not attribute article text to a model and a date that did not
+   produce it (core Article 4).
+5. **Confirm the project's writing survived.** Before reporting success, re-read the file you
+   just wrote and confirm it still carries its `## Project clauses (provenance: project)`
+   heading and the clause text that was there before. If it does not, say so plainly rather
+   than reporting a clean update — that section is the one part of the record no other copy
+   exists of.
+6. Maintain the `## Capabilities` table in `_local/config.md` (below).
+7. Emit the final-output block (`CONSTITUTION — updated` or `CONSTITUTION — unchanged`).
 
 ## Maintain the `## Capabilities` table (second write target)
 
@@ -308,6 +348,16 @@ the registry.
   with no argument (which updates). Don't clobber.
 - **`update` passed but no constitution exists.** Stop and tell the user to run with no
   argument (which establishes). Don't fabricate an empty update.
+- **The existing record carries superseded core article text.** The ordinary case for a
+  project composed against an earlier release — not an error and not a conflict. Replace the
+  core-articles section with this release's articles, leave the project clauses untouched,
+  and report the refresh in the chat summary. Nothing detects this state on its own: it
+  surfaces only when this skill re-runs.
+- **The existing record's structure is not the template's.** A missing, duplicated, or
+  out-of-order section heading, or an unrecognized section between two this skill composes
+  → **refuse**: leave the file byte-for-byte as it is, name the structure that was not
+  recognized, and stop. Never regenerate a record you cannot place — that is the one path
+  that would destroy the project's own clauses.
 - **Project clauses would change on re-compose.** Never silently overwrite — ask first;
   default to preserving the existing text. The project section is user-owned.
 - **Unchanged project on re-run.** Produce **no diff** — same registry + same project clauses
