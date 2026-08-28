@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseRoutingConfig } from "../src/resolver/config.js";
-import { resolveRouting } from "../src/resolver/routing.js";
+import { derivedCountEvidence, resolveRouting } from "../src/resolver/routing.js";
 import type { RoutingDecision, RoutingInsufficiencySignal, RoutingPostAttemptEvaluation } from "../src/resolver/types.js";
 
 const inlineEvidence = {
@@ -904,6 +904,22 @@ test("the input path and the retry path derive count evidence from one shared ru
   }
 });
 
+test("count-derived normalization leaves a malformed unitCount alone rather than deriving from it", () => {
+  // The defensive branch of the shared rule: a `unitCount` that is not a positive
+  // integer is rejected by its own range check, so normalization must not derive
+  // `composite` from nonsense and swap one diagnostic for another.
+  const first = resolveRouting({}, { ...base, actualModel: "haiku" });
+  const decision = resolveRouting({}, {
+    ...base,
+    shapeEvidence: { ...inlineEvidence, unitCount: 0 },
+    postAttempt: { sufficient: false, signals: ["failed-validation"], prior: prior(first) },
+  } as unknown as Parameters<typeof resolveRouting>[1]);
+  assert.equal(decision.status, "stop");
+  assert.equal(decision.disposition, "invalid-stop");
+  assert.match(decision.diagnostic ?? "", /shape evidence must match the retained prior decision/);
+  assert.equal(decision.retry, null);
+});
+
 test("an over-long basis is rejected naming the field, the bound, and the length received", () => {
   const oversized = "x".repeat(257);
   const decision = resolveRouting({}, { ...base, basis: oversized });
@@ -955,4 +971,38 @@ test("a single-unit decision dispatches one unit, never nothing", () => {
   });
   assert.equal(parallel.executionShape, "bounded-parallel");
   assert.equal(parallel.effectiveParallelism, 2);
+});
+
+test("effectiveParallelism is a concurrency bound — how many units to run is unitIds.length", () => {
+  // A DEPENDENT multi-unit decision is legitimately `isolated` at
+  // `effectiveParallelism: 1` and still carries every unit. Reading the bound as a
+  // unit count here would silently drop work, so pin the distinction.
+  const dependent = resolveRouting({}, {
+    ...base,
+    unitIds: ["dep:a", "dep:b"],
+    shapeEvidence: {
+      ...inlineEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: false,
+      toolWork: "material", requestedParallelism: 2,
+    },
+  });
+  assert.equal(dependent.status, "dispatch");
+  assert.equal(dependent.executionShape, "isolated");
+  assert.equal(dependent.effectiveParallelism, 1);
+  assert.deepEqual(dependent.unitIds, ["dep:a", "dep:b"]);
+  assert.equal(dependent.normalizedEvidence.unitCount, 2);
+});
+
+test("the shared count-derived rule is directly assertable and total over the unit range", () => {
+  for (const unitCount of [1, 2, 3, 4]) {
+    for (const unitsIndependent of [true, false]) {
+      assert.deepEqual(
+        derivedCountEvidence(unitCount, unitsIndependent),
+        {
+          atomicity: unitCount === 1 ? "atomic" : "composite",
+          unitsIndependent: unitCount > 1 && unitsIndependent,
+        },
+        `unitCount ${unitCount} / unitsIndependent ${unitsIndependent}`,
+      );
+    }
+  }
 });

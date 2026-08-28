@@ -432,24 +432,9 @@ const routingSignalValues = [
 
 const routingShapeProperties = {
   workSurface: { type: "string", enum: ["caller-context", "external-context"] },
-  atomicity: {
-    type: "string",
-    enum: ["atomic", "composite"],
-    description:
-      "DERIVED, never a second source of truth. `unitCount` is authoritative: 1 unit is `atomic`, 2 or more is `composite`. A value that contradicts `unitCount` is NORMALIZED to the derived one rather than rejected, and the response reports the derived value on `normalizedEvidence` — the identical rule the retry path applies when it narrows a set to its insufficient units.",
-  },
-  unitCount: {
-    type: "integer",
-    minimum: 1,
-    maximum: 4,
-    description:
-      "THE AUTHORITATIVE COUNT. `atomicity` is derived from it and `unitsIndependent` is clamped to false at one unit. `unitIds`, when supplied, must be exactly this many entries — that cardinality is still a hard rejection.",
-  },
-  unitsIndependent: {
-    type: "boolean",
-    description:
-      "Clamped to false when `unitCount` is 1 — independence is undefined for a single unit. Read the applied value back from `normalizedEvidence`.",
-  },
+  atomicity: { type: "string", enum: ["atomic", "composite"] },
+  unitCount: { type: "integer", minimum: 1, maximum: 4 },
+  unitsIndependent: { type: "boolean" },
   ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
   risk: { type: "string", enum: ["low", "elevated"] },
   toolWork: { type: "string", enum: ["none", "bounded", "material"] },
@@ -460,6 +445,30 @@ const routingShapeProperties = {
   requestedParallelism: { type: "integer", minimum: 1 },
 };
 const routingShapeRequired = Object.keys(routingShapeProperties);
+
+// The INPUT-facing view of the same shape evidence. The count-derived rule matters
+// while COMPOSING evidence, so it is stated here and not on the bare
+// `routingShapeProperties` the output's `normalizedEvidence` reuses. These strings
+// are ALWAYS-RESIDENT payload: keep them to the load-bearing fact and leave the
+// full normative statement to `_contracts/invocation-runtime.ops.md`, which is the
+// one authority callers already read.
+const routingShapeInputProperties = {
+  ...routingShapeProperties,
+  atomicity: {
+    ...routingShapeProperties.atomicity,
+    description:
+      "Derived from the authoritative `unitCount` (1 = atomic, 2+ = composite). A contradicting value is normalized, not rejected; the applied value returns on `normalizedEvidence`.",
+  },
+  unitCount: {
+    ...routingShapeProperties.unitCount,
+    description:
+      "Authoritative. `atomicity` derives from it and `unitsIndependent` clamps to false at 1; `unitIds` cardinality must equal it and is still a hard rejection.",
+  },
+  unitsIndependent: {
+    ...routingShapeProperties.unitsIndependent,
+    description: "Clamped to false when `unitCount` is 1.",
+  },
+};
 const routingChoiceSchema = (maxLength: number) => ({
   type: "object",
   properties: {
@@ -480,7 +489,7 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
     role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
     shapeEvidence: {
       type: "object",
-      properties: routingShapeProperties,
+      properties: routingShapeInputProperties,
       additionalProperties: false,
     },
     unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
@@ -489,20 +498,24 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
     supportsModelSelector: { type: "boolean" }, supportsEffortSelector: { type: "boolean" },
     hostModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern }, hostEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
     availableModels: { type: ["array", "null"], maxItems: 64, items: { type: "string", minLength: 1, maxLength: 128, pattern: safeRoutingStringPattern }, uniqueItems: true },
+    // The 256-character bound is enforced at BOTH layers, deliberately: `maxLength`
+    // here (pinned by the clean-copy smoke guard) and `boundedOptionalString` in the
+    // resolver, whose diagnostic additionally reports the received length. Whichever
+    // fires, the caller is told the field and the bound — which is what the
+    // description below promises, and all it promises.
     basis: {
       type: ["string", "null"],
       maxLength: 256,
       pattern: safeRoutingStringPattern,
       description:
-        "Compact provenance for this decision — one short line, BOUNDED AT 256 CHARACTERS. Exceeding the bound is a HARD REJECTION of the whole call, never a truncation: nothing shortens a `basis`, so compose within the bound. The rejection names the field, the bound, and the length received.",
+        "Compact provenance, one short line. Bounded at 256 characters — over-length is a hard rejection of the call naming this field and the bound, never a truncation.",
     },
     attempt: { type: "integer", minimum: 1, maximum: 3 },
     escalationOrigin: {
       type: ["string", "null"],
       maxLength: 256,
       pattern: safeRoutingStringPattern,
-      description:
-        "Retry provenance, BOUNDED AT 256 CHARACTERS under the same hard-rejection-never-truncation rule as `basis`. Must be null on an initial dispatch.",
+      description: "Retry provenance, under the same 256-character hard bound as `basis`. Null on an initial dispatch.",
     },
     actualModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
     postAttempt: {
@@ -531,7 +544,7 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
             role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
             attempt: { type: "integer", minimum: 1, maximum: 3 },
             executionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
-            shapeEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
+            shapeEvidence: { type: "object", properties: routingShapeInputProperties, required: routingShapeRequired, additionalProperties: false },
             unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
             model: routingChoiceSchema(128),
             effort: routingChoiceSchema(16),
@@ -569,7 +582,7 @@ const routingOutput = fromJsonSchema({
       minimum: 1,
       maximum: 4,
       description:
-        "How many units may run CONCURRENTLY — never how many units to run. 1 is the normal value for every `inline` and `isolated` decision and means DISPATCH ONE UNIT AT A TIME, never dispatch nothing.",
+        "A concurrency bound, not a unit count: 1 means run this decision's units one at a time. How many there are to run is `unitIds.length`.",
     },
     model: routingChoiceSchema(128),
     effort: routingChoiceSchema(16),
@@ -584,13 +597,12 @@ const routingOutput = fromJsonSchema({
       type: "string",
       enum: ["dispatch", "retain", "stop"],
       description:
-        "WHETHER to proceed — an axis INDEPENDENT of `executionShape` and `effectiveParallelism`, which say HOW. `dispatch` means carry out the decision in the returned shape; it is the normal outcome for a single-unit `inline` or `isolated` route and NEVER means dispatch nothing.",
+        "Whether to proceed — independent of `executionShape` and `effectiveParallelism`, which say how. `dispatch` means execute every `unitIds` entry in the returned shape; it never means dispatch nothing.",
     },
     disposition: {
       type: "string",
       enum: ["dispatch", "retain", "retry", "exhausted", "invalid-stop"],
-      description:
-        "The refinement of `status` — also independent of `executionShape`. `dispatch` at `effectiveParallelism: 1` is one unit to execute, not an empty decision.",
+      description: "The refinement of `status`, also independent of `executionShape`.",
     },
     retry: {
       anyOf: [
@@ -887,7 +899,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are INDEPENDENT AXES: `status: dispatch` with `effectiveParallelism: 1` is the ordinary decision to dispatch ONE unit in the returned shape, never a decision to dispatch nothing. `unitCount` is the authoritative shape-evidence count — `atomicity` is derived from it and normalized rather than rejected, and `basis`/`escalationOrigin` are bounded at 256 characters as a hard rejection that is never a truncation. Body-free.",
+      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` §\"Resolver call root\". Body-free.",
       inputSchema: routingInput,
       outputSchema: routingOutput,
       _meta: RESIDENT,

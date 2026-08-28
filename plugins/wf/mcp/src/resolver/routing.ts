@@ -51,7 +51,7 @@ type ShapeDecision = Pick<RoutingDecision, "executionShape" | "normalizedEvidenc
 // reports the result on `normalizedEvidence`) and the retry path (which narrows a
 // composite set to its insufficient units and re-derives the same two fields).
 // One function, two call sites, so the two can never drift apart again.
-function derivedCountEvidence(
+export function derivedCountEvidence(
   unitCount: number,
   unitsIndependent: boolean,
 ): Pick<RoutingShapeEvidence, "atomicity" | "unitsIndependent"> {
@@ -61,18 +61,34 @@ function derivedCountEvidence(
   };
 }
 
-// Apply the rule to a whole evidence object. A `unitCount` that is not a positive
-// integer is left alone: that input is rejected by its own range check, and
-// deriving from a nonsense count would only swap one diagnostic for another.
+// Apply the rule to a whole evidence object, returning a copy rather than mutating
+// the caller's. A `unitCount` that is not a positive integer is left alone: that
+// input is rejected by its own range check, and deriving from a nonsense count
+// would only swap one diagnostic for another.
 function withDerivedCountEvidence<T extends RoutingShapeEvidence>(evidence: T): T {
-  return evidence && Number.isInteger(evidence.unitCount) && evidence.unitCount >= 1
+  return Number.isInteger(evidence.unitCount) && evidence.unitCount >= 1
     ? { ...evidence, ...derivedCountEvidence(evidence.unitCount, evidence.unitsIndependent) }
     : evidence;
 }
 
 function selectShape(inputs: RoutingInputs): ShapeDecision {
   const evidence = inputs.shapeEvidence as Partial<RoutingInputs["shapeEvidence"]> | undefined;
-  const normalizedEvidence: NormalizedRoutingShapeEvidence = {
+  // `atomicity` and `unitsIndependent` are DERIVED from the authoritative
+  // `unitCount`, never a second source of truth a caller can contradict. A pair
+  // the caller states inconsistently is normalized here — not rejected — and the
+  // derived values are what `normalizedEvidence` reports back, so the caller can
+  // read exactly what the resolver made of its evidence.
+  //
+  // The derivation is applied HERE, before the stop-return below, so the reported
+  // evidence obeys the published rule on EVERY path — a rejected call reports the
+  // same derived shape a dispatched one does, rather than echoing raw values back
+  // on some rejection paths and derived values on others. `withDerivedCountEvidence`
+  // leaves a non-positive-integer `unitCount` alone, so a nonsense count is still
+  // reported as the caller sent it and rejected by its own range check below.
+  //
+  // The rule cannot change a selected shape: `atomicity` feeds no predicate below,
+  // and `parallelWorthy` already requires two or more units.
+  const normalizedEvidence: NormalizedRoutingShapeEvidence = withDerivedCountEvidence({
     workSurface: evidence?.workSurface ?? "caller-context",
     atomicity: evidence?.atomicity ?? "atomic",
     unitCount: evidence?.unitCount ?? 0,
@@ -85,7 +101,7 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
     independentReview: evidence?.independentReview ?? false,
     returnContract: evidence?.returnContract ?? "mechanically-judgeable",
     requestedParallelism: evidence?.requestedParallelism ?? 0,
-  };
+  });
   const enumFields = [
     ["workSurface", evidence?.workSurface, ["caller-context", "external-context"]],
     ["atomicity", evidence?.atomicity, ["atomic", "composite"]],

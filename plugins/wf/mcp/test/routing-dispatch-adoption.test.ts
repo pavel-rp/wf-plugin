@@ -132,18 +132,18 @@ test("dirty-tree carry remains additive branch success across callers", () => {
   }
 });
 
-test("routing rejects contradictory evidence and preserves safe fallback metadata", () => {
+test("routing normalizes contradictory evidence, rejects unitIds cardinality, and preserves safe fallback metadata", () => {
   // WF-496: `unitCount` is authoritative, so a stated `atomicity` that disagrees
   // with it is NORMALIZED rather than rejected. What is still rejected is the
   // cardinality this evidence genuinely fails — two units and no `unitIds` — and
   // that is the rejection a caller can act on.
-  const contradictory = resolveRouting({}, {
+  const missingUnitIds = resolveRouting({}, {
     role: "phase-runner", shapeEvidence: { ...atomicEvidence, unitCount: 2, unitsIndependent: true },
     supportsModelSelector: true, supportsEffortSelector: false,
   });
-  assert.equal(contradictory.status, "stop");
-  assert.match(contradictory.diagnostic ?? "", /unitIds/i);
-  assert.equal(contradictory.normalizedEvidence.atomicity, "composite");
+  assert.equal(missingUnitIds.status, "stop");
+  assert.match(missingUnitIds.diagnostic ?? "", /unitIds/i);
+  assert.equal(missingUnitIds.normalizedEvidence.atomicity, "composite");
 
   const normalized = resolveRouting({}, {
     role: "phase-runner", shapeEvidence: { ...atomicEvidence, unitCount: 2, unitsIndependent: true },
