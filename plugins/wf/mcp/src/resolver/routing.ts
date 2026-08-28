@@ -260,11 +260,19 @@ function choose(
   // WF-498: the derived tier sits BELOW every stated choice and ABOVE bare
   // inheritance. It is computed only when nothing higher-precedence was stated,
   // so `classify`/`branch` keep resolving their `DEFAULTS` entry unchanged, and
-  // it is never derived for effort — every published row's effort still
-  // inherits. Suppressed wholesale on the retry path, where the retained prior's
-  // own selection is the only thing that may be re-stated.
+  // it is never derived for effort — every published row's effort still inherits.
+  //
+  // The retry path re-enters here and re-derives, exactly as it re-reads
+  // `DEFAULTS` and the project table. That is deliberate and it is SAFE, not a
+  // second decision: retry narrowing only ever changes `unitCount` and
+  // `requestedParallelism`, and the ladder scores neither, so re-derivation over
+  // retained evidence provably reproduces the prior attempt's own tier. Special-
+  // casing derivation here would instead make it the ONE source that silently
+  // evaporates on retry, dropping an eligible role back to bare inheritance for
+  // the very attempt that matters most. When the escalation lever does apply it
+  // passes `invocationModel`, which outranks this and leaves the tier advance
+  // exactly as WF-497 specified.
   const derived = kind === "model" &&
-    !inputs.suppressDerivedSelection &&
     !invocation && !configured && !shipped &&
     DERIVATION_ELIGIBLE_ROLES.has(inputs.role)
     ? deriveModelFromEvidence(normalizedEvidence)
@@ -752,11 +760,6 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     shapeEvidence: retryShapeEvidence,
     unitIds: retryUnitIds.length ? retryUnitIds : undefined,
     postAttempt: undefined,
-    // A retry re-dispatches a RETAINED prior, so the only selection it may carry
-    // is that prior's own (or the tier the escalation lever explicitly asks for).
-    // Re-deriving here would let narrowed retry evidence silently pick a
-    // different tier than the attempt whose failure authorized the retry.
-    suppressDerivedSelection: true,
     // Only an applicable lever requests a tier. When none applies the retry re-states
     // the prior attempt's own REQUEST and lets `choose()` resolve it through the very
     // same validated pipeline the initial path uses. It is deliberately NOT a verbatim

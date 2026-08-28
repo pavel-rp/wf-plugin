@@ -1921,10 +1921,6 @@ export interface SlotProvenanceRecord {
 export type RoutingSource = "host" | "invocation" | "project" | "shipped-default" | "complexity-derived" | "inheritance";
 export interface RoutingRow { model: string | null; effort: string | null }
 export type RoutingProjectConfig = Record<string, RoutingRow>;
-/** WF-498, INTERNAL ONLY. Set by the resolver on its own retry path to suppress
- *  complexity derivation; the `resolve_routing` input schema declares
- *  `additionalProperties: false`, so no caller can reach it. */
-export interface RoutingDerivationControl { suppressDerivedSelection?: boolean }
 export interface RoutingChoice {
   value: string | null;
   source: RoutingSource;
@@ -2016,7 +2012,7 @@ export interface RoutingShapeEvidence {
 export interface NormalizedRoutingShapeEvidence extends RoutingShapeEvidence {
   requestedParallelism: number;
 }
-export interface RoutingInputs extends RoutingDerivationControl {
+export interface RoutingInputs {
   role: string;
   shapeEvidence: RoutingShapeEvidence;
   unitIds?: string[];

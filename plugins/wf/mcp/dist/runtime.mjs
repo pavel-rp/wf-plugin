@@ -26431,7 +26431,7 @@ function choose(kind, inputs, project, normalizedEvidence) {
   const configured = project[inputs.role]?.[kind] ?? null;
   const shipped = DEFAULTS[inputs.role]?.[kind] ?? null;
   const required2 = kind === "model" ? inputs.requireModel : inputs.requireEffort;
-  const derived = kind === "model" && !inputs.suppressDerivedSelection && !invocation && !configured && !shipped && DERIVATION_ELIGIBLE_ROLES.has(inputs.role) ? deriveModelFromEvidence(normalizedEvidence) : null;
+  const derived = kind === "model" && !invocation && !configured && !shipped && DERIVATION_ELIGIBLE_ROLES.has(inputs.role) ? deriveModelFromEvidence(normalizedEvidence) : null;
   const requested = invocation ?? configured ?? shipped ?? derived?.model ?? null;
   const requestedSource = invocation ? "invocation" : configured ? "project" : shipped ? "shipped-default" : derived ? "complexity-derived" : "inheritance";
   const derivedBasis = derived ? derived.basis : null;
@@ -26799,11 +26799,6 @@ function resolveRouting(project, inputs) {
     shapeEvidence: retryShapeEvidence,
     unitIds: retryUnitIds.length ? retryUnitIds : void 0,
     postAttempt: void 0,
-    // A retry re-dispatches a RETAINED prior, so the only selection it may carry
-    // is that prior's own (or the tier the escalation lever explicitly asks for).
-    // Re-deriving here would let narrowed retry evidence silently pick a
-    // different tier than the attempt whose failure authorized the retry.
-    suppressDerivedSelection: true,
     // Only an applicable lever requests a tier. When none applies the retry re-states
     // the prior attempt's own REQUEST and lets `choose()` resolve it through the very
     // same validated pipeline the initial path uses. It is deliberately NOT a verbatim
