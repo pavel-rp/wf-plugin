@@ -86,6 +86,37 @@
 //     de-duplicates, so a verdict is unaffected. Growth is bounded by
 //     `MAX_RUN_EVIDENCE_RECORDS` and a further append is refused with a stated
 //     reason rather than growing without limit.
+//
+//   * THE RECORDING TOOL IS CALLABLE BY THE AGENT BEING ATTESTED, so a record is
+//     NOT a proof that the work happened. It proves that the RESOLVER — not the
+//     caller — digested the named artifact, stamped the identity, sequence and
+//     clock, observed the run mode, and sealed the result. That defeats a
+//     hand-written receipt-shaped file and binds the record to bytes a later
+//     reader can re-check; it does not make the record unforgeable, and no prose
+//     built on this module may say that it does.
+//
+//   * A GATE APPROVAL AND A PHASE RECEIPT ARE DIFFERENT CLAIMS (WF-493). A
+//     `gate-approval` says a named artifact was approved at a GATE before the next
+//     phase began; a `phase-receipt` says a PHASE completed. Neither satisfies the
+//     other's requirement, which is why `provenPhases` filters on the kind rather
+//     than on the subject: counting an approval as a receipt would readmit exactly
+//     the agent-authored evidence this module exists to exclude.
+//
+//   * FRESHNESS IS A READ-TIME FACT, NOT A SEALED ONE (WF-493). The seal proves
+//     what the artifact's bytes were AT ISSUE and says nothing about what they are
+//     now, so "has the approved artifact since changed" can only be answered by
+//     re-observing. `classifyArtifactState` does that against a freshly supplied
+//     digest, and its result is deliberately OUTSIDE the seal — sealing a function
+//     of mutable state would report the first legitimate edit as forgery.
+//
+//   * THE RUN MODE IS OBSERVED, SEALED, AND FAILS CLOSED (WF-493). It is never a
+//     caller input: the service reads it from a signal the resolver process holds
+//     and the requesting agent cannot reach, and an absent or unrecognized signal
+//     is `unestablished` rather than a guess in either direction. Sealing it is
+//     what makes "which mode was this issued under" durable rather than a
+//     transient claim about the record. It is a LABEL PLACED OUT OF THE DISPATCHED
+//     AGENT'S HANDS, not an authenticated assertion — an operator who declares it
+//     falsely gets a falsely-labelled record.
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { sha256Hex } from "./fingerprint.js";
