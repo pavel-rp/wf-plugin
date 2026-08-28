@@ -124,3 +124,49 @@ exists to reject: it reads as diligence and it is indistinguishable from inventi
 defines a different limit for that quantity, and no derivation depends on the old value.
 "Lowering the retry limit could cause failures under load" restates the change as a
 hazard without contradicting anything. No second citation, no finding.
+
+## Why reconciliation is one-directional
+
+Registering a capability that contributes adversarial `finding`s creates a second pass over
+the same change. Two passes over one change can fail in two opposite ways, and the rule has
+to refuse both.
+
+**Silent doubling** — the same defect reported twice with no indication it is one defect.
+The reader either fixes it twice or, worse, learns to skim a report that pads itself.
+
+**Silent collapse** — the overlap resolved by deleting one side. This is the far more
+expensive failure, because the cheapest thing to delete is whichever side the deduplicator
+reaches first, and nothing in the report records that anything was deleted. If the rule
+were permitted to act on contributed findings, a core default shipped for *free* coverage
+could quietly shrink the coverage a project deliberately installed a capability to get.
+That inverts the whole point of the feature.
+
+So the rule is asymmetric on purpose: **core may only withdraw its own candidate.** Core's
+lean pass is the free floor, and a contributor is the thing a project opted into; when they
+overlap, the floor yields and the opted-in contribution is untouchable. This also makes the
+rule cheap to guard — "does the reconciliation section ever act on a contributed finding?"
+is a mechanical question, where "did this dedup lose a real finding?" is not.
+
+The same asymmetry answers the failure case. A withdrawal requires a matching finding
+**in hand**; a contributor that errored has none, so it can withdraw nothing. Without that
+clause a broken lens would *increase* apparent cleanliness — the outage would suppress
+nothing but would also stop covering anything, and the core candidates it displaced would
+already be gone. Silence and cleanliness must not render the same, which is why an empty
+`findings:` list is clean while an errored one marks coverage incomplete.
+
+**Why the overlap test is citation-anchored.** "Are these the same defect?" is a judgment
+call, and a judgment-based deduplicator is exactly the kind of thing that collapses two
+real findings into one on a bad day. Anchoring on the candidate's *changed-side* `file:line`
+keeps the test mechanical, reuses the two-sided citation rule the pass already enforces, and
+costs nothing — both citations are already in hand. Splitting on the *existing-side*
+evidence is what separates a genuine restatement (same line, same reason — withdraw) from
+two independent perspectives on one line (retain both). A second perspective is worth
+keeping precisely because it is what a five-lens fan-out is for; collapsing it would quietly
+undo the fan-out decision recorded in `docs/verify-fanout-decision.md`.
+
+**Why it is stated over the taxonomy, not over a capability.** Core Article 8: core ships a
+lean default that runs inert with no capability registered and never names one. The rule
+therefore talks about `finding` contributions at the `verify` phase — a taxonomy term — and
+works identically for one contributor or five. The measurement fixtures name a capability
+because a *measurement* must register something concrete; core does not.
+
