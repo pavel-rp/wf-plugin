@@ -16,9 +16,10 @@
 //     never assumes a ledger that omits one is the current version.
 //   * `lifecycle-evidence.ts` — THE PORTABLE/BINDING SPLIT, and AMBIGUITY RETAINS,
 //     NEVER GRANTS AUTHORITY. The portable, matchable records live in the declared
-//     committed class; the machine-local issuer binding lives under `_local/` and
-//     is never served through any tool. Every branch that cannot PROVE a seal
-//     returns `matched: false` with a stated reason — never partial credit.
+//     committed class; the machine-local issuer binding lives outside the audited
+//     workspace and is never served through any tool. Every branch that cannot
+//     PROVE a seal returns `matched: false` with a stated reason — never partial
+//     credit.
 //
 // Deterministic and side-effect-free. Nothing here opens a file, canonicalizes a
 // path, or writes a byte: the caller answers every filesystem question and hands
@@ -30,9 +31,10 @@
 //
 //   1. THE CALLER ASSERTS NOTHING THE RESOLVER CAN DERIVE. A skill supplies only
 //      what it alone knows — which phase it is, which task, and which artifact it
-//      wrote. The run identity, the workspace, the clock, the sequence and the
-//      artifact digest are all derived by the resolver. A caller that could assert
-//      them could assert a receipt, which is the original defect one level down.
+//      wrote. The run identity, the workspace binding, the clock, the sequence and
+//      the artifact digest are all derived by the resolver. A caller that could
+//      assert them could assert a receipt, which is the original defect one level
+//      down.
 //
 //   2. A MALFORMED RECORD IS REPORTED, NOT DISCARDED — and this is the DELIBERATE
 //      INVERSE of `parseTransactionJournal`'s whole-file strictness. There, a bad
@@ -40,22 +42,57 @@
 //      half-written file. Here, a bad record is the FORGERY SIGNAL itself: failing
 //      the whole ledger would let one hand-written line erase the genuine receipts
 //      beside it, which is precisely the outcome an attacker would want. So shape
-//      is tolerated per record and reported as `unmatched`; only the VERSION is
-//      whole-ledger strict.
+//      is tolerated per record — parsed into `RawRunEvidenceRecord`, which is
+//      honest that its `kind` is unvalidated — and reported as `unmatched`. Only
+//      the VERSION is whole-ledger strict.
 //
 //   3. NO ISSUER, NO MATCH. When the machine-local binding is unavailable, every
 //      record is `unmatched` with a stated reason. The fail-safe direction for a
 //      proof mechanism is to prove nothing, never to assume everything.
+//
+// --- WHAT A RECEIPT DOES AND DOES NOT CLAIM (read this before consuming one) ---
+//
+// These bounds are stated here because a consumer that over-reads a receipt
+// rebuilds the very over-claim this module exists to prevent.
+//
+//   * SCOPE IS THE TASK, NOT THE RUN. The run identity is a stable function of the
+//     workspace binding and the task id — it carries no per-run nonce, because
+//     nothing in the resolver's observable state marks where one run of a task
+//     ends and the next begins. A receipt therefore proves "this phase completed
+//     for this task in this workspace, at `issuedAt`" — NOT "during the run you
+//     are currently evaluating". A consumer that needs run scope must window on
+//     `issuedAt`; that policy belongs to the consumer, and `issuedAt` is carried
+//     on every matched record precisely so it can.
+//
+//   * AN ARTIFACT-LESS RECEIPT IS WEAKER, AND SAYS SO. Five of the seven
+//     receipt-bearing phases write an artifact the resolver reads and digests
+//     itself, so their receipts are `artifact-backed`: the resolver observed
+//     something the caller did not supply. The two delivery-ceremony skills write
+//     no such artifact, so their receipts are `invocation-only` — they attest that
+//     the skill reached its completion point and invoked the resolver there, which
+//     is strictly weaker than "the ceremony succeeded". `evidenceClass` carries
+//     that distinction on every record so a consumer can weight the two
+//     differently rather than being silently told they are the same.
+//
+//   * VERIFIABILITY IS SCOPED TO THE ISSUING WORKSPACE. Both the run identity and
+//     the issuer binding are keyed on the resolved workspace root. A receipt filed
+//     from an isolated worktree is therefore not matchable from a different
+//     checkout of the same repository. Re-anchoring on the worktree family is a
+//     resolver-boundary question owned by the worktree-isolation work, not a
+//     property to change here.
+//
+//   * THE LEDGER IS APPEND-ONLY AND BOUNDED. A re-run appends rather than
+//     replacing, so a phase run twice files two receipts; `provenPhases`
+//     de-duplicates, so a verdict is unaffected. Growth is bounded by
+//     `MAX_RUN_EVIDENCE_RECORDS` and a further append is refused with a stated
+//     reason rather than growing without limit.
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { sha256Hex } from "./fingerprint.js";
 
 // ---------------------------------------------------------------------------
 // Frozen version, destinations and vocabulary
 // ---------------------------------------------------------------------------
-//
-// The split is the `lifecycle-evidence.ts` split, for the same reason: the
-// RECORDS are portable evidence a later reader matches, and the ISSUER BINDING is
-// a fact about one machine. Only the first is a committed lifecycle artifact.
 
 /** The only run-evidence ledger version this release understands. */
 export const RUN_EVIDENCE_FORMAT_VERSION = 1 as const;
@@ -65,11 +102,23 @@ export const RUN_EVIDENCE_FORMAT_VERSION = 1 as const;
  *  class, never from the path prefix. */
 export const RUN_EVIDENCE_DIR = ".wf/run-evidence" as const;
 
-/** The machine-local issuer binding. Machine-local for the same reason
- *  `lifecycle-journal.ts`'s paths are: it is a fact about one machine, not
- *  portable project state. It is never served through any resolver tool and is
- *  never named in a skill body. */
-export const RUN_EVIDENCE_ISSUER_PATH = "_local/run-evidence-issuer.json" as const;
+/**
+ * The machine-local issuer binding, relative to a MACHINE-LOCAL home OUTSIDE the
+ * audited workspace.
+ *
+ * OUTSIDE IS THE WHOLE POINT. The seal defends against a dispatched agent that can
+ * read and write the workspace; a key stored inside that workspace would be one
+ * file read away from a forged receipt, since the canonical body and the seal
+ * algorithm are public in-repo source. Keeping the binding out of the workspace is
+ * what leaves the agent no key to read. It is also never served through any
+ * resolver tool, never logged, and never named in a skill body.
+ */
+export const RUN_EVIDENCE_ISSUER_DIR = ".wf-run-evidence" as const;
+
+/** Bound on one ledger's records. A legitimate run files at most the seven phase
+ *  receipts plus a small number of gate approvals, so this is generous by orders
+ *  of magnitude while still refusing unbounded growth driven by repeated calls. */
+export const MAX_RUN_EVIDENCE_RECORDS = 512;
 
 /**
  * The CLOSED set of receipt-bearing phases.
@@ -107,6 +156,10 @@ export type ReceiptBearingPhase = (typeof RECEIPT_BEARING_PHASES)[number];
 export const RUN_EVIDENCE_KINDS = ["phase-receipt", "gate-approval"] as const;
 export type RunEvidenceKind = (typeof RUN_EVIDENCE_KINDS)[number];
 
+/** How much the resolver itself observed. See the header's "what a receipt does
+ *  and does not claim". */
+export type RunEvidenceClass = "artifact-backed" | "invocation-only";
+
 const HEX64_RE = /^[a-f0-9]{64}$/;
 const RUN_ID_RE = /^[a-f0-9]{32}$/;
 const SUBJECT_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
@@ -119,6 +172,29 @@ function nonEmpty(value: unknown): value is string {
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
+}
+
+/** Bind a record to its workspace WITHOUT persisting the host path.
+ *
+ *  The binding property only needs a value that differs per workspace; the literal
+ *  absolute root would additionally write local usernames and directory layout
+ *  into an artifact class a project may choose to track. A digest keeps the
+ *  binding and drops the leak. */
+export function workspaceFingerprint(workspaceRoot: string): string {
+  return sha256Hex(JSON.stringify(["run-evidence-workspace", workspaceRoot]));
+}
+
+/** The run identity — see the header's SCOPE IS THE TASK, NOT THE RUN. */
+export function runEvidenceRunId(workspaceRoot: string, taskId: string): string {
+  return sha256Hex(
+    JSON.stringify(["run-evidence-run", workspaceFingerprint(workspaceRoot), taskId]),
+  ).slice(0, 32);
+}
+
+/** The machine-local issuer binding's path within the machine-local home. Keyed on
+ *  the workspace fingerprint so two checkouts never share a key. */
+export function runEvidenceIssuerRelPath(workspaceRoot: string): string {
+  return `${RUN_EVIDENCE_ISSUER_DIR}/issuer-${workspaceFingerprint(workspaceRoot).slice(0, 32)}.json`;
 }
 
 // ---------------------------------------------------------------------------
@@ -175,19 +251,32 @@ export interface RunEvidenceRecord {
   subject: string;
   taskId: string;
   runId: string;
-  workspaceRoot: string;
+  /** A digest of the issuing workspace root — the binding, without the host path. */
+  workspaceFingerprint: string;
   issuedAt: string;
   sequence: number;
   artifact: RunEvidenceArtifact | null;
+  /** Derived from `artifact`, sealed alongside it so it cannot be edited after the
+   *  fact to make an invocation-only receipt look artifact-backed. */
+  evidenceClass: RunEvidenceClass;
   /** The keyed digest over every field above. This is the whole mechanism: a
    *  record written by anything other than the issuer carries no valid seal. */
   seal: string;
 }
 
+/** A record exactly as it appeared on disk. `kind` is a bare `string` because the
+ *  parse path deliberately does NOT validate it (module rule 2) — keeping the
+ *  union off this type is what stops `RunEvidenceRecord` from lying about a
+ *  guarantee the parser never checked. */
+export type RawRunEvidenceRecord = Omit<RunEvidenceRecord, "kind" | "evidenceClass"> & {
+  kind: string;
+  evidenceClass: string;
+};
+
 export interface RunEvidenceLedger {
   formatVersion: number;
   runId: string;
-  records: RunEvidenceRecord[];
+  records: RawRunEvidenceRecord[];
 }
 
 /** The unsealed body a seal is computed over. */
@@ -212,9 +301,10 @@ export function canonicalRunEvidenceBody(body: RunEvidenceBody): string {
     ["subject", body.subject],
     ["taskId", body.taskId],
     ["runId", body.runId],
-    ["workspaceRoot", body.workspaceRoot],
+    ["workspaceFingerprint", body.workspaceFingerprint],
     ["issuedAt", body.issuedAt],
     ["sequence", body.sequence],
+    ["evidenceClass", body.evidenceClass],
     [
       "artifact",
       body.artifact === null
@@ -252,7 +342,7 @@ export interface RunEvidenceRecordInputs {
   subject: string;
   taskId: string;
   runId: string;
-  workspaceRoot: string;
+  workspaceFingerprint: string;
   issuedAt: string;
   sequence: number;
   artifact: RunEvidenceArtifact | null;
@@ -284,7 +374,8 @@ export function createRunEvidenceRecord(
   if (!isAdmissibleSubject(inputs.kind, inputs.subject)) return null;
   if (!TASK_ID_RE.test(inputs.taskId)) return null;
   if (!RUN_ID_RE.test(inputs.runId)) return null;
-  if (!nonEmpty(inputs.workspaceRoot) || !nonEmpty(inputs.issuedAt)) return null;
+  if (!HEX64_RE.test(inputs.workspaceFingerprint)) return null;
+  if (!nonEmpty(inputs.issuedAt)) return null;
   if (!Number.isInteger(inputs.sequence) || inputs.sequence < 0) return null;
 
   let artifact: RunEvidenceArtifact | null = null;
@@ -300,10 +391,11 @@ export function createRunEvidenceRecord(
     subject: inputs.subject,
     taskId: inputs.taskId,
     runId: inputs.runId,
-    workspaceRoot: inputs.workspaceRoot,
+    workspaceFingerprint: inputs.workspaceFingerprint,
     issuedAt: inputs.issuedAt,
     sequence: inputs.sequence,
     artifact,
+    evidenceClass: artifact === null ? "invocation-only" : "artifact-backed",
   };
   const seal = sealRunEvidenceBody(body, issuerKey);
   if (seal === null) return null;
@@ -352,12 +444,14 @@ function readArtifact(value: unknown): RunEvidenceArtifact | null | "invalid" {
  * This deliberately does not go through `createRunEvidenceRecord`: that
  * constructor seals, and re-sealing a record on read would mint a valid seal for
  * a forged body — the exact failure this whole module exists to prevent. Read
- * takes the seal as found and lets the matcher judge it.
+ * takes the seal as found and lets the matcher judge it. The return type is
+ * `RawRunEvidenceRecord` precisely because nothing here validates `kind` or
+ * `evidenceClass`.
  *
  * Returns `null` for a record too malformed to even carry a subject; the caller
  * counts those rather than failing the ledger (rule 2 in the header).
  */
-function readRecord(value: unknown): RunEvidenceRecord | null {
+function readRecord(value: unknown): RawRunEvidenceRecord | null {
   const row = asRecord(value);
   if (row === null) return null;
   const artifact = readArtifact(row.artifact);
@@ -366,15 +460,17 @@ function readRecord(value: unknown): RunEvidenceRecord | null {
   const subject = row.subject;
   if (typeof kind !== "string" || typeof subject !== "string") return null;
   return {
-    kind: kind as RunEvidenceKind,
+    kind,
     subject,
     taskId: typeof row.taskId === "string" ? row.taskId : "",
     runId: typeof row.runId === "string" ? row.runId : "",
-    workspaceRoot: typeof row.workspaceRoot === "string" ? row.workspaceRoot : "",
+    workspaceFingerprint:
+      typeof row.workspaceFingerprint === "string" ? row.workspaceFingerprint : "",
     issuedAt: typeof row.issuedAt === "string" ? row.issuedAt : "",
     sequence:
       typeof row.sequence === "number" && Number.isInteger(row.sequence) ? row.sequence : -1,
     artifact,
+    evidenceClass: typeof row.evidenceClass === "string" ? row.evidenceClass : "",
     seal: typeof row.seal === "string" ? row.seal : "",
   };
 }
@@ -422,8 +518,14 @@ export function parseRunEvidenceLedger(raw: string | null): RunEvidenceParseResu
   }
 
   // --- then shape ---
-  if (!nonEmpty(root.runId)) {
-    return { status: "malformed", diagnostic: "the run-evidence ledger is missing `runId`." };
+  // The run id is validated against its real shape, not merely for non-emptiness:
+  // a ledger whose identity is unparseable can never be proved to answer any
+  // reader's question, and admitting it would only defer the refusal.
+  if (typeof root.runId !== "string" || !RUN_ID_RE.test(root.runId)) {
+    return {
+      status: "malformed",
+      diagnostic: "the run-evidence ledger declares no well-formed `runId`.",
+    };
   }
   if (!Array.isArray(root.records)) {
     return {
@@ -432,7 +534,7 @@ export function parseRunEvidenceLedger(raw: string | null): RunEvidenceParseResu
     };
   }
 
-  const records: RunEvidenceRecord[] = [];
+  const records: RawRunEvidenceRecord[] = [];
   let unreadableRecords = 0;
   for (const candidate of root.records) {
     const record = readRecord(candidate);
@@ -464,22 +566,40 @@ export type RunEvidenceUnmatchedReason =
   | "record-inadmissible"
   /** A well-formed seal that is not the one this issuer would produce. */
   | "seal-mismatch"
-  /** The record claims a different run than the ledger it sits in. */
-  | "run-mismatch";
+  /** The record claims a different run than the ledger it sits in, or the ledger
+   *  claims a different run than the reader asked about. */
+  | "run-mismatch"
+  /** The record attests a different task than the reader asked about. */
+  | "task-mismatch";
 
 export interface RunEvidenceMatch {
-  record: RunEvidenceRecord;
+  record: RawRunEvidenceRecord;
   matched: boolean;
   reason: RunEvidenceUnmatchedReason | null;
+}
+
+/** What the reader asked about. Matching is judged against THIS, never against the
+ *  ledger's own self-description alone. */
+export interface RunEvidenceExpectation {
+  runId: string;
+  taskId: string;
 }
 
 /**
  * Classify every record as matched or unmatched, with a stated reason.
  *
  * EVERY branch that cannot PROVE the seal returns `matched: false` — missing
- * issuer, absent seal, inadmissible fields, a mismatched digest, and a record
- * claiming a run other than its ledger's. Ambiguity retains and never grants
+ * issuer, absent seal, inadmissible fields, a mismatched digest, a record claiming
+ * a run other than its ledger's, and a ledger or record that does not answer the
+ * question the reader actually asked. Ambiguity retains and never grants
  * authority: there is no "probably a receipt".
+ *
+ * THE EXPECTATION IS NOT OPTIONAL, and the reason is a real attack. The
+ * destination path is derivable by anyone who can read the source, and every
+ * record in a genuine ledger carries a genuine seal — so COPYING one task's
+ * ledger onto another task's destination would, without this check, hand the
+ * second task the first task's proven phases. A seal proves who ISSUED a record;
+ * only comparing against the expectation proves it answers THIS question.
  *
  * `issuerKey === null` is the whole-set case rather than a throw: a reader with no
  * binding must report that it proved nothing, not crash and not assume.
@@ -487,6 +607,7 @@ export interface RunEvidenceMatch {
 export function matchRunEvidence(
   ledger: RunEvidenceLedger,
   issuerKey: string | null,
+  expected: RunEvidenceExpectation,
 ): RunEvidenceMatch[] {
   return ledger.records.map((record) => {
     if (issuerKey === null || !HEX64_RE.test(issuerKey)) {
@@ -495,35 +616,41 @@ export function matchRunEvidence(
     if (!HEX64_RE.test(record.seal)) {
       return { record, matched: false, reason: "seal-absent" as const };
     }
-    if (record.runId !== ledger.runId) {
+    if (record.runId !== ledger.runId || ledger.runId !== expected.runId) {
       return { record, matched: false, reason: "run-mismatch" as const };
+    }
+    if (record.taskId !== expected.taskId) {
+      return { record, matched: false, reason: "task-mismatch" as const };
     }
     const admissible =
       (RUN_EVIDENCE_KINDS as readonly string[]).includes(record.kind) &&
-      isAdmissibleSubject(record.kind, record.subject) &&
+      isAdmissibleSubject(record.kind as RunEvidenceKind, record.subject) &&
+      (record.evidenceClass === "artifact-backed" ||
+        record.evidenceClass === "invocation-only") &&
       TASK_ID_RE.test(record.taskId) &&
       RUN_ID_RE.test(record.runId) &&
-      nonEmpty(record.workspaceRoot) &&
+      HEX64_RE.test(record.workspaceFingerprint) &&
       nonEmpty(record.issuedAt) &&
       Number.isInteger(record.sequence) &&
       record.sequence >= 0;
     if (!admissible) {
       return { record, matched: false, reason: "record-inadmissible" as const };
     }
-    const expected = sealRunEvidenceBody(
+    const expectedSeal = sealRunEvidenceBody(
       {
-        kind: record.kind,
+        kind: record.kind as RunEvidenceKind,
         subject: record.subject,
         taskId: record.taskId,
         runId: record.runId,
-        workspaceRoot: record.workspaceRoot,
+        workspaceFingerprint: record.workspaceFingerprint,
         issuedAt: record.issuedAt,
         sequence: record.sequence,
         artifact: record.artifact,
+        evidenceClass: record.evidenceClass as RunEvidenceClass,
       },
       issuerKey,
     );
-    if (expected === null || !sealEquals(expected, record.seal)) {
+    if (expectedSeal === null || !sealEquals(expectedSeal, record.seal)) {
       return { record, matched: false, reason: "seal-mismatch" as const };
     }
     return { record, matched: true, reason: null };
@@ -532,7 +659,8 @@ export function matchRunEvidence(
 
 /** The receipt-bearing phases a run has PROVEN, in the closed set's own order.
  *  Derived only from matched `phase-receipt` records — an unmatched record
- *  contributes nothing, which is the whole point. */
+ *  contributes nothing, which is the whole point. De-duplicating is what keeps a
+ *  verdict correct when an append-only ledger carries a phase twice. */
 export function provenPhases(matches: readonly RunEvidenceMatch[]): ReceiptBearingPhase[] {
   const proven = new Set(
     matches
@@ -546,14 +674,22 @@ export function provenPhases(matches: readonly RunEvidenceMatch[]): ReceiptBeari
 // The issuer binding
 // ---------------------------------------------------------------------------
 
+/** The issuer binding's own version, SEPARATE from the ledger's `formatVersion`.
+ *  They are two independently-evolving concepts: widening the ledger schema must
+ *  not invalidate a machine's key (which would silently reclassify every receipt
+ *  it ever issued as tampered), and rotating the key format must not require a
+ *  ledger bump. Keying both to one constant would couple exactly that. */
+export const RUN_EVIDENCE_ISSUER_VERSION = 1 as const;
+
 export interface RunEvidenceIssuer {
-  issuerVersion: number;
   key: string;
 }
 
 /** Parse the machine-local issuer binding. Returns `null` on anything it cannot
  *  fully trust — an unparseable, wrong-version, or malformed binding proves
- *  nothing, and a reader with no key reports exactly that. */
+ *  nothing, and a reader with no key reports exactly that. The version check is a
+ *  pure gate; the observed value is not echoed back, because a field that can
+ *  never differ from the constant it was compared against tells a reader nothing. */
 export function parseRunEvidenceIssuer(raw: string | null): RunEvidenceIssuer | null {
   if (raw === null) return null;
   let data: unknown;
@@ -564,14 +700,14 @@ export function parseRunEvidenceIssuer(raw: string | null): RunEvidenceIssuer | 
   }
   const row = asRecord(data);
   if (row === null) return null;
-  if (row.issuerVersion !== RUN_EVIDENCE_FORMAT_VERSION) return null;
+  if (row.issuerVersion !== RUN_EVIDENCE_ISSUER_VERSION) return null;
   if (typeof row.key !== "string" || !HEX64_RE.test(row.key)) return null;
-  return { issuerVersion: RUN_EVIDENCE_FORMAT_VERSION, key: row.key };
+  return { key: row.key };
 }
 
 /** Serialize a freshly minted issuer binding. */
 export function serializeRunEvidenceIssuer(key: string): string {
-  return `${JSON.stringify({ issuerVersion: RUN_EVIDENCE_FORMAT_VERSION, key }, null, 2)}\n`;
+  return `${JSON.stringify({ issuerVersion: RUN_EVIDENCE_ISSUER_VERSION, key }, null, 2)}\n`;
 }
 
 /**

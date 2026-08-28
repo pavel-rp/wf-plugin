@@ -24,6 +24,7 @@ import {
 } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -262,6 +263,31 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     writeFile: (absPath, content) => {
       mkdirSync(dirname(absPath), { recursive: true });
       writeFileSync(absPath, content, { encoding: "utf8" });
+    },
+
+    /** A write for a SECRET, kept separate from `writeFile` on purpose: the mode
+     *  belongs to this one caller (WF-490's run-evidence issuer binding, whose
+     *  whole value is that nothing else can read it) and must not silently change
+     *  the permissions of ordinary project content. The default 0666 & ~umask
+     *  would leave the key readable by every other local account on a shared host
+     *  or container. `mode` applies on creation, so an existing binding keeps its
+     *  permissions; the key is minted once and never rewritten. */
+    writePrivateFile: (absPath, content) => {
+      mkdirSync(dirname(absPath), { recursive: true, mode: 0o700 });
+      writeFileSync(absPath, content, { encoding: "utf8", mode: 0o600 });
+    },
+
+    /** The machine-local home for bindings that must live OUTSIDE the audited
+     *  workspace. `os.homedir()` throws on some exotic environments and can
+     *  legitimately be unset, so a failure is reported as `null` rather than
+     *  guessed at — the caller degrades with a stated consequence. */
+    machineLocalHome: () => {
+      try {
+        const home = homedir();
+        return typeof home === "string" && home.length > 0 ? normalizeSlashes(home) : null;
+      } catch {
+        return null;
+      }
     },
 
     listDirs: (absDir) => {

@@ -409,16 +409,18 @@ detail, not items.
 
 ### Record the phase-completion receipt
 
-Reached **after** `04_verify.md` is written, so the receipt attests work that actually
+Reached **after** the report is written, so the receipt attests work that actually
 happened. Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot,
 kind: "phase-receipt", subject: "verify-spec", taskId: {task-id}, artifactPath:
-"<task-folder>/04_verify.md" })`. The resolver derives the run identity, the workspace,
+"<the report path just written>" })` — normally `<task-folder>/04_verify.md`, and on the
+`<path-to-00_reqs.md>` override form the sibling path it actually went to, so the resolver
+digests the file that exists; skip the call when that path lies outside the workspace, the
+same carve-out the index step takes. The resolver derives the run identity, the workspace,
 the timestamp and the sequence itself, digests the named artifact itself, and seals the
 record — this skill asserts none of them, which is what makes the receipt proof rather
 than a claim, and why it never writes the destination directly. **Non-blocking, always:**
 a `refused` outcome (or an unavailable resolver) is reported in one line and changes
-nothing else — the verdict is unaffected, no gate is added, and the block below is
-emitted unchanged.
+nothing else — the verdict is unaffected and the block below is emitted unchanged.
 
 End with the final-output block (see below).
 

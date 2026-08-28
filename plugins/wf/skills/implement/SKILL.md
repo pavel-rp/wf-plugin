@@ -320,22 +320,6 @@ Nothing is announced anywhere. Execution simply ends — no external record is o
 annotated, and no operation of any kind is emitted at this point. Proceed to the completion report.
 <!-- wf:slot-end implement.finish -->
 
----
-
-## Phase 5.7: Record the phase-completion receipt
-
-Reached **after** the handoff checks have run and every step is ticked, so the receipt attests work
-that actually happened. Call the bundled `wf-resolver` MCP tool `record_run_evidence({
-workspaceRoot, kind: "phase-receipt", subject: "implement", taskId: {task-id}, artifactPath:
-"{task-root}/{task-id}/02_plan.md" })` — the plan is the artifact this phase leaves changed, and by
-this point every one of its checkboxes is ticked. The resolver derives the run identity,
-the workspace, the timestamp and the sequence itself, digests the named artifact itself, and seals
-the record — this skill asserts none of them, which is what makes the receipt proof rather than a
-claim, and why it never writes the destination directly.
-
-**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line
-and changes nothing else: the source changes are already made and the checkboxes already ticked, no
-gate is added, no prompt is raised, and the completion report is emitted unchanged.
 
 ---
 
@@ -383,6 +367,25 @@ Append a `## Resolution Summary` section at the bottom of `02_plan.md`:
 ```
 
 **After appending the Resolution Summary**, invoke `/wf:index {id} plan "implemented · <n> steps"` to refresh the `plan` row's summary so the index reflects the post-implementation state. Substitute the total step count from the plan.
+
+### Record the phase-completion receipt
+
+**Last, after the Resolution Summary is appended** — deliberately here and not before the
+completion report, because the resolver digests the artifact at call time and this phase keeps
+writing to `02_plan.md` in this section. A receipt filed earlier would seal a digest that the
+phase's own next step invalidates, making the one receipt of the seven that is guaranteed stale.
+
+Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind:
+"phase-receipt", subject: "implement", taskId: {task-id}, artifactPath:
+"{task-root}/{task-id}/02_plan.md" })` — the plan is the artifact this phase leaves changed, and by
+this point every checkbox is ticked and the Resolution Summary is written. The resolver derives the
+run identity, the workspace, the timestamp and the sequence itself, digests the named artifact
+itself, and seals the record — this skill asserts none of them, which is what makes the receipt
+proof rather than a claim, and why it never writes the destination directly.
+
+**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line
+and changes nothing else: the source changes are already made and the checkboxes already ticked, no
+gate is added, no prompt is raised, and the completion report already emitted stands unchanged.
 
 ---
 

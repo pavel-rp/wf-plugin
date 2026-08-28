@@ -23677,6 +23677,7 @@ import {
 } from "node:fs";
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { createHash as createHash3 } from "node:crypto";
+import { homedir } from "node:os";
 import { basename, dirname as dirname2, isAbsolute as isAbsolute4, relative as relative2, resolve as resolve3, sep as sep2 } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25787,6 +25788,29 @@ function createDefaultPorts(workspaceRoot) {
     writeFile: (absPath, content) => {
       mkdirSync2(dirname2(absPath), { recursive: true });
       writeFileSync2(absPath, content, { encoding: "utf8" });
+    },
+    /** A write for a SECRET, kept separate from `writeFile` on purpose: the mode
+     *  belongs to this one caller (WF-490's run-evidence issuer binding, whose
+     *  whole value is that nothing else can read it) and must not silently change
+     *  the permissions of ordinary project content. The default 0666 & ~umask
+     *  would leave the key readable by every other local account on a shared host
+     *  or container. `mode` applies on creation, so an existing binding keeps its
+     *  permissions; the key is minted once and never rewritten. */
+    writePrivateFile: (absPath, content) => {
+      mkdirSync2(dirname2(absPath), { recursive: true, mode: 448 });
+      writeFileSync2(absPath, content, { encoding: "utf8", mode: 384 });
+    },
+    /** The machine-local home for bindings that must live OUTSIDE the audited
+     *  workspace. `os.homedir()` throws on some exotic environments and can
+     *  legitimately be unset, so a failure is reported as `null` rather than
+     *  guessed at — the caller degrades with a stated consequence. */
+    machineLocalHome: () => {
+      try {
+        const home = homedir();
+        return typeof home === "string" && home.length > 0 ? normalizeSlashes(home) : null;
+      } catch {
+        return null;
+      }
     },
     listDirs: (absDir) => {
       try {
@@ -29784,7 +29808,8 @@ function renderProfileMutation(current, updates, label2) {
 import { createHmac, randomBytes as randomBytes3, timingSafeEqual } from "node:crypto";
 var RUN_EVIDENCE_FORMAT_VERSION = 1;
 var RUN_EVIDENCE_DIR = ".wf/run-evidence";
-var RUN_EVIDENCE_ISSUER_PATH = "_local/run-evidence-issuer.json";
+var RUN_EVIDENCE_ISSUER_DIR = ".wf-run-evidence";
+var MAX_RUN_EVIDENCE_RECORDS = 512;
 var RECEIPT_BEARING_PHASES = [
   "spec",
   "plan",
@@ -29806,9 +29831,27 @@ function asRecord3(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
   return value;
 }
+function workspaceFingerprint(workspaceRoot) {
+  return sha256Hex(JSON.stringify(["run-evidence-workspace", workspaceRoot]));
+}
+function runEvidenceRunId(workspaceRoot, taskId) {
+  return sha256Hex(
+    JSON.stringify(["run-evidence-run", workspaceFingerprint(workspaceRoot), taskId])
+  ).slice(0, 32);
+}
+function runEvidenceIssuerRelPath(workspaceRoot) {
+  return `${RUN_EVIDENCE_ISSUER_DIR}/issuer-${workspaceFingerprint(workspaceRoot).slice(0, 32)}.json`;
+}
 var RUN_EVIDENCE_PREFIX = `${RUN_EVIDENCE_DIR}/`;
 function runEvidenceDestination(runId) {
   return `${RUN_EVIDENCE_PREFIX}${runId}.json`;
+}
+function isDeclaredRunEvidenceArtifact(destination) {
+  if (!destination.startsWith(RUN_EVIDENCE_PREFIX)) return false;
+  const filename = destination.slice(RUN_EVIDENCE_PREFIX.length);
+  if (filename.length === 0 || filename.includes("/")) return false;
+  if (!filename.endsWith(".json")) return false;
+  return RUN_ID_RE.test(filename.slice(0, -".json".length));
 }
 function canonicalRunEvidenceBody(body) {
   return JSON.stringify([
@@ -29817,9 +29860,10 @@ function canonicalRunEvidenceBody(body) {
     ["subject", body.subject],
     ["taskId", body.taskId],
     ["runId", body.runId],
-    ["workspaceRoot", body.workspaceRoot],
+    ["workspaceFingerprint", body.workspaceFingerprint],
     ["issuedAt", body.issuedAt],
     ["sequence", body.sequence],
+    ["evidenceClass", body.evidenceClass],
     [
       "artifact",
       body.artifact === null ? null : [body.artifact.path, body.artifact.sha256, body.artifact.bytes]
@@ -29849,7 +29893,8 @@ function createRunEvidenceRecord(inputs, issuerKey) {
   if (!isAdmissibleSubject(inputs.kind, inputs.subject)) return null;
   if (!TASK_ID_RE.test(inputs.taskId)) return null;
   if (!RUN_ID_RE.test(inputs.runId)) return null;
-  if (!nonEmpty3(inputs.workspaceRoot) || !nonEmpty3(inputs.issuedAt)) return null;
+  if (!HEX64_RE.test(inputs.workspaceFingerprint)) return null;
+  if (!nonEmpty3(inputs.issuedAt)) return null;
   if (!Number.isInteger(inputs.sequence) || inputs.sequence < 0) return null;
   let artifact = null;
   if (inputs.artifact !== null) {
@@ -29863,10 +29908,11 @@ function createRunEvidenceRecord(inputs, issuerKey) {
     subject: inputs.subject,
     taskId: inputs.taskId,
     runId: inputs.runId,
-    workspaceRoot: inputs.workspaceRoot,
+    workspaceFingerprint: inputs.workspaceFingerprint,
     issuedAt: inputs.issuedAt,
     sequence: inputs.sequence,
-    artifact
+    artifact,
+    evidenceClass: artifact === null ? "invocation-only" : "artifact-backed"
   };
   const seal = sealRunEvidenceBody(body, issuerKey);
   if (seal === null) return null;
@@ -29908,10 +29954,11 @@ function readRecord(value) {
     subject,
     taskId: typeof row.taskId === "string" ? row.taskId : "",
     runId: typeof row.runId === "string" ? row.runId : "",
-    workspaceRoot: typeof row.workspaceRoot === "string" ? row.workspaceRoot : "",
+    workspaceFingerprint: typeof row.workspaceFingerprint === "string" ? row.workspaceFingerprint : "",
     issuedAt: typeof row.issuedAt === "string" ? row.issuedAt : "",
     sequence: typeof row.sequence === "number" && Number.isInteger(row.sequence) ? row.sequence : -1,
     artifact,
+    evidenceClass: typeof row.evidenceClass === "string" ? row.evidenceClass : "",
     seal: typeof row.seal === "string" ? row.seal : ""
   };
 }
@@ -29942,8 +29989,11 @@ function parseRunEvidenceLedger(raw) {
       diagnostic: `the run-evidence ledger declares \`formatVersion\` ${rawVersion}; this release understands only ${RUN_EVIDENCE_FORMAT_VERSION}.`
     };
   }
-  if (!nonEmpty3(root.runId)) {
-    return { status: "malformed", diagnostic: "the run-evidence ledger is missing `runId`." };
+  if (typeof root.runId !== "string" || !RUN_ID_RE.test(root.runId)) {
+    return {
+      status: "malformed",
+      diagnostic: "the run-evidence ledger declares no well-formed `runId`."
+    };
   }
   if (!Array.isArray(root.records)) {
     return {
@@ -29967,7 +30017,7 @@ function parseRunEvidenceLedger(raw) {
     unreadableRecords
   };
 }
-function matchRunEvidence(ledger, issuerKey) {
+function matchRunEvidence(ledger, issuerKey, expected) {
   return ledger.records.map((record2) => {
     if (issuerKey === null || !HEX64_RE.test(issuerKey)) {
       return { record: record2, matched: false, reason: "issuer-unavailable" };
@@ -29975,27 +30025,31 @@ function matchRunEvidence(ledger, issuerKey) {
     if (!HEX64_RE.test(record2.seal)) {
       return { record: record2, matched: false, reason: "seal-absent" };
     }
-    if (record2.runId !== ledger.runId) {
+    if (record2.runId !== ledger.runId || ledger.runId !== expected.runId) {
       return { record: record2, matched: false, reason: "run-mismatch" };
     }
-    const admissible = RUN_EVIDENCE_KINDS.includes(record2.kind) && isAdmissibleSubject(record2.kind, record2.subject) && TASK_ID_RE.test(record2.taskId) && RUN_ID_RE.test(record2.runId) && nonEmpty3(record2.workspaceRoot) && nonEmpty3(record2.issuedAt) && Number.isInteger(record2.sequence) && record2.sequence >= 0;
+    if (record2.taskId !== expected.taskId) {
+      return { record: record2, matched: false, reason: "task-mismatch" };
+    }
+    const admissible = RUN_EVIDENCE_KINDS.includes(record2.kind) && isAdmissibleSubject(record2.kind, record2.subject) && (record2.evidenceClass === "artifact-backed" || record2.evidenceClass === "invocation-only") && TASK_ID_RE.test(record2.taskId) && RUN_ID_RE.test(record2.runId) && HEX64_RE.test(record2.workspaceFingerprint) && nonEmpty3(record2.issuedAt) && Number.isInteger(record2.sequence) && record2.sequence >= 0;
     if (!admissible) {
       return { record: record2, matched: false, reason: "record-inadmissible" };
     }
-    const expected = sealRunEvidenceBody(
+    const expectedSeal = sealRunEvidenceBody(
       {
         kind: record2.kind,
         subject: record2.subject,
         taskId: record2.taskId,
         runId: record2.runId,
-        workspaceRoot: record2.workspaceRoot,
+        workspaceFingerprint: record2.workspaceFingerprint,
         issuedAt: record2.issuedAt,
         sequence: record2.sequence,
-        artifact: record2.artifact
+        artifact: record2.artifact,
+        evidenceClass: record2.evidenceClass
       },
       issuerKey
     );
-    if (expected === null || !sealEquals(expected, record2.seal)) {
+    if (expectedSeal === null || !sealEquals(expectedSeal, record2.seal)) {
       return { record: record2, matched: false, reason: "seal-mismatch" };
     }
     return { record: record2, matched: true, reason: null };
@@ -30007,6 +30061,7 @@ function provenPhases(matches) {
   );
   return RECEIPT_BEARING_PHASES.filter((phase) => proven.has(phase));
 }
+var RUN_EVIDENCE_ISSUER_VERSION = 1;
 function parseRunEvidenceIssuer(raw) {
   if (raw === null) return null;
   let data;
@@ -30017,12 +30072,12 @@ function parseRunEvidenceIssuer(raw) {
   }
   const row = asRecord3(data);
   if (row === null) return null;
-  if (row.issuerVersion !== RUN_EVIDENCE_FORMAT_VERSION) return null;
+  if (row.issuerVersion !== RUN_EVIDENCE_ISSUER_VERSION) return null;
   if (typeof row.key !== "string" || !HEX64_RE.test(row.key)) return null;
-  return { issuerVersion: RUN_EVIDENCE_FORMAT_VERSION, key: row.key };
+  return { key: row.key };
 }
 function serializeRunEvidenceIssuer(key) {
-  return `${JSON.stringify({ issuerVersion: RUN_EVIDENCE_FORMAT_VERSION, key }, null, 2)}
+  return `${JSON.stringify({ issuerVersion: RUN_EVIDENCE_ISSUER_VERSION, key }, null, 2)}
 `;
 }
 function mintRunEvidenceIssuerKey() {
@@ -33266,19 +33321,88 @@ var ResolverService = class _ResolverService {
    * in, which is what lets a later reader join them.
    */
   runEvidenceRunId(taskId) {
-    return sha256Hex(JSON.stringify([this.ports.workspaceRoot, taskId])).slice(0, 32);
+    return runEvidenceRunId(this.ports.workspaceRoot, taskId);
   }
-  /** Load the machine-local issuer binding, minting one on first use when asked.
-   *  The READ path never mints: a reader that minted a key would manufacture an
-   *  issuer that never issued anything and then prove nothing with it. */
+  /**
+   * Read a run-evidence file, treating an I/O failure exactly like absence.
+   *
+   * The whole class is EVIDENCE: an unreadable ledger proves nothing, which is the
+   * same answer as a missing one, and neither is a reason to throw into a phase
+   * that has already completed its real work.
+   */
+  runEvidenceRead(absPath) {
+    try {
+      return this.ports.readFile(absPath);
+    } catch {
+      return null;
+    }
+  }
+  /** Durably write a run-evidence file, reporting failure instead of throwing.
+   *  This is what makes each call site's "non-blocking" promise a property of the
+   *  MECHANISM rather than of the prose describing it: a read-only filesystem or a
+   *  full disk yields a stated refusal, never an exception surfacing in a phase
+   *  whose actual work already succeeded. */
+  runEvidenceWrite(absPath, content, secret = false) {
+    try {
+      if (secret && this.ports.writePrivateFile) this.ports.writePrivateFile(absPath, content);
+      else this.ports.writeFile(absPath, content);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+  /**
+   * The absolute path of the machine-local issuer binding.
+   *
+   * OUTSIDE THE AUDITED WORKSPACE whenever the runtime can say where that is. The
+   * seal defends against an agent that reads and writes the workspace, and the
+   * canonical body and seal algorithm are public in-repo source — so a key stored
+   * inside the workspace would be one file read away from a forged receipt. The
+   * optional `machineLocalHome` port is what moves it out; when a port set omits
+   * it (an in-memory double), the binding degrades to a workspace-relative path
+   * that still works but no longer has that property.
+   */
+  runEvidenceIssuerPath() {
+    const rel = runEvidenceIssuerRelPath(this.ports.workspaceRoot);
+    const home = this.ports.machineLocalHome ? this.ports.machineLocalHome() : null;
+    if (home === null || home.length === 0) return this.absolutize(`_local/${rel}`);
+    return `${home.replace(/\\/g, "/").replace(/\/$/, "")}/${rel}`;
+  }
+  /**
+   * Load the machine-local issuer binding, minting one ONLY on genuine absence.
+   *
+   * The READ path never mints: a reader that minted a key would manufacture an
+   * issuer that never issued anything and then prove nothing with it.
+   *
+   * A PRESENT-BUT-UNTRUSTED BINDING IS NEVER OVERWRITTEN. Absence and
+   * "unparseable, wrong version, or malformed key" are different facts, and
+   * minting over the second would irreversibly destroy the key that proves every
+   * receipt already issued on this machine — silently reclassifying all of them
+   * from genuine to tampered. So the mint is gated on the file being absent, and
+   * an untrusted binding refuses, which is the same version-before-shape posture
+   * the ledger reader takes.
+   */
   runEvidenceIssuerKey(mint) {
-    const abs = this.absolutize(RUN_EVIDENCE_ISSUER_PATH);
-    const existing = parseRunEvidenceIssuer(this.ports.readFile(abs));
-    if (existing !== null) return existing.key;
-    if (!mint) return null;
+    const abs = this.runEvidenceIssuerPath();
+    const raw = this.runEvidenceRead(abs);
+    const existing = parseRunEvidenceIssuer(raw);
+    if (existing !== null) return { key: existing.key, diagnostic: null };
+    if (raw !== null) {
+      return {
+        key: null,
+        diagnostic: "the machine-local run-evidence issuer binding is present but unreadable at this version; it is never overwritten, because minting over it would destroy the key proving every receipt already issued."
+      };
+    }
+    if (!mint) return { key: null, diagnostic: null };
     const key = mintRunEvidenceIssuerKey();
-    this.ports.writeFile(abs, serializeRunEvidenceIssuer(key));
-    return key;
+    const failure2 = this.runEvidenceWrite(abs, serializeRunEvidenceIssuer(key), true);
+    if (failure2 !== null) {
+      return {
+        key: null,
+        diagnostic: `the machine-local run-evidence issuer binding could not be established: ${failure2}`
+      };
+    }
+    return { key, diagnostic: null };
   }
   /** Workspace-relative, non-escaping, non-absolute. A path failing this is
    *  refused rather than normalized — the artifact reference comes from a caller,
@@ -33343,7 +33467,7 @@ var ResolverService = class _ResolverService {
           `\`${named}\` is not a workspace-relative path; a receipt never names an artifact outside the workspace.`
         );
       }
-      const content = this.ports.readFile(this.absolutize(rel));
+      const content = this.runEvidenceRead(this.absolutize(rel));
       if (content === null) {
         return refuse(
           `the named artifact \`${rel}\` does not exist; no receipt is issued for a phase whose output is absent.`
@@ -33351,15 +33475,32 @@ var ResolverService = class _ResolverService {
       }
       artifact = { path: rel, sha256: sha256Hex(content), bytes: Buffer.byteLength(content, "utf8") };
     }
+    if (!isDeclaredRunEvidenceArtifact(destination)) {
+      return refuse(
+        `\`${destination}\` is not a declared run-evidence artifact; the resolver refuses to write outside the declared class.`
+      );
+    }
     const absLedger = this.absolutize(destination);
-    const parsed = parseRunEvidenceLedger(this.ports.readFile(absLedger));
+    const parsed = parseRunEvidenceLedger(this.runEvidenceRead(absLedger));
     if (parsed.status === "unsupported" || parsed.status === "malformed") {
       return refuse(parsed.diagnostic);
     }
     const existing = parsed.status === "ok" ? parsed.ledger.records : [];
-    const issuerKey = this.runEvidenceIssuerKey(true);
-    if (issuerKey === null) {
-      return refuse("the machine-local run-evidence issuer binding could not be established.");
+    if (parsed.status === "ok" && parsed.unreadableRecords > 0) {
+      return refuse(
+        `the run-evidence ledger carries ${parsed.unreadableRecords} unreadable record(s); appending would erase them, so it is refused rather than rewritten.`
+      );
+    }
+    if (existing.length >= MAX_RUN_EVIDENCE_RECORDS) {
+      return refuse(
+        `the run-evidence ledger already holds ${existing.length} records (the bound is ${MAX_RUN_EVIDENCE_RECORDS}); a further append is refused rather than growing without limit.`
+      );
+    }
+    const issuer = this.runEvidenceIssuerKey(true);
+    if (issuer.key === null) {
+      return refuse(
+        issuer.diagnostic ?? "the machine-local run-evidence issuer binding could not be established."
+      );
     }
     const issuedAt = (/* @__PURE__ */ new Date()).toISOString();
     const record2 = createRunEvidenceRecord(
@@ -33368,17 +33509,17 @@ var ResolverService = class _ResolverService {
         subject: input.subject,
         taskId: input.taskId,
         runId,
-        workspaceRoot: this.ports.workspaceRoot,
+        workspaceFingerprint: workspaceFingerprint(this.ports.workspaceRoot),
         issuedAt,
         sequence: existing.length,
         artifact
       },
-      issuerKey
+      issuer.key
     );
     if (record2 === null) {
       return refuse("the run-evidence record is incomplete or self-contradictory.");
     }
-    this.ports.writeFile(
+    const writeFailure = this.runEvidenceWrite(
       absLedger,
       serializeRunEvidenceLedger({
         formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
@@ -33386,6 +33527,9 @@ var ResolverService = class _ResolverService {
         records: [...existing, record2]
       })
     );
+    if (writeFailure !== null) {
+      return refuse(`the run-evidence ledger could not be written: ${writeFailure}`);
+    }
     return {
       ...base,
       status: "recorded",
@@ -33417,7 +33561,7 @@ var ResolverService = class _ResolverService {
       provenPhases: [],
       receiptBearingPhases
     };
-    const parsed = parseRunEvidenceLedger(this.ports.readFile(this.absolutize(destination)));
+    const parsed = parseRunEvidenceLedger(this.runEvidenceRead(this.absolutize(destination)));
     if (parsed.status === "absent") {
       return {
         ...base,
@@ -33445,7 +33589,10 @@ var ResolverService = class _ResolverService {
         diagnostic: parsed.diagnostic
       };
     }
-    const matches = matchRunEvidence(parsed.ledger, this.runEvidenceIssuerKey(false));
+    const matches = matchRunEvidence(parsed.ledger, this.runEvidenceIssuerKey(false).key, {
+      runId,
+      taskId
+    });
     return {
       ...base,
       status: "ok",
@@ -33458,13 +33605,15 @@ var ResolverService = class _ResolverService {
         taskId: match.record.taskId,
         issuedAt: match.record.issuedAt,
         sequence: match.record.sequence,
+        evidenceClass: match.record.evidenceClass,
         artifact: match.record.artifact
       })),
       unmatched: matches.filter((match) => !match.matched).map((match) => ({
         kind: match.record.kind,
         subject: match.record.subject,
         sequence: match.record.sequence,
-        reason: match.reason ?? "unmatched"
+        // Non-null on every `matched: false` branch by construction.
+        reason: match.reason
       })),
       provenPhases: provenPhases(matches),
       diagnostic: null

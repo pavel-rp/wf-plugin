@@ -1,8 +1,9 @@
 # Violation fixture — W2, an undeclared lifecycle artifact class
 
-Every non-comment, non-blank line below is a planted W2: a committed lifecycle path that is neither
-`.wf/slots/<skill>.<point>.md` nor `.wf/install-state.json`. Lifecycle ownership does not widen the
-admitted artifact classes, so naming the resolver on the line does not excuse any of them.
+Every non-comment, non-blank line below is a planted W2: a committed lifecycle path that is none of
+`.wf/slots/<skill>.<point>.md`, `.wf/run-evidence/<run>.json`, or `.wf/install-state.json`.
+Lifecycle ownership does not widen the admitted artifact classes, so naming the resolver on the
+line does not excuse any of them.
 
 The resolver writes its run cache to `.wf/cache/resolution.json` between invocations.
 

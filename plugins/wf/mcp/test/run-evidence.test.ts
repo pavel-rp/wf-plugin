@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 import { normalizeSlashes } from "../src/resolver/paths.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
 import {
+  MAX_RUN_EVIDENCE_RECORDS,
   RECEIPT_BEARING_PHASES,
   RUN_EVIDENCE_FORMAT_VERSION,
   canonicalRunEvidenceBody,
@@ -36,6 +37,7 @@ import {
   parseRunEvidenceLedger,
   runEvidenceDestination,
   sealRunEvidenceBody,
+  workspaceFingerprint,
 } from "../src/resolver/run-evidence.js";
 
 const WS = "/ws";
@@ -217,12 +219,126 @@ test("with no issuer binding, nothing is proved rather than everything assumed",
     artifactPath: "_local/WF-490/01_spec.md",
   });
 
-  // Remove the machine-local binding, leaving the portable evidence intact.
-  ports.files.delete(normalizeSlashes(`${WS}/_local/run-evidence-issuer.json`));
+  // Remove the machine-local binding, leaving the portable evidence intact. The
+  // binding is keyed on the workspace, so find it rather than spelling its path.
+  for (const key of [...ports.files.keys()]) {
+    if (key.includes("issuer-")) ports.files.delete(key);
+  }
 
   const read = service.readRunEvidence(TASK);
   assert.equal(read.matched.length, 0);
   assert.equal(read.unmatched[0].reason, "issuer-unavailable");
+});
+
+test("a present but untrusted issuer binding is refused, never overwritten", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  service.recordRunEvidence({ kind: "phase-receipt", subject: "spec", taskId: TASK });
+
+  const issuerPath = [...ports.files.keys()].find((k) => k.includes("issuer-"))!;
+  const original = ports.files.get(issuerPath)!;
+  // A binding from a future release: present, parseable, but not this version.
+  ports.files.set(issuerPath, JSON.stringify({ issuerVersion: 99, key: "a".repeat(64) }));
+
+  const recorded = service.recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "ship",
+    taskId: TASK,
+  });
+  assert.equal(recorded.status, "refused");
+  assert.match(recorded.diagnostic ?? "", /never overwritten/);
+  // Minting over it would destroy the key proving every receipt already issued.
+  assert.notEqual(ports.files.get(issuerPath), original);
+  assert.equal(ports.files.get(issuerPath), JSON.stringify({ issuerVersion: 99, key: "a".repeat(64) }));
+});
+
+test("a ledger copied from another task proves nothing for the task asked about", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  seedArtifact(ports, "_local/WF-490/01_spec.md", "# spec\n");
+  // A wholly GENUINE ledger — every record correctly sealed — for task A.
+  service.recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "spec",
+    taskId: TASK,
+    artifactPath: "_local/WF-490/01_spec.md",
+  });
+  const sourcePath = normalizeSlashes(`${WS}/${ledgerPathFor(service)}`);
+  const genuine = ports.files.get(sourcePath)!;
+
+  // Copy it onto task B's destination, which anyone who can read the source can
+  // derive. Every seal in it is real; only the question being asked has changed.
+  const otherTask = "WF-999";
+  const otherDestination = service.readRunEvidence(otherTask).destination;
+  ports.files.set(normalizeSlashes(`${WS}/${otherDestination}`), genuine);
+
+  const read = service.readRunEvidence(otherTask);
+  assert.equal(read.matched.length, 0, "a genuine seal does not answer a different question");
+  assert.equal(read.unmatched[0].reason, "run-mismatch");
+  assert.deepEqual(read.provenPhases, []);
+  // And the original still proves what it always did.
+  assert.deepEqual(service.readRunEvidence(TASK).provenPhases, ["spec"]);
+});
+
+test("an append over an unreadable record refuses rather than erasing it", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  service.recordRunEvidence({ kind: "phase-receipt", subject: "spec", taskId: TASK });
+
+  const path = normalizeSlashes(`${WS}/${ledgerPathFor(service)}`);
+  const ledger = JSON.parse(ports.files.get(path)!);
+  ledger.records.push({ garbage: true });
+  const tampered = `${JSON.stringify(ledger, null, 2)}\n`;
+  ports.files.set(path, tampered);
+
+  const recorded = service.recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "ship",
+    taskId: TASK,
+  });
+  assert.equal(recorded.status, "refused");
+  assert.match(recorded.diagnostic ?? "", /unreadable record/);
+  // The forgery signal is preserved, not laundered by the next legitimate append.
+  assert.equal(ports.files.get(path), tampered);
+  assert.equal(service.readRunEvidence(TASK).unreadableRecords, 1);
+});
+
+test("an artifact-backed receipt is distinguished from an invocation-only one", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  seedArtifact(ports, "_local/WF-490/01_spec.md", "# spec\n");
+  service.recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "spec",
+    taskId: TASK,
+    artifactPath: "_local/WF-490/01_spec.md",
+  });
+  service.recordRunEvidence({ kind: "phase-receipt", subject: "ship", taskId: TASK });
+
+  const read = service.readRunEvidence(TASK);
+  const bySubject = new Map(read.matched.map((m) => [m.subject, m.evidenceClass]));
+  // The resolver observed an artifact for one and nothing for the other; saying so
+  // is what stops a consumer treating the weaker claim as the stronger one.
+  assert.equal(bySubject.get("spec"), "artifact-backed");
+  assert.equal(bySubject.get("ship"), "invocation-only");
+});
+
+test("the ledger append is bounded rather than unbounded", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  for (let i = 0; i < MAX_RUN_EVIDENCE_RECORDS; i += 1) {
+    assert.equal(
+      service.recordRunEvidence({ kind: "gate-approval", subject: `g${i}`, taskId: TASK }).status,
+      "recorded",
+    );
+  }
+  const overflow = service.recordRunEvidence({
+    kind: "gate-approval",
+    subject: "one-too-many",
+    taskId: TASK,
+  });
+  assert.equal(overflow.status, "refused");
+  assert.match(overflow.diagnostic ?? "", /the bound is/);
 });
 
 test("a forged record beside a genuine one loses, and the genuine one survives", () => {
@@ -359,6 +475,68 @@ test("a receipt never names an artifact outside the workspace", () => {
 });
 
 // ---------------------------------------------------------------------------
+// 4b. Non-blocking is a property of the mechanism, not of the prose
+// ---------------------------------------------------------------------------
+//
+// Every call site promises that a failure is reported in one line and never
+// becomes a stop, a gate, or an error terminal. That promise is only real if the
+// service REFUSES on an I/O failure instead of throwing into a phase whose actual
+// work already succeeded — a read-only filesystem or a full disk must not turn a
+// completed phase into a failed one.
+
+test("a failing write is a stated refusal, never a throw", () => {
+  const ports = makePorts();
+  ports.writeFile = () => {
+    throw new Error("EROFS: read-only file system");
+  };
+  const service = new ResolverService(ports);
+
+  // The issuer binding is the first thing a cold run writes, so this exercises the
+  // earliest write on the path; the point is that it REFUSES with a stated reason.
+  const recorded = service.recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "ship",
+    taskId: TASK,
+  });
+  assert.equal(recorded.status, "refused");
+  assert.ok((recorded.diagnostic ?? "").length > 0, "the refusal states a reason");
+});
+
+test("a failing ledger write, with the issuer already established, also refuses", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  // Establish the issuer binding through a successful record first.
+  assert.equal(
+    service.recordRunEvidence({ kind: "phase-receipt", subject: "spec", taskId: TASK }).status,
+    "recorded",
+  );
+  ports.writeFile = () => {
+    throw new Error("ENOSPC: no space left on device");
+  };
+  const recorded = service.recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "ship",
+    taskId: TASK,
+  });
+  assert.equal(recorded.status, "refused");
+  assert.match(recorded.diagnostic ?? "", /no space left on device/);
+});
+
+test("a failing read is treated as absence, never a throw", () => {
+  const ports = makePorts();
+  ports.readFile = () => {
+    throw new Error("EIO");
+  };
+  const service = new ResolverService(ports);
+
+  // An unreadable ledger proves nothing, which is the same answer as a missing
+  // one — and neither is a reason to fail the phase.
+  const read = service.readRunEvidence(TASK);
+  assert.equal(read.status, "absent");
+  assert.deepEqual(read.provenPhases, []);
+});
+
+// ---------------------------------------------------------------------------
 // 5. The closed receipt-bearing set
 // ---------------------------------------------------------------------------
 
@@ -464,16 +642,18 @@ test("the canonical body is stable under object key order", () => {
     subject: "spec",
     taskId: TASK,
     runId: "b".repeat(32),
-    workspaceRoot: WS,
+    workspaceFingerprint: workspaceFingerprint(WS),
     issuedAt: "2026-08-28T00:00:00.000Z",
     sequence: 0,
     artifact: null,
+    evidenceClass: "invocation-only" as const,
   };
   const b = {
+    evidenceClass: "invocation-only" as const,
     artifact: null,
     sequence: 0,
     issuedAt: "2026-08-28T00:00:00.000Z",
-    workspaceRoot: WS,
+    workspaceFingerprint: workspaceFingerprint(WS),
     runId: "b".repeat(32),
     taskId: TASK,
     subject: "spec",
@@ -484,20 +664,45 @@ test("the canonical body is stable under object key order", () => {
   assert.equal(sealRunEvidenceBody(a, key), sealRunEvidenceBody(b, key));
 });
 
+test("the workspace binding is a digest, never the host path", () => {
+  const fingerprint = workspaceFingerprint(WS);
+  assert.match(fingerprint, /^[a-f0-9]{64}$/);
+  assert.notEqual(fingerprint, WS);
+  // Two workspaces bind differently; the same one binds identically.
+  assert.notEqual(fingerprint, workspaceFingerprint("/other"));
+  assert.equal(fingerprint, workspaceFingerprint(WS));
+});
+
+test("a receipt never persists the absolute host path", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  service.recordRunEvidence({ kind: "phase-receipt", subject: "ship", taskId: TASK });
+  const written = ports.files.get(normalizeSlashes(`${WS}/${ledgerPathFor(service)}`))!;
+  assert.equal(
+    written.includes(`"${WS}"`),
+    false,
+    "the sealed record binds a digest, so no local username or directory layout is written",
+  );
+});
+
 test("a malformed issuer key seals nothing", () => {
   const body = {
     kind: "phase-receipt" as const,
     subject: "spec",
     taskId: TASK,
     runId: "b".repeat(32),
-    workspaceRoot: WS,
+    workspaceFingerprint: workspaceFingerprint(WS),
     issuedAt: "2026-08-28T00:00:00.000Z",
     sequence: 0,
     artifact: null,
+    evidenceClass: "invocation-only" as const,
   };
   assert.equal(sealRunEvidenceBody(body, "short"), null);
   assert.equal(
-    matchRunEvidence({ formatVersion: 1, runId: "b".repeat(32), records: [] }, "short").length,
+    matchRunEvidence({ formatVersion: 1, runId: "b".repeat(32), records: [] }, "short", {
+      runId: "b".repeat(32),
+      taskId: TASK,
+    }).length,
     0,
   );
 });
