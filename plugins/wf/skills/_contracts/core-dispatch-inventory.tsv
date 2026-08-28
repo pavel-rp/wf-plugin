@@ -48,6 +48,7 @@ fleet-run-resume	included	plugins/wf/skills/fleet/SKILL.md	before `/wf:run	phase
 fleet-gated-phase	included	plugins/wf/skills/fleet/SKILL.md	exact `/wf:<phase>	phase-runner	model=false;effort=false	fixed-skill-route	shipper
 fleet-pr	included	plugins/wf/skills/fleet/SKILL.md	/wf:pr <ID>	pr	model=false;effort=false	fixed-skill-route	shipper
 fleet-finalize	included	plugins/wf/skills/fleet/SKILL.md	/wf:tf <ID>	finalize	model=false;effort=false	fixed-skill-route	shipper
+fleet-index	included	plugins/wf/skills/fleet/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 fleet-recycle	included	plugins/wf/skills/fleet/SKILL.md	SendMessage	shipper	model=true;effort=false	fleet-recovery-route	fleet
 fleet-replacement	included	plugins/wf/skills/fleet/SKILL.md	dispatch a **fresh** agent	shipper	model=true;effort=false	fleet-recovery-route	fleet
 init-constitution	included	plugins/wf/skills/init/SKILL.md	/wf:constitution	constitution	model=false;effort=false	fixed-skill-route	—
