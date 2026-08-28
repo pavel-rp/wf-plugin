@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference sample scripts covering every wf-fake contract op on both surfaces. Synthetic host fake.local and FAKE- ids only — no external delivery/tracker host, no network token. Demonstrates single-value responses, ordered response sequences (checks-read poll, review-threads-read evolving state), and a pre-scripted review-thread scenario for the review-gate corpus.",
+  "_comment": "Reference sample scripts covering every wf-fake contract op on both surfaces. Synthetic host fake.local and FAKE- ids only — no external delivery/tracker host, no network token. Demonstrates single-value responses, ordered response sequences (checks-read poll, review-threads-read evolving state), a pre-scripted review-thread scenario for the review-gate corpus, and — for newest-published-version-read — a sequence covering the performed return followed by both typed degraded returns, so one fixture drives every polarity of the contract's typed result.",
   "delivery": {
     "branch-create": { "state": "created", "base-source": "origin/main", "tracking": "origin/feature/FAKE-1-demo", "carry": "none" },
     "branch-switch": { "state": "switched", "tracking": "origin/feature/FAKE-1-demo" },
@@ -25,7 +25,12 @@
       [ { "name": "ci", "state": "PENDING", "link": "https://fake.local/checks/ci" } ],
       [ { "name": "ci", "state": "SUCCESS", "link": "https://fake.local/checks/ci" } ]
     ],
-    "activity-read": { "commits": [ { "sha": "abc123", "when": "2026-07-18T12:00:00Z", "subject": "FAKE-1: demo" } ], "pull-requests": [ { "number": 1, "title": "FAKE-1: demo", "state": "OPEN", "url": "https://fake.local/pr/1" } ] }
+    "activity-read": { "commits": [ { "sha": "abc123", "when": "2026-07-18T12:00:00Z", "subject": "FAKE-1: demo" } ], "pull-requests": [ { "number": 1, "title": "FAKE-1: demo", "state": "OPEN", "url": "https://fake.local/pr/1" } ] },
+    "newest-published-version-read": [
+      { "read-performed": true, "version": "9.9.9" },
+      { "read-performed": false, "reason": "read-failed" },
+      { "read-performed": false, "reason": "none-published" }
+    ]
   },
   "tracker": {
     "resolve_config": "configured",

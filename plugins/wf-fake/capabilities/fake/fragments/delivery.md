@@ -13,7 +13,8 @@ op-recording implementation. It binds the **same** abstract operation set wf-git
 `pr-comment-post`, `review-thread-resolve`, `review-thread-reply`, `pr-merge` (writes);
 `workspace-root-resolve`, `current-branch-query`, `default-base-query`,
 `last-commit-timestamp-query`, `branch-changes-read`, `pr-comments-read`, `review-threads-read`,
-`checks-read`, `activity-read` (reads) — but to a **scripts file + op log**, not to a real remote.
+`checks-read`, `activity-read`, `newest-published-version-read` (reads) — but to a **scripts file +
+op log**, not to a real remote.
 The op vocabulary is taken from the contract at implementation time (mirrored in wf-git); the
 canonical list the self-checks assert against is `../fixtures/op-vocabulary.txt`.
 
@@ -47,6 +48,8 @@ byte-for-byte with the tracker surface. Its three deliberate properties:
 | Op key absent | UNSCRIPTED — record then fail loudly, naming the op. |
 | Scripted value is an array, calls exceed its length | Last element repeats (settled terminal state). |
 | `review-threads-read` scripted `read-performed:false` | Returned verbatim; never upgraded to `true` (honest merge-gate). |
+| `newest-published-version-read` scripted `read-performed:true` | Returned verbatim with its `version` — the only shape a consumer may treat as a completed currency check. |
+| `newest-published-version-read` scripted `read-performed:false` | Returned verbatim with its closed `reason` and **no** `version`; never upgraded to `true`, never emptied to a bare result (honest currency check). |
 | Op log absent on first call | Created; `<seq>` starts at 1. |
 | Two surfaces, one op log | Both delivery and tracker ops append to the same op log; `surface` distinguishes them. |
 
@@ -60,3 +63,6 @@ which is inert returned data, not a fetch target.
 ## Version history
 
 - **WF-344** — initial hermetic in-memory delivery binding (OUT-1 of charter C016).
+- **WF-483** — bind the newest-published-version read (`newest-published-version-read`),
+  including its typed degraded return, so a fixture can drive a version-currency check
+  deterministically from both polarities (OUT-1 of charter C029).

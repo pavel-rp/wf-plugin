@@ -1,6 +1,6 @@
 # git capability manifest
 
-**Version:** 1.4.1
+**Version:** 1.4.2
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** git (registered in the downstream `_local/config.md` `## Capabilities` table)
@@ -12,8 +12,8 @@
 git supplies the **delivery provider** — the concrete git/GitHub binding for every abstract
 delivery operation the capability-registry contract defines (branch/commit/push, PR
 create/detect/comment/merge + review-thread resolution, and the read-side workspace/branch/
-timestamp, branch-changes, PR-comment, CI-check, and recent-activity queries). It carries
-**zero** tracker-specific vocabulary.
+timestamp, branch-changes, PR-comment, CI-check, recent-activity, and
+newest-published-version queries). It carries **zero** tracker-specific vocabulary.
 
 ## Fragments
 
