@@ -216,6 +216,14 @@ Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "
 - `TF — partial` (a configured provider step failed mid-run — merge blocked by checks/conflicts, or a tracker error) → **`SHIP — Blocked`**, surface `/wf:tf`'s stated reason; the merge can be retried by re-running once the blocker clears.
 - `TF — already-finalized` → the task was already merged and archived → **`SHIP — Merged`** (idempotent no-op).
 
+## Record the phase-completion receipt
+
+**This is not a phase — it is a pre-terminal step**, deliberately, because `ship` has stop points in Phases 1, 2, 3, 4, 4.2 and 5 and a yield point at every ceiling checkpoint. A numbered phase after Phase 5 would be unreachable from most of them. So: **immediately before emitting any `SHIP — …` block, from whichever point the run reached**, call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind: "phase-receipt", subject: "ship", taskId: {task-id} })`. `ship` writes no artifact, so it names none; the resolver derives the run identity, the workspace, the timestamp and the sequence itself and seals the record — this skill asserts none of them, which is exactly what makes the receipt proof rather than a claim, and why it never writes the destination directly.
+
+**What this receipt does and does not claim.** It attests that this ceremony **reached its completion point and invoked the resolver there** — not that it merged. The block's own `Merge:` line already says that, and the resolver records the receipt as `invocation-only` (it observed no artifact) rather than `artifact-backed`, so a consumer can weight it accordingly. Recording only on `Merged` would make a stopped run indistinguishable from one that never started — the precise confusion this mechanism exists to end.
+
+**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line and changes nothing else: no status token changes, no gate is added, nothing is merged or un-merged, and the Final Output block is emitted unchanged.
+
 ---
 
 ## Edge Cases

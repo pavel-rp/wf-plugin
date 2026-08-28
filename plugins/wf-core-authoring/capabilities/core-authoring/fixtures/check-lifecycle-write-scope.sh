@@ -4,11 +4,15 @@
 #
 # --- THE BOUNDARY THIS GATE ENFORCES ---
 # The repository's write-scope rule is `_local/` only (CLAUDE.md §6; core constitution
-# article 3), with a short, named list of source-mutating exceptions. WF-442 and WF-443
-# then established a COMMITTED home — `.wf/` — for two lifecycle artifacts:
+# article 3), with a short, named list of source-mutating exceptions. WF-442, WF-443 and
+# WF-490 then established a COMMITTED home — `.wf/` — for three lifecycle artifacts:
 #
 #   * `.wf/install-state.json`         the portable install-state ledger (WF-442)
 #   * `.wf/slots/<skill>.<point>.md`   the committed project-override slot tier (WF-443)
+#   * `.wf/run-evidence/<run>.json`    the machine-emitted run-evidence class (WF-490) —
+#                                      the resolver-issued receipts a receipt-bearing phase
+#                                      files on completion, and the per-gate self-approval
+#                                      records that travel the same emission path
 #
 # `.wf/` IS NOT A GENERAL WRITABLE HOME. It is one narrow exception, and the exception
 # is defined by TWO things at once, not by the path prefix:
@@ -16,7 +20,7 @@
 #   1. LIFECYCLE OWNERSHIP — the resolver runtime manages these artifacts. An ordinary
 #      skill or agent reads them through the resolver's content surface; it never claims
 #      authority to write them on its own.
-#   2. ARTIFACT CLASS — only the two DECLARED classes above. Lifecycle ownership does
+#   2. ARTIFACT CLASS — only the DECLARED classes above. Lifecycle ownership does
 #      not widen the set: an undeclared `.wf/` path is rejected even when the resolver
 #      is the one named as writing it.
 #
@@ -27,10 +31,10 @@
 #       authored prose, where the line does not attribute the write to the resolver's
 #       lifecycle ownership. This is the "an ordinary skill claims arbitrary `.wf/`
 #       access" defect.
-#   W2  undeclared artifact class — any `.wf/<path>` token that is neither
-#       `.wf/slots/…` nor `.wf/install-state.json`. Verb-independent by design: an
-#       undeclared lifecycle artifact is out of scope whether it is read or written,
-#       and naming the resolver does not excuse it.
+#   W2  undeclared artifact class — any `.wf/<path>` token that is none of
+#       `.wf/slots/…`, `.wf/run-evidence/…`, or `.wf/install-state.json`.
+#       Verb-independent by design: an undeclared lifecycle artifact is out of scope
+#       whether it is read or written, and naming the resolver does not excuse it.
 #
 # The bare home token `` `.wf/` `` — the directory named as a directory — is neither
 # defect on its own; the guidance files have to be able to say the word.
@@ -137,8 +141,9 @@ lint_file() {
         '.wf/') continue ;;                            # the home named as a directory
         '.wf/install-state.json') continue ;;          # declared class: portable install state
         '.wf/slots/'*) continue ;;                     # declared class: committed slot override
+        '.wf/run-evidence/'*) continue ;;              # declared class: machine-emitted run evidence
       esac
-      echo "$rel:$lno: W2 undeclared committed lifecycle artifact '$tok' — the exception admits '.wf/slots/<skill>.<point>.md', '.wf/install-state.json', and a destination declared in a complete '## Payloads' row. '.wf/' is not a general home; declare the artifact's lifecycle before naming it."
+      echo "$rel:$lno: W2 undeclared committed lifecycle artifact '$tok' — the exception admits '.wf/slots/<skill>.<point>.md', '.wf/run-evidence/<run>.json', '.wf/install-state.json', and a destination declared in a complete '## Payloads' row. '.wf/' is not a general home; declare the artifact's lifecycle before naming it."
     done <<TOKENS
 $(printf '%s' "$line" | grep -Po "$PATHTOK")
 TOKENS
@@ -197,11 +202,14 @@ if [ "${1:-}" = "--selftest" ]; then
     *) echo "selftest ok (separable): arbitrary-write.md raises W1 only";;
   esac
 
-  # W2 — five planted undeclared classes. Two of them NAME THE RESOLVER, proving lifecycle
-  # ownership does not widen the admitted artifact set; the fifth is a table row that names
+  # W2 — six planted undeclared classes. Three of them NAME THE RESOLVER, proving lifecycle
+  # ownership does not widen the admitted artifact set; one is a table row that names
   # a destination but declares no COMPLETE lifecycle, proving the payload exemption keys on
-  # the full closed vocabulary rather than on merely looking like a table.
-  check_fail undeclared-artifact.md 5 "W2 undeclared committed lifecycle artifact" ".wf/cache/resolution.json" ".wf/constitution.md" ".wf/partial.json"
+  # the full closed vocabulary rather than on merely looking like a table; and one is a
+  # NEAR MISS on a declared class (`.wf/run-evidence.json` beside the declared
+  # `.wf/run-evidence/` directory), proving an arm admits its own class and not the
+  # neighbourhood around it.
+  check_fail undeclared-artifact.md 6 "W2 undeclared committed lifecycle artifact" ".wf/cache/resolution.json" ".wf/constitution.md" ".wf/partial.json" ".wf/run-evidence.json"
   case "$(lint_file "$FIXROOT/undeclared-artifact.md")" in
     *"W1 "*) echo "selftest FAIL: undeclared-artifact.md — W1 fired on a resolver-attributed line; lifecycle ownership must exempt W1."; st_fails=$((st_fails + 1));;
     *) echo "selftest ok (separable): undeclared-artifact.md raises W2 only";;

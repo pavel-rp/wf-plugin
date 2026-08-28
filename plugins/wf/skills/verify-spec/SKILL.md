@@ -397,28 +397,30 @@ clicks `file:line` for the rest.
 
 ### Chat summary shape
 
-Print, in this order:
+The verbatim ordered shape — the verdict line, the report pointer, the FAIL/PARTIAL
+bullets, the capability- and adversarial-findings lines, the top next actions, and the
+conditional `/wf:verify-fix` suggestion with its inclusion test — lives at
+`chat-summary.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })`
+(`class: references-template`, `skill: verify-spec`, `ref: chat-summary.md`), never a raw
+`Read` of the plugin-cache path. Like the report template beside it, it is read only on
+this write path, so it stays out of the boot body. Follow it, then emit it with
+placeholders substituted. Target ~15 lines total; if the summary grows past that, trim
+detail, not items.
 
-- **Verdict line:** `**Verdict:** <PASS | FAIL | PARTIAL>` — `<n>/<total>` requirements.
-- **Report pointer:** one line — `Report: <task-folder>/04_verify.md`.
-- **FAILs and PARTIALs:** one bullet each — short requirement name, one-line reason,
-  `file:line` citation. Skip the section entirely if none.
-- **Capability findings:** one line — either `none` (no capability contributed at
-  `verify`) or `<N> findings across <M> capabilities: <comma-separated shortlist, each
-  tagged with its source>`.
-- **Adversarial findings:** one line — either `none` or `<N>: <comma-separated shortlist>`,
-  then `· <W> withdrawn` when any were, and `· coverage incomplete (<provenance>)` when a
-  contributor failed. Non-gating: this line never changes the verdict line above it.
-- **Top next actions:** 1–3 bullets — the most important items from the report's
-  "Recommended next actions".
-- **`/wf:verify-fix` suggestion (conditional):** one line —
-  `Suggested: /wf:verify-fix {task-id} — <N> mechanical fixes look auto-applicable.` Include
-  **only** when a FAIL or PARTIAL finding carries a concrete literal `Expected` value at a
-  cited `file:line`. Omit on PASS, when every finding is UNVERIFIABLE, structural, or
-  vaguely `Expected` — and whenever in doubt.
+### Record the phase-completion receipt
 
-Target ~15 lines total. If the summary grows past that, trim detail, not items — the
-user can open the file for the rest.
+Reached **after** the report is written, so the receipt attests work that actually
+happened. Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot,
+kind: "phase-receipt", subject: "verify-spec", taskId: {task-id}, artifactPath:
+"<the report path just written>" })` — normally `<task-folder>/04_verify.md`, and on the
+`<path-to-00_reqs.md>` override form the sibling path it actually went to, so the resolver
+digests the file that exists; skip the call when that path lies outside the workspace, the
+same carve-out the index step takes. The resolver derives the run identity, the workspace,
+the timestamp and the sequence itself, digests the named artifact itself, and seals the
+record — this skill asserts none of them, which is what makes the receipt proof rather
+than a claim, and why it never writes the destination directly. **Non-blocking, always:**
+a `refused` outcome (or an unavailable resolver) is reported in one line and changes
+nothing else — the verdict is unaffected and the block below is emitted unchanged.
 
 End with the final-output block (see below).
 

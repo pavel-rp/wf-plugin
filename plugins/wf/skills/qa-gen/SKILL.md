@@ -284,7 +284,9 @@ Default `full`. The same skill at the same scope on the same spec should produce
 
 1. **Invoke `/wf:index` for the `qa` slot.** Pass a one-line summary: `06_qa.md · <scope> · <N> scenarios · <M>/<K> criteria mapped`. Substitute the scope, the count of `TC-NNN` scenarios, the count of criteria with coverage (manual or automated), and the total criteria count. When one or more capabilities contributed scenarios, append ` · <P> capability` with the aggregated capability-scenario count.
 
-2. **Emit the final-output block** (next section) with the path, scope, scenario count, coverage stats, and any gaps.
+2. **Record the phase-completion receipt.** Reached **after** `06_qa.md` is written, so the receipt attests work that actually happened. Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind: "phase-receipt", subject: "qa-gen", taskId: {task-id}, artifactPath: "{task-root}/{task-id}/06_qa.md" })`. The resolver derives the run identity, the workspace, the timestamp and the sequence itself, digests the named artifact itself, and seals the record — this skill asserts none of them, which is what makes the receipt proof rather than a claim, and why it never writes the destination directly. **Non-blocking, always:** a `refused` outcome (or an unavailable resolver) is reported in one line and changes nothing else — `06_qa.md` is already written, no gate is added, and the block below is emitted unchanged.
+
+3. **Emit the final-output block** (next section) with the path, scope, scenario count, coverage stats, and any gaps.
 
 ---
 

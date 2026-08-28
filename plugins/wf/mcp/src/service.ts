@@ -169,6 +169,31 @@ import type {
   PayloadTargetResolution,
   PlanPayloadFact,
 } from "./resolver/payload-plan.js";
+import {
+  MAX_RUN_EVIDENCE_RECORDS,
+  RECEIPT_BEARING_PHASES,
+  RUN_EVIDENCE_FORMAT_VERSION,
+  RUN_EVIDENCE_KINDS,
+  createRunEvidenceRecord,
+  isAdmissibleSubject,
+  isDeclaredRunEvidenceArtifact,
+  matchRunEvidence,
+  mintRunEvidenceIssuerKey,
+  parseRunEvidenceIssuer,
+  parseRunEvidenceLedger,
+  provenPhases,
+  runEvidenceDestination,
+  runEvidenceIssuerRelPath,
+  runEvidenceRunId,
+  serializeRunEvidenceIssuer,
+  serializeRunEvidenceLedger,
+  workspaceFingerprint,
+  type ReceiptBearingPhase,
+  type RunEvidenceArtifact,
+  type RunEvidenceClass,
+  type RunEvidenceKind,
+  type RunEvidenceUnmatchedReason,
+} from "./resolver/run-evidence.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
 import type {
   InstalledPlugin,
@@ -279,6 +304,18 @@ export interface ResolverServicePorts {
   ): PayloadTargetResolution;
   /** Write a UTF-8 file (registry edits), creating parent dirs. */
   writeFile(absPath: string, content: string): void;
+  /** The machine-local home OUTSIDE the audited workspace, for bindings that must
+   *  not sit where the principal they defend against can read them (WF-490's
+   *  run-evidence issuer key). OPTIONAL so every existing in-memory port double
+   *  stays valid; when absent the binding degrades to a workspace-relative path,
+   *  which still functions but no longer keeps the key out of reach. Returns
+   *  `null` when the runtime cannot determine one. */
+  machineLocalHome?(): string | null;
+  /** Write a secret with owner-only permissions. Separate from `writeFile` so the
+   *  restrictive mode belongs to the one caller that needs it and never changes
+   *  the permissions of ordinary project content. OPTIONAL; falls back to
+   *  `writeFile` when a port set omits it. */
+  writePrivateFile?(absPath: string, content: string): void;
   /** List immediate subdirectory names of `absDir` (used ONLY on the pack
    *  register write-path to discover `capabilities/*` folders — never on a
    *  read-query path). Returns `[]` when the directory is absent. */
@@ -799,6 +836,70 @@ export function readDeclaredCoreVersion(
   if (trimmed.length > MAX_CORE_VERSION_CHARS) return null;
   if (CONTROL_CHARACTER.test(trimmed)) return null;
   return trimmed;
+}
+
+// --- run evidence (WF-490) -------------------------------------------------
+//
+// The two bounded response shapes for the machine-emitted run-evidence class.
+// Both are metadata: a receipt names what completed, never the content of what
+// completed, so neither response ever carries an artifact body.
+
+export interface RecordRunEvidenceInput {
+  kind: string;
+  subject: string;
+  taskId: string;
+  /** Workspace-relative path of the artifact the phase produced, when it produced
+   *  one. The resolver reads and digests it ITSELF — a caller-supplied digest is
+   *  never accepted, because a caller that could supply one could supply a
+   *  receipt. */
+  artifactPath?: string | null;
+}
+
+export interface RecordRunEvidenceResponse {
+  status: "recorded" | "refused";
+  runId: string;
+  destination: string;
+  formatVersion: number;
+  kind: string;
+  subject: string;
+  sequence: number | null;
+  issuedAt: string | null;
+  artifact: RunEvidenceArtifact | null;
+  diagnostic: string | null;
+}
+
+export interface ReadRunEvidenceResponse {
+  status: "ok" | "absent" | "unsupported" | "malformed";
+  runId: string;
+  destination: string;
+  formatVersion: number | null;
+  observedVersion: number | null;
+  matched: Array<{
+    kind: RunEvidenceKind;
+    subject: string;
+    taskId: string;
+    /** When the resolver issued it. A consumer needing RUN scope rather than task
+     *  scope windows on this — see the run-evidence module header. */
+    issuedAt: string;
+    sequence: number;
+    /** `artifact-backed` (the resolver observed and digested an artifact) or
+     *  `invocation-only` (it did not). Carried so a consumer can weight the two
+     *  differently instead of being told they are the same. */
+    evidenceClass: RunEvidenceClass;
+    artifact: RunEvidenceArtifact | null;
+  }>;
+  unmatched: Array<{
+    kind: string;
+    subject: string;
+    sequence: number;
+    reason: RunEvidenceUnmatchedReason;
+  }>;
+  /** Records too malformed to even read a subject from. Counted, never dropped
+   *  silently — a ledger that has been tampered with says so. */
+  unreadableRecords: number;
+  provenPhases: ReceiptBearingPhase[];
+  receiptBearingPhases: ReceiptBearingPhase[];
+  diagnostic: string | null;
 }
 
 export class ResolverService {
@@ -5047,6 +5148,359 @@ export class ResolverService {
    *  invalidates, and the renderer itself performs no I/O at all. */
   previewComposition(phase?: string | null): CompositionPreview {
     return previewComposition(this.ensure(), phase ?? null);
+  }
+
+  // --- run evidence (WF-490) -----------------------------------------------
+
+  /**
+   * Derive the run identity from facts the RESOLVER holds.
+   *
+   * DELIBERATELY NOT A CALLER INPUT. A caller that could assert a run identity
+   * could file a receipt against any run it liked, which is the original defect
+   * one level down. Deriving it from the admitted workspace root and the task id
+   * also makes it stable across the separate invocations one run's phases execute
+   * in, which is what lets a later reader join them.
+   */
+  private runEvidenceRunId(taskId: string): string {
+    return runEvidenceRunId(this.ports.workspaceRoot, taskId);
+  }
+
+  /**
+   * Read a run-evidence file, treating an I/O failure exactly like absence.
+   *
+   * The whole class is EVIDENCE: an unreadable ledger proves nothing, which is the
+   * same answer as a missing one, and neither is a reason to throw into a phase
+   * that has already completed its real work.
+   */
+  private runEvidenceRead(absPath: string): string | null {
+    try {
+      return this.ports.readFile(absPath);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Durably write a run-evidence file, reporting failure instead of throwing.
+   *  This is what makes each call site's "non-blocking" promise a property of the
+   *  MECHANISM rather than of the prose describing it: a read-only filesystem or a
+   *  full disk yields a stated refusal, never an exception surfacing in a phase
+   *  whose actual work already succeeded. */
+  private runEvidenceWrite(absPath: string, content: string, secret = false): string | null {
+    try {
+      if (secret && this.ports.writePrivateFile) this.ports.writePrivateFile(absPath, content);
+      else this.ports.writeFile(absPath, content);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  /**
+   * The absolute path of the machine-local issuer binding.
+   *
+   * OUTSIDE THE AUDITED WORKSPACE whenever the runtime can say where that is. The
+   * seal defends against an agent that reads and writes the workspace, and the
+   * canonical body and seal algorithm are public in-repo source — so a key stored
+   * inside the workspace would be one file read away from a forged receipt. The
+   * optional `machineLocalHome` port is what moves it out; when a port set omits
+   * it (an in-memory double), the binding degrades to a workspace-relative path
+   * that still works but no longer has that property.
+   */
+  private runEvidenceIssuerPath(): string {
+    const rel = runEvidenceIssuerRelPath(this.ports.workspaceRoot);
+    const home = this.ports.machineLocalHome ? this.ports.machineLocalHome() : null;
+    if (home === null || home.length === 0) return this.absolutize(`_local/${rel}`);
+    return `${home.replace(/\\/g, "/").replace(/\/$/, "")}/${rel}`;
+  }
+
+  /**
+   * Load the machine-local issuer binding, minting one ONLY on genuine absence.
+   *
+   * The READ path never mints: a reader that minted a key would manufacture an
+   * issuer that never issued anything and then prove nothing with it.
+   *
+   * A PRESENT-BUT-UNTRUSTED BINDING IS NEVER OVERWRITTEN. Absence and
+   * "unparseable, wrong version, or malformed key" are different facts, and
+   * minting over the second would irreversibly destroy the key that proves every
+   * receipt already issued on this machine — silently reclassifying all of them
+   * from genuine to tampered. So the mint is gated on the file being absent, and
+   * an untrusted binding refuses, which is the same version-before-shape posture
+   * the ledger reader takes.
+   */
+  private runEvidenceIssuerKey(mint: boolean): { key: string | null; diagnostic: string | null } {
+    const abs = this.runEvidenceIssuerPath();
+    const raw = this.runEvidenceRead(abs);
+    const existing = parseRunEvidenceIssuer(raw);
+    if (existing !== null) return { key: existing.key, diagnostic: null };
+    if (raw !== null) {
+      return {
+        key: null,
+        diagnostic:
+          "the machine-local run-evidence issuer binding is present but unreadable at this version; it is never overwritten, because minting over it would destroy the key proving every receipt already issued.",
+      };
+    }
+    if (!mint) return { key: null, diagnostic: null };
+    const key = mintRunEvidenceIssuerKey();
+    const failure = this.runEvidenceWrite(abs, serializeRunEvidenceIssuer(key), true);
+    if (failure !== null) {
+      return {
+        key: null,
+        diagnostic: `the machine-local run-evidence issuer binding could not be established: ${failure}`,
+      };
+    }
+    return { key, diagnostic: null };
+  }
+
+  /** Workspace-relative, non-escaping, non-absolute. A path failing this is
+   *  refused rather than normalized — the artifact reference comes from a caller,
+   *  and a receipt must never be authority to read outside the workspace. */
+  private static containedRelPath(p: string): string | null {
+    const norm = p.replace(/\\/g, "/").replace(/^\.\//, "");
+    if (norm.length === 0) return null;
+    if (/^(\/|[A-Za-z]:)/.test(norm)) return null;
+    if (norm.split("/").some((seg) => seg === "..")) return null;
+    return norm;
+  }
+
+  /**
+   * Record one run-evidence entry — THE EMISSION PATH for this artifact class.
+   *
+   * The caller supplies only what it alone knows. Everything attested is derived
+   * here: the run identity, the workspace root, the clock, the sequence, and the
+   * artifact digest (read from disk, never accepted from the caller). The record
+   * is then sealed with the machine-local issuer key, which no tool serves.
+   *
+   * REFUSES rather than improvises, in every ambiguous case: an inadmissible
+   * subject or kind, a named artifact that is not there (so a phase that did not
+   * actually produce its output gets no receipt), and — following
+   * `parseTransactionJournal` — a ledger whose declared version this release does
+   * not understand or whose shape is broken. Refusing to append to a ledger it
+   * cannot read is what keeps this from clobbering evidence it did not write.
+   */
+  recordRunEvidence(input: RecordRunEvidenceInput): RecordRunEvidenceResponse {
+    const runId = this.runEvidenceRunId(input.taskId);
+    const destination = runEvidenceDestination(runId);
+    const base = {
+      runId,
+      destination,
+      formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
+      kind: input.kind,
+      subject: input.subject,
+    };
+    const refuse = (diagnostic: string): RecordRunEvidenceResponse => ({
+      ...base,
+      status: "refused",
+      sequence: null,
+      issuedAt: null,
+      artifact: null,
+      diagnostic,
+    });
+
+    if (!(RUN_EVIDENCE_KINDS as readonly string[]).includes(input.kind)) {
+      return refuse(
+        `unknown run-evidence kind \`${input.kind}\`; expected one of: ${RUN_EVIDENCE_KINDS.join(", ")}.`,
+      );
+    }
+    const kind = input.kind as RunEvidenceKind;
+    if (!isAdmissibleSubject(kind, input.subject)) {
+      return refuse(
+        kind === "phase-receipt"
+          ? `\`${input.subject}\` is not a receipt-bearing phase; the set is closed at: ${RECEIPT_BEARING_PHASES.join(", ")}.`
+          : `\`${input.subject}\` is not a well-formed subject token.`,
+      );
+    }
+
+    // The named artifact is read and digested HERE. Its absence is a refusal, not
+    // a receipt with a null artifact: a phase that names an output it did not
+    // write has not completed.
+    let artifact: RunEvidenceArtifact | null = null;
+    const named = input.artifactPath ?? null;
+    if (named !== null && named.length > 0) {
+      const rel = ResolverService.containedRelPath(named);
+      if (rel === null) {
+        return refuse(
+          `\`${named}\` is not a workspace-relative path; a receipt never names an artifact outside the workspace.`,
+        );
+      }
+      const content = this.runEvidenceRead(this.absolutize(rel));
+      if (content === null) {
+        return refuse(
+          `the named artifact \`${rel}\` does not exist; no receipt is issued for a phase whose output is absent.`,
+        );
+      }
+      artifact = { path: rel, sha256: sha256Hex(content), bytes: Buffer.byteLength(content, "utf8") };
+    }
+
+    // The declared-class boundary is ASSERTED, not merely relied on. The
+    // destination is derived here, so this can only fail if the derivation and the
+    // predicate drift apart — which is exactly the silent widening the predicate
+    // exists to make impossible, and the same enforcement the slot-override tier
+    // applies to its own class.
+    if (!isDeclaredRunEvidenceArtifact(destination)) {
+      return refuse(
+        `\`${destination}\` is not a declared run-evidence artifact; the resolver refuses to write outside the declared class.`,
+      );
+    }
+
+    const absLedger = this.absolutize(destination);
+    const parsed = parseRunEvidenceLedger(this.runEvidenceRead(absLedger));
+    if (parsed.status === "unsupported" || parsed.status === "malformed") {
+      return refuse(parsed.diagnostic);
+    }
+    const existing = parsed.status === "ok" ? parsed.ledger.records : [];
+
+    // A REWRITE MUST NEVER LAUNDER THE LEDGER. The append rewrites the whole file
+    // from the records the parser could read, so appending over a ledger that
+    // contains an unreadable record would silently erase the very forgery signal
+    // module rule 2 exists to preserve. Refusing is the only option that neither
+    // destroys evidence nor re-serializes something it could not parse.
+    if (parsed.status === "ok" && parsed.unreadableRecords > 0) {
+      return refuse(
+        `the run-evidence ledger carries ${parsed.unreadableRecords} unreadable record(s); appending would erase them, so it is refused rather than rewritten.`,
+      );
+    }
+    if (existing.length >= MAX_RUN_EVIDENCE_RECORDS) {
+      return refuse(
+        `the run-evidence ledger already holds ${existing.length} records (the bound is ${MAX_RUN_EVIDENCE_RECORDS}); a further append is refused rather than growing without limit.`,
+      );
+    }
+
+    const issuer = this.runEvidenceIssuerKey(true);
+    if (issuer.key === null) {
+      return refuse(
+        issuer.diagnostic ??
+          "the machine-local run-evidence issuer binding could not be established.",
+      );
+    }
+
+    const issuedAt = new Date().toISOString();
+    const record = createRunEvidenceRecord(
+      {
+        kind,
+        subject: input.subject,
+        taskId: input.taskId,
+        runId,
+        workspaceFingerprint: workspaceFingerprint(this.ports.workspaceRoot),
+        issuedAt,
+        sequence: existing.length,
+        artifact,
+      },
+      issuer.key,
+    );
+    if (record === null) {
+      return refuse("the run-evidence record is incomplete or self-contradictory.");
+    }
+
+    const writeFailure = this.runEvidenceWrite(
+      absLedger,
+      serializeRunEvidenceLedger({
+        formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
+        runId,
+        records: [...existing, record],
+      }),
+    );
+    if (writeFailure !== null) {
+      return refuse(`the run-evidence ledger could not be written: ${writeFailure}`);
+    }
+
+    return {
+      ...base,
+      status: "recorded",
+      sequence: record.sequence,
+      issuedAt: record.issuedAt,
+      artifact: record.artifact,
+      diagnostic: null,
+    };
+  }
+
+  /**
+   * Read and match one run's evidence — THE READ/MATCH API consumers call.
+   *
+   * Reports three separate populations, never one blended count: records whose
+   * seal this issuer PROVED, records it could not prove (each with its own stated
+   * reason), and records too malformed to read at all. A consumer that wants a
+   * proven/unproven verdict derives it from `provenPhases`; nothing here rounds an
+   * unmatched record up to a receipt.
+   */
+  readRunEvidence(taskId: string): ReadRunEvidenceResponse {
+    const runId = this.runEvidenceRunId(taskId);
+    const destination = runEvidenceDestination(runId);
+    const receiptBearingPhases = [...RECEIPT_BEARING_PHASES];
+    const base = {
+      runId,
+      destination,
+      matched: [] as ReadRunEvidenceResponse["matched"],
+      unmatched: [] as ReadRunEvidenceResponse["unmatched"],
+      unreadableRecords: 0,
+      provenPhases: [] as string[],
+      receiptBearingPhases,
+    };
+
+    const parsed = parseRunEvidenceLedger(this.runEvidenceRead(this.absolutize(destination)));
+    if (parsed.status === "absent") {
+      return {
+        ...base,
+        status: "absent",
+        formatVersion: null,
+        observedVersion: null,
+        diagnostic: null,
+      };
+    }
+    if (parsed.status === "unsupported") {
+      return {
+        ...base,
+        status: "unsupported",
+        formatVersion: null,
+        observedVersion: parsed.observedVersion,
+        diagnostic: parsed.diagnostic,
+      };
+    }
+    if (parsed.status === "malformed") {
+      return {
+        ...base,
+        status: "malformed",
+        formatVersion: null,
+        observedVersion: null,
+        diagnostic: parsed.diagnostic,
+      };
+    }
+
+    // The expectation is passed explicitly so a ledger is judged against the
+    // question actually asked, not against its own self-description — see
+    // `matchRunEvidence`'s note on the copied-ledger attack.
+    const matches = matchRunEvidence(parsed.ledger, this.runEvidenceIssuerKey(false).key, {
+      runId,
+      taskId,
+    });
+    return {
+      ...base,
+      status: "ok",
+      formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
+      observedVersion: RUN_EVIDENCE_FORMAT_VERSION,
+      unreadableRecords: parsed.unreadableRecords,
+      matched: matches
+        .filter((match) => match.matched)
+        .map((match) => ({
+          kind: match.record.kind as RunEvidenceKind,
+          subject: match.record.subject,
+          taskId: match.record.taskId,
+          issuedAt: match.record.issuedAt,
+          sequence: match.record.sequence,
+          evidenceClass: match.record.evidenceClass as RunEvidenceClass,
+          artifact: match.record.artifact,
+        })),
+      unmatched: matches
+        .filter((match) => !match.matched)
+        .map((match) => ({
+          kind: match.record.kind,
+          subject: match.record.subject,
+          sequence: match.record.sequence,
+          // Non-null on every `matched: false` branch by construction.
+          reason: match.reason as RunEvidenceUnmatchedReason,
+        })),
+      provenPhases: provenPhases(matches),
+      diagnostic: null,
+    };
   }
 
   /** Resolve a caller-supplied path against the workspace root when relative. */

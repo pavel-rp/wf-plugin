@@ -214,10 +214,12 @@ rollback never un-scaffolds it.
    class: "references-template", skill: "init", ref:
    "local-readme-template.md" })` on this write path only.
 
-6. **Gitignore `_local/`.** Create `.gitignore` with the single line `_local/`
-   if absent; otherwise append `_local/` only when no line already matches
-   `_local` or `_local/` exactly. Never rewrite, reorder, or deduplicate existing
-   entries.
+6. **Gitignore `_local/` and the run-evidence directory.** Create `.gitignore` with
+   the line `_local/` and the run-evidence line named next if absent; otherwise add
+   each only when no line already matches it exactly (`_local` or `_local/` for the
+   first). Never rewrite, reorder, or deduplicate existing entries. The resolver
+   regenerates `.wf/run-evidence/` every run and it diverges across concurrent
+   worktrees, so that exact line is ignored by default (drop it for an audit trail).
 
 7. **Inform the resolver.** Call `resolve_refresh({ workspaceRoot, reasons:
    ["/wf:init wrote the bare-core scaffold"] })` so later phases do not rely on

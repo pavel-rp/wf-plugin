@@ -112,6 +112,65 @@ const surfaceInput = fromJsonSchema(withWorkspaceRoot({
   additionalProperties: false,
 }));
 
+// --- run evidence (WF-490) -------------------------------------------------
+// `kind` and `subject` carry no `enum`, for the same reason `surfaceInput` above
+// does not: the closed-set check lives in the service, so an out-of-set token
+// surfaces the specific "the set is closed at: …" refusal rather than a generic
+// MCP schema-validation error. The refusal is the more useful answer — it names
+// the seven, so a caller learns the boundary instead of only that it missed one.
+
+const runEvidenceKindProperty = {
+  type: "string",
+  minLength: 1,
+  maxLength: 64,
+  pattern: safeTerminalStringPattern,
+  description:
+    "The run-evidence record kind: `phase-receipt` for a receipt-bearing phase's completion, or `gate-approval` for a per-gate self-approval record travelling this same emission path.",
+};
+
+const runEvidenceSubjectProperty = {
+  type: "string",
+  minLength: 1,
+  maxLength: 64,
+  pattern: safeTerminalStringPattern,
+  description:
+    "What the record is about. For `phase-receipt` this is the receipt-bearing phase and the set is CLOSED — `spec`, `plan`, `implement`, `verify-spec`, `qa-gen`, `ship`, `tf` — and any other token is refused. For `gate-approval` it is the gate token.",
+};
+
+const runEvidenceTaskIdProperty = {
+  type: "string",
+  minLength: 1,
+  maxLength: 128,
+  pattern: safeTerminalStringPattern,
+  description:
+    "The task id, in whatever opaque shape the active tracker capability produced (or the local scheme when none is registered). Together with the admitted workspace root it is what the resolver derives the run identity from; the run identity itself is never a caller input.",
+};
+
+const recordRunEvidenceInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: {
+    kind: runEvidenceKindProperty,
+    subject: runEvidenceSubjectProperty,
+    taskId: runEvidenceTaskIdProperty,
+    artifactPath: {
+      type: "string",
+      maxLength: 4096,
+      pattern: safeTerminalStringPattern,
+      description:
+        "Workspace-relative path of the artifact this phase produced, when it produced one (omit for a phase that writes no artifact). The resolver reads and digests it ITSELF; an absent artifact is a refusal, not a receipt.",
+    },
+  },
+  required: ["kind", "subject", "taskId"],
+  additionalProperties: false,
+}));
+
+const readRunEvidenceInput = fromJsonSchema(withWorkspaceRoot({
+  type: "object",
+  properties: { taskId: runEvidenceTaskIdProperty },
+  required: ["taskId"],
+  additionalProperties: false,
+}));
+
 // --- plan_install (WF-447) -------------------------------------------------
 // The selection unit is the PACK (`pluginId`), matching `discover_packs` and
 // `register_pack(pluginId, …)`. `deregister` is a SEPARATE explicit input on
@@ -1142,5 +1201,49 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     },
     async (args: WorkspaceArgs & { reasons?: string[] }) =>
       selected(args, (service) => service.invalidate(toReasons(args.reasons, "suspected-stale"))),
+  );
+
+  // --- run evidence (WF-490) -----------------------------------------------
+  //
+  // The emission path and the read/match API for the machine-emitted run-evidence
+  // class. Deliberately NOT `RESIDENT`: each is named at one call site inside a
+  // skill body rather than on every skill's Prerequisites path, so it defers
+  // behind tool-search like every other non-boot tool.
+  //
+  // NOTE THE INPUT SCHEMAS ARE SMALL ON PURPOSE. The caller supplies only what it
+  // alone knows; there is deliberately no `runId`, `issuedAt`, `sequence`,
+  // `workspaceRoot`-as-attestation, `sha256` or `seal` input, because a caller
+  // able to supply any of those could compose a receipt — which is the exact
+  // defect this mechanism exists to close.
+
+  server.registerTool(
+    "record_run_evidence",
+    {
+      title: "record run evidence",
+      description:
+        "Record one machine-emitted run-evidence entry — the resolver-issued receipt a receipt-bearing phase files at its actual completion point, and the same path a per-gate self-approval record travels. The caller names only `kind`, `subject` (the receipt-bearing phase, or the gate token) and `taskId`, plus the workspace-relative `artifactPath` the phase wrote when it wrote one; the resolver derives the run identity, workspace, timestamp and sequence itself, reads and digests the named artifact itself, and seals the record with a machine-local issuer binding no tool serves. Returns `recorded` with the sealed entry's metadata, or `refused` with a stated reason — an unknown kind, a subject outside the closed receipt-bearing set, a named artifact that is absent (so an incomplete phase yields no receipt), or a ledger whose declared version this release does not understand. Never returns a body, and never accepts a caller-supplied digest, identity or seal.",
+      inputSchema: recordRunEvidenceInput,
+    },
+    async (args: WorkspaceArgs & { kind: string; subject: string; taskId: string; artifactPath?: string | null }) =>
+      selected(args, (service) =>
+        service.recordRunEvidence({
+          kind: args.kind,
+          subject: args.subject,
+          taskId: args.taskId,
+          artifactPath: args.artifactPath ?? null,
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "read_run_evidence",
+    {
+      title: "read run evidence",
+      description:
+        "Read and match one task's run evidence — the read side of the resolver-issued receipt class. Returns three separate populations, never one blended count: `matched` receipts whose seal the machine-local issuer proved, `unmatched` entries each carrying its own stated reason (`seal-absent` for a hand-written artifact, `seal-mismatch`, `record-inadmissible`, `run-mismatch`, or `issuer-unavailable`), and a count of records too malformed to read at all. `provenPhases` lists only the receipt-bearing phases actually proven, and `receiptBearingPhases` states the closed set they are drawn from. A ledger declaring an unrecognised `formatVersion` returns `unsupported` and refuses rather than improvising a match; an absent ledger returns `absent`. Nothing here rounds an unmatched entry up to a receipt.",
+      inputSchema: readRunEvidenceInput,
+    },
+    async (args: WorkspaceArgs & { taskId: string }) =>
+      selected(args, (service) => service.readRunEvidence(args.taskId)),
   );
 }

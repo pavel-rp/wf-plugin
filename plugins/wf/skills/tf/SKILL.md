@@ -155,6 +155,16 @@ If the wrapper returns `INDEX — Error`, do not fail the finalize — record th
 
 ---
 
+## Record the phase-completion receipt
+
+**This is not a phase — it is a pre-terminal step**, deliberately: `already-finalized` returns from the Phase 1 already-archived branch and never reaches the archive, sweep or index, so a numbered phase after Phase 7 would be unreachable from it. So: **immediately before emitting any `TF — …` block, from whichever point the run reached**, call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind: "phase-receipt", subject: "tf", taskId: {task-id} })`. `tf` writes no artifact of its own that survives in place (the task folder has just been archived), so it names none; the resolver derives the run identity, the workspace, the timestamp and the sequence itself and seals the record — this skill asserts none of them, which is what makes the receipt proof rather than a claim, and why it never writes the destination directly.
+
+**What this receipt does and does not claim.** It attests that this finalize **reached its completion point and invoked the resolver there** — not that every provider step succeeded. The block's own `Merged PR:` and `Status:` lines already say which step failed, and the resolver records the receipt as `invocation-only` (it observed no artifact) rather than `artifact-backed`. Recording only on a clean terminal would make a degraded finalize indistinguishable from one that never started.
+
+**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line and changes nothing else: no status token changes, nothing is re-merged or re-archived, and the Final Output block is emitted unchanged.
+
+---
+
 ## Templates
 
 ### `09_finalize.md` (local finalize record — the source of truth)

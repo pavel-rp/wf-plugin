@@ -3,7 +3,7 @@
 Every line below must PASS. These are the shapes the narrow exception admits, plus the ordinary
 prose that must never be mistaken for a write claim.
 
-## The two declared committed lifecycle artifact classes
+## The declared committed lifecycle artifact classes
 
 The resolver owns the committed lifecycle home and writes `.wf/install-state.json` as the portable
 install-state ledger.
@@ -13,6 +13,12 @@ only as the lifecycle owner.
 
 A maintainer commits `.wf/slots/spec.publish.md` so the whole team receives the same customization
 on checkout.
+
+The resolver records a phase-completion receipt into `.wf/run-evidence/<run>.json` when a
+receipt-bearing phase actually completes, and seals it so a hand-authored file does not match.
+
+A reader consults `.wf/run-evidence/` through the resolver to tell work that ran from work that
+was merely claimed.
 
 The resolver-managed home `.wf/` is a read home for every ordinary skill.
 
