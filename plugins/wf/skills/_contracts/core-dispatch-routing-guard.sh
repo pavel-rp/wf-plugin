@@ -573,17 +573,23 @@ PY
         # requires, with two deliberate differences: BOTH selectors are open, so a
         # complexity-derived selection reaches the edge unmasked instead of coming
         # back with `fallback: "selector-unsupported"`; and the evidence is stated
-        # PER EDGE rather than as one literal reused for every edge. The varying
-        # dimension is asserted by name — an edge set that collapses back to a single
-        # constant fails here rather than silently re-becoming a fixed route.
+        # PER EDGE rather than as one literal reused for every edge. The checks
+        # below are whole-body greps: they assert the per-edge rule is STATED and
+        # that both `returnContract` values still appear, which catches an edge set
+        # collapsing back to one constant. They do NOT bind a specific edge to a
+        # specific value — that mapping is asserted by the resolver tests, not here.
         local complexity_block
         complexity_block="$(extract_routed_block "$path" "$role" "$target" fixed)"
         [ -n "$complexity_block" ] || { err "$id: no nearby role $role decision precedes Skill target $target in $file"; continue; }
         case "$body" in *"resolve_routing"*) ;; *) err "$id: shipper-path Skill edge lacks resolve_routing in $file" ;; esac
         case "$body" in *"role: \"$role\""*) ;; *) err "$id: shipper-path Skill role is not stated in $file" ;; esac
+        # Bind the row's declared cell to the arm's expectation, so the inventory
+        # and this check cannot drift into disagreeing about the same edge.
+        case "$selectors" in model=true\;effort=true) ;; *) err "$id: shipper-path row must declare model=true;effort=true, found $selectors" ;; esac
         case "$body" in *"shapeEvidence"*"supportsModelSelector: true"*"supportsEffortSelector: true"*) ;; *) err "$id: shipper-path selector/shape facts are incomplete in $file" ;; esac
         case "$body" in *"per edge"*"returnContract"*) ;; *) err "$id: shipper-path evidence is not stated per edge in $file" ;; esac
         case "$body" in *"returnContract: \"judgment\""*) ;; *) err "$id: shipper-path evidence does not vary returnContract in $file" ;; esac
+        case "$body" in *"returnContract: \"mechanically-judgeable\""*) ;; *) err "$id: shipper-path evidence states no mechanically-judgeable edge in $file" ;; esac
         case "$body" in *"actualModel"*"compact operational record"*) ;; *) err "$id: optional actualModel or compact record handling is absent in $file" ;; esac
         case "$body" in *"status: stop"*"diagnostic"*) ;; *) err "$id: shipper-path stop/diagnostic behavior is absent in $file" ;; esac
         case "$body" in *"executionShape"*|*"inline"*"shape"*) ;; *) err "$id: shipper-path shape obedience is absent in $file" ;; esac
@@ -638,6 +644,10 @@ PY
       model=false\;effort=false)
         case "$block" in *"supportsModelSelector: false"*) ;; *) err "$id: model selector-support fact does not match $file" ;; esac
         case "$block" in *"supportsEffortSelector: false"*) ;; *) err "$id: effort selector-support fact does not match $file" ;; esac
+        ;;
+      model=true\;effort=true)
+        case "$block" in *"supportsModelSelector: true"*) ;; *) err "$id: model selector-support fact does not match $file" ;; esac
+        case "$block" in *"supportsEffortSelector: true"*) ;; *) err "$id: effort selector-support fact does not match $file" ;; esac
         ;;
       mixed) ;;
       *) err "$id: malformed selector-support facts" ;;

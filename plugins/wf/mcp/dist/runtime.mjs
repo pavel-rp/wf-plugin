@@ -26418,21 +26418,21 @@ function selectShape(inputs) {
 }
 function deriveModelFromEvidence(evidence) {
   const score = AMBIGUITY_WEIGHT[evidence.ambiguity] + TOOL_WORK_WEIGHT[evidence.toolWork] + (evidence.risk === "elevated" ? 1 : 0) + (evidence.validation === "judgment" ? 1 : 0) + (evidence.returnContract === "judgment" ? 1 : 0);
-  const model = score === 0 ? "haiku" : score <= 3 ? "sonnet" : "opus";
+  const model = score === 0 ? "haiku" : "sonnet";
   return {
     model,
     basis: `complexity-derived score ${score}: ambiguity=${evidence.ambiguity}, toolWork=${evidence.toolWork}, risk=${evidence.risk}, validation=${evidence.validation}, returnContract=${evidence.returnContract}`
   };
 }
-function choose(kind, inputs, project, normalizedEvidence) {
+function choose(kind, inputs, project, normalizedEvidence, evidenceValid) {
   const selectorSupported = kind === "model" ? inputs.supportsModelSelector : inputs.supportsEffortSelector;
   const host = kind === "model" ? inputs.hostModel : inputs.hostEffort;
   const invocation = kind === "model" ? inputs.invocationModel : inputs.invocationEffort;
   const configured = project[inputs.role]?.[kind] ?? null;
   const shipped = DEFAULTS[inputs.role]?.[kind] ?? null;
   const required2 = kind === "model" ? inputs.requireModel : inputs.requireEffort;
-  const derived = kind === "model" && !invocation && !configured && !shipped && DERIVATION_ELIGIBLE_ROLES.has(inputs.role) ? deriveModelFromEvidence(normalizedEvidence) : null;
-  const requested = invocation ?? configured ?? shipped ?? derived?.model ?? null;
+  const derived = kind === "model" && evidenceValid && selectorSupported && !invocation && !configured && !shipped && DERIVATION_ELIGIBLE_ROLES.has(inputs.role) ? deriveModelFromEvidence(normalizedEvidence) : null;
+  const requested = (invocation || null) ?? (configured || null) ?? (shipped || null) ?? derived?.model ?? null;
   const requestedSource = invocation ? "invocation" : configured ? "project" : shipped ? "shipped-default" : derived ? "complexity-derived" : "inheritance";
   const derivedBasis = derived ? derived.basis : null;
   const maximum = kind === "model" ? MAX_MODEL_ID_LENGTH : MAX_EFFORT_LENGTH;
@@ -26542,9 +26542,21 @@ function routingScalarProblem(inputs) {
   }
   return null;
 }
-function routingChoiceProblem(choice, field, maximum) {
+function routingChoiceProblem(choice, field, maximum, role) {
   if (!choice) return `post-attempt prior ${field} choice is required`;
-  return boundedOptionalString(choice.value, `post-attempt prior ${field}.value`, maximum) ?? boundedOptionalString(choice.requested, `post-attempt prior ${field}.requested`, maximum);
+  const bounded = boundedOptionalString(choice.value, `post-attempt prior ${field}.value`, maximum) ?? boundedOptionalString(choice.requested, `post-attempt prior ${field}.requested`, maximum);
+  if (bounded) return bounded;
+  const claimsDerived = choice.source === "complexity-derived" || choice.requestedSource === "complexity-derived";
+  if (claimsDerived && field !== "model") {
+    return `post-attempt prior ${field} cannot claim complexity-derived provenance; the resolver derives only a model`;
+  }
+  if (claimsDerived && !DERIVATION_ELIGIBLE_ROLES.has(role)) {
+    return `post-attempt prior ${field} claims complexity-derived provenance for role \`${role}\`, which the resolver never derives`;
+  }
+  if (choice.source === "complexity-derived" && (choice.masked || choice.fallback)) {
+    return `post-attempt prior ${field} claims a delivered complexity-derived selection but reports it masked or fallen back`;
+  }
+  return null;
 }
 function availableModelsProblem(availableModels) {
   if (availableModels === void 0 || availableModels === null) return null;
@@ -26591,7 +26603,7 @@ function evaluationProblem(evaluation, inputs) {
   if (!prior.model || !prior.effort || !prior.shapeEvidence || !prior.executionShape) {
     return "post-attempt prior routing context is incomplete";
   }
-  const priorStringProblem = routingChoiceProblem(prior.model, "model", MAX_MODEL_ID_LENGTH) ?? routingChoiceProblem(prior.effort, "effort", MAX_EFFORT_LENGTH) ?? boundedOptionalString(prior.basis, "post-attempt prior basis", MAX_ROUTING_METADATA_LENGTH) ?? boundedOptionalString(prior.escalationOrigin, "post-attempt prior escalationOrigin", MAX_ROUTING_METADATA_LENGTH) ?? boundedOptionalString(prior.actualModel, "post-attempt prior actualModel", MAX_MODEL_ID_LENGTH);
+  const priorStringProblem = routingChoiceProblem(prior.model, "model", MAX_MODEL_ID_LENGTH, inputs.role) ?? routingChoiceProblem(prior.effort, "effort", MAX_EFFORT_LENGTH, inputs.role) ?? boundedOptionalString(prior.basis, "post-attempt prior basis", MAX_ROUTING_METADATA_LENGTH) ?? boundedOptionalString(prior.escalationOrigin, "post-attempt prior escalationOrigin", MAX_ROUTING_METADATA_LENGTH) ?? boundedOptionalString(prior.actualModel, "post-attempt prior actualModel", MAX_MODEL_ID_LENGTH);
   if (priorStringProblem) return priorStringProblem;
   if (prior.basis === void 0 || prior.basis !== null && typeof prior.basis !== "string") {
     return "post-attempt prior basis must be a string or null";
@@ -26702,8 +26714,8 @@ function baseDecision(project, inputs) {
   } : inputs;
   const availableStop = availableModelsProblem(inputs.availableModels);
   const selectorInputs = availableStop ? { ...boundedInputs, availableModels: null } : boundedInputs;
-  const model = choose("model", selectorInputs, project, shape.normalizedEvidence);
-  const effort = choose("effort", selectorInputs, project, shape.normalizedEvidence);
+  const model = choose("model", selectorInputs, project, shape.normalizedEvidence, shape.stop === null);
+  const effort = choose("effort", selectorInputs, project, shape.normalizedEvidence, shape.stop === null);
   const unitStop = inputs.unitIds !== void 0 || shape.normalizedEvidence.unitCount > 1 ? unitIdsProblem(inputs.unitIds, shape.normalizedEvidence.unitCount) : null;
   const stops = [shape.stop, unitStop, scalarStop, availableStop, model.stop, effort.stop].filter((v) => v !== null);
   return {

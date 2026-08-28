@@ -37,14 +37,19 @@ const MODEL_TIERS = ["haiku", "sonnet", "opus"] as const;
 // and a role holding no such row must never silently start receiving a derived
 // value. `branch` and `classify` are absent because their `DEFAULTS` entry
 // already wins above this tier — which is precisely how this change leaves the
-// two shipped-static rows byte-identical in behaviour. `pr`, `commit`,
-// `shipper` and `index` are absent because their published rows still read
-// `inherit`, and the matrix and the runtime may never disagree.
+// two shipped-static rows byte-identical in behaviour. `pr` and `commit` are
+// absent because their published matrix rows still read `inherit`; `index` is
+// absent because its published inlined-role entry claims no static default; and
+// `shipper` is absent because it has no published entry at all yet. The matrix
+// and the runtime may never disagree, so a role earns a derived value only once
+// something published says it does.
 const DERIVATION_ELIGIBLE_ROLES = new Set(["phase-runner", "finalize"]);
-// Evidence weights. ONLY the dimensions describing how much REASONING a unit
-// needs are scored. `workSurface`, `contextIsolation`, `unitCount` and
-// `independentReview` describe how to RUN it, not how hard it is, and are
-// consumed by `selectShape` instead.
+// Evidence weights. ONLY the five dimensions describing how much REASONING a
+// unit needs are scored: `ambiguity`, `toolWork`, `risk`, `validation`,
+// `returnContract`. The other seven — `workSurface`, `contextIsolation`,
+// `independentReview`, `atomicity`, `unitCount`, `unitsIndependent`,
+// `requestedParallelism` — describe how to RUN the unit rather than how hard it
+// is, and belong to `selectShape`.
 const AMBIGUITY_WEIGHT = { none: 0, bounded: 1, material: 2 } as const;
 const TOOL_WORK_WEIGHT = { none: 0, bounded: 1, material: 2 } as const;
 const INSUFFICIENCY_SIGNALS = new Set<RoutingInsufficiencySignal>([
@@ -237,7 +242,21 @@ function deriveModelFromEvidence(evidence: NormalizedRoutingShapeEvidence): { mo
     (evidence.risk === "elevated" ? 1 : 0) +
     (evidence.validation === "judgment" ? 1 : 0) +
     (evidence.returnContract === "judgment" ? 1 : 0);
-  const model: ModelTier = score === 0 ? "haiku" : score <= 3 ? "sonnet" : "opus";
+  // THE CEILING IS DELIBERATE. The ladder tops out at `sonnet`; nothing derives
+  // `opus`. The reason is blast radius, not cost squeamishness: `phase-runner`
+  // is reached by `/wf:run`'s `run:phase` edge, which is the INTERACTIVE
+  // single-task path as well as the unattended one, and whose evidence literal
+  // lives in a file this change may not touch. No core call site anywhere
+  // supplies `availableModels`, so the resolver's unavailability degradation is
+  // unreachable by construction — a derived top tier on a host without it would
+  // hard-fail a path that previously always worked, with no fallback and no
+  // diagnostic. A mechanism that opens a new failure mode on an untouched
+  // surface has not earned its ceiling yet.
+  //
+  // This bounds the MECHANISM's range on its first release; it is not a shipped
+  // per-role static default and introduces none. Raising the ceiling is a
+  // separate, evidence-backed decision.
+  const model: ModelTier = score === 0 ? "haiku" : "sonnet";
   return {
     model,
     basis: `complexity-derived score ${score}: ambiguity=${evidence.ambiguity}, toolWork=${evidence.toolWork}, ` +
@@ -250,6 +269,7 @@ function choose(
   inputs: RoutingInputs,
   project: RoutingProjectConfig,
   normalizedEvidence: NormalizedRoutingShapeEvidence,
+  evidenceValid: boolean,
 ): { choice: RoutingChoice; stop: string | null; derivedBasis?: string } {
   const selectorSupported = kind === "model" ? inputs.supportsModelSelector : inputs.supportsEffortSelector;
   const host = kind === "model" ? inputs.hostModel : inputs.hostEffort;
@@ -272,12 +292,30 @@ function choose(
   // the very attempt that matters most. When the escalation lever does apply it
   // passes `invocationModel`, which outranks this and leaves the tier advance
   // exactly as WF-497 specified.
-  const derived = kind === "model" &&
+  // `evidenceValid` is load-bearing, not defensive noise. `selectShape` fills
+  // `normalizedEvidence` with `?? "none"` defaults BEFORE it validates the
+  // enums, so a caller sending `ambiguity: "bogus"` reaches here with that value
+  // intact; scoring it would index the weight tables to `undefined`, make the
+  // whole score NaN, fail both tier comparisons, and silently land on `opus` —
+  // the most expensive tier, chosen by a malformed input. A call whose evidence
+  // was rejected derives nothing at all.
+  // `selectorSupported` is part of the guard, not just a later rejection. An edge
+  // that declares it cannot honor a selector is left EXACTLY as it was before
+  // this change: deriving there would push its record from `fallback: null` to
+  // `fallback: "selector-unsupported"`, which silently rewrites the compact
+  // operational record of every frozen `model=false` edge — including
+  // `agents/phase-runner.md`, a surface this change is not allowed to touch.
+  // Derivation is strictly additive to edges that can actually use it.
+  const derived = kind === "model" && evidenceValid && selectorSupported &&
     !invocation && !configured && !shipped &&
     DERIVATION_ELIGIBLE_ROLES.has(inputs.role)
     ? deriveModelFromEvidence(normalizedEvidence)
     : null;
-  const requested = invocation ?? configured ?? shipped ?? derived?.model ?? null;
+  // `|| null` rather than `??`: an empty-string selector is schema-valid but
+  // meaningless, and mixing `??` here with the truthiness guards above would let
+  // `invocationModel: ""` silently discard a derived selection with no
+  // diagnostic and no fallback token.
+  const requested = (invocation || null) ?? (configured || null) ?? (shipped || null) ?? derived?.model ?? null;
   const requestedSource: RoutingSource = invocation
     ? "invocation"
     : configured
@@ -405,10 +443,35 @@ function routingScalarProblem(inputs: RoutingInputs): string | null {
   return null;
 }
 
-function routingChoiceProblem(choice: RoutingChoice | undefined, field: string, maximum: number): string | null {
+function routingChoiceProblem(choice: RoutingChoice | undefined, field: string, maximum: number, role: string): string | null {
   if (!choice) return `post-attempt prior ${field} choice is required`;
-  return boundedOptionalString(choice.value, `post-attempt prior ${field}.value`, maximum) ??
+  const bounded = boundedOptionalString(choice.value, `post-attempt prior ${field}.value`, maximum) ??
     boundedOptionalString(choice.requested, `post-attempt prior ${field}.requested`, maximum);
+  if (bounded) return bounded;
+  // WF-498: `complexity-derived` is a provenance only THIS resolver can mint. A
+  // caller may faithfully restate one the resolver issued to it, but may never
+  // invent one — the whole point of the source is that the value was computed
+  // here from evidence rather than supplied. `priorTerminalDecision` copies
+  // `prior.model.source` straight onto a returned decision and
+  // `projectRoutingMeasurement` publishes it as the canonical operational
+  // record, so an unchecked claim would put a provenance the resolver could not
+  // have produced into a dispatched decision. That is the forged-provenance
+  // class WF-497 removed on the neighbouring path; it is refused here rather
+  // than reintroduced.
+  const claimsDerived = choice.source === "complexity-derived" || choice.requestedSource === "complexity-derived";
+  if (claimsDerived && field !== "model") {
+    return `post-attempt prior ${field} cannot claim complexity-derived provenance; the resolver derives only a model`;
+  }
+  if (claimsDerived && !DERIVATION_ELIGIBLE_ROLES.has(role)) {
+    return `post-attempt prior ${field} claims complexity-derived provenance for role \`${role}\`, which the resolver never derives`;
+  }
+  // A DELIVERED derived selection is only ever produced on `choose`'s success
+  // path, which cannot be masked and carries no fallback. A prior asserting all
+  // three at once describes a decision this resolver cannot emit.
+  if (choice.source === "complexity-derived" && (choice.masked || choice.fallback)) {
+    return `post-attempt prior ${field} claims a delivered complexity-derived selection but reports it masked or fallen back`;
+  }
+  return null;
 }
 
 function availableModelsProblem(availableModels: unknown): string | null {
@@ -459,8 +522,8 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
   if (!prior.model || !prior.effort || !prior.shapeEvidence || !prior.executionShape) {
     return "post-attempt prior routing context is incomplete";
   }
-  const priorStringProblem = routingChoiceProblem(prior.model, "model", MAX_MODEL_ID_LENGTH) ??
-    routingChoiceProblem(prior.effort, "effort", MAX_EFFORT_LENGTH) ??
+  const priorStringProblem = routingChoiceProblem(prior.model, "model", MAX_MODEL_ID_LENGTH, inputs.role) ??
+    routingChoiceProblem(prior.effort, "effort", MAX_EFFORT_LENGTH, inputs.role) ??
     boundedOptionalString(prior.basis, "post-attempt prior basis", MAX_ROUTING_METADATA_LENGTH) ??
     boundedOptionalString(prior.escalationOrigin, "post-attempt prior escalationOrigin", MAX_ROUTING_METADATA_LENGTH) ??
     boundedOptionalString(prior.actualModel, "post-attempt prior actualModel", MAX_MODEL_ID_LENGTH);
@@ -600,8 +663,8 @@ function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): Rou
   } : inputs;
   const availableStop = availableModelsProblem(inputs.availableModels);
   const selectorInputs = availableStop ? { ...boundedInputs, availableModels: null } : boundedInputs;
-  const model = choose("model", selectorInputs, project, shape.normalizedEvidence);
-  const effort = choose("effort", selectorInputs, project, shape.normalizedEvidence);
+  const model = choose("model", selectorInputs, project, shape.normalizedEvidence, shape.stop === null);
+  const effort = choose("effort", selectorInputs, project, shape.normalizedEvidence, shape.stop === null);
   const unitStop = inputs.unitIds !== undefined || shape.normalizedEvidence.unitCount > 1
     ? unitIdsProblem(inputs.unitIds, shape.normalizedEvidence.unitCount)
     : null;

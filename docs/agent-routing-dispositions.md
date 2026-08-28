@@ -10,7 +10,7 @@ Disposition meanings:
 - `evidence-gated` — quality or side-effect sensitivity requires role-specific comparison evidence before a static default may ship.
 - `deferred` — the named owner decides the routing change; no static default is introduced here.
 
-For every row, host enforcement, invocation override, project override, shipped default, and inheritance retain WF-394 precedence. `inherit` means the selector remains unset at this layer.
+For every row, host enforcement, invocation override, project override, shipped default, **complexity-derived selection**, and inheritance retain WF-394 precedence, in that order. `inherit` means the selector remains unset at this layer.
 
 WF-399 completed fixed core-owned adoption; WF-400 completes live capability adoption for registry-selected verify findings, QA engine/host providers, retrospective bulk distillation, and pack-owned index updates. The two authoritative inventories and guards are `plugins/wf/skills/_contracts/core-dispatch-inventory.tsv` / `core-dispatch-routing-guard.sh` and `capability-dispatch-inventory.tsv` / `capability-dispatch-routing-guard.sh`. Pack-owned index work reaches the already-routed `/wf:index` wrapper; the optional retrospective's own on-request entrypoint remains caller-owned because the repository has no executable caller. Adoption changes no disposition, default, effort, attempt limit, artifact attribution, or role outcome.
 
@@ -45,5 +45,5 @@ The two `shipped-static` rows are the complete static-default set. No role start
 
 ## Inlined roles (no agent)
 
-- `finalize` — the shipper's terminal edge (`ship:finalize` / `fleet-finalize`) reaches `/wf:tf` through the Skill tool, so it backs no production agent and holds no row in the agent matrix above. WF-498 made it **`complexity-derived`**: the resolver computes its model from the edge's own normalized shape evidence, exactly as for `phase-runner`, and its effort inherits. It is listed here rather than in the matrix because that table is asserted to cover the eighteen real agent files one-for-one, and `finalize` has none.
+- `finalize` — the shipper's terminal edge (canonical unit id `ship:finalize` at both the `ship` and `fleet` call sites) reaches `/wf:tf` through the Skill tool, so it backs no production agent and holds no row in the agent matrix above. WF-498 made it **`complexity-derived`**: the resolver computes its model from the edge's own normalized shape evidence, exactly as for `phase-runner`, and its effort inherits. It is listed here rather than in the matrix because that table is asserted to cover the eighteen real agent files one-for-one, and `finalize` has none.
 - `index` — WF-379 removed the `index` agent and inlined the single-row `index.md` write into the caller's own context. The `/wf:index` wrapper routes `inline` with both selectors unset — the role stays a map-key-only in `routing.ts` (no shipped static default, disposition equivalent to `adaptive`). It backs no production agent, so it holds no row in the agent matrix above; core and capability call sites reach it through the routed wrapper, never a dispatched subagent.

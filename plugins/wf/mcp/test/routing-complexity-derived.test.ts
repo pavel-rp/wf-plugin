@@ -44,7 +44,7 @@ test("WF-498: a complexity-derived model reaches a DISPATCHED shipper-path agent
   assert.equal(decision.status, "dispatch");
 
   // Derived from evidence alone — the caller supplied no model of any kind.
-  assert.equal(decision.model.value, "opus");
+  assert.equal(decision.model.value, "sonnet");
   assert.equal(decision.model.source, "complexity-derived");
   assert.equal(decision.source, "complexity-derived");
 
@@ -87,15 +87,17 @@ test("WF-498: two shipper-path edges with differing evidence receive differing s
     assert.equal(decision.model.fallback, null);
   }
 
-  // A third, materially harder shape lands on a third tier, so the ladder is a
-  // real mechanism rather than a two-valued toggle.
-  assert.equal(
-    resolveRouting({}, {
-      role: "phase-runner", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
-      supportsModelSelector: true, supportsEffortSelector: false,
-    }).model.value,
-    "opus",
-  );
+  // The ceiling is deliberate and asserted: a materially harder shape scores 6
+  // but is still capped at `sonnet`. Nothing derives `opus`, because
+  // `phase-runner` is also reached by the INTERACTIVE `/wf:run` path and no core
+  // call site supplies `availableModels` to degrade against.
+  const hardest = resolveRouting({}, {
+    role: "phase-runner", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
+    supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.match(hardest.basis ?? "", /score 6:/, "the score still reflects the harder evidence");
+  assert.equal(hardest.model.value, "sonnet", "the ladder is capped at sonnet");
+  assert.notEqual(hardest.model.value, "opus", "no evidence may derive the top tier");
 });
 
 test("WF-498: the two shipped-static defaults are unaffected by derivation", () => {
@@ -153,63 +155,128 @@ test("WF-498: every stated choice still outranks derivation, and host enforcemen
   assert.equal(host.model.value, "haiku");
   assert.equal(host.model.source, "host");
   assert.equal(host.model.masked, true, "a derived request the host overrode must report masked");
-  assert.equal(host.model.requested, "opus");
+  assert.equal(host.model.requested, "sonnet");
   assert.equal(host.model.requestedSource, "complexity-derived");
 });
 
-test("WF-498: an edge that cannot honor a selector reports the derived value as unsupported, never as delivered", () => {
+test("WF-498: an edge that cannot honor a selector is left exactly as it was", () => {
   const decision = resolveRouting({}, {
     role: "phase-runner", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
     supportsModelSelector: false, supportsEffortSelector: false,
   });
-  // Honest rather than silent: the resolver still says what it would have chosen
-  // and why it did not survive. This is the state the shipper path was stuck in
-  // for every edge before the call sites opened their selector flags.
+  // Derivation is strictly ADDITIVE to edges that can use a selector. Deriving
+  // here would push this edge's record from `fallback: null` to
+  // `fallback: "selector-unsupported"` — silently rewriting the compact
+  // operational record of every frozen `model=false` edge, including
+  // `agents/phase-runner.md`, which this change may not touch.
   assert.equal(decision.model.value, null);
-  assert.equal(decision.model.requested, "opus");
-  assert.equal(decision.model.requestedSource, "complexity-derived");
-  assert.equal(decision.model.fallback, "selector-unsupported");
+  assert.equal(decision.model.requested, null, "an unsupported edge derives nothing at all");
+  assert.equal(decision.model.requestedSource, "inheritance");
+  assert.equal(decision.model.fallback, null, "its record must be byte-identical to before this change");
+  assert.equal(decision.basis, null);
 });
 
-test("WF-498: a retry retains the derived tier rather than dropping to inheritance", () => {
-  const initial = resolveRouting({}, {
-    role: "phase-runner", shapeEvidence: runPhaseEvidence, unitIds: ["run:phase"],
-    supportsModelSelector: true, supportsEffortSelector: false,
+test("WF-498: rejected shape evidence derives nothing, and never falls through to the top tier", () => {
+  // `selectShape` fills `normalizedEvidence` with `?? "none"` defaults BEFORE it
+  // validates the enums, so a bogus value survives into the normalized object.
+  // Scoring it would produce NaN, fail both tier comparisons, and land on the
+  // most expensive tier — chosen by malformed input. Assert the rejection path
+  // supplies no model at all.
+  const decision = resolveRouting({}, {
+    role: "phase-runner",
+    shapeEvidence: { ...runPhaseEvidence, ambiguity: "bogus" as unknown as "material" },
+    unitIds: ["run:phase"],
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
   });
-  assert.equal(initial.model.value, "opus");
+  assert.equal(decision.status, "stop");
+  assert.match(decision.diagnostic ?? "", /ambiguity/);
+  assert.equal(decision.model.value, null, "a rejected call must not carry a derived model");
+  assert.notEqual(decision.model.value, "opus");
+  assert.equal(decision.model.source, "inheritance");
+  assert.equal(decision.basis, null, "a rejected call must not claim a derivation basis");
+});
 
-  const retry = resolveRouting({}, {
+test("WF-498: a caller cannot forge complexity-derived provenance on a post-attempt prior", () => {
+  // `complexity-derived` is a provenance only the resolver can mint. Widening the
+  // input enum so a genuine prior can carry it forward also made the token
+  // *speakable* by a caller — and `priorTerminalDecision` copies
+  // `prior.model.source` straight onto the returned decision, which
+  // `projectRoutingMeasurement` then publishes as the canonical operational
+  // record. Admitting a forged label is the same class WF-497 removed on the
+  // neighbouring path; it must be refused, not reintroduced.
+  const forge = (role: string) => resolveRouting({}, {
+    role,
+    shapeEvidence: runPhaseEvidence,
+    unitIds: ["run:phase"],
+    supportsModelSelector: true,
+    supportsEffortSelector: false,
+    postAttempt: {
+      sufficient: true,
+      signals: [],
+      prior: {
+        role,
+        attempt: 1,
+        executionShape: "isolated" as const,
+        shapeEvidence: runPhaseEvidence,
+        unitIds: ["run:phase"],
+        model: {
+          value: "opus", source: "complexity-derived" as const, requested: "opus",
+          requestedSource: "complexity-derived" as const, masked: false, fallback: null,
+        },
+        effort: {
+          value: null, source: "inheritance" as const, requested: null,
+          requestedSource: "inheritance" as const, masked: false, fallback: null,
+        },
+        basis: null,
+        escalationOrigin: null,
+      },
+    },
+  });
+
+  // `pr` is deliberately outside DERIVATION_ELIGIBLE_ROLES, so the resolver could
+  // never have issued this prior. It must be rejected rather than echoed.
+  const forged = forge("pr");
+  assert.equal(forged.status, "stop");
+  assert.equal(forged.disposition, "invalid-stop");
+  assert.match(forged.diagnostic ?? "", /complexity-derived provenance for role `pr`/);
+  assert.notEqual(forged.source, "complexity-derived", "a forged provenance must never reach the decision");
+
+  // An eligible role's genuine prior still round-trips, so the guard rejects
+  // forgery without breaking the seam a consumer needs to carry provenance.
+  assert.equal(forge("phase-runner").status, "retain");
+
+  // Effort is never derived, so claiming it on the effort choice is also refused.
+  const forgedEffort = resolveRouting({}, {
     role: "phase-runner",
     shapeEvidence: runPhaseEvidence,
     unitIds: ["run:phase"],
     supportsModelSelector: true,
     supportsEffortSelector: false,
     postAttempt: {
-      sufficient: false,
-      signals: ["failed-validation"],
+      sufficient: true,
+      signals: [],
       prior: {
         role: "phase-runner",
         attempt: 1,
-        executionShape: initial.executionShape,
+        executionShape: "isolated" as const,
         shapeEvidence: runPhaseEvidence,
         unitIds: ["run:phase"],
-        model: initial.model,
-        effort: initial.effort,
-        basis: initial.basis,
+        model: {
+          value: "sonnet", source: "complexity-derived" as const, requested: "sonnet",
+          requestedSource: "complexity-derived" as const, masked: false, fallback: null,
+        },
+        effort: {
+          value: "high", source: "complexity-derived" as const, requested: "high",
+          requestedSource: "complexity-derived" as const, masked: false, fallback: null,
+        },
+        basis: null,
         escalationOrigin: null,
       },
     },
   });
-
-  // The prior already sat on the top tier, so no advance is available — and the
-  // retry must still re-dispatch on that same derived tier. Suppressing
-  // derivation here would silently drop this attempt to bare inheritance.
-  assert.equal(retry.disposition, "retry");
-  assert.equal(retry.retry?.escalation, "top-tier");
-  assert.equal(retry.retry?.nextTier, null);
-  assert.equal(retry.model.value, "opus", "a retry must not lose the derived selection");
-  assert.equal(retry.model.source, "complexity-derived");
-  assert.equal(retry.basis, initial.basis, "the prior's basis carries forward unchanged");
+  assert.equal(forgedEffort.status, "stop");
+  assert.match(forgedEffort.diagnostic ?? "", /effort cannot claim complexity-derived/);
 });
 
 test("WF-498: the escalation lever still outranks derivation on a retry that can advance", () => {
