@@ -244,7 +244,9 @@ or a requirement already resolved above. Reporting nothing on a change carrying 
 class is this pass working correctly, not failing.
 
 Render reportable findings under the report's `## Adversarial findings` section, tagged
-with the provenance `core`; when there is none, omit that section entirely. Rationale and
+with the provenance `core`; when there is none, omit that section entirely.
+Deduplicating this pass against the contributors registered at the phase below
+is out of scope here and is specified separately; this section compares nothing. Rationale and
 worked examples live in the paired reference `adversarial-pass.md` — obtained, when a
 reader wants it, via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
 `skill: verify-spec`, `ref: adversarial-pass.md`) — and are never read on this path.
