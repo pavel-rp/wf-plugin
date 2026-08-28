@@ -59,9 +59,16 @@ Verdict vocabulary, from WF-481's spec: `still-broken` · `fixed` · `never-was`
 A behaviour whose verdict cannot be established without a full fleet dispatch is recorded
 `unverifiable` **with its reason**, never silently asserted.
 
-Two of the four behaviours (**B2**, **B3**) are properties of the **Claude Code host runtime**, not
-of wf source. For those the wf-version diff is *not* the determinant and a source diff would be
-vacuous; the live probe is the evidence, and the note says so rather than manufacturing a delta.
+Two of the four behaviours (**B2**, **B3**) are properties of the **host runtime**, not of wf
+source. For those the wf-version diff is *not* the determinant and a source diff would be vacuous;
+the live probe is the evidence, and the note says so rather than manufacturing a delta.
+
+**On the file-and-line requirement.** WF-481 asks each verdict to carry file-and-line evidence.
+**B1** and **B4** do, because they are wf-source behaviours. **B2** and **B3** carry no wf file or
+line **because no wf file governs them** — quoting one would be false precision pointing at the
+wrong layer. Their evidence is a reproducible live probe plus, for B3, the runtime's own published
+tool schema, both quoted in full below. This substitution is recorded here rather than passed off
+silently, and it is the reason each verdict states its evidence tier.
 
 **Reachability.** The cached 0.116.0 tree was still present at
 `~/.claude/plugins/cache/wf-marketplace/wf/0.116.0/`, so WF-481's fallback (current-state verdict
@@ -224,9 +231,9 @@ and insufficient to promise a working end-to-end rebind. Recorded honestly rathe
 **The prohibition describes behaviour that does not exist, and never did in any cached version.**
 
 **Contract read.** `/wf:branch` derives a name and delegates every git operation to the delivery
-provider's `branch-create`. That operation's step 6, in
-`capabilities/git/fragments/delivery.ops.md`, reads **identically** in every cached `wf-git`
-version (0.7.0, 0.7.1, 0.8.0):
+provider's `branch-create`. That operation's **step 6**, at
+`plugins/wf-git/capabilities/git/fragments/delivery.ops.md:26` (contract version 1.7.0), reads
+**identically** in every cached `wf-git` version — 0.7.0, 0.7.1, and 0.8.0, all at line 26:
 
 > *"**Create and switch.** With a remote: `git checkout -b <branch-name> origin/<base>`,
 > `<base-source>` = `origin/<base>`. Without: `git checkout -b <branch-name> <base>`."*
