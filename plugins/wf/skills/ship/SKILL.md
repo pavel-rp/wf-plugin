@@ -52,6 +52,7 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 - Resolve the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, and invoke its **read** operations — `pr-detect`, `checks-read`, and `newest-published-version-read` — by obtaining each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`) and following it in this skill's own context.
 - Query the local install inventory read-only via the `wf-resolver` `discover_packs({ workspaceRoot })` query — **only** on the Phase-1 currency check's provider-less branch.
 - Resolve the `ship.review` slot (Phase 4.5) via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: ship`, `point: review`), and — only on a `composed` outcome — follow the served body as prose in this skill's own context.
+- **Request** a per-gate self-approval and a phase-completion receipt through the bundled `wf-resolver` MCP tools `record_run_evidence` and `read_run_evidence`. `ship` asks; the resolver — which owns that artifact class's lifecycle — decides, derives and issues. `ship` names no destination, computes no digest, and files nothing itself.
 - Invoke the sibling `wf:*` commands this skill drives through the **Skill** tool: `/wf:branch`, `/wf:run` (and each gated `/wf:*` command `/wf:run` names in its handoff), `/wf:commit`, `/wf:pr`, and `/wf:tf`.
 - Dispatch the bulk of a failing check set to the read-only `wf:context-distiller` agent (`MODE: ci`) via the **Task** tool, inside Phase 4.2 only, so the raw check output is read in that agent's own context and never in this one.
 - **The single source-write exception:** inside **Phase 4.2 only**, apply the minimal fix a `CI DISTILL` block classed `code` names, at the `Location` it names — and only when that `Location` passes the **write-target test** below. Nowhere else, for no other reason, and never for a block classed `infra/transient`. Stage exactly that edit and flush it by invoking `/wf:commit <id> --push --staged` through the **Skill** tool, so the pushed commit set equals the bounded fix set — `ship` performs no delivery write of its own.
@@ -131,11 +132,31 @@ Below the ceiling the checkpoint is invisible: `ship` proceeds to the next edge 
 1. **Ensure the task branch.** Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "branch"` and `unitIds: ["ship:branch"]` under §"Fixed sibling-Skill routing", then invoke `/wf:branch <id>` through the Skill tool so all subsequent source lands on the task branch (idempotent — `BRANCH — already-active` when already on it). On `BRANCH — Error`, surface the reason and stop. On `BRANCH — created`/`switched`/`already-active`, inspect `Carry:`: `none` or `applied` continues; a preserved-entry/manual-follow-up carry means the branch switch succeeded but the intended working set is not safely reapplied, so emit `SHIP — Blocked`, name that manual follow-up, preserve all work, and stop before any run/phase/PR/finalize edge. Ordinary dirty work is carried progress, not by itself a branch error.
 
 2. **Loop the pipeline driver.** Route the initial edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke `/wf:run <id>` through the Skill tool and read its `RUN —` block:
-   - **Gated** (`RUN — gated`, whose `Run next:` field names a phase command) → route the exact dynamic phase edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:phase"]`, invoke that exact `/wf:<phase> <id>` command through the Skill tool, then route the resume edge independently with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:run-resume"]` and **re-invoke `/wf:run <id>`**. This is the unattended equivalent of a human clearing the gate. **[ceiling checkpoint]** After each gated phase clears and before the next loop iteration, apply the context-ceiling checkpoint (§"Context ceiling checkpoint").
+   - **Gated** (`RUN — gated`, whose `Run next:` field names a phase command) → route the exact dynamic phase edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:phase"]`, invoke that exact `/wf:<phase> <id>` command through the Skill tool, then **clear that gate under §"Approve every gate this run drives past"** before going further, and only then route the resume edge independently with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "phase-runner"` and `unitIds: ["ship:run-resume"]` and **re-invoke `/wf:run <id>`**. This is the unattended equivalent of a human clearing the gate — and the approval is what makes it evidence rather than assertion. **[ceiling checkpoint]** After each gated phase clears and before the next loop iteration, apply the context-ceiling checkpoint (§"Context ceiling checkpoint").
    - **Complete** (`RUN — complete` / ready for review) → the SDD build chain is done; continue to Phase 3.
    - **Blocked / error** (`RUN — blocked` / `RUN — error`, or a driven phase returns its own `… — Error`, or a driven phase halts awaiting human input) → `SHIP — Blocked`, surface the phase's reason, stop. Do not attempt to complete a failed phase yourself.
 
 3. **Progress + iteration guard.** Cap the loop (e.g. one iteration per pipeline phase plus a small margin). If `/wf:run` names the **same** command twice with no artifact progress between them, the pipeline is stuck → `SHIP — Blocked` (no forward progress), stop rather than loop forever.
+
+---
+
+## Approve every gate this run drives past
+
+A gate is normally cleared by a human. This skill exists to clear them without one, so each gate it drives past is satisfied instead by a **recorded self-approval** — a record the resolver issues, binding by digest the artifact that gate approves. Run this **once per gate**, at the boundary Phase 2 names: after the driven phase's terminal block has been read, and **before** the resume edge is routed. Filed before the next phase begins is a requirement, not an ordering preference — an approval filed afterwards approves an artifact the next phase may already have changed.
+
+1. **Name the gate and the artifact.** The gate token is `gate:<phase>`, where `<phase>` is the phase that just completed — the `gate:` prefix is what keeps a gate approval from ever colliding with a phase receipt's subject. The artifact is the one **that phase's own terminal block named** (its `Spec:` / `Plan:` / equivalent line). Take it from the block rather than from a phase-to-file table: the pipeline owns which phase writes what, and duplicating that here would go stale the moment a phase changes its output.
+
+2. **Request the approval.** Call `record_run_evidence({ workspaceRoot, kind: "gate-approval", subject: "gate:<phase>", taskId: {task-id}, artifactPath: <the path that block named> })`. Supply nothing else: the run identity, the workspace binding, the clock, the sequence, the artifact digest and the run mode are all the resolver's to derive, and a caller that could assert them could assert the approval itself.
+
+3. **Read it back and match it.** Call `read_run_evidence({ workspaceRoot, taskId: {task-id} })` and look for a **`matched`** entry whose `kind` is `gate-approval`, whose `subject` is this gate's token, whose `evidenceClass` is `artifact-backed`, and whose `artifactState` is `fresh`. Reading back is not ceremony: `record_run_evidence` reports what it *did*, and only the read reports what a later checker will actually *find*.
+
+4. **Halt on anything less.** If the request was `refused`, or no such entry appears under `matched`, or the entry is `invocation-only`, or its `artifactState` is `stale` or `missing` — the gate is **unapproved**. Emit `SHIP — Blocked` naming the gate and the reason, and stop **there**: no further phase is driven, no pull request is opened, and nothing is merged. An unattended run does not skip a gate; it satisfies the gate with evidence, or it stops. An `invocation-only` record is the weaker claim and never clears a gate — the whole point is the digest.
+
+5. **Tally.** Keep the count of gates approved this run, the run mode the approvals were issued under (from the response's `runMode`), and the token of any gate that halted. The `Gates:` slot renders them.
+
+**What this proves, and what it does not.** `record_run_evidence` is an ordinary resolver tool, and the agent that requests an approval can call it — so an approval is **not** proof that the gate was legitimately passed, that the phase did real work, or that the artifact is correct. What it does establish is narrower and still worth having: the **resolver**, not the caller, read and digested the named artifact, stamped the run identity and sequence, observed the run mode, and sealed the result. That defeats a hand-written approval-shaped file and binds the approval to bytes a later reader can re-check. Do not describe it as unforgeable.
+
+**And what the run mode adds.** The record carries the run mode the resolver observed from its own launch environment — a channel the requesting agent cannot reach. `unestablished` is the honest answer when nothing declared one, and it is reported rather than hidden: an approval issued under `unestablished` is machine-checkable but **not mode-established**, which is strictly weaker than the unattended-run exception assumes. Report it; never round it up to `unattended`.
 
 ---
 
@@ -224,6 +245,8 @@ Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "
 
 **Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line and changes nothing else: no status token changes, no gate is added, nothing is merged or un-merged, and the Final Output block is emitted unchanged.
 
+**Not the same claim as a gate approval, and deliberately not interchangeable.** This receipt is about a **phase** — that this ceremony reached its completion point. A gate approval (§"Approve every gate this run drives past") is about a **gate** — that a named artifact was approved before the next phase began. They travel one emission path but answer different questions, so neither ever satisfies the other's requirement: a run with every gate approved and no receipt has still not completed the ceremony, and a run with a receipt and no approvals has driven past its gates unproven. That is also why this step is non-blocking while a gate approval halts — a receipt records what happened, an approval authorises what happens next.
+
 ---
 
 ## Edge Cases
@@ -233,6 +256,9 @@ Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "
 - **The currency check cannot complete:** the read returns `<read-performed>` = false, or no version declaration is configured, or the running version is `unknown` → `Currency: not checked — <reason>` and the run proceeds unchanged. A degraded read is never presented as a performed check that found the install current, and the check never blocks, gates, or updates anything.
 - **Registered-but-unrecoverable delivery provider:** Phase 1 stops with the hedged candidate-naming diagnosis from the record's `diagnostics` field, never asserting a pack owns the surface.
 - **A build phase fails or halts for input:** Phase 2 stops with `SHIP — Blocked` surfacing that phase's own reason — `ship` never rescues a failed phase by doing its work itself.
+- **A gate cannot be approved:** the approval was refused, never appeared under `matched`, came back `invocation-only`, or its artifact reads `stale`/`missing` → `SHIP — Blocked`, `Gates: halted at <gate> — <reason>`, and the run stops **at that gate**: no later phase, no pull request, no merge, and no approval for any gate beyond it. This is a clean bounded stop, not an internal error — the gate is unapproved and the run says so rather than advancing past it.
+- **The completed phase's block names no artifact:** there is nothing for the resolver to digest, so no artifact-backed approval can exist and the gate is treated exactly as unapproved above. `ship` never substitutes a weaker record to get past it, and never nominates an artifact the phase did not report.
+- **The run mode is `unestablished`:** the approvals are still issued, still matched, and still gate the run — but the mode is rendered as `unestablished` in the `Gates:` slot rather than presented as an unattended run. The run is not blocked on this; the reader is told what was and was not established.
 - **Pipeline stuck (no progress):** the Phase-2 progress guard stops with `SHIP — Blocked` rather than re-dispatching the same phase forever.
 - **`/wf:pr` opens no pull request:** Phase 3 stops (`SHIP — Blocked`); a `<PR>` is never fabricated.
 - **Red checks:** Phase 4 no longer stops — it enters the Phase 4.2 remediation loop. A red pull request is still never merged; it is converged to green or the loop stops cleanly.
@@ -261,12 +287,15 @@ Checks:   <green | green after <n> CI-remediation iteration(s) | red (<failing>)
 Merge:    <merged (<url>) | not merged — <reason>>
 Version:  <the run-scoped resolved version | unknown>
 Currency: <current | trailing (running <v>, published <v>) | provider-less | not checked — <reason>>
+Gates:    <n approved (mode <run mode>) | halted at <gate> — <reason> | none — no gate reached>
 Next:     <none — terminus | the command that clears the block>
 ```
 
 `Version:` is the run-scoped resolved version held at Prerequisites — the harness this run executed. It renders on **every** emission, and `unknown` when the resolver could not determine it; it is never omitted.
 
 `Currency:` is the outcome of the Phase-1 currency check, in that step's grammar, rendered verbatim on **every** emission — including a `Blocked` one. Only `current` says the harness is not behind, and only a performed read can produce it: `provider-less` and `not checked` name what did **not** happen and are never rounded up to a pass here.
+
+`Gates:` is §"Approve every gate this run drives past"'s tally, rendered on **every** emission. `<n> approved` counts only gates whose approval was read back matched, artifact-backed and fresh; the stated `mode` is the run mode those approvals were issued under, and an `unestablished` mode is rendered as it stands, never omitted and never upgraded. `halted at <gate>` is the terminal form when a gate could not be approved — paired with `Merge: not merged`, since nothing downstream of a halted gate runs. `none — no gate reached` is the honest fallback when the run stopped before its first gate (a missing provider, a branch error), and is never read as "no gate needed approval".
 
 **Adding a slot to this block?** Follow the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Run-block slot convention" — never a raw `Read` of the plugin-cache path: append the slot immediately above `Next:`, pad its value to this block's column 11, and always render it with a stated fallback token.
 
