@@ -1960,8 +1960,20 @@ export interface RoutingRetryInstruction {
   attempt: number;
   signals: RoutingInsufficiencySignal[];
   unitIds: string[];
-  priorTier: "haiku" | "sonnet" | "opus";
-  nextTier: "haiku" | "sonnet" | "opus";
+  /** Which escalation lever this retry actually pulls. `next-stable-tier` advances
+   *  exactly one stable tier. The other three name the reason no tier lever applied,
+   *  in the precedence order the resolver classifies them: the edge declared it
+   *  cannot honor a model selector, the prior attempt maps to no stable tier, or the
+   *  prior attempt already sits at the highest one. The model tier is ONE lever, not
+   *  the gate itself — an inapplicable lever narrows and re-dispatches the failed
+   *  units rather than refusing to acknowledge the failure. */
+  escalation: "next-stable-tier" | "selector-unsupported" | "prior-tier-unknown" | "top-tier";
+  /** Null whenever no tier advance was requested. THE CALLER INVARIANT:
+   *  `nextTier !== null` if and only if this retry changes the model; a null
+   *  `nextTier` means the narrowed units re-run under the prior attempt's own
+   *  selection, carried forward verbatim with its provenance intact. */
+  priorTier: "haiku" | "sonnet" | "opus" | null;
+  nextTier: "haiku" | "sonnet" | "opus" | null;
   escalationOrigin: string;
   priorExecutionShape: ExecutionShape;
   shapeChanged: boolean;

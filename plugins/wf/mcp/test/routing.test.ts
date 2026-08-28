@@ -530,32 +530,39 @@ test("validated pre-retry stops preserve the exhausted or unmappable prior routi
     },
   );
 
-  const terminalCases = [
-    { model: "opus", actualModel: "claude-opus-4-8", diagnostic: /highest stable tier/ },
-    { model: "custom-model", actualModel: "custom-model", diagnostic: /does not map/ },
+  // WF-497: both of these are inapplicable-lever cases, not defeated ones, so the
+  // gate opens and the retry carries the prior selection forward.
+  const noLeverCases = [
+    { model: "opus", actualModel: "claude-opus-4-8", escalation: "top-tier", priorTier: "opus" },
+    { model: "custom-model", actualModel: "custom-model", escalation: "prior-tier-unknown", priorTier: null },
   ] as const;
-  for (const row of terminalCases) {
+  for (const row of noLeverCases) {
     const routed = resolveRouting({}, {
       ...base,
       invocationModel: row.model,
       basis: "terminal-basis",
       actualModel: row.actualModel,
     });
-    const terminalPrior = prior(routed);
-    const stopped = resolveRouting({}, {
+    const carriedPrior = prior(routed);
+    const retried = resolveRouting({}, {
       role: "classify",
       shapeEvidence: routed.normalizedEvidence,
-      unitIds: terminalPrior.unitIds,
+      unitIds: carriedPrior.unitIds,
       supportsModelSelector: true,
       supportsEffortSelector: false,
-      postAttempt: { sufficient: false, signals: ["low-confidence"], prior: terminalPrior },
+      postAttempt: { sufficient: false, signals: ["low-confidence"], prior: carriedPrior },
     });
-    assert.equal(stopped.disposition, "invalid-stop");
-    assert.match(stopped.diagnostic ?? "", row.diagnostic);
+    assert.equal(retried.disposition, "retry");
+    assert.equal(retried.retry?.escalation, row.escalation);
+    assert.equal(retried.retry?.nextTier, null);
+    assert.equal(retried.retry?.priorTier, row.priorTier);
+    assert.equal(retried.diagnostic, null);
     assert.deepEqual(
-      [stopped.model, stopped.effort, stopped.basis, stopped.attempt, stopped.escalationOrigin, stopped.actualModel],
-      [terminalPrior.model, terminalPrior.effort, terminalPrior.basis, terminalPrior.attempt, terminalPrior.escalationOrigin, terminalPrior.actualModel],
+      [retried.model, retried.effort, retried.basis],
+      [carriedPrior.model, carriedPrior.effort, carriedPrior.basis],
+      "the prior selection and its basis survive an opened gate unchanged",
     );
+    assert.equal(retried.attempt, carriedPrior.attempt + 1);
   }
 });
 
@@ -793,30 +800,77 @@ test("contradictory and incomplete retry contexts stop with diagnostics", () => 
   }
 });
 
-test("retry stops on masked, unavailable, unsupported, unknown, and non-advancing model tiers", () => {
+test("retry stops on a DEFEATED tier advance but opens the gate when no tier lever applies", () => {
   const first = resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5" });
   const postAttempt = evaluated("failed-validation", { prior: prior(first) });
-  const cases = [
+
+  // The lever was applicable and was ATTEMPTED: the resolver asked for a specific
+  // next tier and did not get it. That is an integrity failure and still stops,
+  // preserving WF-394 host precedence.
+  const defeated = [
     { inputs: { hostModel: "haiku" }, pattern: /masked/ },
     { inputs: { availableModels: ["haiku"] }, pattern: /unavailable/ },
-    { inputs: { supportsModelSelector: false }, pattern: /cannot honor/ },
-    { inputs: {}, priorModel: "custom-model", pattern: /does not map/ },
-    { inputs: {}, priorModel: "opus", pattern: /highest stable tier/ },
   ] as const;
-  for (const row of cases) {
-    const evaluation = row.priorModel
-      ? { ...postAttempt, prior: { ...postAttempt.prior, model: { ...postAttempt.prior.model, value: row.priorModel }, actualModel: null } }
-      : postAttempt;
-    const decision = resolveRouting({}, { ...base, ...row.inputs, postAttempt: evaluation });
+  for (const row of defeated) {
+    const decision = resolveRouting({}, { ...base, ...row.inputs, postAttempt });
     assert.equal(decision.disposition, "invalid-stop");
     assert.match(decision.diagnostic ?? "", row.pattern);
     assert.equal(decision.retry, null);
     assert.deepEqual(
       [decision.model, decision.effort, decision.basis, decision.attempt, decision.escalationOrigin, decision.actualModel],
-      [evaluation.prior.model, evaluation.prior.effort, evaluation.prior.basis, evaluation.prior.attempt, evaluation.prior.escalationOrigin, evaluation.prior.actualModel ?? undefined],
+      [postAttempt.prior.model, postAttempt.prior.effort, postAttempt.prior.basis, postAttempt.prior.attempt, postAttempt.prior.escalationOrigin, postAttempt.prior.actualModel ?? undefined],
       "a failed retry candidate must leave the prior routing record terminal",
     );
   }
+
+  // The lever was NOT APPLICABLE, so none was requested. WF-497: the gate opens
+  // anyway — a caller that reports a real failure gets a bounded, narrowed retry
+  // instead of being told its well-formed evidence was invalid.
+  const notApplicable = [
+    { inputs: { supportsModelSelector: false }, escalation: "selector-unsupported", priorTier: null },
+    { inputs: {}, priorModel: "custom-model", escalation: "prior-tier-unknown", priorTier: null },
+    { inputs: {}, priorModel: "opus", escalation: "top-tier", priorTier: "opus" },
+  ] as const;
+  for (const row of notApplicable) {
+    const evaluation = row.priorModel
+      ? { ...postAttempt, prior: { ...postAttempt.prior, model: { ...postAttempt.prior.model, value: row.priorModel }, actualModel: null } }
+      : postAttempt;
+    const decision = resolveRouting({}, { ...base, ...row.inputs, postAttempt: evaluation });
+    assert.equal(decision.status, "dispatch", row.escalation);
+    assert.equal(decision.disposition, "retry", row.escalation);
+    assert.equal(decision.retry?.escalation, row.escalation);
+    assert.equal(decision.retry?.nextTier, null, "no tier lever means no model change");
+    assert.equal(decision.retry?.priorTier, row.priorTier);
+    assert.equal(decision.retry?.attempt, 2);
+    assert.ok(decision.retry?.escalationOrigin, "an opened gate records escalation provenance");
+    assert.equal(
+      decision.diagnostic, null,
+      "a retry must never carry a diagnostic: callers hard-stop on a non-null one and would silently drop the work",
+    );
+    assert.deepEqual(
+      decision.model, evaluation.prior.model,
+      "the prior attempt's model choice is carried forward verbatim, provenance intact",
+    );
+    assert.equal(decision.source, evaluation.prior.model.source);
+  }
+});
+
+test("retry.nextTier is non-null exactly when the retry changes the model", () => {
+  const advancing = resolveRouting({}, { ...base, actualModel: "claude-haiku-4-5" });
+  const advanced = resolveRouting({}, {
+    ...base, postAttempt: evaluated("failed-validation", { prior: prior(advancing) }),
+  });
+  assert.equal(advanced.retry?.escalation, "next-stable-tier");
+  assert.equal(advanced.retry?.nextTier, "sonnet");
+  assert.notEqual(advanced.model.value, advancing.model.value, "a non-null nextTier must change the model");
+
+  const carried = resolveRouting({}, {
+    ...base,
+    supportsModelSelector: false,
+    postAttempt: evaluated("failed-validation", { prior: prior(advancing) }),
+  });
+  assert.equal(carried.retry?.nextTier, null);
+  assert.deepEqual(carried.model, prior(advancing).model, "a null nextTier must leave the model unchanged");
 });
 
 test("retry accepts full model identifiers but rejects caller-supplied shape changes", () => {

@@ -7,6 +7,7 @@ import type {
   RoutingMeasurement,
   RoutingPostAttemptEvaluation,
   RoutingProjectConfig,
+  RoutingRetryInstruction,
   RoutingShapeEvidence,
   RoutingShapeReason,
   RoutingSource,
@@ -619,21 +620,36 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     );
   }
 
+  // THE MODEL TIER IS ONE ESCALATION LEVER, NOT THE GATE ITSELF. Whether the gate
+  // opens is decided by genuine insufficiency plus an unexhausted attempt budget
+  // (both settled above); what the retry CHANGES is decided here. Conflating the
+  // two made the gate unreachable for every edge that passes
+  // `supportsModelSelector: false` — which is every fixed sibling-Skill edge on the
+  // shipper path — so reporting a real failure returned `invalid-stop` and the
+  // caller learned nothing from reporting it.
+  //
+  // The lever applies only when this runtime can honor a model selector AND the
+  // prior attempt maps to a known tier below the top. When it does not apply the
+  // gate STILL OPENS: the narrowed units are re-dispatched under the prior
+  // attempt's own selection, and `retry.escalation` names why no tier moved.
+  //
+  // NOT the same as a lever that was attempted and DEFEATED. Host masking and an
+  // unavailable next tier are checked after the advance is requested (below) and
+  // still stop — the resolver asked for a specific tier and did not get it, which
+  // is an integrity failure, and WF-394 host precedence is deliberately preserved.
   const priorSelector = evaluation.prior.actualModel ?? evaluation.prior.model.value;
   const priorTier = modelTier(priorSelector);
-  if (!priorTier) {
-    return priorTerminalDecision(
-      current, evaluation.prior, priorShape, "stop", "invalid-stop",
-      "prior model does not map unambiguously to a stable tier", retainedUnitIds,
-    );
-  }
-  const nextTier = MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1];
-  if (!nextTier) {
-    return priorTerminalDecision(
-      current, evaluation.prior, priorShape, "stop", "invalid-stop",
-      "prior model is already at the highest stable tier", retainedUnitIds,
-    );
-  }
+  const nextTier = priorTier ? MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1] ?? null : null;
+  const tierAdvanceAvailable = inputs.supportsModelSelector && priorTier !== null && nextTier !== null;
+  // Most-causal first: an edge that cannot honor a selector reports that, even
+  // though its prior tier is also unmappable as a consequence.
+  const escalation: RoutingRetryInstruction["escalation"] = tierAdvanceAvailable
+    ? "next-stable-tier"
+    : !inputs.supportsModelSelector
+      ? "selector-unsupported"
+      : priorTier === null
+        ? "prior-tier-unknown"
+        : "top-tier";
 
   const attempt = evaluation.prior.attempt + 1;
   const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
@@ -658,9 +674,13 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     shapeEvidence: retryShapeEvidence,
     unitIds: retryUnitIds.length ? retryUnitIds : undefined,
     postAttempt: undefined,
-    invocationModel: nextTier,
+    // Only an applicable lever requests a tier. On the not-applicable path the
+    // model is not re-resolved against a tier this edge cannot honor: the prior
+    // choice is carried forward verbatim below.
+    ...(tierAdvanceAvailable
+      ? { invocationModel: nextTier, requireModel: true }
+      : { requireModel: false }),
     invocationEffort: undefined,
-    requireModel: true,
     requireEffort: false,
     supportsEffortSelector: true,
     hostEffort: undefined,
@@ -670,6 +690,12 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     actualModel: undefined,
   };
   let retryDecision = baseDecision(project, retryInputs);
+  if (!tierAdvanceAvailable) {
+    // Carried forward verbatim — value, source, requested, requestedSource, masked
+    // and fallback — so the retry's provenance is the prior attempt's, not a fresh
+    // resolution that could silently differ from what actually ran.
+    retryDecision = { ...retryDecision, model: evaluation.prior.model, source: evaluation.prior.model.source };
+  }
   const priorRequestedEffort = evaluation.prior.effort.source === "host"
     ? evaluation.prior.effort.requested
     : evaluation.prior.effort.value;
@@ -693,11 +719,17 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     fallback: retryDecision.model.fallback ?? retryEffort.fallback,
     masked: retryDecision.model.masked || retryEffort.masked,
   };
+  // The integrity guard validates an advance that was REQUESTED. On the
+  // not-applicable path none was, so masking/fallback/non-advancement describe the
+  // prior attempt's own honest state rather than a failed escalation, and gating on
+  // them here would re-close the gate this change opens.
   if (
     retryDecision.status === "stop" ||
-    retryDecision.model.masked ||
-    retryDecision.model.fallback ||
-    modelTier(retryDecision.model.value) !== nextTier
+    (tierAdvanceAvailable && (
+      retryDecision.model.masked ||
+      retryDecision.model.fallback ||
+      modelTier(retryDecision.model.value) !== nextTier
+    ))
   ) {
     const reason = retryDecision.diagnostic ?? (retryDecision.model.masked
       ? "next model tier was masked by host enforcement"
@@ -719,8 +751,12 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
       attempt,
       signals,
       unitIds: retryUnitIds,
-      priorTier,
-      nextTier,
+      escalation,
+      // `nextTier !== null` iff this retry changes the model. `priorTier` is
+      // reported whenever it is knowable — notably on `top-tier`, where the prior
+      // tier is known and it is the ABSENCE of a successor that stops the advance.
+      priorTier: tierAdvanceAvailable ? priorTier : escalation === "top-tier" ? priorTier : null,
+      nextTier: tierAdvanceAvailable ? nextTier : null,
       escalationOrigin,
       priorExecutionShape,
       shapeChanged,
