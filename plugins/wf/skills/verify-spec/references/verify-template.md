@@ -50,12 +50,29 @@ clause when the fragment carries none.
 Only present when the lean adversarial pass produced at least one reportable finding
 (omit the whole section on a clean change — no "no issues found" placeholder). Every entry
 carries the provenance tag `core`, both required citations, and a non-gating severity:
-these findings never change the `**Verdict:**` line above.
+these findings never change the `**Verdict:**` line above. Candidates that reconciliation
+withdrew, and any contributor that failed to deliver, are recorded in the two trailing
+sub-lists — never by quietly shortening the list above.
 
 - **core** — [bound] <the contradicting literal> at `path/to/file:L` — contradicts
   `path/to/other:L` — `<quoted line establishing the real range>`
 - **core** — [assumption] <the derivation> at `path/to/file:L` — requires
   `<the unstated precondition>`, not established at `path/to/other:L`
+- **core** — [assumption] <as above> — **also reported by `<source capability>`** on other
+  evidence; both stand, one defect seen twice
+
+Withdrawn — present only when reconciliation withdrew at least one core candidate. One line
+each, so a suppressed candidate is visible rather than silently absent:
+
+- **core** — [bound] <the candidate> at `path/to/file:L` — withdrawn: covered by
+  `<source capability>`'s finding at the same line on the same evidence
+
+Coverage — present only when a contributor failed, was unavailable, or returned an
+unparseable block. Omit entirely when every contributor delivered (an empty `findings:` list
+is a clean delivery, not a failure):
+
+- **Incomplete** — `<source capability>` contributed nothing and is not clean:
+  <what failed>. The findings above are not a complete adversarial pass. Non-gating.
 
 ## Deviations from derived artifacts (informational)
 

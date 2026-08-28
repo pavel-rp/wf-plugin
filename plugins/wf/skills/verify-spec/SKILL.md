@@ -93,11 +93,11 @@ never a raw `Read` of the resolved path. On `state: unconfigured` or `unrecovera
 readable `delivery` provider), both operations fall back silently to their
 plain-directory-safe cases — no error, no capability term surfaces. If the `wf-resolver`
 service is unavailable, stop and report that the resolver runtime is not loaded — do not
-hand-parse the registry (WF-272 diagnostics/recovery). This audit's core
-evidence-gathering (the diff, commit coordinates, and dirty-tree state — see
-"Implementation scope" below) has no delivery operation of its own today; it is gathered
-directly against the local working tree regardless of resolution state — a documented
-contract-completeness gap, not a workaround.
+hand-parse the registry (WF-272 diagnostics/recovery). This audit's core evidence-gathering
+(the diff, commit coordinates, and dirty-tree state — see "Implementation scope" below) has
+no delivery operation of its own today, so it is gathered directly against the local working
+tree regardless of resolution state — a documented contract-completeness gap, not a
+workaround.
 
 ---
 
@@ -114,12 +114,11 @@ Always read, in order:
 2. **Parent task** if referenced. If a parent `00_reqs.md` exists under `{task-root}/`,
    read it for inherited constraints (mapping tables, naming conventions, cross-task
    rules).
-3. **Implementation scope** — the diff of the current branch vs `main`, plus
-   the commit coordinates the audit runs against. No delivery operation covers
-   diff/log inspection today (a documented contract-completeness gap, not a
-   workaround — see `plugins/wf/skills/_contracts/capability-registry.contract.md`
-   §"The delivery provider surface" for the operation set); gather the following by
-   outcome, described generically and never as a literal command:
+3. **Implementation scope** — the diff of the current branch vs `main`, plus the commit
+   coordinates the audit runs against. No delivery operation covers diff/log inspection
+   today (the gap noted above; the operation set is in
+   `plugins/wf/skills/_contracts/capability-registry.contract.md` §"The delivery provider
+   surface"). Gather the following by outcome, never as a literal command:
    - the current branch name — via `current-branch-query` (the `wf-resolver`
      `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" above)
    - the current HEAD commit coordinate (full SHA)
@@ -158,10 +157,9 @@ on long specs.
 
 ## Verification, one item at a time
 
-**Tool note:** the bullets below reference `Grep` and `Glob` for brevity. When an
-indexed code-search MCP (`sourcebot`) is available, prefer it for symbol/content
-lookups and indexed file reads — it's faster and covers cross-repo targets. Fall back
-to `Grep`/`Glob` only when no indexed tool fits or for file-pattern searches.
+**Tool note:** the bullets below reference `Grep`/`Glob` for brevity. Prefer an indexed
+code-search MCP (`sourcebot`) for symbol/content lookups when one is available; fall back
+to `Grep`/`Glob` only when none fits, or for file-pattern searches.
 
 For each extracted requirement, gather evidence:
 
@@ -243,11 +241,11 @@ or handler was found — an absence is not a citation); a style, naming, or pref
 or a requirement already resolved above. Reporting nothing on a change carrying neither
 class is this pass working correctly, not failing.
 
-Render reportable findings under the report's `## Adversarial findings` section, tagged
-with the provenance `core`; when there is none, omit that section entirely.
-Deduplicating this pass against the contributors registered at the phase below
-is out of scope here and is specified separately; this section compares nothing. Rationale and
-worked examples live in the paired reference `adversarial-pass.md` — obtained, when a
+Hold reportable findings as **candidates** tagged with the provenance `core`; this section
+compares nothing. They are reconciled against the phase below once both sets are in hand
+(§"Reconcile against the lean pass"), then rendered under the report's
+`## Adversarial findings` section; when none survives, omit that section entirely. Rationale
+and worked examples live in the paired reference `adversarial-pass.md` — obtained, when a
 reader wants it, via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
 `skill: verify-spec`, `ref: adversarial-pass.md`) — and are never read on this path.
 
@@ -335,13 +333,29 @@ by **phase name / contribution-kind name**, never by heading:
 4. **Aggregate provenance-tagged** — render every contributor's findings, each tagged
    with its **source capability** (the `name` field); registry order is cosmetic.
 
-**No-op:** if `resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]`, no fragment matches
-`verify` under the `finding` kind, or a `dispatch` is malformed, that contributor — or
-the whole phase — produces **nothing** and the generic verdict stands alone (no
-capability findings section, no capability/stack/domain term surfaced, no broken subagent
-reference, no STOP). A capability's findings feed the verdict on the same footing as
-generic requirements (a finding that asserts non-conformance is a FAIL, exactly like a
-failed requirement).
+**No-op:** if `resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]` or no fragment
+matches `verify` under the `finding` kind, the whole phase produces **nothing** and the
+generic verdict stands alone (no capability findings section, no capability/stack/domain
+term surfaced, no broken subagent reference, no STOP). A malformed `dispatch` is that
+contributor's own no-op — never a STOP — and is reported as incomplete coverage below. A
+capability's findings feed the verdict on the same footing as generic requirements (a
+finding that asserts non-conformance is a FAIL, exactly like a failed requirement).
+
+### Reconcile against the lean pass
+
+Both adversarial sources have now produced output. Reconcile them here, over the
+contribution taxonomy alone — core names no capability, and this step is inert when
+nothing was aggregated.
+
+- **One-directional.** Only a `core` candidate may be withdrawn or annotated. An
+  aggregated `finding` is never dropped, edited, re-tagged, merged, reordered, or withheld
+  here, and a contributor that failed or returned nothing can never cause a withdrawal.
+- **Overlap** is a `finding` whose `location` cites the same `file:line` as a candidate's
+  **changed-side** citation; with none, the candidate renders unchanged. An overlapping
+  `finding` that rests on the candidate's *existing-side* evidence too leaves the candidate
+  adding nothing → **withdraw** it, recorded as a `Withdrawn` line naming its cover. One
+  resting on *different* evidence is a single defect seen twice → **retain both**, each
+  keeping its own provenance and naming the other, never silently collapsed or doubled.
 
 ---
 
@@ -392,17 +406,16 @@ Print, in this order:
 - **Capability findings:** one line — either `none` (no capability contributed at
   `verify`) or `<N> findings across <M> capabilities: <comma-separated shortlist, each
   tagged with its source>`.
-- **Adversarial findings:** one line — either `none` or `<N>: <comma-separated shortlist>`.
-  Non-gating: this line never changes the verdict line above it.
+- **Adversarial findings:** one line — either `none` or `<N>: <comma-separated shortlist>`,
+  then `· <W> withdrawn` when any were, and `· coverage incomplete (<provenance>)` when a
+  contributor failed. Non-gating: this line never changes the verdict line above it.
 - **Top next actions:** 1–3 bullets — the most important items from the report's
   "Recommended next actions".
 - **`/wf:verify-fix` suggestion (conditional):** one line —
   `Suggested: /wf:verify-fix {task-id} — <N> mechanical fixes look auto-applicable.` Include
-  **only** when at least one FAIL or PARTIAL finding has a concrete literal `Expected`
-  value at a cited `file:line` (a specific value, enum member, missing property, or
-  forbidden pattern with a mechanical remedy). Omit on PASS reports, when every finding
-  is UNVERIFIABLE or structural, or when the `Expected` fields are all vague. When in
-  doubt, omit.
+  **only** when a FAIL or PARTIAL finding carries a concrete literal `Expected` value at a
+  cited `file:line`. Omit on PASS, when every finding is UNVERIFIABLE, structural, or
+  vaguely `Expected` — and whenever in doubt.
 
 Target ~15 lines total. If the summary grows past that, trim detail, not items — the
 user can open the file for the rest.
@@ -413,18 +426,15 @@ End with the final-output block (see below).
 
 ## What this skill will NOT do
 
-- Will NOT modify any source file outside `_local/`. Verification is read-only against
-  the codebase. The only write is the task folder's `04_verify.md` (the audit report).
-  If the user wants fixes to source, they ask separately after reading the report.
-- Will NOT mark something PASS without concrete evidence. "Looks correct" is not a
-  verdict.
-- Will NOT use a derived artifact (an LLM-authored plan) as the source of truth. It is
-  an artifact, not a contract.
+- Will NOT modify any source file outside `_local/` — verification is read-only, and the
+  only write is the task folder's `04_verify.md`. Fixes to source are asked for separately.
+- Will NOT mark something PASS without concrete evidence. "Looks correct" is not a verdict.
+- Will NOT use a derived artifact (an LLM-authored plan) as the source of truth.
 - Will NOT invent requirements not present in the spec. A capability's invariants surface
   as capability `finding`s at the `verify` phase, not as fabricated requirement-list rows.
-- Will NOT name, require, or assume any capability. It iterates the registry and
-  aggregates whatever is contributed; with none registered, it produces the generic
-  verdict plus the lean adversarial pass alone.
+- Will NOT name, require, or assume any capability — including when reconciling the two
+  adversarial sources. It iterates the registry and aggregates whatever is contributed;
+  with none registered, the generic verdict plus the lean adversarial pass stand alone.
 
 ---
 
@@ -453,15 +463,14 @@ End with the final-output block (see below).
 - **Empty registry**: the lean adversarial pass still runs — it is a core default, not a
   contribution — while the phase below produces nothing. The generic verdict plus any
   adversarial findings stand alone, with no capability term surfaced.
-- **Capability dispatch unavailable**: if a `subagent:` fragment names an agent that is
-  not registered in this environment, treat that fragment as a no-op (it contributes no
-  findings) and continue — never STOP the verdict on a missing capability. The generic
-  audit still stands.
-- **Re-run after fixes**: `04_verify.md` is overwritten with the latest run. The prior
-  report is rotated into `04_verify.history.md` first (newest entry on top, separated by
-  `---`), so the user has a trail of findings across iterations — useful when a fix
-  introduces a regression or the same finding keeps reappearing. The history file grows
-  unbounded; prune or delete manually if it gets noisy.
+- **A contributor fails or returns nothing**: an unregistered `subagent:` agent, an errored
+  dispatch, or an unparseable block contributes no findings — never a STOP, and the generic
+  audit still stands. But it contributed nothing *and is not clean*: state it with its
+  provenance and mark the adversarial coverage **incomplete**, so the surviving findings are
+  never presented as a complete adversarial pass. Reporting only — no verdict change.
+- **Re-run after fixes**: `04_verify.md` is overwritten and the prior report rotated into
+  `04_verify.history.md`, giving a trail across iterations — useful when a fix regresses or
+  the same finding keeps reappearing. That file grows unbounded; prune it manually.
 
 ---
 

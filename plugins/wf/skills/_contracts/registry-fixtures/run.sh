@@ -99,6 +99,11 @@ assert "single-row registry passes"   pass-single.md - 0 "Validation passed"
 # default is measured on. This repo's own registry carries eight capabilities and so
 # cannot show what core does with none registered.
 assert "empty registry passes"        pass-empty.md  - 0 "Validation passed" "fully generic core"
+# WF-486 (C029 OUT-4): the sibling minimal registry — the real audit capability ALONE.
+# Paired with pass-empty.md, the two bracket the reconciliation rule over one fixture
+# change. One row is the point: this repo's eight-capability registry would pollute the
+# non-duplication comparison.
+assert "audit-only registry passes"   pass-audit-only.md - 0 "Validation passed" "audit"
 assert "discoverable subagent passes" pass-subagent-discoverable.md - 0 "Validation passed"
 assert "final capabilities segment resolves owning subagent" pass-subagent-final-capabilities-segment.md - 0 "Validation passed"
 assert "multi-row non-overlap passes" pass-multi.md  - 0 "Validation passed"
