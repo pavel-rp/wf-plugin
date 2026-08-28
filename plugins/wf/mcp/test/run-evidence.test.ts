@@ -521,7 +521,12 @@ test("a failing ledger write, with the issuer already established, also refuses"
     "recorded",
   );
   ports.writeFile = () => {
-    throw new Error("ENOSPC: no space left on device");
+    // A real Node fs error: the message carries the absolute path it failed on.
+    const err = new Error(
+      "ENOSPC: no space left on device, open '/home/someone/proj/.wf/run-evidence/x.json'",
+    ) as NodeJS.ErrnoException;
+    err.code = "ENOSPC";
+    throw err;
   };
   const recorded = service.recordRunEvidence({
     kind: "phase-receipt",
@@ -529,7 +534,16 @@ test("a failing ledger write, with the issuer already established, also refuses"
     taskId: TASK,
   });
   assert.equal(recorded.status, "refused");
-  assert.match(recorded.diagnostic ?? "", /no space left on device/);
+  // The FAILURE CLASS travels so the refusal is triageable...
+  assert.match(recorded.diagnostic ?? "", /ENOSPC/);
+  // ...and the path does NOT. This diagnostic reaches a user-visible terminal
+  // block, and the same sanitizer guards the issuer binding's own write, whose
+  // path is the location of the key the whole forgery boundary rests on.
+  assert.equal(
+    (recorded.diagnostic ?? "").includes("/home/someone/proj"),
+    false,
+    "a write failure must not disclose the host path it failed on",
+  );
 });
 
 test("a failing read is treated as absence, never a throw", () => {
@@ -750,13 +764,13 @@ function makePortsWithRunMode(
 test("a gate approval is artifact-backed, matchable, and never counted as a phase receipt", () => {
   const ports = makePorts();
   const service = new ResolverService(ports);
-  seedArtifact(ports, "_local/WF-493/01_spec.md", "# spec\n");
+  seedArtifact(ports, "_local/WF-490/01_spec.md", "# spec\n");
 
   const recorded = service.recordRunEvidence({
     kind: "gate-approval",
     subject: "gate:spec",
     taskId: TASK,
-    artifactPath: "_local/WF-493/01_spec.md",
+    artifactPath: "_local/WF-490/01_spec.md",
   });
   assert.equal(recorded.status, "recorded");
   assert.ok(recorded.artifact, "the resolver digested the gated artifact itself");
@@ -776,7 +790,7 @@ test("a gate approval is artifact-backed, matchable, and never counted as a phas
 test("an approval whose artifact has since changed reads stale, and a deleted one reads missing", () => {
   const ports = makePorts();
   const service = new ResolverService(ports);
-  const rel = "_local/WF-493/02_plan.md";
+  const rel = "_local/WF-490/02_plan.md";
   seedArtifact(ports, rel, "# plan\n");
   service.recordRunEvidence({
     kind: "gate-approval",
@@ -810,13 +824,13 @@ test("an artifact-less record reports n/a rather than being rounded up to fresh"
 test("the run mode is the resolver's observation, sealed into the record", () => {
   const ports = makePortsWithRunMode("unattended");
   const service = new ResolverService(ports);
-  seedArtifact(ports, "_local/WF-493/01_spec.md", "# spec\n");
+  seedArtifact(ports, "_local/WF-490/01_spec.md", "# spec\n");
 
   const recorded = service.recordRunEvidence({
     kind: "gate-approval",
     subject: "gate:spec",
     taskId: TASK,
-    artifactPath: "_local/WF-493/01_spec.md",
+    artifactPath: "_local/WF-490/01_spec.md",
   });
   assert.equal(recorded.runMode, "unattended");
   assert.equal(service.readRunEvidence(TASK).matched[0].runMode, "unattended");
@@ -886,9 +900,137 @@ test("classifyArtifactState is total over the four outcomes", () => {
 
 test("normalizeRunModeSignal never invents a mode", () => {
   assert.equal(normalizeRunModeSignal(null), "unestablished");
-  assert.equal(normalizeRunModeSignal(undefined), "unestablished");
+  // `undefined` is deliberately NOT asserted: the signature is `string | null`,
+  // matching the port contract, so an `undefined` case would test a value no
+  // caller can produce and would only pin down a widening nobody wants.
   assert.equal(normalizeRunModeSignal("unattended"), "unattended");
   assert.equal(normalizeRunModeSignal("attended"), "attended");
   assert.equal(normalizeRunModeSignal("1"), "unestablished");
   assert.equal(normalizeRunModeSignal("unattended run"), "unestablished");
+});
+
+// ---------------------------------------------------------------------------
+// The artifact observation — one path, byte-exact, contained, memoized
+// ---------------------------------------------------------------------------
+
+test("the artifact digest is taken over raw bytes, so byte-distinct files never collide", () => {
+  // Two DIFFERENT byte sequences that both decode to the same replacement
+  // character under UTF-8. A text digest cannot tell them apart; a byte digest
+  // must. This is the property that keeps an approval bound to one exact file.
+  const ports = makePorts();
+  const bytes = new Map<string, Uint8Array>();
+  const bytePorts: ResolverServicePorts & { files: Map<string, string> } = {
+    ...ports,
+    readFileBytes: (p) => bytes.get(normalizeSlashes(p)) ?? null,
+    canonicalizeRoot: (root) => normalizeSlashes(root),
+  };
+  const rel = "_local/WF-490/01_spec.md";
+  const abs = normalizeSlashes(`${WS}/${rel}`);
+
+  bytes.set(abs, Uint8Array.from([0xff, 0xfe]));
+  ports.files.set(abs, "placeholder");
+  const first = new ResolverService(bytePorts).recordRunEvidence({
+    kind: "gate-approval",
+    subject: "gate:spec",
+    taskId: TASK,
+    artifactPath: rel,
+  });
+
+  bytes.set(abs, Uint8Array.from([0xfe, 0xff]));
+  const secondPorts: ResolverServicePorts & { files: Map<string, string> } = {
+    ...makePorts(),
+    readFileBytes: (p) => bytes.get(normalizeSlashes(p)) ?? null,
+    canonicalizeRoot: (root) => normalizeSlashes(root),
+  };
+  secondPorts.files.set(abs, "placeholder");
+  const second = new ResolverService(secondPorts).recordRunEvidence({
+    kind: "gate-approval",
+    subject: "gate:spec",
+    taskId: TASK,
+    artifactPath: rel,
+  });
+
+  assert.equal(first.status, "recorded");
+  assert.equal(second.status, "recorded");
+  assert.notEqual(
+    first.artifact!.sha256,
+    second.artifact!.sha256,
+    "a UTF-8 decode would collapse both to U+FFFD and make these equal",
+  );
+  assert.equal(first.artifact!.bytes, 2, "the byte count is the file's, not a re-encoded length");
+});
+
+test("an artifact resolving outside the workspace is refused, never followed", () => {
+  const ports = makePorts();
+  // Lexically contained, but canonicalization lands outside the root — the
+  // symlink shape. `containedRelPath` alone would admit it.
+  const escaping: ResolverServicePorts & { files: Map<string, string> } = {
+    ...ports,
+    canonicalizeRoot: (root) =>
+      normalizeSlashes(root).endsWith("01_spec.md") ? "/elsewhere/01_spec.md" : normalizeSlashes(root),
+  };
+  seedArtifact(ports, "_local/WF-490/01_spec.md", "# spec\n");
+
+  const recorded = new ResolverService(escaping).recordRunEvidence({
+    kind: "gate-approval",
+    subject: "gate:spec",
+    taskId: TASK,
+    artifactPath: "_local/WF-490/01_spec.md",
+  });
+  assert.equal(recorded.status, "refused");
+  assert.match(recorded.diagnostic ?? "", /does not resolve inside the workspace/);
+});
+
+test("repeated records naming one artifact are observed once per read, with no change in verdict", () => {
+  const ports = makePorts();
+  let reads = 0;
+  const counting: ResolverServicePorts & { files: Map<string, string> } = {
+    ...ports,
+    readFileBytes: (p) => {
+      const text = ports.files.get(normalizeSlashes(p));
+      if (text === undefined) return null;
+      reads += 1;
+      return Buffer.from(text, "utf8");
+    },
+  };
+  const service = new ResolverService(counting);
+  seedArtifact(ports, "_local/WF-490/01_spec.md", "# spec\n");
+
+  for (const subject of ["gate:spec", "gate:plan", "gate:implement"]) {
+    service.recordRunEvidence({
+      kind: "gate-approval",
+      subject,
+      taskId: TASK,
+      artifactPath: "_local/WF-490/01_spec.md",
+    });
+  }
+
+  reads = 0;
+  const read = service.readRunEvidence(TASK);
+  assert.equal(read.matched.length, 3);
+  for (const entry of read.matched) assert.equal(entry.artifactState, "fresh");
+  assert.equal(reads, 1, "three records naming one artifact cost one observation, not three");
+});
+
+test("the reading session's observed mode is reported separately from each record's sealed mode", () => {
+  const issuing = new ResolverService(makePortsWithRunMode("unattended"));
+  const ports = makePorts();
+  seedArtifact(ports, "_local/WF-490/01_spec.md", "# spec\n");
+  // Issue under `unattended`, then read from a session declaring nothing. The
+  // sealed mode is a fact about the record; the observed mode is a fact about
+  // the reader, and neither is corrected against the other.
+  const issuingPorts = { ...ports, runModeSignal: () => "unattended" };
+  const issuer = new ResolverService(issuingPorts);
+  issuer.recordRunEvidence({
+    kind: "gate-approval",
+    subject: "gate:spec",
+    taskId: TASK,
+    artifactPath: "_local/WF-490/01_spec.md",
+  });
+  void issuing;
+
+  const reader = new ResolverService({ ...issuingPorts, runModeSignal: () => null });
+  const read = reader.readRunEvidence(TASK);
+  assert.equal(read.observedRunMode, "unestablished");
+  assert.equal(read.matched[0].runMode, "unattended");
 });

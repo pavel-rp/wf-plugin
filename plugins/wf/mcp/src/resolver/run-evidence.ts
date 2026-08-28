@@ -31,10 +31,10 @@
 //
 //   1. THE CALLER ASSERTS NOTHING THE RESOLVER CAN DERIVE. A skill supplies only
 //      what it alone knows — which phase it is, which task, and which artifact it
-//      wrote. The run identity, the workspace binding, the clock, the sequence and
-//      the artifact digest are all derived by the resolver. A caller that could
-//      assert them could assert a receipt, which is the original defect one level
-//      down.
+//      wrote. The run identity, the workspace binding, the clock, the sequence, the
+//      artifact digest and the run mode are all derived by the resolver. A caller
+//      that could assert them could assert a receipt, which is the original defect
+//      one level down.
 //
 //   2. A MALFORMED RECORD IS REPORTED, NOT DISCARDED — and this is the DELIBERATE
 //      INVERSE of `parseTransactionJournal`'s whole-file strictness. There, a bad
@@ -131,10 +131,14 @@ import { sha256Hex } from "./fingerprint.js";
  * BUMPED TO 2 BY WF-493, and the bump is forced rather than chosen: the observed
  * run mode joins the canonical sealed body, so every version-1 seal is computed
  * over a strictly smaller field set and can never verify here. Silently reading a
- * v1 ledger would therefore reclassify genuine records as `seal-mismatch` — the
- * tamper signal — which is worse than refusing outright. The reader already
- * refuses an unsupported version with a stated reason, so the degradation is
- * honest and no data is destroyed.
+ * v1 ledger would therefore reclassify genuine records as `record-inadmissible` —
+ * `matchRunEvidence`'s admissibility gate rejects an empty/absent `runMode` BEFORE
+ * the seal is even recomputed, so a v1 record never reaches the seal comparison at
+ * all. That is a distinct outcome from `seal-mismatch`, but the refusal argument is
+ * unchanged (arguably stronger: the ledger is rejected on shape, not merely on a
+ * digest that happens not to verify). The reader already refuses an unsupported
+ * version with a stated reason, so the degradation is honest and no data is
+ * destroyed.
  */
 export const RUN_EVIDENCE_FORMAT_VERSION = 2 as const;
 
@@ -189,11 +193,11 @@ export const RECEIPT_BEARING_PHASES = [
 
 export type ReceiptBearingPhase = (typeof RECEIPT_BEARING_PHASES)[number];
 
-/** The record kinds that travel this one emission path. `phase-receipt` is this
- *  release's own; `gate-approval` is reserved for the per-gate self-approval
- *  records, which write into this same class rather than inventing a second
- *  route. A gate approval is a claim about a GATE, not a phase, so its subject is
- *  not constrained to the receipt-bearing set. */
+/** The record kinds that travel this one emission path. `phase-receipt` is
+ *  WF-490's own; `gate-approval`, added by WF-493, is now actively issued for the
+ *  per-gate self-approval records — both kinds write into this same class rather
+ *  than either inventing a second route. A gate approval is a claim about a GATE,
+ *  not a phase, so its subject is not constrained to the receipt-bearing set. */
 export const RUN_EVIDENCE_KINDS = ["phase-receipt", "gate-approval"] as const;
 export type RunEvidenceKind = (typeof RUN_EVIDENCE_KINDS)[number];
 
@@ -799,8 +803,15 @@ export function classifyArtifactState(
  * guessing `attended` would assert a human was present who was not. Only the exact
  * tokens are honoured, and the comparison is case-insensitive with surrounding
  * whitespace trimmed because a launcher-set environment value routinely carries both.
+ *
+ * `raw` is `string | null`, not `string | null | undefined`: the port contract
+ * (`ResolverServicePorts.runModeSignal`) already returns `string | null`, and the
+ * sole call site collapses an absent port to `null` before this runs — the same
+ * two-value shape `parseRunEvidenceLedger` and `parseRunEvidenceIssuer` take.
+ * Widening the parameter to accept `undefined` would admit a value no caller can
+ * ever actually produce.
  */
-export function normalizeRunModeSignal(raw: string | null | undefined): RunEvidenceRunMode {
+export function normalizeRunModeSignal(raw: string | null): RunEvidenceRunMode {
   if (typeof raw !== "string") return "unestablished";
   const token = raw.trim().toLowerCase();
   if (token === "unattended") return "unattended";
