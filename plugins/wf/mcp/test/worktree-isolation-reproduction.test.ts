@@ -29,8 +29,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { describeCallerRoot, resolveWorkspaceIdentity } from "../src/git-workspace.js";
 import { WorkspaceServiceRegistry } from "../src/workspace-services.js";
@@ -330,9 +330,15 @@ async function resolveConfigHandler(): Promise<(args: { workspaceRoot: string })
   return tool.handler as unknown as (args: { workspaceRoot: string }) => Promise<ConfigToolResult>;
 }
 
+// Registered once for the whole file, not per call: the tool surface is
+// stateless here (the selector resolves each request's root afresh), so
+// re-registering it per assertion would only repeat work.
+let sharedHandler: Promise<(args: { workspaceRoot: string }) => Promise<ConfigToolResult>> | undefined;
+
 /** Call the real `resolve_config` handler and return its structured payload. */
 async function resolveConfigFrom(workspaceRoot: string): Promise<CallerRootResponse> {
-  const handler = await resolveConfigHandler();
+  sharedHandler ??= resolveConfigHandler();
+  const handler = await sharedHandler;
   const result = await handler({ workspaceRoot });
   assert.notEqual(result.isError, true, `resolve_config errored for ${workspaceRoot}`);
   assert.ok(result.structuredContent, "resolve_config returned no structured payload");
@@ -435,12 +441,27 @@ test("WF-495: canonicalization converges, so an alias form of the resolved root 
     const container = layout.container("aaa");
     git(layout.parent, "worktree", "add", "-b", "agent-aaa", container);
 
-    // Trailing-slash and `/./` forms name the same directory. A caller-side raw
-    // string comparison would call each of these a redirection; the resolver's
-    // canonicalization is exactly why the predicate is computed server-side.
-    for (const alias of [`${container}/`, join(container, "."), `${container}//`]) {
+    // Each of these names the same directory by a different spelling. A
+    // caller-side raw string comparison would call every one of them a
+    // redirection; the resolver's canonicalization is exactly why the predicate
+    // is computed server-side.
+    //
+    // The `..`-round-trip form is used rather than `join(container, ".")`,
+    // which `path.join` collapses before it ever reaches the resolver and so
+    // would silently degenerate into a repeat of the identity case.
+    const symlinkAlias = join(layout.root, "alias-aaa");
+    symlinkSync(container, symlinkAlias, "junction");
+
+    const aliases = [
+      `${container}/`,
+      `${container}//`,
+      join(container, "..", basename(container)),
+      symlinkAlias, // the form every rationale doc leads with
+    ];
+    for (const alias of aliases) {
       const response = await resolveConfigFrom(alias);
       assert.equal(response.callerRoot, canonical(container), `alias ${alias} did not canonicalize`);
+      assert.equal(response.workspaceRoot, canonical(container));
       assert.equal(response.rootRedirected, false, `alias ${alias} was wrongly reported as redirected`);
     }
   } finally {
