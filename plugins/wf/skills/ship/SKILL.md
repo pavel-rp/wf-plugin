@@ -20,7 +20,7 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 
 **Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape, coreVersion }`, already resolved from `_local/config.md` (core performs no direct config-file parse). `{task-root}` below comes from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
 
-**Hold the resolved version.** `coreVersion` is the declared version of the core plugin **this run is executing**. Keep it as the run-scoped **resolved version** and render it in the terminal block, so the artifact identifies the harness that produced it. It rides the call just made; never issue a second resolver call for it. A `null` value renders the literal token `unknown` and the run continues normally: a version that cannot be resolved never blocks a run, and is never guessed, defaulted, or inferred from an install path or a timestamp. Report it; do not compare it against anything.
+**Hold the resolved version.** `coreVersion` is the declared version of the core plugin **this run is executing**. Keep it as the run-scoped **resolved version** and render it in the terminal block, so the artifact identifies the harness that produced it. It rides the call just made; never issue a second resolver call for it. A `null` value renders the literal token `unknown` and the run continues normally: a version that cannot be resolved never blocks a run, and is never guessed, defaulted, or inferred from an install path or a timestamp. It is the left-hand side of the Phase-1 currency check — the one comparison it enters into; a `null` value gives that check nothing to compare and it says so.
 
 ---
 
@@ -49,7 +49,8 @@ Invoked with no id, `ship` infers the task from the current branch — resolve t
 
 - Read the task folder and its artifacts; obtain config via the `wf-resolver` `resolve_config({ workspaceRoot, ... })` query.
 - Read-only resolution via `workspace-root-resolve` (the `wf-resolver` `resolve_config({ workspaceRoot, ... })` `workspaceRoot` value) and `current-branch-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query).
-- Resolve the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, and invoke its **read** operations — `pr-detect` and `checks-read` — by obtaining each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`) and following it in this skill's own context.
+- Resolve the `delivery` surface once via the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, and invoke its **read** operations — `pr-detect`, `checks-read`, and `newest-published-version-read` — by obtaining each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`) and following it in this skill's own context.
+- Query the local install inventory read-only via the `wf-resolver` `discover_packs({ workspaceRoot })` query — **only** on the Phase-1 currency check's provider-less branch.
 - Resolve the `ship.review` slot (Phase 4.5) via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: ship`, `point: review`), and — only on a `composed` outcome — follow the served body as prose in this skill's own context.
 - Invoke the sibling `wf:*` commands this skill drives through the **Skill** tool: `/wf:branch`, `/wf:run` (and each gated `/wf:*` command `/wf:run` names in its handoff), `/wf:commit`, `/wf:pr`, and `/wf:tf`.
 - Dispatch the bulk of a failing check set to the read-only `wf:context-distiller` agent (`MODE: ci`) via the **Task** tool, inside Phase 4.2 only, so the raw check output is read in that agent's own context and never in this one.
@@ -106,6 +107,20 @@ Below the ceiling the checkpoint is invisible: `ship` proceeds to the next edge 
    - `state: unconfigured` (no capability owns `delivery`) → **`SHIP — Blocked`**: "No delivery provider is registered — nothing to open or merge. Register a capability that owns the `delivery` surface." **No partial merge, no phase driven.** Stop.
    - `state: unrecoverable` (a registered capability's manifest is unrecoverable) → **`SHIP — Blocked`**, naming the record's `diagnostics` pack as a hedged candidate ("if this is your `delivery` provider, fix its stale root / re-run its init"). Stop.
    - Otherwise hold the record for the delivery reads in Phases 3–4.
+
+3. **Check the running version against the newest published one.** Run this **once per run**, on the record step 2 resolved and **before step 2's block is emitted**, so a run stopped for a missing provider still reports a currency outcome instead of nothing — and so the result lands **before the first phase edge is dispatched**. Branch on **surface ownership** — the record's `state` — never on what a read returned:
+
+   - **Owned** — invoke the delivery `newest-published-version-read` operation **once** (obtain its body via `resolve_content({ workspaceRoot, ... })`, `class: fragment`, from the record just held), passing `coreConfig.versionDeclaration` as the already-resolved `<version-declaration>` and leaving `<version-field>` to the owner's default. When that config value is `null` there is nothing to ask for — skip the read entirely.
+   - **Unowned** — no published state is reachable, so fall back to the **local install inventory** the resolver already serves read-only (`discover_packs`): take the newest version it records for the unit the running version belongs to — the entry carrying that version — and `none recorded` when no entry carries it. This query is paid **only** on this branch.
+
+   Then render exactly one **currency outcome**. There are four leading tokens and **only `current` asserts currency**, emitted **only** on `<read-performed>` = true:
+
+   - `current — running <version>, newest published <version>` — the read was performed and the running version is not behind. No warning.
+   - `trailing — running <version>, newest published <version>` — the read was performed and the running version is behind. **Warn here**, naming both versions, before any phase edge is dispatched. The warning **informs**: it never gates, aborts, or updates anything.
+   - `provider-less — no delivery provider; newest recorded locally <version | none recorded>` — the surface is unowned, so the check never reached a published state at all. This is **not** a pass and never renders as one. Warn in the same place, with the same shape, when the locally recorded version is ahead of the running one — stating that the comparison was against the local inventory, not a published state.
+   - `not checked — <reason>` — the check did not complete. `<reason>` is the read's own closed-set token (`read-failed`, `none-published`) verbatim, or one of core's two: `no version declaration configured`, `running version unknown`.
+
+   The check runs on **every** invocation, so the `Currency:` slot always renders one of these and never a blank. A re-invocation after a hand-off re-checks and reports what it observes then.
 
 ---
 
@@ -206,7 +221,8 @@ Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "
 ## Edge Cases
 
 - **Missing config:** the resolver reports the project is uninitialized (absent `_local/config.md`) → `SHIP — Blocked`, `Next: /wf:init`.
-- **No delivery provider registered:** hard stop at Phase 1 (`SHIP — Blocked`) naming the missing provider — no partial merge, unlike `/wf:tf`'s local-only degrade. There is nothing to merge without a delivery provider.
+- **No delivery provider registered:** hard stop at Phase 1 (`SHIP — Blocked`) naming the missing provider — no partial merge, unlike `/wf:tf`'s local-only degrade. There is nothing to merge without a delivery provider. The currency check has already run provider-less by then, so the block still carries `Currency: provider-less — …`; that is a **stated non-check**, never a pass.
+- **The currency check cannot complete:** the read returns `<read-performed>` = false, or no version declaration is configured, or the running version is `unknown` → `Currency: not checked — <reason>` and the run proceeds unchanged. A degraded read is never presented as a performed check that found the install current, and the check never blocks, gates, or updates anything.
 - **Registered-but-unrecoverable delivery provider:** Phase 1 stops with the hedged candidate-naming diagnosis from the record's `diagnostics` field, never asserting a pack owns the surface.
 - **A build phase fails or halts for input:** Phase 2 stops with `SHIP — Blocked` surfacing that phase's own reason — `ship` never rescues a failed phase by doing its work itself.
 - **Pipeline stuck (no progress):** the Phase-2 progress guard stops with `SHIP — Blocked` rather than re-dispatching the same phase forever.
@@ -236,15 +252,18 @@ PR:       <url | none>
 Checks:   <green | green after <n> CI-remediation iteration(s) | red (<failing>) — <n> iteration(s), <c> code, <d> infra/transient, <stop reason> | unsettled | n/a>
 Merge:    <merged (<url>) | not merged — <reason>>
 Version:  <the run-scoped resolved version | unknown>
+Currency: <current | trailing (running <v>, published <v>) | provider-less | not checked — <reason>>
 Next:     <none — terminus | the command that clears the block>
 ```
 
-`Version:` is the run-scoped resolved version held at Prerequisites — the harness this run executed. It renders on **every** emission, and `unknown` when the resolver could not determine it; it is never omitted and never compared against anything here.
+`Version:` is the run-scoped resolved version held at Prerequisites — the harness this run executed. It renders on **every** emission, and `unknown` when the resolver could not determine it; it is never omitted.
+
+`Currency:` is the outcome of the Phase-1 currency check, in that step's grammar, rendered verbatim on **every** emission — including a `Blocked` one. Only `current` says the harness is not behind, and only a performed read can produce it: `provider-less` and `not checked` name what did **not** happen and are never rounded up to a pass here.
 
 **Adding a slot to this block?** Follow the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Run-block slot convention" — never a raw `Read` of the plugin-cache path: append the slot immediately above `Next:`, pad its value to this block's column 11, and always render it with a stated fallback token.
 
 When the Phase-4.2 loop ran, `Checks:` states how it ended: `green after <n> CI-remediation iteration(s)` on convergence, or the red form carrying the iteration count, the distilled class tally, and the `<stop reason>` that ended it — `stuck guard tripped after 5 iterations` (paired with `Merge: not merged — CI remediation did not converge within the 5-iteration bound`), `no actionable fix`, `only infra/transient failures`, or `remediation fix did not land`. The counts and the applied-fix locations recorded in step 4 are the run's only durable diagnosis, since `ship` writes no artifact — so a non-convergence always says *how far it got and why it stopped*. Every one of these is a clean bounded stop, reported honestly; none is dressed up as a merge, and none is a crash.
 
-`Merged` — the pull request is merged and the task finalized. `Blocked` — a required condition was not met (no delivery provider, a failed/halted build phase, no pull request, unsettled checks, checks the Phase-4.2 loop could not converge, or a blocked finalize); the `Next:` line names the existing `/wf:*` command that clears it (e.g. `/wf:run <id>` to resume the build, `/wf:init` for missing config, or `/wf:ship <id>` to retry once the blocker clears). `Handed-off` — the context-ceiling checkpoint fired: the run stayed under the ceiling by flushing (committing and pushing) the work so far and yielding for continuation, **not** an error and **not** a partial merge. `Built:` names the boundary reached, `Merge:` reads `not merged — context ceiling reached, handed off after <boundary>`, and `Next:` is `/wf:ship <id>` — re-invoking it in a fresh context resumes detect-first and drives the same run to merge. The block shape (the fenced `SHIP — …` with `Task/Built/PR/Checks/Merge/Version/Next`) is unchanged on this path; only the status token widens.
+`Merged` — the pull request is merged and the task finalized. `Blocked` — a required condition was not met (no delivery provider, a failed/halted build phase, no pull request, unsettled checks, checks the Phase-4.2 loop could not converge, or a blocked finalize); the `Next:` line names the existing `/wf:*` command that clears it (e.g. `/wf:run <id>` to resume the build, `/wf:init` for missing config, or `/wf:ship <id>` to retry once the blocker clears). `Handed-off` — the context-ceiling checkpoint fired: the run stayed under the ceiling by flushing (committing and pushing) the work so far and yielding for continuation, **not** an error and **not** a partial merge. `Built:` names the boundary reached, `Merge:` reads `not merged — context ceiling reached, handed off after <boundary>`, and `Next:` is `/wf:ship <id>` — re-invoking it in a fresh context resumes detect-first and drives the same run to merge. The block shape (the fenced `SHIP — …` with `Task/Built/PR/Checks/Merge/Version/Currency/Next`) is unchanged on this path; only the status token widens.
 
 **The final-output block must always be the very last thing output to chat.**

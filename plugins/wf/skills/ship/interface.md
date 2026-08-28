@@ -30,8 +30,11 @@ _(none)_
 **Allowed:** read the task folder and its artifacts; obtain config via the
 `wf-resolver` `resolve_config({ workspaceRoot, ... })` query; read-only resolution via
 `workspace-root-resolve` and `current-branch-query`; resolve the `delivery`
-surface once and invoke its **read** operations (`pr-detect`, `checks-read`) via
-`resolve_content({ workspaceRoot, ... })` (`class: fragment`); resolve the `ship.review` slot via
+surface once and invoke its **read** operations (`pr-detect`, `checks-read`,
+`newest-published-version-read`) via
+`resolve_content({ workspaceRoot, ... })` (`class: fragment`); query the local
+install inventory read-only via `discover_packs` on the Phase-1 currency check's
+provider-less branch only; resolve the `ship.review` slot via
 `resolve_content({ workspaceRoot, ... })` (`class: slot`); invoke the sibling `wf:*` commands this skill
 drives through the **Skill** tool (`/wf:branch`, `/wf:run` and each gated
 `/wf:*` it names, `/wf:commit`, `/wf:pr`, `/wf:tf`); dispatch the
