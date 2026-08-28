@@ -23195,8 +23195,8 @@ var routingOutput = fromJsonSchema2({
             signals: { type: "array", minItems: 1, maxItems: 6, items: { type: "string", enum: routingSignalValues }, uniqueItems: true },
             unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
             escalation: { type: "string", enum: ["next-stable-tier", "selector-unsupported", "prior-tier-unknown", "top-tier"], description: "The lever this retry pulls. `next-stable-tier` advances one stable tier; the other three name why no tier lever applied and the narrowed units re-run under the prior attempt's own selection." },
-            priorTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null] },
-            nextTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "Non-null if and only if this retry changes the model." },
+            priorTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "The tier the attempt that already ran mapped to, reported whenever it resolves. Evidence about the past; carries no invariant." },
+            nextTier: { type: ["string", "null"], enum: ["haiku", "sonnet", "opus", null], description: "Non-null exactly when the resolver advanced the selection one stable tier above priorTier. Null means no advance was requested and the narrowed units re-run at the prior selection, re-resolved through the ordinary precedence chain \u2014 so a host pin may still change the model even when this is null." },
             escalationOrigin: { type: "string", minLength: 1, maxLength: 256, pattern: safeRoutingStringPattern },
             priorExecutionShape: { type: "string", enum: ["inline", "isolated", "bounded-parallel"] },
             shapeChanged: { type: "boolean" }
