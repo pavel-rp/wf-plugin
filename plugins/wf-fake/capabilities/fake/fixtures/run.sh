@@ -106,8 +106,11 @@ TYPED_READS=(review-threads-read newest-published-version-read)
 # Of those, the ops whose typed degradation is itself scripted evidence: sample-scripts.json
 # must carry both a performed and a degraded return.
 BOTH_POLARITY_READS=(newest-published-version-read)
-# The contract's closed <reason> token set for a degraded newest-published-version read.
-REASON_TOKENS='^(no-provider|read-failed|none-published)$'
+# The degraded <reason> tokens a REGISTERED provider can produce. The contract's closed set
+# also carries `no-provider`, but that is core's own bare-core result: whenever fake is
+# registered it owns the surface, so a scripted `no-provider` would be an unreachable state
+# and is rejected here — same boundary wf-git's binding observes.
+REASON_TOKENS='^(read-failed|none-published)$'
 
 check_typed_results() {
   local op before=$fail frag="$FRAG_DIR/delivery.ops.md" row

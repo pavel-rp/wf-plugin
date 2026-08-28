@@ -42,6 +42,21 @@ op_list() {  # $1 = an ops fragment
     | sort
 }
 
+# A mis-parsed or renamed `**Operations:**` line yields an EMPTY list, and every loop below
+# would then iterate zero times and report ok — a vacuous pass, the exact defect these checks
+# exist to catch. Fail loudly on an implausible list instead. The floor is deliberately well
+# under the real count: it detects a broken parse, not a deliberate op removal.
+MIN_OPS=10
+
+check_op_list_sane() {
+  local n before=$fail
+  [ -f "$OPS" ] || { err "op-list: $OPS missing"; return; }
+  n=$(op_list "$OPS" | grep -c .)
+  [ "$n" -ge "$MIN_OPS" ] \
+    || err "op-list: the Operations line parsed to $n op(s) (< $MIN_OPS) — a missing or mis-parsed list, never a vacuous pass"
+  [ "$fail" = "$before" ] && ok "op-list: the Operations line parses to $n ops — the suite has a real target set"
+}
+
 check_op_sections() {
   local op before=$fail
   [ -f "$OPS" ] || { err "op-sections: $OPS missing"; return; }
@@ -66,6 +81,11 @@ check_cross_owner_parity() {
   local before=$fail diff_out
   if [ ! -f "$PEER_OPS" ]; then
     ok "cross-owner parity: no peer delivery owner vendored — skipped"
+    return
+  fi
+  # Two EMPTY lists compare equal, so parity would pass vacuously on a mis-parsed peer.
+  if [ "$(op_list "$PEER_OPS" | grep -c .)" -lt "$MIN_OPS" ]; then
+    err "cross-owner parity: the peer owner's Operations line parsed to fewer than $MIN_OPS ops — mis-parsed, never a vacuous parity pass"
     return
   fi
   diff_out=$(diff <(op_list "$OPS") <(op_list "$PEER_OPS") || true)
@@ -103,8 +123,14 @@ check_typed_results() {
     printf '%s\n' "$section" | grep -qF -- 'read-performed' \
       || err "typed-result: the '$op' section documents no 'read-performed' flag"
   done
-  # A registered provider can reach exactly these two degraded reasons; no-provider is core's.
   section=$(op_section "$OPS" newest-published-version-read)
+  # The PERFORMED return needs its own assertion. Without it the degraded clauses alone carry
+  # the token `read-performed`, so deleting the success clause would leave this suite green.
+  printf '%s\n' "$section" | grep -qF -- '= true' \
+    || err "typed-result: the newest-published-version-read section documents no performed return (<read-performed> = true)"
+  printf '%s\n' "$section" | grep -qF -- '<version>' \
+    || err "typed-result: the newest-published-version-read section never names the <version> the performed return carries"
+  # A registered provider can reach exactly these two degraded reasons; no-provider is core's.
   for token in read-failed none-published; do
     printf '%s\n' "$section" | grep -qF -- "\`$token\`" \
       || err "typed-result: the newest-published-version-read section documents no '$token' reason token"
@@ -115,6 +141,7 @@ check_typed_results() {
 }
 
 echo "== wf-git capability self-checks =="
+check_op_list_sane
 check_op_sections
 check_contract_parity
 check_cross_owner_parity
