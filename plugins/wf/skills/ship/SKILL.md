@@ -18,7 +18,9 @@ Converge has two halves. The **CI half is `ship`'s own** (Phase 4.2): failing ch
 
 Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
 
-**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). `{task-root}` below comes from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape, coreVersion }`, already resolved from `_local/config.md` (core performs no direct config-file parse). `{task-root}` below comes from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback.
+
+**Hold the resolved version.** `coreVersion` is the declared version of the core plugin **this run is executing**. Keep it as the run-scoped **resolved version** and render it in the terminal block, so the artifact identifies the harness that produced it. It rides the call just made; never issue a second resolver call for it. A `null` value renders the literal token `unknown` and the run continues normally: a version that cannot be resolved never blocks a run, and is never guessed, defaulted, or inferred from an install path or a timestamp. Report it; do not compare it against anything.
 
 ---
 
@@ -233,8 +235,13 @@ Built:    <ready for review | stopped at <phase>>
 PR:       <url | none>
 Checks:   <green | green after <n> CI-remediation iteration(s) | red (<failing>) — <n> iteration(s), <c> code, <d> infra/transient, <stop reason> | unsettled | n/a>
 Merge:    <merged (<url>) | not merged — <reason>>
+Version:  <the run-scoped resolved version | unknown>
 Next:     <none — terminus | the command that clears the block>
 ```
+
+`Version:` is the run-scoped resolved version held at Prerequisites — the harness this run executed. It renders on **every** emission, and `unknown` when the resolver could not determine it; it is never omitted and never compared against anything here.
+
+**Adding a slot to this block?** It is governed by §"Run-block slot convention" in `_shared/pipeline-conventions.md` (obtained via the resolver's content surface, `class: shared`): append immediately above `Next:`, pad the value to this block's column 11, and always render the slot with a stated fallback token.
 
 When the Phase-4.2 loop ran, `Checks:` states how it ended: `green after <n> CI-remediation iteration(s)` on convergence, or the red form carrying the iteration count, the distilled class tally, and the `<stop reason>` that ended it — `stuck guard tripped after 5 iterations` (paired with `Merge: not merged — CI remediation did not converge within the 5-iteration bound`), `no actionable fix`, `only infra/transient failures`, or `remediation fix did not land`. The counts and the applied-fix locations recorded in step 4 are the run's only durable diagnosis, since `ship` writes no artifact — so a non-convergence always says *how far it got and why it stopped*. Every one of these is a clean bounded stop, reported honestly; none is dressed up as a merge, and none is a crash.
 

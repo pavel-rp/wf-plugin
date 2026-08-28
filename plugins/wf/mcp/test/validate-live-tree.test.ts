@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { validateManifest, validateRegistry, type ValidatorFs } from "../src/resolver/validate-capability.js";
 import { validateSkillInterface } from "../src/resolver/validate-skill-interface.js";
+import { readDeclaredCoreVersion } from "../src/service.js";
 
 const MCP_DIR = process.env.WF_MCP_DIR ?? process.cwd();
 const REPO_ROOT = join(MCP_DIR, "..", "..", "..");
@@ -296,4 +297,24 @@ test("every live payload declaration resolves to a real source file (WF-456)", (
   // A guard against this test passing because nothing declares a payload at all —
   // which is exactly the state the previous test would also be happy with.
   assert.ok(declared > 0, "the live tree must carry at least one payload declaration");
+});
+
+// ---------------------------------------------------------------------------
+// WF-488 — the served core version agrees with the live plugin manifest
+// ---------------------------------------------------------------------------
+
+test("the core-version read resolves to the live plugin manifest's declared version (WF-488)", () => {
+  const corePluginRoot = join(REPO_ROOT, "plugins", "wf");
+  const manifestPath = join(corePluginRoot, ".claude-plugin", "plugin.json");
+  assert.ok(existsSync(manifestPath), `the core plugin manifest is missing at ${manifestPath}`);
+
+  const declared = JSON.parse(readFileSync(manifestPath, "utf8")).version;
+  const served = readDeclaredCoreVersion(corePluginRoot, realFs.readFile);
+
+  // The point of the field: what a run REPORTS must equal what the install it is
+  // running DECLARES. A cached install trailing trunk is only detectable because
+  // these two are the same string.
+  assert.equal(served, declared);
+  assert.equal(typeof served, "string");
+  assert.ok((served as string).length > 0);
 });

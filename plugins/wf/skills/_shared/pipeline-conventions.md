@@ -11,7 +11,8 @@ section. It is one level deep (a skill reads its `SKILL.md`, then this file — 
 below). Reference a section by its **heading name**, never by line number.
 
 **Contents:** Id inference from the current branch · Branch gate (bare-core aware) ·
-Artifact rotation into `.history.md` · Report/spec staleness check.
+Artifact rotation into `.history.md` · Report/spec staleness check ·
+Run-block slot convention.
 
 > Two adjacent shared walks live elsewhere and are **not** repeated here: the
 > phase-firing aggregation walk (registry → manifest → fragment → dispatch → aggregate)
@@ -149,3 +150,38 @@ compare chronologically — **never a string compare**.
 
 With zero readable `delivery` rows, `last-commit-timestamp-query` falls back silently to
 a plain-directory-safe timestamp read — no VCS invocation of any kind.
+
+---
+
+## Run-block slot convention
+
+The **run blocks** are the multi-run terminal blocks whose bodies are label-and-value
+tables read by downstream consumers: the fan-out orchestrator's block and the single-task
+shipper's block. This section is the contract for **adding a field to one of them**. It is
+authoring guidance, not a per-run procedure — a skill follows it when its block gains a
+slot, not on every emission.
+
+A run block is: the `NAME — <status>` line, a blank line, then one `Label: value` line per
+**slot**, inside a fence.
+
+1. **Append at the tail, immediately above `Next:`.** A new slot goes after the last
+   existing slot and before `Next:`. Existing lines are never reordered, renamed, or
+   removed. Two changes adding slots therefore append in merge order and cannot contend for
+   a position.
+2. **`Next:` is always last.** No slot is ever placed below it. Any continuation lines a
+   block indents beneath `Next:` stay attached to it.
+3. **The value column is per-block and fixed.** Every value in a block starts at that
+   block's own column; a new label is padded with spaces to reach it. **A label that does
+   not fit is rejected — that is never a reason to widen the column.** Widening rewrites
+   every existing line, which is a shape change rather than an addition.
+4. **A slot always renders.** Every declared slot appears on **every** emission of the
+   block. When its value is unavailable the slot renders a **stated fallback token** — never
+   an omitted line and never a blank value. Absence is information, so it is stated, not
+   conveyed by a missing line.
+5. **One label token per concept, across every render site.** A value that also appears in a
+   durable artifact (a header stamp, for example) uses the **same** label token there, so
+   every site carrying that concept is one grep.
+
+**Why it is a convention and not a per-skill choice:** these block shapes are grepped by
+other skills, so a field added two different ways in two blocks would fork the shape. A
+change to a grepped block shape is a MINOR bump pre-1.0.
