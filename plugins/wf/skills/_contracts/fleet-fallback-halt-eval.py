@@ -106,9 +106,7 @@ def find_halt_clause(clauses):
         if not all(token in named for token in FAILURES):
             continue
         low = clause.lower()
-        stops_pr = "no pull request is opened" in low or "no pull request" in low
-        stops_final = "no finalize runs" in low or "no finalize" in low
-        if stops_pr and stops_final:
+        if "no pull request" in low and "no finalize" in low:
             return clause
     return None
 
