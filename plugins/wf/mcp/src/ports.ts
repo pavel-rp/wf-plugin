@@ -246,6 +246,19 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
     },
 
     readFile: (absPath) => fsIO.readFile(absPath),
+
+    /** Raw bytes, for the one caller that digests a file as EVIDENCE rather than
+     *  reading it as text (WF-493's artifact observation). No encoding argument,
+     *  so nothing is decoded and nothing is lost. A failure is `null` — the same
+     *  answer as absence, because an artifact that cannot be re-read cannot be
+     *  proved unchanged either way. */
+    readFileBytes: (absPath) => {
+      try {
+        return readFileSync(absPath);
+      } catch {
+        return null;
+      }
+    },
     readContainedFile: (capabilityRoot, selectedPath, maxBytes) =>
       fsIO.readContainedFile!(capabilityRoot, selectedPath, maxBytes),
     fingerprintContainedFile: (capabilityRoot, selectedPath, maxBytes) =>
@@ -276,6 +289,33 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
       mkdirSync(dirname(absPath), { recursive: true, mode: 0o700 });
       writeFileSync(absPath, content, { encoding: "utf8", mode: 0o600 });
     },
+
+    /**
+     * The run's attendance mode, as declared to THIS PROCESS at launch (WF-493).
+     *
+     * WHY THE PROCESS ENVIRONMENT, AND WHY THAT IS NOT CIRCULAR. The amended
+     * process article says the run's unattended mode is not the requesting
+     * agent's to assert, so the fact has to come from somewhere the requesting
+     * agent cannot reach. This resolver runs as its own long-lived server
+     * process, launched by the harness before any agent is dispatched: its
+     * environment is fixed at spawn, and an agent that can write files and run
+     * shell commands still cannot mutate an already-running process's
+     * environment. So whoever launched the session sets this, and the agent
+     * asking for an approval cannot.
+     *
+     * It is NOT a claim that the value is authenticated — an operator who sets it
+     * falsely gets a falsely-labelled record. What it does deliver is that the
+     * label is out of the *dispatched agent's* hands, which is the specific gap
+     * the article names. The service normalizes anything unrecognized (including
+     * absence) to `unestablished` rather than guessing in either direction.
+     *
+     * The port returns the signal RAW. Normalizing here — collapsing an empty
+     * string, lower-casing, trimming — would put half the closed vocabulary in
+     * the port and half in the service, and a port has no business knowing that
+     * vocabulary at all. `normalizeRunModeSignal` owns every one of those
+     * decisions, and already maps `""` and `null` to the same answer.
+     */
+    runModeSignal: () => process.env.WF_RUN_MODE ?? null,
 
     /** The machine-local home for bindings that must live OUTSIDE the audited
      *  workspace. `os.homedir()` throws on some exotic environments and can

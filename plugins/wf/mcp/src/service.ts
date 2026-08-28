@@ -17,7 +17,7 @@
 
 import { resolveRouting } from "./resolver/routing.js";
 import type { RoutingDecision, RoutingInputs } from "./resolver/types.js";
-import { sha256Hex } from "./resolver/fingerprint.js";
+import { sha256Bytes, sha256Hex } from "./resolver/fingerprint.js";
 import {
   annotate,
   classifyThrow,
@@ -175,10 +175,12 @@ import {
   RECEIPT_BEARING_PHASES,
   RUN_EVIDENCE_FORMAT_VERSION,
   RUN_EVIDENCE_KINDS,
+  classifyArtifactState,
   createRunEvidenceRecord,
   isAdmissibleSubject,
   isDeclaredRunEvidenceArtifact,
   matchRunEvidence,
+  normalizeRunModeSignal,
   mintRunEvidenceIssuerKey,
   parseRunEvidenceIssuer,
   parseRunEvidenceLedger,
@@ -191,8 +193,10 @@ import {
   workspaceFingerprint,
   type ReceiptBearingPhase,
   type RunEvidenceArtifact,
+  type RunEvidenceArtifactState,
   type RunEvidenceClass,
   type RunEvidenceKind,
+  type RunEvidenceRunMode,
   type RunEvidenceUnmatchedReason,
 } from "./resolver/run-evidence.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
@@ -279,6 +283,15 @@ export interface ResolverServicePorts {
   readCache(): ResolverSnapshot | null;
   /** Read a UTF-8 file (pack manifest reads for inspect/register), or `null`. */
   readFile(absPath: string): string | null;
+  /** Read a file's RAW bytes, or `null` on any failure (absent, unreadable). The
+   *  run-evidence artifact observation (WF-493) needs this rather than `readFile`:
+   *  `readFile` decodes as UTF-8, so an invalid byte sequence collapses to U+FFFD
+   *  and two byte-distinct files can digest identically, and its `bytes` count
+   *  would be the re-encoded length rather than the true file size. OPTIONAL so
+   *  every existing in-memory port double stays valid; when absent, artifact
+   *  observation falls back to the pre-existing `readFile` + text digest, which
+   *  keeps working but stays exposed to exactly that lossy-digest gap. */
+  readFileBytes?(absPath: string): Uint8Array | null;
   /** Security boundary for a manifest-selected profile template. Omission fails
    * closed; inspection never falls back to `readFile` for this input. */
   readContainedFile?(
@@ -312,6 +325,15 @@ export interface ResolverServicePorts {
    *  which still functions but no longer keeps the key out of reach. Returns
    *  `null` when the runtime cannot determine one. */
   machineLocalHome?(): string | null;
+  /** The run's attendance mode as declared to the RESOLVER PROCESS at launch
+   *  (WF-493) — the one channel for that fact the requesting agent cannot reach,
+   *  since an already-running process's environment is not writable by an agent
+   *  that can only edit files and run commands. Returns the raw signal, or `null`
+   *  when none was declared; the service normalizes it, so a port never has to
+   *  know the closed vocabulary. OPTIONAL, so every existing in-memory port double
+   *  stays valid — an absent port normalizes to `unestablished`, exactly as an
+   *  absent signal does. NEVER derived from a tool caller's input. */
+  runModeSignal?(): string | null;
   /** Write a secret with owner-only permissions. Separate from `writeFile` so the
    *  restrictive mode belongs to the one caller that needs it and never changes
    *  the permissions of ordinary project content. OPTIONAL; falls back to
@@ -866,6 +888,10 @@ export interface RecordRunEvidenceResponse {
   sequence: number | null;
   issuedAt: string | null;
   artifact: RunEvidenceArtifact | null;
+  /** The run mode the resolver OBSERVED and sealed into this record. Reported on
+   *  a refusal too, so a caller learns the mode its run is executing under even
+   *  when no record was issued. Never a caller input. */
+  runMode: RunEvidenceRunMode;
   diagnostic: string | null;
 }
 
@@ -888,6 +914,14 @@ export interface ReadRunEvidenceResponse {
      *  differently instead of being told they are the same. */
     evidenceClass: RunEvidenceClass;
     artifact: RunEvidenceArtifact | null;
+    /** The sealed run mode this record was issued under. */
+    runMode: RunEvidenceRunMode;
+    /** How the approved artifact stands NOW, re-observed and re-digested by the
+     *  resolver at read time — `fresh`, `stale`, `missing`, or `n/a` for an
+     *  artifact-less record. This is the "has since changed" test; a consumer
+     *  that treats a `stale` record as approval has ignored the only field that
+     *  could have told it otherwise. */
+    artifactState: RunEvidenceArtifactState;
   }>;
   unmatched: Array<{
     kind: string;
@@ -900,6 +934,16 @@ export interface ReadRunEvidenceResponse {
   unreadableRecords: number;
   provenPhases: ReceiptBearingPhase[];
   receiptBearingPhases: ReceiptBearingPhase[];
+  /** The run mode the resolver observes NOW, for THIS reading run — never to be
+   *  confused with the per-record sealed `runMode` on each entry in `matched`,
+   *  which is what THAT record was issued under. Two different facts share the
+   *  concept "run mode" but not a name: this field would otherwise collide with
+   *  `matched[].runMode` under the same key while meaning something else, and a
+   *  consumer reading the response shape alone (rather than its doc comments)
+   *  would have no way to tell which one it got. The two legitimately differ when
+   *  a ledger is read from a differently-launched session, and neither is
+   *  corrected against the other. */
+  observedRunMode: RunEvidenceRunMode;
   diagnostic: string | null;
 }
 
@@ -5192,6 +5236,22 @@ export class ResolverService {
   }
 
   /**
+   * Observe the run's attendance mode (WF-493).
+   *
+   * DELIBERATELY NOT A CALLER INPUT, for exactly the reason the run identity is
+   * not: the amended process article says the run's unattended mode is not the
+   * requesting agent's to assert, and an agent that could assert it could
+   * manufacture the precondition for its own self-approval. The signal comes from
+   * the resolver process's own launch environment, which the dispatched agent
+   * cannot mutate; an absent port, an absent signal, and an unrecognized signal
+   * all normalize to `unestablished` rather than to a guess in either direction.
+   */
+  private runEvidenceRunMode(): RunEvidenceRunMode {
+    const raw = this.ports.runModeSignal ? this.ports.runModeSignal() : null;
+    return normalizeRunModeSignal(raw);
+  }
+
+  /**
    * Read a run-evidence file, treating an I/O failure exactly like absence.
    *
    * The whole class is EVIDENCE: an unreadable ledger proves nothing, which is the
@@ -5217,7 +5277,16 @@ export class ResolverService {
       else this.ports.writeFile(absPath, content);
       return null;
     } catch (err) {
-      return err instanceof Error ? err.message : String(err);
+      // THE FAILURE CLASS, NEVER THE MESSAGE. A Node fs error's `message`
+      // carries the absolute path it failed on. For the issuer binding that is
+      // the location of the HMAC key whose secrecy IS the forgery boundary — a
+      // key this module states is never served, never logged, never named — and
+      // for the ledger it is the host path the record deliberately digests
+      // instead of storing. Both diagnostics now surface in a user-visible
+      // terminal block, so the errno class is all that may travel: it is what
+      // makes the failure triageable, and the path is what makes it a leak.
+      const code = (err as NodeJS.ErrnoException | null)?.code;
+      return typeof code === "string" && code.length > 0 ? code : "unknown-write-failure";
     }
   }
 
@@ -5277,6 +5346,93 @@ export class ResolverService {
     return { key, diagnostic: null };
   }
 
+  /**
+   * THE ONE artifact observation, shared by the issue path and the read path.
+   *
+   * WHY ONE. The digest sealed at issue and the digest re-computed at read must
+   * agree byte for byte, or every artifact reads `stale` the moment the two
+   * drift. Two independent copies of "resolve, contain, read, digest" is exactly
+   * the shape that drifts, and the drift would present as tampering rather than
+   * as a bug — so the agreement is made structural instead of coincidental.
+   *
+   * CONTAINMENT IS CANONICAL, NOT LEXICAL. `containedRelPath` rejects `..` and
+   * absolute prefixes but never resolves the filesystem, so a workspace-relative
+   * path that IS a symlink to anywhere on the host passes it. The caller supplies
+   * this path, and a record must never become authority to read outside the
+   * workspace, so the resolved target is canonicalized and required to sit inside
+   * the canonical root. An escape is reported, never followed.
+   *
+   * BYTES, NOT TEXT. `readFile` decodes as UTF-8, which collapses invalid byte
+   * sequences to U+FFFD and would let two byte-distinct files digest identically
+   * — unacceptable for a value whose whole job is to bind one exact artifact.
+   * When the optional byte port is absent (an in-memory port double), this falls
+   * back to the text read: still correct for text artifacts, still exposed to
+   * that gap, and stated here rather than hidden.
+   */
+  private observeArtifact(
+    namedPath: string,
+  ): { ok: true; rel: string; sha256: string; bytes: number } | { ok: false; reason: "outside" | "missing" } {
+    const rel = ResolverService.containedRelPath(namedPath);
+    if (rel === null) return { ok: false, reason: "outside" };
+
+    const abs = this.absolutize(rel);
+    // The canonical check needs a real filesystem, so the port is OPTIONAL and
+    // absence degrades to the lexical containment `containedRelPath` already
+    // performed — the pre-existing behaviour, which keeps every in-memory port
+    // double valid. Stated rather than silent: without this port a symlinked
+    // artifact is followed, so the hardening is only as strong as the runtime
+    // that supplies it.
+    if (this.ports.canonicalizeRoot) {
+      const canonicalTarget = this.ports.canonicalizeRoot(abs);
+      if (canonicalTarget === null) return { ok: false, reason: "missing" };
+      const canonicalRoot =
+        this.ports.canonicalizeRoot(this.ports.workspaceRoot) ??
+        this.ports.workspaceRoot.replace(/\\/g, "/").replace(/\/$/, "");
+      if (canonicalTarget !== canonicalRoot && !canonicalTarget.startsWith(`${canonicalRoot}/`)) {
+        return { ok: false, reason: "outside" };
+      }
+    }
+
+    if (this.ports.readFileBytes) {
+      let bytes: Uint8Array | null = null;
+      try {
+        bytes = this.ports.readFileBytes(abs);
+      } catch {
+        bytes = null;
+      }
+      if (bytes === null) return { ok: false, reason: "missing" };
+      return { ok: true, rel, sha256: sha256Bytes(bytes), bytes: bytes.byteLength };
+    }
+
+    const content = this.runEvidenceRead(abs);
+    if (content === null) return { ok: false, reason: "missing" };
+    return { ok: true, rel, sha256: sha256Hex(content), bytes: Buffer.byteLength(content, "utf8") };
+  }
+
+  /**
+   * Re-observe one record's approved artifact and classify it (WF-493).
+   *
+   * Memoized per call through `cache`: one ledger can carry hundreds of records,
+   * many naming the same artifact, and every one of them would otherwise cost its
+   * own read and digest — up to `MAX_RUN_EVIDENCE_RECORDS` of them per read. The
+   * cache is per `readRunEvidence` call, never longer-lived: all records in one
+   * ledger are judged against one instant, but two calls are two instants and
+   * must be free to disagree.
+   */
+  private runEvidenceArtifactState(
+    artifact: RunEvidenceArtifact | null,
+    cache: Map<string, string | null>,
+  ): RunEvidenceArtifactState {
+    if (artifact === null) return "n/a";
+    let observed = cache.get(artifact.path);
+    if (observed === undefined) {
+      const result = this.observeArtifact(artifact.path);
+      observed = result.ok ? result.sha256 : null;
+      cache.set(artifact.path, observed);
+    }
+    return classifyArtifactState(artifact, observed);
+  }
+
   /** Workspace-relative, non-escaping, non-absolute. A path failing this is
    *  refused rather than normalized — the artifact reference comes from a caller,
    *  and a receipt must never be authority to read outside the workspace. */
@@ -5306,12 +5462,14 @@ export class ResolverService {
   recordRunEvidence(input: RecordRunEvidenceInput): RecordRunEvidenceResponse {
     const runId = this.runEvidenceRunId(input.taskId);
     const destination = runEvidenceDestination(runId);
+    const runMode = this.runEvidenceRunMode();
     const base = {
       runId,
       destination,
       formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
       kind: input.kind,
       subject: input.subject,
+      runMode,
     };
     const refuse = (diagnostic: string): RecordRunEvidenceResponse => ({
       ...base,
@@ -5342,19 +5500,15 @@ export class ResolverService {
     let artifact: RunEvidenceArtifact | null = null;
     const named = input.artifactPath ?? null;
     if (named !== null && named.length > 0) {
-      const rel = ResolverService.containedRelPath(named);
-      if (rel === null) {
+      const observed = this.observeArtifact(named);
+      if (!observed.ok) {
         return refuse(
-          `\`${named}\` is not a workspace-relative path; a receipt never names an artifact outside the workspace.`,
+          observed.reason === "outside"
+            ? `\`${named}\` does not resolve inside the workspace; a receipt never names an artifact outside it, and a contained path that resolves outside is refused rather than followed.`
+            : `the named artifact \`${named}\` does not exist; no receipt is issued for a phase whose output is absent.`,
         );
       }
-      const content = this.runEvidenceRead(this.absolutize(rel));
-      if (content === null) {
-        return refuse(
-          `the named artifact \`${rel}\` does not exist; no receipt is issued for a phase whose output is absent.`,
-        );
-      }
-      artifact = { path: rel, sha256: sha256Hex(content), bytes: Buffer.byteLength(content, "utf8") };
+      artifact = { path: observed.rel, sha256: observed.sha256, bytes: observed.bytes };
     }
 
     // The declared-class boundary is ASSERTED, not merely relied on. The
@@ -5371,7 +5525,14 @@ export class ResolverService {
     const absLedger = this.absolutize(destination);
     const parsed = parseRunEvidenceLedger(this.runEvidenceRead(absLedger));
     if (parsed.status === "unsupported" || parsed.status === "malformed") {
-      return refuse(parsed.diagnostic);
+      // NAME THE REMEDY, because this refusal is now terminal for a caller that
+      // gates on it. The destination is a stable function of the workspace and
+      // the task id and nothing rotates it, so a task whose ledger cannot be read
+      // would otherwise be permanently unshippable with no documented way out.
+      // The refusal itself is unchanged — only the way out became discoverable.
+      return refuse(
+        `${parsed.diagnostic} The ledger is at \`${destination}\`; it holds machine-emitted evidence only, so removing that file clears this condition and the next phase files a fresh record.`,
+      );
     }
     const existing = parsed.status === "ok" ? parsed.ledger.records : [];
 
@@ -5382,12 +5543,12 @@ export class ResolverService {
     // destroys evidence nor re-serializes something it could not parse.
     if (parsed.status === "ok" && parsed.unreadableRecords > 0) {
       return refuse(
-        `the run-evidence ledger carries ${parsed.unreadableRecords} unreadable record(s); appending would erase them, so it is refused rather than rewritten.`,
+        `the run-evidence ledger carries ${parsed.unreadableRecords} unreadable record(s); appending would erase them, so it is refused rather than rewritten. The ledger is at \`${destination}\` — inspect those records first, since an unreadable record is this class's own tamper signal; removing that file clears the condition and discards the evidence with it.`,
       );
     }
     if (existing.length >= MAX_RUN_EVIDENCE_RECORDS) {
       return refuse(
-        `the run-evidence ledger already holds ${existing.length} records (the bound is ${MAX_RUN_EVIDENCE_RECORDS}); a further append is refused rather than growing without limit.`,
+        `the run-evidence ledger already holds ${existing.length} records (the bound is ${MAX_RUN_EVIDENCE_RECORDS}); a further append is refused rather than growing without limit. The bound is per TASK, not per run, and the ledger at \`${destination}\` accumulates across every run of this task; removing that file resets it.`,
       );
     }
 
@@ -5410,6 +5571,7 @@ export class ResolverService {
         issuedAt,
         sequence: existing.length,
         artifact,
+        runMode,
       },
       issuer.key,
     );
@@ -5460,6 +5622,7 @@ export class ResolverService {
       unreadableRecords: 0,
       provenPhases: [] as string[],
       receiptBearingPhases,
+      observedRunMode: this.runEvidenceRunMode(),
     };
 
     const parsed = parseRunEvidenceLedger(this.runEvidenceRead(this.absolutize(destination)));
@@ -5498,6 +5661,8 @@ export class ResolverService {
       runId,
       taskId,
     });
+    // One observation cache for this call — see `runEvidenceArtifactState`.
+    const artifactObservations = new Map<string, string | null>();
     return {
       ...base,
       status: "ok",
@@ -5514,6 +5679,12 @@ export class ResolverService {
           sequence: match.record.sequence,
           evidenceClass: match.record.evidenceClass as RunEvidenceClass,
           artifact: match.record.artifact,
+          runMode: match.record.runMode as RunEvidenceRunMode,
+          // The "has since changed" test, performed HERE rather than trusted from
+          // anywhere: the resolver re-reads the named artifact and re-digests it
+          // now, and compares against the digest sealed at issue. A caller that
+          // could supply this could declare its own stale approval fresh.
+          artifactState: this.runEvidenceArtifactState(match.record.artifact, artifactObservations),
         })),
       unmatched: matches
         .filter((match) => !match.matched)
