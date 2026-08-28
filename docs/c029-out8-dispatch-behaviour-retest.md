@@ -97,8 +97,9 @@ it is the one the charter deliberately defers.
 
 **Source diff — no change at all.** `diff` of
 `~/.claude/plugins/cache/wf-marketplace/wf/0.116.0/agents/phase-runner.md` against
-`plugins/wf/agents/phase-runner.md` on current `main` produces **empty output**. The file is
-byte-identical. Whatever F2/F3 observed in 0.116.0, wf has not changed it.
+`plugins/wf/agents/phase-runner.md` on current `main` produces **empty output**, and both files
+hash to `0a1a8fe9f01f9152349e2706a4190aef` (MD5). The file is byte-identical across the two
+versions. Whatever F2/F3 observed in 0.116.0, wf has not changed it.
 
 **Contract read — the mechanism is `pwd -P`.** `plugins/wf/agents/phase-runner.md:46`:
 
