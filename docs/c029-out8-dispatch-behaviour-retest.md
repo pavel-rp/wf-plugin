@@ -415,6 +415,35 @@ in no wf version, so a plugin diff can never settle them. Any future re-test of 
 should classify each item as wf-versioned or host-versioned *before* choosing its method, or it
 will diff two identical trees and conclude nothing changed when the environment changed underneath.
 
+**ESC-6 — `resolve_routing` has a *fourth* shape defect, and OUT-5 is scoped to three.** Encountered
+while producing this note, not sought. This one is **inside** the charter's remit rather than
+outside it, which is why it is raised here rather than left in a transcript: the charter's Scope IN
+says *"the three `resolve_routing` shape defects"*, enumerated from the diagnostic's F6 — a
+single-unit `composite`, a 256-character `basis`, and a `dispatch` status the caller reads as
+"dispatch nothing". A programme specified against a list of three will not fix a fourth.
+
+The sequence observed here, attempting the **sanctioned** parent-owned `postAttempt` retry after a
+phase dispatch failed to converge — three successive `invalid-stop` responses, each with a
+different diagnostic:
+
+1. `attempt: 2` alongside `prior.attempt: 1` → *"post-attempt attempt contradicts the prior routing
+   attempt"*. The top-level `attempt` must restate the prior's, not the intended next one.
+2. Per-unit `units: [...]` evaluations with an `isolated` prior → *"post-attempt unit evaluations
+   require a bounded-parallel prior attempt"*.
+3. With both corrected → *"prior model does not map unambiguously to a stable tier"*.
+
+The third is the substantive one. The prior decision returned `model.value: null` with
+`source: "inheritance"` — the resolver's **own** output for this edge, and the only honest thing to
+report back. But a prior whose model is `null` has no tier to escalate *from*, so the retry path
+rejects the very decision the resolver just issued. **The escalation gate is therefore unreachable
+for any edge the resolver resolves to inheritance** — which is every shipper-path edge that passes
+`supportsModelSelector: false`. F6 recorded that *"no `postAttempt` gate ever opened"* across the
+whole C011 run and read it as the gate never being needed; this run needed it, tried it correctly,
+and found it closed.
+
+Routing, not work: OUT-5's sub-task should confirm whether its three-defect scope is meant to cover
+this, and widen or split explicitly rather than absorb it silently. Nothing is fixed here.
+
 ## 11. Caveats
 
 - **B2 and B3 are host-runtime verdicts and are not pinned by any wf version.** They can regress
