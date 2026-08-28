@@ -274,11 +274,7 @@
 **Procedure:**
 
 1. **Resolve the published base.** Run `default-base-query` for `<base>`.
-2. **Refresh the published tip.** `git fetch --quiet origin <base>`. Non-zero (not inside a git working tree, no `origin` remote, or the fetch failed) → `<read-performed>` = false, `<reason>` = `read-failed`, no `<version>`. This is deliberately **not** the plain environment error `last-commit-timestamp-query` raises: a currency comparison must be able to say "the check did not run", so the failure is returned typed, never thrown.
-3. **Read the declaration at the published tip.** `git show FETCH_HEAD:<version-declaration>`. Non-zero (the declaration does not exist in the published state) → `<read-performed>` = false, `<reason>` = `none-published`, no `<version>`.
-4. **Extract the value** at `<version-field>` (default: the top-level `version` key). Unparseable, key absent, or the value blank → `<read-performed>` = false, `<reason>` = `none-published`, no `<version>`. A performed read with no value is **never** a bare `<read-performed>` = true.
-5. Otherwise → `<read-performed>` = true, `<version>` = the extracted value, no `<reason>`.
-
-**Never derives.** It neither chooses `<version-declaration>` nor reads the local working copy's own value — the caller supplies the first and owns the comparison. Step 2 fetches but touches no branch, no worktree, and no checked-out state.
+2. **Refresh the published tip.** `git fetch --quiet origin <base>`. Non-zero (not inside a git working tree, no `origin` remote, or the fetch failed) → `<read-performed>` = false, `<reason>` = `read-failed`, no `<version>`. This is deliberately **not** the plain environment error `last-commit-timestamp-query` raises: a currency comparison must be able to say "the check did not run", so the failure is returned typed, never thrown. The fetch touches no branch, no worktree, and no checked-out state.
+3. **Read the declaration at the published tip and extract the value.** `git show FETCH_HEAD:<version-declaration>`, then take `<version-field>` (default: the declaration's **top-level `version` key**, read as JSON). Non-zero (absent in the published state), unparseable, key absent, or a blank value → `<read-performed>` = false, `<reason>` = `none-published`, no `<version>` — a performed read with no value is **never** a bare `<read-performed>` = true. Otherwise → `<read-performed>` = true, `<version>` = the extracted value, no `<reason>`.
 
 **Output:** `<read-performed>` (bool — true **only** when a concrete published version value was obtained), `<version>` (present only when `<read-performed>` = true), `<reason>` (present only when false; one of `read-failed` | `none-published` — `no-provider` is core's bare-core result, which this file does not implement).

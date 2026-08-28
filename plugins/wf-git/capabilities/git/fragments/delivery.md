@@ -399,14 +399,14 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   `gh`-not-authenticated at step 2 names the `gh auth login` remedy, joining the
   authenticated-read exceptions above.
 - **Newest-published version — the performed return** — `newest-published-version-read`
-  step 5: the declaration exists at the published tip and carries a non-blank value at
+  step 3: the declaration exists at the published tip and carries a non-blank value at
   `<version-field>` → `<read-performed>` = true, `<version>` = that value, **no**
   `<reason>`. This is the only shape a consumer may treat as a completed currency check.
 - **Newest-published version — the typed degraded returns** — the same operation, three
   closed outcomes, each `<read-performed>` = false with **no** `<version>`: step 2 (not a
   git working tree, no `origin` remote, or the fetch failed) → `<reason>` = `read-failed`;
-  step 3 (the declaration does not exist in the published state) and step 4 (unparseable
-  declaration, absent `<version-field>`, or a blank value) → `<reason>` = `none-published`.
+  step 3 (the declaration absent from the published state, unparseable, an absent
+  `<version-field>`, or a blank value) → `<reason>` = `none-published`.
   None of these is thrown as an environment error, and none may be returned as a bare
   empty — the C011 failure the typing exists to prevent is a consumer reading an unrun
   check as "the installation is current". `no-provider`, the contract's third token, is
