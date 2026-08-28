@@ -42,6 +42,13 @@ BLOCK_END = "Each fallback edge gets its own decision"
 TOKEN_RE = re.compile(r"RUN\s+[—-]\s+(gated|complete|blocked|error)")
 STEP_RE = re.compile(r"^>?\s*\d+\.\s")
 
+# A halt that no one can read is not a halt. The orchestrator must map a
+# reported halt onto the item's row state, and the row must have a stated
+# rendering for a state and its reason.
+HALT_ROW_STATE = "blocked"
+ROW_MAPPING_RE = re.compile(r"halt[^.\n]*`" + HALT_ROW_STATE + r"`", re.I)
+ROW_RENDERING_RE = re.compile(r"`<state>:\s*<[^`>]*reason>`")
+
 
 class Failure(Exception):
     pass
@@ -111,6 +118,28 @@ def find_halt_clause(clauses):
     return None
 
 
+def check_row_recording(text: str):
+    """A halted item's outcome must be readable from its own scoreboard row.
+
+    Two independent facts: the orchestrator maps a reported halt onto the row's
+    ``blocked`` state, and the row has a stated rendering for a state and its
+    reason. Either one alone leaves the halt inferable only from an absent row,
+    which is the failure mode the row convention exists to close.
+    """
+    problems = []
+    if not ROW_MAPPING_RE.search(text):
+        problems.append(
+            "no clause maps a reported halt onto the item's "
+            f"`{HALT_ROW_STATE}` row state"
+        )
+    if not ROW_RENDERING_RE.search(text):
+        problems.append(
+            "the row states no `<state>: <reason>` rendering, so a halt's "
+            "reason has no defined place in the row"
+        )
+    return problems
+
+
 def recorded_outcome(token: str, admits_pr: bool, admits_finalize: bool) -> str:
     if admits_pr or admits_finalize:
         return "advanced"
@@ -125,6 +154,7 @@ def evaluate(path: str):
 
     block = extract_block(text)
     steps, clauses = split_units(block)
+    row_recording = check_row_recording(text)
 
     gated = resolve_step(steps, "gated")
     pr = resolve_step(steps, "pr")
@@ -189,6 +219,8 @@ def evaluate(path: str):
     if not step_admits(gated, HANDOFF):
         problems.append("RUN — gated no longer reaches the ship:phase step")
 
+    problems.extend(row_recording)
+
     if problems:
         raise Failure("; ".join(problems))
 
@@ -232,16 +264,26 @@ HALT_CLAUSE_INCOMPLETE_CHAIN = """> Only if that Skill is genuinely unavailable 
 > Each fallback edge gets its own decision and compact record immediately before execution.
 """
 
+# The row-recording half: the two facts that make a halt readable from the
+# item's own row rather than inferable from its absence.
+ROW_RECORDING = """
+A shipper reporting a halt instead of a merge is recorded `blocked`, with its stated reason written into that row.
+
+Any state other than plain `merged` also carries its reason in `notes`, rendered `<state>: <one-line reason>`.
+"""
+
 GATED_STEP_DAMAGED_CHAIN = SOUND_CHAIN.replace(
     "> 3. On each `RUN — gated` handoff, route with",
     "> 3. Route with",
 )
 
 FIXTURES = {
-    "sound": SOUND_CHAIN,
-    "pre-fix": PRE_FIX_CHAIN,
-    "halt-clause-incomplete": HALT_CLAUSE_INCOMPLETE_CHAIN,
-    "gated-step-damaged": GATED_STEP_DAMAGED_CHAIN,
+    "sound": SOUND_CHAIN + ROW_RECORDING,
+    "pre-fix": PRE_FIX_CHAIN + ROW_RECORDING,
+    "halt-clause-incomplete": HALT_CLAUSE_INCOMPLETE_CHAIN + ROW_RECORDING,
+    "gated-step-damaged": GATED_STEP_DAMAGED_CHAIN + ROW_RECORDING,
+    # Sound chain, but the halt is never written anywhere a reader can see it.
+    "row-recording-absent": SOUND_CHAIN,
 }
 
 
