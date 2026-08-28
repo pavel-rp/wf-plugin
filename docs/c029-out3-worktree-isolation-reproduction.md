@@ -1,8 +1,9 @@
 # C029 OUT-3 — reproduction of the fleet worktree-isolation failure, and the verdict
 
+**Kind:** reproduction note — **no runtime code.** Not read at skill runtime.
 **Recorded:** 2026-08-28 · **Item:** WF-484 · **Covers:** C029 OUT-3, first success measure
 **Audited by:** claude-opus-5[1m]
-**Fixture:** `plugins/wf/mcp/test/worktree-isolation-repro.test.ts`
+**Fixture:** `plugins/wf/mcp/test/worktree-isolation-reproduction.test.ts`
 **Claim under test:** `docs/c011-fleet-run-diagnostic.md` §5 **F4** — *"The resolver defeats worktree isolation."*
 **Dispatch shape sourced from:** `docs/c029-out8-dispatch-behaviour-retest.md` §5 (**B2**) and §6 (**B3**), not from the diagnostic.
 
@@ -19,7 +20,7 @@
 | Question | Answer |
 |---|---|
 | Does a resolver call from a C011-shaped container return a checkout above it? | **Yes** — in the *unregistered* container state only. |
-| Is the cause the mechanism F4 names (`--git-common-dir` / a family-root return)? | **No.** Refuted — see §4. |
+| Is the cause the mechanism C011 attributes to F4 (`docs/c011-fleet-run-diagnostic.md:328` — a family-root return)? | **No.** Refuted — see §4. |
 | Is the cause a resolver defect at all? | **No.** The resolver faithfully reports what `git rev-parse --show-toplevel` returns. |
 | Does isolation hold in the mandated `isolation: "worktree"` shape? | **Yes**, including concurrently. OUT-3's second success measure is already satisfied. |
 | Was any resolver source change needed to build the reproduction? | **No.** No stop-and-raise was triggered. |
@@ -49,15 +50,16 @@ Both states are driven through the same code path a `resolve_config({ workspaceR
 
 ## 3. Observed vs expected
 
-### 3.1 Fixture — `plugins/wf/mcp/test/worktree-isolation-repro.test.ts` (5 cases, all passing)
+### 3.1 Fixture — `plugins/wf/mcp/test/worktree-isolation-reproduction.test.ts` (6 cases, all passing)
 
 | # | State | Input `workspaceRoot` | Expected if isolated | **Observed** | Verdict |
 |---|---|---|---|---|---|
 | 1 | (a) unregistered | `<parent>/.claude/worktrees/agent-aaa` | `<parent>/.claude/worktrees/agent-aaa` | **`<parent>`** | **symptom reproduces** |
 | 2 | (a) unregistered, 2 shippers | `agent-aaa`, `agent-bbb` | 2 distinct services | **1 service, keyed on `<parent>`** | **symptom reproduces** |
 | 3 | (b) registered | `<parent>/.claude/worktrees/agent-aaa` | `<parent>/.claude/worktrees/agent-aaa` | **same, verbatim** | **isolation holds** |
-| 4 | (b) registered, 2 shippers | `agent-aaa`, `agent-bbb` | 2 distinct roots + services | **2 distinct roots + services, no state leak** | **isolation holds** |
-| 5 | (b) registered, shared common dir | `agent-aaa`, `agent-bbb` | keyed on root, not common dir | **2 services despite one shared common dir** | **F4 mechanism refuted** |
+| 4 | (b) registered, 2 shippers | `agent-aaa`, `agent-bbb` | 2 distinct roots + services | **2 distinct roots + services** | **isolation holds** |
+| 5 | (b) registered, unregistered subdir inside it | `agent-aaa/_local/scratch/probe` | the enclosing worktree | **the enclosing worktree, while its common dir is the family's** | **F4 mechanism refuted** |
+| 6 | (b) registered, shared common dir | `agent-aaa`, `agent-bbb` | keyed on root, not common dir | **2 services despite one shared common dir** | **F4 mechanism refuted** |
 
 Case 2 is C011's F4 symptom stated mechanically: concurrent shippers converge on **one** root-bound
 `ResolverService`, and that root is the shared checkout. Had any skill trusted the returned root for a
@@ -103,9 +105,12 @@ point during this run.
 - `plugins/wf/mcp/src/workspace-services.ts:44` keys the service map on `identity.root` — the **resolved
   worktree root**.
 
-So the family-root return F4 describes has no source in current code. Fixture case 5 and live probe A each
-falsify it independently: two worktrees sharing one common dir produce two services, and a call whose common
-dir is the family root still returns a worktree root.
+So the family-root return C011 attributes to F4 (`docs/c011-fleet-run-diagnostic.md:328`, §11 rec 3 — F4's own
+text at `:164`–`:169` says only *"the resolver overrides exactly that"*, and C011 nowhere names
+`--git-common-dir`) has no source in current code. Fixture cases **5 and 6** falsify it independently, and
+both are re-derived on every run: a call whose common dir **is** the family root still returns a worktree
+root (case 5), and two worktrees sharing one common dir produce two services (case 6). Case 5 is the pinned
+counterpart of live probe A in §3.2.
 
 **Why F4 nevertheless recorded a true observation.** C011's shippers were dispatched into containers that the
 runtime had not registered as worktrees (F5). Every such call was, from git's point of view, a call from an
@@ -126,8 +131,11 @@ verdict. The verdict does not support it as written.
    subdirectory — a skill calling from `plugins/wf/mcp` would receive `plugins/wf/mcp` as its `workspaceRoot`.
    That alias/subdirectory convergence is pinned as *required* behaviour by
    `plugins/wf/mcp/test/workspace-services.test.ts` ("canonical aliases and subdirectories share one
-   root-bound service"), and every consumer in `docs/resolver-consumer-inventory.md` depends on it. This
-   option is not a narrow fix; it is a breaking change to the resolver's core contract.
+   root-bound service") — the load-bearing pin, which stands on its own. The consumers inventoried in
+   `docs/resolver-consumer-inventory.md` each pass their own cwd as `workspaceRoot`, so each would be
+   affected; that inventory does not itself state or test the convergence, and this clause is an inference
+   from it rather than a citation of it. This option is not a narrow fix; it is a breaking change to the
+   resolver's core contract.
 3. **Recommended reshape.** Either **close** WF-495 as already-satisfied, or narrow it to assumption (7)'s
    *other* option — an **additive** signal that the passed `workspaceRoot` differs from the resolved root, so
    an agent dispatched into an unregistered container can detect the condition instead of silently sharing
@@ -153,3 +161,9 @@ question.
   states rather than only the passing one.
 - **No resolver source or semantics were changed by this item.** Its only touch on `plugins/wf/mcp/` is the
   added test file.
+- **Known, accepted fixture limitation.** The fixture builder runs before each case's `try`, and the `git`
+  helper discards stderr — so a *setup* failure caused by an ambient global git config (`commit.gpgsign`,
+  `core.hooksPath`, `init.templateDir`) would orphan a temp directory and report no cause. This is inert on a
+  hosted runner with no global gitconfig, and it is the shape every sibling fixture already uses
+  (`plugins/wf/mcp/test/workspace-services.test.ts:53`–`:55`). Recorded rather than diverged from here: the
+  fix belongs to the shared fixture shape, not to this one file.

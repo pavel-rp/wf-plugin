@@ -1,5 +1,6 @@
-// C029 OUT-3 — reproduction fixture for the C011 F4 claim that the resolver
-// defeats worktree isolation for a dispatched fleet shipper.
+// Worktree-isolation reproduction fixture for the C011 F4 claim (WF-484, C029 OUT-3).
+//
+// F4 claims the resolver defeats worktree isolation for a dispatched fleet shipper.
 //
 // The fixture rebuilds the layout the C011 run actually used: a container
 // directory `<parent-checkout>/.claude/worktrees/agent-<id>` **nested inside the
@@ -187,6 +188,42 @@ test("state (b) registered: concurrent sibling worktrees resolve to distinct roo
     // Repeat selection is stable — a second shipper call returns its own service.
     assert.strictEqual(registry.select(first), firstService as unknown as ResolverService);
     assert.strictEqual(registry.select(second), secondService as unknown as ResolverService);
+  } finally {
+    rmSync(layout.root, { recursive: true, force: true });
+  }
+});
+
+test("an unregistered directory inside a registered worktree resolves to that worktree, not to the family root", () => {
+  const layout = makeFleetLayout();
+  try {
+    const container = layout.container("aaa");
+    git(layout.parent, "worktree", "add", "-b", "agent-aaa", container);
+
+    // A plain, unregistered subdirectory *inside* the agent's own linked
+    // worktree — the shape a shipper reaches when it resolves a path below its
+    // own root. This is the decisive discriminator between the two candidate
+    // mechanisms: the caller's common dir here IS the family's, so a
+    // `--git-common-dir`-driven return would answer with the parent checkout.
+    const nested = join(container, "_local", "scratch", "probe");
+    mkdirSync(nested, { recursive: true });
+
+    const identity = resolveWorkspaceIdentity(nested);
+    assert.equal(identity.kind, "git");
+    assert.equal(
+      identity.root,
+      canonical(container),
+      `observed root ${identity.root} — expected the enclosing worktree ${canonical(container)}`,
+    );
+    assert.notEqual(
+      identity.root,
+      canonical(layout.parent),
+      `observed root ${identity.root} is the family root — a common-dir-driven return`,
+    );
+    assert.equal(
+      identity.kind === "git" ? identity.commonDir : "",
+      canonical(join(layout.parent, ".git")),
+      "the caller's common dir is the family's, yet the returned root is not the family root",
+    );
   } finally {
     rmSync(layout.root, { recursive: true, force: true });
   }
