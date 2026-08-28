@@ -26,6 +26,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 VERIFY="$ROOT/plugins/wf/skills/verify-spec/SKILL.md"
 TEMPLATE="$ROOT/plugins/wf/skills/verify-spec/references/verify-template.md"
 RATIONALE="$ROOT/plugins/wf/skills/verify-spec/references/adversarial-pass.md"
+CONSUMER="$ROOT/plugins/wf/skills/verify-fix/SKILL.md"
 EMPTY_REG="$ROOT/plugins/wf/skills/_contracts/registry-fixtures/pass-empty.md"
 FIX_DIR="$ROOT/plugins/wf/skills/_contracts/adversarial-fixtures"
 DEFECTIVE="$FIX_DIR/defective-change.md"
@@ -95,6 +96,13 @@ case "$section" in
     report_fail "the lean adversarial pass must add no routing or Task dispatch" ;;
 esac
 
+# "Closed at two classes" must be ENFORCED, not merely asserted in prose — otherwise a
+# third class could be added and every other assertion here would still pass.
+class_count="$(printf '%s' "$section" | grep -cE '^[0-9]+\. \*\*')"
+if [ "$class_count" -ne 2 ]; then
+  report_fail "the defect-class list must stay closed at exactly 2 (found $class_count)"
+fi
+
 if ! printf '%s' "$section" | grep -qF 'It adds no dispatch.'; then
   report_fail "the pass must state that it adds no dispatch"
 fi
@@ -133,12 +141,22 @@ if [ ! -f "$RATIONALE" ]; then
   report_fail "the paired rationale reference adversarial-pass.md is missing"
 fi
 
+# The report's downstream consumer must declare the new section explicitly, so it is
+# skipped by contract rather than dropped silently.
+need "$CONSUMER" "the report consumer must declare the Adversarial findings section" \
+  '## Adversarial findings'
+
 # Empty-registry fixture: a Capabilities table with a header and ZERO rows.
 if [ ! -f "$EMPTY_REG" ]; then
   report_fail "the purpose-built empty-registry fixture is missing"
 else
   if ! grep -q '^## Capabilities$' "$EMPTY_REG"; then
     report_fail "the empty-registry fixture has no ## Capabilities heading"
+  fi
+  # The zero-rows count alone passes vacuously if the table body is deleted outright,
+  # so assert the header POSITIVELY first — "a header and zero rows", not "no table".
+  if ! grep -qE '^\|[[:space:]]*Capability[[:space:]]*\|' "$EMPTY_REG"; then
+    report_fail "the empty-registry fixture must keep its Capabilities table header row"
   fi
   # Data rows only: table lines that are neither the header nor the `---` separator.
   rows="$(grep -E '^\|' "$EMPTY_REG" | grep -vcE '^\|[[:space:]]*(Capability|-)')"
