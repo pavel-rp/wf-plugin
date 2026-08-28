@@ -1855,6 +1855,14 @@ export interface CoreConfig {
    *  surfaced verbatim; `ship` interprets `<none>`/absent/unparseable as its
    *  shipped default (~150K) and owns the numeric parse. Added WF-378. */
   contextCeiling: string | null;
+  /** Workspace-relative path of the file that declares the version of the unit
+   *  this workspace publishes, surfaced verbatim. It is the already-resolved
+   *  `<version-declaration>` a caller hands the delivery surface's
+   *  newest-published-version read; core never derives one and never hardcodes a
+   *  path. `null` (unset, `<none>`, or a placeholder) means the currency check
+   *  has nothing to ask for and states that it is not configured, never that the
+   *  installation is current. Added WF-489. */
+  versionDeclaration: string | null;
 }
 
 /** Active tracker's id shape (consumer inventory §7 field #10). Product-noun

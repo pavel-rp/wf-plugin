@@ -38,6 +38,14 @@ Must exit 0 when the project typechecks (including framework-level checks: templ
 
 The stated context bound for a single `/wf:ship` run, in approximate accumulated tokens per shipper. `/wf:ship` checks it at each inter-phase boundary (after a phase's output is committed and pushed); when the run's estimated accumulated context would cross the ceiling, ship flushes and **hands off to a fresh `/wf:ship <id>`** that resumes detect-first — so a long ship stays bounded and still reaches a merged PR with no lost state. **Lower it to force an earlier hand-off** (useful for exercising the crossing); raise it to let a run grow further before handing off. An absent or `<none>` value falls back to the shipped default (`150000`), so a repo initialized before this key existed degrades gracefully. Consumed only by `/wf:ship`.
 
+## Version Check
+
+| Key | Value |
+|-----|-------|
+| **Version Declaration** | `<none>` |
+
+The workspace-relative path (forward slashes) of the file that declares the version of the unit this workspace **publishes** — the already-resolved declaration a run hands to the delivery surface's newest-published-version read when it checks whether the version it is executing still matches the newest published one. It names a *declaration*, never where versions are published. Leave it `<none>` unless this workspace publishes the unit its runs execute: with no declaration there is nothing to ask a published state for, and the currency check renders `not checked — no version declaration configured` — a **stated** non-check, never a report that the installation is current. Read once at Prerequisites by the run-driving skills, at a cost of one provider read per run and none per item. A repo initialized before this key existed simply has no `## Version Check` section and degrades to the same stated non-check.
+
 ## QA
 
 | Key | Value |
