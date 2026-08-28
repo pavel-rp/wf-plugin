@@ -15,6 +15,16 @@
 #      declared markers (empty registry with zero rows; a defect-bearing change
 #      citing both sides of both classes; a paired defect-free change expecting zero).
 #
+# WF-486 adds the fifth property — the reconciliation between the core default and a
+# registered contributor:
+#
+#   5. The rule exists, is stated over the contribution taxonomy (never a capability
+#      noun), adds no dispatch, and is ONE-DIRECTIONAL: it may withdraw or annotate a
+#      core candidate but may never drop, edit or withhold a contributed finding, so
+#      the lenses' provenance-tagged findings survive registration. Both overlap
+#      outcomes (withdraw / retain-both) are pinned, a failed contributor cannot cause
+#      a withdrawal, and the one-row registry plus its two expectation fixtures exist.
+#
 # Model: claude-opus-5[1m]
 #
 # Usage:
@@ -129,8 +139,137 @@ if [ "$caps_checked" -eq 0 ]; then
   report_fail "derived zero capability names — the capability-noun check would pass vacuously"
 fi
 
-need "$VERIFY" "the pass must state that dedup against registered contributors is out of scope" \
-  'is out of scope here'
+# WF-486 (C029 OUT-4): the pass section still compares nothing — the reconciliation
+# happens after the phase, where both sets are in hand. The section-scoped capability-noun
+# check above already covers the pass; assert the same for the reconciliation section, which
+# is where a capability name would be most tempting to write.
+need "$VERIFY" "the pass section must still defer the comparison" \
+  'compares nothing. They are reconciled against the phase below'
+
+# --- 5. The reconciliation rule (WF-486) ---------------------------------------
+need "$VERIFY" "verify-spec must carry the reconciliation section" \
+  '### Reconcile against the lean pass'
+
+if ! grep -q '^### Reconcile against the lean pass$' "$VERIFY"; then
+  report_fail "the reconciliation section heading is missing — extraction would overrun"
+fi
+# Both ends must exist, for the same reason the pass section asserts its terminator:
+# without it the awk range runs to EOF and every section-scoped check below goes silent.
+if [ "$(grep -c '^## Output$' "$VERIFY")" -ne 1 ]; then
+  report_fail "the reconciliation section's terminator heading is missing — extraction would overrun"
+fi
+
+recon="$(awk '/^### Reconcile against the lean pass$/{f=1} /^## Output$/{f=0} f' "$VERIFY")"
+
+if [ -z "$recon" ]; then
+  report_fail "could not extract the reconciliation section"
+fi
+
+# Core Article 8: the rule is stated over the contribution taxonomy, never over a
+# capability noun. Derived from the tree for the same reason as the check above.
+for cap_dir in "$ROOT"/plugins/*/capabilities/*/; do
+  [ -d "$cap_dir" ] || continue
+  cap="$(basename "$cap_dir")"
+  case "$recon" in
+    *"\`$cap\`"*)
+      report_fail "the reconciliation rule names the capability '$cap' (Core Article 8)" ;;
+  esac
+done
+
+# It compares two sets already in hand — it must not acquire dispatch of its own either.
+case "$recon" in
+  *'subagent_type'*|*'Task tool'*|*'invoke one Task'*|*'resolve_routing'*)
+    report_fail "the reconciliation rule must add no routing or Task dispatch" ;;
+esac
+
+# Obligation 1: the reconciliation may only ever act on the CORE side. Without this the
+# rule could be "fixed" by dropping lens findings, which is the exact regression OUT-4
+# forbids — the five lenses' findings must still appear.
+if ! printf '%s' "$recon" | grep -qF '**One-directional.**'; then
+  report_fail "the reconciliation rule must declare itself one-directional"
+fi
+if ! printf '%s' "$recon" | grep -qF 'never dropped, edited, re-tagged, merged, reordered, or withheld'; then
+  report_fail "the reconciliation rule must protect contributed findings verbatim"
+fi
+if ! printf '%s' "$recon" | grep -qF 'can never cause a withdrawal'; then
+  report_fail "a failed or empty contributor must never be able to withdraw a core candidate"
+fi
+
+# Obligation 2: BOTH outcomes must survive. Keeping only "withdraw" silently collapses a
+# genuine second perspective; keeping only "retain" duplicates. The success measure needs
+# both, so assert both rather than the section merely existing.
+if ! printf '%s' "$recon" | grep -qF '**withdraw**'; then
+  report_fail "the reconciliation rule must specify the withdraw outcome"
+fi
+if ! printf '%s' "$recon" | grep -qF '**retain both**'; then
+  report_fail "the reconciliation rule must specify the retain-both outcome"
+fi
+if ! printf '%s' "$recon" | grep -qF 'never silently collapsed or doubled'; then
+  report_fail "an overlap must be visible, not silently collapsed or doubled"
+fi
+# The overlap test must stay citation-anchored, matching the two-sided citation rule.
+if ! printf '%s' "$recon" | grep -qF 'changed-side'; then
+  report_fail "the overlap test must be anchored on the candidate's changed-side citation"
+fi
+
+# The incomplete-coverage obligation: silence is not cleanliness.
+need "$VERIFY" "a failed contributor must mark the adversarial coverage incomplete" \
+  'mark the adversarial coverage **incomplete**'
+need "$VERIFY" "a failed contributor must be stated with its provenance" \
+  'contributed nothing *and is not clean*'
+
+# The reconciliation set: the audit-registered and lens-failure expectations over the SAME
+# defect-bearing change, against the purpose-built one-row registry.
+AUDIT_REG="$ROOT/plugins/wf/skills/_contracts/registry-fixtures/pass-audit-only.md"
+REGISTERED="$FIX_DIR/audit-registered.md"
+LENS_FAIL="$FIX_DIR/lens-failure.md"
+
+if [ ! -f "$AUDIT_REG" ]; then
+  report_fail "the purpose-built one-capability registry fixture is missing"
+else
+  # Exactly ONE data row — the whole point of the fixture. This repo's own eight-row
+  # registry would pollute the non-duplication comparison.
+  areg_rows="$(grep -E '^\|' "$AUDIT_REG" | grep -vcE '^\|[[:space:]]*(Capability|Registry|-|`)')"
+  if [ "$areg_rows" -ne 1 ]; then
+    report_fail "the audit-only registry fixture must carry exactly one capability row (found $areg_rows)"
+  fi
+fi
+
+if [ ! -f "$REGISTERED" ]; then
+  report_fail "the contributor-registered expectations fixture is missing"
+else
+  # Same change, different registry — assert the shared input explicitly, or the two runs
+  # stop being a comparison.
+  need "$REGISTERED" "the registered fixture must reuse the same defect-bearing change" \
+    'defective-change.md'
+  need "$REGISTERED" "the registered fixture must reuse the empty-registry control" \
+    'pass-empty.md'
+  need "$REGISTERED" "the registered fixture must assert the fan-out is unchanged" \
+    'EXPECT: fanout=5'
+  need "$REGISTERED" "the registered fixture must assert lens findings survive" \
+    'EXPECT: lens-findings=preserved'
+  need "$REGISTERED" "the registered fixture must assert lens provenance is tagged" \
+    'EXPECT: lens-provenance=tagged'
+  need "$REGISTERED" "the registered fixture must assert the withdraw case" \
+    'EXPECT: case=withdraw'
+  need "$REGISTERED" "the registered fixture must assert the retain-both case" \
+    'EXPECT: case=retain-both'
+  need "$REGISTERED" "the registered fixture must assert the no-overlap case" \
+    'EXPECT: case=no-overlap'
+fi
+
+if [ ! -f "$LENS_FAIL" ]; then
+  report_fail "the contributor-failure fixture is missing"
+else
+  need "$LENS_FAIL" "the failure fixture must assert the failure is stated with provenance" \
+    'EXPECT: failure-provenance=stated'
+  need "$LENS_FAIL" "the failure fixture must assert the pass is marked incomplete" \
+    'EXPECT: coverage=incomplete'
+  need "$LENS_FAIL" "the failure fixture must distinguish an empty return from a failure" \
+    'EXPECT: empty-return=clean'
+  need "$LENS_FAIL" "the failure fixture must block withdrawal on a failed contributor" \
+    'EXPECT: withdrawal=blocked-on-failure'
+fi
 
 need "$TEMPLATE" "the report shape must declare the Adversarial findings section" \
   '## Adversarial findings'
@@ -200,3 +339,6 @@ printf 'PASS: lean adversarial pass present — both classes, two-sided citation
 printf 'PASS: pass reports without gating; VERIFY block shape unchanged\n'
 printf 'PASS: pass adds no routing or Task dispatch and names no capability\n'
 printf 'PASS: empty-registry, defect-bearing and defect-free fixtures intact\n'
+printf 'PASS: reconciliation is one-directional, dispatch-free and names no capability\n'
+printf 'PASS: both overlap outcomes pinned; a failed contributor withdraws nothing\n'
+printf 'PASS: one-row registry plus registered/lens-failure expectation fixtures intact\n'
