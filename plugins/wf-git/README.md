@@ -7,19 +7,22 @@ provider surface"). It binds every abstract delivery operation — `branch-creat
 `branch-switch`, `commit`, `push-upstream`, `pr-create`, `pr-detect`,
 `pr-comment-post`, `review-thread-resolve`, `review-thread-reply`, `pr-merge`,
 `workspace-root-resolve`, `current-branch-query`, `last-commit-timestamp-query`,
-`pr-comments-read`, `review-threads-read`, `checks-read`, `activity-read` — to
+`pr-comments-read`, `review-threads-read`, `checks-read`, `activity-read`,
+`newest-published-version-read` — to
 concrete git/gh procedures, so a `wf` core skill that needs to branch, commit,
 push, open a PR, read or post review comments, read HEAD_SHA-scoped review
-threads, reply on a thread, read checks, resolve a thread, merge a PR, or read
-recent activity has a provider to dispatch to.
+threads, reply on a thread, read checks, resolve a thread, merge a PR, read
+recent activity, or read the newest published version has a provider to dispatch
+to.
 
 ## What ships
 
 | Item | What it is |
 |---|---|
 | `capabilities/git/manifest.md` | the `git` capability's manifest — one `provider` fragment row scoped `delivery` |
-| `capabilities/git/fragments/delivery.ops.md` | the **runtime-ops** half — every input, guard, error path, and outcome mapping for all fifteen delivery operations, read at each delivery-surface boot (bounded, ≤250 lines) |
+| `capabilities/git/fragments/delivery.ops.md` | the **runtime-ops** half — every input, guard, error path, and outcome mapping for every delivery operation, read at each delivery-surface boot |
 | `capabilities/git/fragments/delivery.md` | the **reference** half — scope framing, per-operation rationale, and the edge-case regression matrix; never read at boot |
+| `capabilities/git/fixtures/run.sh` | the capability's deterministic self-checks — op-list integrity, parity with the core contract's normative op list, **cross-owner parity** with the fixture delivery owner, and the typed-read discipline; CI-discovered by convention |
 | `/wf-git:init` | one-command self-registration — records this pack's install root and registers the `git` capability, following the sibling packs' self-registering `/init` onboarding pattern |
 
 ## Registering wf-git downstream

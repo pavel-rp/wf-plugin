@@ -24,6 +24,7 @@ delivery pr-comments-read
 delivery review-threads-read
 delivery checks-read
 delivery activity-read
+delivery newest-published-version-read
 #
 # --- tracker surface (as bound in plugins/wf-linear/capabilities/linear/fragments/tracker.ops.md) ---
 tracker resolve_config

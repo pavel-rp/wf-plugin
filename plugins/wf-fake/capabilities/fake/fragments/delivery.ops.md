@@ -1,6 +1,6 @@
 # fake delivery provider — runtime ops
 
-**Version:** 0.1.0 (WF-344 — hermetic in-memory delivery binding: every delivery op returns a scripted response and records its invocation to the op log; no network/git/gh reach.)
+**Version:** 0.2.0 (WF-483 — the newest-published-version read bound: `newest-published-version-read` serves the scripted `{read-performed, version?, reason?}` verbatim and records the op like every other, so a fixture can drive both the performed return and each typed degraded return deterministically; WF-344 — hermetic in-memory delivery binding: every delivery op returns a scripted response and records its invocation to the op log; no network/git/gh reach.)
 **Role:** the runtime-read half of the fake delivery provider — the uniform scripted-response protocol every delivery operation follows, plus the authoritative delivery op list. Read at every delivery-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (rationale, scripts/op-log format, edge-case matrix — never read at boot):** `delivery.md`; scripts/op-log format legend `../references/scripts-format.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = delivery`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -10,7 +10,7 @@
 
 **Consumes, never derives:** every operation takes an already-resolved `<branch-name>` / `<message>` / `<title>` / `<body>` / `<thread-id>` — composing those is the caller's job. The fake neither validates nor acts on them; it records them and returns the scripted response.
 
-**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · default-base-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · review-threads-read · pr-comment-post · checks-read · review-thread-resolve · review-thread-reply · pr-merge · activity-read.
+**Operations:** branch-create · branch-switch · commit · push-upstream · pr-create · pr-detect · workspace-root-resolve · current-branch-query · default-base-query · last-commit-timestamp-query · branch-changes-read · pr-comments-read · review-threads-read · pr-comment-post · checks-read · review-thread-resolve · review-thread-reply · pr-merge · activity-read · newest-published-version-read.
 
 ## The scripted-response protocol (every delivery op)
 
@@ -48,6 +48,9 @@ Every operation `<op>` on this surface follows the same five steps. `<args>` is 
 | review-threads-read | branch? | `{read-performed, threads:[{id, path, line, resolved, body}, …]}` |
 | checks-read | branch? | `[{name, state, link?}, …]` (possibly empty) |
 | activity-read | since?, limit? | `{commits:[…], pull-requests:[…]}` |
+| newest-published-version-read | version-declaration, version-field? | `{read-performed, version?, reason?}` |
+
+**`newest-published-version-read` typed degraded result (never fabricate, never upgrade).** Return exactly the scripted `{read-performed, version?, reason?}`. A fixture simulating a performed read scripts `read-performed: true` with a `version`; one simulating a degraded read scripts `read-performed: false` with a `reason` and **no** `version`. A registered provider can only ever produce `read-failed` or `none-published` — the contract's third token, `no-provider`, is **core's own** bare-core result, and whenever fake is registered it owns the surface, so scripting `no-provider` is an unreachable state and a fixture error. The fake never upgrades a scripted `false` to `true`, never invents a `version` for a `false`, and never returns a bare empty — the currency claim a consumer builds on this stays honest. A fixture that needs both polarities in one run scripts an array (step 4): the performed return first, the degraded return after.
 
 **`review-threads-read` typed empty (never fabricate).** Return exactly the scripted `{read-performed, threads}`. A fixture simulating a performed HEAD_SHA read-back scripts `read-performed: true`; one simulating a bare-core / no-PR degraded empty scripts `read-performed: false`. The fake never upgrades a scripted `false` to `true` — the merge-blocking review-gate claim stays honest.
 

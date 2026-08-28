@@ -320,6 +320,40 @@ attribution). The same metadata-line shape is reused by the `tracker` surface's
   requests (`gh pr list --search updated`) are independent sources; merging them
   gives the standup a single recent-activity view.
 
+## newest-published-version-read (read)
+
+- **The published tip of the default base *is* the published state.** A consumer
+  installing this workspace receives what the default base's remote tip carries,
+  so that tip — not a tag, not a release feed — is what "newest published" binds
+  to here. Fetching it (step 2) is what makes the answer *newest*; reading a
+  stale local tracking ref would reproduce the very staleness the operation
+  exists to detect.
+- **Fetch, then read the blob — never check anything out.** `git show
+  FETCH_HEAD:<path>` reads the declaration straight out of the fetched object,
+  so the operation never switches a branch, never touches the worktree, and is
+  safe to invoke from an isolated worktree mid-run.
+- **Typed degraded result, not an environment error.** `last-commit-timestamp-query`
+  surfaces a not-a-git-tree failure as a plain environment error; this operation
+  deliberately does not. Its consumer is making a *currency* claim, and an error
+  it has to interpret invites exactly the silent-empty failure the contract
+  forbids — so a failed fetch is `<read-performed>` = false, `<reason>` =
+  `read-failed`, and the consumer can say "the check did not run" without
+  inventing a verdict. Same discipline as `review-threads-read`, one level down.
+- **A value-less read is `none-published`, never a bare true.** Unlike
+  `review-threads-read` — where an empty thread set at `HEAD_SHA` is a genuine
+  result — there is no useful "the published side declares no version" comparison.
+  A missing declaration, an unparseable one, an absent field, or a blank value all
+  resolve to `<read-performed>` = false with `<reason>` = `none-published`, so a
+  true flag always means a comparable value is in hand.
+- **`no-provider` is core's token, not this file's.** The three-token `<reason>`
+  set is the contract's; a registered git provider can only ever produce
+  `read-failed` or `none-published`. `no-provider` is what core returns when no
+  capability owns the surface at all — the same boundary every other operation
+  here observes.
+- **Consumes, never derives.** The declaration path (and the optional field) come
+  from the caller, and the local value the published one is compared against is
+  the caller's to read. This operation reads only the published side.
+
 ---
 
 ## Edge cases reproduced
@@ -364,6 +398,19 @@ pre-split single-file fragment. Step numbers reference [`delivery.ops.md`](deliv
   empty — the typed empty can never masquerade as a performed HEAD_SHA read-back).
   `gh`-not-authenticated at step 2 names the `gh auth login` remedy, joining the
   authenticated-read exceptions above.
+- **Newest-published version — the performed return** — `newest-published-version-read`
+  step 3: the declaration exists at the published tip and carries a non-blank value at
+  `<version-field>` → `<read-performed>` = true, `<version>` = that value, **no**
+  `<reason>`. This is the only shape a consumer may treat as a completed currency check.
+- **Newest-published version — the typed degraded returns** — the same operation, three
+  closed outcomes, each `<read-performed>` = false with **no** `<version>`: step 2 (not a
+  git working tree, no `origin` remote, or the fetch failed) → `<reason>` = `read-failed`;
+  step 3 (the declaration absent from the published state, unparseable, an absent
+  `<version-field>`, or a blank value) → `<reason>` = `none-published`.
+  None of these is thrown as an environment error, and none may be returned as a bare
+  empty — the C011 failure the typing exists to prevent is a consumer reading an unrun
+  check as "the installation is current". `no-provider`, the contract's third token, is
+  core's bare-core result and is deliberately unreachable from this fragment.
 
 Two further behaviours are preserved by the guard coverage above rather than as matrix
 rows: **nothing-to-commit** (`commit` step 3, a valid no-op) and the **no-provider

@@ -1,6 +1,6 @@
 # fake capability manifest
 
-**Version:** 0.1.0
+**Version:** 0.1.1
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2" (v1.1.0)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" (v1.1.0)
 **Capability:** fake (registered in a **fixture** project's `_local/config.md` `## Capabilities` table only)
@@ -11,7 +11,8 @@
 
 fake supplies a **hermetic, in-memory binding of BOTH provider surfaces** the capability-registry
 contract defines — `delivery` (branch/commit/push, PR create/detect/comment/merge + review-thread
-ops, and the read-side workspace/branch/timestamp/changes/comment/checks/activity queries) **and**
+ops, and the read-side workspace/branch/timestamp/changes/comment/checks/activity/
+newest-published-version queries) **and**
 `tracker` (config/create/update/get/list/comment/status/link + status/milestone/cycle/blocker
 queries). Every operation returns a **scripted** response read from a fixture-local scripts file and
 appends its invocation to a machine-readable **op log**. It reaches **no** network, git, gh, or
