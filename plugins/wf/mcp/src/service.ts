@@ -325,6 +325,18 @@ export interface ConfigResponse {
   registryPath: string;
   coreConfig: ResolverSnapshot["coreConfig"];
   idShape: ResolverSnapshot["idShape"];
+  /** The declared `version` of the core plugin THIS SERVER IS RUNNING FROM, or
+   *  `null` when it cannot be determined (WF-488).
+   *
+   *  It rides this already-mandatory query rather than a tool of its own: every
+   *  skill calls `resolve_config` at its Prerequisites, so reporting the running
+   *  version costs no additional round trip — the constraint that a cheap
+   *  prerequisite must not become an expensive one.
+   *
+   *  `null` is a REPORTABLE outcome, never an error: a caller renders a stated
+   *  fallback token and continues. A version is never guessed, and never
+   *  inferred from an install path or a timestamp. */
+  coreVersion: string | null;
 }
 
 export interface RegistryResponse {
@@ -721,9 +733,91 @@ function boundInspectionPayloadDiagnostics(
   return bounded;
 }
 
+/** Upper bound on a rendered core-version string (WF-488).
+ *
+ *  The value is not merely returned — it is rendered verbatim into two grepped,
+ *  column-aligned blocks and a durable scoreboard header. Bounding it here, at
+ *  the single point it enters the response, is what keeps every render site from
+ *  having to defend itself. Generous enough for any real semver with a
+ *  pre-release and build suffix. */
+const MAX_CORE_VERSION_CHARS = 64;
+
+/** Any C0 control character or DEL. A newline here is the dangerous one: the
+ *  value is rendered into line-oriented blocks that consumers parse line by
+ *  line, so an interior newline could forge a label line inside a block. */
+const CONTROL_CHARACTER = /\p{Cc}/u;
+
+/**
+ * Read the declared `version` of the core plugin at `corePluginRoot` (WF-488).
+ *
+ * The root is the EXECUTING install — `resolveCorePluginRoot()` derives it from
+ * the server bundle's own module URL — so this reports the version actually
+ * running, which is the whole point: a cached install trailing trunk is exactly
+ * the condition that went unnoticed for a full unattended run.
+ *
+ * Every failure mode collapses to `null` and NOTHING throws. A version that
+ * cannot be read is a fact to report, not a fault to raise: a throw here would
+ * take down `resolve_config` — the one query every skill makes before it does
+ * anything — and turn a cosmetic gap into a total stop. Pure and port-injected
+ * so both branches are testable without a filesystem.
+ */
+export function readDeclaredCoreVersion(
+  corePluginRoot: string,
+  readFile: (absPath: string) => string | null,
+): string | null {
+  let raw: string | null;
+  try {
+    raw = readFile(joinSlash(corePluginRoot, ".claude-plugin", "plugin.json"));
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+
+  const version = (parsed as { version?: unknown }).version;
+  if (typeof version !== "string") return null;
+  // Trimmed, not decorated: no `v` prefix is added and no shape is imposed. The
+  // trim only removes surrounding whitespace, which would otherwise misalign the
+  // fixed value column of the blocks that render this.
+  const trimmed = version.trim();
+  if (trimmed.length === 0) return null;
+
+  // BOUNDED BEFORE IT IS SERVED. The manifest is external input and this value is
+  // rendered verbatim into blocks that downstream skills grep line-by-line, so an
+  // interior newline or control character could forge a line inside a consumed
+  // block — `trim()` strips only SURROUNDING whitespace and would not catch it.
+  // An unrenderable version is reported as absent, which the callers already
+  // render as their stated fallback token; that is strictly safer than emitting
+  // a value that could restructure the record it appears in.
+  if (trimmed.length > MAX_CORE_VERSION_CHARS) return null;
+  if (CONTROL_CHARACTER.test(trimmed)) return null;
+  return trimmed;
+}
+
 export class ResolverService {
   private current: ResolverSnapshot | null = null;
   private invalidated = false;
+  /** Memoized result of the core-version read (WF-488). `undefined` means "not
+   *  read yet"; `null` is a RESOLVED, cached "not determinable" — so an install
+   *  with no readable manifest is probed once per process, not once per query.
+   *
+   *  It is NOT tied to the snapshot's freshness fingerprints, because the manifest
+   *  is not one of the snapshot's inputs. It IS cleared by `refresh()` and
+   *  `invalidate()`: the memo caches the manifest's CONTENT, and while the
+   *  executing root is stable for a process, its content is not — an in-tree
+   *  install's version changes on every release. Clearing it there costs one read
+   *  per EXPLICIT lifecycle call and none per query, so the per-query path stays
+   *  read-free while the documented "force a rebuild" escape hatch actually
+   *  rebuilds this field. Without that, the resolver would keep reporting a
+   *  superseded version — the exact failure this field exists to expose. */
+  private coreVersionMemo: string | null | undefined = undefined;
   /** Reasons the pending/last (in)validation was triggered — surfaced as
    *  diagnostics so every refresh/invalidation is explainable, never silent. */
   private pendingReasons: StaleReason[] = [];
@@ -791,6 +885,18 @@ export class ResolverService {
     }
   }
 
+  /** The executing core plugin's declared version, read at most once per process
+   *  (WF-488). Memoized because `resolve_config` is on every skill's Prerequisites
+   *  path and this must not add a per-call read. */
+  private coreVersion(): string | null {
+    if (this.coreVersionMemo === undefined) {
+      this.coreVersionMemo = readDeclaredCoreVersion(this.ports.corePluginRoot, (p) =>
+        this.ports.readFile(p),
+      );
+    }
+    return this.coreVersionMemo;
+  }
+
   // --- R1 -----------------------------------------------------------------
   resolveConfig(): ConfigResponse {
     const s = this.ensure();
@@ -799,6 +905,7 @@ export class ResolverService {
       registryPath: s.registryPath,
       coreConfig: s.coreConfig,
       idShape: s.idShape,
+      coreVersion: this.coreVersion(),
     };
   }
 
@@ -1217,6 +1324,7 @@ export class ResolverService {
     this.pendingReasons = reasons.length
       ? reasons
       : [{ code: "explicit-request", message: "explicit refresh requested." }];
+    this.coreVersionMemo = undefined;
     this.rebuild();
     return this.inspect();
   }
@@ -1227,6 +1335,7 @@ export class ResolverService {
    *  in-memory flag flips; the persisted cache is untouched until the rebuild). */
   invalidate(reasons: StaleReason[] = []): LifecycleResponse {
     this.invalidated = true;
+    this.coreVersionMemo = undefined;
     this.pendingReasons = reasons.length
       ? reasons
       : [

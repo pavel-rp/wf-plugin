@@ -414,6 +414,35 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-488 (C029 OUT-1): the run blocks obey the run-block slot convention ----
+# The `FLEET —` and `SHIP —` blocks are grepped by downstream skills, and three
+# separate sub-tasks add a slot to them. WF-488 fixes the convention (append
+# immediately above `Next:`, pad to the block's own fixed value column, always
+# render the slot) in `_shared/pipeline-conventions.md`; this guard is what stops
+# two independent additions forking the shape. It is a structural assertion over
+# the fenced template, not a re-read of the surrounding prose. Its self-test
+# seeds an absent slot, a misaligned value, a slot below `Next:`, a blank value
+# and a non-adjacent slot, and requires the evaluator to reject every one.
+echo ""
+echo "=== Run-block slot guard — seeded self-test ==="
+if bash "$DIR/../run-block-slot-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "run-block slot guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "run-block slot guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Run-block slot guard — real-tree scan ==="
+if bash "$DIR/../run-block-slot-guard.sh"; then
+  printf 'PASS: %s\n' "run-block slot guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "run-block slot guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

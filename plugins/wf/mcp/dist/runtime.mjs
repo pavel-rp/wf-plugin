@@ -23269,7 +23269,7 @@ function registerResolverTools(server, selectService) {
     {
       title: "resolve config",
       inputSchema: workspaceOnlyInput,
-      description: "Resolved core config + workspace root + registry location + id shape (R1). Metadata only; no fragment bodies.",
+      description: "Resolved core config + workspace root + registry location + id shape + the executing core plugin's declared version (`coreVersion`, null when unreadable) (R1). Metadata only; no fragment bodies.",
       _meta: RESIDENT
     },
     async (args) => selected(args, (service) => service.resolveConfig())
@@ -29835,6 +29835,31 @@ function boundInspectionPayloadDiagnostics(pluginId, capabilities) {
   }
   return bounded;
 }
+var MAX_CORE_VERSION_CHARS = 64;
+var CONTROL_CHARACTER = new RegExp("\\p{Cc}", "u");
+function readDeclaredCoreVersion(corePluginRoot, readFile) {
+  let raw;
+  try {
+    raw = readFile(joinSlash(corePluginRoot, ".claude-plugin", "plugin.json"));
+  } catch {
+    return null;
+  }
+  if (raw === null) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  const version2 = parsed.version;
+  if (typeof version2 !== "string") return null;
+  const trimmed = version2.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed.length > MAX_CORE_VERSION_CHARS) return null;
+  if (CONTROL_CHARACTER.test(trimmed)) return null;
+  return trimmed;
+}
 var ResolverService = class {
   constructor(ports) {
     this.ports = ports;
@@ -29842,6 +29867,20 @@ var ResolverService = class {
   ports;
   current = null;
   invalidated = false;
+  /** Memoized result of the core-version read (WF-488). `undefined` means "not
+   *  read yet"; `null` is a RESOLVED, cached "not determinable" — so an install
+   *  with no readable manifest is probed once per process, not once per query.
+   *
+   *  It is NOT tied to the snapshot's freshness fingerprints, because the manifest
+   *  is not one of the snapshot's inputs. It IS cleared by `refresh()` and
+   *  `invalidate()`: the memo caches the manifest's CONTENT, and while the
+   *  executing root is stable for a process, its content is not — an in-tree
+   *  install's version changes on every release. Clearing it there costs one read
+   *  per EXPLICIT lifecycle call and none per query, so the per-query path stays
+   *  read-free while the documented "force a rebuild" escape hatch actually
+   *  rebuilds this field. Without that, the resolver would keep reporting a
+   *  superseded version — the exact failure this field exists to expose. */
+  coreVersionMemo = void 0;
   /** Reasons the pending/last (in)validation was triggered — surfaced as
    *  diagnostics so every refresh/invalidation is explainable, never silent. */
   pendingReasons = [];
@@ -29897,6 +29936,18 @@ var ResolverService = class {
       return { snapshot: this.current, failure: classifyThrow(err) };
     }
   }
+  /** The executing core plugin's declared version, read at most once per process
+   *  (WF-488). Memoized because `resolve_config` is on every skill's Prerequisites
+   *  path and this must not add a per-call read. */
+  coreVersion() {
+    if (this.coreVersionMemo === void 0) {
+      this.coreVersionMemo = readDeclaredCoreVersion(
+        this.ports.corePluginRoot,
+        (p) => this.ports.readFile(p)
+      );
+    }
+    return this.coreVersionMemo;
+  }
   // --- R1 -----------------------------------------------------------------
   resolveConfig() {
     const s = this.ensure();
@@ -29904,7 +29955,8 @@ var ResolverService = class {
       workspaceRoot: s.workspaceRoot,
       registryPath: s.registryPath,
       coreConfig: s.coreConfig,
-      idShape: s.idShape
+      idShape: s.idShape,
+      coreVersion: this.coreVersion()
     };
   }
   // --- R2 -----------------------------------------------------------------
@@ -30262,6 +30314,7 @@ var ResolverService = class {
    *  the resulting view carries a diagnostic explaining why it was refreshed. */
   refresh(reasons = []) {
     this.pendingReasons = reasons.length ? reasons : [{ code: "explicit-request", message: "explicit refresh requested." }];
+    this.coreVersionMemo = void 0;
     this.rebuild();
     return this.inspect();
   }
@@ -30271,6 +30324,7 @@ var ResolverService = class {
    *  in-memory flag flips; the persisted cache is untouched until the rebuild). */
   invalidate(reasons = []) {
     this.invalidated = true;
+    this.coreVersionMemo = void 0;
     this.pendingReasons = reasons.length ? reasons : [
       {
         code: "suspected-stale",
