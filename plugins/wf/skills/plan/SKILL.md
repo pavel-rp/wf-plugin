@@ -175,6 +175,14 @@ Nothing is published anywhere. `02_plan.md` and the per-task index row are the r
 
 ---
 
+## Phase 4: Record the phase-completion receipt
+
+Reached **after** `02_plan.md` is written, so the receipt attests work that actually happened. Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind: "phase-receipt", subject: "plan", taskId: {task-id}, artifactPath: "{task-root}/{task-id}/02_plan.md" })`. The resolver derives the run identity, the workspace, the timestamp and the sequence itself, digests the named artifact itself, and seals the record — this skill asserts none of them, which is what makes the receipt proof rather than a claim, and why it never writes the destination directly.
+
+**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line and changes nothing else: the plan is already written and is the source of truth, no gate is added, no prompt is raised, and the Final Output block is emitted unchanged.
+
+---
+
 ## Plan Template
 
 The verbatim `02_plan.md` template — the metadata block, `## Progress` checklist, and `## Execution Plan` step shape (`### - [ ] STEP-NNN:`) that `/wf:implement` ticks — lives at `plan-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: plan`, `ref: plan-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path, so it stays out of the boot body. Follow it, then emit it with placeholders substituted.

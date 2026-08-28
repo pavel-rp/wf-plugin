@@ -293,6 +293,14 @@ Nothing is published anywhere. `01_spec.md` and the per-task index row are the r
 
 ---
 
+## Phase 5: Record the phase-completion receipt
+
+Reached **after** `01_spec.md` is written, so the receipt attests work that actually happened. Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind: "phase-receipt", subject: "spec", taskId: {task-id}, artifactPath: "{task-root}/{task-id}/01_spec.md" })`. The resolver derives the run identity, the workspace, the timestamp and the sequence itself, digests the named artifact itself, and seals the record — this skill asserts none of them, which is what makes the receipt proof rather than a claim, and why it never writes the destination directly.
+
+**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line and changes nothing else: the spec is already written and is the source of truth, no gate is added, no prompt is raised, and the Final Output block is emitted unchanged.
+
+---
+
 ## Edge Cases
 
 - **Tracker fetch outcome (configured / unconfigured / failed):** **Unconfigured** (no active tracker-surface owner) — silent local-only fallback, no prompt, no error; proceed with a blank local requirements file. **Configured and the fetch succeeds** — proceed with the fetched fields exactly as before. **Configured but the `get` call fails mid-run** — warn once, naming the operation and the error, then continue building `00_reqs.md`/`01_spec.md` from whatever local/partial context is available. The run is never blocked by a tracker failure.

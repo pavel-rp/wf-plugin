@@ -322,6 +322,23 @@ annotated, and no operation of any kind is emitted at this point. Proceed to the
 
 ---
 
+## Phase 5.7: Record the phase-completion receipt
+
+Reached **after** the handoff checks have run and every step is ticked, so the receipt attests work
+that actually happened. Call the bundled `wf-resolver` MCP tool `record_run_evidence({
+workspaceRoot, kind: "phase-receipt", subject: "implement", taskId: {task-id}, artifactPath:
+"{task-root}/{task-id}/02_plan.md" })` — the plan is the artifact this phase leaves changed, and by
+this point every one of its checkboxes is ticked. The resolver derives the run identity,
+the workspace, the timestamp and the sequence itself, digests the named artifact itself, and seals
+the record — this skill asserts none of them, which is what makes the receipt proof rather than a
+claim, and why it never writes the destination directly.
+
+**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line
+and changes nothing else: the source changes are already made and the checkboxes already ticked, no
+gate is added, no prompt is raised, and the completion report is emitted unchanged.
+
+---
+
 ## Phase 6: Completion Report
 
 After all steps are ticked, output a completion summary.

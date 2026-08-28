@@ -216,6 +216,14 @@ Route this edge with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "
 - `TF — partial` (a configured provider step failed mid-run — merge blocked by checks/conflicts, or a tracker error) → **`SHIP — Blocked`**, surface `/wf:tf`'s stated reason; the merge can be retried by re-running once the blocker clears.
 - `TF — already-finalized` → the task was already merged and archived → **`SHIP — Merged`** (idempotent no-op).
 
+## Phase 6: Record the ceremony-completion receipt
+
+Reached **after** the finalize edge has returned, on **every** terminal — `Merged`, `Blocked` and `Handed-off` alike — and immediately before the Final Output block. Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind: "phase-receipt", subject: "ship", taskId: {task-id} })`. `ship` writes no artifact, so it names none; the resolver derives the run identity, the workspace, the timestamp and the sequence itself and seals the record — this skill asserts none of them, which is exactly what makes the receipt proof rather than a claim, and why it never writes the destination directly.
+
+**Why a receipt on a non-`Merged` terminal too.** The receipt attests that this ceremony **ran**, not that it succeeded; the block's own `Merge:` line already says whether it merged. Recording only on success would make a stopped run indistinguishable from one that never started — the precise confusion this mechanism exists to end.
+
+**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line and changes nothing else: no status token changes, no gate is added, nothing is merged or un-merged, and the Final Output block is emitted unchanged.
+
 ---
 
 ## Edge Cases

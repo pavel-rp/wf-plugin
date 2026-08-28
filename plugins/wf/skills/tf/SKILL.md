@@ -155,6 +155,16 @@ If the wrapper returns `INDEX — Error`, do not fail the finalize — record th
 
 ---
 
+## Phase 8: Record the ceremony-completion receipt
+
+Reached **after** the archive, sweep and index have run, on **every** terminal — `finalized`, `already-finalized` and `partial` alike — and immediately before the Final Output block. Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind: "phase-receipt", subject: "tf", taskId: {task-id} })`. `tf` writes no artifact of its own that survives in place (the task folder has just been archived), so it names none; the resolver derives the run identity, the workspace, the timestamp and the sequence itself and seals the record — this skill asserts none of them, which is what makes the receipt proof rather than a claim, and why it never writes the destination directly.
+
+**Why a receipt on a `partial` terminal too.** The receipt attests that this finalize **ran**, not that every provider step succeeded; the block's own `Merged PR:` and `Status:` lines already say which step failed. Recording only on a clean terminal would make a degraded finalize indistinguishable from one that never started.
+
+**Non-blocking, always.** A `refused` outcome (or an unavailable resolver) is reported in one line and changes nothing else: no status token changes, nothing is re-merged or re-archived, and the Final Output block is emitted unchanged.
+
+---
+
 ## Templates
 
 ### `09_finalize.md` (local finalize record — the source of truth)
