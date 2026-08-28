@@ -12,7 +12,7 @@
 # halt onto the item's `blocked` row state and the row must state a rendering
 # for a state and its reason, so a halt is never inferred from an absent row.
 #
-# --selftest runs the same evaluator over five seeded synthetic chains,
+# --selftest runs the same evaluator over six seeded synthetic chains,
 # including the exact pre-fix shape (both trailing steps unconditional), and
 # requires the evaluator to reject every defective one and accept the sound one.
 #
@@ -40,7 +40,7 @@ if [ "${1:-}" = "--selftest" ]; then
     exit 2
   fi
   selftest_fail=0
-  for name in pre-fix halt-clause-incomplete gated-step-damaged row-recording-absent; do
+  for name in pre-fix halt-clause-incomplete gated-step-damaged row-recording-absent halt-clause-masks-step; do
     if evaluate "$tmp/$name.md" >/dev/null 2>&1; then
       echo "fleet-fallback-halt-guard: SELFTEST FAIL — the evaluator accepted the seeded '$name' chain" >&2
       selftest_fail=$((selftest_fail + 1))
@@ -55,7 +55,7 @@ if [ "${1:-}" = "--selftest" ]; then
     echo "fleet-fallback-halt-guard: self-test FAILED ($selftest_fail case(s))" >&2
     exit 1
   fi
-  echo "fleet-fallback-halt-guard: self-test passed — the evaluator rejects the pre-fix, incomplete-halt, damaged-gated-step and unrecorded-halt chains and accepts the sound one."
+  echo "fleet-fallback-halt-guard: self-test passed — the evaluator rejects the pre-fix, incomplete-halt, damaged-gated-step, unrecorded-halt and halt-clause-masked chains and accepts the sound one."
   exit 0
 fi
 
