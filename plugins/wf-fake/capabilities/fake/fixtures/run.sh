@@ -110,20 +110,32 @@ BOTH_POLARITY_READS=(newest-published-version-read)
 REASON_TOKENS='^(no-provider|read-failed|none-published)$'
 
 check_typed_results() {
-  local op before=$fail frag="$FRAG_DIR/delivery.ops.md"
+  local op before=$fail frag="$FRAG_DIR/delivery.ops.md" row
   for op in "${TYPED_READS[@]}"; do
-    grep -qF -- "$op" "$frag" || { err "typed-result: op '$op' not listed in delivery.ops.md"; continue; }
-    grep -qF -- 'read-performed' "$frag" \
-      || err "typed-result: delivery.ops.md documents no 'read-performed' flag for '$op'"
+    # Scope to the op's OWN table row, not the whole file: a file-wide grep would pass
+    # because some OTHER typed op still declares the flag.
+    row=$(grep -F -- "| $op |" "$frag" | head -1)
+    if [ -z "$row" ]; then
+      err "typed-result: op '$op' has no row in delivery.ops.md's op table"
+      continue
+    fi
+    printf '%s\n' "$row" | grep -qF -- 'read-performed' \
+      || err "typed-result: the '$op' op-table row declares no 'read-performed' field"
   done
   if [ "$HAVE_JQ" = 1 ]; then
     for op in "${BOTH_POLARITY_READS[@]}"; do
+      # Both polarities must be scripted AND each must carry the contract's typed shape:
+      # a performed element carries <version> and no <reason>; the degraded side is asserted
+      # below. Asserting only that a `true` element exists would pass on a malformed one.
       jq -e --arg o "$op" '
         (.delivery[$o] | if type == "array" then . else [.] end) as $seq
         | ([$seq[] | select(."read-performed" == true)] | length > 0)
           and ([$seq[] | select(."read-performed" == false)] | length > 0)
+          and ([$seq[]
+                | select(."read-performed" == true)
+                | select((has("version") | not) or has("reason"))] | length == 0)
       ' "$SCRIPTS" >/dev/null 2>&1 \
-        || err "typed-result: scripts.delivery.$op scripts no performed AND degraded pair"
+        || err "typed-result: scripts.delivery.$op lacks a well-formed performed/degraded pair (a performed element must carry version and omit reason)"
       jq -r --arg o "$op" '
         (.delivery[$o] | if type == "array" then . else [.] end)[]
         | select(."read-performed" == false)

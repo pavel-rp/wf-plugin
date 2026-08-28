@@ -80,22 +80,38 @@ check_cross_owner_parity() {
 # mistaken for a performed read (capability-registry contract, "Degradation shape").
 TYPED_READS=(review-threads-read newest-published-version-read)
 
+# Print one operation's own section body — from its `## <op>` heading to the next `## `.
+# Scoping every typed-result assertion to this body is what stops the check passing because
+# some OTHER operation happens to mention the token.
+op_section() {  # $1 = ops file, $2 = op
+  awk -v op="$2" '
+    $0 ~ "^## " op "( |$)" { inb = 1; next }
+    inb && /^## / { exit }
+    inb { print }
+  ' "$1"
+}
+
 check_typed_results() {
-  local op before=$fail token
+  local op before=$fail token section
   for op in "${TYPED_READS[@]}"; do
-    grep -qE "^## $op( |$)" "$OPS" \
-      || { err "typed-result: typed read '$op' has no section in delivery.ops.md"; continue; }
+    section=$(op_section "$OPS" "$op")
+    if [ -z "$section" ]; then
+      err "typed-result: typed read '$op' has no section in delivery.ops.md"
+      continue
+    fi
+    # Per-op, not file-wide: this op's OWN section must document the flag.
+    printf '%s\n' "$section" | grep -qF -- 'read-performed' \
+      || err "typed-result: the '$op' section documents no 'read-performed' flag"
   done
-  grep -qF -- 'read-performed' "$OPS" \
-    || err "typed-result: delivery.ops.md documents no 'read-performed' flag at all"
   # A registered provider can reach exactly these two degraded reasons; no-provider is core's.
+  section=$(op_section "$OPS" newest-published-version-read)
   for token in read-failed none-published; do
-    grep -qF -- "\`$token\`" "$OPS" \
-      || err "typed-result: newest-published-version-read documents no '$token' reason token"
+    printf '%s\n' "$section" | grep -qF -- "\`$token\`" \
+      || err "typed-result: the newest-published-version-read section documents no '$token' reason token"
   done
-  grep -qF -- 'no-provider' "$OPS" \
-    || err "typed-result: delivery.ops.md does not record that 'no-provider' is core's own token"
-  [ "$fail" = "$before" ] && ok "typed-result: typed reads document read-performed and every reachable reason token"
+  printf '%s\n' "$section" | grep -qF -- 'no-provider' \
+    || err "typed-result: the newest-published-version-read section does not record that 'no-provider' is core's own token"
+  [ "$fail" = "$before" ] && ok "typed-result: each typed read's own section documents read-performed and every reachable reason token"
 }
 
 echo "== wf-git capability self-checks =="
