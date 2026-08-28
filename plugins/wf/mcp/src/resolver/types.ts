@@ -1968,11 +1968,17 @@ export interface RoutingRetryInstruction {
    *  the gate itself — an inapplicable lever narrows and re-dispatches the failed
    *  units rather than refusing to acknowledge the failure. */
   escalation: "next-stable-tier" | "selector-unsupported" | "prior-tier-unknown" | "top-tier";
-  /** Null whenever no tier advance was requested. THE CALLER INVARIANT:
-   *  `nextTier !== null` if and only if this retry changes the model; a null
-   *  `nextTier` means the narrowed units re-run under the prior attempt's own
-   *  selection, carried forward verbatim with its provenance intact. */
+  /** The tier the attempt that ALREADY RAN mapped to, reported whenever it resolves
+   *  — including when no advance was requested. Null only when the prior model maps
+   *  to no stable tier. It is evidence about the past, and carries no invariant. */
   priorTier: "haiku" | "sonnet" | "opus" | null;
+  /** THE CALLER INVARIANT: `nextTier` is non-null exactly when the resolver advanced
+   *  the selection one stable tier above `priorTier`; null means it requested no
+   *  advance and the narrowed units re-run at the prior attempt's own selection,
+   *  re-resolved through the ordinary precedence chain so host enforcement still
+   *  wins. A null `nextTier` together with `shapeChanged: false` is a deliberate
+   *  zero-delta repeat — bounded by the attempt budget, and worth re-dispatching only
+   *  when the failure was plausibly transient rather than a property of the work. */
   nextTier: "haiku" | "sonnet" | "opus" | null;
   escalationOrigin: string;
   priorExecutionShape: ExecutionShape;
@@ -2059,6 +2065,10 @@ export interface RoutingMeasurement {
   escalationOrigin: string | null;
   modelFallback: RoutingChoice["fallback"];
   effortFallback: RoutingChoice["fallback"];
+  /** Which escalation lever a retry pulled, or null when this record is not a retry.
+   *  Without it a zero-delta same-model retry is indistinguishable in the log from
+   *  the first attempt it repeats. */
+  escalation: RoutingRetryInstruction["escalation"] | null;
   masked: boolean;
   actualModel?: string;
 }

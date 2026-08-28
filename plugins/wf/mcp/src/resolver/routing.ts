@@ -570,6 +570,7 @@ export function projectRoutingMeasurement(decision: RoutingDecision): RoutingMea
     escalationOrigin: decision.escalationOrigin,
     modelFallback: decision.model.fallback,
     effortFallback: decision.effort.fallback,
+    escalation: decision.retry?.escalation ?? null,
     masked: decision.masked,
     ...(decision.actualModel ? { actualModel: decision.actualModel } : {}),
   };
@@ -637,19 +638,28 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
   // unavailable next tier are checked after the advance is requested (below) and
   // still stop — the resolver asked for a specific tier and did not get it, which
   // is an integrity failure, and WF-394 host precedence is deliberately preserved.
-  const priorSelector = evaluation.prior.actualModel ?? evaluation.prior.model.value;
+  // ONE prior model, read the same way by the classifier and by the carry-forward.
+  // The SELECTION leads, because the selection is the only thing the retry can
+  // actually change; `actualModel` is host evidence about what ran and is consulted
+  // only when the resolver selected nothing, which is exactly the inheritance edge
+  // where it is the sole tier signal. Reading `actualModel` first would let the two
+  // disagree — classifying a tier from one model while re-dispatching another, so a
+  // retry could claim `top-tier` while silently routing BELOW the prior selection.
+  const priorSelector = evaluation.prior.model.value ?? evaluation.prior.actualModel;
   const priorTier = modelTier(priorSelector);
-  const nextTier = priorTier ? MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1] ?? null : null;
-  const tierAdvanceAvailable = inputs.supportsModelSelector && priorTier !== null && nextTier !== null;
-  // Most-causal first: an edge that cannot honor a selector reports that, even
-  // though its prior tier is also unmappable as a consequence.
-  const escalation: RoutingRetryInstruction["escalation"] = tierAdvanceAvailable
-    ? "next-stable-tier"
-    : !inputs.supportsModelSelector
-      ? "selector-unsupported"
-      : priorTier === null
-        ? "prior-tier-unknown"
-        : "top-tier";
+  const nextTier = priorTier !== null ? MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1] ?? null : null;
+  // ONE classification, and the guard below is DERIVED from it — never a second
+  // boolean holding the same rule, which is the drift shape WF-496 collapsed for
+  // count-derived evidence. Most-causal first: an edge that cannot honor a selector
+  // reports that, even though its prior tier is also unusable as a consequence.
+  const escalation: RoutingRetryInstruction["escalation"] = !inputs.supportsModelSelector
+    ? "selector-unsupported"
+    : priorTier === null
+      ? "prior-tier-unknown"
+      : nextTier === null
+        ? "top-tier"
+        : "next-stable-tier";
+  const tierAdvanceAvailable = escalation === "next-stable-tier";
 
   const attempt = evaluation.prior.attempt + 1;
   const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
@@ -674,12 +684,20 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     shapeEvidence: retryShapeEvidence,
     unitIds: retryUnitIds.length ? retryUnitIds : undefined,
     postAttempt: undefined,
-    // Only an applicable lever requests a tier. On the not-applicable path the
-    // model is not re-resolved against a tier this edge cannot honor: the prior
-    // choice is carried forward verbatim below.
+    // Only an applicable lever requests a tier. When none applies the retry re-states
+    // the prior attempt's own REQUEST and lets `choose()` resolve it through the very
+    // same validated pipeline the initial path uses. It is deliberately NOT a verbatim
+    // copy of caller-supplied `prior.model`: host enforcement still wins (WF-394) and
+    // still records `masked`, a malformed or unavailable id is still rejected, and a
+    // caller cannot launder forged provenance into a dispatched decision.
     ...(tierAdvanceAvailable
       ? { invocationModel: nextTier, requireModel: true }
-      : { requireModel: false }),
+      : {
+          invocationModel: evaluation.prior.model.requestedSource === "invocation"
+            ? evaluation.prior.model.requested
+            : undefined,
+          requireModel: false,
+        }),
     invocationEffort: undefined,
     requireEffort: false,
     supportsEffortSelector: true,
@@ -690,12 +708,6 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
     actualModel: undefined,
   };
   let retryDecision = baseDecision(project, retryInputs);
-  if (!tierAdvanceAvailable) {
-    // Carried forward verbatim — value, source, requested, requestedSource, masked
-    // and fallback — so the retry's provenance is the prior attempt's, not a fresh
-    // resolution that could silently differ from what actually ran.
-    retryDecision = { ...retryDecision, model: evaluation.prior.model, source: evaluation.prior.model.source };
-  }
   const priorRequestedEffort = evaluation.prior.effort.source === "host"
     ? evaluation.prior.effort.requested
     : evaluation.prior.effort.value;
@@ -752,10 +764,11 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
       signals,
       unitIds: retryUnitIds,
       escalation,
-      // `nextTier !== null` iff this retry changes the model. `priorTier` is
-      // reported whenever it is knowable — notably on `top-tier`, where the prior
-      // tier is known and it is the ABSENCE of a successor that stops the advance.
-      priorTier: tierAdvanceAvailable ? priorTier : escalation === "top-tier" ? priorTier : null,
+      // `priorTier` is a fact about the attempt that ALREADY RAN, so it is reported
+      // whenever it resolves — including on `top-tier`, and on `selector-unsupported`
+      // where the prior attempt's own model may still map even though this edge
+      // cannot honor a selector. Only `nextTier` carries the caller invariant.
+      priorTier,
       nextTier: tierAdvanceAvailable ? nextTier : null,
       escalationOrigin,
       priorExecutionShape,

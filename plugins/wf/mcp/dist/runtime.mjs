@@ -26754,11 +26754,11 @@ function resolveRouting(project, inputs) {
       retainedUnitIds
     );
   }
-  const priorSelector = evaluation.prior.actualModel ?? evaluation.prior.model.value;
+  const priorSelector = evaluation.prior.model.value ?? evaluation.prior.actualModel;
   const priorTier = modelTier(priorSelector);
-  const nextTier = priorTier ? MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1] ?? null : null;
-  const tierAdvanceAvailable = inputs.supportsModelSelector && priorTier !== null && nextTier !== null;
-  const escalation = tierAdvanceAvailable ? "next-stable-tier" : !inputs.supportsModelSelector ? "selector-unsupported" : priorTier === null ? "prior-tier-unknown" : "top-tier";
+  const nextTier = priorTier !== null ? MODEL_TIERS[MODEL_TIERS.indexOf(priorTier) + 1] ?? null : null;
+  const escalation = !inputs.supportsModelSelector ? "selector-unsupported" : priorTier === null ? "prior-tier-unknown" : nextTier === null ? "top-tier" : "next-stable-tier";
+  const tierAdvanceAvailable = escalation === "next-stable-tier";
   const attempt = evaluation.prior.attempt + 1;
   const escalationOrigin = evaluation.prior.escalationOrigin ?? `routing:${inputs.role}:attempt-${evaluation.prior.attempt}`;
   const insufficientUnitIds = new Set(evaluation.units ? evaluation.units.filter((unit) => !unit.sufficient).map((unit) => unit.unitId) : evaluation.prior.unitIds);
@@ -26778,10 +26778,16 @@ function resolveRouting(project, inputs) {
     shapeEvidence: retryShapeEvidence,
     unitIds: retryUnitIds.length ? retryUnitIds : void 0,
     postAttempt: void 0,
-    // Only an applicable lever requests a tier. On the not-applicable path the
-    // model is not re-resolved against a tier this edge cannot honor: the prior
-    // choice is carried forward verbatim below.
-    ...tierAdvanceAvailable ? { invocationModel: nextTier, requireModel: true } : { requireModel: false },
+    // Only an applicable lever requests a tier. When none applies the retry re-states
+    // the prior attempt's own REQUEST and lets `choose()` resolve it through the very
+    // same validated pipeline the initial path uses. It is deliberately NOT a verbatim
+    // copy of caller-supplied `prior.model`: host enforcement still wins (WF-394) and
+    // still records `masked`, a malformed or unavailable id is still rejected, and a
+    // caller cannot launder forged provenance into a dispatched decision.
+    ...tierAdvanceAvailable ? { invocationModel: nextTier, requireModel: true } : {
+      invocationModel: evaluation.prior.model.requestedSource === "invocation" ? evaluation.prior.model.requested : void 0,
+      requireModel: false
+    },
     invocationEffort: void 0,
     requireEffort: false,
     supportsEffortSelector: true,
@@ -26792,9 +26798,6 @@ function resolveRouting(project, inputs) {
     actualModel: void 0
   };
   let retryDecision = baseDecision(project, retryInputs);
-  if (!tierAdvanceAvailable) {
-    retryDecision = { ...retryDecision, model: evaluation.prior.model, source: evaluation.prior.model.source };
-  }
   const priorRequestedEffort = evaluation.prior.effort.source === "host" ? evaluation.prior.effort.requested : evaluation.prior.effort.value;
   const priorRequestedEffortSource = evaluation.prior.effort.source === "host" ? evaluation.prior.effort.requestedSource : evaluation.prior.effort.source;
   const retryEffort = inputs.hostEffort ? {
@@ -26833,10 +26836,11 @@ function resolveRouting(project, inputs) {
       signals,
       unitIds: retryUnitIds,
       escalation,
-      // `nextTier !== null` iff this retry changes the model. `priorTier` is
-      // reported whenever it is knowable — notably on `top-tier`, where the prior
-      // tier is known and it is the ABSENCE of a successor that stops the advance.
-      priorTier: tierAdvanceAvailable ? priorTier : escalation === "top-tier" ? priorTier : null,
+      // `priorTier` is a fact about the attempt that ALREADY RAN, so it is reported
+      // whenever it resolves — including on `top-tier`, and on `selector-unsupported`
+      // where the prior attempt's own model may still map even though this edge
+      // cannot honor a selector. Only `nextTier` carries the caller invariant.
+      priorTier,
       nextTier: tierAdvanceAvailable ? nextTier : null,
       escalationOrigin,
       priorExecutionShape,

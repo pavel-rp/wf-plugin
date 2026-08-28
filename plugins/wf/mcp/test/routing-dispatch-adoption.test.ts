@@ -288,20 +288,23 @@ test("singleton shipper wave uses valid atomic isolated evidence", () => {
 });
 
 // WF-497 / ESC-6. The exact edge every fixed sibling-Skill call on the shipper path
-// passes: `supportsModelSelector: false`, so the resolver selects nothing and the
-// prior model is `null`/`inheritance`. Before this fixture existed the gate returned
+// passes: the fixed caller-context evidence that selects `inline`, plus
+// `supportsModelSelector: false`, so the resolver selects nothing and the prior model
+// is `null`/`inheritance`. Before this fixture existed the gate returned
 // `invalid-stop` here, which made the escalation gate unreachable for the entire
-// single-task ceremony path — `ship:ceremony`, `ship:branch`, `ship:run-initial`,
-// `ship:run-resume`, `ship:phase`, `ship:pr` and `ship:finalize` alike.
-test("WF-497: the gate opens for a shipper-path edge that cannot honor a model selector", () => {
+// single-task ceremony path — `ship:branch`, `ship:run-initial`, `ship:run-resume`,
+// `ship:phase`, `ship:ci-commit`, `ship:pr` and `ship:finalize` in `ship/SKILL.md`,
+// and the same fixed edges repeated in `fleet/SKILL.md`'s dispatch brief.
+test("the gate opens for a shipper-path edge that cannot honor a model selector", () => {
   const first = resolveRouting({}, {
     role: "shipper",
-    shapeEvidence: atomicEvidence,
-    unitIds: ["ship:ceremony"],
+    shapeEvidence: indexEvidence,
+    unitIds: ["ship:finalize"],
     supportsModelSelector: false,
     supportsEffortSelector: false,
   });
   assert.equal(first.status, "dispatch");
+  assert.equal(first.executionShape, "inline", "the fixed shipper edge routes inline");
   assert.equal(first.model.value, null);
   assert.equal(first.model.source, "inheritance");
 
@@ -318,7 +321,7 @@ test("WF-497: the gate opens for a shipper-path edge that cannot honor a model s
 
   assert.equal(retry.status, "dispatch", "reporting a genuine failure must not be rejected as invalid");
   assert.equal(retry.disposition, "retry");
-  assert.deepEqual(retry.retry?.unitIds, ["ship:ceremony"]);
+  assert.deepEqual(retry.retry?.unitIds, ["ship:finalize"]);
   assert.equal(retry.retry?.attempt, 2);
   assert.equal(retry.retry?.escalation, "selector-unsupported");
   assert.equal(retry.retry?.nextTier, null);
@@ -351,9 +354,9 @@ test("WF-497: the gate opens for a shipper-path edge that cannot honor a model s
 
 // The companion to the case above: a gate that opens on success is as useless as one
 // that never opens, so the all-sufficient path must stay a pure retain.
-test("WF-497: an all-sufficient report retains and records no escalation", () => {
+test("an all-sufficient report retains and records no escalation", () => {
   const first = resolveRouting({}, {
-    role: "shipper", shapeEvidence: atomicEvidence, unitIds: ["ship:ceremony"],
+    role: "shipper", shapeEvidence: indexEvidence, unitIds: ["ship:finalize"],
     supportsModelSelector: false, supportsEffortSelector: false,
   });
   const retained = resolveRouting({}, {
@@ -371,14 +374,14 @@ test("WF-497: an all-sufficient report retains and records no escalation", () =>
   assert.equal(retained.status, "retain");
   assert.equal(retained.disposition, "retain");
   assert.equal(retained.retry, null);
-  assert.deepEqual(retained.retainedUnitIds, ["ship:ceremony"]);
+  assert.deepEqual(retained.retainedUnitIds, ["ship:finalize"]);
   assert.equal(retained.escalationOrigin, null, "a retained attempt records no escalation");
   assert.equal(retained.attempt, 1, "retaining must not consume a retry");
 });
 
 // Unit narrowing must behave identically whether or not a tier moves — the retention
 // half of the gate is independent of the escalation lever.
-test("WF-497: mixed bounded-parallel units narrow identically without a tier advance", () => {
+test("mixed bounded-parallel units narrow identically without a tier advance", () => {
   const first = resolveRouting({}, {
     role: "shipper",
     shapeEvidence: { ...atomicEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true, toolWork: "material", contextIsolation: "required", requestedParallelism: 2 },
@@ -443,7 +446,7 @@ test("isolated singleton recovery omits units and authorizes one exact-tier retr
   assert.equal(retry.retry?.nextTier, "sonnet");
 });
 
-test("fleet replacement retries only failed bounded units at the exact next tier", () => {
+test("fleet replacement retries only failed bounded units, advancing a tier only when one exists", () => {
   const first = resolveRouting({}, {
     role: "shipper",
     shapeEvidence: { ...atomicEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true, toolWork: "material", contextIsolation: "required", requestedParallelism: 2 },
