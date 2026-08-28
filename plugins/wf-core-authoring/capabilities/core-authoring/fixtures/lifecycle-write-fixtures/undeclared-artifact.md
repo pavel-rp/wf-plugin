@@ -12,6 +12,9 @@ Read the composed constitution from `.wf/constitution.md`.
 
 The resolver keeps per-machine bindings under `.wf/machine/bindings.json`.
 
+A near-miss on a DECLARED class is still undeclared: the run-evidence class is the directory
+`.wf/run-evidence/`, so the resolver naming `.wf/run-evidence.json` has declared nothing.
+
 A table row that names a destination but declares no complete lifecycle has declared nothing:
 
 | assets/partial.json | .wf/partial.json | copy | replace-if-unmodified |
