@@ -474,6 +474,40 @@ else
   fail=$((fail + 1))
 fi
 
+# --- Task-artifact persistence ----------------------------------------------
+# The run-block slot guard asserts the SHAPE of the rendered outcome; this one
+# asserts the behaviour behind it. A dispatched shipper's task folder lives only
+# in its own disposable worktree, so a prune erases the run's process record —
+# and the shipper cannot close the gap itself without violating its own
+# do-not-fall-back-to-the-shared-checkout rule. The evaluator simulates a
+# three-item run (readable worktree, lost worktree, failed write) and asserts
+# each recorded outcome, that a failure stays confined to its own item, that the
+# destination survives a prune and names no committed-lifecycle path, and that
+# the index row is reached only by invoking its sole writer. Its self-test seeds
+# a missing persistence step, a copied index row, a silent failure, a failure
+# that stops the other items, a committed-lifecycle destination, a relaxed
+# shipper prohibition, an unreported outcome and a directly-written row, and
+# requires the evaluator to reject every one.
+echo ""
+echo "=== Task-artifact persistence guard — seeded self-test ==="
+if bash "$DIR/../task-artifact-persistence-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "task-artifact persistence guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "task-artifact persistence guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Task-artifact persistence guard — real-tree scan ==="
+if bash "$DIR/../task-artifact-persistence-guard.sh"; then
+  printf 'PASS: %s\n' "task-artifact persistence guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "task-artifact persistence guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
