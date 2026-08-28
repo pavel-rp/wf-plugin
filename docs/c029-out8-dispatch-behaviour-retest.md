@@ -84,7 +84,7 @@ them. That is a determination, not a gap.
 | **B1** | `wf:phase-runner` cwd fallback (the F2/F3 cause) | **still-broken (conditional)** — unchanged in wf; reproduces only in the unisolated dispatch shape | **none** — `agents/phase-runner.md` is byte-identical | source diff + contract read + live probe |
 | **B2** | `Agent(isolation: "worktree")` | **fixed** | host-side; not wf-versioned | live probe |
 | **B3** | `EnterWorktree` | **fixed** | host-side; not wf-versioned | live probe (tool schema) |
-| **B4** | `/wf:branch`'s base switch checking out trunk | **never-was** | none — no cached version ever checked out a base | contract read (all cached versions) + live probe |
+| **B4** | `/wf:branch`'s base switch checking out trunk | **never-was** | none in `delivery.ops.md`, the file that governs the claim — no cached version ever checked out a base; `agents/branch.md` did change, via WF-479, in the **opposite** direction (§7) | contract read (all cached versions) + live probe |
 
 **Three of the four prohibitions in the dispatch brief are stale.** One behaviour remains live, and
 it is the one the charter deliberately defers.
@@ -353,8 +353,8 @@ Raised here, deliberately **not** absorbed into any sub-task — per WF-481's sp
 matching risk row.
 
 **ESC-1 — B1's cause is live, and remediating it is out of scope for C029.**
-The charter already defers this by name: F2/F3's cause is *"OUT of scope for this programme"*, and
-its status was routed to this note. The verdict is that the cause is **unchanged in wf source** and
+The charter already defers this by name: it places F2/F3's cause under its Scope OUT heading, while
+keeping F2's *consequence* in as OUT-9, and routes the cause's current status to this note. The verdict is that the cause is **unchanged in wf source** and
 still reproduces in the unisolated dispatch shape.
 
 The charter's **stated cost stands, with one material qualification.** The charter warns that while
