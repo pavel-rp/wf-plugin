@@ -101,6 +101,17 @@ def step_admits(step: str, token: str) -> bool:
     return token in named
 
 
+def step_admits_failure(step: str):
+    """The failure outcomes a step admits *by name*.
+
+    A step that names a failure outcome admits it directly, and a halt clause
+    elsewhere in the chain cannot take that back: the two contradict, and a
+    contradiction is resolved by the step the shipper is reading, not by the
+    clause the evaluator would prefer.
+    """
+    return sorted(set(TOKEN_RE.findall(step)) & set(FAILURES))
+
+
 def find_halt_clause(clauses):
     """The clause that closes the chain for every failure outcome.
 
@@ -183,13 +194,23 @@ def evaluate(path: str):
                 f"the routed ship:{key} step is unconditional — it names no "
                 "pipeline-driver outcome, so every outcome reaches it"
             )
+        for token in step_admits_failure(step):
+            problems.append(
+                f"the routed ship:{key} step admits RUN — {token} by name; a "
+                "halt clause elsewhere cannot mask a step that routes a "
+                "failure outcome into this edge"
+            )
 
-    # The recorded per-item outcome, token by token.
+    # The recorded per-item outcome, token by token. A halt clause closes a
+    # failure outcome only where no step admits that outcome by name —
+    # otherwise the clause would launder the contradiction flagged above.
     outcomes = {}
     for token in ALL_TOKENS:
         halted_by_clause = halt is not None and token in FAILURES
-        admits_pr = step_admits(pr, token) and not halted_by_clause
-        admits_finalize = step_admits(finalize, token) and not halted_by_clause
+        pr_closed = halted_by_clause and token not in step_admits_failure(pr)
+        finalize_closed = halted_by_clause and token not in step_admits_failure(finalize)
+        admits_pr = step_admits(pr, token) and not pr_closed
+        admits_finalize = step_admits(finalize, token) and not finalize_closed
         outcomes[token] = (
             recorded_outcome(token, admits_pr, admits_finalize),
             admits_pr,
@@ -277,11 +298,19 @@ GATED_STEP_DAMAGED_CHAIN = SOUND_CHAIN.replace(
     "> 3. Route with",
 )
 
+# A well-formed halt clause sitting above a pull-request step that routes a
+# failure outcome into itself anyway. The clause must not launder the step.
+HALT_CLAUSE_MASKS_STEP_CHAIN = SOUND_CHAIN.replace(
+    "> 4. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with",
+    "> 4. On a `RUN — complete` outcome, and also after a `RUN — blocked` outcome, Route with",
+)
+
 FIXTURES = {
     "sound": SOUND_CHAIN + ROW_RECORDING,
     "pre-fix": PRE_FIX_CHAIN + ROW_RECORDING,
     "halt-clause-incomplete": HALT_CLAUSE_INCOMPLETE_CHAIN + ROW_RECORDING,
     "gated-step-damaged": GATED_STEP_DAMAGED_CHAIN + ROW_RECORDING,
+    "halt-clause-masks-step": HALT_CLAUSE_MASKS_STEP_CHAIN + ROW_RECORDING,
     # Sound chain, but the halt is never written anywhere a reader can see it.
     "row-recording-absent": SOUND_CHAIN,
 }
