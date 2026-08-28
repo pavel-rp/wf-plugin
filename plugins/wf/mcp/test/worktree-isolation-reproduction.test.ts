@@ -29,10 +29,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
-import { resolveWorkspaceIdentity } from "../src/git-workspace.js";
+import { describeCallerRoot, resolveWorkspaceIdentity } from "../src/git-workspace.js";
 import { WorkspaceServiceRegistry } from "../src/workspace-services.js";
 import type { ResolverService } from "../src/service.js";
 
@@ -262,6 +262,247 @@ test("the service map is keyed on the resolved worktree root, not on the shared 
       constructed.length,
       2,
       `two worktrees sharing one common dir produced ${constructed.length} service(s): ${constructed.join(", ")}`,
+    );
+  } finally {
+    rmSync(layout.root, { recursive: true, force: true });
+  }
+});
+
+// --- WF-495: the additive caller-root signal --------------------------------
+//
+// The six cases above pin the RESOLUTION, which WF-484 found correct and left
+// unchanged. What they also establish is that the resolution is SILENT: in
+// state (a) the caller receives a plausible absolute path with no way to learn
+// it is the parent's. WF-495 adds two strictly additive `resolve_config`
+// response fields — `callerRoot` and the designated predicate `rootRedirected`
+// — so that condition is detectable from the response alone.
+//
+// These cases drive the REAL registered `resolve_config` handler through the
+// stub-server harness (the shape `test/plan-install.test.ts` uses), with a
+// selector that performs the real `resolveWorkspaceIdentity` against the real
+// git layouts built above. They therefore exercise the shipped handler
+// composition rather than a re-implementation of it. Nothing above this comment
+// is modified — this block is appended coverage only.
+
+type ConfigToolResult = {
+  structuredContent?: Record<string, unknown>;
+  isError?: boolean;
+};
+
+type CallerRootResponse = {
+  workspaceRoot: string;
+  callerRoot: string;
+  rootRedirected: boolean;
+};
+
+/** Register the real tools against a stub server and return `resolve_config`'s handler. */
+async function resolveConfigHandler(): Promise<(args: { workspaceRoot: string }) => Promise<ConfigToolResult>> {
+  const { registerResolverTools } = await import("../src/tools.js");
+  const registered = new Map<string, { handler: (args: never) => Promise<ConfigToolResult> }>();
+  const server = {
+    registerTool(
+      name: string,
+      _config: unknown,
+      handler: (args: never) => Promise<ConfigToolResult>,
+    ) {
+      registered.set(name, { handler });
+    },
+  } as unknown as Parameters<typeof registerResolverTools>[0];
+
+  // The selector does the REAL root resolution; the service it returns is a
+  // minimal root-bound stub, because the only thing under test here is how the
+  // handler relates the caller's request to that resolved root.
+  registerResolverTools(server, (workspaceRoot: string) => {
+    const identity = resolveWorkspaceIdentity(workspaceRoot);
+    return {
+      resolveConfig: () => ({
+        workspaceRoot: identity.root,
+        registryPath: "_local/config.md",
+        coreConfig: {},
+        idShape: null,
+        coreVersion: null,
+      }),
+    } as unknown as ResolverService;
+  });
+
+  const tool = registered.get("resolve_config");
+  assert.ok(tool, "resolve_config is registered");
+  return tool.handler as unknown as (args: { workspaceRoot: string }) => Promise<ConfigToolResult>;
+}
+
+// Registered once for the whole file, not per call: the tool surface is
+// stateless here (the selector resolves each request's root afresh), so
+// re-registering it per assertion would only repeat work.
+let sharedHandler: Promise<(args: { workspaceRoot: string }) => Promise<ConfigToolResult>> | undefined;
+
+/** Call the real `resolve_config` handler and return its structured payload. */
+async function resolveConfigFrom(workspaceRoot: string): Promise<CallerRootResponse> {
+  sharedHandler ??= resolveConfigHandler();
+  const handler = await sharedHandler;
+  const result = await handler({ workspaceRoot });
+  assert.notEqual(result.isError, true, `resolve_config errored for ${workspaceRoot}`);
+  assert.ok(result.structuredContent, "resolve_config returned no structured payload");
+  return result.structuredContent as unknown as CallerRootResponse;
+}
+
+test("WF-495 state (a): an unregistered container reports the redirection it previously suffered silently", async () => {
+  const layout = makeFleetLayout();
+  try {
+    const container = layout.container("aaa");
+    mkdirSync(container); // a plain directory — no `git worktree add` has run
+
+    const response = await resolveConfigFrom(container);
+
+    // The resolved root is unchanged from case 1 — this signal alters nothing.
+    assert.equal(response.workspaceRoot, canonical(layout.parent));
+    // ...but the caller can now SEE that it is not its own directory.
+    assert.equal(response.callerRoot, canonical(container));
+    assert.equal(
+      response.rootRedirected,
+      true,
+      "the shipper's container is not the resolved root, and the response must say so",
+    );
+  } finally {
+    rmSync(layout.root, { recursive: true, force: true });
+  }
+});
+
+test("WF-495 state (b): a registered linked worktree reports no redirection", async () => {
+  const layout = makeFleetLayout();
+  try {
+    const container = layout.container("aaa");
+    git(layout.parent, "worktree", "add", "-b", "agent-aaa", container);
+
+    const response = await resolveConfigFrom(container);
+
+    assert.equal(response.workspaceRoot, canonical(container));
+    assert.equal(response.callerRoot, response.workspaceRoot);
+    assert.equal(
+      response.rootRedirected,
+      false,
+      "the mandated dispatch shape must report a clean, un-redirected root",
+    );
+  } finally {
+    rmSync(layout.root, { recursive: true, force: true });
+  }
+});
+
+test("WF-495: N concurrent registered worktrees yield N distinct roots, each reporting no redirection", async () => {
+  const layout = makeFleetLayout();
+  try {
+    const ids = ["aaa", "bbb", "ccc"];
+    const containers = ids.map((id) => {
+      const path = layout.container(id);
+      git(layout.parent, "worktree", "add", "-b", `agent-${id}`, path);
+      return path;
+    });
+
+    const responses = await Promise.all(containers.map((path) => resolveConfigFrom(path)));
+
+    // N distinct roots for N shippers — OUT-3's second success measure, now
+    // asserted alongside the signal that proves each one is genuinely its own.
+    const roots = responses.map((r) => r.workspaceRoot);
+    assert.equal(new Set(roots).size, ids.length, `expected ${ids.length} distinct roots, got: ${roots.join(", ")}`);
+    for (const [index, response] of responses.entries()) {
+      assert.equal(response.workspaceRoot, canonical(containers[index]!));
+      assert.equal(response.callerRoot, response.workspaceRoot);
+      assert.equal(response.rootRedirected, false, `shipper ${ids[index]} reported a redirected root`);
+    }
+  } finally {
+    rmSync(layout.root, { recursive: true, force: true });
+  }
+});
+
+test("WF-495: an ordinary repository subdirectory reports a redirection, correctly and by design", async () => {
+  const layout = makeFleetLayout();
+  try {
+    const subdirectory = join(layout.parent, "subdirectory");
+    mkdirSync(subdirectory);
+
+    const response = await resolveConfigFrom(subdirectory);
+
+    // This is NOT a defect and NOT a false positive. Per WF-484 §4 (and fixture
+    // case 5 above) the resolver provably cannot distinguish an ordinary
+    // subdirectory call from an unregistered fleet container — they are the same
+    // situation at the git level. The field reports the mechanical fact; the
+    // consumer decides whether it matters. Narrowing it would require the
+    // resolver to guess intent.
+    assert.equal(response.workspaceRoot, canonical(layout.parent));
+    assert.equal(response.callerRoot, canonical(subdirectory));
+    assert.equal(response.rootRedirected, true);
+  } finally {
+    rmSync(layout.root, { recursive: true, force: true });
+  }
+});
+
+test("WF-495: canonicalization converges, so an alias form of the resolved root is not a redirection", async () => {
+  const layout = makeFleetLayout();
+  try {
+    const container = layout.container("aaa");
+    git(layout.parent, "worktree", "add", "-b", "agent-aaa", container);
+
+    // Each of these names the same directory by a different spelling. A
+    // caller-side raw string comparison would call every one of them a
+    // redirection; the resolver's canonicalization is exactly why the predicate
+    // is computed server-side.
+    //
+    // The `..`-round-trip form is used rather than `join(container, ".")`,
+    // which `path.join` collapses before it ever reaches the resolver and so
+    // would silently degenerate into a repeat of the identity case.
+    const symlinkAlias = join(layout.root, "alias-aaa");
+    symlinkSync(container, symlinkAlias, "junction");
+
+    const aliases = [
+      `${container}/`,
+      `${container}//`,
+      join(container, "..", basename(container)),
+      symlinkAlias, // the form every rationale doc leads with
+    ];
+    for (const alias of aliases) {
+      const response = await resolveConfigFrom(alias);
+      assert.equal(response.callerRoot, canonical(container), `alias ${alias} did not canonicalize`);
+      assert.equal(response.workspaceRoot, canonical(container));
+      assert.equal(response.rootRedirected, false, `alias ${alias} was wrongly reported as redirected`);
+    }
+  } finally {
+    rmSync(layout.root, { recursive: true, force: true });
+  }
+});
+
+test("WF-495: a plain (non-Git) directory resolves to itself and reports no redirection", async () => {
+  const plain = mkdtempSync(join(tmpdir(), "wf-worktree-isolation-plain-"));
+  try {
+    const response = await resolveConfigFrom(plain);
+
+    assert.equal(response.workspaceRoot, canonical(plain));
+    assert.equal(response.callerRoot, response.workspaceRoot);
+    assert.equal(response.rootRedirected, false);
+  } finally {
+    rmSync(plain, { recursive: true, force: true });
+  }
+});
+
+test("WF-495: describeCallerRoot is pure path identity — no Git call, no path parsing", () => {
+  const layout = makeFleetLayout();
+  try {
+    const container = layout.container("aaa");
+    mkdirSync(container);
+
+    // Same directory in, same directory out: no redirection.
+    assert.deepEqual(describeCallerRoot(container, canonical(container)), {
+      callerRoot: canonical(container),
+      rootRedirected: false,
+    });
+    // An enclosing root in: redirection, with the caller's own directory reported.
+    assert.deepEqual(describeCallerRoot(container, canonical(layout.parent)), {
+      callerRoot: canonical(container),
+      rootRedirected: true,
+    });
+    // A directory that does not exist is rejected by the shared canonicalizer,
+    // under the same `workspaceRoot` label request admission already uses.
+    assert.throws(
+      () => describeCallerRoot(join(container, "absent"), canonical(container)),
+      /workspaceRoot does not exist/,
     );
   } finally {
     rmSync(layout.root, { recursive: true, force: true });
