@@ -876,6 +876,14 @@ test("an opened gate that requests no advance still honors host enforcement and 
   assert.equal(hostPinned.model.value, "sonnet", "the host pin wins over the prior selection");
   assert.equal(hostPinned.model.source, "host");
   assert.equal(hostPinned.model.masked, true, "masking the prior choice must be recorded, not hidden");
+  // The exact case the invariant does NOT cover, pinned so no surface may claim it
+  // does: a null `nextTier` promises only that no ADVANCE was requested, never that
+  // the model is unchanged, because re-resolution lets a host pin still bind.
+  assert.equal(hostPinned.retry?.nextTier, null);
+  assert.notEqual(
+    hostPinned.model.value, atTop.prior.model.value,
+    "a null nextTier must not be read as a promise that the model is unchanged",
+  );
 
   const unavailable = resolveRouting({}, { ...base, availableModels: ["haiku", "sonnet"], postAttempt: atTop });
   assert.equal(unavailable.disposition, "retry");
