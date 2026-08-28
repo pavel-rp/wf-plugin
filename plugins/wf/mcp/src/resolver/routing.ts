@@ -7,6 +7,7 @@ import type {
   RoutingMeasurement,
   RoutingPostAttemptEvaluation,
   RoutingProjectConfig,
+  RoutingShapeEvidence,
   RoutingShapeReason,
   RoutingSource,
 } from "./types.js";
@@ -42,9 +43,52 @@ type ShapeDecision = Pick<RoutingDecision, "executionShape" | "normalizedEvidenc
   stop: string | null;
 };
 
+// THE ONE COUNT-DERIVED SHAPE RULE. `unitCount` is authoritative: `atomicity` is
+// DERIVED from it (1 -> "atomic", >= 2 -> "composite") and `unitsIndependent` is
+// CLAMPED to false at one unit, because independence is undefined for a single
+// unit. This is the single rule BOTH caller-facing paths obey — the input path
+// (`selectShape`, which normalizes rather than rejecting a contradictory pair and
+// reports the result on `normalizedEvidence`) and the retry path (which narrows a
+// composite set to its insufficient units and re-derives the same two fields).
+// One function, two call sites, so the two can never drift apart again.
+export function derivedCountEvidence(
+  unitCount: number,
+  unitsIndependent: boolean,
+): Pick<RoutingShapeEvidence, "atomicity" | "unitsIndependent"> {
+  return {
+    atomicity: unitCount === 1 ? "atomic" : "composite",
+    unitsIndependent: unitCount > 1 && unitsIndependent,
+  };
+}
+
+// Apply the rule to a whole evidence object, returning a copy rather than mutating
+// the caller's. A `unitCount` that is not a positive integer is left alone: that
+// input is rejected by its own range check, and deriving from a nonsense count
+// would only swap one diagnostic for another.
+function withDerivedCountEvidence<T extends RoutingShapeEvidence>(evidence: T): T {
+  return Number.isInteger(evidence.unitCount) && evidence.unitCount >= 1
+    ? { ...evidence, ...derivedCountEvidence(evidence.unitCount, evidence.unitsIndependent) }
+    : evidence;
+}
+
 function selectShape(inputs: RoutingInputs): ShapeDecision {
   const evidence = inputs.shapeEvidence as Partial<RoutingInputs["shapeEvidence"]> | undefined;
-  const normalizedEvidence: NormalizedRoutingShapeEvidence = {
+  // `atomicity` and `unitsIndependent` are DERIVED from the authoritative
+  // `unitCount`, never a second source of truth a caller can contradict. A pair
+  // the caller states inconsistently is normalized here — not rejected — and the
+  // derived values are what `normalizedEvidence` reports back, so the caller can
+  // read exactly what the resolver made of its evidence.
+  //
+  // The derivation is applied HERE, before the stop-return below, so the reported
+  // evidence obeys the published rule on EVERY path — a rejected call reports the
+  // same derived shape a dispatched one does, rather than echoing raw values back
+  // on some rejection paths and derived values on others. `withDerivedCountEvidence`
+  // leaves a non-positive-integer `unitCount` alone, so a nonsense count is still
+  // reported as the caller sent it and rejected by its own range check below.
+  //
+  // The rule cannot change a selected shape: `atomicity` feeds no predicate below,
+  // and `parallelWorthy` already requires two or more units.
+  const normalizedEvidence: NormalizedRoutingShapeEvidence = withDerivedCountEvidence({
     workSurface: evidence?.workSurface ?? "caller-context",
     atomicity: evidence?.atomicity ?? "atomic",
     unitCount: evidence?.unitCount ?? 0,
@@ -57,7 +101,7 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
     independentReview: evidence?.independentReview ?? false,
     returnContract: evidence?.returnContract ?? "mechanically-judgeable",
     requestedParallelism: evidence?.requestedParallelism ?? 0,
-  };
+  });
   const enumFields = [
     ["workSurface", evidence?.workSurface, ["caller-context", "external-context"]],
     ["atomicity", evidence?.atomicity, ["atomic", "composite"]],
@@ -82,13 +126,7 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
           ? `shape evidence unitCount must be an integer from 1 to ${MAX_PARALLELISM}`
           : !Number.isInteger(evidence.requestedParallelism) || (evidence.requestedParallelism ?? 0) < 1
             ? "shape evidence requestedParallelism must be a positive integer"
-            : evidence.atomicity === "atomic" && evidence.unitCount !== 1
-              ? "shape evidence is contradictory: atomic work must contain exactly one unit"
-              : evidence.atomicity === "composite" && (evidence.unitCount ?? 0) < 2
-                ? "shape evidence is contradictory: composite work must contain at least two units"
-                : evidence.unitsIndependent && (evidence.unitCount ?? 0) < 2
-                  ? "shape evidence is contradictory: independence requires at least two units"
-                  : null;
+            : null;
 
   if (stop) {
     return {
@@ -99,6 +137,17 @@ function selectShape(inputs: RoutingInputs): ShapeDecision {
       stop,
     };
   }
+
+  // `atomicity` and `unitsIndependent` are DERIVED from the authoritative
+  // `unitCount`, never a second source of truth a caller can contradict. A pair
+  // the caller states inconsistently is normalized here — not rejected — and the
+  // derived values are what `normalizedEvidence` reports back, so the caller can
+  // read exactly what the resolver made of its evidence. `atomicity` feeds no
+  // shape predicate below and `parallelWorthy` already requires two or more
+  // units, so this derivation cannot change a selected shape.
+  const derived = derivedCountEvidence(normalizedEvidence.unitCount, normalizedEvidence.unitsIndependent);
+  normalizedEvidence.atomicity = derived.atomicity;
+  normalizedEvidence.unitsIndependent = derived.unitsIndependent;
 
   const isolationWorthy =
     normalizedEvidence.workSurface === "external-context" ||
@@ -256,7 +305,12 @@ function boundedOptionalString(value: unknown, field: string, maximum: number): 
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") return `${field} must be a string or null`;
   if (UNSAFE_ROUTING_CHARACTER.test(value)) return `${field} must not contain control or format characters`;
-  return value.length > maximum ? `${field} must be at most ${maximum} characters` : null;
+  // A hard rejection that names the field, the bound, AND the length received —
+  // so a caller knows exactly how much to remove. Nothing is ever truncated: the
+  // over-long value is dropped from the decision rather than shortened into it.
+  return value.length > maximum
+    ? `${field} must be at most ${maximum} characters (received ${value.length})`
+    : null;
 }
 
 function routingScalarProblem(inputs: RoutingInputs): string | null {
@@ -358,7 +412,11 @@ function evaluationProblem(evaluation: RoutingPostAttemptEvaluation, inputs: Rou
   if (!sameUnitIds(inputs.unitIds ?? [], prior.unitIds)) {
     return "post-attempt unitIds must match the retained prior decision";
   }
-  if (!sameShapeEvidence(inputs.shapeEvidence, prior.shapeEvidence)) {
+  // Compare under the one count-derived rule, so a caller that restates a
+  // contradictory atomicity pair is not told its evidence "changed" when the
+  // resolver already normalized both sides to the same thing. Every other field
+  // still has to match exactly — retry narrowing stays resolver-derived.
+  if (!sameShapeEvidence(withDerivedCountEvidence(inputs.shapeEvidence), withDerivedCountEvidence(prior.shapeEvidence))) {
     return "post-attempt shape evidence must match the retained prior decision; retry narrowing is resolver-derived";
   }
   if (prior.attempt === 1 && prior.escalationOrigin) {
@@ -587,9 +645,11 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
   const retryShapeEvidence = evaluation.units
     ? {
         ...evaluation.prior.shapeEvidence,
-        atomicity: retryUnitCount === 1 ? "atomic" as const : "composite" as const,
+        // The same one count-derived rule the input path applies — one function,
+        // so the narrowed retry evidence and an equivalent caller-supplied shape
+        // can never disagree about what a given unit count means.
+        ...derivedCountEvidence(retryUnitCount, evaluation.prior.shapeEvidence.unitsIndependent),
         unitCount: retryUnitCount,
-        unitsIndependent: retryUnitCount > 1 && evaluation.prior.shapeEvidence.unitsIndependent,
         requestedParallelism: Math.min(evaluation.prior.shapeEvidence.requestedParallelism, retryUnitCount),
       }
     : evaluation.prior.shapeEvidence;
@@ -651,7 +711,7 @@ export function resolveRouting(project: RoutingProjectConfig, inputs: RoutingInp
 
   const priorExecutionShape = evaluation.prior.executionShape;
   const shapeChanged = priorExecutionShape !== retryDecision.executionShape ||
-    !sameShapeEvidence(evaluation.prior.shapeEvidence, retryDecision.normalizedEvidence);
+    !sameShapeEvidence(withDerivedCountEvidence(evaluation.prior.shapeEvidence), retryDecision.normalizedEvidence);
   return {
     ...retryDecision,
     disposition: "retry",
