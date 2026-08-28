@@ -295,7 +295,7 @@ Next:             <exactly one of>
 
 `Version:` is the run-scoped resolved version held at Prerequisites — the harness this run executed. It renders on **every** pass, and `unknown` when the resolver could not determine it; it is never omitted and never compared against anything here.
 
-**Adding a slot to this block?** It is governed by §"Run-block slot convention" in `_shared/pipeline-conventions.md` (obtained via the resolver's content surface, `class: shared`): append immediately above `Next:`, pad the value to this block's column 19, and always render the slot with a stated fallback token.
+**Adding a slot to this block?** It is governed by §"Run-block slot convention", obtained via `resolve_content({ workspaceRoot, ... })` (`class: shared`, `ref: pipeline-conventions.md`) — never a raw read of that path: append the slot immediately above `Next:`, pad its value to this block's column 19, and always render it with a stated fallback token.
 
 `In flight:` is the lossless active-activation projection, despite its retained label: include every `dispatched`, `in-flight`, and `awaiting-confirmation` scoreboard row with its state tag. A row without a persisted `agentId` is still listed by `activationIntent`; never omit it or collapse it into `Waiting on deps:`.
 

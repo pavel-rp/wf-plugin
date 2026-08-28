@@ -241,7 +241,7 @@ Next:     <none — terminus | the command that clears the block>
 
 `Version:` is the run-scoped resolved version held at Prerequisites — the harness this run executed. It renders on **every** emission, and `unknown` when the resolver could not determine it; it is never omitted and never compared against anything here.
 
-**Adding a slot to this block?** It is governed by §"Run-block slot convention" in `_shared/pipeline-conventions.md` (obtained via the resolver's content surface, `class: shared`): append immediately above `Next:`, pad the value to this block's column 11, and always render the slot with a stated fallback token.
+**Adding a slot to this block?** It is governed by §"Run-block slot convention", obtained via `resolve_content({ workspaceRoot, ... })` (`class: shared`, `ref: pipeline-conventions.md`) — never a raw read of that path: append the slot immediately above `Next:`, pad its value to this block's column 11, and always render it with a stated fallback token.
 
 When the Phase-4.2 loop ran, `Checks:` states how it ended: `green after <n> CI-remediation iteration(s)` on convergence, or the red form carrying the iteration count, the distilled class tally, and the `<stop reason>` that ended it — `stuck guard tripped after 5 iterations` (paired with `Merge: not merged — CI remediation did not converge within the 5-iteration bound`), `no actionable fix`, `only infra/transient failures`, or `remediation fix did not land`. The counts and the applied-fix locations recorded in step 4 are the run's only durable diagnosis, since `ship` writes no artifact — so a non-convergence always says *how far it got and why it stopped*. Every one of these is a clean bounded stop, reported honestly; none is dressed up as a merge, and none is a crash.
 
