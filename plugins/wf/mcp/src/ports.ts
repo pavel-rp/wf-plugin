@@ -277,6 +277,30 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
       writeFileSync(absPath, content, { encoding: "utf8", mode: 0o600 });
     },
 
+    /**
+     * The run's attendance mode, as declared to THIS PROCESS at launch (WF-493).
+     *
+     * WHY THE PROCESS ENVIRONMENT, AND WHY THAT IS NOT CIRCULAR. The amended
+     * process article says the run's unattended mode is not the requesting
+     * agent's to assert, so the fact has to come from somewhere the requesting
+     * agent cannot reach. This resolver runs as its own long-lived server
+     * process, launched by the harness before any agent is dispatched: its
+     * environment is fixed at spawn, and an agent that can write files and run
+     * shell commands still cannot mutate an already-running process's
+     * environment. So whoever launched the session sets this, and the agent
+     * asking for an approval cannot.
+     *
+     * It is NOT a claim that the value is authenticated — an operator who sets it
+     * falsely gets a falsely-labelled record. What it does deliver is that the
+     * label is out of the *dispatched agent's* hands, which is the specific gap
+     * the article names. The service normalizes anything unrecognized (including
+     * absence) to `unestablished` rather than guessing in either direction.
+     */
+    runModeSignal: () => {
+      const raw = process.env.WF_RUN_MODE;
+      return typeof raw === "string" && raw.length > 0 ? raw : null;
+    },
+
     /** The machine-local home for bindings that must live OUTSIDE the audited
      *  workspace. `os.homedir()` throws on some exotic environments and can
      *  legitimately be unset, so a failure is reported as `null` rather than

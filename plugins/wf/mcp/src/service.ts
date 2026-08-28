@@ -175,10 +175,12 @@ import {
   RECEIPT_BEARING_PHASES,
   RUN_EVIDENCE_FORMAT_VERSION,
   RUN_EVIDENCE_KINDS,
+  classifyArtifactState,
   createRunEvidenceRecord,
   isAdmissibleSubject,
   isDeclaredRunEvidenceArtifact,
   matchRunEvidence,
+  normalizeRunModeSignal,
   mintRunEvidenceIssuerKey,
   parseRunEvidenceIssuer,
   parseRunEvidenceLedger,
@@ -191,8 +193,10 @@ import {
   workspaceFingerprint,
   type ReceiptBearingPhase,
   type RunEvidenceArtifact,
+  type RunEvidenceArtifactState,
   type RunEvidenceClass,
   type RunEvidenceKind,
+  type RunEvidenceRunMode,
   type RunEvidenceUnmatchedReason,
 } from "./resolver/run-evidence.js";
 import { upsertSectionRow } from "./resolver/registry-edit.js";
@@ -312,6 +316,15 @@ export interface ResolverServicePorts {
    *  which still functions but no longer keeps the key out of reach. Returns
    *  `null` when the runtime cannot determine one. */
   machineLocalHome?(): string | null;
+  /** The run's attendance mode as declared to the RESOLVER PROCESS at launch
+   *  (WF-493) — the one channel for that fact the requesting agent cannot reach,
+   *  since an already-running process's environment is not writable by an agent
+   *  that can only edit files and run commands. Returns the raw signal, or `null`
+   *  when none was declared; the service normalizes it, so a port never has to
+   *  know the closed vocabulary. OPTIONAL, so every existing in-memory port double
+   *  stays valid — an absent port normalizes to `unestablished`, exactly as an
+   *  absent signal does. NEVER derived from a tool caller's input. */
+  runModeSignal?(): string | null;
   /** Write a secret with owner-only permissions. Separate from `writeFile` so the
    *  restrictive mode belongs to the one caller that needs it and never changes
    *  the permissions of ordinary project content. OPTIONAL; falls back to
@@ -866,6 +879,10 @@ export interface RecordRunEvidenceResponse {
   sequence: number | null;
   issuedAt: string | null;
   artifact: RunEvidenceArtifact | null;
+  /** The run mode the resolver OBSERVED and sealed into this record. Reported on
+   *  a refusal too, so a caller learns the mode its run is executing under even
+   *  when no record was issued. Never a caller input. */
+  runMode: RunEvidenceRunMode;
   diagnostic: string | null;
 }
 
@@ -888,6 +905,14 @@ export interface ReadRunEvidenceResponse {
      *  differently instead of being told they are the same. */
     evidenceClass: RunEvidenceClass;
     artifact: RunEvidenceArtifact | null;
+    /** The sealed run mode this record was issued under. */
+    runMode: RunEvidenceRunMode;
+    /** How the approved artifact stands NOW, re-observed and re-digested by the
+     *  resolver at read time — `fresh`, `stale`, `missing`, or `n/a` for an
+     *  artifact-less record. This is the "has since changed" test; a consumer
+     *  that treats a `stale` record as approval has ignored the only field that
+     *  could have told it otherwise. */
+    artifactState: RunEvidenceArtifactState;
   }>;
   unmatched: Array<{
     kind: string;
@@ -900,6 +925,11 @@ export interface ReadRunEvidenceResponse {
   unreadableRecords: number;
   provenPhases: ReceiptBearingPhase[];
   receiptBearingPhases: ReceiptBearingPhase[];
+  /** The run mode the resolver observes NOW, for the reading run — distinct from
+   *  the per-record sealed `runMode`, which is what each record was issued under.
+   *  The two legitimately differ when a ledger is read from a differently-launched
+   *  session, and neither is corrected against the other. */
+  runMode: RunEvidenceRunMode;
   diagnostic: string | null;
 }
 
@@ -5192,6 +5222,22 @@ export class ResolverService {
   }
 
   /**
+   * Observe the run's attendance mode (WF-493).
+   *
+   * DELIBERATELY NOT A CALLER INPUT, for exactly the reason the run identity is
+   * not: the amended process article says the run's unattended mode is not the
+   * requesting agent's to assert, and an agent that could assert it could
+   * manufacture the precondition for its own self-approval. The signal comes from
+   * the resolver process's own launch environment, which the dispatched agent
+   * cannot mutate; an absent port, an absent signal, and an unrecognized signal
+   * all normalize to `unestablished` rather than to a guess in either direction.
+   */
+  private runEvidenceRunMode(): RunEvidenceRunMode {
+    const raw = this.ports.runModeSignal ? this.ports.runModeSignal() : null;
+    return normalizeRunModeSignal(raw);
+  }
+
+  /**
    * Read a run-evidence file, treating an I/O failure exactly like absence.
    *
    * The whole class is EVIDENCE: an unreadable ledger proves nothing, which is the
@@ -5277,6 +5323,26 @@ export class ResolverService {
     return { key, diagnostic: null };
   }
 
+  /**
+   * Re-observe one record's approved artifact and classify it (WF-493).
+   *
+   * The path was already contained-checked at issue time and is re-checked here
+   * rather than trusted: the ledger is a file on disk, so a path that reads
+   * safely once must not become authority to read anywhere later. A path that no
+   * longer passes containment is reported `missing` — the same answer as a
+   * deleted file, which is the honest one, since in both cases the approved bytes
+   * cannot be re-observed.
+   */
+  private runEvidenceArtifactState(
+    artifact: RunEvidenceArtifact | null,
+  ): RunEvidenceArtifactState {
+    if (artifact === null) return "n/a";
+    const rel = ResolverService.containedRelPath(artifact.path);
+    if (rel === null) return "missing";
+    const content = this.runEvidenceRead(this.absolutize(rel));
+    return classifyArtifactState(artifact, content === null ? null : sha256Hex(content));
+  }
+
   /** Workspace-relative, non-escaping, non-absolute. A path failing this is
    *  refused rather than normalized — the artifact reference comes from a caller,
    *  and a receipt must never be authority to read outside the workspace. */
@@ -5306,12 +5372,14 @@ export class ResolverService {
   recordRunEvidence(input: RecordRunEvidenceInput): RecordRunEvidenceResponse {
     const runId = this.runEvidenceRunId(input.taskId);
     const destination = runEvidenceDestination(runId);
+    const runMode = this.runEvidenceRunMode();
     const base = {
       runId,
       destination,
       formatVersion: RUN_EVIDENCE_FORMAT_VERSION,
       kind: input.kind,
       subject: input.subject,
+      runMode,
     };
     const refuse = (diagnostic: string): RecordRunEvidenceResponse => ({
       ...base,
@@ -5410,6 +5478,7 @@ export class ResolverService {
         issuedAt,
         sequence: existing.length,
         artifact,
+        runMode,
       },
       issuer.key,
     );
@@ -5460,6 +5529,7 @@ export class ResolverService {
       unreadableRecords: 0,
       provenPhases: [] as string[],
       receiptBearingPhases,
+      runMode: this.runEvidenceRunMode(),
     };
 
     const parsed = parseRunEvidenceLedger(this.runEvidenceRead(this.absolutize(destination)));
@@ -5514,6 +5584,12 @@ export class ResolverService {
           sequence: match.record.sequence,
           evidenceClass: match.record.evidenceClass as RunEvidenceClass,
           artifact: match.record.artifact,
+          runMode: match.record.runMode as RunEvidenceRunMode,
+          // The "has since changed" test, performed HERE rather than trusted from
+          // anywhere: the resolver re-reads the named artifact and re-digests it
+          // now, and compares against the digest sealed at issue. A caller that
+          // could supply this could declare its own stale approval fresh.
+          artifactState: this.runEvidenceArtifactState(match.record.artifact),
         })),
       unmatched: matches
         .filter((match) => !match.matched)
