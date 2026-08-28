@@ -178,6 +178,19 @@ probe's `--show-toplevel` resolves to the agent's own worktree, and the director
 worktree rather than a bare directory nested inside another checkout. Concurrent isolation also
 held — the probe observed this shipper's worktree and its own as two distinct registered entries.
 
+**Isolation is now enforced at the tool boundary, not merely offered.** A second, unplanned probe
+landed while this note was being written: a `git -C <shared-checkout> status` issued from inside a
+worktree-isolated agent was **refused by the runtime**, with the reason *"this command redirects git
+to the shared checkout via `-C`. Refusing to run it — a worktree-isolated agent's git operations
+must target its own worktree."*
+
+That is a stronger property than F5 ever asked for. C011's F8 records exactly one shipper violating
+its own "never touch the shared checkout" instruction; on this runtime that violation is not merely
+discouraged by prompt text but **mechanically prevented** for git operations. Note the bound
+precisely: the refusal covers git redirected at the shared checkout. Ordinary file reads of the
+shared checkout still succeed — this note's own grounding evidence was read that way — so the guard
+is a git-operation guard, not a filesystem sandbox, and should be cited as such.
+
 Consequently `plugins/wf/skills/fleet/SKILL.md:158`'s mandated dispatch shape
 (`isolation: worktree`) is **executable as written**. The hand-rolled `git worktree add` workaround
 C011 fell back to is no longer required.
