@@ -16,11 +16,18 @@
 //      composition that regenerated the whole document would destroy it, which is
 //      the single most damaging defect available to this item.
 //
-//   2. ONLY THE DERIVED SECTION IS REPLACED. The capability-articles section is a
-//      pure function of the registered capability set, so it is the only region
-//      this composer renders. The preamble (title, attribution, precedence) and
-//      the core articles are preserved for the same reason as rule 1: the resolver
-//      did not author them and must not invent them.
+//   2. ONLY A DERIVED SECTION IS REPLACED. The capability-articles section is a
+//      pure function of the registered capability set, so it is always rendered.
+//      The core-articles section is rendered ONLY when the caller supplies the
+//      core body (WF-492) — because core article text is not the resolver's to
+//      invent, but it IS the caller's to carry, and a composer that could never
+//      replace it left every already-composed record frozen at the article wording
+//      of whichever release first composed it. The preamble (title, attribution,
+//      precedence) is preserved unconditionally, for the same reason as rule 1.
+//
+//      Omitting the core body preserves that section exactly as before, so a caller
+//      that has no core text to carry cannot start refusing records it used to
+//      compose.
 //
 //   3. A DOCUMENT THIS COMPOSER CANNOT UNDERSTAND IS A REFUSAL, NEVER A SILENT
 //      RESET. A missing, duplicated, or out-of-order section heading means the
@@ -34,6 +41,9 @@
 //      set leaves `_local/constitution.md` untouched down to its inode.
 
 import type { ConstitutionInput } from "./types.js";
+import { CORE_ARTICLES_HEADING } from "./constitution-core.js";
+
+export { CORE_ARTICLES_HEADING };
 
 /** The heading whose BODY this composer renders. Exported so the contract tests
  *  assert the boundary mechanically rather than trusting a comment. */
@@ -67,6 +77,21 @@ export interface ConstitutionCompositionInput {
   /** Every registered capability name, in registry order — the value the
    *  `**Registry:**` preamble line is refreshed to. */
   registryNames: readonly string[];
+  /**
+   * The core-articles section BODY to carry into the record — the lines between
+   * that section's heading and the next top-level heading (WF-492).
+   *
+   * ABSENT MEANS PRESERVE, NOT EMPTY. Omitting it (or passing `null`) leaves the
+   * core section exactly as it is found, which is this composer's pre-WF-492
+   * behaviour and the reason a caller holding no core text can never newly refuse
+   * a record. Supplying it replaces the section — the path by which an amended core
+   * article reaches a constitution composed against an earlier release.
+   *
+   * The caller owns the wording. `constitution-core.ts` is the shipped body every
+   * in-repo caller passes; the parameter exists so this module stays a renderer
+   * over an explicit shape rather than reaching for a constant of its own.
+   */
+  coreArticles?: readonly string[] | null;
 }
 
 export type ConstitutionComposition =
@@ -190,12 +215,47 @@ export function composeConstitutionRecord(
     };
   }
 
-  const preamble = refreshRegistryLine(lines.slice(0, articles.index), input.registryNames);
+  // --- the core section (WF-492) -------------------------------------------
+  // Only when the caller carries core text. With none, `coreStart` stays at the
+  // capability heading and the emitted document is byte-for-byte the pre-WF-492
+  // one — which is what keeps a caller holding no core body from newly refusing a
+  // record it used to compose.
+  const coreArticles = input.coreArticles ?? null;
+  let coreStart = articles.index;
+  let coreSection: string[] = [];
+
+  if (coreArticles !== null) {
+    const core = locateHeading(lines, CORE_ARTICLES_HEADING);
+    if (!core.ok) return core;
+
+    // Same structural discipline the capability section is held to, for the same
+    // reason: a core section that does not precede the derived one, or that is
+    // separated from it by a section this composer did not author, is not the
+    // shape it knows — and guessing is the silent reset rule 3 forbids.
+    if (core.index >= articles.index) {
+      return {
+        ok: false,
+        detail: `the composed constitution record places \`${CORE_ARTICLES_HEADING}\` at or after \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`,
+      };
+    }
+    if (nextTopLevelHeading(lines, core.index + 1) !== articles.index) {
+      return {
+        ok: false,
+        detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`,
+      };
+    }
+
+    coreStart = core.index;
+    coreSection = [lines[core.index].trimEnd(), ...coreArticles];
+  }
+
+  const preamble = refreshRegistryLine(lines.slice(0, coreStart), input.registryNames);
   // RULE 1, mechanically: the tail is sliced, never parsed and never re-rendered.
   const preservedClauses = lines.slice(clauses.index);
 
   const content = [
     ...preamble,
+    ...coreSection,
     lines[articles.index].trimEnd(),
     ...renderArticleBody(input.capabilities),
     ...preservedClauses,
