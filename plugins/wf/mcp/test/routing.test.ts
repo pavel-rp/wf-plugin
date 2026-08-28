@@ -216,15 +216,53 @@ test("a caller bound of one never selects parallel execution", () => {
   assert.equal(decision.effectiveParallelism, 1);
 });
 
-test("contradictory shape evidence stops without changing selector decisions", () => {
+test("a contradictory atomicity pair is normalized in both directions without changing selector decisions", () => {
+  // `composite` stated for one unit — the exact pair the C011 subject run was
+  // rejected for. It is now accepted and reported back as the derived `atomic`.
+  const composite = resolveRouting({}, {
+    ...base,
+    shapeEvidence: { ...inlineEvidence, atomicity: "composite", unitCount: 1 },
+  });
+  assert.equal(composite.status, "dispatch");
+  assert.equal(composite.disposition, "dispatch");
+  assert.equal(composite.diagnostic, null);
+  assert.equal(composite.normalizedEvidence.atomicity, "atomic");
+  assert.equal(composite.normalizedEvidence.unitCount, 1);
+
+  // The rule is symmetric: `unitCount` is authoritative in the other direction too.
+  const atomic = resolveRouting({}, {
+    ...base,
+    unitIds: ["classify:first", "classify:second"],
+    shapeEvidence: { ...inlineEvidence, atomicity: "atomic", unitCount: 2 },
+  });
+  assert.equal(atomic.status, "dispatch");
+  assert.equal(atomic.normalizedEvidence.atomicity, "composite");
+  assert.equal(atomic.normalizedEvidence.unitCount, 2);
+
+  // Independence is clamped under the same rule rather than rejected.
+  const independent = resolveRouting({}, {
+    ...base,
+    shapeEvidence: { ...inlineEvidence, unitsIndependent: true, unitCount: 1 },
+  });
+  assert.equal(independent.status, "dispatch");
+  assert.equal(independent.normalizedEvidence.unitsIndependent, false);
+
+  // The original invariant survives: normalizing evidence never disturbs selectors.
+  for (const decision of [composite, atomic, independent]) {
+    assert.equal(decision.model.value, "haiku");
+    assert.equal(decision.model.source, "shipped-default");
+  }
+});
+
+test("unitIds cardinality is still a hard rejection against the authoritative unitCount", () => {
   const decision = resolveRouting({}, {
     ...base,
+    unitIds: ["classify:single"],
     shapeEvidence: { ...inlineEvidence, atomicity: "atomic", unitCount: 2 },
   });
   assert.equal(decision.status, "stop");
-  assert.match(decision.diagnostic ?? "", /atomic work must contain exactly one unit/);
-  assert.equal(decision.model.value, "haiku");
-  assert.equal(decision.model.source, "shipped-default");
+  assert.equal(decision.disposition, "invalid-stop");
+  assert.match(decision.diagnostic ?? "", /unitIds must match shape evidence unitCount/);
 });
 
 test("incomplete or legacy shape inputs stop with specific diagnostics", () => {
@@ -803,4 +841,118 @@ test("retry accepts full model identifiers but rejects caller-supplied shape cha
   assert.equal(changed.retry, null);
   assert.match(changed.diagnostic ?? "", /shape evidence must match the retained prior decision/);
   assert.deepEqual(changed.normalizedEvidence, inlineEvidence);
+});
+
+test("the input path and the retry path derive count evidence from one shared rule", () => {
+  const parallelEvidence = {
+    ...inlineEvidence,
+    atomicity: "composite",
+    unitCount: 4,
+    unitsIndependent: true,
+    toolWork: "material",
+    contextIsolation: "useful",
+    requestedParallelism: 4,
+  } as const;
+  const priorUnitIds = ["a", "b", "c", "d"];
+  const first = resolveRouting({}, {
+    ...base, shapeEvidence: parallelEvidence, unitIds: priorUnitIds, actualModel: "haiku",
+  });
+  assert.equal(first.executionShape, "bounded-parallel");
+
+  for (const retryCount of [1, 2, 3, 4]) {
+    // The RETRY path: narrow the prior set to exactly `retryCount` insufficient units.
+    const retried = resolveRouting({}, {
+      ...base,
+      shapeEvidence: parallelEvidence,
+      unitIds: priorUnitIds,
+      postAttempt: {
+        sufficient: false,
+        signals: [],
+        prior: prior(first),
+        units: priorUnitIds.map((unitId, index) => index < retryCount
+          ? { unitId, sufficient: false, signals: ["failed-validation"] as RoutingInsufficiencySignal[] }
+          : { unitId, sufficient: true, signals: [] as RoutingInsufficiencySignal[] }),
+      },
+    });
+    assert.equal(retried.disposition, "retry", `retryCount ${retryCount}`);
+    assert.equal(retried.normalizedEvidence.unitCount, retryCount, `retryCount ${retryCount}`);
+
+    // The INPUT path, asked the same question directly with a deliberately
+    // contradictory `atomicity` so the derivation is doing the work, not the caller.
+    const direct = resolveRouting({}, {
+      ...base,
+      unitIds: priorUnitIds.slice(0, retryCount),
+      shapeEvidence: {
+        ...parallelEvidence,
+        atomicity: retryCount === 1 ? "composite" : "atomic",
+        unitCount: retryCount,
+        requestedParallelism: retryCount,
+      },
+    });
+    assert.equal(direct.status, "dispatch", `retryCount ${retryCount}`);
+
+    assert.deepEqual(
+      [retried.normalizedEvidence.atomicity, retried.normalizedEvidence.unitsIndependent],
+      [direct.normalizedEvidence.atomicity, direct.normalizedEvidence.unitsIndependent],
+      `input and retry paths must agree at unitCount ${retryCount}`,
+    );
+    assert.equal(
+      direct.normalizedEvidence.atomicity,
+      retryCount === 1 ? "atomic" : "composite",
+      `retryCount ${retryCount}`,
+    );
+  }
+});
+
+test("an over-long basis is rejected naming the field, the bound, and the length received", () => {
+  const oversized = "x".repeat(257);
+  const decision = resolveRouting({}, { ...base, basis: oversized });
+  assert.equal(decision.status, "stop");
+  assert.equal(decision.disposition, "invalid-stop");
+  assert.match(decision.diagnostic ?? "", /basis must be at most 256 characters \(received 257\)/);
+  // Never an unexplained schema error, and never a silently truncated basis: the
+  // over-long value is dropped from the decision rather than shortened into it.
+  assert.equal(decision.basis, null);
+  assert.doesNotMatch(JSON.stringify(decision), /x{200}/);
+});
+
+test("a basis at the bound is accepted and returned byte-identical — no truncation exists", () => {
+  const atBound = "b".repeat(256);
+  const decision = resolveRouting({}, { ...base, basis: atBound });
+  assert.equal(decision.status, "dispatch");
+  assert.equal(decision.diagnostic, null);
+  assert.equal(decision.basis, atBound);
+  assert.equal(decision.basis?.length, 256);
+});
+
+test("a single-unit decision dispatches one unit, never nothing", () => {
+  const inline = resolveRouting({}, base);
+  assert.equal(inline.executionShape, "inline");
+  assert.equal(inline.status, "dispatch");
+  assert.equal(inline.disposition, "dispatch");
+  assert.equal(inline.effectiveParallelism, 1);
+  assert.deepEqual(inline.unitIds, ["classify:single"]);
+
+  const isolated = resolveRouting({}, {
+    ...base,
+    shapeEvidence: { ...inlineEvidence, workSurface: "external-context", toolWork: "material", contextIsolation: "useful" },
+  });
+  assert.equal(isolated.executionShape, "isolated");
+  assert.equal(isolated.status, "dispatch");
+  assert.equal(isolated.disposition, "dispatch");
+  assert.equal(isolated.effectiveParallelism, 1);
+  assert.deepEqual(isolated.unitIds, ["classify:single"]);
+
+  // `effectiveParallelism` is a concurrency bound, not a unit count: the one
+  // decision that legitimately runs more than one at a time still names them all.
+  const parallel = resolveRouting({}, {
+    ...base,
+    unitIds: ["p1", "p2"],
+    shapeEvidence: {
+      ...inlineEvidence, atomicity: "composite", unitCount: 2, unitsIndependent: true,
+      toolWork: "material", requestedParallelism: 2,
+    },
+  });
+  assert.equal(parallel.executionShape, "bounded-parallel");
+  assert.equal(parallel.effectiveParallelism, 2);
 });

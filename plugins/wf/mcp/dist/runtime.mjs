@@ -23023,9 +23023,21 @@ var routingSignalValues = [
 ];
 var routingShapeProperties = {
   workSurface: { type: "string", enum: ["caller-context", "external-context"] },
-  atomicity: { type: "string", enum: ["atomic", "composite"] },
-  unitCount: { type: "integer", minimum: 1, maximum: 4 },
-  unitsIndependent: { type: "boolean" },
+  atomicity: {
+    type: "string",
+    enum: ["atomic", "composite"],
+    description: "DERIVED, never a second source of truth. `unitCount` is authoritative: 1 unit is `atomic`, 2 or more is `composite`. A value that contradicts `unitCount` is NORMALIZED to the derived one rather than rejected, and the response reports the derived value on `normalizedEvidence` \u2014 the identical rule the retry path applies when it narrows a set to its insufficient units."
+  },
+  unitCount: {
+    type: "integer",
+    minimum: 1,
+    maximum: 4,
+    description: "THE AUTHORITATIVE COUNT. `atomicity` is derived from it and `unitsIndependent` is clamped to false at one unit. `unitIds`, when supplied, must be exactly this many entries \u2014 that cardinality is still a hard rejection."
+  },
+  unitsIndependent: {
+    type: "boolean",
+    description: "Clamped to false when `unitCount` is 1 \u2014 independence is undefined for a single unit. Read the applied value back from `normalizedEvidence`."
+  },
   ambiguity: { type: "string", enum: ["none", "bounded", "material"] },
   risk: { type: "string", enum: ["low", "elevated"] },
   toolWork: { type: "string", enum: ["none", "bounded", "material"] },
@@ -23068,9 +23080,19 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
     hostModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
     hostEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
     availableModels: { type: ["array", "null"], maxItems: 64, items: { type: "string", minLength: 1, maxLength: 128, pattern: safeRoutingStringPattern }, uniqueItems: true },
-    basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+    basis: {
+      type: ["string", "null"],
+      maxLength: 256,
+      pattern: safeRoutingStringPattern,
+      description: "Compact provenance for this decision \u2014 one short line, BOUNDED AT 256 CHARACTERS. Exceeding the bound is a HARD REJECTION of the whole call, never a truncation: nothing shortens a `basis`, so compose within the bound. The rejection names the field, the bound, and the length received."
+    },
     attempt: { type: "integer", minimum: 1, maximum: 3 },
-    escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
+    escalationOrigin: {
+      type: ["string", "null"],
+      maxLength: 256,
+      pattern: safeRoutingStringPattern,
+      description: "Retry provenance, BOUNDED AT 256 CHARACTERS under the same hard-rejection-never-truncation rule as `basis`. Must be null on an initial dispatch."
+    },
     actualModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
     postAttempt: {
       type: "object",
@@ -23130,7 +23152,12 @@ var routingOutput = fromJsonSchema2({
     normalizedEvidence: { type: "object", properties: routingShapeProperties, required: routingShapeRequired, additionalProperties: false },
     unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
     shapeReason: { type: "string", enum: ["atomic-caller-context", "single-isolation-worthy-unit", "dependent-or-nonmaterial-units", "nonmaterial-units-inline", "independent-material-units"] },
-    effectiveParallelism: { type: "integer", minimum: 1, maximum: 4 },
+    effectiveParallelism: {
+      type: "integer",
+      minimum: 1,
+      maximum: 4,
+      description: "How many units may run CONCURRENTLY \u2014 never how many units to run. 1 is the normal value for every `inline` and `isolated` decision and means DISPATCH ONE UNIT AT A TIME, never dispatch nothing."
+    },
     model: routingChoiceSchema(128),
     effort: routingChoiceSchema(16),
     source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
@@ -23140,8 +23167,16 @@ var routingOutput = fromJsonSchema2({
     fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] },
     masked: { type: "boolean" },
     actualModel: { type: "string", maxLength: 128, pattern: safeRoutingStringPattern },
-    status: { type: "string", enum: ["dispatch", "retain", "stop"] },
-    disposition: { type: "string", enum: ["dispatch", "retain", "retry", "exhausted", "invalid-stop"] },
+    status: {
+      type: "string",
+      enum: ["dispatch", "retain", "stop"],
+      description: "WHETHER to proceed \u2014 an axis INDEPENDENT of `executionShape` and `effectiveParallelism`, which say HOW. `dispatch` means carry out the decision in the returned shape; it is the normal outcome for a single-unit `inline` or `isolated` route and NEVER means dispatch nothing."
+    },
+    disposition: {
+      type: "string",
+      enum: ["dispatch", "retain", "retry", "exhausted", "invalid-stop"],
+      description: "The refinement of `status` \u2014 also independent of `executionShape`. `dispatch` at `effectiveParallelism: 1` is one unit to execute, not an empty decision."
+    },
     retry: {
       anyOf: [
         { type: "null" },
@@ -23376,7 +23411,7 @@ function registerResolverTools(server, selectService) {
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. Body-free.",
+      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned next-tier retry for only insufficient units, or stops on invalid/exhausted state. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are INDEPENDENT AXES: `status: dispatch` with `effectiveParallelism: 1` is the ordinary decision to dispatch ONE unit in the returned shape, never a decision to dispatch nothing. `unitCount` is the authoritative shape-evidence count \u2014 `atomicity` is derived from it and normalized rather than rejected, and `basis`/`escalationOrigin` are bounded at 256 characters as a hard rejection that is never a truncation. Body-free.",
       inputSchema: routingInput,
       outputSchema: routingOutput,
       _meta: RESIDENT
@@ -26285,6 +26320,15 @@ var INSUFFICIENCY_SIGNALS = /* @__PURE__ */ new Set([
   "increased-risk-or-scope",
   "high-severity-review-uncertainty"
 ]);
+function derivedCountEvidence(unitCount, unitsIndependent) {
+  return {
+    atomicity: unitCount === 1 ? "atomic" : "composite",
+    unitsIndependent: unitCount > 1 && unitsIndependent
+  };
+}
+function withDerivedCountEvidence(evidence) {
+  return evidence && Number.isInteger(evidence.unitCount) && evidence.unitCount >= 1 ? { ...evidence, ...derivedCountEvidence(evidence.unitCount, evidence.unitsIndependent) } : evidence;
+}
 function selectShape(inputs) {
   const evidence = inputs.shapeEvidence;
   const normalizedEvidence = {
@@ -26315,7 +26359,7 @@ function selectShape(inputs) {
   const invalidBoolean = ["unitsIndependent", "independentReview"].find(
     (field) => typeof evidence?.[field] !== "boolean"
   );
-  const stop = !evidence ? "shape evidence is required" : invalidEnum ? `shape evidence ${invalidEnum[0]} must be one of: ${invalidEnum[2].join(", ")}` : invalidBoolean ? `shape evidence ${invalidBoolean} must be boolean` : !Number.isInteger(evidence.unitCount) || (evidence.unitCount ?? 0) < 1 || (evidence.unitCount ?? 0) > MAX_PARALLELISM ? `shape evidence unitCount must be an integer from 1 to ${MAX_PARALLELISM}` : !Number.isInteger(evidence.requestedParallelism) || (evidence.requestedParallelism ?? 0) < 1 ? "shape evidence requestedParallelism must be a positive integer" : evidence.atomicity === "atomic" && evidence.unitCount !== 1 ? "shape evidence is contradictory: atomic work must contain exactly one unit" : evidence.atomicity === "composite" && (evidence.unitCount ?? 0) < 2 ? "shape evidence is contradictory: composite work must contain at least two units" : evidence.unitsIndependent && (evidence.unitCount ?? 0) < 2 ? "shape evidence is contradictory: independence requires at least two units" : null;
+  const stop = !evidence ? "shape evidence is required" : invalidEnum ? `shape evidence ${invalidEnum[0]} must be one of: ${invalidEnum[2].join(", ")}` : invalidBoolean ? `shape evidence ${invalidBoolean} must be boolean` : !Number.isInteger(evidence.unitCount) || (evidence.unitCount ?? 0) < 1 || (evidence.unitCount ?? 0) > MAX_PARALLELISM ? `shape evidence unitCount must be an integer from 1 to ${MAX_PARALLELISM}` : !Number.isInteger(evidence.requestedParallelism) || (evidence.requestedParallelism ?? 0) < 1 ? "shape evidence requestedParallelism must be a positive integer" : null;
   if (stop) {
     return {
       executionShape: "inline",
@@ -26325,6 +26369,9 @@ function selectShape(inputs) {
       stop
     };
   }
+  const derived = derivedCountEvidence(normalizedEvidence.unitCount, normalizedEvidence.unitsIndependent);
+  normalizedEvidence.atomicity = derived.atomicity;
+  normalizedEvidence.unitsIndependent = derived.unitsIndependent;
   const isolationWorthy = normalizedEvidence.workSurface === "external-context" || normalizedEvidence.ambiguity !== "none" || normalizedEvidence.risk === "elevated" || normalizedEvidence.toolWork !== "none" || normalizedEvidence.validation === "judgment" || normalizedEvidence.contextIsolation !== "none" || normalizedEvidence.independentReview;
   const parallelWorthy = normalizedEvidence.unitsIndependent && normalizedEvidence.unitCount >= 2 && normalizedEvidence.requestedParallelism >= 2 && normalizedEvidence.returnContract === "mechanically-judgeable" && (normalizedEvidence.ambiguity !== "none" || normalizedEvidence.risk === "elevated" || normalizedEvidence.toolWork !== "none" || normalizedEvidence.contextIsolation !== "none" || normalizedEvidence.independentReview);
   if (parallelWorthy) {
@@ -26449,7 +26496,7 @@ function boundedOptionalString(value, field, maximum) {
   if (value === void 0 || value === null) return null;
   if (typeof value !== "string") return `${field} must be a string or null`;
   if (UNSAFE_ROUTING_CHARACTER.test(value)) return `${field} must not contain control or format characters`;
-  return value.length > maximum ? `${field} must be at most ${maximum} characters` : null;
+  return value.length > maximum ? `${field} must be at most ${maximum} characters (received ${value.length})` : null;
 }
 function routingScalarProblem(inputs) {
   const checks = [
@@ -26534,7 +26581,7 @@ function evaluationProblem(evaluation, inputs) {
   if (!sameUnitIds(inputs.unitIds ?? [], prior.unitIds)) {
     return "post-attempt unitIds must match the retained prior decision";
   }
-  if (!sameShapeEvidence(inputs.shapeEvidence, prior.shapeEvidence)) {
+  if (!sameShapeEvidence(withDerivedCountEvidence(inputs.shapeEvidence), withDerivedCountEvidence(prior.shapeEvidence))) {
     return "post-attempt shape evidence must match the retained prior decision; retry narrowing is resolver-derived";
   }
   if (prior.attempt === 1 && prior.escalationOrigin) {
@@ -26730,9 +26777,11 @@ function resolveRouting(project, inputs) {
   const retryUnitCount = retryUnitIds.length;
   const retryShapeEvidence = evaluation.units ? {
     ...evaluation.prior.shapeEvidence,
-    atomicity: retryUnitCount === 1 ? "atomic" : "composite",
+    // The same one count-derived rule the input path applies — one function,
+    // so the narrowed retry evidence and an equivalent caller-supplied shape
+    // can never disagree about what a given unit count means.
+    ...derivedCountEvidence(retryUnitCount, evaluation.prior.shapeEvidence.unitsIndependent),
     unitCount: retryUnitCount,
-    unitsIndependent: retryUnitCount > 1 && evaluation.prior.shapeEvidence.unitsIndependent,
     requestedParallelism: Math.min(evaluation.prior.shapeEvidence.requestedParallelism, retryUnitCount)
   } : evaluation.prior.shapeEvidence;
   const retryInputs = {
@@ -26781,7 +26830,7 @@ function resolveRouting(project, inputs) {
     );
   }
   const priorExecutionShape = evaluation.prior.executionShape;
-  const shapeChanged = priorExecutionShape !== retryDecision.executionShape || !sameShapeEvidence(evaluation.prior.shapeEvidence, retryDecision.normalizedEvidence);
+  const shapeChanged = priorExecutionShape !== retryDecision.executionShape || !sameShapeEvidence(withDerivedCountEvidence(evaluation.prior.shapeEvidence), retryDecision.normalizedEvidence);
   return {
     ...retryDecision,
     disposition: "retry",
