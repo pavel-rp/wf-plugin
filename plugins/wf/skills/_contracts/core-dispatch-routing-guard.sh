@@ -258,7 +258,7 @@ extract_routed_block() {
 inventory_count_task_target() {
   local inventory="$1" file="$2" target="$3"
   awk -F '\t' -v f="$file" -v t="$target" '
-    $2=="included" && $3==f && $7!="index-wrapper-mediated" && $7!="fixed-skill-route" {
+    $2=="included" && $3==f && $7!="index-wrapper-mediated" && $7!="fixed-skill-route" && $7!="shipper-path-complexity-route" {
       s=$4; matched=0
       while (match(s, /\/?wf:[a-z0-9-]+|general-purpose/)) {
         token=substr(s, RSTART, RLENGTH); sub(/^\//, "", token)
@@ -395,7 +395,7 @@ inventory_has_skill_target() {
 inventory_count_fixed_skill_target() {
   local inventory="$1" file="$2" target="$3"
   awk -F '\t' -v f="$file" -v t="$target" '
-    $2=="included" && $3==f && $7=="fixed-skill-route" {
+    $2=="included" && $3==f && ($7=="fixed-skill-route" || $7=="shipper-path-complexity-route") {
       s=$4
       while (match(s, /\/(wf:[a-z0-9-]+|<skill>|wf:<phase>)/)) {
         if (substr(s, RSTART, RLENGTH)==t) n++
@@ -563,6 +563,33 @@ PY
         case "$body" in *"$target"*) ;; *) err "$id: fixed Skill target is absent in $file" ;; esac
         case "$skill_block" in *"workspaceRoot"*) ;; *) err "$id: fixed Skill route omits explicit workspaceRoot in $file" ;; esac
         case "$skill_block" in *"unitIds"*) ;; *) err "$id: fixed singleton Skill route omits stable unitIds in $file" ;; esac
+        if [ "$retry" != "—" ]; then
+          case "$body" in *"postAttempt"*"never self"*|*"postAttempt"*"never invokes its own replacement"*) ;; *) err "$id: parent retry ownership is not explicit in $file" ;; esac
+        fi
+        continue
+        ;;
+      shipper-path-complexity-route)
+        # WF-498. The shipper-path sibling-Skill edges. Everything `fixed-skill-route`
+        # requires, with two deliberate differences: BOTH selectors are open, so a
+        # complexity-derived selection reaches the edge unmasked instead of coming
+        # back with `fallback: "selector-unsupported"`; and the evidence is stated
+        # PER EDGE rather than as one literal reused for every edge. The varying
+        # dimension is asserted by name — an edge set that collapses back to a single
+        # constant fails here rather than silently re-becoming a fixed route.
+        local complexity_block
+        complexity_block="$(extract_routed_block "$path" "$role" "$target" fixed)"
+        [ -n "$complexity_block" ] || { err "$id: no nearby role $role decision precedes Skill target $target in $file"; continue; }
+        case "$body" in *"resolve_routing"*) ;; *) err "$id: shipper-path Skill edge lacks resolve_routing in $file" ;; esac
+        case "$body" in *"role: \"$role\""*) ;; *) err "$id: shipper-path Skill role is not stated in $file" ;; esac
+        case "$body" in *"shapeEvidence"*"supportsModelSelector: true"*"supportsEffortSelector: true"*) ;; *) err "$id: shipper-path selector/shape facts are incomplete in $file" ;; esac
+        case "$body" in *"per edge"*"returnContract"*) ;; *) err "$id: shipper-path evidence is not stated per edge in $file" ;; esac
+        case "$body" in *"returnContract: \"judgment\""*) ;; *) err "$id: shipper-path evidence does not vary returnContract in $file" ;; esac
+        case "$body" in *"actualModel"*"compact operational record"*) ;; *) err "$id: optional actualModel or compact record handling is absent in $file" ;; esac
+        case "$body" in *"status: stop"*"diagnostic"*) ;; *) err "$id: shipper-path stop/diagnostic behavior is absent in $file" ;; esac
+        case "$body" in *"executionShape"*|*"inline"*"shape"*) ;; *) err "$id: shipper-path shape obedience is absent in $file" ;; esac
+        case "$body" in *"$target"*) ;; *) err "$id: shipper-path Skill target is absent in $file" ;; esac
+        case "$complexity_block" in *"workspaceRoot"*) ;; *) err "$id: shipper-path route omits explicit workspaceRoot in $file" ;; esac
+        case "$complexity_block" in *"unitIds"*) ;; *) err "$id: shipper-path route omits stable unitIds in $file" ;; esac
         if [ "$retry" != "—" ]; then
           case "$body" in *"postAttempt"*"never self"*|*"postAttempt"*"never invokes its own replacement"*) ;; *) err "$id: parent retry ownership is not explicit in $file" ;; esac
         fi
@@ -767,7 +794,7 @@ PY
   # the same file. Compare the union of declared and discovered file+target pairs;
   # every discovered occurrence consumes exactly one fixed-route inventory row.
   while IFS=$'\t' read -r id class file target role selectors evidence retry; do
-    [ "$class" = "included" ] && [ "$evidence" = "fixed-skill-route" ] || continue
+    [ "$class" = "included" ] && { [ "$evidence" = "fixed-skill-route" ] || [ "$evidence" = "shipper-path-complexity-route" ]; } || continue
     while IFS= read -r target_part; do
       [ -n "$target_part" ] && printf '%s\t%s\n' "$file" "$target_part" >> "$declared_skill_pairs"
     done < <(printf '%s' "$target" | grep -oE '/(wf:[a-z0-9-]+|<skill>|wf:<phase>)' || true)

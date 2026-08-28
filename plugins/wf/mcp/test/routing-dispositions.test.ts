@@ -16,7 +16,7 @@ const agentRoots = [
   "plugins/wf-angular/agents",
   "plugins/wf-host/agents",
 ];
-const dispositions = new Set(["shipped-static", "adaptive", "evidence-gated", "deferred"]);
+const dispositions = new Set(["shipped-static", "adaptive", "evidence-gated", "deferred", "complexity-derived"]);
 
 type MatrixRow = {
   role: string;
@@ -255,13 +255,27 @@ test("matrix pins only the WF-394 bootstrap Haiku defaults", () => {
       supportsEffortSelector: true,
       availableModels: ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-8"],
     });
-    const expectedModel = row.disposition === "shipped-static" ? row.model : null;
-    assert.equal(decision.model.value, expectedModel, `${row.role} model disagrees with its disposition`);
+    // WF-498: a `complexity-derived` row must both SUPPLY a value and SAY so —
+    // the matrix cell reads `derived` (a mechanism, never a constant and never
+    // `inherit`), and the live decision carries a resolver-derived model that
+    // reaches the dispatch unmasked with the evidence it used recorded as
+    // `basis`. Every other row must still resolve exactly what it claims.
+    if (row.disposition === "complexity-derived") {
+      assert.equal(row.model, "derived", `${row.role} must record a mechanism, not a constant or inherit`);
+      assert.notEqual(decision.model.value, null, `${row.role} must supply a derived model`);
+      assert.equal(decision.model.source, "complexity-derived", `${row.role} model must be resolver-derived`);
+      assert.equal(decision.model.masked, false, `${row.role} derived model must reach the dispatch unmasked`);
+      assert.equal(decision.model.fallback, null, `${row.role} derived model must not fall back`);
+      assert.ok(decision.basis, `${row.role} must record the evidence it derived from`);
+    } else {
+      const expectedModel = row.disposition === "shipped-static" ? row.model : null;
+      assert.equal(decision.model.value, expectedModel, `${row.role} model disagrees with its disposition`);
+      if (row.disposition !== "shipped-static") assert.equal(row.model, "inherit", `${row.role} must not claim a hidden static model`);
+    }
     assert.notEqual(decision.model.value, "opus", `${row.role} must not start on static Opus`);
     assert.equal(decision.effort.value, null, `${row.role} effort must inherit`);
     assert.equal(decision.effort.source, "inheritance", `${row.role} effort source must be inheritance`);
     assert.equal(row.effort, "inherit", `${row.role} matrix effort must inherit`);
-    if (row.disposition !== "shipped-static") assert.equal(row.model, "inherit", `${row.role} must not claim a hidden static model`);
   }
 });
 

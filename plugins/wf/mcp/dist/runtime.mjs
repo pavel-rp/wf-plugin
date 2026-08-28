@@ -23055,9 +23055,9 @@ var routingChoiceSchema = (maxLength) => ({
   type: "object",
   properties: {
     value: { type: ["string", "null"], maxLength, pattern: safeRoutingStringPattern },
-    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "complexity-derived", "inheritance"] },
     requested: { type: ["string", "null"], maxLength, pattern: safeRoutingStringPattern },
-    requestedSource: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    requestedSource: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "complexity-derived", "inheritance"] },
     masked: { type: "boolean" },
     fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] }
   },
@@ -23168,7 +23168,7 @@ var routingOutput = fromJsonSchema2({
     },
     model: routingChoiceSchema(128),
     effort: routingChoiceSchema(16),
-    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "inheritance"] },
+    source: { type: "string", enum: ["host", "invocation", "project", "shipped-default", "complexity-derived", "inheritance"] },
     basis: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
     attempt: { type: "integer", minimum: 1, maximum: 3 },
     escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
@@ -26321,6 +26321,9 @@ var MAX_EFFORT_LENGTH = 16;
 var MAX_ROUTING_METADATA_LENGTH = 256;
 var MAX_ROLE_LENGTH = 64;
 var MODEL_TIERS = ["haiku", "sonnet", "opus"];
+var DERIVATION_ELIGIBLE_ROLES = /* @__PURE__ */ new Set(["phase-runner", "finalize"]);
+var AMBIGUITY_WEIGHT = { none: 0, bounded: 1, material: 2 };
+var TOOL_WORK_WEIGHT = { none: 0, bounded: 1, material: 2 };
 var INSUFFICIENCY_SIGNALS = /* @__PURE__ */ new Set([
   "low-confidence",
   "failed-validation",
@@ -26413,15 +26416,25 @@ function selectShape(inputs) {
     stop: null
   };
 }
-function choose(kind, inputs, project) {
+function deriveModelFromEvidence(evidence) {
+  const score = AMBIGUITY_WEIGHT[evidence.ambiguity] + TOOL_WORK_WEIGHT[evidence.toolWork] + (evidence.risk === "elevated" ? 1 : 0) + (evidence.validation === "judgment" ? 1 : 0) + (evidence.returnContract === "judgment" ? 1 : 0);
+  const model = score === 0 ? "haiku" : score <= 3 ? "sonnet" : "opus";
+  return {
+    model,
+    basis: `complexity-derived score ${score}: ambiguity=${evidence.ambiguity}, toolWork=${evidence.toolWork}, risk=${evidence.risk}, validation=${evidence.validation}, returnContract=${evidence.returnContract}`
+  };
+}
+function choose(kind, inputs, project, normalizedEvidence) {
   const selectorSupported = kind === "model" ? inputs.supportsModelSelector : inputs.supportsEffortSelector;
   const host = kind === "model" ? inputs.hostModel : inputs.hostEffort;
   const invocation = kind === "model" ? inputs.invocationModel : inputs.invocationEffort;
   const configured = project[inputs.role]?.[kind] ?? null;
   const shipped = DEFAULTS[inputs.role]?.[kind] ?? null;
   const required2 = kind === "model" ? inputs.requireModel : inputs.requireEffort;
-  const requested = invocation ?? configured ?? shipped;
-  const requestedSource = invocation ? "invocation" : configured ? "project" : shipped ? "shipped-default" : "inheritance";
+  const derived = kind === "model" && !inputs.suppressDerivedSelection && !invocation && !configured && !shipped && DERIVATION_ELIGIBLE_ROLES.has(inputs.role) ? deriveModelFromEvidence(normalizedEvidence) : null;
+  const requested = invocation ?? configured ?? shipped ?? derived?.model ?? null;
+  const requestedSource = invocation ? "invocation" : configured ? "project" : shipped ? "shipped-default" : derived ? "complexity-derived" : "inheritance";
+  const derivedBasis = derived ? derived.basis : null;
   const maximum = kind === "model" ? MAX_MODEL_ID_LENGTH : MAX_EFFORT_LENGTH;
   if (host && UNSAFE_ROUTING_CHARACTER.test(host)) {
     return {
@@ -26472,7 +26485,13 @@ function choose(kind, inputs, project) {
     const stop = required2 ? `model choice \`${requested}\` is required but unavailable` : null;
     return { choice: { value: null, source: "inheritance", requested, requestedSource, masked: false, fallback: "unavailable" }, stop };
   }
-  return { choice: { value: requested, source: requestedSource, requested, requestedSource, masked: false, fallback: null }, stop: null };
+  return {
+    choice: { value: requested, source: requestedSource, requested, requestedSource, masked: false, fallback: null },
+    stop: null,
+    // Only this path actually delivers the derived value, so only this path
+    // reports the basis it was derived from.
+    ...derivedBasis ? { derivedBasis } : {}
+  };
 }
 function modelTier(value) {
   if (!value) return null;
@@ -26683,8 +26702,8 @@ function baseDecision(project, inputs) {
   } : inputs;
   const availableStop = availableModelsProblem(inputs.availableModels);
   const selectorInputs = availableStop ? { ...boundedInputs, availableModels: null } : boundedInputs;
-  const model = choose("model", selectorInputs, project);
-  const effort = choose("effort", selectorInputs, project);
+  const model = choose("model", selectorInputs, project, shape.normalizedEvidence);
+  const effort = choose("effort", selectorInputs, project, shape.normalizedEvidence);
   const unitStop = inputs.unitIds !== void 0 || shape.normalizedEvidence.unitCount > 1 ? unitIdsProblem(inputs.unitIds, shape.normalizedEvidence.unitCount) : null;
   const stops = [shape.stop, unitStop, scalarStop, availableStop, model.stop, effort.stop].filter((v) => v !== null);
   return {
@@ -26697,7 +26716,9 @@ function baseDecision(project, inputs) {
     model: model.choice,
     effort: effort.choice,
     source: model.choice.source,
-    basis: selectorInputs.basis ?? null,
+    // A caller-stated basis always wins; the derived one only fills the gap it
+    // would otherwise leave, so a retry re-stating the prior's basis is stable.
+    basis: selectorInputs.basis ?? model.derivedBasis ?? null,
     attempt: Number.isInteger(selectorInputs.attempt) && (selectorInputs.attempt ?? 0) >= 1 && (selectorInputs.attempt ?? 0) <= 3 ? selectorInputs.attempt : 1,
     escalationOrigin: selectorInputs.escalationOrigin ?? null,
     fallback: model.choice.fallback ?? effort.choice.fallback,
@@ -26778,6 +26799,11 @@ function resolveRouting(project, inputs) {
     shapeEvidence: retryShapeEvidence,
     unitIds: retryUnitIds.length ? retryUnitIds : void 0,
     postAttempt: void 0,
+    // A retry re-dispatches a RETAINED prior, so the only selection it may carry
+    // is that prior's own (or the tier the escalation lever explicitly asks for).
+    // Re-deriving here would let narrowed retry evidence silently pick a
+    // different tier than the attempt whose failure authorized the retry.
+    suppressDerivedSelection: true,
     // Only an applicable lever requests a tier. When none applies the retry re-states
     // the prior attempt's own REQUEST and lets `choose()` resolve it through the very
     // same validated pipeline the initial path uses. It is deliberately NOT a verbatim

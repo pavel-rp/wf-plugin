@@ -33,21 +33,21 @@ verify-fix-branch	included	plugins/wf/skills/verify-fix/SKILL.md	wf:branch	branc
 verify-fix-index	included	plugins/wf/skills/verify-fix/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 pipeline-branch	included	plugins/wf/skills/_shared/pipeline-conventions.md	wf:branch	branch	model=true;effort=false	external-context,atomic,1,false,none,elevated,bounded,mechanical,useful,false,mechanically-judgeable,1	parent
 phase-runner-skill	included	plugins/wf/agents/phase-runner.md	/<skill>	phase-runner	model=false;effort=false	fixed-skill-route	phase-runner
-ship-branch	included	plugins/wf/skills/ship/SKILL.md	/wf:branch	branch	model=false;effort=false	fixed-skill-route	ship
-ship-run-initial	included	plugins/wf/skills/ship/SKILL.md	/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	ship
-ship-gated-phase	included	plugins/wf/skills/ship/SKILL.md	/wf:<phase>	phase-runner	model=false;effort=false	fixed-skill-route	ship
-ship-run-resume	included	plugins/wf/skills/ship/SKILL.md	re-invoke `/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	ship
+ship-branch	included	plugins/wf/skills/ship/SKILL.md	/wf:branch	branch	model=true;effort=true	shipper-path-complexity-route	ship
+ship-run-initial	included	plugins/wf/skills/ship/SKILL.md	/wf:run	phase-runner	model=true;effort=true	shipper-path-complexity-route	ship
+ship-gated-phase	included	plugins/wf/skills/ship/SKILL.md	/wf:<phase>	phase-runner	model=true;effort=true	shipper-path-complexity-route	ship
+ship-run-resume	included	plugins/wf/skills/ship/SKILL.md	re-invoke `/wf:run	phase-runner	model=true;effort=true	shipper-path-complexity-route	ship
 ship-ci-distill	included	plugins/wf/skills/ship/SKILL.md	wf:context-distiller	context-distiller	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	ship
-ship-ci-commit	included	plugins/wf/skills/ship/SKILL.md	/wf:commit	commit	model=false;effort=false	fixed-skill-route	ship
-ship-pr	included	plugins/wf/skills/ship/SKILL.md	/wf:pr	pr	model=false;effort=false	fixed-skill-route	ship
-ship-finalize	included	plugins/wf/skills/ship/SKILL.md	/wf:tf	finalize	model=false;effort=false	fixed-skill-route	ship
+ship-ci-commit	included	plugins/wf/skills/ship/SKILL.md	/wf:commit	commit	model=true;effort=true	shipper-path-complexity-route	ship
+ship-pr	included	plugins/wf/skills/ship/SKILL.md	/wf:pr	pr	model=true;effort=true	shipper-path-complexity-route	ship
+ship-finalize	included	plugins/wf/skills/ship/SKILL.md	/wf:tf	finalize	model=true;effort=true	shipper-path-complexity-route	ship
 fleet-agent-initial	included	plugins/wf/skills/fleet/SKILL.md	general-purpose	shipper	model=true;effort=false	fleet-cardinality-route	fleet
-fleet-skill-initial	included	plugins/wf/skills/fleet/SKILL.md	/wf:ship <ID>	shipper	model=false;effort=false	fixed-skill-route	shipper
-fleet-run-initial	included	plugins/wf/skills/fleet/SKILL.md	initial `/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	shipper
-fleet-run-resume	included	plugins/wf/skills/fleet/SKILL.md	before `/wf:run	phase-runner	model=false;effort=false	fixed-skill-route	shipper
-fleet-gated-phase	included	plugins/wf/skills/fleet/SKILL.md	exact `/wf:<phase>	phase-runner	model=false;effort=false	fixed-skill-route	shipper
-fleet-pr	included	plugins/wf/skills/fleet/SKILL.md	/wf:pr <ID>	pr	model=false;effort=false	fixed-skill-route	shipper
-fleet-finalize	included	plugins/wf/skills/fleet/SKILL.md	/wf:tf <ID>	finalize	model=false;effort=false	fixed-skill-route	shipper
+fleet-skill-initial	included	plugins/wf/skills/fleet/SKILL.md	/wf:ship <ID>	shipper	model=true;effort=true	shipper-path-complexity-route	shipper
+fleet-run-initial	included	plugins/wf/skills/fleet/SKILL.md	initial `/wf:run	phase-runner	model=true;effort=true	shipper-path-complexity-route	shipper
+fleet-run-resume	included	plugins/wf/skills/fleet/SKILL.md	before `/wf:run	phase-runner	model=true;effort=true	shipper-path-complexity-route	shipper
+fleet-gated-phase	included	plugins/wf/skills/fleet/SKILL.md	exact `/wf:<phase>	phase-runner	model=true;effort=true	shipper-path-complexity-route	shipper
+fleet-pr	included	plugins/wf/skills/fleet/SKILL.md	/wf:pr <ID>	pr	model=true;effort=true	shipper-path-complexity-route	shipper
+fleet-finalize	included	plugins/wf/skills/fleet/SKILL.md	/wf:tf <ID>	finalize	model=true;effort=true	shipper-path-complexity-route	shipper
 fleet-index	included	plugins/wf/skills/fleet/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 fleet-recycle	included	plugins/wf/skills/fleet/SKILL.md	SendMessage	shipper	model=true;effort=false	fleet-recovery-route	fleet
 fleet-replacement	included	plugins/wf/skills/fleet/SKILL.md	dispatch a **fresh** agent	shipper	model=true;effort=false	fleet-recovery-route	fleet
