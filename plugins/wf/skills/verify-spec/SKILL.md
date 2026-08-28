@@ -17,11 +17,12 @@ Verification is **strict and evidence-based**: every requirement must be resolve
 PASS / FAIL / PARTIAL / N/A / UNVERIFIABLE with a concrete `file:line` citation or a
 clearly stated reason for the verdict. No vibes, no "looks good".
 
-This skill is **capability-agnostic**. Its default is a generic spec-conformance
-audit. On top of that default it **fires the `verify` phase**, aggregating any
-`finding`s contributed by whatever capabilities the project has registered — without
-naming, requiring, or assuming any of them. With no capability registered, the
-generic verdict stands alone.
+This skill is **capability-agnostic**. Its default is a generic spec-conformance audit
+plus a **lean adversarial pass** — a closed, two-class check that runs inline and reports
+defects a conformant change can still carry. On top of that default it **fires the
+`verify` phase**, aggregating any `finding`s contributed by whatever capabilities the
+project has registered — without naming, requiring, or assuming any of them. With no
+capability registered, the generic verdict and the adversarial pass stand alone.
 
 ---
 
@@ -195,6 +196,63 @@ Verdicts:
 
 ---
 
+## The lean adversarial pass
+
+The audit above answers *"does the change do what the requirements say?"*. It cannot
+answer *"is what the change does actually right?"* — a change can conform to its own
+requirements exactly and still be wrong. This pass is core's own answer to the second
+question, and it is a **lean default**: it ships with core, runs on a completely empty
+registry, and names no capability.
+
+**It adds no dispatch.** It runs inline, in this skill's own context, over the changed
+lines already gathered under "Implementation scope" — no Task call, no subagent, no
+further resolver call, and no evidence gathering of its own. It is strictly additive to
+the phase below and alters none of it.
+
+**It reports; it does not gate.** An adversarial finding never changes a requirement's
+verdict, never changes the report's `**Verdict:**` line, and never changes the
+final-output block or its status token. This introduces no stop, no prompt, and no gate
+that did not exist before.
+
+### The two defect classes — this list is closed
+
+Check the changed lines for exactly these two, and nothing else:
+
+1. **Out-of-range bound** — the change introduces or edits a literal bound, range,
+   threshold, cap, limit, or enumerated value set, and that literal contradicts the range
+   the surrounding code already defines for the same quantity.
+2. **Unstated assumption behind a derivation** — the change derives a value, predicate, or
+   control decision whose correctness depends on a precondition the change neither states
+   nor enforces, and the surrounding code does not already guarantee.
+
+Do not widen this list. An open-ended hunt is what makes such a pass expensive and what
+makes it invent findings; the closed list is what holds it inside the budget.
+
+### The two-sided citation rule
+
+A finding is reportable **only** when both sides carry a concrete `file:line`:
+
+- the **changed line** that carries the defect, and
+- the **existing line** that contradicts it — the definition, declaration, guard, or
+  caller establishing the real range, or requiring the unmet precondition.
+
+If either side cannot be cited, there is no finding. **Never reportable**, however
+plausible: a speculation ("consider whether…", "this might…"); a restatement of the change
+itself as a risk; a finding whose evidence is an **absence** (that no test, guard, comment,
+or handler was found — an absence is not a citation); a style, naming, or preference nit;
+or a requirement already resolved above. Reporting nothing on a change carrying neither
+class is this pass working correctly, not failing.
+
+Render reportable findings under the report's `## Adversarial findings` section, tagged
+with the provenance `core`; when there is none, omit that section entirely.
+Deduplicating this pass against the contributors registered at the phase below
+is out of scope here and is specified separately; this section compares nothing. Rationale and
+worked examples live in the paired reference `adversarial-pass.md` — obtained, when a
+reader wants it, via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
+`skill: verify-spec`, `ref: adversarial-pass.md`) — and are never read on this path.
+
+---
+
 ## Fire the `verify` phase (aggregate capability findings)
 
 After the generic per-requirement audit, fire the **`verify`** phase and aggregate any
@@ -315,7 +373,8 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 ### Full report shape (`04_verify.md`)
 
 The verbatim `04_verify.md` output shape — the report header, `## Requirements`,
-`## Capability findings`, `## Deviations`, and `## Recommended next actions` structure —
+`## Capability findings`, `## Adversarial findings`, `## Deviations`, and
+`## Recommended next actions` structure —
 lives at `verify-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })`
 (`class: references-template`, `skill: verify-spec`, `ref: verify-template.md`), never a
 raw `Read` of the plugin-cache path. It is read only on this write path, so it stays out of
@@ -333,6 +392,8 @@ Print, in this order:
 - **Capability findings:** one line — either `none` (no capability contributed at
   `verify`) or `<N> findings across <M> capabilities: <comma-separated shortlist, each
   tagged with its source>`.
+- **Adversarial findings:** one line — either `none` or `<N>: <comma-separated shortlist>`.
+  Non-gating: this line never changes the verdict line above it.
 - **Top next actions:** 1–3 bullets — the most important items from the report's
   "Recommended next actions".
 - **`/wf:verify-fix` suggestion (conditional):** one line —
@@ -363,7 +424,7 @@ End with the final-output block (see below).
   as capability `finding`s at the `verify` phase, not as fabricated requirement-list rows.
 - Will NOT name, require, or assume any capability. It iterates the registry and
   aggregates whatever is contributed; with none registered, it produces the generic
-  verdict alone.
+  verdict plus the lean adversarial pass alone.
 
 ---
 
@@ -385,6 +446,13 @@ End with the final-output block (see below).
 - **Uncommitted changes**: the working-tree inspection above shows a dirty tree. Verify
   against `HEAD`, not the working tree — and note the dirty files so the user knows they
   weren't included.
+- **Change carries neither adversarial defect class**: the lean adversarial pass reports
+  nothing and the `## Adversarial findings` section is omitted from the report. This is the
+  expected result on a clean change — do not synthesize a "no issues found" entry, and do
+  not relax the two-sided citation rule to produce one.
+- **Empty registry**: the lean adversarial pass still runs — it is a core default, not a
+  contribution — while the phase below produces nothing. The generic verdict plus any
+  adversarial findings stand alone, with no capability term surfaced.
 - **Capability dispatch unavailable**: if a `subagent:` fragment names an agent that is
   not registered in this environment, treat that fragment as a no-op (it contributes no
   findings) and continue — never STOP the verdict on a missing capability. The generic

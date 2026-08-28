@@ -95,6 +95,10 @@ assert() {
 
 # --- Passing cases -----------------------------------------------------------
 assert "single-row registry passes"   pass-single.md - 0 "Validation passed"
+# WF-485 (C029 OUT-4): the purpose-built empty registry the core lean adversarial
+# default is measured on. This repo's own registry carries eight capabilities and so
+# cannot show what core does with none registered.
+assert "empty registry passes"        pass-empty.md  - 0 "Validation passed" "fully generic core"
 assert "discoverable subagent passes" pass-subagent-discoverable.md - 0 "Validation passed"
 assert "final capabilities segment resolves owning subagent" pass-subagent-final-capabilities-segment.md - 0 "Validation passed"
 assert "multi-row non-overlap passes" pass-multi.md  - 0 "Validation passed"
@@ -357,6 +361,23 @@ if bash "$DIR/../verify-dispatch-cost-guard.sh"; then
   pass=$((pass + 1))
 else
   printf 'FAIL: %s\n' "verify dispatch cost guard"
+  fail=$((fail + 1))
+fi
+
+# --- WF-485 (C029 OUT-4): core lean adversarial default -------------------------
+# Core `verify` must report adversarial defects with NO capability registered
+# (Core Article 8: a lean default that runs inert and names no capability). The
+# empty-registry fixture is purpose-built — this repo's own registry carries eight
+# capabilities and cannot measure what core alone does. The guard asserts the pass
+# exists, stays closed at two classes, cites two-sidedly, reports without gating,
+# and adds no dispatch (so verify-dispatch-cost-guard.sh's invariants are untouched).
+echo ""
+echo "=== Core lean adversarial default guard — pass, fixtures, cost shape ==="
+if bash "$DIR/../adversarial-default-guard.sh"; then
+  printf 'PASS: %s\n' "core verify carries a non-gating, dispatch-free adversarial default with its three fixtures"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "core lean adversarial default guard"
   fail=$((fail + 1))
 fi
 
