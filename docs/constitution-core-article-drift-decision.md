@@ -3,8 +3,8 @@
 **Decided:** 2026-08-28 · **Item:** WF-492 (charter C029 / WF-480, OUT-6) · **Model:** claude-opus-5[1m]
 
 **Verdict: OUT of WF-492.** Drift *detection* is a distinct mechanism with its own
-acceptance, and it is raised as a follow-on sub-task sequenced after WF-492 in the
-resolver-runtime lane rather than absorbed into it.
+acceptance. It is raised as **WF-501**, a follow-on sub-task sequenced after WF-492 in the
+resolver-runtime lane, rather than absorbed into it.
 
 This file exists because the decision was required to be **made and recorded, not assumed**.
 
@@ -60,5 +60,5 @@ reports that.
 
 ## Scope note
 
-Should the follow-on be taken up, it is a **new appended id**, sequenced after WF-492 in the
-resolver-runtime lane. It does not reopen WF-492, and WF-492 does not grow to absorb it.
+The follow-on is **WF-501**, a new appended id sequenced after WF-492 in the resolver-runtime
+lane. It does not reopen WF-492, and WF-492 did not grow to absorb it.
