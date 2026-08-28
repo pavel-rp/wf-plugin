@@ -71,8 +71,11 @@ tool schema, both quoted in full below. This substitution is recorded here rathe
 silently, and it is the reason each verdict states its evidence tier.
 
 **Reachability.** The cached 0.116.0 tree was still present at
-`~/.claude/plugins/cache/wf-marketplace/wf/0.116.0/`, so WF-481's fallback (current-state verdict
-alone) was **not** needed — every verdict below carries a real 0.116.0-vs-`main` delta.
+`~/.claude/plugins/cache/wf-marketplace/wf/0.116.0/`, so WF-481's stated fallback — record the
+current-state verdict alone and say so — was **not** needed. Every wf-source verdict (**B1**,
+**B4**) therefore carries a real 0.116.0-vs-`main` delta computed against that tree. **B2** and
+**B3** carry the *stated absence* of a wf delta, for the reason given above: no wf version governs
+them. That is a determination, not a gap.
 
 ## 3. Verdicts at a glance
 
