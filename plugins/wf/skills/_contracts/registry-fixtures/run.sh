@@ -443,6 +443,37 @@ else
   fail=$((fail + 1))
 fi
 
+# --- Version-currency check -------------------------------------------------
+# The run-block slot guard asserts the SHAPE of the rendered outcome; this one
+# asserts the check behind it still has all four paths. They are separate on
+# purpose: a body could keep a perfectly padded `Currency:` line while the branch
+# that produces `provider-less` had been deleted, or while `current` had quietly
+# stopped being gated on a performed read — turning "the check did not run" into
+# "you are up to date", which is the single misreading the outcome exists to
+# prevent. Its self-test seeds a dropped provider-less branch, ownership inferred
+# from a read, an ungated `current`, a fallback with no inventory query, a leaked
+# host noun, a hardcoded declaration and a missing label, and requires the
+# evaluator to reject every one.
+echo ""
+echo "=== Version-currency check guard — seeded self-test ==="
+if bash "$DIR/../currency-check-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "version-currency check guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "version-currency check guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Version-currency check guard — real-tree scan ==="
+if bash "$DIR/../currency-check-guard.sh"; then
+  printf 'PASS: %s\n' "version-currency check guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "version-currency check guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
