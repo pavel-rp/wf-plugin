@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
 import { parseRoutingConfig } from "../src/resolver/config.js";
 import { derivedCountEvidence, resolveRouting } from "../src/resolver/routing.js";
@@ -1124,4 +1126,69 @@ test("the shared count-derived rule is directly assertable and total over the un
       );
     }
   }
+});
+
+test("WF-505: the published input schema and the validator state the same shapeEvidence rule", () => {
+  // THE DEFECT THIS PINS. The tool's input schema declared the top-level
+  // `shapeEvidence` with `properties` but NO `required` list, so a partial object was
+  // schema-legal — while `selectShape` rejects every missing field. A caller composing
+  // against the published schema got a runtime rejection the schema said was legal.
+  // Every other test in this file calls `resolveRouting` directly, which bypasses the
+  // MCP boundary entirely, so nothing here could see the schema half of the
+  // disagreement. Reading the source is how the sibling WF-499 guard in
+  // `routing-carried-selection.test.ts` asserts the same boundary, for the same reason:
+  // `routingInput` is not exported, and the wire harness lives in another file.
+  // The suite compiles into a temp dir, so `import.meta.url` does not locate the
+  // source tree; `WF_MCP_DIR` is the harness's own handle on it, as the sibling
+  // WF-499 guard also uses.
+  const pkgDir = process.env.WF_MCP_DIR;
+  if (!pkgDir) throw new Error("WF_MCP_DIR is required");
+  const source = readFileSync(join(pkgDir, "src/tools.ts"), "utf8");
+
+  // Scope the assertion to the ROUTING INPUT's own `shapeEvidence`. A bare substring
+  // search would pass even with the defect present: `required: routingShapeRequired`
+  // already appeared twice before this fix, on `postAttempt.prior.shapeEvidence` and on
+  // the output's `normalizedEvidence`. Slice from the input's declaration to the
+  // top-level `unitIds` that follows `shapeEvidence`, which is exactly that one block.
+  const declaration = source.indexOf("const routingInput = fromJsonSchema(");
+  assert.notEqual(declaration, -1, "routingInput declaration must be findable");
+  const topLevelUnitIds = source.indexOf("\n    unitIds:", declaration);
+  assert.notEqual(topLevelUnitIds, -1, "the routing input's top-level unitIds must follow shapeEvidence");
+  const inputShapeEvidence = source.slice(declaration, topLevelUnitIds);
+  assert.ok(
+    inputShapeEvidence.includes("required: routingShapeRequired"),
+    "the routing input's own shapeEvidence must declare required: routingShapeRequired",
+  );
+
+  // One list, three statements of the same object — the input, the post-attempt prior,
+  // and the output's normalizedEvidence — so they cannot drift into three rules.
+  assert.equal(
+    source.match(/required: routingShapeRequired/g)?.length,
+    3,
+    "input shapeEvidence, postAttempt.prior.shapeEvidence and normalizedEvidence must share one required list",
+  );
+
+  // The validator half: dropping ANY ONE of the twelve fields the schema now requires is
+  // a stop that names that field. This is what makes the two layers the same rule rather
+  // than merely both strict — the schema's `required` set and the validator's demand set
+  // are proven to be the same twelve, so `required` neither under- nor over-tightens.
+  const fields = Object.keys(inlineEvidence) as (keyof typeof inlineEvidence)[];
+  assert.equal(fields.length, 12, "shape evidence is twelve fields");
+  for (const field of fields) {
+    const partial = { ...inlineEvidence };
+    delete (partial as Record<string, unknown>)[field];
+    const decision = resolveRouting({}, {
+      ...base,
+      shapeEvidence: partial,
+    } as unknown as Parameters<typeof resolveRouting>[1]);
+    assert.equal(decision.status, "stop", `omitting ${field} must be rejected, not defaulted`);
+    assert.ok(
+      (decision.diagnostic ?? "").includes(field),
+      `the rejection for a missing ${field} must name that field, got: ${decision.diagnostic}`,
+    );
+  }
+
+  // And the complete object still dispatches — the tightening rejects only what is
+  // genuinely partial.
+  assert.equal(resolveRouting({}, base).status, "dispatch");
 });
