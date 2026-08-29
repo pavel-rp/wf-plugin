@@ -62,7 +62,13 @@ const DERIVATION_ELIGIBLE_ROLES = new Set(["phase-runner", "finalize", "shipper"
 // asserts the two agree over the ladder's whole score range, so widening the
 // ceiling without widening this set fails the suite instead of silently
 // admitting a tier the resolver cannot produce.
-const DERIVABLE_MODELS = new Set<string>(["haiku", "sonnet"]);
+// The element type is `ModelTier`, so a tier that leaves `MODEL_TIERS` stops
+// compiling here; the declared `ReadonlySet<string>` keeps `.has()` ergonomic for
+// the caller-supplied string it is tested against. Membership is an EXACT match on
+// a bare tier name rather than `modelTier()`'s fuzzy matching: the resolver only
+// ever mints bare tier names, so accepting a full model id would widen a
+// provenance channel on a technicality.
+const DERIVABLE_MODELS: ReadonlySet<string> = new Set<ModelTier>(["haiku", "sonnet"]);
 // Evidence weights. ONLY the five dimensions describing how much REASONING a
 // unit needs are scored: `ambiguity`, `toolWork`, `risk`, `validation`,
 // `returnContract`. The other seven — `workSurface`, `contextIsolation`,
@@ -329,13 +335,33 @@ function choose(
   // item-level decision. There is deliberately NO effort counterpart — the
   // contract offers one carried channel and it is the model one, so "carried
   // effort" is unrepresentable rather than merely rejected.
-  const carriedInput = kind === "model" ? (inputs.carriedModel || null) : null;
+  // `??`, NOT `||`. The neighbouring selectors use `||` because for them an empty
+  // string coherently means "nothing stated, defer to the next tier". That reading
+  // is incoherent for this channel, whose contract is refuse-don't-downgrade:
+  // mapping `""` to null here would route an empty carry past all four integrity
+  // bounds and deliver a FRESH derive off this call's own evidence — a different
+  // model than the caller meant to carry, with no diagnostic and no fallback token.
+  // `??` keeps `""` visible so the range check refuses it.
+  const carriedInput = kind === "model" ? (inputs.carriedModel ?? null) : null;
   // Validity is checked INDEPENDENTLY of precedence. A carry that loses to an
   // operator pin is not an error — it is simply outranked, and reports
   // `carried: false`. But a carry this resolver could never have MINTED is a
   // forged provenance claim, and it is refused whether or not it would have won:
   // letting it pass silently whenever something outranked it would make the
   // integrity of the channel depend on the caller's other arguments.
+  //
+  // THE RESIDUAL, STATED PLAINLY. These gates bound the carried value to the
+  // ladder's RANGE. They do NOT bind it to THIS call's evidence, and cannot: the
+  // whole point of carrying is that the earlier item-level decision scored
+  // different evidence from the topology evidence presented here, so a carry that
+  // disagrees with what this call would derive is the feature working, not a
+  // defect. `complexity-derived` on a CARRIED decision therefore means "a value
+  // this resolver's ladder can mint, asserted by the caller to have been minted for
+  // this unit earlier" — strictly weaker than "computed here from evidence
+  // validated here", which is what it means on a freshly derived one. `carried`
+  // exists precisely so a reader can tell the two apart; the blast radius of a
+  // false assertion is one tier of cost or quality on that unit, with no
+  // authorization consequence anywhere downstream.
   const carriedProblem = carriedInput === null
     ? null
     : !DERIVATION_ELIGIBLE_ROLES.has(inputs.role)
@@ -347,9 +373,26 @@ function choose(
           : !DERIVABLE_MODELS.has(carriedInput)
             ? `carriedModel \`${carriedInput}\` is outside the range this resolver derives`
             : null;
+  // DELIBERATELY ABOVE THE HOST BRANCH, unlike every other `requested` rejection
+  // here. Those check LEXICAL validity, and the file's host-first ordering means a
+  // host pin still binds when the caller's own selector was malformed. This check
+  // is different in kind: it refuses a PROVENANCE CLAIM the resolver could not have
+  // issued, and such a claim must not be accepted merely because something else
+  // outranked it — host-first would make forgery detection contingent on whether a
+  // host pin happened to be present. The cost is stated: on this one input class a
+  // host pin does not survive the rejection.
+  //
+  // The `fallback` token follows the sibling forged-provenance guard rather than the
+  // lexical ones: `selector-unsupported` where that is exactly the fact, and
+  // otherwise none, because the stop diagnostic is the signal and the value itself
+  // was well-formed. Reusing `malformed` for a well-formed model id would stretch
+  // that token past the meaning its five siblings give it.
   if (carriedProblem) {
     return {
-      choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: "malformed" },
+      choice: {
+        value: null, source: "inheritance", requested: null, requestedSource: "inheritance",
+        masked: false, fallback: selectorSupported ? null : "selector-unsupported",
+      },
       stop: carriedProblem,
     };
   }
@@ -535,6 +578,22 @@ function routingChoiceProblem(choice: RoutingChoice | undefined, field: string, 
   if (claimsDerived && !DERIVATION_ELIGIBLE_ROLES.has(role)) {
     return `post-attempt prior ${field} claims complexity-derived provenance for role \`${role}\`, which the resolver never derives`;
   }
+  // WF-499: the SAME range bound the carry path applies, on the sibling gate.
+  // Eligibility alone is not enough — a prior may name an eligible role and still
+  // claim a tier the ladder cannot mint. `priorTerminalDecision` copies
+  // `prior.model` and its source verbatim onto the returned decision and
+  // `projectRoutingMeasurement` publishes them as the canonical operational
+  // record, so an unchecked value here puts a selection the resolver could not
+  // have produced into the ledger wearing resolver provenance. It would also
+  // suppress the escalation lever, because the retry classifier reads the prior's
+  // tier: a forged top tier reports `top-tier` and advances nothing.
+  if (claimsDerived) {
+    const claimed = [choice.value, choice.requested].filter((v): v is string => typeof v === "string" && v.length > 0);
+    const outsideRange = claimed.find((v) => !DERIVABLE_MODELS.has(v));
+    if (outsideRange) {
+      return `post-attempt prior ${field} claims complexity-derived provenance for \`${outsideRange}\`, which is outside the range this resolver derives`;
+    }
+  }
   // A DELIVERED derived selection is only ever produced on `choose`'s success
   // path, which cannot be masked and carries no fallback. A prior asserting all
   // three at once describes a decision this resolver cannot emit.
@@ -693,20 +752,28 @@ function priorTerminalDecision(
   retainedUnitIds: string[],
 ): RoutingDecision {
   const { actualModel: _currentActualModel, ...withoutCurrentActualModel } = current;
-  // WF-499, stated limitation rather than a hidden one: `carried` is NOT restated
-  // from the prior, because the post-attempt prior deliberately carries no
-  // `carried` field — widening it would be a second contract addition beyond the
-  // one bounded handoff this change is scoped to. It therefore reflects the
-  // re-evaluated CURRENT inputs (the spread below), which is exact whenever the
-  // caller re-states `carriedModel` on the post-attempt call, as a caller
-  // preserving its retained decision does. A caller that drops it gets
-  // `carried: false` alongside the prior's own `complexity-derived` source: the
-  // provenance stays truthful, only the carried/derived distinction is lost for
-  // that record. Tightening this means requiring the carried input to match the
-  // prior the way `shapeEvidence` already must — a deliberate follow-up, not
-  // something to absorb here.
+  // WF-499. Every provenance field on a prior-terminal record is restated FROM THE
+  // PRIOR — `model`, `source`, `basis`, `masked` all below — so `carried` must be
+  // too, or it can contradict the very model it sits beside. Taking it from the
+  // re-evaluated CURRENT inputs alone is wrong: a caller that restates
+  // `carriedModel` on a post-attempt call whose prior was actually chosen by a pin
+  // or by host enforcement would publish `source: "invocation"` together with
+  // `carried: true` — the exact combination this field's own contract rules out.
+  //
+  // The post-attempt prior deliberately carries no `carried` field of its own —
+  // widening it would be a second contract addition beyond the one bounded handoff
+  // this change is scoped to — so the value is reconstructed from what the prior
+  // DOES record: true only when a carry applied on this call AND the prior's own
+  // record is one a carry could have produced (derived provenance, unmasked, no
+  // fallback). Anything else is false, the honest reading of "not proven", and the
+  // same answer a caller that drops the input already gets.
+  const priorCarried = current.carried &&
+    prior.model.source === "complexity-derived" &&
+    !prior.model.masked &&
+    !prior.model.fallback;
   return {
     ...withoutCurrentActualModel,
+    carried: priorCarried,
     role: prior.role,
     executionShape: prior.executionShape,
     normalizedEvidence: shape.normalizedEvidence,

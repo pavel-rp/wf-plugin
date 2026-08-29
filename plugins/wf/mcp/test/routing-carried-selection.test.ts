@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { resolveRouting, projectRoutingMeasurement } from "../src/resolver/routing.js";
+import type { RoutingShapeEvidence } from "../src/resolver/types.js";
+
+const pkgDir = process.env.WF_MCP_DIR;
+if (!pkgDir) throw new Error("WF_MCP_DIR is required");
+const repoRoot = resolve(pkgDir, "../../..");
 
 // WF-499. The acceptance bar is the fleet wave handoff: each item's model is
 // resolved by the RESOLVER from that item's own complexity evidence before wave
@@ -28,16 +35,19 @@ const designItemEvidence = {
   returnContract: "mechanically-judgeable", requestedParallelism: 1,
 } as const;
 
-/** The one-item wave evidence `fleet` states — deliberately CONSTANT, because the
- *  wave decision describes topology and parallelism, never difficulty. */
-const oneItemWaveEvidence = {
-  workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
-  ambiguity: "material", risk: "elevated", toolWork: "material", validation: "judgment",
-  contextIsolation: "required", independentReview: false,
-  returnContract: "mechanically-judgeable", requestedParallelism: 1,
-} as const;
+/** The one-item wave evidence `fleet` states, deliberately CONSTANT because the
+ *  wave decision describes topology and parallelism, never difficulty.
+ *
+ *  Field-for-field identical to `designItemEvidence`, and that is not an accident
+ *  worth deduplicating away: fleet pins the wave literal at the ladder's high end,
+ *  so the wave call's own evidence would derive the top tier for every item
+ *  regardless of its real difficulty. That coincidence is exactly what makes the
+ *  carry load-bearing — carrying a low tier here carries a value this call's own
+ *  evidence would never produce. Aliased rather than restated so the two names
+ *  cannot silently drift apart. */
+const oneItemWaveEvidence = designItemEvidence;
 
-const resolveItem = (shapeEvidence: typeof mechanicalItemEvidence, unitId: string) =>
+const resolveItem = (shapeEvidence: RoutingShapeEvidence, unitId: string) =>
   resolveRouting({}, {
     role: "shipper",
     shapeEvidence,
@@ -238,12 +248,25 @@ test("WF-499: DERIVABLE_MODELS and the ladder agree across its whole score range
   // each result is a value the carried bound admits. Raising the ceiling without
   // widening the bound fails HERE rather than silently admitting a tier the
   // resolver cannot produce.
-  const dimensions = [
-    { ambiguity: "none", toolWork: "none", risk: "low", validation: "mechanical", returnContract: "mechanically-judgeable" },
-    { ambiguity: "bounded", toolWork: "bounded", risk: "low", validation: "mechanical", returnContract: "mechanically-judgeable" },
-    { ambiguity: "material", toolWork: "material", risk: "elevated", validation: "judgment", returnContract: "judgment" },
-  ] as const;
+  // The EXHAUSTIVE cross-product of the five scored dimensions, not a sample:
+  // 3 x 3 x 2 x 2 x 2 = 72 combinations covering every reachable score. A sample
+  // would leave the comment above — and the one in routing.ts — overclaiming what
+  // this guard proves, and a ceiling raised at an interior score would slip past.
+  const dimensions = [];
+  for (const ambiguity of ["none", "bounded", "material"] as const) {
+    for (const toolWork of ["none", "bounded", "material"] as const) {
+      for (const risk of ["low", "elevated"] as const) {
+        for (const validation of ["mechanical", "judgment"] as const) {
+          for (const returnContract of ["mechanically-judgeable", "judgment"] as const) {
+            dimensions.push({ ambiguity, toolWork, risk, validation, returnContract });
+          }
+        }
+      }
+    }
+  }
+  assert.equal(dimensions.length, 72, "the ladder's scored cross-product must be covered exhaustively");
 
+  const mintedTiers = new Set<string>();
   for (const dimension of dimensions) {
     const derived = resolveRouting({}, {
       role: "shipper",
@@ -253,6 +276,7 @@ test("WF-499: DERIVABLE_MODELS and the ladder agree across its whole score range
       supportsEffortSelector: false,
     });
     assert.equal(derived.model.source, "complexity-derived");
+    mintedTiers.add(derived.model.value ?? "");
     // Every value the ladder mints must round-trip through the carried channel.
     const roundTrip = resolveRouting({}, {
       role: "shipper",
@@ -265,6 +289,21 @@ test("WF-499: DERIVABLE_MODELS and the ladder agree across its whole score range
     assert.equal(roundTrip.status, "dispatch", `the ladder minted \`${derived.model.value}\` but the carried bound refuses it`);
     assert.equal(roundTrip.carried, true);
     assert.equal(roundTrip.model.value, derived.model.value);
+  }
+
+  // BOTH DIRECTIONS, or the guard is half a guard. The loop above proves
+  // ladder ⊆ bound (every minted value round-trips). This proves bound ⊆ ladder:
+  // the set must admit nothing the ladder cannot produce, which is the smuggling it
+  // exists to stop. A tier added to the bound but not to the ladder — the exact
+  // drift the duplication risks — fails here.
+  assert.deepEqual([...mintedTiers].sort(), ["haiku", "sonnet"], "the ladder's full range");
+  for (const tier of ["opus", "claude-sonnet-4-6", "gpt", ""]) {
+    const refused = resolveRouting({}, {
+      role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+      supportsModelSelector: true, supportsEffortSelector: false,
+      carriedModel: tier,
+    });
+    assert.equal(refused.status, "stop", `the bound must refuse \`${tier}\`, which the ladder never mints`);
   }
 });
 
@@ -302,12 +341,202 @@ test("WF-499: a carry on a shipped-static role is REFUSED, not quietly outranked
   }
 });
 
-test("WF-499: a carried selection is stable across a retry that pulls no tier lever", () => {
+test("WF-499: a `model=false` edge derives nothing and carries nothing", () => {
+  // Renamed to what it actually checks. Its old name promised a no-lever retry,
+  // which for a carried prior is unreachable by construction: a carried prior's
+  // model is always a tier the ladder mints, so `priorTier` always resolves and
+  // `nextTier` is always non-null. The genuine retry case is the next test.
   const initial = resolveRouting({}, {
     role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
     supportsModelSelector: false, supportsEffortSelector: false,
   });
-  // A `model=false` edge derives nothing and carries nothing — unchanged by WF-499.
   assert.equal(initial.model.value, null);
   assert.equal(initial.carried, false);
+});
+
+/** Build a post-attempt prior from a REAL decision, so the fixtures below can never
+ *  assert against a prior this resolver could not have issued. */
+function priorFrom(decision: ReturnType<typeof resolveRouting>) {
+  return {
+    role: decision.role,
+    attempt: 1 as const,
+    executionShape: decision.executionShape,
+    shapeEvidence: decision.normalizedEvidence,
+    unitIds: decision.unitIds,
+    model: decision.model,
+    effort: decision.effort,
+    basis: decision.basis,
+    escalationOrigin: null,
+  };
+}
+
+test("WF-499: a carried prior escalates one tier, and the advance is not a carry", () => {
+  const initial = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    carriedModel: "haiku",
+  });
+  assert.equal(initial.model.value, "haiku");
+  assert.equal(initial.carried, true);
+
+  const retry = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    carriedModel: "haiku",
+    basis: initial.basis,
+    postAttempt: { sufficient: false, signals: ["low-confidence"], prior: priorFrom(initial) },
+  });
+
+  assert.equal(retry.disposition, "retry");
+  assert.equal(retry.retry?.escalation, "next-stable-tier");
+  assert.equal(retry.retry?.priorTier, "haiku");
+  assert.equal(retry.retry?.nextTier, "sonnet");
+  assert.equal(retry.model.value, "sonnet", "the lever's tier must beat the carry");
+  assert.equal(retry.model.source, "invocation", "the advance is a resolver-stated request");
+  assert.equal(retry.carried, false, "an escalated retry did not act on the carry");
+});
+
+test("WF-499: `carried` never contradicts the model it is published beside", () => {
+  // THE REGRESSION GUARD FOR A REAL DEFECT FOUND IN REVIEW. Every provenance field
+  // on a prior-terminal record is restated from the PRIOR; taking `carried` from the
+  // current inputs alone let a retain/exhausted record publish `source: "invocation"`
+  // (or `"host"`, masked) together with `carried: true` — exactly the combination
+  // this field's own published contract rules out.
+  const pinned = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    invocationModel: "opus", carriedModel: "haiku",
+  });
+  assert.equal(pinned.model.source, "invocation");
+
+  // The caller restates `carriedModel` on the post-attempt call — the shape that
+  // triggered the defect — while the prior was actually chosen by the pin.
+  const retained = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    invocationModel: "opus", carriedModel: "haiku",
+    basis: pinned.basis,
+    postAttempt: { sufficient: true, signals: [], prior: priorFrom(pinned) },
+  });
+  assert.equal(retained.disposition, "retain");
+  assert.equal(retained.source, "invocation");
+  assert.equal(retained.model.value, "opus");
+  assert.equal(retained.carried, false, "a pinned prior carried nothing, whatever the caller restates");
+  assert.equal(projectRoutingMeasurement(retained).carried, false);
+
+  // The host-masked variant, which the published contract names explicitly.
+  const hosted = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    hostModel: "sonnet", carriedModel: "haiku",
+  });
+  assert.equal(hosted.model.masked, true);
+  const retainedHost = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    hostModel: "sonnet", carriedModel: "haiku",
+    basis: hosted.basis,
+    postAttempt: { sufficient: true, signals: [], prior: priorFrom(hosted) },
+  });
+  assert.equal(retainedHost.masked, true);
+  assert.equal(retainedHost.carried, false, "a masked carry never reached the agent");
+
+  // A genuinely carried prior still round-trips as carried, so the fix narrows
+  // rather than blanket-falsifies.
+  const carried = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    carriedModel: "haiku",
+  });
+  const retainedCarry = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    carriedModel: "haiku",
+    basis: carried.basis,
+    postAttempt: { sufficient: true, signals: [], prior: priorFrom(carried) },
+  });
+  assert.equal(retainedCarry.disposition, "retain");
+  assert.equal(retainedCarry.carried, true);
+});
+
+test("WF-499: a forged post-attempt prior cannot claim a tier the ladder never mints", () => {
+  // The sibling gate to the carry bound. Eligibility alone is not enough: an
+  // eligible role could still assert a prior naming a tier outside the ladder's
+  // range, and `priorTerminalDecision` copies the prior's model and source verbatim
+  // onto the published record — so an unchecked value would put a selection the
+  // resolver could not have produced into the ledger wearing resolver provenance,
+  // and would suppress the escalation lever by making the prior look top-tier.
+  const forged = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    postAttempt: {
+      sufficient: true,
+      signals: [],
+      prior: {
+        role: "shipper",
+        attempt: 1,
+        executionShape: "isolated" as const,
+        shapeEvidence: oneItemWaveEvidence,
+        unitIds: ["unit-a1"],
+        model: {
+          value: "opus", source: "complexity-derived" as const, requested: "opus",
+          requestedSource: "complexity-derived" as const, masked: false, fallback: null,
+        },
+        effort: {
+          value: null, source: "inheritance" as const, requested: null,
+          requestedSource: "inheritance" as const, masked: false, fallback: null,
+        },
+        basis: null,
+        escalationOrigin: null,
+      },
+    },
+  });
+  assert.equal(forged.status, "stop");
+  assert.equal(forged.disposition, "invalid-stop");
+  assert.match(forged.diagnostic ?? "", /`opus`, which is outside the range this resolver derives/);
+  assert.notEqual(forged.model.value, "opus", "a forged tier must never reach the published record");
+});
+
+test("WF-499: an empty carriedModel is refused, never silently downgraded", () => {
+  // `||` would map "" to null before any integrity bound could see it, and the call
+  // would then deliver a FRESH derive off its own evidence — a different model than
+  // the caller meant to carry, with no diagnostic and no fallback token.
+  const empty = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: false,
+    carriedModel: "",
+  });
+  assert.equal(empty.status, "stop", "an empty carry must not fall through to a fresh derive");
+  assert.equal(empty.model.value, null);
+  assert.notEqual(empty.model.value, "sonnet", "the fresh derive is exactly what must not happen");
+  assert.equal(empty.carried, false);
+});
+
+test("WF-499: the MCP tool schema exposes the new input and the new ledger field", () => {
+  // A REGRESSION GUARD FOR A REAL DEFECT FOUND IN REVIEW. Every other test here calls
+  // `resolveRouting` directly, which bypasses the MCP boundary entirely — so a
+  // decision field missing from the tool's OUTPUT schema passes the whole suite while
+  // being REJECTED on the wire, where `additionalProperties: false` governs. That is
+  // not a narrow miss: the field is emitted on every decision, so the failure takes
+  // out every `resolve_routing` call for every role, not just a carried one.
+  const tools = readFileSync(join(repoRoot, "plugins/wf/mcp/src/tools.ts"), "utf8");
+
+  // The input side: the new channel must be declared, or a caller cannot pass it.
+  assert.ok(tools.includes("carriedModel: {"), "carriedModel must be declared on the routing input schema");
+
+  // The output side: declared AND required, since the schema is closed.
+  assert.ok(tools.includes("carried: {"), "carried must be declared on the routing output schema");
+  assert.ok(
+    tools.includes(`"masked", "carried", "status"`),
+    "carried must appear in the routing output schema's required list, beside masked",
+  );
+
+  // And the runtime must actually produce it on an ordinary decision, so the
+  // schema's `required` is satisfiable rather than aspirational.
+  const decision = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: false,
+  });
+  assert.equal(typeof decision.carried, "boolean");
+  assert.equal(typeof projectRoutingMeasurement(decision).carried, "boolean");
 });

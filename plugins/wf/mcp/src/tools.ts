@@ -599,6 +599,11 @@ const routingOutput = fromJsonSchema({
     escalationOrigin: { type: ["string", "null"], maxLength: 256, pattern: safeRoutingStringPattern },
     fallback: { type: ["string", "null"], enum: ["malformed", "unavailable", "selector-unsupported", null] },
     masked: { type: "boolean" },
+    carried: {
+      type: "boolean",
+      description:
+        "Whether this decision acted on a `carriedModel` — a selection the resolver had already issued for this unit at an earlier item-level decision — rather than deriving one from its own evidence. False when nothing was carried, and also when a carried value was outranked, masked, or refused. `source` alone cannot express this: a fresh derivation and a carried one both report `complexity-derived`.",
+    },
     actualModel: { type: "string", maxLength: 128, pattern: safeRoutingStringPattern },
     status: {
       type: "string",
@@ -635,7 +640,7 @@ const routingOutput = fromJsonSchema({
     retainedUnitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
     diagnostic: { type: ["string", "null"] },
   },
-  required: ["role", "executionShape", "normalizedEvidence", "unitIds", "shapeReason", "effectiveParallelism", "model", "effort", "source", "basis", "attempt", "escalationOrigin", "fallback", "masked", "status", "disposition", "retry", "retainedUnitIds", "diagnostic"],
+  required: ["role", "executionShape", "normalizedEvidence", "unitIds", "shapeReason", "effectiveParallelism", "model", "effort", "source", "basis", "attempt", "escalationOrigin", "fallback", "masked", "carried", "status", "disposition", "retry", "retainedUnitIds", "diagnostic"],
   additionalProperties: false,
 });
 
@@ -907,7 +912,7 @@ export function registerResolverTools(server: McpServer, selectService: ServiceS
     "resolve_routing",
     {
       title: "resolve routing",
-      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned retry for only insufficient units, or stops on invalid/exhausted state. The model tier is one escalation lever, not the gate: when the lever does not apply — the edge cannot honor a model selector, the prior model maps to no stable tier, or it is already at the highest one — the gate still opens and the narrowed units re-run under the prior attempt's own selection, re-resolved through the ordinary precedence chain so a host pin still binds, with `retry.escalation` naming why and `retry.nextTier` null exactly when no advance was requested. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` §\"Resolver call root\". Body-free.",
+      description: "Mandatory decision surface immediately before every fixed core-owned child execution. Selects execution shape plus independent model/effort selectors from the fingerprint-fresh cached configuration; callers must obey the shape exactly and pass selectors only when their returned values are non-null. With postAttempt evidence, retains sufficient work, resolves one bounded parent-owned retry for only insufficient units, or stops on invalid/exhausted state. The model tier is one escalation lever, not the gate: when the lever does not apply — the edge cannot honor a model selector, the prior model maps to no stable tier, or it is already at the highest one — the gate still opens and the narrowed units re-run under the prior attempt's own selection, re-resolved through the ordinary precedence chain so a host pin still binds, with `retry.escalation` naming why and `retry.nextTier` null exactly when no advance was requested. The bounded output is the canonical compact operational record: role, shape/reason, model and effort value/source/fallback, basis, attempt, escalation origin, masking, whether the selection was carried from an earlier item-level decision rather than derived here, actual model when supplied, diagnostic, retained units, and retry disposition. It preserves precedence and provenance and is never artifact model attribution or a measurement sink. `status` and `executionShape` are independent axes: `dispatch` at `effectiveParallelism: 1` runs `unitIds` one at a time, never nothing. `unitCount` is authoritative and `atomicity` normalizes to it; `basis`/`escalationOrigin` are bounded at 256 characters, a hard rejection and never a truncation. Full rules: `_contracts/invocation-runtime.ops.md` §\"Resolver call root\". Body-free.",
       inputSchema: routingInput,
       outputSchema: routingOutput,
       _meta: RESIDENT,
