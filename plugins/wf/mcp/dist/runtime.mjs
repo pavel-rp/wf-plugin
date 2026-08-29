@@ -26587,12 +26587,13 @@ function routingChoiceProblem(choice, field, maximum, role) {
   if (claimsDerived && !DERIVATION_ELIGIBLE_ROLES.has(role)) {
     return `post-attempt prior ${field} claims complexity-derived provenance for role \`${role}\`, which the resolver never derives`;
   }
-  if (claimsDerived) {
-    const claimed = [choice.value, choice.requested].filter((v) => typeof v === "string" && v.length > 0);
-    const outsideRange = claimed.find((v) => !DERIVABLE_MODELS.has(v));
-    if (outsideRange) {
-      return `post-attempt prior ${field} claims complexity-derived provenance for \`${outsideRange}\`, which is outside the range this resolver derives`;
-    }
+  const derivedClaims = [
+    choice.source === "complexity-derived" ? choice.value : null,
+    choice.requestedSource === "complexity-derived" ? choice.requested : null
+  ].filter((v) => typeof v === "string" && v.length > 0);
+  const outsideRange = derivedClaims.find((v) => !DERIVABLE_MODELS.has(v));
+  if (outsideRange) {
+    return `post-attempt prior ${field} claims complexity-derived provenance for \`${outsideRange}\`, which is outside the range this resolver derives`;
   }
   if (choice.source === "complexity-derived" && (choice.masked || choice.fallback)) {
     return `post-attempt prior ${field} claims a delivered complexity-derived selection but reports it masked or fallen back`;
