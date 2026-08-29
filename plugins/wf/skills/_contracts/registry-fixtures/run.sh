@@ -386,6 +386,24 @@ else
   fail=$((fail + 1))
 fi
 
+# --- WF-503: the Adversarial-findings omission rule is subordinated -------------
+# The scan above asserts the live tree carries the subordinated rule; on its own that
+# proves nothing, because a check whose grepped literals had drifted out of the prose
+# would pass just as quietly. This block runs the same evaluator over seeded synthetic
+# text: the pre-WF-503 unconditional wording (which must be REJECTED), a partial seed that
+# keeps the render rule but drops the `only` qualifier (also rejected, proving that clause
+# is independently load-bearing), and the live tree as a positive control (which must be
+# ACCEPTED, so the two negatives cannot pass vacuously).
+echo ""
+echo "=== Core lean adversarial default guard — subordination self-test ==="
+if bash "$DIR/../adversarial-default-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "adversarial subordination self-test (pre-fix unconditional omission rejected)"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "adversarial subordination self-test"
+  fail=$((fail + 1))
+fi
+
 # --- WF-487 (C029 OUT-9): the fallback chain halts a non-success item -----------
 # The fleet dispatch brief's project-pipeline fallback chain must halt a
 # `RUN — blocked` / `RUN — error` item BEFORE its pull-request and finalize

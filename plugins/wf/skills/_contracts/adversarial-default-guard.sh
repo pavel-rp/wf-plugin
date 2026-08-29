@@ -25,6 +25,17 @@
 #      outcomes (withdraw / retain-both) are pinned, a failed contributor cannot cause
 #      a withdrawal, and the one-row registry plus its two expectation fixtures exist.
 #
+# WF-503 adds the sixth property — the omission rule is SUBORDINATE to the records it
+# would otherwise suppress:
+#
+#   6. The `## Adversarial findings` section renders whenever the run has anything to
+#      record — a surviving finding, a Withdrawn line, or a Coverage record — and is
+#      omitted only when it has none of the three. Stated unconditionally, the rule drops
+#      the Withdrawn lines of an all-withdrawn run and the incomplete-coverage mark of a
+#      contributor failure on a zero-candidate run, rendering a FAILED adversarial pass
+#      byte-for-byte like a clean one. The check is negative-tested via --selftest, and the
+#      two rendered-edge-case fixtures exist.
+#
 # Model: claude-opus-5[1m]
 #
 # Usage:
@@ -54,6 +65,103 @@ need() {
     report_fail "$2"
   fi
 }
+
+# subordination_violations <verify-file> <template-file>
+#
+# WF-503. Prints one line per violated subordination obligation; prints nothing when the
+# pair satisfies all four.
+#
+# PURE BY DESIGN — it mutates no global and reads only the two paths it is handed, so the
+# SAME evaluator can be pointed at the live tree (violations must be empty) and at a seeded
+# pre-fix copy (violations must be non-empty). A checker wired only to the real tree could
+# never be shown to reject anything, and would pass vacuously the moment its literals drifted
+# out of the prose.
+subordination_violations() {
+  local v="$1" t="$2"
+
+  # The render rule itself, in the report shape.
+  grep -qF 'present whenever the run has anything to record' "$t" \
+    || printf 'the report shape must state the section is present whenever the run has anything to record\n'
+
+  # All three triggers must be named. Naming only findings would leave the two records this
+  # issue exists to protect exactly as suppressible as before.
+  grep -qF 'a surviving finding, a Withdrawn line, or a Coverage record' "$t" \
+    || printf 'the report shape must name all three triggers that force the section to render\n'
+
+  # The omission clause must carry the `only` qualifier. This is the single literal the
+  # pre-WF-503 text cannot satisfy, and it is what makes the negative test bite: the old
+  # wording still contains "omit the whole section on a clean change" verbatim, so every
+  # other assertion in this file would stay green while the contradiction was reintroduced.
+  grep -qF 'omit the whole section on a clean change only' "$t" \
+    || printf 'the omission rule must be subordinated with an explicit "only" qualifier\n'
+
+  # The skill body must mirror the rule. A report shape fixed alone would leave the
+  # behaviour-bearing prose still stating the unconditional gate.
+  grep -qF 'present whenever the run has anything to record' "$v" \
+    || printf 'verify-spec must mirror the subordinated render rule at its gating sentence\n'
+}
+
+# --- --selftest: prove the subordination check is not inert --------------------
+# Seeded synthetic cases only; the live-tree scan is the default (no-argument) run. Both are
+# wired into registry-fixtures/run.sh, because a live-tree scan that cannot be shown to
+# reject the pre-fix text means nothing on its own.
+if [ "${1:-}" = "--selftest" ]; then
+  tmp="$(mktemp -d)" || { printf 'FAIL: cannot create a temp dir\n'; exit 2; }
+  trap 'rm -rf "$tmp"' EXIT
+  selftest_fail=0
+
+  # Case 1 — the PRE-WF-503 wording, verbatim from both files. The evaluator must reject it,
+  # or a regression to this exact text would sail through the default run.
+  cat > "$tmp/verify-old.md" <<'OLD_VERIFY'
+(§"Reconcile against the lean pass"), then rendered under the report's
+`## Adversarial findings` section; when none survives, omit that section entirely. Rationale
+OLD_VERIFY
+  cat > "$tmp/template-old.md" <<'OLD_TEMPLATE'
+The `## Adversarial findings` section is present only when the lean adversarial pass produced at least one reportable finding (omit it on a clean change).
+
+Only present when the lean adversarial pass produced at least one reportable finding
+(omit the whole section on a clean change — no "no issues found" placeholder).
+OLD_TEMPLATE
+
+  if [ -z "$(subordination_violations "$tmp/verify-old.md" "$tmp/template-old.md")" ]; then
+    printf 'FAIL: selftest/old-unconditional — the pre-WF-503 wording was accepted; the check is inert\n'
+    selftest_fail=$((selftest_fail + 1))
+  else
+    printf 'PASS: selftest/old-unconditional — the unconditional omission rule is rejected\n'
+  fi
+
+  # Case 2 — a PARTIAL seed: it carries the render rule and all three triggers but drops the
+  # `only` qualifier, so the omission clause still reads unconditionally. This proves that
+  # obligation is independently load-bearing rather than incidentally satisfied by the
+  # sentence built around it.
+  cat > "$tmp/template-partial.md" <<'PARTIAL_TEMPLATE'
+The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — but omit the whole section on a clean change.
+PARTIAL_TEMPLATE
+
+  if [ -z "$(subordination_violations "$VERIFY" "$tmp/template-partial.md")" ]; then
+    printf 'FAIL: selftest/missing-only-qualifier — an unqualified omission clause was accepted\n'
+    selftest_fail=$((selftest_fail + 1))
+  else
+    printf 'PASS: selftest/missing-only-qualifier — an unqualified omission clause is rejected\n'
+  fi
+
+  # Case 3 — the POSITIVE control. The live tree must be ACCEPTED by the same evaluator;
+  # without this an evaluator that rejected everything would pass both negatives vacuously.
+  if [ -n "$(subordination_violations "$VERIFY" "$TEMPLATE")" ]; then
+    printf 'FAIL: selftest/live-accepted — the live tree was rejected by its own subordination check:\n'
+    subordination_violations "$VERIFY" "$TEMPLATE"
+    selftest_fail=$((selftest_fail + 1))
+  else
+    printf 'PASS: selftest/live-accepted — the subordinated wording in the live tree is accepted\n'
+  fi
+
+  if [ "$selftest_fail" -ne 0 ]; then
+    printf 'FAIL: adversarial subordination self-test (%s case(s))\n' "$selftest_fail"
+    exit 1
+  fi
+  printf 'PASS: adversarial subordination self-test — pre-fix wording rejected, live tree accepted\n'
+  exit 0
+fi
 
 # --- 1. The pass exists and is fully specified --------------------------------
 need "$VERIFY" "verify-spec must carry the lean adversarial pass section" \
@@ -282,6 +390,49 @@ need "$TEMPLATE" "the report shape must declare the Adversarial findings section
 need "$TEMPLATE" "the Adversarial findings section must be omitted on a clean change" \
   'omit the whole section on a clean change'
 
+# --- 6. The omission rule is subordinate to the records it suppresses (WF-503) --
+# Same evaluator the --selftest above exercises, so the live-tree run and the seeded negative
+# run can never drift apart. Violations are routed through this file's own failure counter.
+subordination_out="$(subordination_violations "$VERIFY" "$TEMPLATE")"
+if [ -n "$subordination_out" ]; then
+  printf '%s\n' "$subordination_out" | while IFS= read -r line; do
+    printf 'FAIL: %s\n' "$line"
+  done
+  fail=1
+fi
+
+# The two rendered-edge-case fixtures — the exact runs the unconditional rule suppressed.
+WITHDRAWN_ALL="$FIX_DIR/all-withdrawn.md"
+COVERAGE_ONLY="$FIX_DIR/coverage-only.md"
+
+if [ ! -f "$WITHDRAWN_ALL" ]; then
+  report_fail "the all-withdrawn edge-case fixture is missing"
+else
+  need "$WITHDRAWN_ALL" "the all-withdrawn fixture must assert the section still renders" \
+    'EXPECT: section=present'
+  need "$WITHDRAWN_ALL" "the all-withdrawn fixture must assert no finding survived" \
+    'EXPECT: findings=0'
+  need "$WITHDRAWN_ALL" "the all-withdrawn fixture must assert the Withdrawn lines render" \
+    'EXPECT: withdrawn=rendered'
+  need "$WITHDRAWN_ALL" "the all-withdrawn fixture must keep withdrawal one-directional" \
+    'EXPECT: lens-findings=preserved'
+fi
+
+if [ ! -f "$COVERAGE_ONLY" ]; then
+  report_fail "the coverage-only edge-case fixture is missing"
+else
+  need "$COVERAGE_ONLY" "the coverage-only fixture must assert the section still renders" \
+    'EXPECT: section=present'
+  need "$COVERAGE_ONLY" "the coverage-only fixture must assert the pass raised no candidates" \
+    'EXPECT: candidates=0'
+  need "$COVERAGE_ONLY" "the coverage-only fixture must assert coverage is marked incomplete" \
+    'EXPECT: coverage=incomplete'
+  # The whole point of the case: it shares a change with the clean fixture and must not
+  # render the same way, or the failed pass has been made to look clean again.
+  need "$COVERAGE_ONLY" "the coverage-only fixture must stay distinguishable from a clean run" \
+    'EXPECT: clean-run=distinguishable'
+fi
+
 if [ ! -f "$RATIONALE" ]; then
   report_fail "the paired rationale reference adversarial-pass.md is missing"
 fi
@@ -348,3 +499,4 @@ printf 'PASS: empty-registry, defect-bearing and defect-free fixtures intact\n'
 printf 'PASS: reconciliation is one-directional, dispatch-free and names no capability\n'
 printf 'PASS: both overlap outcomes pinned; a failed contributor withdraws nothing\n'
 printf 'PASS: one-row registry plus registered/lens-failure expectation fixtures intact\n'
+printf 'PASS: the Adversarial findings section survives on a Withdrawn or Coverage record alone\n'
