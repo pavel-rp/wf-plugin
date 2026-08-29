@@ -16,9 +16,11 @@ outcome for each, plus the run-level outcome, plus the structural properties tho
 outcomes depend on:
 
   * the destination lies in the orchestrator's own workspace, so it survives a
-    prune of every worktree — and the path the step actually WRITES is checked
-    against the declared one, so a declaration cannot drift from the write path
-    it is supposed to describe;
+    prune of every worktree — and every path the step actually WRITES must be
+    EXACTLY one of the declared tokens (exact membership, not a shared prefix),
+    so a declaration cannot drift from the write path it is supposed to
+    describe, and the step cannot drift to an undeclared sibling path that
+    merely starts with the same {task-root} prefix;
   * the index row is reached ONLY by invoking the index writer, ONCE PER
     ARTIFACT (that writer edits exactly one row per call), and `index.md` is
     never in the persistence write set;
@@ -47,7 +49,11 @@ SHIPPER_RULE = (
     "if your isolated worktree is unavailable or lost, stop and report it "
     "-- do not fall back to the shared checkout."
 )
-PATH_TOKEN = re.compile(r"\{task-root\}/[^\s,;)]*")
+# Trailing '.' is excluded alongside the existing punctuation so a path token
+# ending a sentence (e.g. "...`{task-root}/_archive/<id>/`.") is not swallowed
+# together with the full stop -- exact-membership comparison needs the same
+# token whether the mention falls mid-sentence or at a sentence's end.
+PATH_TOKEN = re.compile(r"\{task-root\}/[^\s,;).]*")
 
 
 def emit(message):
@@ -116,11 +122,16 @@ def derive(raw):
 
     # The declaration must describe the path the step ACTUALLY writes. Without
     # this the two halves drift independently and the guard sees neither.
+    # Membership is EXACT, not a shared-prefix check: every token the step writes
+    # must itself be one of the declared tokens, not merely start with a declared
+    # token's parent segment (a prefix match would let the step drift to an
+    # undeclared sibling path -- e.g. `{task-root}/_scratch/<id>/` -- that still
+    # starts with `{task-root}` and would pass a startswith() test undetected).
     declared = set(PATH_TOKEN.findall(dest))
     written = set(PATH_TOKEN.findall(step))
-    c["write_paths_match_declaration"] = bool(declared) and bool(written) and all(
-        any(w.startswith(d.rstrip("/").rsplit("/", 1)[0]) for d in declared) for w in written
-    ) and bool(declared & written)
+    c["write_paths_match_declaration"] = (
+        bool(declared) and bool(written) and written.issubset(declared)
+    )
 
     # --- the shipper's own rule, asserted where it actually lives -----------
     c["shipper_rule_intact"] = bool(template) and SHIPPER_RULE in template
@@ -405,7 +416,7 @@ SOUND = """# fixture
 
 ### The task-artifact persistence destination
 
-The destination is `{task-root}/<id>/` in this orchestrator's own workspace, one folder per in-scope item, named by that item's own id.
+The destination is `{task-root}/<id>/` in this orchestrator's own workspace, one folder per in-scope item, named by that item's own id — or, for an item whose source was archived, the matching `{task-root}/_archive/<id>/`.
 
 It answers to the **same write-scope article** as every other write here — it resolves inside `_local/`, so the Forbidden rule is satisfied rather than excepted — and adds **no** skill to the write-scope exception list. It is a **sibling** of the machine-emitted run-evidence class, never a share of it.
 
@@ -514,6 +525,16 @@ DEFECTS = {
     "unbounded-write-scope": lambda s: s.replace(
         " — it resolves inside `_local/`, so the Forbidden rule is satisfied rather than excepted —",
         "",
+    ),
+    # The step drifts to write an undeclared THIRD path that merely shares the
+    # `{task-root}` prefix with the two declared tokens. A prefix-only check
+    # (startswith the declared token's parent segment) would accept this because
+    # every token here still starts with `{task-root}`; only exact membership
+    # against the declared set catches it.
+    "undeclared-prefix-write-path": lambda s: s.replace(
+        "Write into the matching `{task-root}/<id>/` or `{task-root}/_archive/<id>/`.",
+        "Write into the matching `{task-root}/<id>/` or `{task-root}/_archive/<id>/`, "
+        "or `{task-root}/_scratch/<id>/` when staging.",
     ),
 }
 
