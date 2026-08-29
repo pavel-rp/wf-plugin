@@ -203,7 +203,7 @@ function selectWorkspaceRoot(declaration, launch) {
 
 // src/resolver/types.ts
 var SNAPSHOT_SCHEMA_VERSION = 4;
-var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.1" };
+var RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.5.0" };
 var SNAPSHOT_CACHE_RELPATH = "_local/resolver/snapshot.json";
 
 // src/resolver/registry.ts
@@ -1585,6 +1585,7 @@ var CORE_ARTICLES_BODY = Object.freeze([
 
 // src/resolver/constitution-compose.ts
 var CAPABILITY_ARTICLES_HEADING = "## Capability articles (provenance: each capability)";
+var PROJECT_CLAUSES_HEADING = "## Project clauses (provenance: project)";
 function locateHeading(lines, heading) {
   const found = [];
   for (let index = 0; index < lines.length; index += 1) {
@@ -1593,13 +1594,13 @@ function locateHeading(lines, heading) {
   if (found.length === 0) {
     return {
       ok: false,
-      detail: `the composed constitution record carries no \`${heading}\` section, so this composer does not recognize its structure; it is not rewritten, and nothing that is there now is lost.`
+      detail: `the composed constitution record carries no \`${heading}\` section, so its structure is not recognized; the record is not rewritten, and nothing that is there now is lost.`
     };
   }
   if (found.length > 1) {
     return {
       ok: false,
-      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; it is not rewritten, and nothing that is there now is lost.`
+      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; the record is not rewritten, and nothing that is there now is lost.`
     };
   }
   return { ok: true, index: found[0] };
@@ -1662,11 +1663,20 @@ function attribute(observed, expected) {
   return { differences, unattributedLines };
 }
 function detectCoreArticleDrift(current, coreArticles) {
+  const expected = meaningful(coreArticles);
+  if (expected.length === 0) {
+    return {
+      verdict: "unrecognized",
+      detail: "no core-article body was supplied to compare against, so neither drift nor currency is asserted; an empty body means ABSENT to the composer, never a claim that the running release defines no articles."
+    };
+  }
   const lines = current.split("\n");
   const core = locateHeading(lines, CORE_ARTICLES_HEADING);
   if (!core.ok) return { verdict: "unrecognized", detail: core.detail };
   const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
   if (!articles.ok) return { verdict: "unrecognized", detail: articles.detail };
+  const clauses = locateHeading(lines, PROJECT_CLAUSES_HEADING);
+  if (!clauses.ok) return { verdict: "unrecognized", detail: clauses.detail };
   if (core.index >= articles.index) {
     return {
       verdict: "unrecognized",
@@ -1679,17 +1689,34 @@ function detectCoreArticleDrift(current, coreArticles) {
       detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`, so its core section cannot be delimited; neither drift nor currency is asserted, and the record is not modified.`
     };
   }
+  if (clauses.index <= articles.index) {
+    return {
+      verdict: "unrecognized",
+      detail: `the composed constitution record places \`${PROJECT_CLAUSES_HEADING}\` before \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure a re-composition recognizes; neither drift nor currency is asserted, and the record is not modified.`
+    };
+  }
+  if (nextTopLevelHeading(lines, articles.index + 1) !== clauses.index) {
+    return {
+      verdict: "unrecognized",
+      detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`, which is not the structure a re-composition recognizes; neither drift nor currency is asserted, and the record is not modified.`
+    };
+  }
   const observed = meaningful(lines.slice(core.index + 1, articles.index));
-  const expected = meaningful(coreArticles);
   if (sameSequence(observed, expected)) return { verdict: "current" };
   const { differences, unattributedLines } = attribute(observed, expected);
   return { verdict: "stale", differences, unattributedLines };
 }
+var MAX_RENDERED_IDS = 20;
+var MAX_RENDERED_ID_LENGTH = 64;
 function summarize(differences, unattributedLines) {
+  const clamp = (id) => id.length <= MAX_RENDERED_ID_LENGTH ? id : `${id.slice(0, MAX_RENDERED_ID_LENGTH)}\u2026`;
   const parts = [];
   for (const state of ["changed", "absent", "unexpected"]) {
     const ids = differences.filter((entry) => entry.state === state).map((entry) => entry.id);
-    if (ids.length > 0) parts.push(`${ids.join(", ")} ${state}`);
+    if (ids.length === 0) continue;
+    const shown = ids.slice(0, MAX_RENDERED_IDS).map(clamp).join(", ");
+    const omitted = ids.length - MAX_RENDERED_IDS;
+    parts.push(omitted > 0 ? `${shown} and ${omitted} more ${state}` : `${shown} ${state}`);
   }
   if (unattributedLines > 0) {
     parts.push(`${unattributedLines} record line(s) carrying no recognized article id`);

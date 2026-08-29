@@ -110,8 +110,12 @@ export type ConstitutionComposition =
  *  release's, and its honest third answer — "this structure is not recognized" —
  *  has to mean exactly what a refusal here means. Two copies of this predicate
  *  would let the composer refuse a record the detector called current, which is
- *  the two-copies-with-no-guard defect this module family exists to close. The
- *  refusal `detail` reads correctly for both callers: neither one rewrites. */
+ *  the two-copies-with-no-guard defect this module family exists to close.
+ *
+ *  The refusal `detail` is worded WITHOUT naming its emitter, because it is now
+ *  rendered into a read-only detector's diagnostic as well as into this composer's
+ *  refusal. Both callers leave the record exactly as they found it, so "the record
+ *  is not rewritten" is true of each; "this composer" would not have been. */
 export function locateHeading(
   lines: readonly string[],
   heading: string,
@@ -123,13 +127,13 @@ export function locateHeading(
   if (found.length === 0) {
     return {
       ok: false,
-      detail: `the composed constitution record carries no \`${heading}\` section, so this composer does not recognize its structure; it is not rewritten, and nothing that is there now is lost.`,
+      detail: `the composed constitution record carries no \`${heading}\` section, so its structure is not recognized; the record is not rewritten, and nothing that is there now is lost.`,
     };
   }
   if (found.length > 1) {
     return {
       ok: false,
-      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; it is not rewritten, and nothing that is there now is lost.`,
+      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; the record is not rewritten, and nothing that is there now is lost.`,
     };
   }
   return { ok: true, index: found[0] };

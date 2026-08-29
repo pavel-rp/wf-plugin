@@ -29,7 +29,13 @@ export const SNAPSHOT_SCHEMA_VERSION = 4;
  *  version is refreshed, so a runtime upgrade never serves a snapshot shaped by
  *  older resolution logic. Bump on any resolution-logic change that should
  *  invalidate previously persisted snapshots. */
-export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.4.1" } as const;
+/*  0.5.0 (WF-501): the snapshot gained the core-article drift verdict, which is
+ *  derived from `CORE_ARTICLES_BODY` — a bundle-compiled value that NO fingerprinted
+ *  source covers. Without this bump an already-cached snapshot stays fresh across the
+ *  upgrade and the new diagnostic never reaches the exact population it exists for: a
+ *  project whose `_local/constitution.md` has not changed. Every future amendment of
+ *  the core article text needs the same bump, for the same reason. */
+export const RESOLVER_GENERATOR = { name: "wf-resolver", version: "0.5.0" } as const;
 
 /** Project-local, gitignored cache location for the persisted snapshot,
  *  relative to the workspace root. `_local/` is already gitignored. */

@@ -8,10 +8,15 @@
 // for the composer's tests carries that reasoning in its own header, and it is reused
 // here rather than duplicated — one stale record, two consumers.
 //
-// The property these tests exist for above all others: THE CHECK NEVER WRITES. It is
-// asserted twice over — the string handed in is unchanged afterwards, and the fixture's
-// bytes on disk are unchanged afterwards — because a check that fixes what it finds is a
-// re-composition, which already exists and is separately gated.
+// The property these tests exist for above all others: THE CHECK NEVER WRITES. The
+// fixture's bytes on disk are asserted unchanged after the call, and the one MUTABLE
+// input — the core-body array — is asserted unchanged too, because a check that fixes
+// what it finds is a re-composition, which already exists and is separately gated.
+//
+// The second property, and the one an earlier draft of this module got wrong: THE
+// DETECTOR'S REFUSAL SET MATCHES THE COMPOSER'S. Reporting `current` for a record
+// `/wf:constitution` would refuse is not a near-miss — it emits a remedy that cannot
+// succeed. Every one of the composer's structural guards therefore has a case here.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -30,8 +35,22 @@ import {
 import {
   CAPABILITY_ARTICLES_HEADING,
   PROJECT_CLAUSES_HEADING,
+  composeConstitutionRecord,
+  type ConstitutionCompositionInput,
 } from "../src/resolver/constitution-compose.js";
 import { isFailureSignal } from "../src/resolver/failure.js";
+import { buildSnapshot, type BuildSnapshotInputs } from "../src/resolver/resolve.js";
+import { normalizeSlashes } from "../src/resolver/paths.js";
+
+/** Drive the composer over the same bytes, carrying the same core body, so "the
+ *  composer would refuse this" is asserted against the composer itself rather than
+ *  against a second opinion about it. */
+const composerInput = (current: string): ConstitutionCompositionInput => ({
+  current,
+  capabilities: [],
+  registryNames: [],
+  coreArticles: CORE_ARTICLES_BODY,
+});
 
 // The suite executes from a bundled temp dir, so fixtures resolve through the runner's
 // `WF_MCP_DIR` rather than `import.meta.url` — the same convention every other fixture
@@ -214,14 +233,17 @@ test("an unrecognized structure is NEVER reported as current", () => {
 // --- non-mutation --------------------------------------------------------------
 
 test("the check never consumes the record it inspects", () => {
+  // Only the on-disk comparison is asserted here. Comparing the passed string against
+  // itself afterwards would be vacuous — JavaScript strings are immutable, so such an
+  // assertion cannot fail whatever the detector does, and stating it would overclaim.
+  // The mutable input is the core-body array, and it has its own test below.
   const before = readFileSync(STALE_PATH, "utf8");
-  const passed = before;
-  detectCoreArticleDrift(passed, CORE_ARTICLES_BODY);
-  // The string handed in is unchanged...
-  assert.equal(passed, before);
-  // ...and so are the bytes on disk. A check that repaired what it found would be a
-  // re-composition, which is separately gated.
-  assert.equal(readFileSync(STALE_PATH, "utf8"), before);
+  detectCoreArticleDrift(before, CORE_ARTICLES_BODY);
+  assert.equal(
+    readFileSync(STALE_PATH, "utf8"),
+    before,
+    "a check that repaired what it found would be a re-composition, which is separately gated",
+  );
 });
 
 test("the shipped core body is not mutated by a comparison against it", () => {
@@ -273,6 +295,200 @@ test("neither diagnostic degrades resolver health", () => {
       `${diagnostic.code} must not be a resolve_gate failure signal`,
     );
   }
+});
+
+// --- the refusal set matches the composer's ------------------------------------
+//
+// These four pin the guards a first draft of this module omitted. Each input below is
+// one `composeConstitutionRecord` REFUSES, so calling any of them `current` would be a
+// false all-clear, and calling one `stale` would emit "re-compose it with
+// `/wf:constitution`" — a remedy that path rejects.
+
+test("a record with no project-clauses section reports unrecognized, not current", () => {
+  const noClauses = [
+    ...PREAMBLE,
+    CORE_ARTICLES_HEADING,
+    ...CORE_ARTICLES_BODY,
+    ...CAPABILITY_SECTION,
+  ].join("\n");
+  // Its core section IS this release's, which is exactly why the naive check passed it.
+  const report = detectCoreArticleDrift(noClauses, CORE_ARTICLES_BODY);
+  assert.equal(report.verdict, "unrecognized");
+  assert.equal(composeConstitutionRecord({ ...composerInput(noClauses) }).ok, false);
+});
+
+test("a stray section between the capability and project-clauses headings reports unrecognized", () => {
+  // The committed unknown-structure fixture's defect, moved one section down.
+  const strayBelow = [
+    ...PREAMBLE,
+    CORE_ARTICLES_HEADING,
+    ...CORE_ARTICLES_BODY,
+    ...CAPABILITY_SECTION,
+    "## House rules",
+    "",
+    "Hand-added by the project, below the section the composer owns.",
+    "",
+    ...PROJECT_TAIL,
+  ].join("\n");
+  const report = detectCoreArticleDrift(strayBelow, CORE_ARTICLES_BODY);
+  assert.equal(report.verdict, "unrecognized");
+  assert.equal(composeConstitutionRecord({ ...composerInput(strayBelow) }).ok, false);
+});
+
+test("a record placing the project clauses before the capability articles reports unrecognized", () => {
+  const inverted = [
+    ...PREAMBLE,
+    CORE_ARTICLES_HEADING,
+    ...CORE_ARTICLES_BODY,
+    ...PROJECT_TAIL,
+    ...CAPABILITY_SECTION,
+  ].join("\n");
+  const report = detectCoreArticleDrift(inverted, CORE_ARTICLES_BODY);
+  assert.equal(report.verdict, "unrecognized");
+  assert.equal(composeConstitutionRecord({ ...composerInput(inverted) }).ok, false);
+});
+
+test("no record this detector calls current or stale is one the composer refuses", () => {
+  // The invariant itself, over every record shape this suite builds.
+  const candidates = [
+    CURRENT_RECORD,
+    readFileSync(STALE_PATH, "utf8"),
+    readFileSync(UNKNOWN_PATH, "utf8"),
+    [...PREAMBLE, CORE_ARTICLES_HEADING, ...CORE_ARTICLES_BODY, ...CAPABILITY_SECTION].join("\n"),
+    [
+      ...PREAMBLE,
+      CORE_ARTICLES_HEADING,
+      ...CORE_ARTICLES_BODY,
+      ...CAPABILITY_SECTION,
+      "## House rules",
+      "",
+      ...PROJECT_TAIL,
+    ].join("\n"),
+  ];
+  for (const candidate of candidates) {
+    const verdict = detectCoreArticleDrift(candidate, CORE_ARTICLES_BODY).verdict;
+    if (verdict === "unrecognized") continue;
+    assert.equal(
+      composeConstitutionRecord({ ...composerInput(candidate) }).ok,
+      true,
+      `verdict ${verdict} was reported for a record the composer refuses`,
+    );
+  }
+});
+
+// --- the ordering-only stale branch --------------------------------------------
+
+test("a reordered core section is stale, with no per-article difference to name", () => {
+  const reordered = record([...CORE_ARTICLES_BODY].reverse());
+  const report = detectCoreArticleDrift(reordered, CORE_ARTICLES_BODY);
+  assert.equal(report.verdict, "stale");
+  if (report.verdict !== "stale") return;
+  assert.deepEqual([...report.differences], []);
+  assert.equal(report.unattributedLines, 0);
+  // The message must still say something true rather than reading as "nothing differs".
+  const diagnostic = coreArticleDriftDiagnostic(report);
+  assert.match(diagnostic?.message ?? "", /order or arrangement differs/);
+});
+
+// --- the empty-body guard ------------------------------------------------------
+
+test("an empty core body is unrecognized, never 'the release defines no articles'", () => {
+  // Taking `[]` as a value would report every article of every correct record as drift.
+  // The composer reads an empty body as ABSENT; so does this.
+  for (const empty of [[], ["", "  ", ""]]) {
+    const report = detectCoreArticleDrift(CURRENT_RECORD, empty);
+    assert.equal(report.verdict, "unrecognized");
+  }
+});
+
+// --- the rendered message is bounded -------------------------------------------
+
+test("the diagnostic message stays bounded no matter how large the record is", () => {
+  // The message is persisted in the snapshot and re-served by every `resolve_inspect`,
+  // and its inputs are ids read out of a record this module does not control.
+  const hostile = Array.from(
+    { length: 5000 },
+    (_unused, index) => `- **${"x".repeat(500)}${index} — Injected.** body`,
+  );
+  const report = detectCoreArticleDrift(record(hostile), CORE_ARTICLES_BODY);
+  assert.equal(report.verdict, "stale");
+  const message = coreArticleDriftDiagnostic(report)?.message ?? "";
+  assert.ok(
+    message.length < 4000,
+    `a ${record(hostile).length}-byte record produced a ${message.length}-byte message`,
+  );
+  assert.match(message, /and \d+ more unexpected/);
+});
+
+// --- the snapshot wiring (the branch that actually makes drift visible) ---------
+
+const SNAPSHOT_REGISTRY = `# Skills Configuration
+
+## Task Folders
+
+| Key | Value |
+|-----|-------|
+| **Task Root** | \`_local\` |
+
+## Capabilities
+
+| Capability | Path |
+|------------|------|
+`;
+
+function snapshotInputs(): BuildSnapshotInputs {
+  return {
+    workspaceRoot: "/ws",
+    registryPathValue: "_local/config.md",
+    registryContent: SNAPSHOT_REGISTRY,
+    wfConfigContent: null,
+    coreConfigContent: SNAPSHOT_REGISTRY,
+    pluginListRaw: "[]",
+    generatedAt: "2026-08-29T00:00:00.000Z",
+    generator: { name: "wf-resolver", version: "0.5.0" },
+  };
+}
+
+const snapshotIO = (constitution: string | null) => ({
+  readFile: (path: string): string | null => {
+    const normalized = normalizeSlashes(path);
+    if (normalized === normalizeSlashes("/ws/_local/config.md")) return SNAPSHOT_REGISTRY;
+    if (normalized === normalizeSlashes("/ws/_local/constitution.md")) return constitution;
+    return null;
+  },
+});
+
+test("a stale composed record surfaces as exactly one drift diagnostic on the snapshot", () => {
+  const snap = buildSnapshot(snapshotInputs(), snapshotIO(readFileSync(STALE_PATH, "utf8")));
+  const drift = snap.diagnostics.filter((entry) => entry.code === CORE_DRIFT_CODE);
+  assert.equal(drift.length, 1);
+  assert.equal(drift[0].severity, "warning");
+});
+
+test("a current composed record surfaces no drift diagnostic", () => {
+  const snap = buildSnapshot(snapshotInputs(), snapshotIO(CURRENT_RECORD));
+  assert.equal(
+    snap.diagnostics.filter(
+      (entry) => entry.code === CORE_DRIFT_CODE || entry.code === CORE_UNRECOGNIZED_CODE,
+    ).length,
+    0,
+  );
+});
+
+test("an absent composed record surfaces no diagnostic — absence is not drift", () => {
+  const snap = buildSnapshot(snapshotInputs(), snapshotIO(null));
+  assert.equal(
+    snap.diagnostics.filter(
+      (entry) => entry.code === CORE_DRIFT_CODE || entry.code === CORE_UNRECOGNIZED_CODE,
+    ).length,
+    0,
+  );
+});
+
+test("an unrecognized composed record surfaces the info diagnostic, not the drift one", () => {
+  const snap = buildSnapshot(snapshotInputs(), snapshotIO(readFileSync(UNKNOWN_PATH, "utf8")));
+  assert.equal(snap.diagnostics.filter((e) => e.code === CORE_DRIFT_CODE).length, 0);
+  assert.equal(snap.diagnostics.filter((e) => e.code === CORE_UNRECOGNIZED_CODE).length, 1);
 });
 
 // --- the acceptance signal itself ----------------------------------------------
