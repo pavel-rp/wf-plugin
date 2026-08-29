@@ -24911,6 +24911,254 @@ function locateInterface(skill, roots, readFile, joinSlash2) {
   return null;
 }
 
+// src/resolver/constitution-core.ts
+var CORE_ARTICLES_HEADING = "## Core articles (provenance: core)";
+var UNATTENDED_GATE_CLAUSE = "A human approves; or, where unattended mode is established independently of the agent, a resolver-issued run-evidence record does: naming the gate, binding the approved artifact by digest, filed before the next phase, valid only in its requesting run, requested by but never written by the agent it authorises. Absent, unmatched, unverifiable, foreign-run, or digest-stale, the gate is unapproved: the run halts there, reported unproven.";
+var CORE_ARTICLES_BODY = Object.freeze([
+  "",
+  "- **core.1 \u2014 Spec is the source of truth.** A derived artifact (plan, task list) never overrides the spec; conformance is judged against the spec.",
+  `- **core.2 \u2014 No phase skips its gate.** Each phase's artifact feeds the next; nothing advances past an unapproved gate. ${UNATTENDED_GATE_CLAUSE}`,
+  "- **core.3 \u2014 Write scope.** Nothing writes outside `_local/` except the designated source-mutating skills and the resolver-owned declared lifecycle artifacts under `.wf/`, admitted only when both resolver-managed and of a declared class; every other component reads `.wf/` through the resolver and writes only inside `_local/`.",
+  "- **core.4 \u2014 Model attribution.** Every artifact carries a `**Model:** <id>` line, or a verb-shaped variant, naming the model that produced it.",
+  '- **core.5 \u2014 No AI attribution in commits.** Commit messages and PR descriptions carry no `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.',
+  "- **core.6 \u2014 Never commit to `main`.** All work happens on a feature branch (`feat/\u2026`, `fix/\u2026`, `chore/\u2026`); pushing to `main` is forbidden whatever is registered, and in bare-core mode a branch gate skips with a stated reason rather than permit a `main` commit.",
+  "- **core.7 \u2014 Config over hardcode.** Project-specific values are read from `_local/config.md`, never hardcoded into a skill.",
+  "- **core.8 \u2014 Core never requires a capability.** Every core extension point ships a lean default and runs inert when no capability is registered; core never names or hard-depends on a specific capability.",
+  "- **core.9 \u2014 Scratch discipline.** Scratch and temporary files live only under `_local/scratch/` \u2014 never the repo root, system temp, or beside tracked files. (a) A scratch file's consumer deletes it as its own last act in that same run, never deferring to a sweep. (b) The run-ending skill deletes that run's coordination files \u2014 state, handoff, ledger, lock, marker \u2014 as part of ending it, on success or failure. The finalize sweep is a backstop that excuses neither.",
+  ""
+]);
+
+// src/resolver/constitution-compose.ts
+var CAPABILITY_ARTICLES_HEADING = "## Capability articles (provenance: each capability)";
+var PROJECT_CLAUSES_HEADING = "## Project clauses (provenance: project)";
+var REGISTRY_LINE_PREFIX = "**Registry:** ";
+function locateHeading(lines, heading) {
+  const found = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].trimEnd() === heading) found.push(index);
+  }
+  if (found.length === 0) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries no \`${heading}\` section, so this composer does not recognize its structure; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  if (found.length > 1) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  return { ok: true, index: found[0] };
+}
+function nextTopLevelHeading(lines, from) {
+  for (let index = from; index < lines.length; index += 1) {
+    if (lines[index].startsWith("## ")) return index;
+  }
+  return lines.length;
+}
+function renderArticleBody(capabilities) {
+  const contributing = capabilities.filter((entry) => entry.articles.length > 0);
+  if (contributing.length === 0) {
+    return ["", "No registered capability declares a constitution article.", ""];
+  }
+  const out = [];
+  for (const entry of contributing) {
+    out.push("", `### ${entry.capability}`, "");
+    entry.articles.forEach((article, index) => {
+      out.push(`- **${entry.capability}.${index + 1} \u2014 ${article.key}:** ${article.value}`);
+    });
+  }
+  out.push("");
+  return out;
+}
+function refreshRegistryLine(preamble, registryNames) {
+  const hits = [];
+  for (let index = 0; index < preamble.length; index += 1) {
+    if (preamble[index].startsWith(REGISTRY_LINE_PREFIX)) hits.push(index);
+  }
+  if (hits.length !== 1) return [...preamble];
+  const out = [...preamble];
+  const eol = preamble[hits[0]].endsWith("\r") ? "\r" : "";
+  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}${eol}`;
+  return out;
+}
+function composeConstitutionRecord(input) {
+  const lines = input.current.split("\n");
+  const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
+  if (!articles.ok) return articles;
+  const clauses = locateHeading(lines, PROJECT_CLAUSES_HEADING);
+  if (!clauses.ok) return clauses;
+  if (clauses.index <= articles.index) {
+    return {
+      ok: false,
+      detail: `the composed constitution record places \`${PROJECT_CLAUSES_HEADING}\` before \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  const articleSectionEnd = nextTopLevelHeading(lines, articles.index + 1);
+  if (articleSectionEnd !== clauses.index) {
+    return {
+      ok: false,
+      detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
+    };
+  }
+  const coreArticles = input.coreArticles !== void 0 && input.coreArticles !== null && input.coreArticles.length > 0 ? input.coreArticles : null;
+  let coreStart = articles.index;
+  let coreSection = [];
+  if (coreArticles !== null) {
+    const core = locateHeading(lines, CORE_ARTICLES_HEADING);
+    if (!core.ok) return core;
+    if (core.index >= articles.index) {
+      return {
+        ok: false,
+        detail: `the composed constitution record places \`${CORE_ARTICLES_HEADING}\` at or after \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
+      };
+    }
+    if (nextTopLevelHeading(lines, core.index + 1) !== articles.index) {
+      return {
+        ok: false,
+        detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
+      };
+    }
+    coreStart = core.index;
+    coreSection = [lines[core.index].trimEnd(), ...coreArticles];
+  }
+  const refreshed = refreshRegistryLine(lines.slice(0, articles.index), input.registryNames);
+  const preamble = refreshed.slice(0, coreStart);
+  const preservedClauses = lines.slice(clauses.index);
+  const crlf = /\r\n/.test(input.current) && !/(^|[^\r])\n/.test(input.current);
+  const emit = (line) => crlf ? `${line.replace(/\r$/, "")}\r` : line;
+  const content = [
+    ...preamble,
+    ...coreSection.map(emit),
+    emit(lines[articles.index].trimEnd()),
+    ...renderArticleBody(input.capabilities).map(emit),
+    ...preservedClauses
+  ].join("\n");
+  return { ok: true, content, changed: content !== input.current };
+}
+function articlesByCapability(inputs) {
+  const order = [];
+  const byCapability = /* @__PURE__ */ new Map();
+  for (const input of inputs) {
+    const bucket = byCapability.get(input.capability);
+    if (bucket === void 0) {
+      order.push(input.capability);
+      byCapability.set(input.capability, [{ key: input.key, value: input.value }]);
+      continue;
+    }
+    bucket.push({ key: input.key, value: input.value });
+  }
+  return order.map((capability) => ({
+    capability,
+    articles: byCapability.get(capability) ?? []
+  }));
+}
+
+// src/resolver/constitution-drift.ts
+var CORE_DRIFT_CODE = "constitution/core-drift";
+var CORE_UNRECOGNIZED_CODE = "constitution/core-unrecognized";
+var ARTICLE_ID = /^- \*\*([^*\s]+)\s+—\s/;
+function articleId(line) {
+  const matched = ARTICLE_ID.exec(line);
+  return matched === null ? null : matched[1];
+}
+function meaningful(lines) {
+  const out = [];
+  for (const line of lines) {
+    const trimmed = line.replace(/\r$/, "").trimEnd();
+    if (trimmed.length > 0) out.push(trimmed);
+  }
+  return out;
+}
+function sameSequence(left, right) {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+function attribute(observed, expected) {
+  const expectedById = /* @__PURE__ */ new Map();
+  for (const line of expected) {
+    const id = articleId(line);
+    if (id !== null) expectedById.set(id, line);
+  }
+  const observedById = /* @__PURE__ */ new Map();
+  let unattributedLines = 0;
+  for (const line of observed) {
+    const id = articleId(line);
+    if (id === null) {
+      unattributedLines += 1;
+      continue;
+    }
+    observedById.set(id, line);
+  }
+  const differences = [];
+  for (const [id, line] of expectedById) {
+    const seen = observedById.get(id);
+    if (seen === void 0) differences.push({ id, state: "absent" });
+    else if (seen !== line) differences.push({ id, state: "changed" });
+  }
+  for (const id of observedById.keys()) {
+    if (!expectedById.has(id)) differences.push({ id, state: "unexpected" });
+  }
+  return { differences, unattributedLines };
+}
+function detectCoreArticleDrift(current, coreArticles) {
+  const lines = current.split("\n");
+  const core = locateHeading(lines, CORE_ARTICLES_HEADING);
+  if (!core.ok) return { verdict: "unrecognized", detail: core.detail };
+  const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
+  if (!articles.ok) return { verdict: "unrecognized", detail: articles.detail };
+  if (core.index >= articles.index) {
+    return {
+      verdict: "unrecognized",
+      detail: `the composed constitution record places \`${CORE_ARTICLES_HEADING}\` at or after \`${CAPABILITY_ARTICLES_HEADING}\`, so its core section cannot be located; neither drift nor currency is asserted, and the record is not modified.`
+    };
+  }
+  if (nextTopLevelHeading(lines, core.index + 1) !== articles.index) {
+    return {
+      verdict: "unrecognized",
+      detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`, so its core section cannot be delimited; neither drift nor currency is asserted, and the record is not modified.`
+    };
+  }
+  const observed = meaningful(lines.slice(core.index + 1, articles.index));
+  const expected = meaningful(coreArticles);
+  if (sameSequence(observed, expected)) return { verdict: "current" };
+  const { differences, unattributedLines } = attribute(observed, expected);
+  return { verdict: "stale", differences, unattributedLines };
+}
+function summarize(differences, unattributedLines) {
+  const parts = [];
+  for (const state of ["changed", "absent", "unexpected"]) {
+    const ids = differences.filter((entry) => entry.state === state).map((entry) => entry.id);
+    if (ids.length > 0) parts.push(`${ids.join(", ")} ${state}`);
+  }
+  if (unattributedLines > 0) {
+    parts.push(`${unattributedLines} record line(s) carrying no recognized article id`);
+  }
+  if (parts.length === 0) {
+    return "the section's article order or arrangement differs, though every article the release defines is present unchanged";
+  }
+  return parts.join("; ");
+}
+function coreArticleDriftDiagnostic(report) {
+  if (report.verdict === "current") return null;
+  if (report.verdict === "unrecognized") {
+    return {
+      severity: "info",
+      code: CORE_UNRECOGNIZED_CODE,
+      message: `the composed constitution's core-article currency could not be determined: ${report.detail}`
+    };
+  }
+  return {
+    severity: "warning",
+    code: CORE_DRIFT_CODE,
+    message: `the composed constitution's core articles are behind the running release \u2014 ${summarize(report.differences, report.unattributedLines)}. This check does not modify the record; re-compose it with \`/wf:constitution\` to carry the current articles.`
+  };
+}
+
 // src/resolver/resolve.ts
 function relativize(workspaceRoot, absPath) {
   const abs = normalizeSlashes(absPath);
@@ -24963,13 +25211,14 @@ function buildSnapshot(inputs, io) {
       normalizePluginList(inputs.pluginListRaw)
     )
   );
-  sources.push(
-    fingerprint(
-      "constitution",
-      "_local/constitution.md",
-      io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"))
-    )
-  );
+  const constitutionRecord = io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"));
+  sources.push(fingerprint("constitution", "_local/constitution.md", constitutionRecord));
+  if (constitutionRecord !== null) {
+    const drift = coreArticleDriftDiagnostic(
+      detectCoreArticleDrift(constitutionRecord, CORE_ARTICLES_BODY)
+    );
+    if (drift !== null) diagnostics.push(drift);
+  }
   const registry2 = parseRegistry(inputs.registryContent ?? "");
   const configMarkdown = inputs.coreConfigContent ?? inputs.registryContent ?? "";
   const coreConfig = parseCoreConfig(configMarkdown);
@@ -26970,150 +27219,6 @@ function resolveRouting(project, inputs) {
     },
     retainedUnitIds
   };
-}
-
-// src/resolver/constitution-core.ts
-var CORE_ARTICLES_HEADING = "## Core articles (provenance: core)";
-var UNATTENDED_GATE_CLAUSE = "A human approves; or, where unattended mode is established independently of the agent, a resolver-issued run-evidence record does: naming the gate, binding the approved artifact by digest, filed before the next phase, valid only in its requesting run, requested by but never written by the agent it authorises. Absent, unmatched, unverifiable, foreign-run, or digest-stale, the gate is unapproved: the run halts there, reported unproven.";
-var CORE_ARTICLES_BODY = Object.freeze([
-  "",
-  "- **core.1 \u2014 Spec is the source of truth.** A derived artifact (plan, task list) never overrides the spec; conformance is judged against the spec.",
-  `- **core.2 \u2014 No phase skips its gate.** Each phase's artifact feeds the next; nothing advances past an unapproved gate. ${UNATTENDED_GATE_CLAUSE}`,
-  "- **core.3 \u2014 Write scope.** Nothing writes outside `_local/` except the designated source-mutating skills and the resolver-owned declared lifecycle artifacts under `.wf/`, admitted only when both resolver-managed and of a declared class; every other component reads `.wf/` through the resolver and writes only inside `_local/`.",
-  "- **core.4 \u2014 Model attribution.** Every artifact carries a `**Model:** <id>` line, or a verb-shaped variant, naming the model that produced it.",
-  '- **core.5 \u2014 No AI attribution in commits.** Commit messages and PR descriptions carry no `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.',
-  "- **core.6 \u2014 Never commit to `main`.** All work happens on a feature branch (`feat/\u2026`, `fix/\u2026`, `chore/\u2026`); pushing to `main` is forbidden whatever is registered, and in bare-core mode a branch gate skips with a stated reason rather than permit a `main` commit.",
-  "- **core.7 \u2014 Config over hardcode.** Project-specific values are read from `_local/config.md`, never hardcoded into a skill.",
-  "- **core.8 \u2014 Core never requires a capability.** Every core extension point ships a lean default and runs inert when no capability is registered; core never names or hard-depends on a specific capability.",
-  "- **core.9 \u2014 Scratch discipline.** Scratch and temporary files live only under `_local/scratch/` \u2014 never the repo root, system temp, or beside tracked files. (a) A scratch file's consumer deletes it as its own last act in that same run, never deferring to a sweep. (b) The run-ending skill deletes that run's coordination files \u2014 state, handoff, ledger, lock, marker \u2014 as part of ending it, on success or failure. The finalize sweep is a backstop that excuses neither.",
-  ""
-]);
-
-// src/resolver/constitution-compose.ts
-var CAPABILITY_ARTICLES_HEADING = "## Capability articles (provenance: each capability)";
-var PROJECT_CLAUSES_HEADING = "## Project clauses (provenance: project)";
-var REGISTRY_LINE_PREFIX = "**Registry:** ";
-function locateHeading(lines, heading) {
-  const found = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    if (lines[index].trimEnd() === heading) found.push(index);
-  }
-  if (found.length === 0) {
-    return {
-      ok: false,
-      detail: `the composed constitution record carries no \`${heading}\` section, so this composer does not recognize its structure; it is not rewritten, and nothing that is there now is lost.`
-    };
-  }
-  if (found.length > 1) {
-    return {
-      ok: false,
-      detail: `the composed constitution record carries ${found.length} \`${heading}\` sections, so the section boundary is ambiguous; it is not rewritten, and nothing that is there now is lost.`
-    };
-  }
-  return { ok: true, index: found[0] };
-}
-function nextTopLevelHeading(lines, from) {
-  for (let index = from; index < lines.length; index += 1) {
-    if (lines[index].startsWith("## ")) return index;
-  }
-  return lines.length;
-}
-function renderArticleBody(capabilities) {
-  const contributing = capabilities.filter((entry) => entry.articles.length > 0);
-  if (contributing.length === 0) {
-    return ["", "No registered capability declares a constitution article.", ""];
-  }
-  const out = [];
-  for (const entry of contributing) {
-    out.push("", `### ${entry.capability}`, "");
-    entry.articles.forEach((article, index) => {
-      out.push(`- **${entry.capability}.${index + 1} \u2014 ${article.key}:** ${article.value}`);
-    });
-  }
-  out.push("");
-  return out;
-}
-function refreshRegistryLine(preamble, registryNames) {
-  const hits = [];
-  for (let index = 0; index < preamble.length; index += 1) {
-    if (preamble[index].startsWith(REGISTRY_LINE_PREFIX)) hits.push(index);
-  }
-  if (hits.length !== 1) return [...preamble];
-  const out = [...preamble];
-  const eol = preamble[hits[0]].endsWith("\r") ? "\r" : "";
-  out[hits[0]] = `${REGISTRY_LINE_PREFIX}${registryNames.join(", ")}${eol}`;
-  return out;
-}
-function composeConstitutionRecord(input) {
-  const lines = input.current.split("\n");
-  const articles = locateHeading(lines, CAPABILITY_ARTICLES_HEADING);
-  if (!articles.ok) return articles;
-  const clauses = locateHeading(lines, PROJECT_CLAUSES_HEADING);
-  if (!clauses.ok) return clauses;
-  if (clauses.index <= articles.index) {
-    return {
-      ok: false,
-      detail: `the composed constitution record places \`${PROJECT_CLAUSES_HEADING}\` before \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
-    };
-  }
-  const articleSectionEnd = nextTopLevelHeading(lines, articles.index + 1);
-  if (articleSectionEnd !== clauses.index) {
-    return {
-      ok: false,
-      detail: `the composed constitution record carries an unrecognized section between \`${CAPABILITY_ARTICLES_HEADING}\` and \`${PROJECT_CLAUSES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
-    };
-  }
-  const coreArticles = input.coreArticles !== void 0 && input.coreArticles !== null && input.coreArticles.length > 0 ? input.coreArticles : null;
-  let coreStart = articles.index;
-  let coreSection = [];
-  if (coreArticles !== null) {
-    const core = locateHeading(lines, CORE_ARTICLES_HEADING);
-    if (!core.ok) return core;
-    if (core.index >= articles.index) {
-      return {
-        ok: false,
-        detail: `the composed constitution record places \`${CORE_ARTICLES_HEADING}\` at or after \`${CAPABILITY_ARTICLES_HEADING}\`, which is not the structure this composer recognizes; it is not rewritten, and nothing that is there now is lost.`
-      };
-    }
-    if (nextTopLevelHeading(lines, core.index + 1) !== articles.index) {
-      return {
-        ok: false,
-        detail: `the composed constitution record carries an unrecognized section between \`${CORE_ARTICLES_HEADING}\` and \`${CAPABILITY_ARTICLES_HEADING}\`; it is not rewritten, and nothing that is there now is lost.`
-      };
-    }
-    coreStart = core.index;
-    coreSection = [lines[core.index].trimEnd(), ...coreArticles];
-  }
-  const refreshed = refreshRegistryLine(lines.slice(0, articles.index), input.registryNames);
-  const preamble = refreshed.slice(0, coreStart);
-  const preservedClauses = lines.slice(clauses.index);
-  const crlf = /\r\n/.test(input.current) && !/(^|[^\r])\n/.test(input.current);
-  const emit = (line) => crlf ? `${line.replace(/\r$/, "")}\r` : line;
-  const content = [
-    ...preamble,
-    ...coreSection.map(emit),
-    emit(lines[articles.index].trimEnd()),
-    ...renderArticleBody(input.capabilities).map(emit),
-    ...preservedClauses
-  ].join("\n");
-  return { ok: true, content, changed: content !== input.current };
-}
-function articlesByCapability(inputs) {
-  const order = [];
-  const byCapability = /* @__PURE__ */ new Map();
-  for (const input of inputs) {
-    const bucket = byCapability.get(input.capability);
-    if (bucket === void 0) {
-      order.push(input.capability);
-      byCapability.set(input.capability, [{ key: input.key, value: input.value }]);
-      continue;
-    }
-    bucket.push({ key: input.key, value: input.value });
-  }
-  return order.map((capability) => ({
-    capability,
-    articles: byCapability.get(capability) ?? []
-  }));
 }
 
 // src/resolver/validate-rules.ts

@@ -49,6 +49,8 @@ import { parsePluginList, type ParsedPluginList } from "./plugin-list.js";
 import { parseCoreConfig, parseRoutingConfig } from "./config.js";
 import { fingerprint } from "./fingerprint.js";
 import { normalizePluginList } from "./freshness.js";
+import { CORE_ARTICLES_BODY } from "./constitution-core.js";
+import { coreArticleDriftDiagnostic, detectCoreArticleDrift } from "./constitution-drift.js";
 import {
   SNAPSHOT_SCHEMA_VERSION,
   type CapabilityRecord,
@@ -198,13 +200,25 @@ export function buildSnapshot(
   // recorded source, never an un-fingerprinted raw read. An absent record (a
   // non-wf repo, or a wf repo with no `/wf:constitution` run yet) is recorded as
   // an absent source, so it appearing later is itself detected as a change.
-  sources.push(
-    fingerprint(
-      "constitution",
-      "_local/constitution.md",
-      io.readFile(joinSlash(workspaceRoot, "_local/constitution.md")),
-    ),
-  );
+  // The record's bytes are held rather than passed straight through, because the
+  // drift check below needs the same value the fingerprint records — and reading it
+  // twice would let a snapshot report a fingerprint for one revision and a currency
+  // verdict for another.
+  const constitutionRecord = io.readFile(joinSlash(workspaceRoot, "_local/constitution.md"));
+  sources.push(fingerprint("constitution", "_local/constitution.md", constitutionRecord));
+
+  // WF-501: report whether the composed record's core articles are the ones THIS
+  // release carries. Detection only — nothing here rewrites the record, and nothing
+  // here decides to; carrying an amended article into an already-composed record is
+  // re-composition, which is `/wf:constitution`'s separately gated job (WF-492).
+  // An absent record has no core section to be behind, so it yields no diagnostic:
+  // its absence is already recorded as an absent source above.
+  if (constitutionRecord !== null) {
+    const drift = coreArticleDriftDiagnostic(
+      detectCoreArticleDrift(constitutionRecord, CORE_ARTICLES_BODY),
+    );
+    if (drift !== null) diagnostics.push(drift);
+  }
 
   // --- parse inputs --------------------------------------------------------
   const registry = parseRegistry(inputs.registryContent ?? "");
