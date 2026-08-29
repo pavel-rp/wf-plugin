@@ -1,6 +1,6 @@
 ---
 name: constitution
-description: Establishes and updates a project's composed constitution — core process articles plus each registered capability's non-negotiables, aggregated through the Capabilities registry with provenance and a precedence rule (project clauses override capability clauses). Writes _local/constitution.md and maintains the Capabilities table in _local/config.md. Auto-invoked by /wf:init and re-runnable any time to refresh principles. Use after init, after registering or removing a capability, or whenever the project's own non-negotiable clauses change.
+description: Establishes and updates a project's composed constitution — core process articles plus each registered capability's non-negotiables, aggregated through the Capabilities registry with provenance and a precedence rule (project clauses override capability clauses). Also takes the project's own clauses as bare free text after the command, normalizing each into a clause, echoing it with its minted proj id for approval, and writing nothing until approved; drop and amend forms edit an existing project clause behind the same gate. Writes _local/constitution.md and maintains the Capabilities table in _local/config.md. Auto-invoked by /wf:init and re-runnable any time to refresh principles. Use after init, after registering or removing a capability, or whenever the project's own non-negotiable clauses change.
 allowed-tools: [Read, Write, Edit, Glob, Bash]
 ---
 
@@ -37,7 +37,9 @@ from the registry.
 - `/wf:init` runs (it invokes this skill automatically so a fresh repo has a constitution).
 - A capability is added to or removed from the `## Capabilities` registry — re-run to
   refresh the composed capability articles.
-- The project's own non-negotiable clauses change — re-run to record them.
+- The project's own non-negotiable clauses change — pass the clause as free text after the
+  command (`/wf:constitution never expose internal ids in a response`) and it is normalized,
+  echoed with its minted id, and recorded on approval.
 
 **Don't use it when:**
 
@@ -49,9 +51,9 @@ from the registry.
 
 ## Prerequisites
 
-**Before any other phase**, obtain project config and the active registry from the bundled
 Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
 
+**Before any other phase**, obtain project config and the active registry from the bundled
 `wf-resolver` MCP service: `resolve_config({ workspaceRoot, ... })` for project values (`coreConfig`,
 `workspaceRoot`, `registryPath`) and `resolve_registry({ workspaceRoot, ... })` for the ordered active
 `capabilities[]` (`name`, `kind`, `manifestPath`, `fragments[]`, `articles[]`,
@@ -70,21 +72,33 @@ below.
 ## Command Syntax
 
 ```
-/wf:constitution [establish | update]
+/wf:constitution [establish | update | <clause text>]
 ```
 
-A single optional positional argument selects the mode. **Zero-argument invocation is the
-default and does establish-or-update**: if `_local/constitution.md` is absent it establishes
-it; if it already exists it updates it. You rarely need to pass the mode explicitly — the
-default detects the right one.
+**Zero-argument invocation is the default and does establish-or-update**: if
+`_local/constitution.md` is absent it establishes it; if it already exists it updates it.
+
+**Anything else after the command is clause text, not a mode.** `establish` and `update` are
+reserved only as the **exact sole argument** — the whole argument string, trimmed, equal to
+that one word. Longer text that merely *starts* with one of them is clause intake:
+`update the write-scope rule to name every generated directory` records a clause, it does not
+force update mode.
 
 ### Arguments
 
-| Argument      | Required | Description |
-| ------------- | -------- | ----------- |
-| `establish`   | NO       | Force first-time establishment. Errors if `_local/constitution.md` already exists (re-run with no argument to update instead). |
-| `update`      | NO       | Force an update of an existing constitution. Errors if `_local/constitution.md` is absent (run with no argument to establish instead). |
-| *(none)*      | —        | **Default.** Establish if absent, update if present — the establish-or-update path. |
+| Argument         | Required | Description |
+| ---------------- | -------- | ----------- |
+| *(none)*         | —        | **Default.** Establish if absent, update if present — the establish-or-update path. |
+| `establish`      | NO       | Exact sole argument. Force first-time establishment. Errors if `_local/constitution.md` already exists (re-run with no argument to update instead). |
+| `update`         | NO       | Exact sole argument. Force an update of an existing constitution. Errors if `_local/constitution.md` is absent (run with no argument to establish instead). |
+| `<clause text>`  | NO       | Free text — a non-negotiable this project holds itself to. Normalized, echoed with its minted `proj.N` id, and recorded only on approval. See "Clause intake". |
+| `drop <id>`      | NO       | Remove the project clause with that id, behind the same echo gate. |
+| `amend <id>: <text>` | NO   | Replace that project clause's rule with the normalized `<text>`, behind the same echo gate; the id is kept. |
+
+**Routing is decided once, before anything else runs:** trim the argument string; empty →
+establish-or-update; exactly `establish` or exactly `update` → that mode; anything else →
+clause intake. There is no ambiguity to resolve later and no third mode — intake is a
+**path through this skill**, not a mode of it, and it ends in the same composed record.
 
 ---
 
@@ -98,10 +112,20 @@ default detects the right one.
 - Write **only** these two `_local/`-scoped targets:
   - `_local/constitution.md` (the composed constitution record).
   - the `## Capabilities` table inside `_local/config.md` (maintained, not the rest of the file).
+- On the clause-intake path, edit **only** the record's `## Project clauses (provenance: project)`
+  section, and only after the echo has been approved.
 
 **Forbidden:**
 
 - Write anywhere outside `_local/`.
+- **Write any user-intent text before the echo is approved.** Intake shows the normalized clause
+  and its minted id first, every time; there is no path that records a clause the user has not
+  seen in the form it will be recorded.
+- Amend or remove a `core.*` or `<capability>.*` article. They are re-rendered from their source
+  on every re-composition; overriding one is done by adding a project clause that names it.
+- Reuse a `proj.N` id, or renumber existing clauses.
+- Touch any section other than `## Project clauses` on the intake path — intake records a clause,
+  it does not re-compose the record.
 - Rewrite the rest of `_local/config.md` — touch only its `## Capabilities` table.
 - **Bake a flattened composed file** outside the constitution record, or generate any
   compiled artifact — composition is the runtime record itself, there is no compile step.
@@ -124,63 +148,31 @@ treat the project group (establish writes a starter, update preserves the existi
 
 Core contributes these non-negotiable **process** articles, recorded **verbatim**,
 provenance `core`. They name no stack, domain, or capability and are present in **every**
-constitution regardless of the registry:
+constitution regardless of the registry. Each is one rule on one unwrapped line, carrying its
+own `core.<n>` id — the form the clause-style contract defines and every article of every
+provenance shares (`clause-style.md`, obtained via the resolver's
+`resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: constitution`,
+`ref: clause-style.md`), never a raw `Read` of the plugin-cache path):
 
-1. **The spec is the single source of truth.** A derived artifact (plan, task list) never
-   overrides the spec; conformance is judged against the spec.
-2. **No phase skips its gate.** Every phase produces an artifact that feeds the next, and
-   nothing advances past an unapproved gate. A gate is approved by a human, or — in an
-   **unattended run** — by a **recorded self-approval**: a machine-checkable record the
-   resolver issues into its declared run-evidence class, naming the gate it clears,
-   **binding by digest the artifact it approves**, filed before the next phase begins, and
-   valid only within the run that requested it. The record is requested by the agent it
-   authorises and never written by it, and the run's unattended mode is **not the
-   requesting agent's to assert** — where that mode cannot be established independently of
-   the agent, the gate is not satisfied. An approval that is absent, unmatched,
-   unverifiable, filed for another run, or whose approved artifact has since changed leaves
-   the gate **unapproved**: the run **halts at that gate** and is reported unproven. An
-   unattended run does not skip the gate — it satisfies the gate with evidence, or it
-   stops.
-3. **Nothing writes outside `_local/`** except the designated source-mutating skills, and
-   except the declared committed lifecycle artifacts the resolver runtime owns and manages
-   under `.wf/`. That home is not a general writable one: an artifact is admitted only when it
-   is both resolver-managed and of a declared class, and every other component reads it
-   through the resolver while writing only inside `_local/`.
-4. **Every artifact carries model attribution.** A `**Model:** <id>` line (or a verb-shaped
-   variant) records which model produced each artifact.
-5. **No AI attribution in commits.** Commit messages and PR descriptions carry no
-   `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.
-6. **Never commit to `main`.** All work happens on a feature branch (`feat/…`, `fix/…`,
-   `chore/…`); pushing to `main` is forbidden regardless of registered capabilities. This
-   holds even in bare-core mode, where every branch gate skips with a stated reason rather
-   than silently permitting a `main` commit.
-7. **Project configuration lives in `_local/config.md`.** Project-specific values are read
-   from config, never hardcoded into a skill.
+- **core.1 — Spec is the source of truth.** A derived artifact (plan, task list) never overrides the spec; conformance is judged against the spec.
+- **core.2 — No phase skips its gate.** Each phase's artifact feeds the next; nothing advances past an unapproved gate. A human approves; or, where unattended mode is established independently of the agent, a resolver-issued run-evidence record does: naming the gate, binding the approved artifact by digest, filed before the next phase, valid only in its requesting run, requested by but never written by the agent it authorises. Absent, unmatched, unverifiable, foreign-run, or digest-stale, the gate is unapproved: the run halts there, reported unproven.
+- **core.3 — Write scope.** Nothing writes outside `_local/` except the designated source-mutating skills and the resolver-owned declared lifecycle artifacts under `.wf/`, admitted only when both resolver-managed and of a declared class; every other component reads `.wf/` through the resolver and writes only inside `_local/`.
+- **core.4 — Model attribution.** Every artifact carries a `**Model:** <id>` line, or a verb-shaped variant, naming the model that produced it.
+- **core.5 — No AI attribution in commits.** Commit messages and PR descriptions carry no `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.
+- **core.6 — Never commit to `main`.** All work happens on a feature branch (`feat/…`, `fix/…`, `chore/…`); pushing to `main` is forbidden whatever is registered, and in bare-core mode a branch gate skips with a stated reason rather than permit a `main` commit.
+- **core.7 — Config over hardcode.** Project-specific values are read from `_local/config.md`, never hardcoded into a skill.
+- **core.8 — Core never requires a capability.** Every core extension point ships a lean default and runs inert when no capability is registered; core never names or hard-depends on a specific capability.
+- **core.9 — Scratch discipline.** Scratch and temporary files live only under `_local/scratch/` — never the repo root, system temp, or beside tracked files. (a) A scratch file's consumer deletes it as its own last act in that same run, never deferring to a sweep. (b) The run-ending skill deletes that run's coordination files — state, handoff, ledger, lock, marker — as part of ending it, on success or failure. The finalize sweep is a backstop that excuses neither.
 
-Plus these additional core articles (provenance `core`), recorded **verbatim**:
-
-8. **Core never requires a capability.** Every core extension point ships a lean default and
-   runs inert when no capability is registered; core never names or hard-depends on a
-   specific capability.
-9. **Temp and scratch files live under `_local/`, and nothing is left behind.** Working,
-   temporary, and scratch files route to a dedicated scratch area under `_local/`
-   (`_local/scratch/`) — never the repo root, a system temp directory, or anywhere alongside
-   tracked files. This *complements* the write-scope article above: that one bounds where
-   writes may land; this one routes every throwaway to a single gitignored home inside that
-   boundary. Placement alone does not discharge the article: every scratch file also carries a
-   lifecycle, and the two deletion obligations below are **separate, and both mandatory**.
-   - **(a) Per-consumer immediate deletion.** Each scratch file is deleted the moment its
-     consumer has run — deletion is that consumer's own last act on the file, performed in the
-     same run that consumed it. It is never deferred to a later sweep, never postponed to the
-     end of the chain, and never left for another skill to notice.
-   - **(b) Breadcrumb deletion by the run-ending skill.** Every run-scoped breadcrumb — the
-     state, handoff, ledger, lock, and marker files a multi-step run writes to coordinate
-     itself — is deleted by the skill that ends the run, as part of ending it, whether the run
-     ended in success or in failure.
-
-   The finalize-time scratch sweep is a **backstop, not a substitute**: it exists only to remove
-   residue that obligation (a) or (b) failed to remove, and neither obligation may be skipped,
-   deferred, or weakened on the grounds that the sweep will catch it.
+**This wording is authoritative, and it is mirrored.** The resolver carries the same nine
+lines so a re-composition can refresh an already-composed record; the two copies are held
+equal by a contract test, so an edit here that is not mirrored there fails the suite rather
+than shipping a second, silently divergent constitution. Never shorten an article by dropping
+an obligation: the 1:1 map every rewrite is judged against is `obligation-inventory.md`,
+obtained via the resolver's `resolve_content({ workspaceRoot, ... })`
+(`class: references-template`, `skill: constitution`, `ref: obligation-inventory.md`), never a
+raw `Read` of the plugin-cache path. It is an authoring reference — read when the articles are
+rewritten, never at runtime.
 
 ### 2. Capability articles — composed from the registry (provenance-tagged)
 
@@ -214,12 +206,18 @@ special-case a concrete capability, count the registry, or carry a per-capabilit
 (a capability's name still appears as a provenance tag when it contributes articles — that is
 the registry-driven composition, not a hardcoded branch).
 
-### 3. Project clauses — user-authored (distinct section)
+### 3. Project clauses — user-owned (distinct section)
 
-The project's own non-negotiable clauses, provenance `project`, in their own distinct section.
+The project's own non-negotiable clauses, provenance `project`, in their own distinct section,
+each rendered `- **proj.<n> — <key>:** <rule>` like every other article.
 **Establish** seeds this section with a short commented starter inviting the project to add its
-clauses (it does not invent clauses). **Update** **preserves** whatever the project has authored
-here verbatim — see the update-merge rule below.
+clauses (it does not invent clauses). **Update** **preserves** whatever the project has here
+verbatim — see the update-merge rule below.
+
+Clauses are recorded through **clause intake** (below), not by hand: intake is what mints the
+id, applies the clause-style contract, and checks the clause against every existing article.
+The section stays **user-owned** either way — nothing rewrites a clause without asking, and a
+re-composition carries the whole section across untouched.
 
 ### Precedence (stated in the record)
 
@@ -290,6 +288,61 @@ instead. Mirror the update-merge / skip-if-present idempotency of `qa-gen` and `
    exists of.
 6. Maintain the `## Capabilities` table in `_local/config.md` (below).
 7. Emit the final-output block (`CONSTITUTION — updated` or `CONSTITUTION — unchanged`).
+
+## Clause intake
+
+Reached when the trimmed argument is neither empty nor exactly `establish`/`update`. It records
+**one** project clause per run, and it **never writes user-intent text before echoing it**.
+
+If `_local/constitution.md` is absent, stop: "No constitution to add a clause to. Run
+`/wf:constitution` first." Intake amends a record; it does not establish one.
+
+Obtain the clause-style contract first — `clause-style.md`, via the resolver's
+`resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: constitution`,
+`ref: clause-style.md`), never a raw `Read` of the plugin-cache path. It is the contract every
+step below applies, and it is read only on this path.
+
+1. **Classify.** `drop <id>` → remove. `amend <id>: <text>` → amend. Anything else → add.
+   For remove/amend, the id must be a `proj.N` **present in the record**; an absent one stops
+   with the ids that are present.
+   **`core.*` and `<capability>.*` are never remove or amend targets.** They are re-rendered
+   from their source on every re-composition, so an edit here would be silently reverted. Stop
+   and say so, naming the one supported route: add a project clause that overrides that id.
+
+2. **Normalize.** Apply the clause-style contract's normalization rules — one rule, imperative
+   present tense, rationale stripped, a kebab-case key derived from the subject. Text carrying
+   two independent obligations is split into two clauses, each minted its own id, and both are
+   echoed together. Normalization fixes **form**, never **meaning**: a clause whose meaning
+   cannot survive the contract is reported back rather than reshaped.
+
+3. **Mint the id.** For an add, the next `proj.N` is **one past the highest `proj.N` the record
+   has ever carried**, not one past the highest currently present — ids are monotonic and never
+   reused, so dropping `proj.2` does not free `proj.2`. An amend keeps its clause's id.
+
+4. **Check against every article — core, capability, and project alike.**
+   - **Duplicate** — the rule is already an obligation of an existing article. Report the
+     covering id, **write nothing**, and stop. Emit `CONSTITUTION — clause covered`.
+   - **Contradiction** — the rule cannot hold at the same time as an existing article. Do not
+     stop and do not silently proceed: carry the conflict into the echo, naming the conflicting
+     id and stating the conflict, and proceed **only on explicit confirmation**. On confirmation
+     it is recorded as a project clause that **overrides** the named id — precedence resolves
+     the conflict; the core or capability article is never edited.
+
+5. **Echo, and gate.** Show the normalized clause exactly as it will be written, with its minted
+   id, the action (add / amend / remove), and — when step 4 found one — the overridden or
+   conflicting id. For an amend, show the current text alongside the replacement; for a remove,
+   show the clause being removed. Then ask for approval.
+   **Nothing is written before approval is given.** The echo is the only place the user sees
+   what will be recorded in their name; declining leaves the record byte-for-byte unchanged and
+   emits `CONSTITUTION — clause declined`.
+
+6. **Write, and report the sync impact.** On approval, edit **only** the
+   `## Project clauses (provenance: project)` section — every other section is left exactly as
+   it is, and this path performs no re-composition. Then re-read the file and confirm the
+   section carries what was just approved **and** every clause that was there before; if it does
+   not, say so plainly rather than reporting a clean write. Emit `CONSTITUTION — clause added`
+   / `amended` / `removed` with a `Sync impact:` line naming each id that moved
+   (`+proj.1 "…"`, `~proj.1 "…"`, `-proj.2 "…"`).
 
 ## Maintain the `## Capabilities` table (second write target)
 
@@ -364,6 +417,27 @@ the registry.
   ⇒ byte-identical file. Idempotency is a contract, not a nicety.
 - **A capability declares no articles.** It simply contributes nothing to the capability
   group — not an error, the same no-op as an absent capability.
+- **Free text starting with a reserved word** (e.g. `update the scratch rule…`). Clause intake,
+  not update mode — the reservation is on the **exact sole argument** only. A user who wanted the
+  mode passes the bare word.
+- **Clause intake with no constitution present.** Stop: "No constitution to add a clause to. Run
+  `/wf:constitution` first." Never establish a record as a side effect of recording a clause.
+- **The clause is already covered by an existing article.** Report the covering id and write
+  nothing (`CONSTITUTION — clause covered`). A second copy of a rule is a second thing to keep in
+  sync, and the covering id is the useful answer.
+- **The clause contradicts a core or capability article.** Not a stop and not a silent write: the
+  echo names the conflicting id and states the conflict, and only an explicit confirmation
+  proceeds — recording it as a project clause that overrides that id. Precedence resolves it;
+  the article is never edited.
+- **`drop`/`amend` naming a `core.*` or `<capability>.*` id.** Stop and name the supported route
+  (add an overriding project clause). Those ids are re-rendered from source, so an edit would be
+  reverted on the next re-composition — accepting it would be a silent no-op.
+- **`drop`/`amend` naming a `proj.N` that is not in the record.** Stop and list the ids that are.
+  A dropped id is never re-minted, so a stale reference is a mistake, not a gap to fill.
+- **The echo is declined.** The record is left byte-for-byte unchanged
+  (`CONSTITUTION — clause declined`). Declining is a supported outcome, not a failure.
+- **Free text carrying two independent obligations.** Split into two clauses, each with its own
+  minted id, echoed together under one approval — one rule per article is the contract.
 
 ---
 
@@ -371,13 +445,30 @@ the registry.
 
 End the chat reply with this fenced block, as the very last thing emitted:
 
+On the establish / update path:
+
 ```
 CONSTITUTION — <established | updated | unchanged>
 
 Articles: <9 core> + <capability articles present | none (core-only)> + <project section: seeded | preserved>
 Registry: <comma-separated capability names | none (core-only)>
 File:     _local/constitution.md
-Next:     review _local/constitution.md and add any project clauses; then /wf:spec <id> to start a task (the constitution is intended for consultation at spec and enforcement at verify once that wiring lands).
+Next:     review _local/constitution.md and add any project clauses with /wf:constitution <clause text>; then /wf:spec <id> to start a task (the constitution is intended for consultation at spec and enforcement at verify once that wiring lands).
 ```
+
+On the clause-intake path:
+
+```
+CONSTITUTION — <clause added | clause amended | clause removed | clause covered | clause declined>
+
+Clause:      <the normalized clause as recorded, or the one that was not>
+Sync impact: <+proj.N "…" | ~proj.N "…" | -proj.N "…" | none — covered by <id> | none — declined>
+Articles:    <9 core> + <capability articles present | none (core-only)> + <project clauses: N>
+File:        _local/constitution.md
+Next:        review _local/constitution.md, or record another clause with /wf:constitution <clause text>.
+```
+
+`clause covered` and `clause declined` both wrote **nothing** — their `Sync impact:` says so
+explicitly rather than leaving a silent no-op to be inferred.
 
 **The final output block must always be the very last thing output to chat.**

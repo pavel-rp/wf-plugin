@@ -140,9 +140,23 @@ function nextTopLevelHeading(lines: readonly string[], from: number): number {
  *  before the next top-level heading.
  *
  *  The shape mirrors the record `/wf:constitution` composes: one `###` block per
- *  contributing capability, each article a `- **key:** value` bullet, blank lines
- *  between blocks. Matching it exactly is what makes a recomposition over an
- *  unchanged capability set byte-identical (rule 4) rather than merely equivalent. */
+ *  contributing capability, each article a `- **<id> — <key>:** <value>` bullet,
+ *  blank lines between blocks. Matching it exactly is what makes a recomposition
+ *  over an unchanged capability set byte-identical (rule 4) rather than merely
+ *  equivalent.
+ *
+ *  THE ID IS PART OF THE RENDERED TEXT (WF-500). Every article in the record —
+ *  core, capability, project — carries an explicit `<provenance>.<n>` id, because
+ *  an article gets cited: by a project clause recorded to override it, by an
+ *  intake contradiction report, by a review finding. A citation needs a name that
+ *  survives the article moving within its section.
+ *
+ *  NUMBERED PER CAPABILITY, FROM 1 — never across the whole section. The
+ *  provenance segment already separates the namespaces, so `sr.1` and `audit.1`
+ *  coexist; numbering across the section instead would renumber every later
+ *  capability's articles whenever an earlier one gained or lost one, which is the
+ *  churn the id exists to prevent. Within a capability the order is the manifest's
+ *  own, which `articlesByCapability` preserves and this module never re-sorts. */
 function renderArticleBody(capabilities: readonly ConstitutionCapabilityArticles[]): string[] {
   const contributing = capabilities.filter((entry) => entry.articles.length > 0);
   if (contributing.length === 0) {
@@ -151,9 +165,9 @@ function renderArticleBody(capabilities: readonly ConstitutionCapabilityArticles
   const out: string[] = [];
   for (const entry of contributing) {
     out.push("", `### ${entry.capability}`, "");
-    for (const article of entry.articles) {
-      out.push(`- **${article.key}:** ${article.value}`);
-    }
+    entry.articles.forEach((article, index) => {
+      out.push(`- **${entry.capability}.${index + 1} — ${article.key}:** ${article.value}`);
+    });
   }
   out.push("");
   return out;
