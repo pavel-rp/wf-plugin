@@ -693,6 +693,18 @@ function priorTerminalDecision(
   retainedUnitIds: string[],
 ): RoutingDecision {
   const { actualModel: _currentActualModel, ...withoutCurrentActualModel } = current;
+  // WF-499, stated limitation rather than a hidden one: `carried` is NOT restated
+  // from the prior, because the post-attempt prior deliberately carries no
+  // `carried` field — widening it would be a second contract addition beyond the
+  // one bounded handoff this change is scoped to. It therefore reflects the
+  // re-evaluated CURRENT inputs (the spread below), which is exact whenever the
+  // caller re-states `carriedModel` on the post-attempt call, as a caller
+  // preserving its retained decision does. A caller that drops it gets
+  // `carried: false` alongside the prior's own `complexity-derived` source: the
+  // provenance stays truthful, only the carried/derived distinction is lost for
+  // that record. Tightening this means requiring the carried input to match the
+  // prior the way `shapeEvidence` already must — a deliberate follow-up, not
+  // something to absorb here.
   return {
     ...withoutCurrentActualModel,
     role: prior.role,
