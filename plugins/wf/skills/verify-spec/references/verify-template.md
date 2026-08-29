@@ -1,6 +1,6 @@
 # `04_verify.md` full output shape
 
-The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path). The `## Adversarial findings` section is present only when the lean adversarial pass produced at least one reportable finding (omit it on a clean change).
+The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path). The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — which subordinates the omission rule: omit the whole section on a clean change only, meaning a run that produced no surviving finding, withdrew no candidate, and had every contributor deliver.
 
 ## Contents
 
@@ -47,8 +47,11 @@ clause when the fragment carries none.
 
 ## Adversarial findings
 
-Only present when the lean adversarial pass produced at least one reportable finding
-(omit the whole section on a clean change — no "no issues found" placeholder). Every entry
+Present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a
+Coverage record. The omission rule is subordinate to that: omit the whole section on a clean change only
+— a run that produced no surviving finding, withdrew no candidate, and had every contributor
+deliver — and never emit a "no issues found" placeholder. A section carrying only Withdrawn lines,
+or only a Coverage record, is a correct render, not an empty one. Every entry
 carries the provenance tag `core`, both required citations, and a non-gating severity:
 these findings never change the `**Verdict:**` line above. Candidates that reconciliation
 withdrew, and any contributor that failed to deliver, are recorded in the two trailing
