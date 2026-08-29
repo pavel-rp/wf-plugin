@@ -133,7 +133,22 @@ Measured over `CORE_ARTICLES_BODY`'s non-empty entries, joined with newlines.
 | | rendered lines | bytes | words |
 |---|---|---|---|
 | **Before** (post-WF-492) | 12 | **4,050** | 637 |
-| **After** (compressed, ID'd) | 9 | **≤ 2,200** | ≤ 350 |
+| **After** (compressed, ID'd) | 9 | **2,439** | 372 |
+| Change | −3 | **−39.8%** | −41.6% |
+
+Per article, after:
+
+| Article | bytes | words | | Article | bytes | words |
+|---|---|---|---|---|---|---|
+| `core.1` | 148 | 25 | | `core.6` | 269 | 43 |
+| `core.2` | 559 | **84** | | `core.7` | 126 | 17 |
+| `core.3` | 329 | 45 | | `core.8` | 206 | 33 |
+| `core.4` | 145 | 22 | | `core.9` | 476 | **79** |
+| `core.5` | 173 | 24 | | | | |
+
+`core.2` (1,028 → 559) and `core.9`'s group (1,504 → 476) carry the compression: together they
+were 63% of the old body and are 42% of the new one. The mechanical ceiling is asserted at
+**2,500 bytes** by `constitution-compose.test.ts` — headroom for a wording fix, none for regrowth.
 
 ### Budget reconciliation
 
@@ -142,6 +157,7 @@ The originating brief targets `≤ ~1.2 KB` against a stated `3,338`-byte body. 
 The amendment added ~712 net bytes of pure obligation — twelve of the thirty rows above sit in
 that one article — and the inventory outranks the byte budget by this contract's own rule.
 
-The acceptance figure is therefore restated against the real baseline: **≤ 2.2 KB, ≤ 55% of the
+The acceptance figure is therefore restated against the real baseline: **2,439 bytes, 60% of the
 4,050-byte body**, with all 30 obligations intact. Reaching 1.2 KB would require dropping
-obligations from `core.2`, which is precisely what this artifact exists to prevent.
+obligations from `core.2`, which is precisely what this artifact exists to prevent — so the
+number moved and the obligations did not.

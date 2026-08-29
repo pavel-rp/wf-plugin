@@ -62,12 +62,16 @@ const PREAMBLE = [
   "",
 ];
 
+// Since WF-500 every article in the record carries its `<provenance>.<n>` id, so
+// an already-composed capability section reads `- **sr.1 — <key>:** <value>`. The
+// fixture states the CURRENT shape on purpose: the byte-identity tests below are
+// only meaningful against a record the renderer would reproduce unchanged.
 const ARTICLES_SECTION = [
   CAPABILITY_ARTICLES_HEADING,
   "",
   "### sr",
   "",
-  "- **precommit-self-review:** required",
+  "- **sr.1 — precommit-self-review:** required",
   "",
 ];
 
@@ -118,7 +122,7 @@ test("the preamble and the core articles are preserved too — only the derived 
   assert.ok(result.ok && result.content.includes("1. **The spec is the single source of truth.**"));
   // The replaced section is the ONLY thing that moved.
   assert.ok(result.ok && !result.content.includes("precommit-self-review"));
-  assert.ok(result.ok && result.content.includes("- **k:** v"));
+  assert.ok(result.ok && result.content.includes("- **sr.1 — k:** v"));
 });
 
 test("a record with no capability articles still keeps the project's clauses", () => {
@@ -505,6 +509,122 @@ test("a CRLF record keeps CRLF throughout — a rewrite never leaves it mixed", 
     result.ok && !/(^|[^\r])\n/.test(result.content),
     "no bare LF may survive in a record that arrived as CRLF",
   );
+});
+
+// ---------------------------------------------------------------------------
+// WF-500 — every article carries its `<provenance>.<n>` id, and the compression
+// loses no obligation
+//
+// The size assertions below are the ONLY mechanical guard on the compression. The
+// obligation map itself lives in
+// `skills/constitution/references/obligation-inventory.md` and is prose, so what is
+// pinned here is the half a test can pin: that the article text a future edit might
+// shorten still SAYS each of the obligations that edit could quietly drop.
+// ---------------------------------------------------------------------------
+
+test("capability articles render `<capability>.<n>`, numbered per capability from 1", () => {
+  const result = compose(RECORD, [
+    { capability: "sr", articles: [{ key: "a", value: "1" }] },
+    {
+      capability: "audit",
+      articles: [
+        { key: "b", value: "2" },
+        { key: "c", value: "3" },
+      ],
+    },
+  ]);
+  assert.ok(result.ok);
+  assert.ok(result.ok && result.content.includes("- **sr.1 — a:** 1"));
+  // Numbered PER CAPABILITY, not across the section: `audit` restarts at 1 rather
+  // than continuing from `sr`'s count, so gaining or losing an `sr` article never
+  // renumbers `audit`'s.
+  assert.ok(result.ok && result.content.includes("- **audit.1 — b:** 2"));
+  assert.ok(result.ok && result.content.includes("- **audit.2 — c:** 3"));
+  assert.ok(result.ok && !result.content.includes("audit.3"));
+});
+
+test("a capability's own article order is the manifest's, and the id follows it", () => {
+  const result = compose(RECORD, [
+    {
+      capability: "sr",
+      articles: [
+        { key: "second-declared", value: "x" },
+        { key: "first-declared", value: "y" },
+      ],
+    },
+  ]);
+  assert.ok(result.ok);
+  const body = result.ok ? result.content : "";
+  assert.ok(body.indexOf("sr.1 — second-declared") < body.indexOf("sr.2 — first-declared"));
+});
+
+test("the stale fixture's core section re-renders in ID'd form", () => {
+  const result = composeWithCore(readFixture(STALE_PATH));
+  assert.ok(result.ok);
+  const body = result.ok ? result.content : "";
+  for (let n = 1; n <= 9; n += 1) {
+    assert.ok(body.includes(`- **core.${n} — `), `the record must render core.${n}`);
+  }
+  // The pre-compression numbered-list form is gone, not carried alongside.
+  assert.ok(!body.includes("1. **The spec is the single source of truth.**"));
+});
+
+test("core.2 still carries WF-492's unattended-gate obligations after compression", () => {
+  const result = composeWithCore(readFixture(STALE_PATH));
+  assert.ok(result.ok);
+  const body = result.ok ? result.content : "";
+  // One probe per obligation the amendment added (inventory rows O2.4–O2.12). A
+  // compression that shortened this article by dropping one would fail here rather
+  // than in a prose review.
+  for (const obligation of [
+    "resolver-issued run-evidence record", // O2.4
+    "naming the gate", // O2.5
+    "binding the approved artifact by digest", // O2.6
+    "filed before the next phase", // O2.7
+    "valid only in its requesting run", // O2.8
+    "requested by but never written by the agent it authorises", // O2.9
+    "unattended mode is established independently of the agent", // O2.10
+    "Absent, unmatched, unverifiable, foreign-run, or digest-stale", // O2.11
+    "the run halts there, reported unproven", // O2.12
+  ]) {
+    assert.ok(body.includes(obligation), `core.2 must still carry: ${obligation}`);
+  }
+});
+
+test("core.9 still carries both deletion obligations and the backstop rule", () => {
+  const body = CORE_ARTICLES_BODY.join("\n");
+  assert.ok(body.includes("(a) A scratch file's consumer deletes it")); // O9.2
+  assert.ok(body.includes("(b) The run-ending skill deletes")); // O9.3
+  assert.ok(body.includes("backstop that excuses neither")); // O9.4
+  assert.ok(body.includes("_local/scratch/")); // O9.1
+  // The two obligations are ONE article, so a record cannot carry (a) without (b).
+  const nine = CORE_ARTICLES_BODY.filter((line) => line.startsWith("- **core.9 "));
+  assert.equal(nine.length, 1, "core.9 is a single unwrapped line");
+});
+
+test("the compressed core body meets its measured budget", () => {
+  const entries = CORE_ARTICLES_BODY.filter((line) => line.trim().length > 0);
+  assert.equal(entries.length, 9, "one rendered line per article, and nine articles");
+
+  // Every entry is a single unwrapped line — the property that makes a
+  // re-composition byte-identical rather than merely equivalent (rule 4).
+  for (const entry of entries) assert.ok(!entry.includes("\n"));
+
+  // 2,439 bytes as shipped, from 4,050 before the compression. The ceiling carries
+  // a little headroom so a wording fix is not a test change, and no more: its whole
+  // job is to catch the body growing back, which is what happened between WF-334
+  // (the record entering every session's context) and this item.
+  const bytes = Buffer.byteLength(entries.join("\n"), "utf8");
+  assert.ok(bytes <= 2500, `the compressed core body must stay under 2.5 KB, measured ${bytes}`);
+
+  // The ~60-word target, with the two exceptions the inventory names by count:
+  // core.2 carries 12 obligations and core.9 carries 4.
+  const budget = (id: string): number => (id === "core.2" || id === "core.9" ? 85 : 60);
+  for (const entry of entries) {
+    const id = entry.slice(4, entry.indexOf(" —"));
+    const words = entry.split(/\s+/).filter(Boolean).length;
+    assert.ok(words <= budget(id), `${id} is ${words} words, over its ${budget(id)}-word budget`);
+  }
 });
 
 test("a `**Registry:**` line inside the core section is still found and refreshed", () => {
