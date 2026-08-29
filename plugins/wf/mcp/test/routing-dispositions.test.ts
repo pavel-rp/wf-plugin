@@ -201,6 +201,9 @@ test("compact measurement projection preserves routing evidence without artifact
     effortFallback: null,
     escalation: null,
     masked: false,
+    // WF-499: an operator-pinned selection is not a carried one — this decision
+    // resolved `invocation`, so the ledger records that it carried nothing.
+    carried: false,
     actualModel: "claude-sonnet-4-6",
   });
   assert.ok(!Object.hasOwn(projectRoutingMeasurement({ ...decision, actualModel: undefined }), "actualModel"));

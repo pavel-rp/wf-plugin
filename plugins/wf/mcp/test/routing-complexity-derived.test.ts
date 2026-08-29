@@ -114,7 +114,10 @@ test("WF-498: the two shipped-static defaults are unaffected by derivation", () 
 });
 
 test("WF-498: derivation reaches only the eligible roles", () => {
-  for (const role of ["pr", "commit", "shipper", "index", "context-distiller", "charter-writer"]) {
+  // `shipper` left this list in WF-499, which published its inlined-role entry and
+  // added it to the eligible set. `pr` and `commit` stay because their matrix rows
+  // still read `inherit` — `pr`'s is pinned there by `CAL-pr`.
+  for (const role of ["pr", "commit", "index", "context-distiller", "charter-writer"]) {
     const decision = resolveRouting({}, {
       role, shapeEvidence: runPhaseEvidence, unitIds: [`${role}:single`],
       supportsModelSelector: true, supportsEffortSelector: false,

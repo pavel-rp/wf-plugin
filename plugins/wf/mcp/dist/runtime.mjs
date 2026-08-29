@@ -23076,6 +23076,12 @@ var routingInput = fromJsonSchema2(withWorkspaceRoot({
     unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
     invocationModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern },
     invocationEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
+    carriedModel: {
+      type: ["string", "null"],
+      maxLength: 128,
+      pattern: safeRoutingStringPattern,
+      description: "A model selection this resolver already issued for this same unit of work at an earlier item-level decision, carried into a later topology-only decision so its provenance survives. Ranked below an operator pin and above a fresh derivation, and reported as `complexity-derived` rather than `invocation`. Not a caller's own choice \u2014 use `invocationModel` for that. Refused, never downgraded, when the role is not derivation-eligible, the model selector is unsupported, the shape evidence is invalid, or the value is outside the range the resolver itself derives."
+    },
     requireModel: { type: "boolean" },
     requireEffort: { type: "boolean" },
     supportsModelSelector: { type: "boolean" },
@@ -26321,7 +26327,8 @@ var MAX_EFFORT_LENGTH = 16;
 var MAX_ROUTING_METADATA_LENGTH = 256;
 var MAX_ROLE_LENGTH = 64;
 var MODEL_TIERS = ["haiku", "sonnet", "opus"];
-var DERIVATION_ELIGIBLE_ROLES = /* @__PURE__ */ new Set(["phase-runner", "finalize"]);
+var DERIVATION_ELIGIBLE_ROLES = /* @__PURE__ */ new Set(["phase-runner", "finalize", "shipper"]);
+var DERIVABLE_MODELS = /* @__PURE__ */ new Set(["haiku", "sonnet"]);
 var AMBIGUITY_WEIGHT = { none: 0, bounded: 1, material: 2 };
 var TOOL_WORK_WEIGHT = { none: 0, bounded: 1, material: 2 };
 var INSUFFICIENCY_SIGNALS = /* @__PURE__ */ new Set([
@@ -26431,10 +26438,19 @@ function choose(kind, inputs, project, normalizedEvidence, evidenceValid) {
   const configured = project[inputs.role]?.[kind] ?? null;
   const shipped = DEFAULTS[inputs.role]?.[kind] ?? null;
   const required2 = kind === "model" ? inputs.requireModel : inputs.requireEffort;
-  const derived = kind === "model" && evidenceValid && selectorSupported && !invocation && !configured && !shipped && DERIVATION_ELIGIBLE_ROLES.has(inputs.role) ? deriveModelFromEvidence(normalizedEvidence) : null;
-  const requested = (invocation || null) ?? (configured || null) ?? (shipped || null) ?? derived?.model ?? null;
-  const requestedSource = invocation ? "invocation" : configured ? "project" : shipped ? "shipped-default" : derived ? "complexity-derived" : "inheritance";
-  const derivedBasis = derived ? derived.basis : null;
+  const carriedInput = kind === "model" ? inputs.carriedModel || null : null;
+  const carriedProblem = carriedInput === null ? null : !DERIVATION_ELIGIBLE_ROLES.has(inputs.role) ? `carriedModel claims a resolver-derived selection for role \`${inputs.role}\`, which the resolver never derives` : !evidenceValid ? "carriedModel requires valid shape evidence; a call whose evidence was rejected carries nothing" : !selectorSupported ? "carriedModel requires a runtime that can honor a model selector" : !DERIVABLE_MODELS.has(carriedInput) ? `carriedModel \`${carriedInput}\` is outside the range this resolver derives` : null;
+  if (carriedProblem) {
+    return {
+      choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: "malformed" },
+      stop: carriedProblem
+    };
+  }
+  const carried = carriedInput !== null && !invocation && !configured && !shipped ? carriedInput : null;
+  const derived = kind === "model" && evidenceValid && selectorSupported && !invocation && !configured && !shipped && !carried && DERIVATION_ELIGIBLE_ROLES.has(inputs.role) ? deriveModelFromEvidence(normalizedEvidence) : null;
+  const requested = (invocation || null) ?? (configured || null) ?? (shipped || null) ?? carried ?? derived?.model ?? null;
+  const requestedSource = invocation ? "invocation" : configured ? "project" : shipped ? "shipped-default" : carried || derived ? "complexity-derived" : "inheritance";
+  const derivedBasis = derived ? derived.basis : carried ? `complexity-derived selection \`${carried}\` carried from this unit's earlier item-level decision` : null;
   const maximum = kind === "model" ? MAX_MODEL_ID_LENGTH : MAX_EFFORT_LENGTH;
   if (host && UNSAFE_ROUTING_CHARACTER.test(host)) {
     return {
@@ -26490,7 +26506,13 @@ function choose(kind, inputs, project, normalizedEvidence, evidenceValid) {
     stop: null,
     // Only this path actually delivers the derived value, so only this path
     // reports the basis it was derived from.
-    ...derivedBasis ? { derivedBasis } : {}
+    ...derivedBasis ? { derivedBasis } : {},
+    // WF-499: likewise the ONLY path on which a carried selection reaches the
+    // agent. Every return above either rejects the call or hands back a
+    // higher-precedence value, so none of them may claim the decision carried
+    // anything — including the `host` path, where the carry was outranked and
+    // survives only as `requested`.
+    ...carried && requested === carried ? { carriedApplied: true } : {}
   };
 }
 function modelTier(value) {
@@ -26530,6 +26552,7 @@ function routingScalarProblem(inputs) {
   const checks = [
     [inputs.invocationModel, "invocationModel", MAX_MODEL_ID_LENGTH],
     [inputs.invocationEffort, "invocationEffort", MAX_EFFORT_LENGTH],
+    [inputs.carriedModel, "carriedModel", MAX_MODEL_ID_LENGTH],
     [inputs.hostModel, "hostModel", MAX_MODEL_ID_LENGTH],
     [inputs.hostEffort, "hostEffort", MAX_EFFORT_LENGTH],
     [inputs.basis, "basis", MAX_ROUTING_METADATA_LENGTH],
@@ -26706,6 +26729,7 @@ function baseDecision(project, inputs) {
     ...inputs,
     invocationModel: null,
     invocationEffort: null,
+    carriedModel: null,
     hostModel: null,
     hostEffort: null,
     basis: null,
@@ -26735,6 +26759,9 @@ function baseDecision(project, inputs) {
     escalationOrigin: selectorInputs.escalationOrigin ?? null,
     fallback: model.choice.fallback ?? effort.choice.fallback,
     masked: model.choice.masked || effort.choice.masked,
+    // Only `choose`'s delivering path sets this, so it states what actually
+    // reached the agent rather than what the caller offered.
+    carried: model.carriedApplied === true,
     ...selectorInputs.actualModel ? { actualModel: selectorInputs.actualModel } : {},
     status: stops.length ? "stop" : "dispatch",
     disposition: stops.length ? "invalid-stop" : "dispatch",

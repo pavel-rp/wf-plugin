@@ -494,6 +494,13 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
     },
     unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
     invocationModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern }, invocationEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },
+    carriedModel: {
+      type: ["string", "null"],
+      maxLength: 128,
+      pattern: safeRoutingStringPattern,
+      description:
+        "A model selection this resolver already issued for this same unit of work at an earlier item-level decision, carried into a later topology-only decision so its provenance survives. Ranked below an operator pin and above a fresh derivation, and reported as `complexity-derived` rather than `invocation`. Not a caller's own choice — use `invocationModel` for that. Refused, never downgraded, when the role is not derivation-eligible, the model selector is unsupported, the shape evidence is invalid, or the value is outside the range the resolver itself derives.",
+    },
     requireModel: { type: "boolean" }, requireEffort: { type: "boolean" },
     supportsModelSelector: { type: "boolean" }, supportsEffortSelector: { type: "boolean" },
     hostModel: { type: ["string", "null"], maxLength: 128, pattern: safeRoutingStringPattern }, hostEffort: { type: ["string", "null"], maxLength: 16, pattern: safeRoutingStringPattern },

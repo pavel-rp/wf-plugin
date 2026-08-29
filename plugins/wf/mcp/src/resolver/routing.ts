@@ -38,12 +38,31 @@ const MODEL_TIERS = ["haiku", "sonnet", "opus"] as const;
 // value. `branch` and `classify` are absent because their `DEFAULTS` entry
 // already wins above this tier — which is precisely how this change leaves the
 // two shipped-static rows byte-identical in behaviour. `pr` and `commit` are
-// absent because their published matrix rows still read `inherit`; `index` is
-// absent because its published inlined-role entry claims no static default; and
-// `shipper` is absent because it has no published entry at all yet. The matrix
-// and the runtime may never disagree, so a role earns a derived value only once
-// something published says it does.
-const DERIVATION_ELIGIBLE_ROLES = new Set(["phase-runner", "finalize"]);
+// absent because their published matrix rows still read `inherit`; and `index` is
+// absent because its published inlined-role entry claims no static default. The
+// matrix and the runtime may never disagree, so a role earns a derived value only
+// once something published says it does.
+//
+// WF-499 added `shipper` under exactly that rule: it now holds a published
+// inlined-role entry recording `complexity-derived` as its mechanism, so the
+// runtime and the matrix still agree. Like `finalize` it backs no agent file, so
+// its entry lives in the matrix's inlined-roles section rather than the
+// eighteen-row agent table. `pr` deliberately did NOT come with it: `CAL-pr`
+// records `current: inherit`, and the calibration gate permits only
+// `adopt`/`retain`/`defer` — so deriving there would falsify a durable record
+// through an operation that gate does not allow. `shipper` hits no such wall
+// because it holds no `CAL-` record at all.
+const DERIVATION_ELIGIBLE_ROLES = new Set(["phase-runner", "finalize", "shipper"]);
+// WF-499: the range the ladder below can actually mint. A CARRIED selection must
+// fall inside it — that is what stops a caller smuggling a tier this resolver
+// never derives (notably `opus`) in wearing resolver provenance, since a carried
+// value is by definition one the resolver is said to have issued already. It is
+// stated here rather than shared with `deriveModelFromEvidence` so that this
+// change leaves the ladder byte-identical; `routing-carried-selection.test.ts`
+// asserts the two agree over the ladder's whole score range, so widening the
+// ceiling without widening this set fails the suite instead of silently
+// admitting a tier the resolver cannot produce.
+const DERIVABLE_MODELS = new Set<string>(["haiku", "sonnet"]);
 // Evidence weights. ONLY the five dimensions describing how much REASONING a
 // unit needs are scored: `ambiguity`, `toolWork`, `risk`, `validation`,
 // `returnContract`. The other seven — `workSurface`, `contextIsolation`,
@@ -270,7 +289,7 @@ function choose(
   project: RoutingProjectConfig,
   normalizedEvidence: NormalizedRoutingShapeEvidence,
   evidenceValid: boolean,
-): { choice: RoutingChoice; stop: string | null; derivedBasis?: string } {
+): { choice: RoutingChoice; stop: string | null; derivedBasis?: string; carriedApplied?: boolean } {
   const selectorSupported = kind === "model" ? inputs.supportsModelSelector : inputs.supportsEffortSelector;
   const host = kind === "model" ? inputs.hostModel : inputs.hostEffort;
   const invocation = kind === "model" ? inputs.invocationModel : inputs.invocationEffort;
@@ -306,8 +325,44 @@ function choose(
   // operational record of every frozen `model=false` edge — including
   // `agents/phase-runner.md`, a surface this change is not allowed to touch.
   // Derivation is strictly additive to edges that can actually use it.
+  // WF-499: a selection this resolver already issued for this unit at an earlier,
+  // item-level decision. There is deliberately NO effort counterpart — the
+  // contract offers one carried channel and it is the model one, so "carried
+  // effort" is unrepresentable rather than merely rejected.
+  const carriedInput = kind === "model" ? (inputs.carriedModel || null) : null;
+  // Validity is checked INDEPENDENTLY of precedence. A carry that loses to an
+  // operator pin is not an error — it is simply outranked, and reports
+  // `carried: false`. But a carry this resolver could never have MINTED is a
+  // forged provenance claim, and it is refused whether or not it would have won:
+  // letting it pass silently whenever something outranked it would make the
+  // integrity of the channel depend on the caller's other arguments.
+  const carriedProblem = carriedInput === null
+    ? null
+    : !DERIVATION_ELIGIBLE_ROLES.has(inputs.role)
+      ? `carriedModel claims a resolver-derived selection for role \`${inputs.role}\`, which the resolver never derives`
+      : !evidenceValid
+        ? "carriedModel requires valid shape evidence; a call whose evidence was rejected carries nothing"
+        : !selectorSupported
+          ? "carriedModel requires a runtime that can honor a model selector"
+          : !DERIVABLE_MODELS.has(carriedInput)
+            ? `carriedModel \`${carriedInput}\` is outside the range this resolver derives`
+            : null;
+  if (carriedProblem) {
+    return {
+      choice: { value: null, source: "inheritance", requested: null, requestedSource: "inheritance", masked: false, fallback: "malformed" },
+      stop: carriedProblem,
+    };
+  }
+  // The carried tier sits directly ABOVE a fresh derivation and supersedes it:
+  // the earlier item-level decision scored that unit's OWN difficulty evidence,
+  // while this call's evidence describes topology, so re-deriving here would
+  // replace a better-informed answer with a worse one — which is the whole reason
+  // the consumer carried it rather than re-asking.
+  const carried = carriedInput !== null && !invocation && !configured && !shipped
+    ? carriedInput
+    : null;
   const derived = kind === "model" && evidenceValid && selectorSupported &&
-    !invocation && !configured && !shipped &&
+    !invocation && !configured && !shipped && !carried &&
     DERIVATION_ELIGIBLE_ROLES.has(inputs.role)
     ? deriveModelFromEvidence(normalizedEvidence)
     : null;
@@ -315,20 +370,28 @@ function choose(
   // meaningless, and mixing `??` here with the truthiness guards above would let
   // `invocationModel: ""` silently discard a derived selection with no
   // diagnostic and no fallback token.
-  const requested = (invocation || null) ?? (configured || null) ?? (shipped || null) ?? derived?.model ?? null;
+  const requested = (invocation || null) ?? (configured || null) ?? (shipped || null) ?? carried ?? derived?.model ?? null;
   const requestedSource: RoutingSource = invocation
     ? "invocation"
     : configured
       ? "project"
       : shipped
         ? "shipped-default"
-        : derived
+        : carried || derived
           ? "complexity-derived"
           : "inheritance";
   // Reported only when the derived value is the one that actually survives to
   // the decision; every early return below drops it, so a rejected or masked
-  // call never claims a basis it did not act on.
-  const derivedBasis = derived ? derived.basis : null;
+  // call never claims a basis it did not act on. A carried selection states its
+  // own basis when the caller stated none, so a ledger never shows
+  // `complexity-derived` with nothing to justify it — but a caller-stated basis
+  // still wins in `baseDecision`, which is what lets a consumer forward the
+  // ORIGINATING item-level basis rather than this restatement of it.
+  const derivedBasis = derived
+    ? derived.basis
+    : carried
+      ? `complexity-derived selection \`${carried}\` carried from this unit's earlier item-level decision`
+      : null;
 
   const maximum = kind === "model" ? MAX_MODEL_ID_LENGTH : MAX_EFFORT_LENGTH;
   if (host && UNSAFE_ROUTING_CHARACTER.test(host)) {
@@ -387,6 +450,12 @@ function choose(
     // Only this path actually delivers the derived value, so only this path
     // reports the basis it was derived from.
     ...(derivedBasis ? { derivedBasis } : {}),
+    // WF-499: likewise the ONLY path on which a carried selection reaches the
+    // agent. Every return above either rejects the call or hands back a
+    // higher-precedence value, so none of them may claim the decision carried
+    // anything — including the `host` path, where the carry was outranked and
+    // survives only as `requested`.
+    ...(carried && requested === carried ? { carriedApplied: true } : {}),
   };
 }
 
@@ -430,6 +499,7 @@ function routingScalarProblem(inputs: RoutingInputs): string | null {
   const checks: Array<[unknown, string, number]> = [
     [inputs.invocationModel, "invocationModel", MAX_MODEL_ID_LENGTH],
     [inputs.invocationEffort, "invocationEffort", MAX_EFFORT_LENGTH],
+    [inputs.carriedModel, "carriedModel", MAX_MODEL_ID_LENGTH],
     [inputs.hostModel, "hostModel", MAX_MODEL_ID_LENGTH],
     [inputs.hostEffort, "hostEffort", MAX_EFFORT_LENGTH],
     [inputs.basis, "basis", MAX_ROUTING_METADATA_LENGTH],
@@ -655,6 +725,7 @@ function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): Rou
     ...inputs,
     invocationModel: null,
     invocationEffort: null,
+    carriedModel: null,
     hostModel: null,
     hostEffort: null,
     basis: null,
@@ -686,6 +757,9 @@ function baseDecision(project: RoutingProjectConfig, inputs: RoutingInputs): Rou
     escalationOrigin: selectorInputs.escalationOrigin ?? null,
     fallback: model.choice.fallback ?? effort.choice.fallback,
     masked: model.choice.masked || effort.choice.masked,
+    // Only `choose`'s delivering path sets this, so it states what actually
+    // reached the agent rather than what the caller offered.
+    carried: model.carriedApplied === true,
     ...(selectorInputs.actualModel ? { actualModel: selectorInputs.actualModel } : {}),
     status: stops.length ? "stop" : "dispatch",
     disposition: stops.length ? "invalid-stop" : "dispatch",
@@ -711,6 +785,7 @@ export function projectRoutingMeasurement(decision: RoutingDecision): RoutingMea
     effortFallback: decision.effort.fallback,
     escalation: decision.retry?.escalation ?? null,
     masked: decision.masked,
+    carried: decision.carried,
     ...(decision.actualModel ? { actualModel: decision.actualModel } : {}),
   };
 }
