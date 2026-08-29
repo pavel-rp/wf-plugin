@@ -497,6 +497,69 @@ test("WF-499: a forged post-attempt prior cannot claim a tier the ladder never m
   assert.notEqual(forged.model.value, "opus", "a forged tier must never reach the published record");
 });
 
+test("WF-499: a HOST-MASKED derived prior is retained, not refused as forged", () => {
+  // THE REGRESSION GUARD FOR A DEFECT THAT REACHED `main`. The forged-provenance
+  // range gate keyed on `source || requestedSource` but range-checked BOTH
+  // `value` and `requested`. `choose`'s host branch legitimately emits a
+  // delivered host value beside a requested derived one, so under any host pin
+  // outside the ladder's range the resolver refused a prior IT HAD MINTED —
+  // `phase-runner`, `finalize` and `shipper` all returning `invalid-stop` on
+  // every post-attempt call.
+  //
+  // The whole suite stayed green because every host fixture used a bare
+  // `haiku`/`sonnet`, which is inside the range. A pin outside it is the only
+  // shape that exposes the bug, and it is what this fixture pins.
+  for (const role of ["phase-runner", "finalize", "shipper"]) {
+    const initial = resolveRouting({}, {
+      role, shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+      supportsModelSelector: true, supportsEffortSelector: true,
+      hostModel: "opus",
+    });
+    // The resolver itself produced this shape — delivered host, requested derived.
+    assert.equal(initial.model.value, "opus");
+    assert.equal(initial.model.source, "host");
+    assert.equal(initial.model.requestedSource, "complexity-derived");
+    assert.equal(initial.model.masked, true);
+
+    const retained = resolveRouting({}, {
+      role, shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+      supportsModelSelector: true, supportsEffortSelector: true,
+      hostModel: "opus",
+      basis: initial.basis,
+      postAttempt: { sufficient: true, signals: [], prior: priorFrom(initial) },
+    });
+    assert.equal(retained.status, "retain", `${role}: the resolver must not refuse a prior it minted`);
+    assert.equal(retained.disposition, "retain");
+    assert.equal(retained.diagnostic, null);
+    assert.equal(retained.model.value, "opus", "WF-394 host precedence is preserved");
+    assert.equal(retained.carried, false, "a masked prior carried nothing");
+  }
+
+  // The forgery it must still catch: the DELIVERED value claiming derivation.
+  const forged = resolveRouting({}, {
+    role: "shipper", shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+    supportsModelSelector: true, supportsEffortSelector: true,
+    postAttempt: {
+      sufficient: true, signals: [],
+      prior: {
+        role: "shipper", attempt: 1, executionShape: "isolated" as const,
+        shapeEvidence: oneItemWaveEvidence, unitIds: ["unit-a1"],
+        model: {
+          value: "opus", source: "complexity-derived" as const, requested: "opus",
+          requestedSource: "complexity-derived" as const, masked: false, fallback: null,
+        },
+        effort: {
+          value: null, source: "inheritance" as const, requested: null,
+          requestedSource: "inheritance" as const, masked: false, fallback: null,
+        },
+        basis: null, escalationOrigin: null,
+      },
+    },
+  });
+  assert.equal(forged.status, "stop", "narrowing the gate must not blunt it");
+  assert.match(forged.diagnostic ?? "", /`opus`, which is outside the range this resolver derives/);
+});
+
 test("WF-499: an empty carriedModel is refused, never silently downgraded", () => {
   // `||` would map "" to null before any integrity bound could see it, and the call
   // would then deliver a FRESH derive off its own evidence — a different model than

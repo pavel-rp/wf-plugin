@@ -587,12 +587,23 @@ function routingChoiceProblem(choice: RoutingChoice | undefined, field: string, 
   // have produced into the ledger wearing resolver provenance. It would also
   // suppress the escalation lever, because the retry classifier reads the prior's
   // tier: a forged top tier reports `top-tier` and advances nothing.
-  if (claimsDerived) {
-    const claimed = [choice.value, choice.requested].filter((v): v is string => typeof v === "string" && v.length > 0);
-    const outsideRange = claimed.find((v) => !DERIVABLE_MODELS.has(v));
-    if (outsideRange) {
-      return `post-attempt prior ${field} claims complexity-derived provenance for \`${outsideRange}\`, which is outside the range this resolver derives`;
-    }
+  // EACH FIELD IS BOUNDED BY ITS OWN SOURCE, never by the disjunction above.
+  // `choose`'s host branch legitimately emits a DELIVERED host value beside a
+  // REQUESTED derived one — `{ value: <host pin>, source: "host", requested:
+  // <tier>, requestedSource: "complexity-derived" }` — so range-checking both
+  // fields whenever *either* claims derivation refuses a prior this resolver
+  // minted itself, for every eligible role, under any host pin outside the
+  // ladder's range. Only the field actually claiming derived provenance is bound
+  // by what derivation can produce; the delivered value is the host's to choose,
+  // and WF-394 host precedence says so. This mirrors the masked/fallback guard
+  // below, which was already narrowed to `source` alone.
+  const derivedClaims = [
+    choice.source === "complexity-derived" ? choice.value : null,
+    choice.requestedSource === "complexity-derived" ? choice.requested : null,
+  ].filter((v): v is string => typeof v === "string" && v.length > 0);
+  const outsideRange = derivedClaims.find((v) => !DERIVABLE_MODELS.has(v));
+  if (outsideRange) {
+    return `post-attempt prior ${field} claims complexity-derived provenance for \`${outsideRange}\`, which is outside the range this resolver derives`;
   }
   // A DELIVERED derived selection is only ever produced on `choose`'s success
   // path, which cannot be masked and carries no fallback. A prior asserting all
