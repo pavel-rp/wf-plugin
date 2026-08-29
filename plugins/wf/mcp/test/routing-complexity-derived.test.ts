@@ -114,7 +114,10 @@ test("WF-498: the two shipped-static defaults are unaffected by derivation", () 
 });
 
 test("WF-498: derivation reaches only the eligible roles", () => {
-  for (const role of ["pr", "commit", "shipper", "index", "context-distiller", "charter-writer"]) {
+  // `shipper` left this list in WF-499, which published its inlined-role entry and
+  // added it to the eligible set. `pr` and `commit` stay because their matrix rows
+  // still read `inherit` — `pr`'s is pinned there by `CAL-pr`.
+  for (const role of ["pr", "commit", "index", "context-distiller", "charter-writer"]) {
     const decision = resolveRouting({}, {
       role, shapeEvidence: runPhaseEvidence, unitIds: [`${role}:single`],
       supportsModelSelector: true, supportsEffortSelector: false,
@@ -205,7 +208,7 @@ test("WF-498: a caller cannot forge complexity-derived provenance on a post-atte
   // `projectRoutingMeasurement` then publishes as the canonical operational
   // record. Admitting a forged label is the same class WF-497 removed on the
   // neighbouring path; it must be refused, not reintroduced.
-  const forge = (role: string) => resolveRouting({}, {
+  const forge = (role: string, value = "opus") => resolveRouting({}, {
     role,
     shapeEvidence: runPhaseEvidence,
     unitIds: ["run:phase"],
@@ -221,7 +224,7 @@ test("WF-498: a caller cannot forge complexity-derived provenance on a post-atte
         shapeEvidence: runPhaseEvidence,
         unitIds: ["run:phase"],
         model: {
-          value: "opus", source: "complexity-derived" as const, requested: "opus",
+          value, source: "complexity-derived" as const, requested: value,
           requestedSource: "complexity-derived" as const, masked: false, fallback: null,
         },
         effort: {
@@ -242,9 +245,18 @@ test("WF-498: a caller cannot forge complexity-derived provenance on a post-atte
   assert.match(forged.diagnostic ?? "", /complexity-derived provenance for role `pr`/);
   assert.notEqual(forged.source, "complexity-derived", "a forged provenance must never reach the decision");
 
-  // An eligible role's genuine prior still round-trips, so the guard rejects
-  // forgery without breaking the seam a consumer needs to carry provenance.
-  assert.equal(forge("phase-runner").status, "retain");
+  // WF-499 TIGHTENED THIS. An eligible role is not enough on its own: `opus` is a
+  // tier the ladder cannot mint, so a prior claiming the resolver derived one is
+  // forged whatever role it names. This assertion previously read `retain`, which
+  // encoded exactly the gap — the role gate passed and nothing checked the value.
+  const forgedTier = forge("phase-runner");
+  assert.equal(forgedTier.status, "stop");
+  assert.match(forgedTier.diagnostic ?? "", /`opus`, which is outside the range this resolver derives/);
+
+  // A genuine prior — an eligible role AND a tier the ladder actually mints — still
+  // round-trips, so the guard rejects forgery without breaking the seam a consumer
+  // needs to carry provenance.
+  assert.equal(forge("phase-runner", "sonnet").status, "retain");
 
   // Effort is never derived, so claiming it on the effort choice is also refused.
   const forgedEffort = resolveRouting({}, {

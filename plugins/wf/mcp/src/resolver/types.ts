@@ -2018,6 +2018,27 @@ export interface RoutingInputs {
   unitIds?: string[];
   invocationModel?: string | null;
   invocationEffort?: string | null;
+  /** WF-499: a model selection THIS resolver already issued for this same unit of
+   *  work at an earlier, item-level decision, carried forward into a later
+   *  topology-only decision so its provenance survives the handoff. It is NOT a
+   *  caller's own choice — that channel is `invocationModel`, and conflating the
+   *  two is precisely the laundering this input exists to end: a consumer that
+   *  resolves a per-item model and then re-states it as `invocationModel` gets a
+   *  ledger reading `invocation` for a value the resolver chose.
+   *
+   *  Ranked BELOW host / invocation / project / shipped-default and ABOVE a fresh
+   *  complexity derivation, which it supersedes: the earlier decision already
+   *  scored the unit's own evidence, and the later call's evidence describes
+   *  topology rather than difficulty, so re-deriving there would overwrite a
+   *  better-informed answer with a worse one. An explicit operator pin still wins,
+   *  so WF-394 precedence is extended, never rewritten.
+   *
+   *  Honoured only where the resolver could have minted it: an eligible role, a
+   *  supported selector, validated evidence, the model selector only, and a value
+   *  inside the ladder's own range. Every one of those is a hard stop rather than a
+   *  silent downgrade — a caller may faithfully carry a selection this resolver
+   *  issued, but may never invent one. */
+  carriedModel?: string | null;
   requireModel?: boolean;
   requireEffort?: boolean;
   supportsModelSelector: boolean;
@@ -2046,6 +2067,14 @@ export interface RoutingDecision {
   escalationOrigin: string | null;
   fallback: RoutingChoice["fallback"];
   masked: boolean;
+  /** WF-499: true exactly when this decision ACTED ON a carried resolver-derived
+   *  selection rather than deriving one from its own evidence. It is a fact about
+   *  what reached the agent, not about what the caller supplied — a carried value
+   *  that was outranked by a pin, masked by host enforcement, or rejected leaves
+   *  this false, and surfaces only through the existing `requested` / `masked`
+   *  fields. That is what makes it readable in a ledger: `carried: true` means the
+   *  earlier item-level decision is the one that actually chose the model. */
+  carried: boolean;
   actualModel?: string;
   status: "dispatch" | "retain" | "stop";
   disposition: RoutingDisposition;
@@ -2075,6 +2104,13 @@ export interface RoutingMeasurement {
    *  the first attempt it repeats. */
   escalation: RoutingRetryInstruction["escalation"] | null;
   masked: boolean;
+  /** WF-499: whether this record's selection was carried from an earlier
+   *  item-level resolver decision rather than derived here. `source` alone cannot
+   *  say so — both a fresh derivation and a carried one report
+   *  `complexity-derived` — so without this field a ledger cannot tell an
+   *  item-specific selection from one the topology call happened to re-derive off
+   *  its own cardinality evidence. */
+  carried: boolean;
   actualModel?: string;
 }
 
