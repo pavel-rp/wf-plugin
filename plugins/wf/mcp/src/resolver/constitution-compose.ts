@@ -103,8 +103,16 @@ export type ConstitutionComposition =
  *  mistaken for the section boundary. An UNINDENTED heading line inside a fenced
  *  block still matches: fences are not tracked. That is deliberate rather than
  *  overlooked, and it is the fail-closed direction, because the real heading is
- *  then seen twice and the duplicate branch below refuses. */
-function locateHeading(
+ *  then seen twice and the duplicate branch below refuses.
+ *
+ *  EXPORTED FOR THE DRIFT DETECTOR (WF-501), AND THE SHARING IS THE POINT.
+ *  `constitution-drift.ts` answers whether a record's core section is the running
+ *  release's, and its honest third answer — "this structure is not recognized" —
+ *  has to mean exactly what a refusal here means. Two copies of this predicate
+ *  would let the composer refuse a record the detector called current, which is
+ *  the two-copies-with-no-guard defect this module family exists to close. The
+ *  refusal `detail` reads correctly for both callers: neither one rewrites. */
+export function locateHeading(
   lines: readonly string[],
   heading: string,
 ): { ok: true; index: number } | { ok: false; detail: string } {
@@ -128,8 +136,12 @@ function locateHeading(
 }
 
 /** The index of the next top-level `## ` heading at or after `from`, or the line
- *  count when there is none. */
-function nextTopLevelHeading(lines: readonly string[], from: number): number {
+ *  count when there is none.
+ *
+ *  Exported alongside `locateHeading` for the drift detector (WF-501), for the
+ *  same reason: "an unrecognized section sits between these two headings" must be
+ *  one definition, not two. */
+export function nextTopLevelHeading(lines: readonly string[], from: number): number {
   for (let index = from; index < lines.length; index += 1) {
     if (lines[index].startsWith("## ")) return index;
   }
