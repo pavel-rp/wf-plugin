@@ -25896,15 +25896,18 @@ function createDefaultPorts(workspaceRoot) {
      *  creation, which is now the only occasion this function writes at all. */
     writePrivateFile: (absPath, content) => {
       mkdirSync2(dirname2(absPath), { recursive: true, mode: 448 });
-      const fd = openSync2(absPath, "wx", 384);
+      let fd = openSync2(absPath, "wx", 384);
       try {
-        writeSync(fd, content);
+        writeFileSync2(fd, content, { encoding: "utf8" });
         fsyncSync(fd);
         closeSync2(fd);
+        fd = null;
       } catch (err) {
-        try {
-          closeSync2(fd);
-        } catch {
+        if (fd !== null) {
+          try {
+            closeSync2(fd);
+          } catch {
+          }
         }
         try {
           rmSync2(absPath, { force: true });
@@ -33710,9 +33713,10 @@ var ResolverService = class _ResolverService {
     const key = mintRunEvidenceIssuerKey();
     const failure2 = this.runEvidenceWrite(abs, serializeRunEvidenceIssuer(key), true);
     if (failure2 === "EEXIST") {
+      const raced = parseRunEvidenceIssuer(this.runEvidenceRead(abs));
       return {
         key: null,
-        diagnostic: "the machine-local run-evidence issuer binding was established concurrently by another run; it was NOT overwritten, so this attempt refuses rather than minting a second issuer over the key that proves every receipt already issued."
+        diagnostic: raced !== null ? "the machine-local run-evidence issuer binding was established concurrently by another run; it was NOT overwritten, so this attempt refuses rather than minting a second issuer over the key that proves every receipt already issued." : "the machine-local run-evidence issuer binding could not be established: its path is already occupied by something that is not a readable binding, so the mint refused rather than displacing it. This is not a concurrent mint and will not clear on its own."
       };
     }
     if (failure2 !== null) {
@@ -33811,11 +33815,14 @@ var ResolverService = class _ResolverService {
    * is then sealed with the machine-local issuer key, which no tool serves.
    *
    * REFUSES rather than improvises, in every ambiguous case: an inadmissible
-   * subject or kind, a named artifact that is not there (so a phase that did not
-   * actually produce its output gets no receipt), and — following
-   * `parseTransactionJournal` — a ledger whose declared version this release does
-   * not understand or whose shape is broken. Refusing to append to a ledger it
-   * cannot read is what keeps this from clobbering evidence it did not write.
+   * subject or kind, an `artifactPath` supplied as an empty string (which names
+   * nothing, and must not be quietly read as the caller having omitted the field
+   * — the two are different facts), a named artifact that is not there (so a
+   * phase that did not actually produce its output gets no receipt), and —
+   * following `parseTransactionJournal` — a ledger whose declared version this
+   * release does not understand or whose shape is broken. Refusing to append to a
+   * ledger it cannot read is what keeps this from clobbering evidence it did not
+   * write.
    */
   recordRunEvidence(input) {
     const runId = this.runEvidenceRunId(input.taskId);

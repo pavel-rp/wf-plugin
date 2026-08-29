@@ -301,20 +301,38 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
      *  creation, which is now the only occasion this function writes at all. */
     writePrivateFile: (absPath, content) => {
       mkdirSync(dirname(absPath), { recursive: true, mode: 0o700 });
-      const fd = openSync(absPath, "wx", 0o600);
+      // The create sits OUTSIDE the try on purpose: an exclusive-create EEXIST
+      // must propagate without ever reaching the cleanup below, which may only
+      // remove a file THIS call created.
+      let fd: number | null = openSync(absPath, "wx", 0o600);
       try {
-        writeSync(fd, content);
+        // WRITE IN FULL, NOT `writeSync`. A bare `writeSync` returns a byte
+        // count and does not retry, so a short write would persist a TRUNCATED
+        // key while the mint returned the whole one and sealed receipts with
+        // it — and every later read would then classify the stub as "present
+        // but unreadable" and refuse to replace it, making those receipts
+        // permanently unprovable. `writeFileSync` accepts a descriptor and
+        // loops internally, which is the property `writeFileSync(path, …)` had
+        // before this became create-exclusive and must not be lost with it.
+        writeFileSync(fd, content, { encoding: "utf8" });
         fsyncSync(fd);
         closeSync(fd);
+        // Cleared so the catch cannot close it a SECOND time: a throwing
+        // `closeSync` would otherwise be re-closed on a descriptor number the
+        // kernel has already released and this long-lived server process can
+        // have reassigned. `atomicWrite` below holds the same discipline.
+        fd = null;
       } catch (err) {
         // This call created the file, so removing it strands nothing that was
         // already there and leaves the next mint able to retry. Without it a
         // half-written key would be "present but unparseable" — a state the
         // caller refuses to overwrite, and so a permanent one.
-        try {
-          closeSync(fd);
-        } catch {
-          /* the unlink below is what matters */
+        if (fd !== null) {
+          try {
+            closeSync(fd);
+          } catch {
+            /* the unlink below is what matters */
+          }
         }
         try {
           rmSync(absPath, { force: true });
