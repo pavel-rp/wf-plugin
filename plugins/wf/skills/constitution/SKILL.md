@@ -149,8 +149,10 @@ treat the project group (establish writes a starter, update preserves the existi
 Core contributes these non-negotiable **process** articles, recorded **verbatim**,
 provenance `core`. They name no stack, domain, or capability and are present in **every**
 constitution regardless of the registry. Each is one rule on one unwrapped line, carrying its
-own `core.<n>` id — the form [`references/clause-style.md`](references/clause-style.md)
-defines and every article of every provenance shares:
+own `core.<n>` id — the form the clause-style contract defines and every article of every
+provenance shares (`clause-style.md`, obtained via the resolver's
+`resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: constitution`,
+`ref: clause-style.md`), never a raw `Read` of the plugin-cache path):
 
 - **core.1 — Spec is the source of truth.** A derived artifact (plan, task list) never overrides the spec; conformance is judged against the spec.
 - **core.2 — No phase skips its gate.** Each phase's artifact feeds the next; nothing advances past an unapproved gate. A human approves; or, where unattended mode is established independently of the agent, a resolver-issued run-evidence record does: naming the gate, binding the approved artifact by digest, filed before the next phase, valid only in its requesting run, requested by but never written by the agent it authorises. Absent, unmatched, unverifiable, foreign-run, or digest-stale, the gate is unapproved: the run halts there, reported unproven.
@@ -166,8 +168,11 @@ defines and every article of every provenance shares:
 lines so a re-composition can refresh an already-composed record; the two copies are held
 equal by a contract test, so an edit here that is not mirrored there fails the suite rather
 than shipping a second, silently divergent constitution. Never shorten an article by dropping
-an obligation: the 1:1 map every rewrite is judged against is
-[`references/obligation-inventory.md`](references/obligation-inventory.md).
+an obligation: the 1:1 map every rewrite is judged against is `obligation-inventory.md`,
+obtained via the resolver's `resolve_content({ workspaceRoot, ... })`
+(`class: references-template`, `skill: constitution`, `ref: obligation-inventory.md`), never a
+raw `Read` of the plugin-cache path. It is an authoring reference — read when the articles are
+rewritten, never at runtime.
 
 ### 2. Capability articles — composed from the registry (provenance-tagged)
 
@@ -292,7 +297,9 @@ Reached when the trimmed argument is neither empty nor exactly `establish`/`upda
 If `_local/constitution.md` is absent, stop: "No constitution to add a clause to. Run
 `/wf:constitution` first." Intake amends a record; it does not establish one.
 
-Read [`references/clause-style.md`](references/clause-style.md) first — it is the contract every
+Obtain the clause-style contract first — `clause-style.md`, via the resolver's
+`resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: constitution`,
+`ref: clause-style.md`), never a raw `Read` of the plugin-cache path. It is the contract every
 step below applies, and it is read only on this path.
 
 1. **Classify.** `drop <id>` → remove. `amend <id>: <text>` → amend. Anything else → add.
