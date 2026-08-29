@@ -20,10 +20,11 @@
 # It also asserts the two structural properties those outcomes depend on:
 #
 #   * the destination lies in the orchestrator's own workspace, so it survives a
-#     prune — and the path the step actually WRITES is checked against the
-#     declared one, so neither half can drift to a committed-lifecycle path
-#     (which would require the resolver to be the writer) while the other stays
-#     honest;
+#     prune — and every path the step actually WRITES must be EXACTLY one of the
+#     declared tokens, not merely share their `{task-root}` prefix, so neither
+#     half can drift to a committed-lifecycle path (which would require the
+#     resolver to be the writer), nor to any other undeclared sibling path,
+#     while the other stays honest;
 #   * `index.md` is never in the persistence write set and every row is reached
 #     ONLY by invoking the index writer, ONCE PER ARTIFACT — that writer edits
 #     exactly one row per call, so a single call for an N-artifact folder would
@@ -31,7 +32,7 @@
 #   * the shipper's own prohibition is asserted as a whole sentence INSIDE the
 #     dispatch template, not anywhere in the document.
 #
-# --selftest runs the same evaluator over eighteen seeded synthetic contracts,
+# --selftest runs the same evaluator over nineteen seeded synthetic contracts,
 # including the exact pre-fix shape (no persistence step at all) and the mirror
 # pair (a deleted failure clause AND a deleted success clause), and requires the
 # evaluator to reject every defective one and accept the sound one. A lint that
@@ -79,7 +80,8 @@ if [ "${1:-}" = "--selftest" ]; then
               failure-contaminates committed-path step-writes-committed-path \
               shipper-writes unreported row-written-directly single-index-call \
               no-artifacts-as-failure unstaged-write delivery-outcome-only \
-              no-denominator unmarked-attempt unbounded-write-scope; do
+              no-denominator unmarked-attempt unbounded-write-scope \
+              undeclared-prefix-write-path; do
     evaluate "$tmp/$name.md" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -ne 1 ]; then
@@ -98,7 +100,7 @@ if [ "${1:-}" = "--selftest" ]; then
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "task-artifact-persistence-guard: self-test passed — seventeen seeded defects rejected (no persistence step, a copied index row, a silent failure, a silent success, a failure that stops the other items, a committed-lifecycle declaration, a committed-lifecycle write path behind an honest declaration, a relaxed shipper prohibition, an unreported outcome, a directly-written row, one index call for a whole folder, a never-had-a-worktree item counted as a failure, an unstaged write, capture on the delivery outcome alone, a tally with no terminal denominator, an unmarked in-flight attempt, and a destination untied from the write-scope boundary) and the sound contract accepted."
+  echo "task-artifact-persistence-guard: self-test passed — eighteen seeded defects rejected (no persistence step, a copied index row, a silent failure, a silent success, a failure that stops the other items, a committed-lifecycle declaration, a committed-lifecycle write path behind an honest declaration, a relaxed shipper prohibition, an unreported outcome, a directly-written row, one index call for a whole folder, a never-had-a-worktree item counted as a failure, an unstaged write, capture on the delivery outcome alone, a tally with no terminal denominator, an unmarked in-flight attempt, a destination untied from the write-scope boundary, and an undeclared third write path sharing only the {task-root} prefix with the declared tokens) and the sound contract accepted."
   exit 0
 fi
 
