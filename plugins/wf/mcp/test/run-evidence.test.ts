@@ -25,7 +25,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { normalizeSlashes } from "../src/resolver/paths.js";
+import { createDefaultPorts } from "../src/ports.js";
 import { ResolverService, type ResolverServicePorts } from "../src/service.js";
 import {
   MAX_RUN_EVIDENCE_RECORDS,
@@ -1033,4 +1037,148 @@ test("the reading session's observed mode is reported separately from each recor
   const read = reader.readRunEvidence(TASK);
   assert.equal(read.observedRunMode, "unestablished");
   assert.equal(read.matched[0].runMode, "unattended");
+});
+
+// WF-504 — mint-once, and an empty artifact path
+//
+// "The key is minted once and never rewritten" was a comment, not an enforced
+// property: the mint read absence and then wrote with a plain `writeFileSync`, so
+// a second mint reaching the write TRUNCATED the key the first had already sealed
+// receipts with — silently reclassifying every one of them from genuine to
+// tampered. The first two tests pin the guarantee at both levels it lives at: the
+// port, where the kernel arbitrates (the concurrent path), and the service, where
+// the refusal has to surface as a stated `refused` (the repeat path).
+
+test("the private write is create-exclusive: a second mint refuses and never truncates", () => {
+  const dir = mkdtempSync(join(tmpdir(), "wf-504-issuer-"));
+  try {
+    const ports = createDefaultPorts(normalizeSlashes(dir));
+    // A nested destination, because the real binding lives one level down and the
+    // port is responsible for creating that directory privately.
+    const target = normalizeSlashes(join(dir, "run-evidence", "issuer-key.json"));
+
+    ports.writePrivateFile!(target, "first");
+    assert.equal(readFileSync(target, "utf8"), "first");
+    // The security property the mode exists for: nothing outside the owner.
+    assert.equal(statSync(target).mode & 0o077, 0);
+
+    // THE FILESYSTEM DECIDES THE SINGLE HOLDER, not a prior read. This is the
+    // concurrent path: a second process that observed the same absence still
+    // loses, because `wx` fails on an existing path rather than truncating it.
+    assert.throws(
+      () => ports.writePrivateFile!(target, "second"),
+      (err: unknown) => (err as NodeJS.ErrnoException).code === "EEXIST",
+    );
+    assert.equal(readFileSync(target, "utf8"), "first");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a mint that loses the create race refuses, and the established binding is untouched", () => {
+  // A binding a first run established, and the path it landed at — derived, never
+  // spelled out at a call site.
+  const first = makePorts();
+  new ResolverService(first).recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "spec",
+    taskId: TASK,
+  });
+  const issuerPath = [...first.files.keys()].find((k) => k.includes("issuer-"))!;
+  const established = first.files.get(issuerPath)!;
+
+  // A second run that enters the mint path because its FIRST read of the binding
+  // comes back empty — and by the time it re-reads, the race winner's binding is
+  // there. That is the read-then-write window as it actually occurs, and the
+  // re-read is how the service confirms a race rather than assuming one.
+  const ports = makePorts();
+  ports.files.set(issuerPath, established);
+  let issuerReads = 0;
+  ports.readFile = (p) => {
+    const abs = normalizeSlashes(p);
+    if (abs === issuerPath && issuerReads++ === 0) return null;
+    return ports.files.get(abs) ?? null;
+  };
+  ports.writePrivateFile = (p, content) => {
+    const abs = normalizeSlashes(p);
+    if (ports.files.has(abs)) {
+      const err: NodeJS.ErrnoException = new Error("EEXIST: file already exists");
+      err.code = "EEXIST";
+      throw err;
+    }
+    ports.files.set(abs, content);
+  };
+
+  const recorded = new ResolverService(ports).recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "ship",
+    taskId: TASK,
+  });
+
+  // It proves nothing rather than sealing with an issuer that displaced its
+  // predecessor — and it says so.
+  assert.equal(recorded.status, "refused");
+  assert.match(recorded.diagnostic ?? "", /NOT overwritten/);
+  assert.equal(ports.files.get(issuerPath), established);
+});
+
+test("an EEXIST with no readable binding behind it is not reported as a race", () => {
+  // A directory or a dangling symlink at the issuer path raises the same EEXIST
+  // while the read reports absence. Claiming a concurrent mint there would be a
+  // false diagnosis with a false remedy — the condition does NOT clear on its own.
+  const ports = makePorts();
+  ports.readFile = () => null;
+  ports.writePrivateFile = () => {
+    const err: NodeJS.ErrnoException = new Error("EEXIST: file already exists");
+    err.code = "EEXIST";
+    throw err;
+  };
+
+  const recorded = new ResolverService(ports).recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "ship",
+    taskId: TASK,
+  });
+
+  assert.equal(recorded.status, "refused");
+  assert.match(recorded.diagnostic ?? "", /will not clear on its own/);
+  assert.doesNotMatch(recorded.diagnostic ?? "", /concurrently/);
+});
+
+test("an empty artifactPath is refused, never silently downgraded to an omission", () => {
+  const ports = makePorts();
+  const recorded = new ResolverService(ports).recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "spec",
+    taskId: TASK,
+    artifactPath: "",
+  });
+
+  assert.equal(recorded.status, "refused");
+  assert.match(recorded.diagnostic ?? "", /empty string/);
+  // Nothing was filed: an under-claiming receipt is still a wrong one.
+  assert.equal(new ResolverService(ports).readRunEvidence(TASK).matched.length, 0);
+});
+
+test("evidenceClass follows the call, not the subject", () => {
+  const ports = makePorts();
+  const service = new ResolverService(ports);
+  seedArtifact(ports, "_local/WF-490/01_spec.md", "# spec\n");
+
+  // `spec` is one of the five phases that conventionally name an artifact...
+  service.recordRunEvidence({
+    kind: "phase-receipt",
+    subject: "spec",
+    taskId: TASK,
+    artifactPath: "_local/WF-490/01_spec.md",
+  });
+  // ...but the class is derived from what the resolver observed ON THAT CALL, so
+  // the same phase filing without one is `invocation-only`. A consumer that
+  // inferred the class from the subject would be silently wrong here.
+  service.recordRunEvidence({ kind: "phase-receipt", subject: "spec", taskId: TASK });
+
+  const read = service.readRunEvidence(TASK);
+  assert.equal(read.matched.length, 2);
+  assert.equal(read.matched[0].evidenceClass, "artifact-backed");
+  assert.equal(read.matched[1].evidenceClass, "invocation-only");
 });

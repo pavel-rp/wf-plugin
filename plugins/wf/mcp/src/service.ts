@@ -336,8 +336,19 @@ export interface ResolverServicePorts {
   runModeSignal?(): string | null;
   /** Write a secret with owner-only permissions. Separate from `writeFile` so the
    *  restrictive mode belongs to the one caller that needs it and never changes
-   *  the permissions of ordinary project content. OPTIONAL; falls back to
-   *  `writeFile` when a port set omits it. */
+   *  the permissions of ordinary project content.
+   *
+   *  CREATE-EXCLUSIVE IS PART OF THE CONTRACT, not an implementation detail
+   *  (WF-504): an implementation MUST refuse an existing path and throw
+   *  `EEXIST` rather than truncate it. That is what makes the run-evidence
+   *  issuer key minted-once, and `runEvidenceIssuerKey` branches on exactly
+   *  that code to tell a lost create race from a real failure.
+   *
+   *  OPTIONAL; falls back to `writeFile` when a port set omits it. BE AWARE the
+   *  fallback is a plain truncating write and therefore does NOT provide
+   *  mint-once — it exists for in-memory doubles, and the only production
+   *  construction (`createDefaultPorts`) always supplies this port. A port set
+   *  that omits it and is used for real secrets loses the guarantee silently. */
   writePrivateFile?(absPath: string, content: string): void;
   /** List immediate subdirectory names of `absDir` (used ONLY on the pack
    *  register write-path to discover `capabilities/*` folders — never on a
@@ -5337,6 +5348,36 @@ export class ResolverService {
     if (!mint) return { key: null, diagnostic: null };
     const key = mintRunEvidenceIssuerKey();
     const failure = this.runEvidenceWrite(abs, serializeRunEvidenceIssuer(key), true);
+    if (failure === "EEXIST") {
+      // THE MINT LOST A CREATE RACE, AND LOSING IS THE CORRECT OUTCOME (WF-504).
+      // The read above observed absence honestly, but a read and a write are two
+      // moments and another run established the binding in between. Because the
+      // write is create-exclusive, that binding is UNTOUCHED — which is the whole
+      // point: overwriting it would destroy the key proving every receipt already
+      // issued under it, converting a race into silent mass tampering. So this
+      // attempt proves nothing rather than sealing with an issuer that displaced
+      // its predecessor; the next read finds the established binding and
+      // succeeds normally, with no rotation and nothing to repair.
+      //
+      // CONFIRM THE RACE BEFORE ASSERTING IT. `EEXIST` means the
+      // create-exclusive write declined to touch an existing path — which is
+      // not automatically "a binding another run just established". A directory
+      // or a dangling symlink at the issuer path raises the same code while the
+      // read above reports absence, so the mint would be re-entered and
+      // re-refused on every subsequent run with a diagnostic claiming a
+      // concurrent mint that never happened, and a remedy ("the next run just
+      // works") that is false. So re-read: claim the race only when a parseable
+      // binding is actually there, and otherwise report the occupied path for
+      // what it is — a condition that will not clear on its own.
+      const raced = parseRunEvidenceIssuer(this.runEvidenceRead(abs));
+      return {
+        key: null,
+        diagnostic:
+          raced !== null
+            ? "the machine-local run-evidence issuer binding was established concurrently by another run; it was NOT overwritten, so this attempt refuses rather than minting a second issuer over the key that proves every receipt already issued."
+            : "the machine-local run-evidence issuer binding could not be established: its path is already occupied by something that is not a readable binding, so the mint refused rather than displacing it. This is not a concurrent mint and will not clear on its own.",
+      };
+    }
     if (failure !== null) {
       return {
         key: null,
@@ -5453,11 +5494,14 @@ export class ResolverService {
    * is then sealed with the machine-local issuer key, which no tool serves.
    *
    * REFUSES rather than improvises, in every ambiguous case: an inadmissible
-   * subject or kind, a named artifact that is not there (so a phase that did not
-   * actually produce its output gets no receipt), and — following
-   * `parseTransactionJournal` — a ledger whose declared version this release does
-   * not understand or whose shape is broken. Refusing to append to a ledger it
-   * cannot read is what keeps this from clobbering evidence it did not write.
+   * subject or kind, an `artifactPath` supplied as an empty string (which names
+   * nothing, and must not be quietly read as the caller having omitted the field
+   * — the two are different facts), a named artifact that is not there (so a
+   * phase that did not actually produce its output gets no receipt), and —
+   * following `parseTransactionJournal` — a ledger whose declared version this
+   * release does not understand or whose shape is broken. Refusing to append to a
+   * ledger it cannot read is what keeps this from clobbering evidence it did not
+   * write.
    */
   recordRunEvidence(input: RecordRunEvidenceInput): RecordRunEvidenceResponse {
     const runId = this.runEvidenceRunId(input.taskId);
@@ -5499,7 +5543,19 @@ export class ResolverService {
     // write has not completed.
     let artifact: RunEvidenceArtifact | null = null;
     const named = input.artifactPath ?? null;
-    if (named !== null && named.length > 0) {
+    // AN EMPTY PATH IS A THIRD THING, AND IT IS A CALLER BUG (WF-504). Omitting
+    // the field says "this phase writes no artifact"; naming one says "digest
+    // this file". An empty string says neither — it is an unsubstituted
+    // placeholder or a variable that did not resolve. Treating it as omission
+    // silently issued an `invocation-only` record for a phase that DID write an
+    // artifact: the record under-claims and nobody is told. The input schema
+    // rejects it too; this is the same rule at the layer callers reach directly.
+    if (named !== null && named.length === 0) {
+      return refuse(
+        "`artifactPath` was supplied as an empty string, which names nothing; omit the field entirely for a phase that writes no artifact rather than passing an empty path, which is never silently downgraded to an omission.",
+      );
+    }
+    if (named !== null) {
       const observed = this.observeArtifact(named);
       if (!observed.ok) {
         return refuse(

@@ -22831,9 +22831,10 @@ var recordRunEvidenceInput = fromJsonSchema2(withWorkspaceRoot({
     taskId: runEvidenceTaskIdProperty,
     artifactPath: {
       type: "string",
+      minLength: 1,
       maxLength: 4096,
       pattern: safeTerminalStringPattern,
-      description: "Workspace-relative path of the artifact this phase produced, when it produced one (omit for a phase that writes no artifact). The resolver reads and digests it ITSELF; an absent artifact is a refusal, not a receipt."
+      description: "Workspace-relative path of the artifact this phase produced. OMIT THE FIELD ENTIRELY for a phase that writes no artifact \u2014 that is legitimate and yields an `invocation-only` record. When the field IS supplied it must name a real file: the resolver reads and digests it ITSELF, and a named artifact that does not exist is a refusal, not a receipt. The two absences are different facts, so an empty string is neither and is refused here rather than silently treated as an omission."
     }
   },
   required: ["kind", "subject", "taskId"],
@@ -25877,11 +25878,43 @@ function createDefaultPorts(workspaceRoot) {
      *  whole value is that nothing else can read it) and must not silently change
      *  the permissions of ordinary project content. The default 0666 & ~umask
      *  would leave the key readable by every other local account on a shared host
-     *  or container. `mode` applies on creation, so an existing binding keeps its
-     *  permissions; the key is minted once and never rewritten. */
+     *  or container.
+     *
+     *  CREATE-EXCLUSIVE, SO MINT-ONCE IS A RULING AND NOT A COMMENT (WF-504). The
+     *  caller mints only after reading absence — but a read and a write are two
+     *  moments. With a plain `writeFileSync` a second process that observed the
+     *  same absence would TRUNCATE the key the first one had already sealed
+     *  receipts with, silently reclassifying every one of them from genuine to
+     *  tampered: the irreversible outcome, reached without a single error. `wx`
+     *  moves the decision to the kernel — exactly the way the lock file and
+     *  `atomicWrite`'s temp file already do in this file — so exactly one caller
+     *  creates the binding and every later one gets `EEXIST`.
+     *
+     *  THIS PORT THEREFORE THROWS ON AN EXISTING PATH, deliberately and unlike
+     *  `writeFile`. It is never an overwrite, so it is never a rotation either; a
+     *  caller that wants the established binding reads it. `mode` applies on
+     *  creation, which is now the only occasion this function writes at all. */
     writePrivateFile: (absPath, content) => {
       mkdirSync2(dirname2(absPath), { recursive: true, mode: 448 });
-      writeFileSync2(absPath, content, { encoding: "utf8", mode: 384 });
+      let fd = openSync2(absPath, "wx", 384);
+      try {
+        writeFileSync2(fd, content, { encoding: "utf8" });
+        fsyncSync(fd);
+        closeSync2(fd);
+        fd = null;
+      } catch (err) {
+        if (fd !== null) {
+          try {
+            closeSync2(fd);
+          } catch {
+          }
+        }
+        try {
+          rmSync2(absPath, { force: true });
+        } catch {
+        }
+        throw err;
+      }
     },
     /**
      * The run's attendance mode, as declared to THIS PROCESS at launch (WF-493).
@@ -33679,6 +33712,13 @@ var ResolverService = class _ResolverService {
     if (!mint) return { key: null, diagnostic: null };
     const key = mintRunEvidenceIssuerKey();
     const failure2 = this.runEvidenceWrite(abs, serializeRunEvidenceIssuer(key), true);
+    if (failure2 === "EEXIST") {
+      const raced = parseRunEvidenceIssuer(this.runEvidenceRead(abs));
+      return {
+        key: null,
+        diagnostic: raced !== null ? "the machine-local run-evidence issuer binding was established concurrently by another run; it was NOT overwritten, so this attempt refuses rather than minting a second issuer over the key that proves every receipt already issued." : "the machine-local run-evidence issuer binding could not be established: its path is already occupied by something that is not a readable binding, so the mint refused rather than displacing it. This is not a concurrent mint and will not clear on its own."
+      };
+    }
     if (failure2 !== null) {
       return {
         key: null,
@@ -33775,11 +33815,14 @@ var ResolverService = class _ResolverService {
    * is then sealed with the machine-local issuer key, which no tool serves.
    *
    * REFUSES rather than improvises, in every ambiguous case: an inadmissible
-   * subject or kind, a named artifact that is not there (so a phase that did not
-   * actually produce its output gets no receipt), and — following
-   * `parseTransactionJournal` — a ledger whose declared version this release does
-   * not understand or whose shape is broken. Refusing to append to a ledger it
-   * cannot read is what keeps this from clobbering evidence it did not write.
+   * subject or kind, an `artifactPath` supplied as an empty string (which names
+   * nothing, and must not be quietly read as the caller having omitted the field
+   * — the two are different facts), a named artifact that is not there (so a
+   * phase that did not actually produce its output gets no receipt), and —
+   * following `parseTransactionJournal` — a ledger whose declared version this
+   * release does not understand or whose shape is broken. Refusing to append to a
+   * ledger it cannot read is what keeps this from clobbering evidence it did not
+   * write.
    */
   recordRunEvidence(input) {
     const runId = this.runEvidenceRunId(input.taskId);
@@ -33814,7 +33857,12 @@ var ResolverService = class _ResolverService {
     }
     let artifact = null;
     const named = input.artifactPath ?? null;
-    if (named !== null && named.length > 0) {
+    if (named !== null && named.length === 0) {
+      return refuse(
+        "`artifactPath` was supplied as an empty string, which names nothing; omit the field entirely for a phase that writes no artifact rather than passing an empty path, which is never silently downgraded to an omission."
+      );
+    }
+    if (named !== null) {
       const observed = this.observeArtifact(named);
       if (!observed.ok) {
         return refuse(
