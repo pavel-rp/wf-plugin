@@ -1,7 +1,7 @@
 # C029 OUT-8 — re-test of the four never-re-tested dispatch behaviours
 
 **Kind:** findings note — **no runtime code.** Not read at skill runtime.
-**Model:** claude-opus-5[1m]
+**Model:** claude-opus-5
 **Written:** 2026-08-28
 **Covers:** C029 (WF-480) outcome **OUT-8**, sub-task **WF-481**. Gates OUT-1…OUT-7 and OUT-9.
 **Subject:** the four behaviours [`docs/c011-fleet-run-diagnostic.md`](./c011-fleet-run-diagnostic.md) §10
@@ -81,7 +81,7 @@ them. That is a determination, not a gap.
 
 | Id | §10 behaviour | Verdict | 0.116.0 → `main` delta | Evidence tier |
 |---|---|---|---|---|
-| **B1** | `wf:phase-runner` cwd fallback (the F2/F3 cause) | **still-broken (conditional)** — unchanged in wf; reproduces only in the unisolated dispatch shape | **none** — `agents/phase-runner.md` is byte-identical | source diff + contract read + live probe |
+| **B1** | `wf:phase-runner` cwd fallback (the F2/F3 cause) | **still-broken** (conditional) — unchanged in wf; reproduces only in the unisolated dispatch shape | **none** — `agents/phase-runner.md` is byte-identical | source diff + contract read + live probe |
 | **B2** | `Agent(isolation: "worktree")` | **fixed** | host-side; not wf-versioned | live probe |
 | **B3** | `EnterWorktree` | **fixed** | host-side; not wf-versioned | live probe (tool schema) |
 | **B4** | `/wf:branch`'s base switch checking out trunk | **never-was** | none in `delivery.ops.md`, the file that governs the claim — no cached version ever checked out a base; `agents/branch.md` did change, via WF-479, in the **opposite** direction (§7) | contract read (all cached versions) + live probe |
@@ -93,7 +93,7 @@ it is the one the charter deliberately defers.
 
 > §10: *"The `wf:phase-runner` cwd fallback (F2) — forbidden by brief, never triggered."*
 
-### Verdict: `still-broken (conditional)`
+### Verdict: `still-broken` (conditional)
 
 **Source diff — no change at all.** `diff` of
 `~/.claude/plugins/cache/wf-marketplace/wf/0.116.0/agents/phase-runner.md` against
