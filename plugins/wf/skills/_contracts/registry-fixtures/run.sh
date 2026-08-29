@@ -498,8 +498,9 @@ fi
 # in its own disposable worktree, so a prune erases the run's process record —
 # and the shipper cannot close the gap itself without violating its own
 # do-not-fall-back-to-the-shared-checkout rule. The evaluator simulates a
-# three-item run (readable worktree, lost worktree, failed write) and asserts
-# each recorded outcome, that a failure stays confined to its own item, that the
+# four-item run (readable worktree, lost worktree, failed write, and one that
+# never had a worktree at all) and asserts each recorded outcome, that a
+# failure stays confined to its own item, that the
 # destination survives a prune and names no committed-lifecycle path, and that
 # the index row is reached only by invoking its sole writer. Its self-test seeds
 # a missing persistence step, a copied index row, a silent failure, a failure

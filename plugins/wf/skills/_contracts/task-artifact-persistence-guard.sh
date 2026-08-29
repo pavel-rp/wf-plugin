@@ -11,10 +11,11 @@
 #
 # This is a BEHAVIOURAL assertion over the persistence step's decision graph, not
 # a re-read of its wording: the evaluator derives the contract's capabilities and
-# then simulates a three-item run — one readable worktree, one lost worktree, one
-# failed write — asserting each item's recorded outcome, that a failure stays
-# confined to its own item, and that the run reports an incomplete process record
-# rather than letting an absent artifact set read as an item that never had one.
+# then simulates a four-item run — one readable worktree, one lost worktree, one
+# failed write, and one that never had a worktree at all — asserting each item's
+# recorded outcome, that a failure stays confined to its own item, and that the
+# run reports an incomplete process record rather than letting an absent
+# artifact set read as an item that never had one.
 #
 # It also asserts the two structural properties those outcomes depend on:
 #
@@ -30,7 +31,7 @@
 #   * the shipper's own prohibition is asserted as a whole sentence INSIDE the
 #     dispatch template, not anywhere in the document.
 #
-# --selftest runs the same evaluator over sixteen seeded synthetic contracts,
+# --selftest runs the same evaluator over eighteen seeded synthetic contracts,
 # including the exact pre-fix shape (no persistence step at all) and the mirror
 # pair (a deleted failure clause AND a deleted success clause), and requires the
 # evaluator to reject every defective one and accept the sound one. A lint that
@@ -97,7 +98,7 @@ if [ "${1:-}" = "--selftest" ]; then
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "task-artifact-persistence-guard: self-test passed — sixteen seeded defects rejected (no persistence step, a copied index row, a silent failure, a silent success, a failure that stops the other items, a committed-lifecycle declaration, a committed-lifecycle write path behind an honest declaration, a relaxed shipper prohibition, an unreported outcome, a directly-written row, one index call for a whole folder, a never-had-a-worktree item counted as a failure, an unstaged write, capture on the delivery outcome alone, a tally with no terminal denominator, an unmarked in-flight attempt, and a destination untied from the write-scope boundary) and the sound contract accepted."
+  echo "task-artifact-persistence-guard: self-test passed — seventeen seeded defects rejected (no persistence step, a copied index row, a silent failure, a silent success, a failure that stops the other items, a committed-lifecycle declaration, a committed-lifecycle write path behind an honest declaration, a relaxed shipper prohibition, an unreported outcome, a directly-written row, one index call for a whole folder, a never-had-a-worktree item counted as a failure, an unstaged write, capture on the delivery outcome alone, a tally with no terminal denominator, an unmarked in-flight attempt, and a destination untied from the write-scope boundary) and the sound contract accepted."
   exit 0
 fi
 
