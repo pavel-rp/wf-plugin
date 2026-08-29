@@ -244,7 +244,9 @@ class is this pass working correctly, not failing.
 Hold reportable findings as **candidates** tagged with the provenance `core`; this section
 compares nothing. They are reconciled against the phase below once both sets are in hand
 (§"Reconcile against the lean pass"), then rendered under the report's
-`## Adversarial findings` section; when none survives, omit that section entirely. Rationale
+`## Adversarial findings` section. That section is present whenever the run has anything to record
+— a surviving finding, a Withdrawn line, or a Coverage record — so omit it entirely only when a run
+produced none of the three. Rationale
 and worked examples live in the paired reference `adversarial-pass.md` — obtained, when a
 reader wants it, via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
 `skill: verify-spec`, `ref: adversarial-pass.md`) — and are never read on this path.
@@ -459,9 +461,12 @@ End with the final-output block (see below).
   against `HEAD`, not the working tree — and note the dirty files so the user knows they
   weren't included.
 - **Change carries neither adversarial defect class**: the lean adversarial pass reports
-  nothing and the `## Adversarial findings` section is omitted from the report. This is the
-  expected result on a clean change — do not synthesize a "no issues found" entry, and do
-  not relax the two-sided citation rule to produce one.
+  nothing, and the `## Adversarial findings` section is omitted from the report **only when** the
+  run also withdrew no candidate and every contributor delivered. This is the expected result on a
+  clean change — do not synthesize a "no issues found" entry, and do not relax the two-sided
+  citation rule to produce one. When reconciliation withdrew every candidate, or a contributor
+  failed on a run that raised no candidates, the section is still rendered, carrying the Withdrawn
+  lines or the Coverage record alone — the omission rule never suppresses an audit trace.
 - **Empty registry**: the lean adversarial pass still runs — it is a core default, not a
   contribution — while the phase below produces nothing. The generic verdict plus any
   adversarial findings stand alone, with no capability term surfaced.
