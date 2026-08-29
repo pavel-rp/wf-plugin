@@ -124,63 +124,26 @@ treat the project group (establish writes a starter, update preserves the existi
 
 Core contributes these non-negotiable **process** articles, recorded **verbatim**,
 provenance `core`. They name no stack, domain, or capability and are present in **every**
-constitution regardless of the registry:
+constitution regardless of the registry. Each is one rule on one unwrapped line, carrying its
+own `core.<n>` id — the form [`references/clause-style.md`](references/clause-style.md)
+defines and every article of every provenance shares:
 
-1. **The spec is the single source of truth.** A derived artifact (plan, task list) never
-   overrides the spec; conformance is judged against the spec.
-2. **No phase skips its gate.** Every phase produces an artifact that feeds the next, and
-   nothing advances past an unapproved gate. A gate is approved by a human, or — in an
-   **unattended run** — by a **recorded self-approval**: a machine-checkable record the
-   resolver issues into its declared run-evidence class, naming the gate it clears,
-   **binding by digest the artifact it approves**, filed before the next phase begins, and
-   valid only within the run that requested it. The record is requested by the agent it
-   authorises and never written by it, and the run's unattended mode is **not the
-   requesting agent's to assert** — where that mode cannot be established independently of
-   the agent, the gate is not satisfied. An approval that is absent, unmatched,
-   unverifiable, filed for another run, or whose approved artifact has since changed leaves
-   the gate **unapproved**: the run **halts at that gate** and is reported unproven. An
-   unattended run does not skip the gate — it satisfies the gate with evidence, or it
-   stops.
-3. **Nothing writes outside `_local/`** except the designated source-mutating skills, and
-   except the declared committed lifecycle artifacts the resolver runtime owns and manages
-   under `.wf/`. That home is not a general writable one: an artifact is admitted only when it
-   is both resolver-managed and of a declared class, and every other component reads it
-   through the resolver while writing only inside `_local/`.
-4. **Every artifact carries model attribution.** A `**Model:** <id>` line (or a verb-shaped
-   variant) records which model produced each artifact.
-5. **No AI attribution in commits.** Commit messages and PR descriptions carry no
-   `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.
-6. **Never commit to `main`.** All work happens on a feature branch (`feat/…`, `fix/…`,
-   `chore/…`); pushing to `main` is forbidden regardless of registered capabilities. This
-   holds even in bare-core mode, where every branch gate skips with a stated reason rather
-   than silently permitting a `main` commit.
-7. **Project configuration lives in `_local/config.md`.** Project-specific values are read
-   from config, never hardcoded into a skill.
+- **core.1 — Spec is the source of truth.** A derived artifact (plan, task list) never overrides the spec; conformance is judged against the spec.
+- **core.2 — No phase skips its gate.** Every phase produces an artifact feeding the next; nothing advances past an unapproved gate. A human approves, or — where the run's unattended mode is established independently of the agent — a resolver-issued run-evidence record does: naming the gate, binding the approved artifact by digest, filed before the next phase, valid only in its requesting run, and requested by but never written by the agent it authorises. Absent, unmatched, unverifiable, foreign-run, or digest-stale, the gate is unapproved: the run halts there and is reported unproven.
+- **core.3 — Write scope.** Nothing writes outside `_local/` except the designated source-mutating skills and the resolver-owned declared lifecycle artifacts under `.wf/`, admitted only when both resolver-managed and of a declared class; every other component reads `.wf/` through the resolver and writes only inside `_local/`.
+- **core.4 — Model attribution.** Every artifact carries a `**Model:** <id>` line, or a verb-shaped variant, naming the model that produced it.
+- **core.5 — No AI attribution in commits.** Commit messages and PR descriptions carry no `Co-Authored-By` trailer, "generated with" footer, emoji, or promotional tagline.
+- **core.6 — Never commit to `main`.** All work happens on a feature branch (`feat/…`, `fix/…`, `chore/…`); pushing to `main` is forbidden whatever is registered, and in bare-core mode a branch gate skips with a stated reason rather than permit a `main` commit.
+- **core.7 — Config over hardcode.** Project-specific values are read from `_local/config.md`, never hardcoded into a skill.
+- **core.8 — Core never requires a capability.** Every core extension point ships a lean default and runs inert when no capability is registered; core never names or hard-depends on a specific capability.
+- **core.9 — Scratch discipline.** Working, temporary and scratch files live only under `_local/scratch/` — never the repo root, a system temp directory, or beside tracked files. (a) A scratch file's consumer deletes it as its own last act, in the same run that consumed it, never deferring to a later sweep. (b) The skill that ends a run deletes that run's coordination files — state, handoff, ledger, lock, marker — as part of ending it, on success or failure. The finalize sweep is a backstop that excuses neither.
 
-Plus these additional core articles (provenance `core`), recorded **verbatim**:
-
-8. **Core never requires a capability.** Every core extension point ships a lean default and
-   runs inert when no capability is registered; core never names or hard-depends on a
-   specific capability.
-9. **Temp and scratch files live under `_local/`, and nothing is left behind.** Working,
-   temporary, and scratch files route to a dedicated scratch area under `_local/`
-   (`_local/scratch/`) — never the repo root, a system temp directory, or anywhere alongside
-   tracked files. This *complements* the write-scope article above: that one bounds where
-   writes may land; this one routes every throwaway to a single gitignored home inside that
-   boundary. Placement alone does not discharge the article: every scratch file also carries a
-   lifecycle, and the two deletion obligations below are **separate, and both mandatory**.
-   - **(a) Per-consumer immediate deletion.** Each scratch file is deleted the moment its
-     consumer has run — deletion is that consumer's own last act on the file, performed in the
-     same run that consumed it. It is never deferred to a later sweep, never postponed to the
-     end of the chain, and never left for another skill to notice.
-   - **(b) Breadcrumb deletion by the run-ending skill.** Every run-scoped breadcrumb — the
-     state, handoff, ledger, lock, and marker files a multi-step run writes to coordinate
-     itself — is deleted by the skill that ends the run, as part of ending it, whether the run
-     ended in success or in failure.
-
-   The finalize-time scratch sweep is a **backstop, not a substitute**: it exists only to remove
-   residue that obligation (a) or (b) failed to remove, and neither obligation may be skipped,
-   deferred, or weakened on the grounds that the sweep will catch it.
+**This wording is authoritative, and it is mirrored.** The resolver carries the same nine
+lines so a re-composition can refresh an already-composed record; the two copies are held
+equal by a contract test, so an edit here that is not mirrored there fails the suite rather
+than shipping a second, silently divergent constitution. Never shorten an article by dropping
+an obligation: the 1:1 map every rewrite is judged against is
+[`references/obligation-inventory.md`](references/obligation-inventory.md).
 
 ### 2. Capability articles — composed from the registry (provenance-tagged)
 
