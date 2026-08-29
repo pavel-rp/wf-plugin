@@ -254,7 +254,20 @@ try {
   if (
     !routingSchema?.required?.includes("shapeEvidence") ||
     "executionShape" in (routingSchema.properties ?? {}) ||
-    routingSchema.properties?.shapeEvidence?.required?.length ||
+    // WF-505 INVERTED THIS PREDICATE, which until now asserted the OPPOSITE — that the
+    // top-level `shapeEvidence` carried NO `required` list. That was WF-396's deliberate
+    // "resolver-validated partial shape evidence" design: keep the published schema
+    // permissive and let `selectShape` own rejection, so a caller got the resolver's
+    // named-field diagnostic instead of a generic schema error.
+    //
+    // The cost of that design was a schema that lied. `selectShape` rejects EVERY missing
+    // field, so a caller composing strictly against the published schema was told a
+    // partial object was legal and then had the call rejected at runtime. Keeping the
+    // resolver's diagnostics does not require the schema to under-declare: both layers
+    // now state the same twelve fields, the resolver still produces its named-field
+    // rejection for anyone reaching it directly (bypassing schema validation, as the
+    // service-level tests do), and a caller additionally learns at composition time.
+    routingSchema.properties?.shapeEvidence?.required?.length !== 12 ||
     routingSchema.properties?.role?.pattern !== "^[a-z][a-z0-9-]{0,63}$" ||
     routingSchema.properties?.unitIds?.items?.pattern !== "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$" ||
     routingSchema.properties?.shapeEvidence?.properties?.unitCount?.maximum !== 4 ||

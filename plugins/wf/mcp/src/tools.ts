@@ -488,9 +488,17 @@ const routingInput = fromJsonSchema(withWorkspaceRoot({
   type: "object",
   properties: {
     role: { type: "string", pattern: "^[a-z][a-z0-9-]{0,63}$", maxLength: 64 },
+    // Every one of the twelve fields is REQUIRED, stated here so a caller learns it
+    // while composing rather than from a runtime rejection. `selectShape`
+    // (resolver/routing.ts) rejects any missing field with a diagnostic naming it, and
+    // the contract (`_contracts/invocation-runtime.ops.md`) enumerates the same twelve —
+    // this line is what makes the published schema say so too. `routingShapeRequired` is
+    // the SAME list `postAttempt.prior.shapeEvidence` and the output's
+    // `normalizedEvidence` already use, so the three can never state different rules.
     shapeEvidence: {
       type: "object",
       properties: routingShapeInputProperties,
+      required: routingShapeRequired,
       additionalProperties: false,
     },
     unitIds: { type: "array", maxItems: 4, items: { type: "string", minLength: 1, maxLength: 128, pattern: unitIdPattern }, uniqueItems: true },
