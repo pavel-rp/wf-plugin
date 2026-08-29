@@ -5515,7 +5515,19 @@ export class ResolverService {
     // write has not completed.
     let artifact: RunEvidenceArtifact | null = null;
     const named = input.artifactPath ?? null;
-    if (named !== null && named.length > 0) {
+    // AN EMPTY PATH IS A THIRD THING, AND IT IS A CALLER BUG (WF-504). Omitting
+    // the field says "this phase writes no artifact"; naming one says "digest
+    // this file". An empty string says neither — it is an unsubstituted
+    // placeholder or a variable that did not resolve. Treating it as omission
+    // silently issued an `invocation-only` record for a phase that DID write an
+    // artifact: the record under-claims and nobody is told. The input schema
+    // rejects it too; this is the same rule at the layer callers reach directly.
+    if (named !== null && named.length === 0) {
+      return refuse(
+        "`artifactPath` was supplied as an empty string, which names nothing; omit the field entirely for a phase that writes no artifact rather than passing an empty path, which is never silently downgraded to an omission.",
+      );
+    }
+    if (named !== null) {
       const observed = this.observeArtifact(named);
       if (!observed.ok) {
         return refuse(
