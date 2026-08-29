@@ -283,11 +283,46 @@ export function createDefaultPorts(workspaceRoot: string): ResolverServicePorts 
      *  whole value is that nothing else can read it) and must not silently change
      *  the permissions of ordinary project content. The default 0666 & ~umask
      *  would leave the key readable by every other local account on a shared host
-     *  or container. `mode` applies on creation, so an existing binding keeps its
-     *  permissions; the key is minted once and never rewritten. */
+     *  or container.
+     *
+     *  CREATE-EXCLUSIVE, SO MINT-ONCE IS A RULING AND NOT A COMMENT (WF-504). The
+     *  caller mints only after reading absence — but a read and a write are two
+     *  moments. With a plain `writeFileSync` a second process that observed the
+     *  same absence would TRUNCATE the key the first one had already sealed
+     *  receipts with, silently reclassifying every one of them from genuine to
+     *  tampered: the irreversible outcome, reached without a single error. `wx`
+     *  moves the decision to the kernel — exactly the way the lock file and
+     *  `atomicWrite`'s temp file already do in this file — so exactly one caller
+     *  creates the binding and every later one gets `EEXIST`.
+     *
+     *  THIS PORT THEREFORE THROWS ON AN EXISTING PATH, deliberately and unlike
+     *  `writeFile`. It is never an overwrite, so it is never a rotation either; a
+     *  caller that wants the established binding reads it. `mode` applies on
+     *  creation, which is now the only occasion this function writes at all. */
     writePrivateFile: (absPath, content) => {
       mkdirSync(dirname(absPath), { recursive: true, mode: 0o700 });
-      writeFileSync(absPath, content, { encoding: "utf8", mode: 0o600 });
+      const fd = openSync(absPath, "wx", 0o600);
+      try {
+        writeSync(fd, content);
+        fsyncSync(fd);
+        closeSync(fd);
+      } catch (err) {
+        // This call created the file, so removing it strands nothing that was
+        // already there and leaves the next mint able to retry. Without it a
+        // half-written key would be "present but unparseable" — a state the
+        // caller refuses to overwrite, and so a permanent one.
+        try {
+          closeSync(fd);
+        } catch {
+          /* the unlink below is what matters */
+        }
+        try {
+          rmSync(absPath, { force: true });
+        } catch {
+          /* an unreadable stub is inert; the caller reports its own refusal */
+        }
+        throw err;
+      }
     },
 
     /**

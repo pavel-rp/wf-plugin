@@ -5337,6 +5337,22 @@ export class ResolverService {
     if (!mint) return { key: null, diagnostic: null };
     const key = mintRunEvidenceIssuerKey();
     const failure = this.runEvidenceWrite(abs, serializeRunEvidenceIssuer(key), true);
+    if (failure === "EEXIST") {
+      // THE MINT LOST A CREATE RACE, AND LOSING IS THE CORRECT OUTCOME (WF-504).
+      // The read above observed absence honestly, but a read and a write are two
+      // moments and another run established the binding in between. Because the
+      // write is create-exclusive, that binding is UNTOUCHED — which is the whole
+      // point: overwriting it would destroy the key proving every receipt already
+      // issued under it, converting a race into silent mass tampering. So this
+      // attempt proves nothing rather than sealing with an issuer that displaced
+      // its predecessor; the next read finds the established binding and
+      // succeeds normally, with no rotation and nothing to repair.
+      return {
+        key: null,
+        diagnostic:
+          "the machine-local run-evidence issuer binding was established concurrently by another run; it was NOT overwritten, so this attempt refuses rather than minting a second issuer over the key that proves every receipt already issued.",
+      };
+    }
     if (failure !== null) {
       return {
         key: null,

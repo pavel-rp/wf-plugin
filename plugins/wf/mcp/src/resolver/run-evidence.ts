@@ -64,15 +64,24 @@
 //     `issuedAt`; that policy belongs to the consumer, and `issuedAt` is carried
 //     on every matched record precisely so it can.
 //
-//   * AN ARTIFACT-LESS RECEIPT IS WEAKER, AND SAYS SO. Five of the seven
-//     receipt-bearing phases write an artifact the resolver reads and digests
-//     itself, so their receipts are `artifact-backed`: the resolver observed
-//     something the caller did not supply. The two delivery-ceremony skills write
-//     no such artifact, so their receipts are `invocation-only` — they attest that
-//     the skill reached its completion point and invoked the resolver there, which
-//     is strictly weaker than "the ceremony succeeded". `evidenceClass` carries
-//     that distinction on every record so a consumer can weight the two
-//     differently rather than being silently told they are the same.
+//   * AN ARTIFACT-LESS RECEIPT IS WEAKER, AND SAYS SO — PER RECORD, NOT PER
+//     PHASE. `evidenceClass` is derived AT ISSUE from what the resolver actually
+//     observed ON THAT CALL: a record whose caller named an artifact the resolver
+//     read and digested is `artifact-backed` — the resolver observed something the
+//     caller did not supply; a record that named none is `invocation-only`,
+//     attesting only that the skill reached its completion point and invoked the
+//     resolver there, which is strictly weaker than "the work succeeded".
+//
+//     IT IS NOT A PROPERTY OF THE SUBJECT, AND A CONSUMER MUST NOT INFER IT FROM
+//     ONE. Today's instrumentation happens to split five-and-two — `spec`, `plan`,
+//     `implement`, `verify-spec` and `qa-gen` name an artifact; the two
+//     delivery-ceremony skills, `ship` and `tf`, write none and so name none — but
+//     that is a convention of the CALLERS, not an invariant of this mechanism.
+//     The same phase filing a receipt without an artifact path yields
+//     `invocation-only`, and nothing here forbids it. `evidenceClass` is carried
+//     on every record precisely so a consumer reads the fact off the record and
+//     weights the two differently, rather than deducing it from the subject and
+//     being silently wrong.
 //
 //   * VERIFIABILITY IS SCOPED TO THE ISSUING WORKSPACE. Both the run identity and
 //     the issuer binding are keyed on the resolved workspace root. A receipt filed

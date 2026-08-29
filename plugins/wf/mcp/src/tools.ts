@@ -159,10 +159,11 @@ const recordRunEvidenceInput = fromJsonSchema(withWorkspaceRoot({
     taskId: runEvidenceTaskIdProperty,
     artifactPath: {
       type: "string",
+      minLength: 1,
       maxLength: 4096,
       pattern: safeTerminalStringPattern,
       description:
-        "Workspace-relative path of the artifact this phase produced, when it produced one (omit for a phase that writes no artifact). The resolver reads and digests it ITSELF; an absent artifact is a refusal, not a receipt.",
+        "Workspace-relative path of the artifact this phase produced. OMIT THE FIELD ENTIRELY for a phase that writes no artifact — that is legitimate and yields an `invocation-only` record. When the field IS supplied it must name a real file: the resolver reads and digests it ITSELF, and a named artifact that does not exist is a refusal, not a receipt. The two absences are different facts, so an empty string is neither and is refused here rather than silently treated as an omission.",
     },
   },
   required: ["kind", "subject", "taskId"],
