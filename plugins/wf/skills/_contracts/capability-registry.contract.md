@@ -708,8 +708,10 @@ exemption.** A capability owning the `tracker` surface implements:
   decides that a status literal means finished** — the `<lifecycle>` value is the
   owning capability's own mapping of its state taxonomy onto that pair, read from
   the return and never inferred from a name. Its return is **typed** like the
-  delivery surface's `review-threads-read`: an `<operation-supported>` boolean
-  travels alongside the status list.
+  delivery surface's `review-threads-read`, and **both keys are named** so an
+  external pack can implement the return shape unambiguously:
+  `<operation-supported>` (bool) alongside `<statuses>`, whose entries each carry
+  a status name and its `<lifecycle>` value.
 - `list_milestones` — enumerate the milestones defined for a scope.
 - `list_cycles` — enumerate the cycles (time-boxed work periods) defined for a
   scope.
