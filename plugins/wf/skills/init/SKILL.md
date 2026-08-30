@@ -75,7 +75,8 @@ this body is its implementation.
 - Write or edit any file outside the scaffold writes named above.
 - Mutate lifecycle state by any path other than that sanctioned `apply_install` —
   no hand-written ledger, no registry row written on a pack's behalf, no
-  enablement flipped, no answer persisted directly.
+  enablement flipped, no **pack** answer persisted directly. Core's own setup answer
+  is not lifecycle state: it is a scaffold write (Phase 5, step 6).
 - Call `apply_install` without a confirmation, more than once per run, or with a
   plan id other than the one confirmed.
 - Let a `--seed` id **replace** the selection rather than extend it, or read one
@@ -243,21 +244,11 @@ and its steps defer to Phases 5, 6 and 8 by name. Its procedure lives at
 `reconcile-mode.md`,
 obtained via `resolve_content({ workspaceRoot, class: "references-template",
 skill: "init", ref: "reconcile-mode.md" })` on that path only. Follow it as
-written. Four invariants govern it; violating any is a defect, not a judgement:
-
-1. **Removal has exactly one source: an explicit deselection** — never a set
-   difference, never an omission. An orphaned registration, a disabled one, and
-   one whose durable record is missing each **retain**; the third bootstraps
-   *without* deletion.
-2. **A settled workspace never enters the mutation stage** — not "enters it and
-   does nothing": no plan call, no confirmation, no mutation call at all. And
-   settled is not one applicability read — a withheld advance, or an artifact
-   retained under any class but the benign one, is **retained divergence**, a
-   zero-write state that must never be reported as no drift.
-3. **Preselection comes from the durable committed record only.** Where there is
-   none, ask; machine-local state may not reconstruct a desired set.
-4. **Visible, selectable, deselectable and retained are four properties**, kept
-   separate and never collapsed into one value.
+written, including its `## The four invariants` section — removal has exactly one
+source, a settled workspace never enters the mutation stage, preselection comes
+only from the durable committed record, and visible/selectable/deselectable/
+retained stay four separate properties. Violating any is a defect, not a
+judgement.
 
 ---
 
@@ -301,8 +292,14 @@ by default and nothing is selected automatically.
    `answers.unresolved[]` is answered; asking it again is a defect.
 5. **One round.** Collect every answer before moving on. Do not ask, plan, and
    ask again.
+6. **Ask core's own question in the same batch** — the standup status default, held
+   in the `Standup Statuses` row of `_local/config.md`'s `## Standup` section. It
+   belongs to no pack, so it never reaches `answers.unresolved[]`. Its wording, the
+   resolved/unresolved rule, the `<skipped>` marker a decline persists, and the
+   scaffold write recording it live at `core-question.md`, via `resolve_content({
+   workspaceRoot, class: "references-template", skill: "init", ref: "core-question.md" })`.
 
-Hold the collected answers as `answers[]` of `{ pluginId, questionId, value }`.
+Hold the collected pack answers as `answers[]` of `{ pluginId, questionId, value }`.
 
 ---
 
@@ -434,6 +431,9 @@ stop the run on it.
   leave existing files alone unless `--force`.
 - **Config values do not match the repo:** do not guess — write defaults and tell
   the user to edit.
+- **Core's own question is already resolved, or is declined:** an answered row and a
+  `<skipped>` row are both resolved — never re-asked, never rewritten; a decline
+  persists `<skipped>`, never `<none>`. See `core-question.md`.
 - **Reconcile over a settled workspace:** no plan call, no confirmation, no
   mutation call — `already-initialized`, `Apply: not run — no drift`. If nothing
   is authorized but something diverged, report retained divergence and what
@@ -474,7 +474,7 @@ Packs:
 Reconcile: <n/a — fresh journey | settled — no drift | retained divergence — <n> item(s) | delta — <a> addition(s), <d> explicit deselection(s)>
 Repair: <n> diagnosed · <n> withheld advance(s) · retained by class <retained/shared/edited/ambiguous/unverifiable tally>
 
-Questions: <n> asked, <n> already resolved, <n> answered this run
+Questions: <n> asked, <n> already resolved, <n> answered this run · standup statuses <answered | skipped | already resolved>
 Plan: <applicability> · mode <mode> · <n> action(s) · planId <planId> (<factCount> facts)
   Source: <repair_packs (empty delta) | plan_install (desired-set delta) | none — no plan computed>
 Apply: <applied | rejected | rolled-back | halted | not run — declined | not run — no change | not run — no drift | not run — retained divergence, nothing authorized>

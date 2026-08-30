@@ -17,9 +17,11 @@ same surface `ado` binds. It carries **zero** delivery-specific vocabulary.
 
 profile-template: profile.template.json
 
-The template declares exactly one project question, `linear-team`, as a plain string unresolved
-until the project persists an answer at its declared destination. `linear-project: none` remains
-ordinary non-question profile data.
+The template declares two project questions, each a plain string unresolved until the project
+persists an answer at its declared destination: `linear-team`, and `linear-project` — the optional
+scope for status, milestone and cycle enumerations. `linear-project` carries the suggested default
+`<skipped>`, so declining it persists an explicit decline rather than leaving the destination
+untouched; a persisted `<skipped>` means enumerations stay team-wide.
 
 ## Fragments
 

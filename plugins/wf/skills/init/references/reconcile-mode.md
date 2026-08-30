@@ -27,15 +27,23 @@ identity below already exists and is consumed **unchanged**.
 
 ## The four invariants
 
-1. **Removal has exactly one source.** `deregister` carries exactly the packs the
-   user **explicitly marked for removal** in the single round below. It is never
-   a set difference against the preselection, because a pack that was never
-   selected cannot be deselected.
-2. **A clean workspace never enters the mutation stage.** Not "enters it and does
-   nothing" — the mutation call is not made at all.
-3. **Absence of a durable record is asked about, never inferred.** Machine-local
-   state may not reconstruct a desired set.
-4. **Visible, available and retained are three properties**, carried separately.
+These four govern the whole fork; violating any is a defect, not a judgement.
+
+1. **Removal has exactly one source: an explicit deselection** — never a set
+   difference, never an omission. `deregister` carries exactly the packs the user
+   **explicitly marked for removal** in the single round below; a pack that was
+   never selected cannot be deselected. An orphaned registration, a disabled one,
+   and one whose durable record is missing each **retain**; the third bootstraps
+   *without* deletion.
+2. **A settled workspace never enters the mutation stage** — not "enters it and
+   does nothing": no plan call, no confirmation, no mutation call at all. And
+   settled is not one applicability read — a withheld advance, or an artifact
+   retained under any class but the benign one, is **retained divergence**, a
+   zero-write state that must never be reported as no drift.
+3. **Preselection comes from the durable committed record only.** Where there is
+   none, ask; machine-local state may not reconstruct a desired set.
+4. **Visible, selectable, deselectable and retained are four properties**, kept
+   separate and never collapsed into one value.
 
 ---
 

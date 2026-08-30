@@ -543,7 +543,8 @@ test("real tracker manifests expose normalized template paths and complete quest
       capability: "ado",
       installPath: joinSlash(REPO_ROOT, "plugins/wf-ado"),
       templateSuffix: "plugins/wf-ado/capabilities/ado/profile.template.json",
-      rawOnlyField: "work-item-id-prefix",
+      rawOnlyField: "work-item-id-prefix" as string | null,
+      suggestedDefaults: {} as Record<string, string | undefined>,
       expected: [
         {
           pack: "ado",
@@ -566,7 +567,7 @@ test("real tracker manifests expose normalized template paths and complete quest
       capability: "linear",
       installPath: joinSlash(REPO_ROOT, "plugins/wf-linear"),
       templateSuffix: "plugins/wf-linear/capabilities/linear/profile.template.json",
-      rawOnlyField: "linear-project",
+      rawOnlyField: null,
       expected: [
         {
           pack: "linear",
@@ -575,7 +576,16 @@ test("real tracker manifests expose normalized template paths and complete quest
           prompt: "Linear team key or name for new issues?",
           schema: { type: "string" },
         },
+        {
+          pack: "linear",
+          id: "linear-project",
+          destination: "linear-project",
+          prompt:
+            "Linear project to scope status, milestone and cycle enumerations to? Optional — accept the pre-filled <skipped> to decline, and enumerations stay team-wide.",
+          schema: { type: "string", minLength: 1, maxLength: 200 },
+        },
       ],
+      suggestedDefaults: { "linear-project": "<skipped>" } as Record<string, string | undefined>,
     },
   ] as const;
 
@@ -633,16 +643,21 @@ test("real tracker manifests expose normalized template paths and complete quest
         })),
         fixture.expected,
       );
-      assert.ok(
-        active.questions.every(
-          (question) =>
-            question.state.status === "unresolved" &&
-            question.state.source === null &&
-            question.state.value === null &&
-            question.state.suggestions.length === 0,
-        ),
-      );
-      assert.ok(!JSON.stringify(active).includes(fixture.rawOnlyField));
+      for (const question of active.questions) {
+        const suggestedDefault = fixture.suggestedDefaults[question.destination];
+        assert.equal(question.state.status, "unresolved");
+        assert.equal(question.state.source, null);
+        assert.equal(question.state.value, null);
+        assert.deepEqual(
+          question.state.suggestions,
+          suggestedDefault === undefined
+            ? []
+            : [{ source: "suggested-default", value: suggestedDefault }],
+        );
+      }
+      if (fixture.rawOnlyField !== null) {
+        assert.ok(!JSON.stringify(active).includes(fixture.rawOnlyField));
+      }
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

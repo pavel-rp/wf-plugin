@@ -24,10 +24,11 @@ matching the reference conversion in `plugins/wf-fake/skills/init/SKILL.md`.
 > conditional in this body that reads existing state.**
 
 **The Linear interview is no longer run here.** The `linear` capability declares
-its project question — `linear-team` — as an `ask[]` entry on its
-`profile.template.json`, so the canonical question round asks it and the
-canonical apply persists it at the declared destination. `linear-project` is
-ordinary non-question profile data with a working default and is not a question.
+its project questions — `linear-team` and the optional `linear-project`
+enumeration scope — as `ask[]` entries on its `profile.template.json`, so the
+canonical question round asks them and the canonical apply persists each at its
+declared destination. `linear-project` ships the suggested default `<skipped>`,
+so declining it is one keystroke and persists an explicit decline.
 The suppression rule is the canonical one and is deliberately strict: **only a
 persisted project answer resolves a question.** A shipped default, a pack-tier
 value and a personal-tier value are pre-fills that make accepting cheap; none of

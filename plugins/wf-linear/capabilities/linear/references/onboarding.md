@@ -55,9 +55,10 @@ skills:
 ## Profile template and declared interview
 
 This capability declares `profile-template: profile.template.json`. Its ordered `ask` metadata
-contains exactly the question the current init skill asks: `linear-team`, a plain string persisted
-at the same-named profile destination. The template keeps `linear-project: none` as ordinary
-non-question data; that optional default is not an interview answer.
+contains the two questions the canonical init round asks, each a plain string persisted at the
+same-named profile destination: `linear-team`, and the optional `linear-project` scope for status,
+milestone and cycle enumerations. `linear-project` ships the suggested default `<skipped>`, so a
+user who declines persists an explicit decline instead of leaving the destination empty.
 
 The declaration is metadata for the shared project-configuration lifecycle, and since the init-alias
 migration it is the **only** interview this pack has. `/wf-linear:init` is now a compatibility alias
@@ -261,3 +262,8 @@ with `tf` first; that is the charter's named failure case.
 - **WF-441** — declare the existing Linear Team interview as one profile-template question while
   retaining `linear-project: none` as ordinary data and leaving `/wf-linear:init` execution
   unchanged.
+- **WF-526** — promote `linear-project` from ordinary data to a second declared question, so the
+  enumeration scope is reachable through the install lifecycle rather than only a hand edit. It
+  carries the suggested default `<skipped>`, which makes an explicit decline distinguishable from a
+  value nobody was ever asked for; the plain `linear-project: none` entry is removed, because an
+  ordinary template value at a declared destination would compete with the entry's own suggestion.
