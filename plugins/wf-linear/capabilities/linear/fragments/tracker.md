@@ -131,15 +131,20 @@ notes below record each binding's grounding status and the load-bearing choices 
     both hold a value. Nothing writes the value back to `_local/config.md`, so the fallback
     decays naturally as projects re-run init; a one-time migration was considered and
     deliberately not taken (it would need a write path this capability does not own).
-  - **`linear-project` is not an asked answer**, and that is exactly why it may not be read
-    from the profile *alone*. It is template data with the default `none`, sitting outside
-    `ask[]`, and `resolve_profile` returns the persisted document as it stands — it merges
-    in no template tier — so nothing ever puts the key there. Reading it only from the
-    profile would therefore have silently dropped every existing project's configured
-    **Linear Project** to `none`: issues created unscoped, `list_milestones` empty, and no
-    error anywhere. It takes the same three-step read-through as `linear-team` (profile →
-    `## Linear` section → the literal `none`). The general rule: "where does the lifecycle
-    persist this?" decides which tier is *authoritative*, never which tiers are *read*.
+  - **`linear-project` is an asked answer as of WF-526** — it is now a declared `ask[]` entry
+    with an explicit `<skipped>` marker for a decline — and it still may not be read from the
+    profile *alone*. The question is optional and skippable, and every project initialized
+    before it existed has no profile entry at all, so `resolve_profile` (which returns the
+    persisted document as it stands, merging in no template tier) yields nothing for them.
+    Reading it only from the profile would therefore silently drop every such project's
+    configured **Linear Project** to `none`: issues created unscoped, `list_milestones` empty,
+    and no error anywhere. It takes the same three-step read-through as `linear-team` (profile
+    → `## Linear` section → the literal `none`), which also keeps the three states apart:
+    absent/`<none>` = never asked, `<skipped>` = declined, anything else = answered. The
+    general rule is unchanged, and this is the case that shows why it is worth stating: "where
+    does the lifecycle persist this?" decides which tier is *authoritative*, never which tiers
+    are *read* — a value becoming an asked answer does not retire the fallback that serves the
+    projects which never got the question.
   - The resolver snapshot's `providerConfig` field (consumer inventory §7 field #9) remains
     deliberately unpopulated by core — a provider-specific config-section name is domain
     knowledge core doesn't carry — which is why the fallback read is a direct local read

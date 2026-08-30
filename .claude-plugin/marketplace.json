@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "wf-marketplace",
-  "version": "0.185.1",
+  "version": "0.186.0",
   "description": "Claude Code marketplace hosting the wf core plugin and its capability packs (wf-browser-qa browser-QA engine, wf-host generic QA host, wf-node-ts Node/TS stack, wf-audit audit + self-review, wf-angular Angular test-host, wf-git delivery, wf-ado tracker, wf-linear tracker, wf-review PR-review feature, wf-author-caps authoring toolkit).",
   "owner": {
     "name": "Pavel Kalabin",
@@ -11,7 +11,7 @@
     {
       "name": "wf",
       "source": "./plugins/wf",
-      "version": "0.138.1",
+      "version": "0.139.0",
       "description": "wf:* skill chain: spec/plan/implement, verify, QA (gen/run/auto/followup), classify, triage, branch/commit/pr. Domain-free, tracker-agnostic core — tracker/delivery integrations register via capability packs (wf-ado, wf-git, ...). Stack/domain capabilities (browser-qa, angular test-host, node-ts) each ship in their own plugin.",
       "author": {
         "name": "Pavel Kalabin"
@@ -91,7 +91,7 @@
     {
       "name": "wf-linear",
       "source": "./plugins/wf-linear",
-      "version": "0.10.0",
+      "version": "0.11.0",
       "description": "wf tracker-provider pack: the linear capability owning the wf capability-registry's tracker surface (Linear issue get/create/update/list-children/comment/status/attachment bindings and status/milestone/cycle queries via mcp__claude_ai_Linear__* tools). A second, independent binding of the tracker contract alongside wf-ado. Ships /wf-linear:init as a compatibility alias — it seeds wf-linear into /wf:init's selection round and relays that lifecycle's own result, registering nothing itself.",
       "author": {
         "name": "Pavel Kalabin"
