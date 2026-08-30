@@ -292,12 +292,12 @@ by default and nothing is selected automatically.
    `answers.unresolved[]` is answered; asking it again is a defect.
 5. **One round.** Collect every answer before moving on. Do not ask, plan, and
    ask again.
-6. **Ask core's own question in the same batch** — the standup status default in
-   `_local/config.md`'s `## Standup` row, which belongs to no pack and so never
-   reaches `answers.unresolved[]`. Its wording, its resolved/unresolved rule, the
-   `<skipped>` marker a decline persists, and the scaffold write that records it
-   live at `core-question.md`, obtained via `resolve_content({ workspaceRoot, class:
-   "references-template", skill: "init", ref: "core-question.md" })` on this path only.
+6. **Ask core's own question in the same batch** — the standup status default, held
+   in the `Standup Statuses` row of `_local/config.md`'s `## Standup` section. It
+   belongs to no pack, so it never reaches `answers.unresolved[]`. Its wording, the
+   resolved/unresolved rule, the `<skipped>` marker a decline persists, and the
+   scaffold write recording it live at `core-question.md`, via `resolve_content({
+   workspaceRoot, class: "references-template", skill: "init", ref: "core-question.md" })`.
 
 Hold the collected pack answers as `answers[]` of `{ pluginId, questionId, value }`.
 

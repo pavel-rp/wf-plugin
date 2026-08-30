@@ -1,7 +1,8 @@
 # Core's own setup question
 
-The one setup question core owns itself — the **standup status default**, held in the `## Standup` row
-of `_local/config.md`. Read on the Phase 5 ask path only; never at boot.
+The one setup question core owns itself — the **standup status default**, held in the
+`Standup Statuses` table row of `_local/config.md`'s `## Standup` section. (`## Standup` is the section
+heading; the value lives in the row beneath it.) Read on the Phase 5 ask path only; never at boot.
 
 Every pack question reaches Phase 5 through `answers.unresolved[]`, relayed from `plan_install`. Core's
 question belongs to no pack, so it never appears there and is asked directly — but in the **same single
@@ -50,7 +51,7 @@ run; collapsing it into answered reports a decline as configuration.
 
 ## Persisting the answer
 
-Write the collected value into the `## Standup` row of `_local/config.md` — the answer when one was
+Write the collected value into the `Standup Statuses` row of `_local/config.md` — the answer when one was
 given, the literal `<skipped>` when the user declined. **Never write `<none>` here**; that is the
 never-asked state. When the question was not asked because it was already resolved, write nothing.
 
