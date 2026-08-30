@@ -215,7 +215,27 @@ it.
   single-id `get`/`update` calls), so the query-tool name is unverified. A read: an
   unconfigured tracker returns an empty result and never warns, per the contract's
   degradation rules.
+- **`updated-at` rides the same query (WF-525).** The contract's additive enumeration key is
+  `[System.ChangedDate]`, added to the WIQL `SELECT` the query already issues — no second
+  request and no derivation. It sits on the enumeration rather than on `get` precisely so a
+  consumer can decide whether an item is worth a `get` without paying for one.
 - **Grounding:** Unverified — tool name not yet confirmed.
+
+## list_statuses
+
+- **ADO state categories are the process-template-independent classification.** Every work
+  item type state is published with a **state category** from the closed set `Proposed`,
+  `InProgress`, `Resolved`, `Completed`, `Removed`. That category — not the state's display
+  name — is what maps onto the contract's abstract `open`/`terminal` pair: `Completed` and
+  `Removed` are terminal, the rest open. A process template may rename any state, so a name
+  carries no lifecycle meaning and is never read for one, which is the contract's "core never
+  decides that a status literal means finished" constraint honoured on the capability side.
+- **De-duplicated by state name across work item types**, so a state several types share is
+  reported once rather than per type.
+- **Grounding:** Unverified — tool name not yet confirmed, and the binding therefore carries
+  the fragment's `<VERIFY: … — not yet confirmed>` marker rather than a guessed tool name.
+  This pack has no verification signal in this repository (the charter's accepted
+  consequence); the operation is reviewed against the contract rather than exercised.
 
 ## list_milestones
 
@@ -274,8 +294,9 @@ provider surface"), bound to exactly one `## ` section in `tracker.ops.md`, none
 | `set_status`       | `set_status`    | grounded — field usage to confirm        |
 | `attach_link`      | `attach_link`   | grounded                                 |
 | `list_by_status`   | `list_by_status`| unverified — tool name not yet confirmed |
+| `list_statuses`    | `list_statuses` | unverified — tool name not yet confirmed |
 | `list_milestones`  | `list_milestones`| unverified — tool name not yet confirmed |
 | `list_cycles`      | `list_cycles`   | unverified — tool name not yet confirmed |
 | `list_blockers`    | `list_blockers` | grounded — confirmed against catalog     |
 
-All thirteen operations are bound; none is unbound.
+All fourteen operations are bound; none is unbound.

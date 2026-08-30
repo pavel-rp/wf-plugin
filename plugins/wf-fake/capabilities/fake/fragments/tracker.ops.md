@@ -1,6 +1,6 @@
 # fake tracker provider — runtime ops
 
-**Version:** 0.1.0 (WF-344 — hermetic in-memory tracker binding: every tracker op returns a scripted response and records its invocation to the op log; no network/tracker-MCP reach.)
+**Version:** 0.2.0 (WF-525 — the tracker surface's `list_statuses` status-discovery read gains a scripted-response row, `list_by_status`'s scripted response shape additively carries the `updated-at` key, and the contract's fourth degradation case — a configured, recoverable provider whose fragment omits an operation — gains its fixture reproduction, stated as distinct from the loud unscripted-op failure; WF-344 — hermetic in-memory tracker binding: every tracker op returns a scripted response and records its invocation to the op log; no network/tracker-MCP reach.)
 **Role:** the runtime-read half of the fake tracker provider — the uniform scripted-response protocol every tracker operation follows, plus the authoritative tracker op list. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (rationale, scripts/op-log format, edge-case matrix — never read at boot):** `tracker.md`; scripts/op-log format legend `../references/scripts-format.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -10,7 +10,7 @@
 
 **Consumes, never derives:** every operation takes an already-resolved id / title / body / field value / status name — composing those is the caller's job. The fake records them and returns the scripted response.
 
-**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles · list_blockers.
+**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_statuses · list_milestones · list_cycles · list_blockers.
 
 ## The scripted-response protocol (every tracker op)
 
@@ -38,11 +38,14 @@ Identical to the delivery surface's protocol — one shared shape across both su
 | post_comment | id, body | `{state}` (confirmation) |
 | set_status | id, status | `{state}` (confirmation) |
 | attach_link | id, url | `{state}` (confirmation) |
-| list_by_status | status, scope | `[{id, title, status}, …]` (possibly empty) |
+| list_by_status | status, scope | `[{id, title, status, updated-at}, …]` (possibly empty) |
+| list_statuses | scope | `{operation-supported: true, statuses: [{name, lifecycle}, …]}` — `lifecycle` is `"open"` or `"terminal"`; `statuses` possibly empty |
 | list_milestones | scope | `[{id, name, target?}, …]` (possibly empty) |
 | list_cycles | scope | `[{id, name, start?, end?}, …]` (possibly empty) |
 | list_blockers | id | `[<blocking-id>, …]` (possibly empty set) |
 
 **`resolve_config` is the one op that never fails on an absent scripts file.** "Is a tracker configured?" is itself a legitimate answer: if the scripts file is absent, or `scripts.tracker.resolve_config` is absent, resolve_config returns `"unconfigured"` (the contract's silent local-only fallback) rather than failing loudly. When the scripts file **is** present, it returns the scripted `"configured"` / `"unconfigured"` value. It still records its invocation to the op log per step 5. Every **other** tracker op keeps the loud unscripted-op failure — a fixture driving `get`/`create_child`/etc. against an unseeded fixture is a scenario error, surfaced.
+
+**Reproducing the contract's fourth degradation case — and why it is not the unscripted-op failure.** The contract's fourth tracker degradation case (`capability-registry.ops.md` §"The tracker provider surface", Degradation rules) covers a **configured, recoverable provider whose fragment omits the operation**, and it is reproduced here by a fixture pack variant whose copy of this fragment carries **no row for the operation at all** — neither in the `**Operations:**` line nor in the table above. A caller dispatching against such a variant finds the operation undefined and applies the contract's typed degraded-empty: an empty result, silently, no error and no warning, carrying `<operation-supported>` = `false`. That is a **different state** from a *declared* op with no `scripts.tracker.<op>` key, which stays the loud UNSCRIPTED failure of step 4 — a declared-but-unseeded op is a scenario error, an undeclared op is a supported degradation. A scenario asserting the fourth case removes the row; a scenario asserting a genuine "nothing found" keeps the row and scripts `{"operation-supported": true, "statuses": []}`, and the two are told apart in the op log by the flag on the recorded response, never by emptiness.
 
 **Id shape.** The fake mints whatever id the scripts file scripts (`create_umbrella` / `create_child` return the scripted string verbatim, e.g. `FAKE-1`). Core's own no-provider local `T<NNN>` fallback is not this file's concern — with fake registered, the surface is configured and the scripted ids apply.

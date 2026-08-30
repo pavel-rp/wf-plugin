@@ -1,6 +1,6 @@
 # ado tracker provider — runtime ops
 
-**Version:** 1.6.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-243 — `create_umbrella`, `create_child`, `list_children`, `post_comment` bound to confirmed tool names; WF-280 — `resolve_config` sources `registryPath` from the bundled `wf-resolver` MCP tool's typed `resolve_config` query instead of assuming the `_local/config.md` literal, with `resolve_gate` diagnostics on resolver failure; WF-315 — `list_blockers` bound to the predecessor dependency relations returned by `get`'s `expand: "all"` fetch; WF-476 — `ado-organization` and `ado-project` are persisted lifecycle answers and are obtained through the resolver's typed `resolve_profile` surface, with a documented read-through fallback to the `## Azure DevOps` config section for existing projects; `work-item-id-prefix` is template data, takes the same read-through down to its shipped `ADO` default, and no longer gates configured/unconfigured)
+**Version:** 1.7.0 (WF-525 — the tracker surface's `list_statuses` status-discovery read is bound to the project's work-item-type state enumeration, mapping each state's own **category** onto the contract's abstract `open`/`terminal` lifecycle pair; `list_by_status`'s query and output additively carry each work item's own last-changed moment; the new binding carries the tool-name grounding marker below rather than a guessed tool name; WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-243 — `create_umbrella`, `create_child`, `list_children`, `post_comment` bound to confirmed tool names; WF-280 — `resolve_config` sources `registryPath` from the bundled `wf-resolver` MCP tool's typed `resolve_config` query instead of assuming the `_local/config.md` literal, with `resolve_gate` diagnostics on resolver failure; WF-315 — `list_blockers` bound to the predecessor dependency relations returned by `get`'s `expand: "all"` fetch; WF-476 — `ado-organization` and `ado-project` are persisted lifecycle answers and are obtained through the resolver's typed `resolve_profile` surface, with a documented read-through fallback to the `## Azure DevOps` config section for existing projects; `work-item-id-prefix` is template data, takes the same read-through down to its shipped `ADO` default, and no longer gates configured/unconfigured)
 **Role:** the runtime-read half of the ado tracker provider — every input, guard, tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (scope framing, grounding legend, per-operation grounding status, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -14,7 +14,7 @@
 
 **Reducible probe list (spec pin):** none. Each write is a single MCP call, `get` is a single `expand: "all"` fetch, and `resolve_config` is one typed `resolve_profile` (R4) query (plus a `resolve_gate` diagnosis only on resolver failure) plus, only when a value is missing from it, one `wf-resolver` `resolve_config` (R1) call and the local section read that fallback needs — there is no probe pair to consolidate. Every operation's call count is unchanged by this split.
 
-**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles · list_blockers.
+**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_statuses · list_milestones · list_cycles · list_blockers.
 
 
 Before following any resolver MCP call in this document, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot`. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent root. Pass it explicitly on every call. Omitting `workspaceRoot` is a hard schema error; resolver MCP calls have no default or fallback root.
@@ -133,10 +133,23 @@ Before following any resolver MCP call in this document, run `pwd -P` and use th
 
 **Procedure:**
 
-1. Enumerate the work items currently in the named workflow status within `{ado-project}` (as resolved by `resolve_config`) — a work-item query filtered on `[System.State] = <status>` (WIQL shape: `SELECT [System.Id], [System.Title], [System.State] FROM WorkItems WHERE [System.State] = '<status>' AND [System.TeamProject] = '{ado-project}'`).
+1. Enumerate the work items currently in the named workflow status within `{ado-project}` (as resolved by `resolve_config`) — a work-item query filtered on `[System.State] = <status>` (WIQL shape: `SELECT [System.Id], [System.Title], [System.State], [System.ChangedDate] FROM WorkItems WHERE [System.State] = '<status>' AND [System.TeamProject] = '{ado-project}'`).
 2. Tool: `<VERIFY: WIQL/work-item-query tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
 
-**Output:** the matching work items (id + title + state), or an empty list when none match — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+**Output:** the matching work items (id + title + state + `updated-at`, the item's own last-changed moment taken verbatim from the `[System.ChangedDate]` field the same query already selects), or an empty list when none match — a read never writes. `updated-at` is the contract's additive enumeration key; it is selected on the same single query, so it costs no extra request. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+
+## list_statuses
+
+**Inputs:** project scope (`{ado-project}`, as resolved by `resolve_config`).
+
+**Procedure:**
+
+1. Enumerate the workflow states defined for the work item types of `{ado-project}` (as resolved by `resolve_config`). Azure DevOps publishes each state with a **state category** alongside its name — the closed set `Proposed`, `InProgress`, `Resolved`, `Completed`, `Removed` — which is the process-template-independent classification this operation reads.
+2. Tool: `<VERIFY: work-item-type-states/classification tool name against live ADO MCP catalog during /wf:ti — not yet confirmed>`.
+3. Map each state's **category** onto the contract's abstract `<lifecycle>` pair: `Completed` and `Removed` are **terminal**; `Proposed`, `InProgress` and `Resolved` are **open**. The mapping keys on the category, **never** on the state's display name — a process template may rename any state, and a name carries no lifecycle meaning.
+4. De-duplicate by state name across work item types, so a state several types share is reported once.
+
+**Output:** `<operation-supported>` = `true` plus the project's workflow statuses, each carrying its name and its `open`/`terminal` classification; an empty status list when the project defines none — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
 
 ## list_milestones
 

@@ -37,6 +37,7 @@ tracker post_comment
 tracker set_status
 tracker attach_link
 tracker list_by_status
+tracker list_statuses
 tracker list_milestones
 tracker list_cycles
 tracker list_blockers

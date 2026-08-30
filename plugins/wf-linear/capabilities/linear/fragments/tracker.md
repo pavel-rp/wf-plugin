@@ -131,15 +131,20 @@ notes below record each binding's grounding status and the load-bearing choices 
     both hold a value. Nothing writes the value back to `_local/config.md`, so the fallback
     decays naturally as projects re-run init; a one-time migration was considered and
     deliberately not taken (it would need a write path this capability does not own).
-  - **`linear-project` is not an asked answer**, and that is exactly why it may not be read
-    from the profile *alone*. It is template data with the default `none`, sitting outside
-    `ask[]`, and `resolve_profile` returns the persisted document as it stands — it merges
-    in no template tier — so nothing ever puts the key there. Reading it only from the
-    profile would therefore have silently dropped every existing project's configured
-    **Linear Project** to `none`: issues created unscoped, `list_milestones` empty, and no
-    error anywhere. It takes the same three-step read-through as `linear-team` (profile →
-    `## Linear` section → the literal `none`). The general rule: "where does the lifecycle
-    persist this?" decides which tier is *authoritative*, never which tiers are *read*.
+  - **`linear-project` is an asked answer as of WF-526** — it is now a declared `ask[]` entry
+    with an explicit `<skipped>` marker for a decline — and it still may not be read from the
+    profile *alone*. The question is optional and skippable, and every project initialized
+    before it existed has no profile entry at all, so `resolve_profile` (which returns the
+    persisted document as it stands, merging in no template tier) yields nothing for them.
+    Reading it only from the profile would therefore silently drop every such project's
+    configured **Linear Project** to `none`: issues created unscoped, `list_milestones` empty,
+    and no error anywhere. It takes the same three-step read-through as `linear-team` (profile
+    → `## Linear` section → the literal `none`), which also keeps the three states apart:
+    absent/`<none>` = never asked, `<skipped>` = declined, anything else = answered. The
+    general rule is unchanged, and this is the case that shows why it is worth stating: "where
+    does the lifecycle persist this?" decides which tier is *authoritative*, never which tiers
+    are *read* — a value becoming an asked answer does not retire the fallback that serves the
+    projects which never got the question.
   - The resolver snapshot's `providerConfig` field (consumer inventory §7 field #9) remains
     deliberately unpopulated by core — a provider-specific config-section name is domain
     knowledge core doesn't carry — which is why the fallback read is a direct local read
@@ -206,8 +211,31 @@ notes below record each binding's grounding status and the load-bearing choices 
   `stateId` per call via `list_issue_statuses` (states differ by team; a cached id is not
   portable), then `list_issues` is filtered by that state and the resolved team/project
   scope. A read: an unconfigured tracker returns an empty result and never warns.
+- **`updated-at` rides the same call (WF-525).** The contract's additive enumeration key is
+  read straight off the `updatedAt` value `list_issues` already returns per issue — no
+  second request, and no derivation. It sits on the enumeration rather than on `get`
+  precisely so a consumer can decide whether an item is worth a `get` without paying for
+  one.
 - **Grounding:** Tool confirmed (`list_issues`, `list_issue_statuses` are live in this
-  session's MCP catalog); filter shape unexercised here.
+  session's MCP catalog); filter shape unexercised here. `updatedAt` is a field on the
+  `list_issues` response observed directly during WF-525's own authoring.
+
+## list_statuses
+
+- **Linear's workflow states are team-scoped, and they carry their own `type`.** The
+  discovery read is the *same* `list_issue_statuses` enumeration `set_status` and
+  `list_by_status` already issue to resolve one name to a `stateId` — called for the whole
+  set instead of a single match, so it adds no new tool binding, only a new use of a
+  confirmed one.
+- **The open/terminal mapping keys on `type`, never on the display name.** Linear's state
+  types are `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`; the last
+  two map to the contract's `terminal`, the rest to `open`. A team may rename any state, so
+  a display name carries no lifecycle meaning and is never read for one — which is exactly
+  the contract's "core never decides that a status literal means finished" constraint,
+  honoured on the capability side where the product taxonomy legitimately lives.
+- **Grounding:** Tool confirmed (`list_issue_statuses` is live in this session's MCP
+  catalog and is already exercised by two other operations in this fragment); the per-state
+  `type` field is the documented Linear workflow-state category.
 
 ## list_milestones
 
@@ -260,11 +288,12 @@ provider surface"), bound to exactly one `## ` section in `tracker.ops.md`, none
 | `set_status`       | `set_status`    | tool confirmed; parameter shape per draft |
 | `attach_link`      | `attach_link`   | tool confirmed; parameter shape per draft |
 | `list_by_status`   | `list_by_status`| tool confirmed; filter shape unexercised  |
+| `list_statuses`    | `list_statuses` | tool confirmed (`list_issue_statuses`, already used by two other ops) |
 | `list_milestones`  | `list_milestones`| tool confirmed; filter shape unexercised  |
 | `list_cycles`      | `list_cycles`   | tool confirmed; filter shape unexercised  |
 | `list_blockers`    | `list_blockers` | tool confirmed (`get_issue`); `blockedBy` observed |
 
-All thirteen operations are bound; none is unbound.
+All fourteen operations are bound; none is unbound.
 
 **Not e2e-observed (accepted, per WF-136's scope):** `create_umbrella`, `create_child`,
 and `update` have no create-consuming core touchpoint in this codebase today — no core

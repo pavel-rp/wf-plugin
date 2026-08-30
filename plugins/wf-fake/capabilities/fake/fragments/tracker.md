@@ -11,7 +11,7 @@ capability-registry.ops.md` §"The tracker provider surface") with the same in-m
 op-recording implementation the delivery surface uses. It binds the **same** abstract operation
 set wf-linear / wf-ado bind to a real tracker — `resolve_config`, `create_umbrella`,
 `create_child`, `update`, `get`, `list_children`, `post_comment`, `set_status`, `attach_link`,
-`list_by_status`, `list_milestones`, `list_cycles`, `list_blockers` — but to a scripts file + op
+`list_by_status`, `list_statuses`, `list_milestones`, `list_cycles`, `list_blockers` — but to a scripts file + op
 log. The canonical list the self-checks assert against is `../fixtures/op-vocabulary.txt`.
 
 ## Shared protocol, one exception
@@ -30,6 +30,8 @@ tracker. Every other tracker op keeps the loud unscripted-op failure.
 | Op key absent | UNSCRIPTED — record then fail loudly, naming the op (except `resolve_config`). |
 | Scripted value is an array, calls exceed its length | Last element repeats. |
 | `list_*` / `list_blockers` scripted empty | Returned as an empty list/set (a read never writes, empty is valid). |
+| Op row removed from this fragment entirely (WF-525) | The contract's **fourth** degradation case: the caller finds the operation undefined and applies the typed degraded-empty — silent, no error, no warning, carrying `<operation-supported>` = `false`. Deliberately **distinct** from the row above it: a *declared* op with no script is a scenario error (loud UNSCRIPTED), an *undeclared* op is a supported degradation. This is how a fixture reproduces "a configured, recoverable pack that never implemented the operation". |
+| `list_statuses` scripted `{"operation-supported": true, "statuses": []}` | A genuine "nothing found" — told apart from the degraded empty above by the **flag on the recorded response** in the op log, never by emptiness. |
 | Id shape | Whatever the scripts file scripts (`create_umbrella`/`create_child` return the scripted string, e.g. `FAKE-1`); no local `T<NNN>` fallback applies while fake is registered. |
 
 ## No egress
