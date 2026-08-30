@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Glob, Bash, Task]
 
 Composes one prioritized daily briefing from three sources, each named only through abstract operations: **recent delivery activity** (commits + pull requests in a recent window, via the **delivery** provider's `activity-read`), **tracker work** (open work items by status, milestones, and cycles, via `list_by_status`, `list_milestones`, `list_cycles`), and **local in-flight tasks** (the `{task-root}` task folders, read directly — the source of truth, always available with no provider registered). With no delivery or tracker provider registered, standup degrades to a local-only briefing from the local tasks alone; from all sources it derives an **urgency × importance** ranking (Phase 5) into a "today's focus" list. Design rationale for the provider abstraction lives in the paired `rationale.md` reference, never read at runtime.
 
-**Contents:** Prerequisites · Command Syntax · Safety Rules · Phase 1 (resolve providers) · Phase 2 (delivery activity) · Phase 3 (tracker work) · Phase 4 (local tasks) · Phase 5 (prioritize + compose) · Templates · Edge Cases · Final Output.
+**Contents:** Prerequisites · Command Syntax · Safety Rules · Phase 1 (resolve providers) · Phase 2 (delivery activity) · Phase 3 (tracker work) · Phase 4 (local tasks) · Phase 4b (opt-in residue sweep) · Phase 5 (prioritize + compose) · Templates · Edge Cases · Final Output.
 
 ## Prerequisites
 
@@ -17,16 +17,17 @@ Before the first bundled resolver MCP call, run `pwd -P` and use the returned ab
 ## Command Syntax
 
 ```
-/wf:standup [--since <window>] [--status <name> ...] [--no-write]
+/wf:standup [--since <window>] [--status <name> ...] [--no-write] [--sweep-residue]
 ```
 
 | Argument           | Required | Description                                                                                                                                                                                                                                   |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--since <window>` | NO       | The recent-activity window passed to the delivery provider's `activity-read` — a duration or relative window (e.g. `1 day`, `3 days`, `1 week`). Passing it **disables widening**: exactly one read is issued at that value, used verbatim. When omitted, a widening ladder (`1 day` → `3 days` → `1 week` → `1 month`) tries each step in order and stops at the first non-empty result or the four-step cap (Phase 2). The provider consumes each value verbatim; core composes no timestamp arithmetic. |
 | `--status <name>`  | NO       | A tracker workflow status name to enumerate open work items for, via `list_by_status`. Repeatable — pass it once per status. When omitted, the default statuses come from the **Standup Statuses** config key; when that too is unset, the by-status section is skipped (milestones, cycles, activity, and local tasks still render). Order is significance order — the first status listed is treated as the most active/important. |
-| `--no-write`       | NO       | Emit the briefing to chat only; skip writing the `_local/standup/<date>.md` artifact. By default the briefing is also written to that local file (the source of truth for the day's snapshot). |
+| `--no-write`       | NO       | Emit the briefing to chat only; skip writing the `_local/standup/<date>.md` artifact. By default the briefing is also written to that local file (the source of truth for the day's snapshot). Also suppresses the `--sweep-residue` move (Phase 4b), which then reports what it *would* have archived. |
+| `--sweep-residue`  | NO       | **Archive the residue this run classified.** An action, not a mode: it moves each folder Phase 4a classified **residue** — and only those — from `{task-root}/{task-id}/` to `{task-root}/_archive/{task-id}/`, the destination the finalize terminus owns (Phase 4b). Skip-if-present: an existing archive entry is never overwritten. Performs **no** provider operation and deletes nothing. Omitting it is the default and moves nothing on disk. |
 
-Zero-argument default: no argument is ever required — standup reads the default 1-day activity window, enumerates milestones/cycles, enumerates work items for the configured Standup Statuses default when set, scans local task folders, ranks everything, and writes the day's briefing artifact.
+Zero-argument default: no argument is ever required — standup reads the default 1-day activity window, enumerates milestones/cycles, enumerates work items for the configured Standup Statuses default when set, scans local task folders, ranks everything, and writes the day's briefing artifact. **The sweep is never part of that default** — nothing on disk moves unless `--sweep-residue` is passed explicitly.
 
 ## Safety Rules (NON-NEGOTIABLE)
 
