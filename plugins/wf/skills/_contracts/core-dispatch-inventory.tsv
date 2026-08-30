@@ -51,6 +51,7 @@ fleet-finalize	included	plugins/wf/skills/fleet/SKILL.md	/wf:tf <ID>	finalize	mo
 fleet-index	included	plugins/wf/skills/fleet/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 fleet-recycle	included	plugins/wf/skills/fleet/SKILL.md	SendMessage	shipper	model=true;effort=false	fleet-recovery-route	fleet
 fleet-replacement	included	plugins/wf/skills/fleet/SKILL.md	dispatch a **fresh** agent	shipper	model=true;effort=false	fleet-recovery-route	fleet
+standup-essence	included	plugins/wf/skills/standup/SKILL.md	wf:item-essence-distiller	item-essence-distiller	model=true;effort=false	external-context,atomic,1,false,bounded,low,material,mechanical,required,false,mechanically-judgeable,1	standup
 init-constitution	included	plugins/wf/skills/init/SKILL.md	/wf:constitution	constitution	model=false;effort=false	fixed-skill-route	—
 tasks-index	included	plugins/wf/skills/tasks/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 spec-index-first	included	plugins/wf/skills/spec/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
