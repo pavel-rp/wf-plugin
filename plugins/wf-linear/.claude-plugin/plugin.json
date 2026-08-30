@@ -1,6 +1,6 @@
 {
   "name": "wf-linear",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "wf tracker-provider pack: the linear capability owning the wf capability-registry's tracker surface (Linear issue get/create/update/list-children/comment/status/attachment bindings and status/milestone/cycle queries via mcp__claude_ai_Linear__* tools). A second, independent binding of the tracker contract alongside wf-ado. Ships /wf-linear:init as a compatibility alias — it seeds wf-linear into /wf:init's selection round and relays that lifecycle's own result, registering nothing itself.",
   "author": {
     "name": "Pavel Kalabin",
