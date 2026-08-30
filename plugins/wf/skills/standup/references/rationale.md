@@ -53,6 +53,10 @@ The two focus-list exclusions — residue folders, and tracker-sourced items obs
 
 The asymmetry between the two directions is deliberate too. Residue is excluded because it is finished work that would otherwise crowd out live work at the top of the list. An unreported completion is *not* excluded, because its item is still open and recording that completion is genuine remaining work — surfacing it as actionable is the entire point of detecting it.
 
+## Phase 5 — why the empty distiller block is cached too
+
+It is tempting to cache only a *filled* essence — after all, an empty block carries nothing worth reusing. That temptation is exactly the design this cache exists to rule out: a description-less tracker item still costs a full distiller round-trip on every run if its empty result is never persisted, which leaves the "a re-run against unchanged items dispatches zero distillations" measure false for every item without a description. The cache therefore treats the empty block as a first-class cacheable value, keyed and looked up on exactly the same terms as a filled one. The only entries that never reach the cache at all are the ones WF-532 never dispatches in the first place — a bare-core entry, a local-scheme folder, or any other non-tracker-sourced candidate; their absence from the cache file is a consequence of never being a candidate, not a caching decision.
+
 ## Evidence and history
 
 This rationale reference was created as part of WF-524 (charter C030, "Make /wf:standup a briefing worth acting on"), which found the ops body at 225 lines against the project's ≤150 behavior-bearing-line budget for a runtime-read document (`CLAUDE.md` §5, `docs/authoring-notes.md`). Eight later sub-tasks in the same charter add behaviour to the ops body; this split gives each of them room without an unrelated restructure bolted on, and gives a later one-shot cleanup nothing left to do. The split is a pure prose relocation — no phase, provider read, output shape, `allowed-tools` entry, or Safety Rules wording changed as part of it.
