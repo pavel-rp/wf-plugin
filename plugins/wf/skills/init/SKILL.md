@@ -75,7 +75,9 @@ this body is its implementation.
 - Write or edit any file outside the scaffold writes named above.
 - Mutate lifecycle state by any path other than that sanctioned `apply_install` —
   no hand-written ledger, no registry row written on a pack's behalf, no
-  enablement flipped, no answer persisted directly.
+  enablement flipped, no **pack** answer persisted directly. Core's own setup
+  answer is not lifecycle state and does not fall under this bullet: it is written
+  to `_local/config.md` under the scaffold-write authority above (Phase 5, step 6).
 - Call `apply_install` without a confirmation, more than once per run, or with a
   plan id other than the one confirmed.
 - Let a `--seed` id **replace** the selection rather than extend it, or read one
@@ -301,8 +303,35 @@ by default and nothing is selected automatically.
    `answers.unresolved[]` is answered; asking it again is a defect.
 5. **One round.** Collect every answer before moving on. Do not ask, plan, and
    ask again.
+6. **Ask core's own question in the same round.** Core owns exactly one setup
+   question of its own — the **standup status default**, held in the `## Standup`
+   row of `_local/config.md`. It belongs to no pack, so it never appears in
+   `answers.unresolved[]`; ask it in the **same batch** as steps 2–4 so the run
+   still puts every question to the user exactly once.
+   - **Ask it only while unresolved.** *Resolved* means the row holds an answered
+     value **or** the explicit `<skipped>` marker. *Unresolved* means the row is
+     absent or holds the never-asked `<none>`. A resolved row is never re-asked,
+     so a settled workspace re-running this skill sees no churn, while a workspace
+     initialized before the question existed picks it up as a delta.
+   - **Phrase it with no stack, domain, or project noun**: the default tracker
+     workflow statuses to enumerate open work items for, comma-separated, most
+     active first. Concrete status names are tracker-specific and belong to
+     whichever pack supplies them, never to this body.
+   - **It is optional.** Offer declining as a first-class, pre-filled choice, so
+     accepting the decline costs one keystroke rather than an invented value.
 
-Hold the collected answers as `answers[]` of `{ pluginId, questionId, value }`.
+Hold the collected pack answers as `answers[]` of `{ pluginId, questionId, value }`.
+Core's own answer is not a pack answer and never enters that array.
+
+**Persisting core's answer.** Write the collected value into the `## Standup` row
+of `_local/config.md` — the answer when one was given, the literal `<skipped>`
+when the user declined. This is a **scaffold write under `_local/`**, the same
+authority Phase 3 writes that file under; it is **not** a lifecycle mutation, it
+touches no ledger, registry row, or enablement, and it leaves `apply_install` the
+run's single lifecycle write. Never write `<none>` here — `<none>` is the
+never-asked state, and collapsing an explicit decline into it destroys the
+distinction a later consumer branches on. When the question was not asked because
+it was already resolved, write nothing.
 
 ---
 
@@ -434,6 +463,13 @@ stop the run on it.
   leave existing files alone unless `--force`.
 - **Config values do not match the repo:** do not guess — write defaults and tell
   the user to edit.
+- **Core's own question is already resolved:** the `## Standup` row holds an
+  answered value or `<skipped>`. Do not re-ask it and do not rewrite the row. Only
+  an absent row or the never-asked `<none>` is unresolved, and that is what makes
+  the question appear as a delta on a workspace initialized before it existed.
+- **The user declines core's own question:** persist `<skipped>`, never `<none>`.
+  A decline is a recorded answer; writing the never-asked placeholder instead would
+  make the two indistinguishable and re-ask the question on every later run.
 - **Reconcile over a settled workspace:** no plan call, no confirmation, no
   mutation call — `already-initialized`, `Apply: not run — no drift`. If nothing
   is authorized but something diverged, report retained divergence and what
@@ -475,6 +511,7 @@ Reconcile: <n/a — fresh journey | settled — no drift | retained divergence �
 Repair: <n> diagnosed · <n> withheld advance(s) · retained by class <retained/shared/edited/ambiguous/unverifiable tally>
 
 Questions: <n> asked, <n> already resolved, <n> answered this run
+Standup statuses: <answered | skipped | already resolved — row left as-is>
 Plan: <applicability> · mode <mode> · <n> action(s) · planId <planId> (<factCount> facts)
   Source: <repair_packs (empty delta) | plan_install (desired-set delta) | none — no plan computed>
 Apply: <applied | rejected | rolled-back | halted | not run — declined | not run — no change | not run — no drift | not run — retained divergence, nothing authorized>
