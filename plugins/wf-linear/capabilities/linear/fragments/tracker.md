@@ -206,8 +206,31 @@ notes below record each binding's grounding status and the load-bearing choices 
   `stateId` per call via `list_issue_statuses` (states differ by team; a cached id is not
   portable), then `list_issues` is filtered by that state and the resolved team/project
   scope. A read: an unconfigured tracker returns an empty result and never warns.
+- **`updated-at` rides the same call (WF-525).** The contract's additive enumeration key is
+  read straight off the `updatedAt` value `list_issues` already returns per issue — no
+  second request, and no derivation. It sits on the enumeration rather than on `get`
+  precisely so a consumer can decide whether an item is worth a `get` without paying for
+  one.
 - **Grounding:** Tool confirmed (`list_issues`, `list_issue_statuses` are live in this
-  session's MCP catalog); filter shape unexercised here.
+  session's MCP catalog); filter shape unexercised here. `updatedAt` is a field on the
+  `list_issues` response observed directly during WF-525's own authoring.
+
+## list_statuses
+
+- **Linear's workflow states are team-scoped, and they carry their own `type`.** The
+  discovery read is the *same* `list_issue_statuses` enumeration `set_status` and
+  `list_by_status` already issue to resolve one name to a `stateId` — called for the whole
+  set instead of a single match, so it adds no new tool binding, only a new use of a
+  confirmed one.
+- **The open/terminal mapping keys on `type`, never on the display name.** Linear's state
+  types are `triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`; the last
+  two map to the contract's `terminal`, the rest to `open`. A team may rename any state, so
+  a display name carries no lifecycle meaning and is never read for one — which is exactly
+  the contract's "core never decides that a status literal means finished" constraint,
+  honoured on the capability side where the product taxonomy legitimately lives.
+- **Grounding:** Tool confirmed (`list_issue_statuses` is live in this session's MCP
+  catalog and is already exercised by two other operations in this fragment); the per-state
+  `type` field is the documented Linear workflow-state category.
 
 ## list_milestones
 
@@ -260,11 +283,12 @@ provider surface"), bound to exactly one `## ` section in `tracker.ops.md`, none
 | `set_status`       | `set_status`    | tool confirmed; parameter shape per draft |
 | `attach_link`      | `attach_link`   | tool confirmed; parameter shape per draft |
 | `list_by_status`   | `list_by_status`| tool confirmed; filter shape unexercised  |
+| `list_statuses`    | `list_statuses` | tool confirmed (`list_issue_statuses`, already used by two other ops) |
 | `list_milestones`  | `list_milestones`| tool confirmed; filter shape unexercised  |
 | `list_cycles`      | `list_cycles`   | tool confirmed; filter shape unexercised  |
 | `list_blockers`    | `list_blockers` | tool confirmed (`get_issue`); `blockedBy` observed |
 
-All thirteen operations are bound; none is unbound.
+All fourteen operations are bound; none is unbound.
 
 **Not e2e-observed (accepted, per WF-136's scope):** `create_umbrella`, `create_child`,
 and `update` have no create-consuming core touchpoint in this codebase today — no core

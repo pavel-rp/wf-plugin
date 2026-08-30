@@ -1,6 +1,6 @@
 # linear tracker provider — runtime ops
 
-**Version:** 1.5.0 (WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-282 — `resolve_config` distinguishes the relocatable capability registry from the fixed `_local/config.md` provider config; WF-300 — `resolve_config` reads the `## Linear` section from `_local/config.md` unconditionally, never from a relocated `registryPath`: provider config is not the capability registry; WF-315 — `list_blockers` bound to Linear's `blockedBy` relation; WF-476 — `linear-team` is a persisted lifecycle answer and is obtained through the resolver's typed `resolve_profile` surface, with a documented read-through fallback to the `## Linear` config section for existing projects; `linear-project` takes the same read-through down to its `none` default, because nothing persists it to the profile)
+**Version:** 1.6.0 (WF-525 — the tracker surface's `list_statuses` status-discovery read is bound to the team-scoped workflow-state enumeration this fragment already calls for name→id resolution, mapping each returned state's own `type` onto the contract's abstract `open`/`terminal` lifecycle pair; `list_by_status`'s output additively carries each issue's own last-updated moment; WF-213 — split out of the tracker fragment as the bounded runtime-ops half; mirrors the delivery split proven in WF-211; WF-158 — three read-only query operations bound: `list_by_status`, `list_milestones`, `list_cycles`; WF-282 — `resolve_config` distinguishes the relocatable capability registry from the fixed `_local/config.md` provider config; WF-300 — `resolve_config` reads the `## Linear` section from `_local/config.md` unconditionally, never from a relocated `registryPath`: provider config is not the capability registry; WF-315 — `list_blockers` bound to Linear's `blockedBy` relation; WF-476 — `linear-team` is a persisted lifecycle answer and is obtained through the resolver's typed `resolve_profile` surface, with a documented read-through fallback to the `## Linear` config section for existing projects; `linear-project` takes the same read-through down to its `none` default, because nothing persists it to the profile)
 **Role:** the runtime-read half of the linear tracker provider — every input, guard, MCP tool binding, and outcome mapping a tracker operation follows. Read at every tracker-surface boot; self-sufficient (no step below requires opening another file).
 **Reference (grounding legend, per-operation grounding status, scope framing, coverage table — never read at boot):** `tracker.md`.
 **Resolved by:** `plugins/wf/skills/_contracts/invocation-runtime.ops.md` §"Direct provider resolution" — a core skill selects the registry row where `contribution-kind = provider AND scope = tracker`, reads this file, and follows it in-context. No subagent, no phase gate.
@@ -24,7 +24,7 @@ Cache both within the run; **do not re-resolve per call**.
 
 **Reducible probe list (spec pin):** none beyond what is already consolidated here. `resolve_config` is one typed `resolve_profile` (R4) query (plus a `resolve_gate` diagnosis only on resolver failure) and, only when a value is missing from it, the local `## Linear` section read the fallback needs — there is no probe pair to consolidate. Team/project id resolution above is already **resolve-once-per-run-and-cache** — the single probe consolidation this fragment carries. `set_status`'s status-id lookup is deliberately **per-call and uncached** (workflow states differ by team; a cached id is not portable) and must not be reduced. Every other operation is a single MCP call. Every other per-operation call count is unchanged by this split.
 
-**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_milestones · list_cycles · list_blockers.
+**Operations:** resolve_config · create_umbrella · create_child · update · get · list_children · post_comment · set_status · attach_link · list_by_status · list_statuses · list_milestones · list_cycles · list_blockers.
 
 ## resolve_config
 
@@ -137,7 +137,18 @@ Cache both within the run; **do not re-resolve per call**.
 1. Resolve `status_name` to a state id via `mcp__claude_ai_Linear__list_issue_statuses` scoped to the resolved team. Do this lookup **fresh each call** — do not cache status ids across a run (workflow states differ by team; a cached id is not portable). Same discipline as `set_status`.
 2. Call `mcp__claude_ai_Linear__list_issues` filtered to that `stateId`, scoped by the resolved `teamId` (and `projectId` when **Linear Project** is configured).
 
-**Output:** the matching issues (id + title + status), or an empty list when none match — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+**Output:** the matching issues (id + title + status + `updated-at`, the issue's own last-updated moment taken verbatim from the `updatedAt` value `list_issues` already returns per issue), or an empty list when none match — a read never writes. `updated-at` is the contract's additive enumeration key; it is read off the same single call, so it costs no extra request. On tool error, the caller applies the contract's mid-run-failure degradation rule.
+
+## list_statuses
+
+**Inputs:** team scope (the resolved `teamId`; Linear's workflow states are team-scoped).
+
+**Procedure:**
+
+1. Call `mcp__claude_ai_Linear__list_issue_statuses` scoped to the resolved `teamId` (from "Team/project id resolution" above) — the same enumeration `set_status` and `list_by_status` already issue to resolve one status name to a state id, called here for the whole set instead of one match. **One call per run's discovery read**; the caller reuses the returned list rather than re-enumerating.
+2. Map each returned state's own `type` onto the contract's abstract `<lifecycle>` pair: `completed` and `canceled` are **terminal**; every other type (`triage`, `backlog`, `unstarted`, `started`) is **open**. The mapping keys on the state's `type`, **never** on its display name — a team may rename any state, and a name carries no lifecycle meaning.
+
+**Output:** `<operation-supported>` = `true` plus the team's workflow statuses, each carrying its name and its `open`/`terminal` classification; an empty status list when the team defines none — a read never writes. On tool error, the caller applies the contract's mid-run-failure degradation rule.
 
 ## list_milestones
 
