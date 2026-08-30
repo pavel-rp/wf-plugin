@@ -8,7 +8,7 @@ allowed-tools: [Read, Write, Edit, Glob, Bash, Task]
 
 Composes one prioritized daily briefing from three sources, each named only through abstract operations: **recent delivery activity** (commits + pull requests in a recent window, via the **delivery** provider's `activity-read`), **tracker work** (open work items by status, milestones, and cycles, via `list_by_status`, `list_milestones`, `list_cycles`), and **local in-flight tasks** (the `{task-root}` task folders, read directly — the source of truth, always available with no provider registered). With no delivery or tracker provider registered, standup degrades to a local-only briefing from the local tasks alone; from all sources it derives an **urgency × importance** ranking (Phase 5) into a "today's focus" list. Design rationale for the provider abstraction lives in the paired `rationale.md` reference, never read at runtime.
 
-**Contents:** Prerequisites · Command Syntax · Safety Rules · Phase 1 (resolve providers) · Phase 2 (delivery activity) · Phase 3 (tracker work) · Phase 4 (local tasks) · Phase 5 (prioritize + compose) · Templates · Edge Cases · Final Output.
+**Contents:** Prerequisites · Command Syntax · Safety Rules · Phase 1 (resolve providers) · Phase 2 (delivery activity) · Phase 3 (tracker work) · Phase 4 (local tasks) · Phase 4b (opt-in residue sweep) · Phase 5 (prioritize + compose) · Templates · Edge Cases · Final Output.
 
 ## Prerequisites
 
@@ -17,27 +17,29 @@ Before the first bundled resolver MCP call, run `pwd -P` and use the returned ab
 ## Command Syntax
 
 ```
-/wf:standup [--since <window>] [--status <name> ...] [--no-write]
+/wf:standup [--since <window>] [--status <name> ...] [--no-write] [--sweep-residue]
 ```
 
 | Argument           | Required | Description                                                                                                                                                                                                                                   |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--since <window>` | NO       | The recent-activity window passed to the delivery provider's `activity-read` — a duration or relative window (e.g. `1 day`, `3 days`, `1 week`). Passing it **disables widening**: exactly one read is issued at that value, used verbatim. When omitted, a widening ladder (`1 day` → `3 days` → `1 week` → `1 month`) tries each step in order and stops at the first non-empty result or the four-step cap (Phase 2). The provider consumes each value verbatim; core composes no timestamp arithmetic. |
 | `--status <name>`  | NO       | A tracker workflow status name to enumerate open work items for, via `list_by_status`. Repeatable — pass it once per status. When omitted, the default statuses come from the **Standup Statuses** config key; when that too is unset, the by-status section is skipped (milestones, cycles, activity, and local tasks still render). Order is significance order — the first status listed is treated as the most active/important. |
-| `--no-write`       | NO       | Emit the briefing to chat only; skip writing the `_local/standup/<date>.md` artifact. By default the briefing is also written to that local file (the source of truth for the day's snapshot). |
+| `--no-write`       | NO       | Emit the briefing to chat only; skip writing the `_local/standup/<date>.md` artifact. By default the briefing is also written to that local file (the source of truth for the day's snapshot). Also suppresses the `--sweep-residue` move (Phase 4b), which then reports what it *would* have archived. |
+| `--sweep-residue`  | NO       | **Archive the residue this run classified.** An action, not a mode: it moves each folder Phase 4a classified **residue** — and only those — from `{task-root}/{task-id}/` to `{task-root}/_archive/{task-id}/`, the destination the finalize terminus owns (Phase 4b). Skip-if-present: an existing archive entry is never overwritten. Performs **no** provider operation and deletes nothing. Omitting it is the default and moves nothing on disk. |
 
-Zero-argument default: no argument is ever required — standup reads the default 1-day activity window, enumerates milestones/cycles, enumerates work items for the configured Standup Statuses default when set, scans local task folders, ranks everything, and writes the day's briefing artifact.
+Zero-argument default: no argument is ever required — standup reads the default 1-day activity window, enumerates milestones/cycles, enumerates work items for the configured Standup Statuses default when set, scans local task folders, ranks everything, and writes the day's briefing artifact. **The sweep is never part of that default** — nothing on disk moves unless `--sweep-residue` is passed explicitly.
 
 ## Safety Rules (NON-NEGOTIABLE)
 
 **Allowed:**
 - Read the `{task-root}` task folders and their artifacts (project config comes from the `wf-resolver` `resolve_config({ workspaceRoot, ... })` query, not a direct config-file read).
 - Read-only resolution via the `wf-resolver` `resolve_config({ workspaceRoot, ... })`, `resolve_provider({ workspaceRoot, surface: "delivery" })` / `resolve_provider({ workspaceRoot, surface: "tracker" })`, and `resolve_profile({ workspaceRoot, capability: <a resolved record's own owner> })` queries; the **read-only** delivery operation `activity-read`; and the tracker surface's **read-only query and item-read operation class** — any operation the tracker contract defines as a non-mutating enumeration or record read, `list_statuses` / `list_by_status` / `list_milestones` / `list_cycles` among them as **examples, not an exhaustive set**. standup performs **no write** through any provider.
-- Write/create the briefing artifact at `_local/standup/<date>.md` and the essence cache at `_local/standup/essence-cache.json` — the whole `_local/` tree is gitignored, these are the only two permitted local writes — never a version-control operation, never a file outside `_local/`.
+- Perform the **three** permitted local writes, and no others — the whole `_local/` tree is gitignored: (1) write/create the briefing artifact at `_local/standup/<date>.md`; (2) write/create the essence cache at `_local/standup/essence-cache.json`; (3) **only under `--sweep-residue`**, move a folder this run classified `residue` from `{task-root}/{task-id}/` to `{task-root}/_archive/{task-id}/` (Phase 4b). That enumeration is exhaustive — never a version-control operation, never a delete, never a file outside `_local/`.
 
 **Forbidden:**
 - Invoke **any** provider **write** operation — no `commit`, no `branch-create`, no `pr-*`, no `create_*` / `update` / `set_status` / `post_comment` / `attach_link`. standup is read-only on every surface.
 - Modify any source file outside `_local/`, or run any version-control operation.
+- Perform **any** provider operation as part of the `--sweep-residue` sweep. The sweep is a local filesystem move and nothing else: it never closes, comments on, or sets the status of a work item; it never writes a `09_finalize.md` or otherwise synthesizes a finalize record; it never deletes; and it never touches a folder this run did not positively classify `residue` — not a `neither`, not an unreported completion, and never one inferred from absence.
 - Name any concrete tracker, version-control tool, host, or command string anywhere in this skill's behaviour or in the briefing it writes — only the abstract operation names and config placeholders above. The briefing must stay grep-clean of git/host/tracker strings.
 - Write an AI-attribution trailer, a "generated with" footer, an emoji, or any promotional tagline into the briefing. Only the `**Model:**` attribution line belongs in the artifact.
 
@@ -86,6 +88,24 @@ Independently of any provider, scan `{task-root}` for in-flight task folders —
 - **neither** — everything else, and the default: no matching enumerated item (outside the resolved scope, deleted, or under a status the enumeration cap never reached), no map at all because discovery degraded, a local-scheme `T<NNN>` folder (exempt — it has no tracker counterpart and can never be classified), or a matched item whose two sides agree. A `neither` folder carries **no** lag label, renders in the in-flight section exactly as today, and produces no reconciliation line.
 
 Reconciliation adds **no** provider call and **no** per-folder read — it consumes the one enumeration Phase 3c already performed, so its cost never scales with the folder count — and it stays **read-only on every surface**: it reports a direction of lag and never acts on one. **It is a lag model, not a precedence model:** when the two sides differ one of them is behind, so the run owes a direction and a report; no rule about which side wins is written, because one would mask the tracker-behind-local direction entirely. Hold the two finding sets for the `residue` and `unreported-completions` slots; a direction with no finding leaves its slot at its absent form.
+
+## Phase 4b: Sweep the classified residue (opt-in)
+
+Runs **only** when `--sweep-residue` was passed; otherwise this phase is a no-op — nothing on disk moves and the briefing is byte-for-byte the one the run would have produced without it. The sweep performs **no** detection of its own: it consumes Phase 4a's held finding sets and nothing else.
+
+**The sweep set is exactly the folders Phase 4a classified `residue` in this run** — each one an item positively observed under a status whose carried `<lifecycle>` is `terminal`. Nothing else is ever in it: not a folder classified `neither` (outside the resolved scope, deleted, never reached by the enumeration cap, a local-scheme `T<NNN>` folder, or any folder at all in a run holding no open/terminal map because discovery degraded), not an unreported completion, not an in-flight folder — and never a folder inferred from **absence** from an enumeration. An empty residue set sweeps nothing and reports zero, never falling back to local evidence. This precondition is restated here rather than assumed, because this is the point at which a wrong classification becomes an irreversible filesystem move.
+
+Ensure `{task-root}/_archive/` exists (create it if missing). Then, for each folder in the sweep set, in the order Phase 4a produced them:
+
+1. **Skip if present.** If `{task-root}/_archive/{task-id}/` already exists, leave it and the active folder untouched, overwrite nothing, and record the disposition `already archived`.
+2. **Otherwise move** `{task-root}/{task-id}/` → `{task-root}/_archive/{task-id}/`, carrying every artifact with it, and record the disposition `archived`. Never a delete, never a version-control operation.
+3. **On a failed move** (a permission error, a lock), warn **once** naming the folder and the reason, leave that folder in place, record `not moved (<reason>)`, and **continue with the remaining folders** — one failure never aborts the sweep or blocks the briefing.
+
+**`--no-write` makes the sweep a dry run.** With both flags, no folder moves: each is recorded with the disposition it *would* have received and reported as `would archive`. A user who asked for no writes gets no writes — this is the one irreversible thing this skill does, so the conservative reading wins.
+
+Hand the per-folder dispositions to Phase 5, which renders them on the residue lines it was already going to emit. The sweep changes no classification, no exclusion rule, and nothing about the unreported-completion direction — that direction stays report-only, and no provider operation is performed at any point.
+
+**The terminus interaction, stated.** A swept folder is exactly the state `/wf:tf` reads as finalized: *"if the active folder is absent but `<workspace-root>/{task-root}/_archive/{task-id}/` exists, this task was already finalized. Report `TF — already-finalized` (idempotent no-op) and stop — never re-run the provider steps against a finalized task"*. So sweeping a folder **suppresses that task's resolution comment and status close**. That is accepted here and only here: the sweep set is exactly the residue set, whose items are already terminal upstream, so the close has already happened and the resolution comment is the sole remaining loss. Rationale: `rationale.md`.
 
 ## Phase 5: Prioritize and compose the briefing
 
@@ -188,6 +208,15 @@ An unconfigured provider leaves its section carrying the neutral "none" note abo
 - **Reconciliation with no readable tracker:** Phase 4a is skipped silently — no classification is made, both reconciliation sections render their absent form (omitted entirely), and the local in-flight section renders exactly as today. No warning, no capability term, no hint that anything was checked.
 - **Reconciliation when discovery degraded:** the run holds no open/terminal map, so **every** folder is classified `neither`, every one keeps today's in-flight treatment, and no residue or unreported-completion line is emitted. Say so in one demoted note — the briefing states the folders were not checked rather than implying they were.
 - **Reconciliation after a mid-run tracker failure:** the warn-once rule already applies; reconciliation then runs over whatever was positively observed *before* the failure and classifies everything else `neither` — never inferring a classification from the truncated enumeration — and the briefing completes.
+- **No `--sweep-residue` (the default):** Phase 4b is a no-op. Nothing on disk moves, the briefing is byte-for-byte the unswept one, and `Swept:` reads `none — not requested`.
+- **`--sweep-residue` with nothing classified residue:** a clean no-op — `Swept: 0 archived`, no folder touched, no warning. Reporting zero is the correct outcome, not a degradation.
+- **`--sweep-residue` with no readable tracker, or with discovery degraded:** the run holds no open/terminal map, so Phase 4a classified every folder `neither` and the residue set is empty — the sweep moves nothing and reports zero. It **never** falls back to archiving on local evidence alone.
+- **`--sweep-residue` over a folder the run never observed** (outside the resolved scope, deleted upstream, or under a status the enumeration cap never reached): it was classified `neither`, so it is not in the sweep set and nothing moves for it. The id-shape test selects candidates; it never classifies one.
+- **Archive target already exists** (a prior partial sweep or an earlier finalize): skip-if-present — the existing `{task-root}/_archive/{task-id}/` is left untouched, nothing is overwritten, and the folder is reported `already archived`.
+- **A move fails mid-sweep:** warn once naming the folder and the reason, leave that folder in place, continue with the remaining ones, and complete the briefing. The folder stays classified residue and a later run can retry it.
+- **An unreported completion, an in-flight folder, or a local-scheme `T<NNN>` folder under `--sweep-residue`:** none is swept, and no tracker operation is attempted for any of them. Each is reported exactly as it is without the flag — the upstream direction stays report-only.
+- **`--sweep-residue` together with `--no-write`:** a dry run — nothing moves, each folder is reported as `would archive`, and no briefing artifact is written either.
+- **A swept folder later passed to `/wf:tf`:** `tf` finds the active folder absent and the archive present, so it reports `TF — already-finalized` and performs no provider step. This is the documented, accepted consequence of sweeping — that task's resolution comment and status close do not happen (Phase 4b).
 
 ## Final Output
 
@@ -199,6 +228,7 @@ Providers: delivery <resolved | none> · tracker <resolved | none | failed mid-r
 Focus: <n> item(s) — top: <id — title> (<bucket>)   (or "nothing pressing")
 Sources: activity <n commits / n PRs | none> · work items <n | none> · milestones <n | none> · cycles <n | none> · local tasks <n | none>
 Briefing: _local/standup/<date>.md   (or "not written (--no-write)")
+Swept: <n> archived · <m> already archived · <k> not moved   (or "none — not requested")
 Next: /wf:spec <the top-focus item's id> — start it, or /wf:run <the same id> to drive its chain
 ```
 
@@ -208,6 +238,8 @@ Next: /wf:spec <the top-focus item's id> — start it, or /wf:run <the same id> 
 
 **The `Focus:` summary line keeps the work item's formal title and its bucket.** It is a machine-read contract surface other skills grep, so the tail-removal that applies to a focus **entry** in the briefing artifact does not apply to this line — a settled decision recorded here so no later session re-derives or re-opens it.
 
-The field set, field names, field order and line shapes above are fixed. A later change supplies a field's **value** — `Window:` may carry a window wider than the configured default — and adds, removes, renames or moves nothing.
+**The `Swept:` line is the sweep's record, and it is the one deliberate additive extension to this block.** It renders `none — not requested` on every run without `--sweep-residue`, which is every default run; `0 archived` when the flag was passed but this run classified no residue; and `dry run (--no-write): <n> would be archived` when the sweep was suppressed. It reports the sweep and nothing else — it is not a finalize record, and a swept task never gains a `09_finalize.md`.
+
+The field set, field names, field order and line shapes above are otherwise fixed: every field that predates `Swept:` keeps its name, its relative order and its shape, and `Next:` stays the last line. Beyond that single authorised addition, a later change supplies a field's **value** — `Window:` may carry a window wider than the configured default — and adds, removes, renames or moves nothing.
 
 **The final output block must always be the very last thing output to chat.**
