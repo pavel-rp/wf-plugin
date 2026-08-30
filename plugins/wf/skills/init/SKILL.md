@@ -75,9 +75,8 @@ this body is its implementation.
 - Write or edit any file outside the scaffold writes named above.
 - Mutate lifecycle state by any path other than that sanctioned `apply_install` —
   no hand-written ledger, no registry row written on a pack's behalf, no
-  enablement flipped, no **pack** answer persisted directly. Core's own setup
-  answer is not lifecycle state and does not fall under this bullet: it is written
-  to `_local/config.md` under the scaffold-write authority above (Phase 5, step 6).
+  enablement flipped, no **pack** answer persisted directly. Core's own setup answer
+  is not lifecycle state: it is a scaffold write (Phase 5, step 6).
 - Call `apply_install` without a confirmation, more than once per run, or with a
   plan id other than the one confirmed.
 - Let a `--seed` id **replace** the selection rather than extend it, or read one
@@ -245,21 +244,11 @@ and its steps defer to Phases 5, 6 and 8 by name. Its procedure lives at
 `reconcile-mode.md`,
 obtained via `resolve_content({ workspaceRoot, class: "references-template",
 skill: "init", ref: "reconcile-mode.md" })` on that path only. Follow it as
-written. Four invariants govern it; violating any is a defect, not a judgement:
-
-1. **Removal has exactly one source: an explicit deselection** — never a set
-   difference, never an omission. An orphaned registration, a disabled one, and
-   one whose durable record is missing each **retain**; the third bootstraps
-   *without* deletion.
-2. **A settled workspace never enters the mutation stage** — not "enters it and
-   does nothing": no plan call, no confirmation, no mutation call at all. And
-   settled is not one applicability read — a withheld advance, or an artifact
-   retained under any class but the benign one, is **retained divergence**, a
-   zero-write state that must never be reported as no drift.
-3. **Preselection comes from the durable committed record only.** Where there is
-   none, ask; machine-local state may not reconstruct a desired set.
-4. **Visible, selectable, deselectable and retained are four properties**, kept
-   separate and never collapsed into one value.
+written, including its `## The four invariants` section — removal has exactly one
+source, a settled workspace never enters the mutation stage, preselection comes
+only from the durable committed record, and visible/selectable/deselectable/
+retained stay four separate properties. Violating any is a defect, not a
+judgement.
 
 ---
 
@@ -303,35 +292,14 @@ by default and nothing is selected automatically.
    `answers.unresolved[]` is answered; asking it again is a defect.
 5. **One round.** Collect every answer before moving on. Do not ask, plan, and
    ask again.
-6. **Ask core's own question in the same round.** Core owns exactly one setup
-   question of its own — the **standup status default**, held in the `## Standup`
-   row of `_local/config.md`. It belongs to no pack, so it never appears in
-   `answers.unresolved[]`; ask it in the **same batch** as steps 2–4 so the run
-   still puts every question to the user exactly once.
-   - **Ask it only while unresolved.** *Resolved* means the row holds an answered
-     value **or** the explicit `<skipped>` marker. *Unresolved* means the row is
-     absent or holds the never-asked `<none>`. A resolved row is never re-asked,
-     so a settled workspace re-running this skill sees no churn, while a workspace
-     initialized before the question existed picks it up as a delta.
-   - **Phrase it with no stack, domain, or project noun**: the default tracker
-     workflow statuses to enumerate open work items for, comma-separated, most
-     active first. Concrete status names are tracker-specific and belong to
-     whichever pack supplies them, never to this body.
-   - **It is optional.** Offer declining as a first-class, pre-filled choice, so
-     accepting the decline costs one keystroke rather than an invented value.
+6. **Ask core's own question in the same batch** — the standup status default in
+   `_local/config.md`'s `## Standup` row, which belongs to no pack and so never
+   reaches `answers.unresolved[]`. Its wording, its resolved/unresolved rule, the
+   `<skipped>` marker a decline persists, and the scaffold write that records it
+   live at `core-question.md`, obtained via `resolve_content({ workspaceRoot, class:
+   "references-template", skill: "init", ref: "core-question.md" })` on this path only.
 
 Hold the collected pack answers as `answers[]` of `{ pluginId, questionId, value }`.
-Core's own answer is not a pack answer and never enters that array.
-
-**Persisting core's answer.** Write the collected value into the `## Standup` row
-of `_local/config.md` — the answer when one was given, the literal `<skipped>`
-when the user declined. This is a **scaffold write under `_local/`**, the same
-authority Phase 3 writes that file under; it is **not** a lifecycle mutation, it
-touches no ledger, registry row, or enablement, and it leaves `apply_install` the
-run's single lifecycle write. Never write `<none>` here — `<none>` is the
-never-asked state, and collapsing an explicit decline into it destroys the
-distinction a later consumer branches on. When the question was not asked because
-it was already resolved, write nothing.
 
 ---
 
@@ -463,13 +431,9 @@ stop the run on it.
   leave existing files alone unless `--force`.
 - **Config values do not match the repo:** do not guess — write defaults and tell
   the user to edit.
-- **Core's own question is already resolved:** the `## Standup` row holds an
-  answered value or `<skipped>`. Do not re-ask it and do not rewrite the row. Only
-  an absent row or the never-asked `<none>` is unresolved, and that is what makes
-  the question appear as a delta on a workspace initialized before it existed.
-- **The user declines core's own question:** persist `<skipped>`, never `<none>`.
-  A decline is a recorded answer; writing the never-asked placeholder instead would
-  make the two indistinguishable and re-ask the question on every later run.
+- **Core's own question is already resolved, or is declined:** an answered row and a
+  `<skipped>` row are both resolved — never re-asked, never rewritten; a decline
+  persists `<skipped>`, never `<none>`. See `core-question.md`.
 - **Reconcile over a settled workspace:** no plan call, no confirmation, no
   mutation call — `already-initialized`, `Apply: not run — no drift`. If nothing
   is authorized but something diverged, report retained divergence and what
@@ -510,8 +474,7 @@ Packs:
 Reconcile: <n/a — fresh journey | settled — no drift | retained divergence — <n> item(s) | delta — <a> addition(s), <d> explicit deselection(s)>
 Repair: <n> diagnosed · <n> withheld advance(s) · retained by class <retained/shared/edited/ambiguous/unverifiable tally>
 
-Questions: <n> asked, <n> already resolved, <n> answered this run
-Standup statuses: <answered | skipped | already resolved — row left as-is>
+Questions: <n> asked, <n> already resolved, <n> answered this run · standup statuses <answered | skipped | already resolved>
 Plan: <applicability> · mode <mode> · <n> action(s) · planId <planId> (<factCount> facts)
   Source: <repair_packs (empty delta) | plan_install (desired-set delta) | none — no plan computed>
 Apply: <applied | rejected | rolled-back | halted | not run — declined | not run — no change | not run — no drift | not run — retained divergence, nothing authorized>

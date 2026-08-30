@@ -99,7 +99,11 @@ test("real tracker templates declare the exact ordered question inventory", () =
     {
       pack: "ado",
       path: ADO_TEMPLATE_PATH,
-      ordinary: { key: "work-item-id-prefix", value: "ADO" },
+      ordinary: { key: "work-item-id-prefix", value: "ADO" } as {
+        key: string;
+        value: unknown;
+      } | null,
+      suggestedDefaults: {} as Record<string, string | undefined>,
       expected: [
         {
           pack: "ado",
@@ -120,7 +124,7 @@ test("real tracker templates declare the exact ordered question inventory", () =
     {
       pack: "linear",
       path: LINEAR_TEMPLATE_PATH,
-      ordinary: { key: "linear-project", value: "none" },
+      ordinary: null as { key: string; value: unknown } | null,
       expected: [
         {
           pack: "linear",
@@ -129,14 +133,23 @@ test("real tracker templates declare the exact ordered question inventory", () =
           prompt: "Linear team key or name for new issues?",
           schema: { type: "string" },
         },
+        {
+          pack: "linear",
+          id: "linear-project",
+          destination: "linear-project",
+          prompt:
+            "Linear project to scope status, milestone and cycle enumerations to? Optional — accept the pre-filled <skipped> to decline, and enumerations stay team-wide.",
+          schema: { type: "string", minLength: 1, maxLength: 200 },
+        },
       ],
+      suggestedDefaults: { "linear-project": "<skipped>" } as Record<string, string | undefined>,
     },
   ] as const;
 
   for (const fixture of fixtures) {
     const raw = readFileSync(fixture.path, "utf8");
     const template = JSON.parse(raw) as Record<string, unknown>;
-    assert.equal(template[fixture.ordinary.key], fixture.ordinary.value);
+    if (fixture.ordinary) assert.equal(template[fixture.ordinary.key], fixture.ordinary.value);
     assert.ok(
       fixture.expected.every((expected) => !Object.hasOwn(template, expected.destination)),
       `${fixture.pack} question destinations must not carry pack defaults`,
@@ -155,16 +168,19 @@ test("real tracker templates declare the exact ordered question inventory", () =
       })),
       fixture.expected,
     );
-    assert.ok(parsed.questions.every((question) => question.suggestedDefault === undefined));
-    assert.ok(
-      parsed.questions.every(
-        (question) =>
-          question.state.status === "unresolved" &&
-          question.state.source === null &&
-          question.state.value === null &&
-          question.state.suggestions.length === 0,
-      ),
-    );
+    for (const question of parsed.questions) {
+      const suggestedDefault = fixture.suggestedDefaults[question.destination];
+      assert.equal(question.suggestedDefault, suggestedDefault);
+      assert.equal(question.state.status, "unresolved");
+      assert.equal(question.state.source, null);
+      assert.equal(question.state.value, null);
+      assert.deepEqual(
+        question.state.suggestions,
+        suggestedDefault === undefined
+          ? []
+          : [{ source: "suggested-default", value: suggestedDefault }],
+      );
+    }
   }
 });
 
@@ -248,6 +264,7 @@ test("no other shipped pack contributes lifecycle questions", () => {
     { pack: "ado", id: "ado-organization" },
     { pack: "ado", id: "ado-project" },
     { pack: "linear", id: "linear-team" },
+    { pack: "linear", id: "linear-project" },
   ]);
 
   const browserCapability = join(PLUGINS_ROOT, "wf-browser-qa", "capabilities", "browser-qa");
