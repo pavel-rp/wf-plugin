@@ -5,7 +5,13 @@
       "destination": "linear-team",
       "prompt": "Linear team key or name for new issues?",
       "schema": { "type": "string" }
+    },
+    {
+      "id": "linear-project",
+      "destination": "linear-project",
+      "prompt": "Linear project to scope status, milestone and cycle enumerations to? Optional — accept the pre-filled <skipped> to decline, and enumerations stay team-wide.",
+      "schema": { "type": "string", "minLength": 1, "maxLength": 200 },
+      "suggestedDefault": "<skipped>"
     }
-  ],
-  "linear-project": "none"
+  ]
 }

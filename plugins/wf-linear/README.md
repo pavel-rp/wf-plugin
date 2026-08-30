@@ -33,7 +33,7 @@ local-only rather than blocking.
 | Item | What it is |
 |---|---|
 | `capabilities/linear/manifest.md` | the `linear` capability's manifest — one `provider` fragment row scoped `tracker`, seven `slot` fill rows, and one declared profile template |
-| `capabilities/linear/profile.template.json` | project-configuration metadata declaring exactly one string question, Linear Team; `linear-project: none` remains ordinary non-question data |
+| `capabilities/linear/profile.template.json` | project-configuration metadata declaring two string questions — Linear Team, and the optional Linear Project enumeration scope, whose suggested default `<skipped>` records an explicit decline |
 | `capabilities/linear/fragments/tracker.md` | the inline reference doc binding all thirteen tracker operations to Linear MCP mechanics, with a completeness coverage table |
 | `/wf-linear:init` | a compatibility alias onto the shared setup lifecycle — it seeds `wf-linear` into the canonical `/wf:init` selection round and relays what comes back; it runs no interview and performs no registry write of its own |
 
