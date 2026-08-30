@@ -65,31 +65,50 @@ Derive an **urgency × importance** ranking across the gathered items, then lead
 
 **Buckets (Eisenhower)** — classify each item by `urgent = urgency ≥ 2` and `important = importance ≥ 2`: **Do now** (urgent and important — open pull requests; active-status work in a cycle ending soon); **Plan** (important, not urgent — active work with no imminent deadline; upcoming milestones); **Quick** (urgent, not important — deadline-pressured but low-status items); **Later** (neither).
 
-**Compose** — Today's focus is the **Do now** bucket then the **Plan** bucket, each sorted by `urgency + importance` descending, ties broken by most-recent activity; cap the focus list at the top ~7 items and note the remaining counts. Sections render only when they have content (an empty section shows a neutral one-line note, never a warning): Recent activity, Work items by status, Milestones, Cycles (current cycle called out), In-flight tasks (local). Every item line stays factual and abstract — id, title, status/state, and the date or activity signal that drove its rank; no concrete tool, host, or tracker name appears.
+**Compose** — Today's focus is the **Do now** bucket then the **Plan** bucket, each sorted by `urgency + importance` descending, ties broken by most-recent activity; cap the focus list at the top ~7 items and note the remaining counts. Sections render only when they have content (an empty section shows a neutral one-line note, never a warning): Recent activity, Work items by status, Milestones, Cycles (current cycle called out), In-flight tasks (local). Every item line stays factual and abstract — id, title, status/state, and the date or activity signal that drove its rank; no concrete tool, host, or tracker name appears. Section order, and where each note renders, are fixed by the placeholder-hygiene and note-ordering rules in Templates — content sections first, configuration and degradation notes demoted last.
 
 Unless `--no-write` was passed, write the composed briefing to `_local/standup/<date>.md` (create `_local/standup/` on demand), `<date>` being today's date (`YYYY-MM-DD`); overwrite an existing same-day file. The artifact carries the `**Model:**` attribution line (Templates below).
 
 ## Templates
 
-`_local/standup/<date>.md` (the briefing — the day's snapshot):
+**Placeholder hygiene — an emitted-line rule.** Every `<…>` below is a **fill instruction, never output**. Before emitting any line — briefing or `Final Output` — resolve each `<…>` to a real value or to that slot's absent form; **a line still carrying a literal `<…>` is never emitted**, the absent form is emitted in its place. This binds a `<…>` nested inside a quoted note as much as a bare one, and `**Model:**` renders `unknown` rather than a guess.
+
+**Note ordering — content first.** A **neutral note** (non-actionable, stating only that a section has nothing) stays **inline** in its own section. A **configuration note** (anything asking the reader to set a value) or a **degradation note** (an unconfigured/unrecoverable provider, or a mid-run failure warning) is **demoted** to one trailing `## Notes` section rendered after every content section: no such note may be the briefing's first content line, and `## Notes` never precedes a content section. Demoted is not dropped — a mid-run failure still names the failing operation and the provider's error, and a configuration note still distinguishes a value never asked for from one the user explicitly declined. Omit `## Notes` entirely when there is nothing to demote.
+
+### Render slots
+
+Declared once, here. A later change computes a slot's **value** and never restructures this region. **An absent form is always today's rendering**, so a slot whose producer has not shipped leaves the briefing exactly as informative as it was before the slot existed.
+
+| Slot | Site | Filled form | Absent form |
+|---|---|---|---|
+| `window-used` | header `**Window:**`; `Final Output` `Window:` | the window actually read | the configured default window, verbatim |
+| `focus-entry` | each `## Today's focus` item | `<n>. <id> — <headline>` plus an indented essence body | today's single line, `— <bucket> (<driving signal>)` tail **included** |
+| `scope-line` | header, below `**Window:**` | `**Scope:** <the scope actually used>` | omitted entirely |
+| `cycles-label` | the `## Cycles` heading | `## Cycles — <the label>` | `## Cycles`, unlabelled |
+| `by-status-state` | `## Work items by status` | one of three states — real items · nothing open · could not enumerate | today's neutral note |
+| `residue` | a `## Residue` section | the reconciliation's residue findings | omitted entirely |
+| `unreported-completions` | an `## Unreported completions` section | the reconciliation's completion findings | omitted entirely |
+
+Two slots carry a rule the table cannot hold. **`focus-entry` declares two shapes that coexist in one list** — a tail is dropped per entry, and only where the same change supplies that entry's essence body; an entry that never gets one (a bare-core entry, a local-scheme id, a description-less work item) keeps its tail permanently, which in a bare-core run is the whole list. **`by-status-state` is read from a type, never from emptiness** — the tracker's operation-supported flag separates "could not enumerate" from a genuine "nothing open", and the provider record's `state` separates an unconfigured tracker from both.
+
+`_local/standup/<date>.md` (the briefing — the day's snapshot), shown with every slot at its absent form:
 
 ```markdown
 # Standup — <YYYY-MM-DD>
 
-**Model:** <model identifier>
-**Window:** <since window> · **Providers:** delivery <resolved | none> · tracker <resolved | none>
+**Model:** <the runtime model id, else "unknown">
+**Window:** <the window actually read> · **Providers:** delivery <resolved | none> · tracker <resolved | none>
 
 ## Today's focus
 
 1. <id / ref> — <title> — <bucket> (<the driving signal, e.g. "open pull request", "cycle ends in 1 day", "in progress + active">)
-2. …
-<or "Nothing pressing — see the sections below." when the focus list is empty>
+<or, when the focus list is empty, the one line "Nothing pressing — see the sections below.">
 
 ## Recent activity
-<commits and pull requests in the window, or "none (no delivery provider registered)" / "none in the last <window>">
+<commits and pull requests in the window, or "none in the last <the window actually read>">
 
 ## Work items by status
-<each resolved status heading with its items, or "no statuses configured — pass --status or set Standup Statuses" / "none">
+<each resolved status heading with its items, or "none">
 
 ## Milestones
 <milestones with target dates, or "none">
@@ -99,9 +118,12 @@ Unless `--no-write` was passed, write the composed briefing to `_local/standup/<
 
 ## In-flight tasks (local)
 <each task folder: id — title — latest phase, or "none in flight">
+
+## Notes
+<one line per configuration or degradation note — or omit this whole section>
 ```
 
-When a tracker or delivery provider is unconfigured, its sections carry the neutral "none" note above — never an error or a capability term.
+An unconfigured provider leaves its section carrying the neutral "none" note above and its diagnosis in `## Notes` — never an error, never a capability term, and never the briefing's leading text.
 
 ## Edge Cases
 
@@ -121,14 +143,20 @@ When a tracker or delivery provider is unconfigured, its sections carry the neut
 ```
 STANDUP — <briefed | briefed local-only>
 
-Date: <YYYY-MM-DD> · Window: <since>
+Date: <YYYY-MM-DD> · Window: <the window actually read>
 Providers: delivery <resolved | none> · tracker <resolved | none | failed mid-run (reason)>
 Focus: <n> item(s) — top: <id — title> (<bucket>)   (or "nothing pressing")
 Sources: activity <n commits / n PRs | none> · work items <n | none> · milestones <n | none> · cycles <n | none> · local tasks <n | none>
 Briefing: _local/standup/<date>.md   (or "not written (--no-write)")
-Next: /wf:spec <id> — start the top-focus item, or /wf:run <id> to drive its chain
+Next: /wf:spec <the top-focus item's id> — start it, or /wf:run <the same id> to drive its chain
 ```
 
 `briefed` — at least one provider resolved and contributed. `briefed local-only` — no provider resolved (or all degraded); the briefing was composed from the local in-flight task folders alone.
+
+**The `Next:` line has exactly two forms.** Emit the substituted form above **only** when the top-focus item resolves to a task id — a work item or a local task folder. When the focus list is empty, **or** the top entry is not a task id (an open pull request is not one), emit `Next: none — nothing in flight to start` instead. A literal `<id>` is never emitted under any degradation.
+
+**The `Focus:` summary line keeps the work item's formal title and its bucket.** It is a machine-read contract surface other skills grep, so the tail-removal that applies to a focus **entry** in the briefing artifact does not apply to this line — a settled decision recorded here so no later session re-derives or re-opens it.
+
+The field set, field names, field order and line shapes above are fixed. A later change supplies a field's **value** — `Window:` may carry a window wider than the configured default — and adds, removes, renames or moves nothing.
 
 **The final output block must always be the very last thing output to chat.**
