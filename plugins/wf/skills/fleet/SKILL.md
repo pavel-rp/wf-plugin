@@ -81,6 +81,7 @@ Invoked with no arguments, `/wf:fleet` **resumes**: it re-reads the scoreboard a
 - Invoke the tracker provider's **read** operations — `list_children` (umbrella expansion) and `list_blockers` (each item's blocking predecessors) — and its **write** operations `post_comment` / `set_status` at closeout, each by obtaining the op body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`) and following it in this skill's own context. Tracker mode only.
 - Invoke the delivery provider's **read** operations — `activity-read`, `pr-detect`, `checks-read` — the same way, to observe what has merged and each pull request's state, plus `newest-published-version-read` once at Prerequisites for the currency check.
 - Query the local install inventory read-only via the `wf-resolver` `discover_packs({ workspaceRoot })` query — **only** on the currency check's provider-less branch.
+- Resolve the `fleet.closeout-review` slot at Closeout via `resolve_content({ workspaceRoot, ... })` (`class: slot`, `skill: fleet`, `point: closeout-review`), and — only on a `composed` outcome — follow the served body as prose in this skill's own context.
 - Read an item's run-evidence receipts read-only via the `wf-resolver` `read_run_evidence({ workspaceRoot, taskId })` query — the only evidence this check accepts. The orchestrator never records a receipt, and never reaches the receipt destination directly.
 - Read and write the scoreboard and any breadcrumb **under `_local/`** only, and read the composed constitution from `_local/constitution.md` to carry it into each shipper's dispatch prompt.
 - Read a terminal item's task-artifact set **read-only** from the worktree path that item's own scoreboard row records — only once it has reached a terminal outcome, and never as a write, a move, or a removal.
@@ -191,6 +192,23 @@ The shippers close their own items (via `/wf:tf`), but **parent/umbrella tasks a
 3. **Move the parent to its terminal status** via the tracker `set_status` operation **only when it is truly done** — all of its children (per the tracker, not just the fleet's scope) are merged/closed. If any child is blocked or out of scope, leave the parent open — the resolution comment states exactly what remains and why.
 
 **On the tracker-free path, skip closeout's parent resolution entirely** — there is no parent to resolve and no tracker call to make; preserving the no-tracker-call / no-capability-term guarantee on that path.
+
+**On both paths, next** — this is the declared `fleet.closeout-review` composition point, reached after the parent-status step above and before the leftovers listing below. Resolve it lazily with **one** call: `resolve_content({ workspaceRoot, ... })` with `class: slot`, `skill: fleet`, `point: closeout-review`. Act on the typed outcome — never improvise a step at this marker:
+
+- **`{status: composed, content, policy, …}`** → a fill is registered; **follow the served `content` as prose** in this skill's own context (a `replace` fill supersedes the inline default wholesale), once over **every merged row in the scoreboard**, one row at a time. Per row, supply:
+  - that row's recorded `branch` and `PR` values, so the served procedure has both identities available;
+  - the **filing parent** — the row's own item id in tracker mode (the item is its own umbrella, resolved exactly as step 1 above resolves a parent). **On the tracker-free path there is no parent and none is supplied** — the served procedure's own no-parent degradation then applies, and this step never invents one;
+  - the row's **already-filed ids**, read back from its `notes` (below), so a resumed run never re-files.
+
+  Record what the row's sweep filed back into that row's `notes` per the **per-item row convention**, rendered `swept: <ids | none>` and appended rather than overwriting. That cell is the sweep's idempotency record, and it needs **no new write authority**: the scoreboard is already this skill's to write under `_local/`, and the convention already states that any further per-item state a later addition records goes in this row in exactly this shape. Nothing is written anywhere else, and no committed lifecycle artifact is involved. Fold the aggregate result into the `Review sweep:` line of the `FLEET —` block.
+- **`{status: unfilled}`** (no contribution registered and no personal `_local/slots/fleet.closeout-review.md` override) → execute **exactly** the inline-default region below.
+- **`{status: unresolved}`** (registry-invalid / ref-not-found) or **`{status: refused}`** → run the inline-default region below and state the resolver's reason. Follow the content surface's degradation discipline — never a wrong-path body, never a raw-read fall-through.
+
+A failure at this point **never blocks Closeout** and never changes an item's outcome: every row is already terminal by the time this is reached, and the steps below run unchanged either way.
+
+<!-- wf:slot fleet.closeout-review -->
+No sweep runs here. Closeout resolves the parents and lists the leftovers only; no merged row's post-merge state is re-read, nothing is filed anywhere, and no operation of any kind is emitted at this point. The `Review sweep:` line renders `not attempted`. Continue to the leftovers listing below.
+<!-- wf:slot-end fleet.closeout-review -->
 
 **On both paths** — from the scoreboard's own recorded state, **never a raw branch or worktree query**:
 
@@ -360,6 +378,7 @@ Version:          <the run-scoped resolved version | unknown>
 Currency:         <current | trailing (running <v>, published <v>) | provider-less | not checked — <reason>>
 Ceremony:         <p> proven (<a> artifact-backed, <i> invocation-only) / <u> unproven — unproven: <ids | none>
 Persistence:      <k> persisted / <n> not-persisted / <x> no-artifacts of <t> terminal — not-persisted: <ids | none>
+Review sweep:     <f> found, <m> filed, <k> invalid, <j> moot, <a> absent — filed: <ids | none> | not attempted
 Next:             <exactly one of>
   re-armed — <k> item(s) still moving
   none — complete, all <n> items merged
@@ -375,6 +394,8 @@ Next:             <exactly one of>
 `Ceremony:` is the proof-of-ceremony tally from OBSERVE, rendered verbatim on **every** pass. It always states all three counts and omits none: a run in which nothing could be proven reports `0 proven (0 artifact-backed, 0 invocation-only)` alongside a non-zero unproven count — an explicit zero, rather than the silence an auditor would read as a clean run. `<a>` and `<i>` are **item** counts that partition `<p>` exactly, so `<p>` equals `<a>` plus `<i>`; the split is always rendered rather than the total alone, because `invocation-only` is the weaker attestation and has to stay readable as itself. `<p>` and `<u>` together account for every item that reached a terminal outcome. `unproven: none` is the stated fallback when every item is proven.
 
 `Persistence:` is the task-artifact persistence tally from OBSERVE, rendered verbatim on **every** pass. `<k>`, `<n>` and `<x>` are **item** counts — the same three tokens step 4 settles into the rows, so tally and rows reconcile by construction — and they are rendered **against `<t>`, the number of items that have reached a terminal outcome**, so an item deferred because its activation is still live is visible as the shortfall rather than vanishing from the denominator. That denominator is the point: the sibling ceremony check bans a terminal item silently dropping out of its tally, and reporting the evaluated subset alone would reintroduce exactly that. A run that persisted nothing reports an explicit `0 persisted` rather than the silence an auditor would read as a complete process record. `not-persisted: none` is the stated fallback when no terminal item failed. **Only `<n>` carries the incomplete-record signal:** a non-zero `<n>` means the run's process record is missing something it should have, and the named ids are where. `<x>` is reported apart from it precisely because those items never had a set to persist, and counting them as failures would manufacture a gap that does not exist.
+
+`Review sweep:` is the aggregate outcome of the `fleet.closeout-review` composition point, rendered on **every** pass. When the slot fired, it carries the summed tally across every merged row swept — `<f>` candidates judged, of which `<m>` were filed, `<k>` verified-invalid and `<j>` moot, plus `<a>` counted apart for rows that produced nothing to judge — and the ids of what it filed, `filed: none` being the stated fallback when it filed nothing. **`not attempted` is the stated fallback token** for every other case: the slot was unfilled, unresolved, or refused, or Closeout has not reached that point yet on this pass. `not attempted` is never rendered as a zero tally and a zero tally is never rendered as `not attempted` — a sweep that ran and found nothing is a different fact from no sweep, and the line that conflated them would recreate the silent-finding gap this point exists to close.
 
 `In flight:` is the lossless active-activation projection, despite its retained label: include every `dispatched`, `in-flight`, and `awaiting-confirmation` scoreboard row with its state tag. A row without a persisted `agentId` is still listed by `activationIntent`; never omit it or collapse it into `Waiting on deps:`.
 

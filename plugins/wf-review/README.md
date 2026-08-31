@@ -11,10 +11,12 @@ command strings of its own.
 
 | Item | What it is |
 |---|---|
-| `capabilities/pr-review/manifest.md` | the `pr-review` capability manifest — `kind: feature`, documents the two skills, the delivery operations they consume, and the one `slot` fill it contributes |
+| `capabilities/pr-review/manifest.md` | the `pr-review` capability manifest — `kind: feature`, documents the three skills, the delivery operations they consume, and the two `slot` fills it contributes |
 | `capabilities/pr-review/fragments/ship-review.md` | the **`ship.review` pre-merge review gate** — the slot fill `/wf:ship` composes between green checks and merge (WF-331, implementing WF-313's five hardening requirements); fires only when this capability is registered |
+| `capabilities/pr-review/fragments/closeout-review.md` | the **post-merge review sweep** — the one shared verify-and-dispose procedure behind both the `fleet.closeout-review` slot fill `/wf:fleet` composes at Closeout and the standalone `/wf-review:sweep-pr` (WF-522); fires only when this capability is registered |
 | `/wf-review:address-pr` | reads a PR's review comments + CI-check failures, **verifies each claim against the actual code**, and addresses only the valid ones on the PR branch, then commits and pushes so a re-review sees the change |
 | `/wf-review:review-pr` | reviews a PR for correctness/security/design and posts **verified** findings (a PR-level summary plus file-level, `file:line`-anchored findings) — every finding confirmed against real code before it is posted |
+| `/wf-review:sweep-pr` | sweeps one already-merged PR for review threads that landed **after** the merge, verifies each claim against current source, and records exactly one disposition per finding (`issue filed` \| `verified-invalid` \| `moot` \| `absent`), filing verified survivors through the active tracker — it follows the shared `closeout-review` procedure rather than holding its own copy |
 | `/wf-review:init` | one-command self-registration — records this pack's install root and registers the `pr-review` capability, following the sibling packs' self-registering `/init` onboarding pattern |
 
 ## The `ship.review` gate (slot contribution)
