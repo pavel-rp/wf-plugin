@@ -51,7 +51,7 @@
     {
       "name": "wf-audit",
       "source": "./plugins/wf-audit",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "description": "wf audit pack: the audit capability (five domain-free adversarial verify lenses plus an optional composite retrospective report) co-located with the sr capability (a lightweight pre-commit adversarial self-review lens reusing the audit correctness rubric intra-plugin). Dependency-free (no requires) — composes in bare-core mode. Ships /wf-audit:init for one-command self-registration of both capabilities.",
       "author": {
         "name": "Pavel Kalabin"
@@ -102,7 +102,7 @@
       "name": "wf-review",
       "source": "./plugins/wf-review",
       "version": "0.6.0",
-      "description": "wf PR-review feature pack: the pr-review feature capability shipping the user-invoked /wf-review:address-pr, /wf-review:review-pr and /wf-review:sweep-pr skills. Reads/verifies/addresses review comments and CI failures, posts verified findings, and sweeps a merged PR for review threads that landed after the merge — entirely through the delivery provider's PR-interaction operations (pr-comments-read/pr-comment-post/checks-read/review-thread-resolve/review-threads-read), treating review-tool output as hypothesis and filing verified survivors through the active tracker. Composes natively on install for its three skills; contributes the ship.review and fleet.closeout-review slot fills once the pr-review capability is registered via /wf-review:init.",
+      "description": "wf PR-review feature pack: the pr-review feature capability shipping the user-invoked /wf-review:address-pr, /wf-review:review-pr and /wf-review:sweep-pr skills. Reads/verifies/addresses review comments and CI failures, posts verified findings, and sweeps a merged PR for review threads that landed after the merge — entirely through the delivery provider's PR-interaction operations, the set consumed by the capability as a whole — its three skills plus its two slot fills — rather than by every skill (pr-detect/pr-comments-read/pr-comment-post/checks-read/review-thread-resolve/review-threads-read/review-thread-reply, the last dispatched only by the ship.review fill and forbidden to sweep-pr), treating review-tool output as hypothesis and filing verified survivors through the active tracker. Composes natively on install for its three skills; contributes the ship.review and fleet.closeout-review slot fills once the pr-review capability is registered via /wf-review:init.",
       "author": {
         "name": "Pavel Kalabin"
       },

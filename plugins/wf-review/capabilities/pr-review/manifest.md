@@ -8,12 +8,16 @@
 
 ---
 
-pr-review ships three **user-invoked** skills (`/wf-review:address-pr`, `/wf-review:review-pr`,
-`/wf-review:sweep-pr`) that reach users purely by **native plugin composition** — no registry walk,
-no phase-firing gate, for those three skills alone. It owns **no** provider surface: the skills
-**consume** the active **delivery** provider, routing every host interaction through its
-PR-interaction operations (`pr-comments-read`, `pr-comment-post`, `checks-read`,
-`review-thread-resolve`, `review-threads-read`), and file through the active **tracker** provider's
+pr-review ships three **user-invoked** skills. `/wf-review:address-pr` and `/wf-review:review-pr`
+reach users purely by **native plugin composition** — no registry walk, no phase-firing gate, for
+those two alone. `/wf-review:sweep-pr` is discoverable the same way but **does not run without a
+registered row**: its body is a capability-scoped `resolve_content` call for this capability's own
+shared sweep procedure, so with `pr-review` unregistered that call does not resolve and the skill
+stops. It owns **no** provider surface: the capability — its three skills plus its two `slot` fills —
+**consumes** the active **delivery** provider, routing every host interaction through its
+PR-interaction operations (`pr-detect`, `pr-comments-read`, `pr-comment-post`, `checks-read`,
+`review-thread-resolve`, `review-threads-read`, `review-thread-reply` — the last dispatched only by
+the `ship.review` fill, and forbidden to `sweep-pr`), and files through the active **tracker** provider's
 `create_child` when one is registered. It declares **no** `requires:` — it degrades gracefully when
 no delivery provider is registered.
 
@@ -32,7 +36,7 @@ Both compose via the **registry**, so each fires only once this capability is re
 unregistered, `/wf:ship` and `/wf:fleet` show no review term at all (CLAUDE.md §2).
 
 **Registration in the `## Capabilities` registry is required** — run `/wf-review:init` once after
-`/wf:init`. The `ship.review` fill fires only through a registered row; `/wf-review:init` is a
+`/wf:init`. Both `slot` fills — and `/wf-review:sweep-pr` itself — resolve only through a registered row; `/wf-review:init` is a
 compatibility alias that seeds this pack into the canonical `/wf:init` lifecycle, whose apply is
 idempotent and refreshes the snapshot so the `slot` row resolves.
 
@@ -49,5 +53,5 @@ composition point, not an SDD phase), and each scope is single-owner `replace`.
 The gate's requirement mapping and the incident it answers: [`references/ship-review.md`](references/ship-review.md).
 The sweep's post-merge reachability analysis and the incident it answers: [`references/closeout-review.md`](references/closeout-review.md).
 Native-composition detail, the delivery-provider consumption model, the no-requires rationale, and
-downstream registration: [`references/onboarding.md`](references/onboarding.md) — both read by
+downstream registration: [`references/onboarding.md`](references/onboarding.md) — all three read by
 authors, never at phase-fire.
