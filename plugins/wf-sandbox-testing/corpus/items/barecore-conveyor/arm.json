@@ -30,15 +30,31 @@
     {
       "slot": "new-skill.constraints",
       "reason": "declared in /wf-author-caps:new-skill, an interactive pack-owned scaffolder that is not on the SDD conveyor this arm drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement) and takes no task id — the bare-core run never reaches it, so it cannot be covered here. It is also the first declared slot with no per-slot arm at all; that is recorded, with its reason, in corpus/slot-exemptions.json, and its inertness is asserted at the resolver instead (WF-363)."
+    },
+    {
+      "slot": "fleet.closeout-review",
+      "reason": "declared in /wf:fleet Closeout. /wf:fleet is not on the SDD conveyor this arm drives (/wf:spec -> /wf:plan -> /wf:tasks -> /wf:implement), so the bare-core run never reaches it. It is also a declared slot with no per-slot arm; that is recorded, with its reason, in corpus/slot-exemptions.json, and its inertness is asserted at the resolver and in the pr-review capability's own fixture suite instead (WF-522)."
     }
   ],
   "runs": [
-    { "dir": "runs-current/run-1", "fingerprint": "fp-bcc-cur-r1" },
-    { "dir": "runs-current/run-2", "fingerprint": "fp-bcc-cur-r2" },
-    { "dir": "runs-current/run-3", "fingerprint": "fp-bcc-cur-r3" }
+    {
+      "dir": "runs-current/run-1",
+      "fingerprint": "fp-bcc-cur-r1"
+    },
+    {
+      "dir": "runs-current/run-2",
+      "fingerprint": "fp-bcc-cur-r2"
+    },
+    {
+      "dir": "runs-current/run-3",
+      "fingerprint": "fp-bcc-cur-r3"
+    }
   ],
   "seeded_runs": [
-    { "dir": "seeded-breakage/runs/run-1", "fingerprint": "fp-bcc-seed-r1" }
+    {
+      "dir": "seeded-breakage/runs/run-1",
+      "fingerprint": "fp-bcc-seed-r1"
+    }
   ],
   "provenance": {
     "path": "canned",

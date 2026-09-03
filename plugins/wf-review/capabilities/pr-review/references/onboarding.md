@@ -2,19 +2,25 @@
 
 Native-composition detail, the delivery-provider consumption model, the no-requires rationale,
 downstream registration, profile notes, and version history for the pr-review capability. **Never
-read at phase-fire** — this capability attaches no fragment. This file is for authors.
+read at phase-fire** — this capability attaches no fragment to any **SDD phase**; its two shipped
+fragments are `slot` fills, which fire at a per-skill composition point rather than a phase. This
+file is for authors.
 
 ## What this manifest is
 
 The pr-review capability's manifest (`../manifest.md`) is its canonical description as a wf
 `feature` capability. Unlike a `provider` or `adapter` capability, it attaches **no** fragment to
 any SDD phase: it fills **no core seam**, and none is fired or required for its skills to run. It
-ships two **user-invoked** skills that reach users purely by **native plugin composition** (install
+ships three **user-invoked** skills. Two reach users purely by **native plugin composition** (install
 the pack → the `/wf-review:address-pr` and `/wf-review:review-pr` commands are discoverable — no
-registry walk, no phase-firing gate). The skills **consume** the active **delivery** provider — they
-never own a surface — routing every host interaction through the delivery provider's PR-interaction
-operations (`pr-comments-read`, `pr-comment-post`, `checks-read`, `review-thread-resolve`), the
-operation set WF-157 bound.
+registry walk, no phase-firing gate). The capability — its three skills plus its two `slot` fills —
+**consumes** the active **delivery** provider, and never owns a surface, routing every host
+interaction through the delivery provider's PR-interaction
+operations (`pr-detect`, `pr-comments-read`, `pr-comment-post`, `checks-read`,
+`review-thread-resolve`, `review-threads-read`, `review-thread-reply`), the
+PR-interaction operation set the delivery surface binds. The list is the capability's, not each
+skill's: `review-thread-reply` is dispatched only by the `ship.review` fill, and `sweep-pr` forbids
+it outright.
 
 ## Skills (native composition)
 
@@ -26,22 +32,24 @@ reference:
 skills:
   - plugins/wf-review/skills/address-pr/   # /wf-review:address-pr — read review comments + CI, verify each claim, address only the valid ones on the PR branch
   - plugins/wf-review/skills/review-pr/    # /wf-review:review-pr — review a PR, post verified findings (summary + file-level)
+  - plugins/wf-review/skills/sweep-pr/     # /wf-review:sweep-pr — sweep a merged PR for reviews that landed after the merge, verify each claim, file verified survivors
 ```
 
-Both skills resolve the **delivery** surface directly (`invocation-runtime.ops.md` §"Direct provider
+All three resolve the **delivery** surface directly (`invocation-runtime.ops.md` §"Direct provider
 resolution") for their host interaction. They carry **zero** git/gh/host strings: the concrete tool
 binding lives in the delivery provider fragment (`fragments/delivery.ops.md` of whatever capability
 owns `surface = delivery`), never in a skill body — a skill names an abstract operation and follows
 the resolved fragment in-context. Each treats review-tool output (e.g. Copilot, CodeRabbit) as
-**hypothesis**, verifying every claim against the real code before acting or posting. Both optionally
+**hypothesis**, verifying every claim against the real code before acting or posting. `address-pr` and `review-pr` optionally
 delegate bulk comment/CI distillation to the `wf:context-distiller` subagent so the bulk never enters
-their own context.
+their own context; `sweep-pr` delegates **unconditionally** for any non-empty ingest, because the
+shared procedure it follows rejects a judge-inline shortcut.
 
 ## Delivery provider — consumed, not owned
 
 pr-review claims **no** `surface`. It reads whatever capability owns `surface = delivery` (e.g.
 `git`, via the wf-git pack) at runtime and dispatches its PR-interaction operations there. With
-**no** delivery provider registered, both skills **state plainly** that no delivery provider is
+**no** delivery provider registered, all three **state plainly** that no delivery provider is
 active — the contract's write-side degradation (loud, never a silent empty result nor a baked git
 fallback), since PR interaction is their entire purpose. This follows the two-mode residual
 diagnosis in `capability-registry.ops.md` §"Recorded-root-first resolution with install-manifest
@@ -56,11 +64,16 @@ through — the skills themselves compose natively regardless.
 
 ## Downstream registration
 
-**Required — run `/wf-review:init` once after `/wf:init`.** Although `address-pr` and `review-pr`
-reach users purely by native plugin composition (install the pack → the commands are discoverable,
-no registry row needed for *them* to run), the `pr-review` capability itself must still be
-registered so a future contribution can resolve. The `ship.review` gate (a forthcoming sub-task)
-presupposes a registration path — without one, that fragment could never fire once added. This
+**Required — run `/wf-review:init` once after `/wf:init`.** `address-pr` and `review-pr` reach
+users purely by native plugin composition (install the pack → the commands are discoverable, no
+registry row needed for *them* to run). Registration is nonetheless mandatory, for two reasons that
+are both live rather than forthcoming:
+
+- **`/wf-review:sweep-pr` does not run at all without it.** Unlike its two siblings, its body is a
+  capability-scoped `resolve_content` call for this capability's own shared sweep procedure; with no
+  registered row that call does not resolve and the skill stops with a stated error.
+- **Both `slot` fills fire only through a registered row** — the `ship.review` pre-merge gate and
+  the `fleet.closeout-review` post-merge sweep. Both are shipped, not planned. This
 corrects an earlier claim in this doc and in `manifest.md` that registration was unnecessary; that
 was true only while the capability carried no fragment and no forthcoming one was scoped.
 
@@ -88,4 +101,10 @@ convention, a capability that declares no `profile-template:` seeds nothing (the
   carries only the metadata header and the intentionally-empty fragments table.
 - **WF-325** — ship `/wf-review:init` on the established pack-init pattern and correct the earlier
   no-registration claim: `pr-review` now requires registration ahead of its first contribution
-  fragment (the forthcoming `ship.review` gate).
+  fragment — at the time, the then-forthcoming `ship.review` gate.
+- **WF-331** — the `ship.review` pre-merge gate ships as this capability's first `slot` fill,
+  targeting `/wf:ship`'s declared composition point (`replace` policy).
+- **WF-522** — the `fleet.closeout-review` post-merge sweep ships as the second `slot` fill, at
+  `/wf:fleet`'s Closeout, alongside a third user-invoked skill `/wf-review:sweep-pr`. Both call
+  sites follow one shared procedure. Registration becomes a hard runtime dependency for that
+  skill — not merely a prerequisite for a fill to resolve, as it was for the two skills above.
