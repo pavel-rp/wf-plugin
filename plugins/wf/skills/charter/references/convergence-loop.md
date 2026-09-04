@@ -246,8 +246,8 @@ accepts MEDIUM/LOW. A check-15 finding scored MEDIUM or LOW in round 1 would the
 converged with a live overrun in place: the exact drift the check exists to stop. Two fixes were
 available — teach Phase 5 rules 3/4 to read the `blocking:` tag in round 1, or floor check 15's
 severity at HIGH so the rules already there catch it. The floor wins on cost: it is one clause in
-the role contract that already owns severity, against an edit to a host doc whose 280-line ops
-budget is fully spent, and it removes rather than adds a contradiction — the Severity section's
+the role contract that already owns severity, against an edit to a host ops doc this slice is
+required not to grow, and it removes rather than adds a contradiction — the Severity section's
 "LOW never blocks on its own" no longer has a check-15 case pulling the other way. It also keeps
 the OUT-4 row exactly the single blocking class outside "CRITICAL anywhere or HIGH on changed text"
 that OUT-1 and OUT-2 name it as, with no second mechanism in the host to keep in sync.
