@@ -277,7 +277,9 @@ list names the `SUB-n` fields carrying the same weight one level down: `Desired 
 `Assumptions`, `Acceptance scenarios` and `Verification evidence` are what a downstream
 spec-writer reads cold; and `Covers` and `Depends on` are the traceability fields reviewer checks 1,
 2 and 10 (coverage, orphans, dependency validity) are computed from — losing one would break those
-checks exactly as losing an acceptance scenario breaks checks 3, 7, 8 and 11. What is left
+checks exactly as losing an acceptance scenario breaks check 11, whose pass condition names
+observable acceptance directly, and check 1, which is judged on whether a SUB's acceptance
+scenarios actually realize its outcome. What is left
 trimmable is `Problem slice` and `In scope` (plus the one-token `Complexity`, `Type` and `Actor`,
 which have no prose to cut): both restate in prose what the protected fields already state
 bindingly, so cutting them costs framing, not content. The two lists mirror each other in *what
