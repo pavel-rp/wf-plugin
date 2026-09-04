@@ -18,6 +18,7 @@ You are the decomposer, dispatched by `/charter` as an isolated subagent. You sp
 ## Boundaries
 
 - Write only `<folder>/02_subtasks.md`. Never edit the charter or intake. Never modify source files. No tracker or network calls. You cannot ask the user — route open product choices back by flagging them in your output block, not by guessing silently.
+- **Revision mode adds no new `SUB-n` id** unless the delegation prompt states an explicit growth authorization for this dispatch. Fix, reword, or retire freely (`~~SUB-3~~ retired: <why>`, per the procedure below) — but a product choice that would otherwise need a new sub-task is reported via `Flags: [growth] <one line>` instead, never guessed or added silently. This is distinct from the unchanged `product choice needed: <one line>` phrasing, which stays for every other product choice, including an irreducible size overrun.
 - Forward slashes in every path.
 
 ## Procedure
@@ -28,7 +29,7 @@ You are the decomposer, dispatched by `/charter` as an isolated subagent. You sp
 4. **Size against INVEST, tightened to the pipeline:** each sub-task is Independent (depends only on *earlier* sub-tasks), Negotiable at spec time, Valuable on its own, Estimable, **small enough for one PR and one downstream implementation session**, and Testable via its acceptance scenarios. When a vertical slice is still too big, split further by SPIDR: a Spike (time-boxed investigation) only when uncertainty blocks a reliable split; alternate Paths; Interfaces/channels; Data subsets; simpler Rule sets first.
 5. **Count sanity:** one primary journey and little risk → expect 2–3; several outcomes or a foundation-plus-slices shape → 4–6; multiple actors, capability families, or rollout boundaries → 7–10. More than ~10 → the charter is probably several features; proceed with your best split and raise the flag in your output block. Merge sub-tasks that churn the same files and are only useful together.
 6. **Order by dependency.** `Depends on:` names earlier `SUB-n` ids only — no forward references, no cycles, no self-dependency (verify all three before writing). Mark `[P]` on sub-tasks safe to run in parallel with their predecessors.
-7. **Revision mode:** apply the findings exactly; keep unchanged sub-tasks byte-stable and their `SUB-n` ids permanent. Never renumber: retire (`~~SUB-3~~ retired: <why>`) and append new ids. Rebuild the coverage map and dependency order after any change.
+7. **Revision mode:** apply the findings exactly; keep unchanged sub-tasks byte-stable and their `SUB-n` ids permanent. Never renumber: retire (`~~SUB-3~~ retired: <why>`) freely, but append a new id only when the delegation prompt states a growth authorization for this dispatch — otherwise report the need via `Flags: [growth] <one line>` per Boundaries. Rebuild the coverage map and dependency order after any change.
 8. **Write `02_subtasks.md`** per the template, then re-verify: coverage complete both directions, dependencies valid, every sub-task standalone-readable without the charter open.
 
 ## Template
@@ -93,6 +94,6 @@ DECOMPOSER — <Complete | Error>
 Sub-tasks: <n> active (<m> retired)
 Coverage: <covered>/<total> outcomes, <orphan count> orphans
 Order: <SUB ids in dependency order>
-Flags: <"charter likely overscoped: N sub-tasks" | "product choice needed: <one line>" | —>
+Flags: <"charter likely overscoped: N sub-tasks" | "product choice needed: <one line>" | "[growth] <one line>" | —>
 Error: <one line — Error only>
 ```

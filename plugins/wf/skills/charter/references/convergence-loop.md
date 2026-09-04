@@ -89,8 +89,78 @@ place rather than restructuring this document.
 
 ### SUB-2 — scope freeze and growth authorization
 
-*(reserved — SUB-2 adds its rationale for freezing charter scope after round 1 and gating growth
-revisions here.)*
+**The problem this closes.** Before this change, a revision-mode writer or decomposer could add a
+new `OUT-n`/`SUB-n` id while fixing an unrelated finding, so the artifact a round reviewed was
+never the one reviewed before — the corpus shows this directly (C031 grew 4→8 sub-tasks across its
+revisions, C020 10→27). A round's own fix could therefore seed the next round's findings on
+material the previous round never saw, which is a second, independent source of non-convergence
+alongside the "stale full audit" problem SUB-1 closes.
+
+**Why the host is the sole growth detector, not the writer/decomposer/reviewer.** The writer and
+decomposer are isolated, stateless subagents dispatched fresh each round (per "Why the host
+persists state, not the reviewer" above) — neither has a view of what ids existed *before* its own
+dispatch, so neither can self-certify "I did not grow scope." The reviewer is read-only and
+already has a narrower job (routing, not counting). Only the host survives across rounds and
+already owns the prior-round snapshot SUB-1 introduced, so comparing the post-revision artifacts'
+active ids against that snapshot — immediately after every revision dispatch, before the next
+review — is the only place in the loop where "did an id appear that wasn't authorized" can be
+checked mechanically rather than trusted to self-report.
+
+**Why a textual `[growth]` marker instead of a new output-block field.** The spec constraint ruled
+out a new writer/decomposer output-block field (no schema growth for a mechanism this narrow), and
+the charter's own review log (F2.1, round 2) already flagged that the writer's contract had no
+room for a structured growth signal without one. A literal substring inside an existing free-text
+field — `## Open questions` for the writer, `Flags:` for the decomposer, the finding/question text
+for the reviewer — needs no contract change and is trivially greppable by the host, which is all
+the mechanism needs: the host does not parse structure out of the tag, it only checks for its
+presence before deciding whether to defer a question to the two-option gate.
+
+**Why growth is detected from the id diff, never from `Scope changed:`.** `Scope changed: yes` was
+already overloaded before this slice — a reword or a retirement legitimately changes scope-bearing
+text without growing the id count, and the charter's own accepted assumptions (see the umbrella
+outcomes table, OUT-3) require distinguishing the two. Only a strict comparison against the
+prior-round snapshot's id set can tell "this outcome's wording changed" from "the outcome count
+grew," which is why the check reuses SUB-1's snapshot mechanism directly rather than adding a
+second one.
+
+**Why the gate is exactly two options, recorded in the review log.** This mirrors the existing
+accept-as-is warnings gate (`## Accepted warnings`) precisely — same shape (a two-option
+`AskUserQuestion`), same host-owned durable record (`03_review-log.md`), same resume discipline
+(re-read before re-asking). A gap that turns out to need new scope is not a defect to route back
+silently; it is a genuine product decision (ship without it and warn, or spend a revision growing
+scope), and the existing warnings-gate precedent already established that such decisions belong to
+the user, recorded, not re-litigated on resume.
+
+**Why a rule-1 answer auto-authorizes rather than asking twice.** When an *ordinary* (non-
+`[growth]`) user answer is folded in under Phase 5 rule 1 and its integration turns out to need a
+new id, the user has already made the decision that produced the id — asking a second time
+("would you like to authorize the id your own answer just required?") would be pure friction with
+only one sane response. The charter's own intake answer (Q4.1) confirmed this reading; the
+post-revision check auto-records that answer as the authorization instead of raising a redundant
+gate.
+
+**Why the authorization-consuming branches carry the same three outcomes.** The post-revision diff
+has exactly three possible answers — no new id, the one id the authorization covers, and anything
+else — and both paths that *consume* a recorded authorization state all three: rule 1's growth-
+authorize branch and rule 4's blocking-findings revision. An authorization is not a licence for
+*any* growth, only for the one id addressing its own recorded `<gap>`, so a second or mismatched
+id is unauthorized growth on either path and lands on the same user-routed check. Rule 1's
+ordinary-answer path deliberately names just one outcome: as the section above explains, an
+ordinary answer's own new id is always auto-legitimized, so it has neither a "beyond what was
+authorized" case nor a separate no-new-id case to state — the single clause covers both. Matching
+each new id against an entry recorded *for the current round* — rather
+than any unconsumed entry anywhere in the log — keeps a stale grant from an earlier round from
+silently absorbing an unrelated id.
+
+**Why the round snapshot is written at most once per round.** The snapshot is the pre-round
+baseline the next round's reviewer diffs against, so it must capture the artifacts as the round
+just reviewed saw them. A round can dispatch more than once — two authorized `[growth]` items, or
+a growth item alongside an ordinary answer — and every dispatch mutates the artifacts; re-writing
+the snapshot before the second would bake the first dispatch's new id into the baseline and hide
+it from the next round's growth check. So the once-per-round rule lives on the single snapshot
+write in rule 4 that every branch references, rather than being restated per branch where one copy
+could drift. Discounting ids already consumed earlier in the same round when diffing is the other
+half: one true baseline per round, with each authorization still judged on its own.
 
 ### SUB-3 — size-budget numbers and the OUT-4 blocking exception
 
