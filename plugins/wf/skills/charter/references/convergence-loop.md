@@ -165,14 +165,17 @@ half: one true baseline per round, with each authorization still judged on its o
 ### SUB-3 — size-budget numbers and the OUT-4 blocking exception
 
 **The numbers, and where they come from.** `02_subtasks.md`: 40 lines per `## SUB-n` block, 220
-lines total. `01_charter.md`: 140 lines total. All three are the corpus's own converged ceiling,
-not a headroom-padded guess. Measured directly off the four charter folders that reached
+lines total. `01_charter.md`: 140 lines total. All three are grounded in the corpus rather than a
+headroom-padded guess, but not in the same part of it: the two **total-file** budgets come from the
+converged charters' own ceiling, while the **per-block** figure comes from the runaway files' block
+sizes, because the converged corpus was never measured per block. Measured directly off the four charter folders that reached
 `Converged`, `02_subtasks.md` ran 112 lines (C026), 177 (C027), 198 (C028) and 220 (C025), and
 `01_charter.md` ran 107 (C025), 111 (C028), 121 (C027) and 140 (C026) — a 112–220 and a 107–140
 band respectively. (These are file measurements taken from the corpus itself, not a restatement of
-"The non-convergence pattern" above, which discusses only which rounds came back clean.) Each budget is set at
-the top of the range charters that actually reached `Converged` already lived inside — a budget any
-of those four runs would have passed without a single size-related revision. The runaway cases
+"The non-convergence pattern" above, which discusses only which rounds came back clean.) Each of
+those two totals is set at the top of the range charters that actually reached `Converged` already
+lived inside — a budget any of those four runs would have passed without a single size-related
+revision. The runaway cases
 (`02_subtasks.md` 1793 lines in C029, 1436 in C030; `01_charter.md` 582 lines in C029) sit well over
 these numbers — roughly 8.15x and 6.53x for the two decompositions, and roughly 4.16x for the
 charter — so the budget separates the two populations cleanly on every one of the three figures
@@ -189,7 +192,9 @@ In scope, Out of scope, Acceptance scenarios, Constraints, Assumptions, Verifica
 field against the template) — tight enough to force the prose fields back to one or two sentences without
 being so tight that a compliant block becomes unwritable.
 
-**Why the ceiling of the converged range, not its middle or a padded multiple.** A budget set at the
+**Why the ceiling of the converged range, not its middle or a padded multiple.** This is the
+argument for the two total-file budgets; the per-block figure's own derivation is the paragraph
+above. A budget set at the
 corpus *median* would flag artifacts the loop has already shown can converge, manufacturing findings
 against a population this slice has no evidence is actually too large — the whole point of grounding
 the number in the corpus is to bind the mechanism to observed reality, not to a fresh guess. A budget
@@ -261,6 +266,17 @@ in the loop: `decomposer`/`charter-writer` trims prose first, and the existing `
 `## Open questions` escape hatch — already wired for `[growth]` and other product choices — carries
 the rare case where no cut is possible without dropping acceptance content, so that decision reaches
 the user explicitly instead of disappearing into an auto-truncation.
+
+**Why the two protected lists are not word-for-word identical.** The writer's list — an outcome, a
+constraint, a non-goal — is `01_charter.md`'s three binding categories, in the spec's own wording.
+The decomposer's list names the `SUB-n` fields that carry the same weight one level down:
+`Desired outcome` and `Out of scope` are the per-slice analogues of the writer's outcome and
+non-goal, and `Acceptance scenarios`, `Constraints`, `Assumptions` and `Verification evidence` are
+the fields a downstream spec-writer reads cold. `Problem slice` and `In scope` are deliberately
+left trimmable: both restate in prose what those protected fields already state bindingly, so
+cutting them costs framing, not content. The two lists mirror each other in *what they protect* —
+every category either role could silently lose — not in their vocabulary, because the two artifacts
+do not have the same fields.
 
 **Why a successful trim is reported too, not just an irreducible one — and what "reported" means
 here.** The ordinary case — a routed overrun finding gets fixed within budget — should be visible
