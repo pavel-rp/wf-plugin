@@ -145,9 +145,10 @@ else — and both paths that *consume* a recorded authorization state all three:
 authorize branch and rule 4's blocking-findings revision. An authorization is not a licence for
 *any* growth, only for the one id addressing its own recorded `<gap>`, so a second or mismatched
 id is unauthorized growth on either path and lands on the same user-routed check. Rule 1's
-ordinary-answer path deliberately states only two: as the section above explains, an ordinary
-answer's own new id is always auto-legitimized, so there is no "beyond what was authorized" case
-for it to name. Matching each new id against an entry recorded *for the current round* — rather
+ordinary-answer path deliberately names just one outcome: as the section above explains, an
+ordinary answer's own new id is always auto-legitimized, so it has neither a "beyond what was
+authorized" case nor a separate no-new-id case to state — the single clause covers both. Matching
+each new id against an entry recorded *for the current round* — rather
 than any unconsumed entry anywhere in the log — keeps a stale grant from an earlier round from
 silently absorbing an unrelated id.
 
