@@ -166,8 +166,11 @@ half: one true baseline per round, with each authorization still judged on its o
 
 **The numbers, and where they come from.** `02_subtasks.md`: 40 lines per `## SUB-n` block, 220
 lines total. `01_charter.md`: 140 lines total. All three are the corpus's own converged ceiling,
-not a headroom-padded guess: C025–C028 decompositions converged at 112–220 lines total and their
-charters at 107–140 lines total (see "The non-convergence pattern" above), so each budget is set at
+not a headroom-padded guess. Measured directly off the four charter folders that reached
+`Converged`, `02_subtasks.md` ran 112 lines (C026), 177 (C027), 198 (C028) and 220 (C025), and
+`01_charter.md` ran 107 (C025), 111 (C028), 121 (C027) and 140 (C026) — a 112–220 and a 107–140
+band respectively. (These are file measurements taken from the corpus itself, not a restatement of
+"The non-convergence pattern" above, which discusses only which rounds came back clean.) Each budget is set at
 the top of the range charters that actually reached `Converged` already lived inside — a budget any
 of those four runs would have passed without a single size-related revision. The runaway cases
 (`02_subtasks.md` 1793 lines in C029, 1436 in C030; `01_charter.md` 582 lines in C029) sit well over
@@ -179,11 +182,11 @@ blocks averaging 84.5 lines (range 57–147); C030's has 11 averaging 114.6 line
 combined, roughly 85–115 lines per block even in the two runaway files, well short of what an
 1793-or-1436-line total alone would suggest, because a large share of the bloat sits in the two
 files' `Coverage map`/`Dependency order` prose and inter-block repetition rather than in any single
-block. Measured against `charter-decomposer.md`'s own template, which specifies about ten required
+block. Measured against `charter-decomposer.md`'s own template, which specifies thirteen required
 fields per block (Covers, Complexity, Type, Depends on, Actor, Problem slice, Desired outcome,
-In/Out of scope, Acceptance scenarios, Constraints, Assumptions, Verification evidence), the 40-line
-budget still cuts the observed per-block average by more than half (roughly four lines per field
-against the template) — tight enough to force the prose fields back to one or two sentences without
+In scope, Out of scope, Acceptance scenarios, Constraints, Assumptions, Verification evidence), the
+40-line budget still cuts the observed per-block average by more than half (roughly three lines per
+field against the template) — tight enough to force the prose fields back to one or two sentences without
 being so tight that a compliant block becomes unwritable.
 
 **Why the ceiling of the converged range, not its middle or a padded multiple.** A budget set at the
@@ -234,6 +237,20 @@ cannot be a changed-text exception without defeating its own purpose; `charter-r
 this directly (Mandate section, verification step 3) as a named exception beside the changed-text
 rule, and `SKILL.md` Phase 5 rule 4 already assumed exactly this shape before this slice supplied
 the numbers.
+
+**Why the round-1 half of that is a severity floor rather than a host rule.** The Mandate exception
+alone only reaches round ≥2, because it is worded against the changed-text diff and round 1 has no
+diff to except from. Round 1 is governed instead by `SKILL.md` Phase 5 rules 3 and 4, which read
+*severity* — "no CRITICAL or HIGH" routes to the warnings-only path, where a headless run auto-
+accepts MEDIUM/LOW. A check-15 finding scored MEDIUM or LOW in round 1 would therefore have
+converged with a live overrun in place: the exact drift the check exists to stop. Two fixes were
+available — teach Phase 5 rules 3/4 to read the `blocking:` tag in round 1, or floor check 15's
+severity at HIGH so the rules already there catch it. The floor wins on cost: it is one clause in
+the role contract that already owns severity, against an edit to a host doc whose 280-line ops
+budget is fully spent, and it removes rather than adds a contradiction — the Severity section's
+"LOW never blocks on its own" no longer has a check-15 case pulling the other way. It also keeps
+the OUT-4 row exactly the single blocking class outside "CRITICAL anywhere or HIGH on changed text"
+that OUT-1 and OUT-2 name it as, with no second mechanism in the host to keep in sync.
 
 **Why overrun is a finding, never a truncation.** Cutting an artifact by machine to fit a budget
 would silently delete acceptance scenarios, outcomes, constraints, or non-goals with no author in
