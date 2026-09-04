@@ -172,13 +172,18 @@ the top of the range charters that actually reached `Converged` already lived in
 of those four runs would have passed without a single size-related revision. The runaway cases
 (`02_subtasks.md` 1793 lines in C029, 1436 in C030; `01_charter.md` 582 lines in C029) sit 6–8x over
 these numbers, so the budget separates the two populations cleanly rather than splitting hairs at
-the margin. The per-SUB-block figure comes from the same bloat data at finer grain: C029/C030
-averaged roughly 150–180 lines per SUB block against `charter-decomposer.md`'s own template, which
-specifies about ten required fields per block (Covers, Complexity, Type, Depends on, Actor, Problem
-slice, Desired outcome, In/Out of scope, Acceptance scenarios, Constraints, Assumptions,
-Verification evidence) — 40 lines gives roughly four lines per field, enough for the template's
-prose fields to stay one to a few sentences without inviting the implementation-detail sprawl that
-produced the 150–180 line blocks.
+the margin. The per-SUB-block figure comes from the same bloat data at finer grain, measured
+directly against the on-disk blocks rather than estimated: C029's `02_subtasks.md` has 19 `SUB-n`
+blocks averaging 84.5 lines (range 57–147); C030's has 11 averaging 114.6 lines (range 58–169) —
+combined, roughly 85–115 lines per block even in the two runaway files, well short of what an
+1793-or-1436-line total alone would suggest, because a large share of the bloat sits in the two
+files' `Coverage map`/`Dependency order` prose and inter-block repetition rather than in any single
+block. Measured against `charter-decomposer.md`'s own template, which specifies about ten required
+fields per block (Covers, Complexity, Type, Depends on, Actor, Problem slice, Desired outcome,
+In/Out of scope, Acceptance scenarios, Constraints, Assumptions, Verification evidence), the 40-line
+budget still cuts the observed per-block average by more than half (roughly four lines per field
+against the template) — tight enough to force the prose fields back to one or two sentences without
+being so tight that a compliant block becomes unwritable.
 
 **Why the ceiling of the converged range, not its middle or a padded multiple.** A budget set at the
 corpus *median* would flag artifacts the loop has already shown can converge, manufacturing findings
@@ -189,6 +194,28 @@ meaningful signal for anything short of a 2-4x blowout, silently permitting a sl
 toward C029/C030-scale bloat one moderately-oversized revision at a time. Setting the number at the
 ceiling itself is the tightest bound the existing evidence supports without contradicting a single
 converged data point.
+
+**Why the 220-line total isn't reconciled against the 7–10 sub-task Count-sanity band by raising
+the total.** The decomposer's pre-existing Count-sanity guidance (Procedure step 5) sanctions 7–10
+sub-tasks for a multi-actor or rollout-boundary charter; ten bare-template blocks alone (roughly
+21 lines each before real prose) already sit near 210 of the 220-line total, so a legitimately
+wide charter can reach the top of both ranges at once. Raising the total to create headroom for
+that case would undo the corpus grounding above — the fix would no longer bind to what actually
+converged, only to what the largest sanctioned split could need. Instead a charter that reaches
+both ceilings together reports through the same channel as an irreducible per-block overrun
+(`Flags: product choice needed: <one line>`): the choice between a leaner split and an authorized
+overrun is a product decision, not evidence that either number is wrong.
+
+**Why a size-budget trim may cross sub-tasks or sections a routed finding didn't name.** The
+decomposer's revision-mode byte-stability rule and the writer's "no drive-by rewrites" rule both
+exist to stop an *unrelated* finding from causing collateral rewrites elsewhere in the artifact —
+but a **total**-budget overrun is, by definition, a property of the whole file, not of any one
+block or section a reviewer finding could single out (checklist row 15's pass condition is a
+conjunction of the total and every per-block figure). Confining a total-budget trim to only the
+finding's named location would make the total budget unenforceable in exactly the case it exists
+to catch: every individual block within its own cap, the file over its total anyway. The two
+existing rules are therefore stated to bind unrelated findings, and this one is named as the
+exception, not a general licence to rewrite at will.
 
 **Why an overrun blocks unconditionally instead of following the changed-text rule.** WF-551's
 round ≥2 rule blocks a HIGH finding only when the reviewer's snapshot diff marks its section as
@@ -216,6 +243,17 @@ in the loop: `decomposer`/`charter-writer` trims prose first, and the existing `
 `## Open questions` escape hatch — already wired for `[growth]` and other product choices — carries
 the rare case where no cut is possible without dropping acceptance content, so that decision reaches
 the user explicitly instead of disappearing into an auto-truncation.
+
+**Why a successful trim is reported too, not just an irreducible one.** The ordinary case — a
+routed overrun finding gets fixed within budget — still needs to be visible to the host loop the
+same way every other routed fix is: through the role's own output block, the durable per-round
+record the review log quotes from. The decomposer already had a generic `Flags:` line to extend.
+The writer's output contract had no equivalent free-text field — `Charter:`, `Outcomes:`,
+`Scope changed:`, and `Assumptions:` are all narrowly typed — so this slice adds one `Flags:` line
+to `charter-writer.md`'s output contract, used only for `trimmed to size budget: <one line>` (the
+irreducible case keeps using `## Open questions`, unchanged). Adding a line to a role's grepped
+output-block shape is exactly the case `CLAUDE.md` §8 reserves for a MINOR bump even pre-1.0; this
+slice ships as MINOR rather than PATCH for that reason alone — nothing else in it changes shape.
 
 ### SUB-4 — the cap gate and user-authorized extensions
 
