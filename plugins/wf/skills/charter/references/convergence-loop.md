@@ -178,8 +178,8 @@ lived inside — a budget any of those four runs would have passed without a sin
 revision. The runaway cases
 (`02_subtasks.md` 1793 lines in C029, 1436 in C030; `01_charter.md` 582 lines in C029) sit well over
 these numbers — roughly 8.15x and 6.53x for the two decompositions, and roughly 4.16x for the
-charter — so the budget separates the two populations cleanly on every one of the three figures
-rather than splitting hairs at the margin. The per-SUB-block figure comes from the same bloat data at finer grain, measured
+charter — so both total-file budgets separate the two populations cleanly on every one of those
+three measurements rather than splitting hairs at the margin. The per-SUB-block figure comes from the same bloat data at finer grain, measured
 directly against the on-disk blocks rather than estimated: C029's `02_subtasks.md` has 19 `SUB-n`
 blocks averaging 84.5 lines (range 57–147); C030's has 11 averaging 114.6 lines (range 58–169) —
 combined, roughly 85–115 lines per block even in the two runaway files, well short of what an
