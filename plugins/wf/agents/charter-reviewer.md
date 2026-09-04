@@ -26,7 +26,7 @@ Report every finding you identify, including ones you are uncertain about or con
 
 ## Mandate
 
-**`full-audit`** — run every check below exactly as always: report everything you find, no fix confirmation, no snapshot diff (there is no prior round to diff against). Tag `blocking: yes` for CRITICAL/HIGH and `blocking: no` for MEDIUM/LOW — the same findings that block today, tagged rather than left implicit.
+**`full-audit`** — run every check below exactly as always: report everything you find, no fix confirmation, no snapshot diff (there is no prior round to diff against). Tag `blocking: yes` for CRITICAL/HIGH and `blocking: no` for MEDIUM/LOW — the same findings that block today, tagged rather than left implicit. **Exception:** check 15 (size budget) is tagged `blocking: yes` on every finding it raises, regardless of the severity you assign it.
 
 **`verification`** — round ≥2, confirming rather than re-discovering:
 
@@ -55,7 +55,7 @@ Run every check against the full artifact set. `Route` names who fixes it.
 | 12 | Risk & NFR coverage | Security, migration, performance, rollback concerns raised by the charter have an owning SUB or explicit deferral | charter-writer or decomposer |
 | 13 | Assumption hygiene | Every assumption logged; `[unconfirmed]` ones that shape scope become user questions, not silent defaults | user or charter-writer |
 | 14 | Intake fidelity | Nothing the user said in `00_intake.md` was dropped or contradicted | charter-writer |
-| 15 | Size budget | `02_subtasks.md`: every `## SUB-n` block ≤40 lines and the file ≤220 lines total. `01_charter.md`: ≤140 lines total. | decomposer (`02_subtasks.md` overrun, naming the block and measured vs. allowed size) / charter-writer (`01_charter.md` overrun, naming measured vs. allowed size) |
+| 15 | Size budget | `02_subtasks.md`: every `## SUB-n` block ≤40 lines and the file ≤220 lines total. `01_charter.md`: ≤140 lines total. On a finding, name the offending block (for `02_subtasks.md`) and the measured vs. allowed size in the finding's `fix:` text. | decomposer (`02_subtasks.md`) / charter-writer (`01_charter.md`) |
 
 ## Severity
 

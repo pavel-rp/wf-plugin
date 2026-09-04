@@ -170,9 +170,10 @@ not a headroom-padded guess: C025–C028 decompositions converged at 112–220 l
 charters at 107–140 lines total (see "The non-convergence pattern" above), so each budget is set at
 the top of the range charters that actually reached `Converged` already lived inside — a budget any
 of those four runs would have passed without a single size-related revision. The runaway cases
-(`02_subtasks.md` 1793 lines in C029, 1436 in C030; `01_charter.md` 582 lines in C029) sit 6–8x over
-these numbers, so the budget separates the two populations cleanly rather than splitting hairs at
-the margin. The per-SUB-block figure comes from the same bloat data at finer grain, measured
+(`02_subtasks.md` 1793 lines in C029, 1436 in C030; `01_charter.md` 582 lines in C029) sit well over
+these numbers — roughly 8.15x and 6.53x for the two decompositions, and roughly 4.16x for the
+charter — so the budget separates the two populations cleanly on every one of the three figures
+rather than splitting hairs at the margin. The per-SUB-block figure comes from the same bloat data at finer grain, measured
 directly against the on-disk blocks rather than estimated: C029's `02_subtasks.md` has 19 `SUB-n`
 blocks averaging 84.5 lines (range 57–147); C030's has 11 averaging 114.6 lines (range 58–169) —
 combined, roughly 85–115 lines per block even in the two runaway files, well short of what an
@@ -195,8 +196,8 @@ toward C029/C030-scale bloat one moderately-oversized revision at a time. Settin
 ceiling itself is the tightest bound the existing evidence supports without contradicting a single
 converged data point.
 
-**Why the 220-line total isn't reconciled against the 7–10 sub-task Count-sanity band by raising
-the total.** The decomposer's pre-existing Count-sanity guidance (Procedure step 5) sanctions 7–10
+**Why the 220-line total isn't reconciled against the 7–10 sub-task Count sanity band by raising
+the total.** The decomposer's pre-existing Count sanity guidance (Procedure step 5) sanctions 7–10
 sub-tasks for a multi-actor or rollout-boundary charter; ten bare-template blocks alone (roughly
 21 lines each before real prose) already sit near 210 of the 220-line total, so a legitimately
 wide charter can reach the top of both ranges at once. Raising the total to create headroom for
@@ -244,15 +245,22 @@ in the loop: `decomposer`/`charter-writer` trims prose first, and the existing `
 the rare case where no cut is possible without dropping acceptance content, so that decision reaches
 the user explicitly instead of disappearing into an auto-truncation.
 
-**Why a successful trim is reported too, not just an irreducible one.** The ordinary case — a
-routed overrun finding gets fixed within budget — still needs to be visible to the host loop the
-same way every other routed fix is: through the role's own output block, the durable per-round
-record the review log quotes from. The decomposer already had a generic `Flags:` line to extend.
-The writer's output contract had no equivalent free-text field — `Charter:`, `Outcomes:`,
+**Why a successful trim is reported too, not just an irreducible one — and what "reported" means
+here.** The ordinary case — a routed overrun finding gets fixed within budget — should be visible
+somewhere, the same way an irreducible overrun is visible via `Flags:`/`## Open questions`, rather
+than vanishing the moment the fix succeeds. The decomposer already had a generic `Flags:` line to
+extend. The writer's output contract had no equivalent free-text field — `Charter:`, `Outcomes:`,
 `Scope changed:`, and `Assumptions:` are all narrowly typed — so this slice adds one `Flags:` line
 to `charter-writer.md`'s output contract, used only for `trimmed to size budget: <one line>` (the
-irreducible case keeps using `## Open questions`, unchanged). Adding a line to a role's grepped
-output-block shape is exactly the case `CLAUDE.md` §8 reserves for a MINOR bump even pre-1.0; this
+irreducible case keeps using `## Open questions`, unchanged). **This makes the fact visible in the
+subagent's own terminal output for the dispatch that made it — it does not, by itself, make the
+trim durable the way the reviewer's block (appended verbatim to `03_review-log.md`) or a routed
+decomposer `Flags:` entry (read and acted on by `SKILL.md` Phase 3) already are.** Wiring
+`SKILL.md` to read and durably record this new field is out of this slice's touched-file set (its
+constraint scopes `SKILL.md` changes to "ask first"), so that wiring is a deliberate, named,
+deferred gap rather than a silent one — a fast-follow, not a claim this slice already closes.
+Adding a line to a role's grepped output-block shape is exactly the case `CLAUDE.md` §8 reserves
+for a MINOR bump even pre-1.0; this
 slice ships as MINOR rather than PATCH for that reason alone — nothing else in it changes shape.
 
 ### SUB-4 — the cap gate and user-authorized extensions
