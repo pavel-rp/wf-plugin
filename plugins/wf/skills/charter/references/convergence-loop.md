@@ -139,22 +139,27 @@ only one sane response. The charter's own intake answer (Q4.1) confirmed this re
 post-revision check auto-records that answer as the authorization instead of raising a redundant
 gate.
 
-**Why every id-diff branch carries the same three outcomes.** The post-revision diff has exactly
-three possible answers — no new id, the one id the authorization covers, and anything else — and
-every dispatch path that can grow the artifacts states all three. An authorized dispatch is not a
-licence for *any* growth, only for the one id addressing its own recorded `<gap>`, so a second or
-mismatched id is unauthorized growth on the authorized path exactly as it is on the blocking-
-findings path, and lands on the same user-routed check. Matching against *this dispatch's own*
-entry, rather than any unconsumed one, keeps a stale grant from an earlier round from silently
-absorbing an unrelated id.
+**Why the authorization-consuming branches carry the same three outcomes.** The post-revision diff
+has exactly three possible answers — no new id, the one id the authorization covers, and anything
+else — and both paths that *consume* a recorded authorization state all three: rule 1's growth-
+authorize branch and rule 4's blocking-findings revision. An authorization is not a licence for
+*any* growth, only for the one id addressing its own recorded `<gap>`, so a second or mismatched
+id is unauthorized growth on either path and lands on the same user-routed check. Rule 1's
+ordinary-answer path deliberately states only two: as the section above explains, an ordinary
+answer's own new id is always auto-legitimized, so there is no "beyond what was authorized" case
+for it to name. Matching each new id against an entry recorded *for the current round* — rather
+than any unconsumed entry anywhere in the log — keeps a stale grant from an earlier round from
+silently absorbing an unrelated id.
 
 **Why the round snapshot is written at most once per round.** The snapshot is the pre-round
 baseline the next round's reviewer diffs against, so it must capture the artifacts as the round
-just reviewed saw them. A round can authorize more than one `[growth]` item, and each authorized
-dispatch mutates the artifacts; re-writing the snapshot before the second dispatch would bake the
-first dispatch's new id into the baseline and hide it from the next round's growth check. Writing
-it once per round — and discounting ids already consumed earlier in the same round when diffing —
-keeps one true baseline per round while still letting each authorization be judged on its own.
+just reviewed saw them. A round can dispatch more than once — two authorized `[growth]` items, or
+a growth item alongside an ordinary answer — and every dispatch mutates the artifacts; re-writing
+the snapshot before the second would bake the first dispatch's new id into the baseline and hide
+it from the next round's growth check. So the once-per-round rule lives on the single snapshot
+write in rule 4 that every branch references, rather than being restated per branch where one copy
+could drift. Discounting ids already consumed earlier in the same round when diffing is the other
+half: one true baseline per round, with each authorization still judged on its own.
 
 ### SUB-3 — size-budget numbers and the OUT-4 blocking exception
 
