@@ -89,8 +89,55 @@ place rather than restructuring this document.
 
 ### SUB-2 — scope freeze and growth authorization
 
-*(reserved — SUB-2 adds its rationale for freezing charter scope after round 1 and gating growth
-revisions here.)*
+**The problem this closes.** Before this change, a revision-mode writer or decomposer could add a
+new `OUT-n`/`SUB-n` id while fixing an unrelated finding, so the artifact a round reviewed was
+never the one reviewed before — the corpus shows this directly (C031 grew 4→8 sub-tasks across its
+revisions, C020 10→27). A round's own fix could therefore seed the next round's findings on
+material the previous round never saw, which is a second, independent source of non-convergence
+alongside the "stale full audit" problem SUB-1 closes.
+
+**Why the host is the sole growth detector, not the writer/decomposer/reviewer.** The writer and
+decomposer are isolated, stateless subagents dispatched fresh each round (per "Why the host
+persists state, not the reviewer" above) — neither has a view of what ids existed *before* its own
+dispatch, so neither can self-certify "I did not grow scope." The reviewer is read-only and
+already has a narrower job (routing, not counting). Only the host survives across rounds and
+already owns the prior-round snapshot SUB-1 introduced, so comparing the post-revision artifacts'
+active ids against that snapshot — immediately after every revision dispatch, before the next
+review — is the only place in the loop where "did an id appear that wasn't authorized" can be
+checked mechanically rather than trusted to self-report.
+
+**Why a textual `[growth]` marker instead of a new output-block field.** The spec constraint ruled
+out a new writer/decomposer output-block field (no schema growth for a mechanism this narrow), and
+the charter's own review log (F2.1, round 2) already flagged that the writer's contract had no
+room for a structured growth signal without one. A literal substring inside an existing free-text
+field — `## Open questions` for the writer, `Flags:` for the decomposer, the finding/question text
+for the reviewer — needs no contract change and is trivially greppable by the host, which is all
+the mechanism needs: the host does not parse structure out of the tag, it only checks for its
+presence before deciding whether to defer a question to the two-option gate.
+
+**Why growth is detected from the id diff, never from `Scope changed:`.** `Scope changed: yes` was
+already overloaded before this slice — a reword or a retirement legitimately changes scope-bearing
+text without growing the id count, and the charter's own accepted assumptions (see the umbrella
+outcomes table, OUT-3) require distinguishing the two. Only a strict comparison against the
+prior-round snapshot's id set can tell "this outcome's wording changed" from "the outcome count
+grew," which is why the check reuses SUB-1's snapshot mechanism directly rather than adding a
+second one.
+
+**Why the gate is exactly two options, recorded in the review log.** This mirrors the existing
+accept-as-is warnings gate (`## Accepted warnings`) precisely — same shape (a two-option
+`AskUserQuestion`), same host-owned durable record (`03_review-log.md`), same resume discipline
+(re-read before re-asking). A gap that turns out to need new scope is not a defect to route back
+silently; it is a genuine product decision (ship without it and warn, or spend a revision growing
+scope), and the existing warnings-gate precedent already established that such decisions belong to
+the user, recorded, not re-litigated on resume.
+
+**Why a rule-1 answer auto-authorizes rather than asking twice.** When an *ordinary* (non-
+`[growth]`) user answer is folded in under Phase 5 rule 1 and its integration turns out to need a
+new id, the user has already made the decision that produced the id — asking a second time
+("would you like to authorize the id your own answer just required?") would be pure friction with
+only one sane response. The charter's own intake answer (Q4.1) confirmed this reading; the
+post-revision check auto-records that answer as the authorization instead of raising a redundant
+gate.
 
 ### SUB-3 — size-budget numbers and the OUT-4 blocking exception
 

@@ -65,6 +65,8 @@ Run every check against the full artifact set. `Route` names who fixes it.
 
 `route: user` is reserved for genuine product choices with more than one reasonable answer — not for defects an author can fix.
 
+**Growth routing.** A finding, or a "Questions for user" entry, whose fix would need a new `OUT-n`/`SUB-n` id always routes `user` and prefixes its `fix:`/question text with `[growth]` — checks 1 (Outcome coverage), 5 (No contradictions), and 13 (Assumption hygiene) are the ones most likely to surface it, but any check can. At round ≥2, meeting a non-empty `## Open questions` entry in `01_charter.md` is always reported this way. This is a **routing** rule only: you state that the fix needs a new id, never whether growth actually happened — comparing ids against the prior-round snapshot is exclusively the host's Phase 5 job.
+
 ## Output contract
 
 Your reasoning and reads stay in your isolated context. Your entire final message is exactly this block — no narrative before or after; the caller parses it:
