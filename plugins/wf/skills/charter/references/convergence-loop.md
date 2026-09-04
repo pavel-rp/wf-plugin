@@ -139,6 +139,23 @@ only one sane response. The charter's own intake answer (Q4.1) confirmed this re
 post-revision check auto-records that answer as the authorization instead of raising a redundant
 gate.
 
+**Why every id-diff branch carries the same three outcomes.** The post-revision diff has exactly
+three possible answers — no new id, the one id the authorization covers, and anything else — and
+every dispatch path that can grow the artifacts states all three. An authorized dispatch is not a
+licence for *any* growth, only for the one id addressing its own recorded `<gap>`, so a second or
+mismatched id is unauthorized growth on the authorized path exactly as it is on the blocking-
+findings path, and lands on the same user-routed check. Matching against *this dispatch's own*
+entry, rather than any unconsumed one, keeps a stale grant from an earlier round from silently
+absorbing an unrelated id.
+
+**Why the round snapshot is written at most once per round.** The snapshot is the pre-round
+baseline the next round's reviewer diffs against, so it must capture the artifacts as the round
+just reviewed saw them. A round can authorize more than one `[growth]` item, and each authorized
+dispatch mutates the artifacts; re-writing the snapshot before the second dispatch would bake the
+first dispatch's new id into the baseline and hide it from the next round's growth check. Writing
+it once per round — and discounting ids already consumed earlier in the same round when diffing —
+keeps one true baseline per round while still letting each authorization be judged on its own.
+
 ### SUB-3 — size-budget numbers and the OUT-4 blocking exception
 
 *(reserved — SUB-3 adds the chosen per-SUB and total-line budget numbers and the rationale for why
