@@ -322,5 +322,74 @@ slice ships as MINOR rather than PATCH for that reason alone — nothing else in
 
 ### SUB-4 — the cap gate and user-authorized extensions
 
-*(reserved — SUB-4 adds its rationale for the cap-hit user gate and how a user-authorized
-extension is represented, building on the C020/C029 ad-hoc-extension precedent cited above.)*
+**The problem this closes.** Before this change, hitting the revision cap with blocking findings
+still open ended the run silently at `CHARTER — Blocked` — the host never asked whether the operator
+wanted to keep going. The corpus shows operators routing around this by hand rather than accepting
+the silent stop: C020 extended its cap eight times (`Reviews: 12 · Revisions used: 11 of 11 (8
+user-authorized extensions)`) with no defined choice set and no rule for what a resumed run should
+do with a mid-flight extension — the header notes the fact but the mechanism that produced it lived
+entirely outside the shipped skill. C031, by contrast, stopped `Blocked` at the cap with two residual
+findings that were *not* a repeat of round 3's set (the no-progress guard never fired) — genuine
+progress was still being made when the fixed budget ran out, and the old rule gave the operator no
+way to say so. Both cases are the same gap: the host, not the operator, was deciding that "out of
+revisions" meant "done," in two different and equally unsatisfying directions.
+
+**Why exactly three options, and why this split.** *Extend* covers C031's case — progress was real,
+more revision budget would plausibly finish it. *Accept as warnings* covers the case where the
+residual findings are real but not worth another round's cost — the existing `## Accepted warnings`
+gate (rule 3) already makes exactly this call for non-blocking findings, so extending it to a
+cap-exhausted blocking residual is a natural reuse, not a new mechanism. *Stop* preserves today's
+behavior as a first-class choice rather than an implicit default, because a cap-exhausted charter is
+sometimes genuinely not converging (a real disagreement no amount of revision resolves) and forcing
+a choice between the other two would misrepresent that. No fourth option was considered: unlike
+rule 1's growth gate — which needs a `pending`/`declined`/`granted` state machine because a
+decomposer flag can be raised and answered on different turns — the cap-gate choice is always made
+in one synchronous ask, so it needs only the three terminal actions, not a lifecycle.
+
+**Why the host records the choice before acting, not after.** This mirrors SUB-1's snapshot-before-
+dispatch discipline and SUB-2's authorization-before-integration discipline exactly, and for the same
+reason: the loop survives `/clear` by design (Loop contract), so anything that happens only in the
+turn that decided it is invisible to a resumed run. Recording the choice to `03_review-log.md`'s
+`## Cap-gate decisions` *before* dispatching the extend, finalizing the accept, or stopping means a
+`/clear` between the ask and the follow-through still leaves a durable trace of what was decided —
+the resumed run reads it back rather than re-asking or, worse, guessing.
+
+**Why the denominator moves in place rather than a new field.** A new field recording "extensions
+granted" would duplicate what the existing grepped header `Reviews: <N> · Revisions used: <M> of
+<cap>` already expresses once `<cap>` itself is allowed to move — C020's own header
+(`11 of 11 (8 user-authorized extensions)`) is direct prior art for reading the denominator as the
+live cap rather than a fixed constant. Raising `<cap>` in place also keeps the shape of the grepped
+form completely unchanged (only the value moves), which is what keeps this a PATCH-tier change under
+`CLAUDE.md` §8 — a new field or a reshaped header would force the MINOR bump that changing a grepped
+shape requires, for no behavioral benefit a value change doesn't already provide.
+
+**Why the gate fires at most once per cap value.** Re-asking every time the same `<cap>` is checked
+would turn one decision into a loop of its own — exactly the kind of repeated friction the no-progress
+guard exists to prevent one level up. Keying the "already decided" check on the exact `<M> of <cap>`
+pair (rather than, say, a boolean flag) means a *later* cap hit — after `<cap>` has been raised and a
+new revision spent — is a genuinely new decision point with a new pair, so the gate is live again
+exactly when there is something new to decide, and silent exactly when there isn't.
+
+**Why headless keeps the unconditional silent `Blocked`, unchanged.** A headless run has no channel
+to ask through, and the growth gate and the warnings gate both already established the pattern:
+an unresolvable interactive question becomes a `Needs input`/`Blocked` stop, never an assumed answer
+on the operator's behalf. Auto-picking "accept" or "extend" for a headless run would spend the
+operator's revision budget or converge a charter with unresolved blocking findings — either one
+without consent, which no other gate in this loop does. Blocked is also the only one of the three
+choices that changes nothing (no revision spent, no warnings recorded, no status change), so it is
+the only option that could ever be a safe default — and this design does not treat it as a default,
+only as headless's sole remaining path.
+
+**Why a resumed run needs a State-model-level check, not just a review-log check.** The naive
+resume path — `/clear`, re-invoke, State model sees `**Status:** In review`, dispatches Phase 4 — is
+wrong here specifically because Phase 4 would re-run a full review against *unchanged* artifacts (the
+extend's revision, or the accept's status write, never completed) and reproduce the identical blocking
+set that triggered the cap hit in the first place. That identical-set result is exactly what the
+no-progress guard is watching for one rule earlier in Phase 5 — so a naive resume would silently
+convert an already-decided "extend" into a `Needs input` stop, discarding the recorded choice instead
+of honoring it. Checking for an unconsumed `## Cap-gate decisions` entry has to happen *before* Phase
+4 is ever dispatched, which is why the fix lives in the State model (which chooses the next phase)
+rather than only in Phase 5 rule 4 (which a naive resume would never reach with fresh input). The
+follow-through itself needs no new findings to act on: the round that hit the cap already recorded
+its blocking findings under its own `## Round <N>` heading, so "extend" dispatches a revision against
+that existing record and "accept" fingerprints from it directly — neither branch re-reviews anything.
