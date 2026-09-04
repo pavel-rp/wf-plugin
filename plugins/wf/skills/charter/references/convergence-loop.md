@@ -385,16 +385,37 @@ for one authorized revision. Accept had the same shape one step wide: a `/clear`
 fingerprint write and its `applied` write re-recorded the same residuals. Patching each window with
 its own bespoke check would have kept the defect class alive, because the *next* step added to either
 branch would arrive unguarded by default. The rule the skill states instead inverts the default: every
-step of the follow-through names the on-disk fact its own completion leaves behind, and a resume
-re-enters at the first step whose fact is missing. The facts were already there to be read — the live
-header values against the row's frozen `<M> of <cap>`, the round-`<N>` snapshot the artifacts are
-diffed against anyway, the review log's own `## Round <N+1>` heading, the charter's `**Status:**`,
-and `## Accepted warnings` being a fingerprint *set* rather than an append log — so the rule adds no
-new state, only the discipline of consulting state that already exists. Stop needed no fact at all: it
+step of the follow-through names the durable marker its own completion leaves behind, and a resume
+re-enters at the first step whose marker is missing. The markers were already there to be read — the
+live header values against the row's frozen `<M> of <cap>`, the round-`<N>` snapshots the artifacts are
+diffed against anyway, the growth entries' own `consumed:` field, the review log's `## Round <N+1>`
+heading, the charter's `**Status:**`, and `## Accepted warnings` being a fingerprint *set* rather than
+an append log — so the rule adds no new state, only the discipline of consulting state that already
+exists. That reuse is also why the rule says "marker" rather than coining a fourth word for the thing
+`consumed:`, the round snapshot and the publish ledger already are. Stop needed no marker at all: it
 writes nothing, so it was already idempotent by construction, and the general rule simply names why.
-The one honest residual is a revision whose writer provably changed nothing: it leaves no fact and is
-re-dispatched on resume. That repeats a dispatch, never an outcome — the row's frozen `<M>` still
-pins it to the single revision the operator authorized, and the re-review that follows still runs once.
+
+**Why the dispatch step carries one marker per artifact rather than one for the pair.** The first
+version of this rule gave the whole writer/decomposer dispatch a single marker — "the artifacts differ
+from round `<N>`'s snapshot" — which is wrong in a way that is worse than the replay it prevented. That
+bullet can require *two* conditionally-dependent dispatches: the writer, and then the decomposer
+whenever the writer reports `Scope changed: yes`. That report is conversational; it reaches no
+artifact. So a `/clear` landing after the writer's edit but before the decomposer re-dispatch satisfies
+the compound marker, and a resume skips *both* — carrying an unrevised decomposition into the
+re-review, which is precisely the invalidated pairing that bullet forbids. Silently omitting a required
+dispatch is a correctness defect, where repeating one is only a cost. Splitting the marker per artifact
+(`01_charter.md` against its round snapshot, `02_subtasks.md` against its own) makes the two states
+distinguishable, and the tie-break resolves the one thing the split still cannot recover: with
+`Scope changed:` unavailable at resume, *decomposer marker absent* is ambiguous between "was never
+required" and "was required and never ran", so the rule re-dispatches. It chooses the cost over the
+defect deliberately. The id-diff and `consumed:` marking that follow the dispatch get their own marker
+for the same reason — an unmarked step between two marked ones is a step a resume may skip.
+
+Two residuals are disclosed rather than closed. A revision whose writer provably changed nothing leaves
+no marker and is re-dispatched on resume; and a resume that cannot establish the decomposer's marker
+re-dispatches it even when the straight-through path would not have. Both repeat a dispatch, never an
+outcome — the row's frozen `<M>` still pins the run to the single revision the operator authorized, and
+the re-review that follows still runs exactly once.
 
 The invariant is deliberately *not* stated as "`**Status:**` has left `In review` by the time a branch
 completes." That holds for accept, which converges, but not for extend: after its re-review the
@@ -402,7 +423,7 @@ charter is still `In review` and the loop continues normally, which is the whole
 Nor is it a claim about the row being last in its section — accept always ends the loop and extend's
 fall-through review can converge, so either row can stay permanently last. The invariant that actually
 holds, and the one the rule states, is about completion, not position or status: `applied` means every
-step's fact is on disk.
+step's marker is on disk.
 
 **Why a `choice: stop` row resumes differently from `extend`/`accept`, and why an explicit row shape
 mirrors `## Growth authorizations`'s.** Stop's outcome — ending `CHARTER — Blocked` — is the one branch
