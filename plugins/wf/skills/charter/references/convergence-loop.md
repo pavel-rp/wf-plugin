@@ -268,15 +268,32 @@ the rare case where no cut is possible without dropping acceptance content, so t
 the user explicitly instead of disappearing into an auto-truncation.
 
 **Why the two protected lists are not word-for-word identical.** The writer's list — an outcome, a
-constraint, a non-goal — is `01_charter.md`'s three binding categories, in the spec's own wording.
-The decomposer's list names the `SUB-n` fields that carry the same weight one level down:
-`Desired outcome` and `Out of scope` are the per-slice analogues of the writer's outcome and
-non-goal, and `Acceptance scenarios`, `Constraints`, `Assumptions` and `Verification evidence` are
-the fields a downstream spec-writer reads cold. `Problem slice` and `In scope` are deliberately
-left trimmable: both restate in prose what those protected fields already state bindingly, so
-cutting them costs framing, not content. The two lists mirror each other in *what they protect* —
-every category either role could silently lose — not in their vocabulary, because the two artifacts
-do not have the same fields.
+constraint, an assumption, a non-goal — is `01_charter.md`'s binding categories: the spec's own
+three, plus the `Assumptions & decisions` table, which the writer's own Writing rules and
+checklist row 13 already treat as scope-shaping content ("nothing shapes scope silently"), so a
+trim that could delete an `[unconfirmed]` row would defeat the rule one level up. The decomposer's
+list names the `SUB-n` fields carrying the same weight one level down: `Desired outcome` and
+`Out of scope` are the per-slice analogues of the writer's outcome and non-goal; `Constraints`,
+`Assumptions`, `Acceptance scenarios` and `Verification evidence` are what a downstream
+spec-writer reads cold; and `Covers` and `Depends on` are the traceability fields reviewer checks 1,
+2 and 10 (coverage, orphans, dependency validity) are computed from — losing one would break those
+checks exactly as losing an acceptance scenario breaks checks 3, 7, 8 and 11. What is left
+trimmable is `Problem slice` and `In scope` (plus the one-token `Complexity`, `Type` and `Actor`,
+which have no prose to cut): both restate in prose what the protected fields already state
+bindingly, so cutting them costs framing, not content. The two lists mirror each other in *what
+they protect* — every category either role could silently lose — not in their vocabulary, because
+the two artifacts do not have the same fields.
+
+**Why the three numbers are stated in three role contracts rather than one shared file.** A role
+agent is dispatched in isolation and reads exactly one thing at runtime: its own contract. A
+budget it cannot read is a budget it cannot honor, and this doc — the natural single source of
+truth — is by design never read at runtime. So the writer and decomposer each carry the number
+they must write to, and `charter-reviewer.md` checklist row 15 carries the number that is actually
+enforced. Row 15 is therefore the authoritative one: it is what turns an overrun into a finding,
+and the other two exist so a role aims at the same target rather than discovering it by being
+flagged. The cost is real and accepted — tuning a budget means editing all three together, and
+editing only one silently desyncs the trim target from the enforced check. Anyone changing a
+number changes it in all three files in the same commit.
 
 **Why a successful trim is reported too, not just an irreducible one — and what "reported" means
 here.** The ordinary case — a routed overrun finding gets fixed within budget — should be visible
@@ -285,7 +302,12 @@ than vanishing the moment the fix succeeds. The decomposer already had a generic
 extend. The writer's output contract had no equivalent free-text field — `Charter:`, `Outcomes:`,
 `Scope changed:`, and `Assumptions:` are all narrowly typed — so this slice adds one `Flags:` line
 to `charter-writer.md`'s output contract, used only for `trimmed to size budget: <one line>` (the
-irreducible case keeps using `## Open questions`, unchanged). **This makes the fact visible in the
+irreducible case keeps using `## Open questions`, unchanged). That split is also why the writer
+needs no precedence rule: its two size-budget signals travel different channels and can both be
+emitted from one dispatch. The decomposer's share one single-valued `Flags:` line, so it does need
+one — and `product choice needed` wins it, because that is the message the host acts on
+(`SKILL.md` Phase 3 routes a product choice to the user; a trim report it merely passes through),
+with the trim named inside the same line so neither fact is lost. **This makes the fact visible in the
 subagent's own terminal output for the dispatch that made it — it does not, by itself, make the
 trim durable the way the reviewer's block (appended verbatim to `03_review-log.md`) or a routed
 decomposer `Flags:` entry (read and acted on by `SKILL.md` Phase 3) already are.** Wiring
