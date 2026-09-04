@@ -341,10 +341,11 @@ gate (rule 3) already makes exactly this call for non-blocking findings, so exte
 cap-exhausted blocking residual is a natural reuse, not a new mechanism. *Stop* preserves today's
 behavior as a first-class choice rather than an implicit default, because a cap-exhausted charter is
 sometimes genuinely not converging (a real disagreement no amount of revision resolves) and forcing
-a choice between the other two would misrepresent that. No fourth option was considered: unlike
-rule 1's growth gate — which needs a `pending`/`declined`/`granted` state machine because a
-decomposer flag can be raised and answered on different turns — the cap-gate choice is always made
-in one synchronous ask, so it needs only the three terminal actions, not a lifecycle.
+a choice between the other two would misrepresent that. No fourth option was considered — the
+*decision itself* is always made in one synchronous ask, unlike rule 1's growth gate, which can be
+raised in one turn (a decomposer flag) and answered in a later one. What the cap gate does still
+need, once its *follow-through* is allowed to span a `/clear`, is a small lifecycle over that
+follow-through — see the next two sub-questions.
 
 **Why the host records the choice before acting, not after.** This mirrors SUB-1's snapshot-before-
 dispatch discipline and SUB-2's authorization-before-integration discipline exactly, and for the same
@@ -353,6 +354,33 @@ turn that decided it is invisible to a resumed run. Recording the choice to `03_
 `## Cap-gate decisions` *before* dispatching the extend, finalizing the accept, or stopping means a
 `/clear` between the ask and the follow-through still leaves a durable trace of what was decided —
 the resumed run reads it back rather than re-asking or, worse, guessing.
+
+**Why a `pending`/`applied` marker, given the decision itself is synchronous.** Recording the choice
+*before* acting closes the gap between deciding and starting the follow-through, but it opens a
+narrower one: the follow-through itself — dispatching the extend's revision, or writing the accept's
+fingerprints and status — is not instantaneous, and a `/clear` can land after the row is recorded but
+before that action completes. Without a marker distinguishing "recorded" from "carried out," a
+resumed run reading the row back cannot tell those two moments apart, and would either skip the
+follow-through (if it treated any recorded row as done) or repeat it (if it treated any recorded row
+as still-to-do and the first attempt had actually finished) — silently re-raising `<cap>` a second
+time, or re-fingerprinting the same findings under `## Accepted warnings` twice. This is exactly the
+shape of problem `## Growth authorizations`'s `consumed: yes/no` field already solves one level up
+(SUB-2), and rule 4's own snapshot-write guard solves a third time ("skip it when round N's snapshot
+files already exist") — a resumable action needs a durable done/not-done bit next to it, not just a
+durable record that it was decided. `pending`/`applied` names the same two states with vocabulary
+scoped to this gate: `pending` between recording and completing, `applied` once the branch's action
+has run — checked, and set, in the same rule-4 pass.
+
+**Why an explicit row shape, mirroring `## Growth authorizations`'s.** Two things in rule 4 depend on
+matching a `## Cap-gate decisions` entry mechanically: "an entry already recorded for this exact `<M>
+of <cap>` pair" and the State model's "last entry is a row with `status: pending`." Neither is
+checkable against free text — `## Growth authorizations` faced the identical problem and solved it
+with a fixed row grammar (`- Round <N> | gap: <flag text> | status: pending`), so the cap gate reuses
+that grammar's shape rather than inventing a second one: `- Round <N> | <M> of <cap> | choice:
+extend|accept|stop | status: pending|applied`. The four fields are exactly what rule 4's two checks
+need and nothing more: `<N>` and `<M> of <cap>` together pin the row to one specific cap hit (never
+confused with a later hit at a raised `<cap>`), `choice` says which of the three branches to resume
+into, and `status` is the marker the previous paragraph motivates.
 
 **Why the denominator moves in place rather than a new field.** A new field recording "extensions
 granted" would duplicate what the existing grepped header `Reviews: <N> · Revisions used: <M> of
@@ -387,7 +415,7 @@ extend's revision, or the accept's status write, never completed) and reproduce 
 set that triggered the cap hit in the first place. That identical-set result is exactly what the
 no-progress guard is watching for one rule earlier in Phase 5 — so a naive resume would silently
 convert an already-decided "extend" into a `Needs input` stop, discarding the recorded choice instead
-of honoring it. Checking for an unconsumed `## Cap-gate decisions` entry has to happen *before* Phase
+of honoring it. Checking for a `status: pending` `## Cap-gate decisions` row has to happen *before* Phase
 4 is ever dispatched, which is why the fix lives in the State model (which chooses the next phase)
 rather than only in Phase 5 rule 4 (which a naive resume would never reach with fresh input). The
 follow-through itself needs no new findings to act on: the round that hit the cap already recorded
