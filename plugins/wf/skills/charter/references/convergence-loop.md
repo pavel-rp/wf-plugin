@@ -376,6 +376,34 @@ guard solves a third time ("skip it when round N's snapshot files already exist"
 multi-step action needs a durable done/not-done bit set at its true end, plus an idempotency check on
 any step that could otherwise repeat, not just a durable record that a choice was decided.
 
+**Why the guard is stated once for the whole follow-through rather than per step.** Guarding only the
+`<cap>` raise fixed the widest window and left three narrower ones behind it — a `/clear` after the
+raise but before the increment, after the increment but before the writer/decomposer dispatch, or
+after that dispatch but before the re-review, each resuming into a branch that saw the cap already
+raised and replayed everything downstream of it, spending a second live dispatch and a second review
+for one authorized revision. Accept had the same shape one step wide: a `/clear` between its
+fingerprint write and its `applied` write re-recorded the same residuals. Patching each window with
+its own bespoke check would have kept the defect class alive, because the *next* step added to either
+branch would arrive unguarded by default. The rule the skill states instead inverts the default: every
+step of the follow-through names the on-disk fact its own completion leaves behind, and a resume
+re-enters at the first step whose fact is missing. The facts were already there to be read — the live
+header values against the row's frozen `<M> of <cap>`, the round-`<N>` snapshot the artifacts are
+diffed against anyway, the review log's own `## Round <N+1>` heading, the charter's `**Status:**`,
+and `## Accepted warnings` being a fingerprint *set* rather than an append log — so the rule adds no
+new state, only the discipline of consulting state that already exists. Stop needed no fact at all: it
+writes nothing, so it was already idempotent by construction, and the general rule simply names why.
+The one honest residual is a revision whose writer provably changed nothing: it leaves no fact and is
+re-dispatched on resume. That repeats a dispatch, never an outcome — the row's frozen `<M>` still
+pins it to the single revision the operator authorized, and the re-review that follows still runs once.
+
+The invariant is deliberately *not* stated as "`**Status:**` has left `In review` by the time a branch
+completes." That holds for accept, which converges, but not for extend: after its re-review the
+charter is still `In review` and the loop continues normally, which is the whole point of extending.
+Nor is it a claim about the row being last in its section — accept always ends the loop and extend's
+fall-through review can converge, so either row can stay permanently last. The invariant that actually
+holds, and the one the rule states, is about completion, not position or status: `applied` means every
+step's fact is on disk.
+
 **Why a `choice: stop` row resumes differently from `extend`/`accept`, and why an explicit row shape
 mirrors `## Growth authorizations`'s.** Stop's outcome — ending `CHARTER — Blocked` — is the one branch
 that changes no other state: no `<cap>` raised, no fingerprint written, no `**Status:**` moved. That
@@ -431,4 +459,6 @@ of honoring it. Checking for a `status: pending` `## Cap-gate decisions` row has
 rather than only in Phase 5 rule 4 (which a naive resume would never reach with fresh input). The
 follow-through itself needs no new findings to act on: the round that hit the cap already recorded
 its blocking findings under its own `## Round <N>` heading, so "extend" dispatches a revision against
-that existing record and "accept" fingerprints from it directly — neither branch re-reviews anything.
+that existing record and "accept" fingerprints from it directly. Neither branch re-derives the cap-hit
+round's findings; the Phase-4 dispatch that closes extend's follow-through reviews the *next* round,
+which is the ordinary loop step a spent revision always earns, not a second look at round `<N>`.
