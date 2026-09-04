@@ -164,9 +164,161 @@ half: one true baseline per round, with each authorization still judged on its o
 
 ### SUB-3 — size-budget numbers and the OUT-4 blocking exception
 
-*(reserved — SUB-3 adds the chosen per-SUB and total-line budget numbers and the rationale for why
-a size overrun blocks unconditionally, the one exception to the changed-text rule this slice
-names structurally in `SKILL.md` Phase 5 rule 4 without picking numbers.)*
+**The numbers, and where they come from.** `02_subtasks.md`: 40 lines per `## SUB-n` block, 220
+lines total. `01_charter.md`: 140 lines total. All three are grounded in the corpus rather than a
+headroom-padded guess, but not in the same part of it: the two **total-file** budgets come from the
+converged charters' own ceiling, while the **per-block** figure comes from the runaway files' block
+sizes, because the converged corpus was never measured per block. Measured directly off the four charter folders that reached
+`Converged`, `02_subtasks.md` ran 112 lines (C026), 177 (C027), 198 (C028) and 220 (C025), and
+`01_charter.md` ran 107 (C025), 111 (C028), 121 (C027) and 140 (C026) — a 112–220 and a 107–140
+band respectively. (These are file measurements taken from the corpus itself, not a restatement of
+"The non-convergence pattern" above, which discusses only which rounds came back clean.) Each of
+those two totals is set at the top of the range charters that actually reached `Converged` already
+lived inside — a budget any of those four runs would have passed without a single size-related
+revision. The runaway cases
+(`02_subtasks.md` 1793 lines in C029, 1436 in C030; `01_charter.md` 582 lines in C029) sit well over
+these numbers — roughly 8.15x and 6.53x for the two decompositions, and roughly 4.16x for the
+charter — so both total-file budgets separate the two populations cleanly on every one of those
+three measurements rather than splitting hairs at the margin. The per-SUB-block figure comes from the same bloat data at finer grain, measured
+directly against the on-disk blocks rather than estimated: C029's `02_subtasks.md` has 19 `SUB-n`
+blocks averaging 84.5 lines (range 57–147); C030's has 11 averaging 114.6 lines (range 58–169) —
+combined, roughly 85–115 lines per block even in the two runaway files, well short of what an
+1793-or-1436-line total alone would suggest, because a large share of the bloat sits in the two
+files' `Coverage map`/`Dependency order` prose and inter-block repetition rather than in any single
+block. Measured against `charter-decomposer.md`'s own template, which specifies thirteen required
+fields per block (Covers, Complexity, Type, Depends on, Actor, Problem slice, Desired outcome,
+In scope, Out of scope, Acceptance scenarios, Constraints, Assumptions, Verification evidence), the
+40-line budget still cuts the observed per-block average by more than half (roughly three lines per
+field against the template) — tight enough to force the prose fields back to one or two sentences without
+being so tight that a compliant block becomes unwritable.
+
+**Why the ceiling of the converged range, not its middle or a padded multiple.** This is the
+argument for the two total-file budgets; the per-block figure's own derivation is the paragraph
+above. A budget set at the
+corpus *median* would flag artifacts the loop has already shown can converge, manufacturing findings
+against a population this slice has no evidence is actually too large — the whole point of grounding
+the number in the corpus is to bind the mechanism to observed reality, not to a fresh guess. A budget
+padded well above the ceiling (say, 2x) would still catch the runaway cases but would stop being a
+meaningful signal for anything short of a 2-4x blowout, silently permitting a slow re-drift back
+toward C029/C030-scale bloat one moderately-oversized revision at a time. Setting the number at the
+ceiling itself is the tightest bound the existing evidence supports without contradicting a single
+converged data point.
+
+**Why the 220-line total isn't reconciled against the 7–10 sub-task Count sanity band by raising
+the total.** The decomposer's pre-existing Count sanity guidance (Procedure step 5) sanctions 7–10
+sub-tasks for a multi-actor or rollout-boundary charter; ten bare-template blocks alone (roughly
+21 lines each before real prose) already sit near 210 of the 220-line total, so a legitimately
+wide charter can reach the top of both ranges at once. Raising the total to create headroom for
+that case would undo the corpus grounding above — the fix would no longer bind to what actually
+converged, only to what the largest sanctioned split could need. Instead a charter that reaches
+both ceilings together reports through the same channel as an irreducible per-block overrun
+(`Flags: product choice needed: <one line>`): the choice between a leaner split and an authorized
+overrun is a product decision, not evidence that either number is wrong.
+
+**Why a size-budget trim may cross sub-tasks or sections a routed finding didn't name.** The
+decomposer's revision-mode byte-stability rule and the writer's "no drive-by rewrites" rule both
+exist to stop an *unrelated* finding from causing collateral rewrites elsewhere in the artifact —
+but a **total**-budget overrun is, by definition, a property of the whole file, not of any one
+block or section a reviewer finding could single out (checklist row 15's pass condition is a
+conjunction of the total and every per-block figure). Confining a total-budget trim to only the
+finding's named location would make the total budget unenforceable in exactly the case it exists
+to catch: every individual block within its own cap, the file over its total anyway. The two
+existing rules are therefore stated to bind unrelated findings, and this one is named as the
+exception, not a general licence to rewrite at will.
+
+**Why an overrun blocks unconditionally instead of following the changed-text rule.** WF-551's
+round ≥2 rule blocks a HIGH finding only when the reviewer's snapshot diff marks its section as
+changed — the rule exists because an untouched HIGH is, by construction, one the current revision
+did not introduce and could not have broken (see "Why blocking is CRITICAL-anywhere-or-HIGH-on-
+changed-text, not zero" above). Size does not have that property: `02_subtasks.md` or
+`01_charter.md` can cross its budget through *cumulative* drift across several rounds' worth of
+small, individually-innocuous additions — findings elsewhere in the loop legitimately add a
+qualifying scenario, a constraint, or a clarified edge case round after round — with no single round
+being the one whose diff the snapshot would mark as the offending change. A rule that only blocks on
+changed text would let exactly this drift through indefinitely, reproducing the C029/C030 pattern
+one small, individually-defensible revision at a time. Blocking unconditionally — reading the
+artifact's current line count, never the diff — is therefore the one check in the checklist that
+cannot be a changed-text exception without defeating its own purpose; `charter-reviewer.md` states
+this directly (Mandate section, verification step 3) as a named exception beside the changed-text
+rule, and `SKILL.md` Phase 5 rule 4 already assumed exactly this shape before this slice supplied
+the numbers.
+
+**Why the round-1 half of that is a severity floor rather than a host rule.** The Mandate exception
+alone only reaches round ≥2, because it is worded against the changed-text diff and round 1 has no
+diff to except from. Round 1 is governed instead by `SKILL.md` Phase 5 rules 3 and 4, which read
+*severity* — "no CRITICAL or HIGH" routes to the warnings-only path, where a headless run auto-
+accepts MEDIUM/LOW. A check-15 finding scored MEDIUM or LOW in round 1 would therefore have
+converged with a live overrun in place: the exact drift the check exists to stop. Two fixes were
+available — teach Phase 5 rules 3/4 to read the `blocking:` tag in round 1, or floor check 15's
+severity at HIGH so the rules already there catch it. The floor wins on cost: it is one clause in
+the role contract that already owns severity, against an edit to a host ops doc this slice is
+required not to grow, and it removes rather than adds a contradiction — the Severity section's
+"LOW never blocks on its own" no longer has a check-15 case pulling the other way. It also keeps
+the OUT-4 row exactly the single blocking class outside "CRITICAL anywhere or HIGH on changed text"
+that OUT-1 and OUT-2 name it as, with no second mechanism in the host to keep in sync.
+
+**Why overrun is a finding, never a truncation.** Cutting an artifact by machine to fit a budget
+would silently delete acceptance scenarios, outcomes, constraints, or non-goals with no author in
+the loop to judge whether the cut content was load-bearing — trading one failure mode (bloat) for a
+worse one (silent scope loss no later round would ever detect, since the deleted text leaves no
+trace to review). Routing the overrun as an ordinary reviewer finding keeps a human-legible author
+in the loop: `decomposer`/`charter-writer` trims prose first, and the existing `Flags:` /
+`## Open questions` escape hatch — already wired for `[growth]` and other product choices — carries
+the rare case where no cut is possible without dropping acceptance content, so that decision reaches
+the user explicitly instead of disappearing into an auto-truncation.
+
+**Why the two protected lists are not word-for-word identical.** The writer's list — an outcome, a
+constraint, an assumption, a non-goal — is `01_charter.md`'s binding categories: the spec's own
+three, plus the `Assumptions & decisions` table, which the writer's own Writing rules and
+checklist row 13 already treat as scope-shaping content ("nothing shapes scope silently"), so a
+trim that could delete an `[unconfirmed]` row would defeat the rule one level up. The decomposer's
+list names the `SUB-n` fields carrying the same weight one level down: `Desired outcome` and
+`Out of scope` are the per-slice analogues of the writer's outcome and non-goal; `Constraints`,
+`Assumptions`, `Acceptance scenarios` and `Verification evidence` are what a downstream
+spec-writer reads cold; and `Covers` and `Depends on` are the traceability fields reviewer checks 1,
+2 and 10 (coverage, orphans, dependency validity) are computed from — losing one would break those
+checks exactly as losing an acceptance scenario breaks check 11, whose pass condition names
+observable acceptance directly, and check 1, which is judged on whether a SUB's acceptance
+scenarios actually realize its outcome. What is left
+trimmable is `Problem slice` and `In scope` (plus the one-token `Complexity`, `Type` and `Actor`,
+which have no prose to cut): both restate in prose what the protected fields already state
+bindingly, so cutting them costs framing, not content. The two lists mirror each other in *what
+they protect* — every category either role could silently lose — not in their vocabulary, because
+the two artifacts do not have the same fields.
+
+**Why the three numbers are stated in three role contracts rather than one shared file.** A role
+agent is dispatched in isolation and reads exactly one thing at runtime: its own contract. A
+budget it cannot read is a budget it cannot honor, and this doc — the natural single source of
+truth — is by design never read at runtime. So the writer and decomposer each carry the number
+they must write to, and `charter-reviewer.md` checklist row 15 carries the number that is actually
+enforced. Row 15 is therefore the authoritative one: it is what turns an overrun into a finding,
+and the other two exist so a role aims at the same target rather than discovering it by being
+flagged. The cost is real and accepted — tuning a budget means editing all three together, and
+editing only one silently desyncs the trim target from the enforced check. Anyone changing a
+number changes it in all three files in the same commit.
+
+**Why a successful trim is reported too, not just an irreducible one — and what "reported" means
+here.** The ordinary case — a routed overrun finding gets fixed within budget — should be visible
+somewhere, the same way an irreducible overrun is visible via `Flags:`/`## Open questions`, rather
+than vanishing the moment the fix succeeds. The decomposer already had a generic `Flags:` line to
+extend. The writer's output contract had no equivalent free-text field — `Charter:`, `Outcomes:`,
+`Scope changed:`, and `Assumptions:` are all narrowly typed — so this slice adds one `Flags:` line
+to `charter-writer.md`'s output contract, used only for `trimmed to size budget: <one line>` (the
+irreducible case keeps using `## Open questions`, unchanged). That split is also why the writer
+needs no precedence rule: its two size-budget signals travel different channels and can both be
+emitted from one dispatch. The decomposer's share one single-valued `Flags:` line, so it does need
+one — and `product choice needed` wins it, because that is the message the host acts on
+(`SKILL.md` Phase 3 routes a product choice to the user; a trim report it merely passes through),
+with the trim named inside the same line so neither fact is lost. **This makes the fact visible in the
+subagent's own terminal output for the dispatch that made it — it does not, by itself, make the
+trim durable the way the reviewer's block (appended verbatim to `03_review-log.md`) or a routed
+decomposer `Flags:` entry (read and acted on by `SKILL.md` Phase 3) already are.** Wiring
+`SKILL.md` to read and durably record this new field is out of this slice's touched-file set (its
+constraint scopes `SKILL.md` changes to "ask first"), so that wiring is a deliberate, named,
+deferred gap rather than a silent one — a fast-follow, not a claim this slice already closes.
+Adding a line to a role's grepped output-block shape is exactly the case `CLAUDE.md` §8 reserves
+for a MINOR bump even pre-1.0; this
+slice ships as MINOR rather than PATCH for that reason alone — nothing else in it changes shape.
 
 ### SUB-4 — the cap gate and user-authorized extensions
 

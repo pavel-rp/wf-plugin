@@ -26,13 +26,13 @@ Report every finding you identify, including ones you are uncertain about or con
 
 ## Mandate
 
-**`full-audit`** — run every check below exactly as always: report everything you find, no fix confirmation, no snapshot diff (there is no prior round to diff against). Tag `blocking: yes` for CRITICAL/HIGH and `blocking: no` for MEDIUM/LOW — the same findings that block today, tagged rather than left implicit.
+**`full-audit`** — run every check below exactly as always: report everything you find, no fix confirmation, no snapshot diff (there is no prior round to diff against). Tag `blocking: yes` for CRITICAL/HIGH and `blocking: no` for MEDIUM/LOW — the same findings that block today, tagged rather than left implicit. **Exception:** check 15 (size budget) carries the HIGH severity floor below, so every finding it raises tags `blocking: yes` here too.
 
 **`verification`** — round ≥2, confirming rather than re-discovering:
 
 1. **Confirm routed fixes.** For each finding `03_review-log.md` shows routed to `charter-writer`/`decomposer` in the previous round, check the current artifacts and record it in the Fix confirmation section as landed or not landed.
 2. **Diff against the snapshot.** Compare the current `01_charter.md`/`02_subtasks.md` against the supplied snapshot pair, section heading by section heading — a section counts as **changed** only if its content differs from the snapshot, excluding host-owned metadata lines (`**Status:**`, `**Tracker:**`, `**Adopted umbrella:**`, the publish ledger), so a host edit never itself counts as changed text.
-3. **Run every check as usual**, tagging each finding `blocking: yes` (CRITICAL anywhere, or HIGH on a section the diff marked changed) or `blocking: no` (everything else — an older HIGH on unchanged text, and all MEDIUM/LOW). Non-blocking findings you naturally encounter while auditing are still listed and tagged; you do not hunt for them beyond the normal audit.
+3. **Run every check as usual**, tagging each finding `blocking: yes` (CRITICAL anywhere, or HIGH on a section the diff marked changed) or `blocking: no` (everything else — an older HIGH on unchanged text, and all MEDIUM/LOW). Non-blocking findings you naturally encounter while auditing are still listed and tagged; you do not hunt for them beyond the normal audit. **Exception:** check 15 (size budget) is tagged `blocking: yes` in every round, irrespective of the changed-text diff — an overrun is measured against the artifact's current line count, never read against the snapshot at all.
 4. `## Accepted warnings` handling, the read-only stance, and the fingerprint form are unchanged from `full-audit`.
 
 ## Checklist
@@ -55,6 +55,7 @@ Run every check against the full artifact set. `Route` names who fixes it.
 | 12 | Risk & NFR coverage | Security, migration, performance, rollback concerns raised by the charter have an owning SUB or explicit deferral | charter-writer or decomposer |
 | 13 | Assumption hygiene | Every assumption logged; `[unconfirmed]` ones that shape scope become user questions, not silent defaults | user or charter-writer |
 | 14 | Intake fidelity | Nothing the user said in `00_intake.md` was dropped or contradicted | charter-writer |
+| 15 | Size budget | `02_subtasks.md`: every `## SUB-n` block ≤40 lines and the file ≤220 lines total. `01_charter.md`: ≤140 lines total. Score any finding here under the HIGH severity floor below, and name the offending block (for `02_subtasks.md`) plus the measured vs. allowed size in the finding's `fix:` text. | decomposer (`02_subtasks.md`) / charter-writer (`01_charter.md`) |
 
 ## Severity
 
@@ -62,6 +63,7 @@ Run every check against the full artifact set. `Route` names who fixes it.
 - **HIGH** — materially damages the hand-off: duplicate ownership, untestable acceptance, scope leakage, a SUB too large for one downstream run, a scope-shaping unconfirmed assumption.
 - **MEDIUM** — weakens quality without blocking: terminology drift, a missing edge case, questionable ordering, an unowned risk.
 - **LOW** — wording, formatting, minor redundancy. Never blocks on its own.
+- **Size-budget floor.** Check 15 is never scored below **HIGH**, however small the overrun — the MEDIUM and LOW readings above never apply to it. This is what makes an overrun blocking in round 1 under the host's plain CRITICAL/HIGH rule, exactly as the Mandate's exception makes it blocking in round ≥2.
 
 `route: user` is reserved for genuine product choices with more than one reasonable answer — not for defects an author can fix.
 
