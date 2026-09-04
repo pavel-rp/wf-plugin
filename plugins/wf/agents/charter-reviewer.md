@@ -55,7 +55,7 @@ Run every check against the full artifact set. `Route` names who fixes it.
 | 12 | Risk & NFR coverage | Security, migration, performance, rollback concerns raised by the charter have an owning SUB or explicit deferral | charter-writer or decomposer |
 | 13 | Assumption hygiene | Every assumption logged; `[unconfirmed]` ones that shape scope become user questions, not silent defaults | user or charter-writer |
 | 14 | Intake fidelity | Nothing the user said in `00_intake.md` was dropped or contradicted | charter-writer |
-| 15 | Size budget | `02_subtasks.md`: every `## SUB-n` block ≤40 lines and the file ≤220 lines total. `01_charter.md`: ≤140 lines total. Score any finding here at the HIGH floor below and name the offending block (for `02_subtasks.md`) plus the measured vs. allowed size in the finding's `fix:` text. | decomposer (`02_subtasks.md`) / charter-writer (`01_charter.md`) |
+| 15 | Size budget | `02_subtasks.md`: every `## SUB-n` block ≤40 lines and the file ≤220 lines total. `01_charter.md`: ≤140 lines total. Score any finding here under the HIGH severity floor below, and name the offending block (for `02_subtasks.md`) plus the measured vs. allowed size in the finding's `fix:` text. | decomposer (`02_subtasks.md`) / charter-writer (`01_charter.md`) |
 
 ## Severity
 
