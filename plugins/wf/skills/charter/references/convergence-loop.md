@@ -355,32 +355,43 @@ turn that decided it is invisible to a resumed run. Recording the choice to `03_
 `/clear` between the ask and the follow-through still leaves a durable trace of what was decided —
 the resumed run reads it back rather than re-asking or, worse, guessing.
 
-**Why a `pending`/`applied` marker, given the decision itself is synchronous.** Recording the choice
-*before* acting closes the gap between deciding and starting the follow-through, but it opens a
-narrower one: the follow-through itself — dispatching the extend's revision, or writing the accept's
-fingerprints and status — is not instantaneous, and a `/clear` can land after the row is recorded but
-before that action completes. Without a marker distinguishing "recorded" from "carried out," a
-resumed run reading the row back cannot tell those two moments apart, and would either skip the
-follow-through (if it treated any recorded row as done) or repeat it (if it treated any recorded row
-as still-to-do and the first attempt had actually finished) — silently re-raising `<cap>` a second
-time, or re-fingerprinting the same findings under `## Accepted warnings` twice. This is exactly the
-shape of problem `## Growth authorizations`'s `consumed: yes/no` field already solves one level up
-(SUB-2), and rule 4's own snapshot-write guard solves a third time ("skip it when round N's snapshot
-files already exist") — a resumable action needs a durable done/not-done bit next to it, not just a
-durable record that it was decided. `pending`/`applied` names the same two states with vocabulary
-scoped to this gate: `pending` between recording and completing, `applied` once the branch's action
-has run — checked, and set, in the same rule-4 pass.
+**Why a `pending`/`applied` marker, given the decision itself is synchronous, and why `applied` is
+set only at full completion.** Recording the choice *before* acting closes the gap between deciding
+and starting the follow-through, but it opens a narrower one: the follow-through itself — dispatching
+the extend's revision (cap raise, snapshot, writer/decomposer dispatch, and re-review), or writing the
+accept's fingerprints and status — is not instantaneous, and a `/clear` can land partway through it.
+An early implementation of this gate learned this the hard way: marking `applied` right after the
+raise (extend's *first* step, not its last) meant a `/clear` landing between the raise and the
+completed revision spend left a `pending`-only check with nothing to resume into, since the row
+already read `applied`. The fix is to mark `applied` only once the *entire* branch outcome is
+reached — after extend's re-review dispatch, not its raise; after accept's fingerprints and status
+write, both. That still leaves the raise itself needing its own idempotency, independent of the row's
+status, because a resumed `pending` row must re-enter the extend branch without re-raising a `<cap>`
+it already raised: the row freezes `<M> of <cap>` at the values read when it was created, so comparing
+that frozen `<cap>` against the header's *current* `<cap>` at resume time tells the branch directly
+whether the raise already ran (current exceeds frozen) or still needs to (it doesn't) — a live check
+that needs no separate marker of its own. This is the same shape of problem `## Growth
+authorizations`'s `consumed: yes/no` field solves one level up (SUB-2), and rule 4's own snapshot-write
+guard solves a third time ("skip it when round N's snapshot files already exist") — a resumable,
+multi-step action needs a durable done/not-done bit set at its true end, plus an idempotency check on
+any step that could otherwise repeat, not just a durable record that a choice was decided.
 
-**Why an explicit row shape, mirroring `## Growth authorizations`'s.** Two things in rule 4 depend on
-matching a `## Cap-gate decisions` entry mechanically: "an entry already recorded for this exact `<M>
-of <cap>` pair" and the State model's "last entry is a row with `status: pending`." Neither is
-checkable against free text — `## Growth authorizations` faced the identical problem and solved it
-with a fixed row grammar (`- Round <N> | gap: <flag text> | status: pending`), so the cap gate reuses
-that grammar's shape rather than inventing a second one: `- Round <N> | <M> of <cap> | choice:
-extend|accept|stop | status: pending|applied`. The four fields are exactly what rule 4's two checks
-need and nothing more: `<N>` and `<M> of <cap>` together pin the row to one specific cap hit (never
-confused with a later hit at a raised `<cap>`), `choice` says which of the three branches to resume
-into, and `status` is the marker the previous paragraph motivates.
+**Why a `choice: stop` row resumes differently from `extend`/`accept`, and why an explicit row shape
+mirrors `## Growth authorizations`'s.** Stop's outcome — ending `CHARTER — Blocked` — is the one branch
+that changes no other state: no `<cap>` raised, no fingerprint written, no `**Status:**` moved. That
+makes it safe to re-emit on every resume rather than needing a one-time completion to guard, unlike
+extend and accept, whose actions must not run twice. So the State model routes on `status: pending`
+(an interrupted extend/accept, or a stop not yet emitted) *or* `choice: stop` regardless of status
+(an already-emitted stop, re-emitted identically) — the two are different resume shapes for the same
+underlying reason: neither can be satisfied by falling through to a fresh Phase 4 review. Making any
+of this mechanically checkable needs a fixed row grammar — `## Growth authorizations` faced the
+identical problem and solved it with `- Round <N> | gap: <flag text> | status: pending`, so the cap
+gate reuses that grammar's fully-labeled shape rather than inventing a second one: `- Round <N> |
+revision: <M> of <cap> | choice: extend|accept|stop | status: pending|applied`. The four fields are
+exactly what rule 4 and the State model need and nothing more: `<N>` and the frozen `revision: <M> of
+<cap>` together pin the row to one specific cap hit (never confused with a later hit at a raised
+`<cap>`) and supply the idempotency check the paragraph above describes, `choice` says which branch
+to resume or re-emit, and `status` is the completion marker.
 
 **Why the denominator moves in place rather than a new field.** A new field recording "extensions
 granted" would duplicate what the existing grepped header `Reviews: <N> · Revisions used: <M> of
