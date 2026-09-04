@@ -95,7 +95,7 @@ Derive the next step from the folder contents — never from conversation memory
 | Charter `**Status:** Converged`, publish incomplete | Phase 6 (publish/retry) |
 | Charter `**Status:** Published` | Done — re-emit the final block |
 
-The review/revision counters live in `03_review-log.md`'s header line (`Reviews: <N> · Revisions used: <M> of 3`), not in memory. In tracker mode the **publish ledger** — the charter's `**Tracker:**` line and `02_subtasks.md` `## Published ids` — is likewise the source of truth for what has already been published, so a `Converged, publish incomplete` resume replays Phase 6 idempotently.
+The review/revision counters live in `03_review-log.md`'s header line (`Reviews: <N> · Revisions used: <M> of <cap>`), not in memory. In tracker mode the **publish ledger** — the charter's `**Tracker:**` line and `02_subtasks.md` `## Published ids` — is likewise the source of truth for what has already been published, so a `Converged, publish incomplete` resume replays Phase 6 idempotently.
 
 ---
 
@@ -161,7 +161,7 @@ Same shape — invoke the **Task** tool, `subagent_type: wf:charter-decomposer`:
 
 ### Phase 4 — Dispatch the reviewer
 
-Immediately before each reviewer execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role:
+**Determine this round's mandate** before dispatch: `full-audit` for round 1, or when `03_review-log.md` records no prior mandate/snapshot for this charter (the in-flight-folder fallback below); `verification` otherwise — for `verification`, also resolve the prior-round snapshot pair's paths: `{charter-folder}/snapshots/01_charter.round-<N-1>.md`, `02_subtasks.round-<N-1>.md`. Immediately before each reviewer execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role:
 "charter-reviewer"`, `unitIds: ["charter:reviewer"]`, `shapeEvidence: { workSurface: "external-context", atomicity:
 "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk:
 "elevated", toolWork: "bounded", validation: "judgment", contextIsolation: "required",
@@ -175,21 +175,21 @@ existing revision cap.
 
 Invoke the **Task** tool, `subagent_type: wf:charter-reviewer`:
 
-> Charter folder: `<abs-folder>`. Round: `<N>`. Return only the final block your role contract defines.
+> Charter folder: `<abs-folder>`. Round: `<N>`. Mandate: `<full-audit|verification>`. For `verification`, also: snapshot pair `<the two resolved paths>`. Return only the final block your role contract defines.
 
-Before the first review of a run, set the charter's `**Status:** In review` (a permitted host edit). Append the returned block verbatim to `03_review-log.md` under a `## Round <N> — <date>` heading with an `**Audited by:**` line taken from the block's `Model:` field (create the file on the first review with the header `Reviews: <N> · Revisions used: <M> of 3`). `Reviews:` increments on every review; `Revisions used:` counts only revision dispatches (Phase 5).
+Before the first review of a run, set the charter's `**Status:** In review` (a permitted host edit). Append the returned block verbatim to `03_review-log.md` under a `## Round <N> — <date>` heading with an `**Audited by:**` line taken from the block's `Model:` field and a `**Mandate:** <full-audit|verification>` line (create the file on the first review with the header `Reviews: <N> · Revisions used: <M> of <cap>`). `Reviews:` increments on every review; `Revisions used:` counts only revision dispatches (Phase 5).
 
 ### Phase 5 — Route and converge (host logic, deterministic)
 
 Apply these rules to the reviewer's findings, in order:
 
-1. **Questions first.** Any `route: user` finding or `Questions for user` entry → ask now via `AskUserQuestion` (one at a time, options included) and append answers to `00_intake.md` `## Clarifications`. Asking is free, but integration is not optional: if an answer changes the charter or the split, dispatch the writer (revision) with the answers — and the decomposer after it if `Scope changed: yes` or the answer reshapes the split — then re-review; that integration pass counts as a revision. Evaluate rules 2–4 only when no unintegrated answers remain. **Headless run:** any `route: user` finding ends the run at `CHARTER — Needs input` instead of a prompt.
+1. **Questions first.** Any `route: user` finding or `Questions for user` entry → ask now via `AskUserQuestion` (one at a time, options included) and append answers to `00_intake.md` `## Clarifications`. Asking is free, but integration is not optional: if an answer changes the charter or the split, snapshot the round just reviewed (the write below), then dispatch the writer (revision) with the answers — and the decomposer after it if `Scope changed: yes` or the answer reshapes the split — then re-review; that integration pass counts as a revision. Evaluate rules 2–4 only when no unintegrated answers remain. **Headless run:** any `route: user` finding ends the run at `CHARTER — Needs input` instead of a prompt.
 2. **Clean.** Zero findings → mark `**Status:** Converged` in the charter and go to Phase 6.
-3. **Warnings only** (no CRITICAL or HIGH after user answers are folded in) → present the MEDIUM/LOW findings to the user via `AskUserQuestion`: *accept as-is* → record their fingerprints under `## Accepted warnings` in the review log, mark `Converged` (final status `Converged with warnings`), go to Phase 6; *spend a round fixing them* → treat as blocking below. LOW findings never force a round on their own. (Headless: accept warnings as-is by default and record them, so the run still converges.)
-4. **Blocking findings** (CRITICAL/HIGH routed to `charter-writer` or `decomposer`):
+3. **Warnings only** (round 1: no CRITICAL or HIGH after user answers are folded in; round ≥2: every residual finding tagged `blocking: no`) → present the non-blocking findings to the user via `AskUserQuestion`: *accept as-is* → record their fingerprints under `## Accepted warnings` in the review log, mark `Converged` (final status `Converged with warnings`), go to Phase 6; *spend a round fixing them* → treat as blocking below. LOW findings never force a round on their own. **Headless:** MEDIUM/LOW auto-accept as-is by default and are recorded, so the run converges; a residual non-blocking HIGH instead ends `CHARTER — Needs input` — it is never silently accepted.
+4. **Blocking findings** (round 1: CRITICAL/HIGH routed to `charter-writer` or `decomposer`; round ≥2: `blocking: yes` — CRITICAL anywhere, HIGH on a section the reviewer's snapshot diff marked changed, or the OUT-4 size-budget-overrun checklist row (SUB-3), which blocks in every round irrespective of the changed-text rule):
    - **No-progress guard:** fingerprint each blocking finding as `route|check|artifact-section`. If the blocking set is identical to the previous round's, stop with `CHARTER — Needs input` and show both rounds — more loops won't fix a disagreement.
    - **Round cap:** if `Revisions used` is already 3, stop with `CHARTER — Blocked` (max rounds), listing the residual findings. Never claim convergence because retries ran out.
-   - Otherwise spend a revision (increment `Revisions used`): if any blocking finding routes to `charter-writer`, dispatch the writer (Phase 2, revision) with those findings; if the writer reports `Scope changed: yes`, always re-dispatch the decomposer (Phase 3, revision) afterwards — a changed charter invalidates the decomposition. If findings route only to `decomposer`, dispatch it alone. Then re-review the **full artifact set** (Phase 4) — consistency is a cross-artifact property; never re-review only the patched part.
+   - Otherwise spend a revision (increment `Revisions used`): first write the round-just-reviewed snapshot — the current on-disk `01_charter.md`/`02_subtasks.md` to `{charter-folder}/snapshots/01_charter.round-<N>.md` / `02_subtasks.round-<N>.md` (`N` = the round just reviewed) — this is what round `N+1`'s reviewer diffs against. Then, if any blocking finding routes to `charter-writer`, dispatch the writer (Phase 2, revision) with those findings; if the writer reports `Scope changed: yes`, always re-dispatch the decomposer (Phase 3, revision) afterwards — a changed charter invalidates the decomposition. If findings route only to `decomposer`, dispatch it alone. Then re-review the **full artifact set** (Phase 4) — consistency is a cross-artifact property; never re-review only the patched part.
 
 ### Phase 6 — Publish (at convergence only)
 
@@ -197,9 +197,7 @@ Publish runs **once, only after the loop has converged** (Phase 5 rule 2/3 has s
 
 #### Direct provider resolution (how the tracker ops are reached)
 
-Reuse the absolute `workspaceRoot` captured in Prerequisites for every operation below.
-
-Every operation below (`get`, `create_umbrella`, `create_child`, `update`, `list_children`, `post_comment`) is reached via the identical **direct provider resolution** procedure `invocation-runtime.ops.md` §"Direct provider resolution" defines — core names only the abstract operations, never a tracker. Resolve the `tracker` surface through the bundled `wf-resolver` MCP `resolve_provider({ workspaceRoot, surface: "tracker" })` query, which returns the run-scoped record `{ surface, owner, fragmentPath, state, degradation, diagnostics }`; then obtain each op's body through the resolver's `resolve_content({ workspaceRoot, ... })` content surface (`class: fragment`, keyed on the record's `owner` and its registry-relative fragment `ref` — the locator the record carries; its `fragmentPath` field shows that `ref`'s shape) and follow it in this skill's own context to dispatch the operation. A resolved locator is never opened directly — the body always comes from `resolve_content({ workspaceRoot, ... })`. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse the registry as a fallback.
+Reusing the absolute `workspaceRoot` captured in Prerequisites, every operation below (`get`, `create_umbrella`, `create_child`, `update`, `list_children`, `post_comment`) reaches the `tracker` surface via the identical direct provider resolution procedure `invocation-runtime.ops.md` §"Direct provider resolution" defines — core names only the abstract operations, never a tracker: resolve via `resolve_provider({ workspaceRoot, surface: "tracker" })`, obtain each op's body via `resolve_content({ workspaceRoot, ... })` (`class: fragment`, keyed on the returned record's `owner`/fragment `ref`) and follow it in this skill's own context — never a raw `Read`. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded.
 
 **Ledger precedence — a started publish never switches arms.** Read the ledger first: if the charter's `**Tracker:**` line already holds a real umbrella id, or the intake carries an `**Adopted umbrella:**` marker, this charter is **committed to tracker mode** — take the **TRACKER** arm regardless of the current `state`. If that surface now resolves `unconfigured`/`unrecoverable`, do **not** fall back to LOCAL-ONLY (minting local task folders would duplicate the already-published umbrella/children and orphan the ledger): stop with `CHARTER — Blocked` (`Next: /wf:charter <charter-id>`), naming the unpublished sub-tasks and directing the user to restore the tracker provider and retry. LOCAL-ONLY applies **only** when the ledger shows no tracker publish has started (no umbrella id, no adoption marker).
 
@@ -248,6 +246,7 @@ The **ledger** — two local fields that make publish idempotent and resumable �
 - **Idea still vague after 5 questions:** proceed; the writer logs assumptions, the reviewer's assumption-hygiene check routes material ones back to the user. Never refuse the input.
 - **Role subagent errors, returns an unexpected shape, or its artifact is absent afterwards:** halt with `CHARTER — Blocked` and the evidence. Do not redo its work inline.
 - **Reviewer round produces the same blocking set twice:** `CHARTER — Needs input` (no-progress guard) — the disagreement needs a human.
+- **In-flight folder with no recorded mandate/snapshot** (an existing `03_review-log.md` from before this mechanism, resumed at round ≥2): Phase 4 falls back to the `full-audit` mandate for that round — equivalent to treating the whole artifact set as changed text, since `full-audit` reports and blocks on raw severity with no diff step. From that round on the host snapshots and records the mandate normally, so the fallback fires at most once per folder.
 - **Rounds exhausted with blocking findings:** `CHARTER — Blocked`, residual findings listed, artifacts preserved. Not a success.
 - **Charter folder already exists for this id:** resume per the State model; never start over silently.
 - **Adoption fetch of an explicit tracker id fails:** stop with `CHARTER — Blocked` naming the failed `get` and the id — never degrade an explicit id to a feature description.
