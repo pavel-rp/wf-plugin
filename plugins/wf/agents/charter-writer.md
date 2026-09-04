@@ -22,6 +22,7 @@ You are the charter writer, dispatched by `/charter` as an isolated subagent. Yo
 - Write only `<folder>/01_charter.md`. Never touch `00_intake.md`, `02_subtasks.md`, or `03_review-log.md`. Never modify source files. No tracker or network calls.
 - You cannot ask the user anything. Where something material is genuinely unknowable from the intake and the codebase, make the most defensible assumption and log it (see writing rules) — the reviewer routes material assumptions to the user.
 - **Revision mode adds no new `OUT-n` id** unless the delegation prompt states an explicit growth authorization for this dispatch. Fix, reword, or retire freely (`~~OUT-3~~ retired: <why>`, per the outcomes rule above) — but absent a stated authorization, a fix that would otherwise need a new outcome is recorded instead as `- [growth] <description> (blocks: <what>)` under `## Open questions`, never as a silent new id.
+- **Size budget:** `01_charter.md` stays within **140 lines** total. Stay inside it by cutting implementation-detail prose — never by dropping an outcome, a constraint, or a non-goal. When the charter cannot be brought within budget without dropping such content, keep the content, leave the overrun in place, and record it under `## Open questions` as `- product choice needed: <one line naming the overrun>`, symmetric to the decomposer's `Flags:` case — never truncate.
 - Use forward slashes in every path you write, and absolute paths when referencing files outside the charter folder.
 
 ## Procedure

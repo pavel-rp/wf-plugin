@@ -164,9 +164,58 @@ half: one true baseline per round, with each authorization still judged on its o
 
 ### SUB-3 — size-budget numbers and the OUT-4 blocking exception
 
-*(reserved — SUB-3 adds the chosen per-SUB and total-line budget numbers and the rationale for why
-a size overrun blocks unconditionally, the one exception to the changed-text rule this slice
-names structurally in `SKILL.md` Phase 5 rule 4 without picking numbers.)*
+**The numbers, and where they come from.** `02_subtasks.md`: 40 lines per `## SUB-n` block, 220
+lines total. `01_charter.md`: 140 lines total. All three are the corpus's own converged ceiling,
+not a headroom-padded guess: C025–C028 decompositions converged at 112–220 lines total and their
+charters at 107–140 lines total (see "The non-convergence pattern" above), so each budget is set at
+the top of the range charters that actually reached `Converged` already lived inside — a budget any
+of those four runs would have passed without a single size-related revision. The runaway cases
+(`02_subtasks.md` 1793 lines in C029, 1436 in C030; `01_charter.md` 582 lines in C029) sit 6–8x over
+these numbers, so the budget separates the two populations cleanly rather than splitting hairs at
+the margin. The per-SUB-block figure comes from the same bloat data at finer grain: C029/C030
+averaged roughly 150–180 lines per SUB block against `charter-decomposer.md`'s own template, which
+specifies about ten required fields per block (Covers, Complexity, Type, Depends on, Actor, Problem
+slice, Desired outcome, In/Out of scope, Acceptance scenarios, Constraints, Assumptions,
+Verification evidence) — 40 lines gives roughly four lines per field, enough for the template's
+prose fields to stay one to a few sentences without inviting the implementation-detail sprawl that
+produced the 150–180 line blocks.
+
+**Why the ceiling of the converged range, not its middle or a padded multiple.** A budget set at the
+corpus *median* would flag artifacts the loop has already shown can converge, manufacturing findings
+against a population this slice has no evidence is actually too large — the whole point of grounding
+the number in the corpus is to bind the mechanism to observed reality, not to a fresh guess. A budget
+padded well above the ceiling (say, 2x) would still catch the runaway cases but would stop being a
+meaningful signal for anything short of a 2-4x blowout, silently permitting a slow re-drift back
+toward C029/C030-scale bloat one moderately-oversized revision at a time. Setting the number at the
+ceiling itself is the tightest bound the existing evidence supports without contradicting a single
+converged data point.
+
+**Why an overrun blocks unconditionally instead of following the changed-text rule.** WF-551's
+round ≥2 rule blocks a HIGH finding only when the reviewer's snapshot diff marks its section as
+changed — the rule exists because an untouched HIGH is, by construction, one the current revision
+did not introduce and could not have broken (see "Why blocking is CRITICAL-anywhere-or-HIGH-on-
+changed-text, not zero" above). Size does not have that property: `02_subtasks.md` or
+`01_charter.md` can cross its budget through *cumulative* drift across several rounds' worth of
+small, individually-innocuous additions — findings elsewhere in the loop legitimately add a
+qualifying scenario, a constraint, or a clarified edge case round after round — with no single round
+being the one whose diff the snapshot would mark as the offending change. A rule that only blocks on
+changed text would let exactly this drift through indefinitely, reproducing the C029/C030 pattern
+one small, individually-defensible revision at a time. Blocking unconditionally — reading the
+artifact's current line count, never the diff — is therefore the one check in the checklist that
+cannot be a changed-text exception without defeating its own purpose; `charter-reviewer.md` states
+this directly (Mandate section, verification step 3) as a named exception beside the changed-text
+rule, and `SKILL.md` Phase 5 rule 4 already assumed exactly this shape before this slice supplied
+the numbers.
+
+**Why overrun is a finding, never a truncation.** Cutting an artifact by machine to fit a budget
+would silently delete acceptance scenarios, outcomes, constraints, or non-goals with no author in
+the loop to judge whether the cut content was load-bearing — trading one failure mode (bloat) for a
+worse one (silent scope loss no later round would ever detect, since the deleted text leaves no
+trace to review). Routing the overrun as an ordinary reviewer finding keeps a human-legible author
+in the loop: `decomposer`/`charter-writer` trims prose first, and the existing `Flags:` /
+`## Open questions` escape hatch — already wired for `[growth]` and other product choices — carries
+the rare case where no cut is possible without dropping acceptance content, so that decision reaches
+the user explicitly instead of disappearing into an auto-truncation.
 
 ### SUB-4 — the cap gate and user-authorized extensions
 

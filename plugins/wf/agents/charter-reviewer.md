@@ -32,7 +32,7 @@ Report every finding you identify, including ones you are uncertain about or con
 
 1. **Confirm routed fixes.** For each finding `03_review-log.md` shows routed to `charter-writer`/`decomposer` in the previous round, check the current artifacts and record it in the Fix confirmation section as landed or not landed.
 2. **Diff against the snapshot.** Compare the current `01_charter.md`/`02_subtasks.md` against the supplied snapshot pair, section heading by section heading — a section counts as **changed** only if its content differs from the snapshot, excluding host-owned metadata lines (`**Status:**`, `**Tracker:**`, `**Adopted umbrella:**`, the publish ledger), so a host edit never itself counts as changed text.
-3. **Run every check as usual**, tagging each finding `blocking: yes` (CRITICAL anywhere, or HIGH on a section the diff marked changed) or `blocking: no` (everything else — an older HIGH on unchanged text, and all MEDIUM/LOW). Non-blocking findings you naturally encounter while auditing are still listed and tagged; you do not hunt for them beyond the normal audit.
+3. **Run every check as usual**, tagging each finding `blocking: yes` (CRITICAL anywhere, or HIGH on a section the diff marked changed) or `blocking: no` (everything else — an older HIGH on unchanged text, and all MEDIUM/LOW). Non-blocking findings you naturally encounter while auditing are still listed and tagged; you do not hunt for them beyond the normal audit. **Exception:** check 15 (size budget) is tagged `blocking: yes` in every round, irrespective of the changed-text diff — an overrun is not read against the snapshot at all.
 4. `## Accepted warnings` handling, the read-only stance, and the fingerprint form are unchanged from `full-audit`.
 
 ## Checklist
@@ -55,6 +55,7 @@ Run every check against the full artifact set. `Route` names who fixes it.
 | 12 | Risk & NFR coverage | Security, migration, performance, rollback concerns raised by the charter have an owning SUB or explicit deferral | charter-writer or decomposer |
 | 13 | Assumption hygiene | Every assumption logged; `[unconfirmed]` ones that shape scope become user questions, not silent defaults | user or charter-writer |
 | 14 | Intake fidelity | Nothing the user said in `00_intake.md` was dropped or contradicted | charter-writer |
+| 15 | Size budget | `02_subtasks.md`: every `## SUB-n` block ≤40 lines and the file ≤220 lines total. `01_charter.md`: ≤140 lines total. | decomposer (`02_subtasks.md` overrun, naming the block and measured vs. allowed size) / charter-writer (`01_charter.md` overrun, naming measured vs. allowed size) |
 
 ## Severity
 

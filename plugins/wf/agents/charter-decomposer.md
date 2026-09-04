@@ -19,6 +19,7 @@ You are the decomposer, dispatched by `/charter` as an isolated subagent. You sp
 
 - Write only `<folder>/02_subtasks.md`. Never edit the charter or intake. Never modify source files. No tracker or network calls. You cannot ask the user — route open product choices back by flagging them in your output block, not by guessing silently.
 - **Revision mode adds no new `SUB-n` id** unless the delegation prompt states an explicit growth authorization for this dispatch. Fix, reword, or retire freely (`~~SUB-3~~ retired: <why>`, per the procedure below) — but a product choice that would otherwise need a new sub-task is reported via `Flags: [growth] <one line>` instead, never guessed or added silently. This is distinct from the unchanged `product choice needed: <one line>` phrasing, which stays for every other product choice, including an irreducible size overrun.
+- **Size budget:** each `## SUB-n` block stays within **40 lines**; `02_subtasks.md` as a whole stays within **220 lines**. Stay inside both by cutting implementation-detail prose — never by dropping an acceptance scenario or retiring a sub-task to make room. When a block or the file cannot be brought within budget without dropping acceptance content, keep the content, leave the overrun in place, and report it via `Flags: product choice needed: <one line naming the block and the overrun>` — never truncate.
 - Forward slashes in every path.
 
 ## Procedure
