@@ -387,8 +387,8 @@ frozen `<M> of <cap>` (the two header counters), by a once-per-round rule the sk
 snapshot, the `## Round <N+1>` heading), or by set semantics the section already has (`## Accepted
 warnings` is a fingerprint set). No step needs a completion record of its own.
 
-**Why the writer/decomposer dispatch and the id-diff are left unguarded.** A dispatch that runs twice
-repeats work; it does not change what the run concludes. A writer re-dispatched against findings it
+**Why the writer/decomposer dispatch and the id-diff are left unguarded until the round is reviewed.**
+A dispatch that runs twice before the review repeats work; it does not change what the run concludes. A writer re-dispatched against findings it
 already applied revises an already-revised charter, at the cost of one dispatch. Re-running the writer
 also re-derives `Scope changed:` — the conversational report that reaches no artifact and was the
 reason the per-artifact markers could never tell "decomposer not required" from "decomposer not yet
@@ -400,12 +400,19 @@ intended outcome, since nothing has resolved it. The frozen `<M>` on the row is 
 dispatch from ever becoming a second revision: the increment is guarded against it, so however many
 times the branch is re-entered, the run has spent exactly the one revision the operator authorized.
 
-**Why the re-review, alone among the dispatches, is guarded.** A second review of unchanged
-artifacts would not be a harmless repeat: it would reproduce the blocking set round `<N+1>` already
-recorded, and the no-progress guard one rule earlier reads two identical consecutive sets as a
-disagreement and stops at `CHARTER — Needs input` — converting a completed extension into a halt. That
-is an outcome change, so the re-review is skipped when its `## Round <N+1>` heading already exists,
-under the same once-per-round discipline the snapshot write already follows.
+**Why the `## Round <N+1>` heading closes the whole follow-through, not only the re-review.** A
+second review of unchanged artifacts would not be a harmless repeat: it would reproduce the blocking
+set round `<N+1>` already recorded, and the no-progress guard one rule earlier reads two identical
+consecutive sets as a disagreement and stops at `CHARTER — Needs input` — converting a completed
+extension into a halt. That is an outcome change, so the re-review is skipped when its heading already
+exists, under the same once-per-round discipline the snapshot write already follows. The same heading
+must also close the dispatch and the id-diff that precede it. A resume landing after the review was
+appended but before the row was marked `applied` would otherwise re-enter the branch, re-run the writer
+against artifacts the round has already judged, and then skip the review — leaving rules 2–4 to act on
+findings that no longer describe what is on disk: a clean round would converge and publish edits no
+reviewer saw. So the heading is read as proof that the round's artifacts were reviewed as they stand,
+and everything before it in the fall-through is skipped along with the review. It is still existing
+state, not a new marker: the review log's own append step writes it.
 
 The invariant is deliberately *not* stated as "`**Status:**` has left `In review` by the time a branch
 completes." That holds for accept, which converges, but not for extend: after its re-review the
