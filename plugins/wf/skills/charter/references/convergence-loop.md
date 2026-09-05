@@ -355,75 +355,65 @@ turn that decided it is invisible to a resumed run. Recording the choice to `03_
 `/clear` between the ask and the follow-through still leaves a durable trace of what was decided —
 the resumed run reads it back rather than re-asking or, worse, guessing.
 
-**Why a `pending`/`applied` marker, given the decision itself is synchronous, and why `applied` is
-set only at full completion.** Recording the choice *before* acting closes the gap between deciding
-and starting the follow-through, but it opens a narrower one: the follow-through itself — dispatching
-the extend's revision (cap raise, snapshot, writer/decomposer dispatch, and re-review), or writing the
-accept's fingerprints and status — is not instantaneous, and a `/clear` can land partway through it.
-An early implementation of this gate learned this the hard way: marking `applied` right after the
-raise (extend's *first* step, not its last) meant a `/clear` landing between the raise and the
-completed revision spend left a `pending`-only check with nothing to resume into, since the row
-already read `applied`. The fix is to mark `applied` only once the *entire* branch outcome is
-reached — after extend's re-review dispatch, not its raise; after accept's fingerprints and status
-write, both. That still leaves the raise itself needing its own idempotency, independent of the row's
-status, because a resumed `pending` row must re-enter the extend branch without re-raising a `<cap>`
-it already raised: the row freezes `<M> of <cap>` at the values read when it was created, so comparing
-that frozen `<cap>` against the header's *current* `<cap>` at resume time tells the branch directly
-whether the raise already ran (current exceeds frozen) or still needs to (it doesn't) — a live check
-that needs no separate marker of its own. This is the same shape of problem `## Growth
-authorizations`'s `consumed: yes/no` field solves one level up (SUB-2), and rule 4's own snapshot-write
-guard solves a third time ("skip it when round N's snapshot files already exist") — a resumable,
-multi-step action needs a durable done/not-done bit set at its true end, plus an idempotency check on
-any step that could otherwise repeat, not just a durable record that a choice was decided.
+**Why a `pending`/`applied` status, and why `applied` is set only at full completion.** Recording
+the choice *before* acting closes the gap between deciding and starting the follow-through, but it
+opens a narrower one: the follow-through itself — dispatching the extend's revision (cap raise,
+increment, snapshot, writer/decomposer dispatch, id-diff, re-review), or writing the accept's
+fingerprints and status — is not instantaneous, and a `/clear` can land partway through it. An early
+implementation of this gate learned this the hard way: marking `applied` right after the raise
+(extend's *first* step, not its last) meant a `/clear` landing between the raise and the completed
+revision spend left a `pending`-only check with nothing to resume into, since the row already read
+`applied`. So `applied` is written only once the *entire* branch outcome is reached — after extend's
+re-review has been appended, after accept's fingerprints and status write, both. Until then the row
+reads `pending`, and a resume re-enters the branch.
 
-**Why the guard is stated once for the whole follow-through rather than per step.** Guarding only the
-`<cap>` raise fixed the widest window and left three narrower ones behind it — a `/clear` after the
-raise but before the increment, after the increment but before the writer/decomposer dispatch, or
-after that dispatch but before the re-review, each resuming into a branch that saw the cap already
-raised and replayed everything downstream of it, spending a second live dispatch and a second review
-for one authorized revision. Accept had the same shape one step wide: a `/clear` between its
-fingerprint write and its `applied` write re-recorded the same residuals. Patching each window with
-its own bespoke check would have kept the defect class alive, because the *next* step added to either
-branch would arrive unguarded by default. The rule the skill states instead inverts the default: every
-step of the follow-through names the durable marker its own completion leaves behind, and a resume
-re-enters at the first step whose marker is missing. The markers were already there to be read — the
-live header values against the row's frozen `<M> of <cap>`, the round-`<N>` snapshots the artifacts are
-diffed against anyway, the growth entries' own `consumed:` field, the review log's `## Round <N+1>`
-heading, the charter's `**Status:**`, and `## Accepted warnings` being a fingerprint *set* rather than
-an append log — so the rule adds no new state, only the discipline of consulting state that already
-exists. That reuse is also why the rule says "marker" rather than coining a fourth word for the thing
-`consumed:`, the round snapshot and the publish ledger already are. Stop needed no marker at all: it
-writes nothing, so it was already idempotent by construction, and the general rule simply names why.
+**Why a resume re-runs the branch, guarding only counters and sets, rather than resuming at the
+first incomplete step.** The obvious alternative — every step of the follow-through names a durable
+marker its own completion leaves behind, and a resume skips each step whose marker is present — was
+built first and abandoned, because the markers themselves became the defect surface. Each one needed
+a definition precise enough to be mechanically checkable, and across six audit rounds each definition
+in turn was found wanting: a single marker for the writer/decomposer pair could not tell "writer ran"
+from "writer and decomposer ran", so a resume could skip a required decomposer; a marker derived from
+the round's `## Growth authorizations` entries was vacuously true whenever the round minted none, the
+ordinary case; and a marker line the id-diff wrote itself was a new piece of state with its own
+lifecycle to get right, contradicting the rule's own claim that it added none. Every fix to one
+definition exposed the next. The property the spec actually asks for is narrower: a recorded choice
+is honored on resume without re-asking, and one authorized extension yields one extra revision. That
+property needs only two things — the recorded row, and a guard on every step that would *change an
+outcome* if it ran twice. Those steps are exactly the ones that move a counter or a set: the `<cap>`
+raise, the `Revisions used` increment, the round snapshot, the re-review, and the accepted-warnings
+fingerprint write. Each is guarded by comparing live state the loop already keeps against the row's
+frozen `<M> of <cap>` (the two header counters), by a once-per-round rule the skill already states (the
+snapshot, the `## Round <N+1>` heading), or by set semantics the section already has (`## Accepted
+warnings` is a fingerprint set). No step needs a completion record of its own.
 
-**Why the dispatch step carries one marker per artifact rather than one for the pair.** The first
-version of this rule gave the whole writer/decomposer dispatch a single marker — "the artifacts differ
-from round `<N>`'s snapshot" — which is wrong in a way that is worse than the replay it prevented. That
-bullet can require *two* conditionally-dependent dispatches: the writer, and then the decomposer
-whenever the writer reports `Scope changed: yes`. That report is conversational; it reaches no
-artifact. So a `/clear` landing after the writer's edit but before the decomposer re-dispatch satisfies
-the compound marker, and a resume skips *both* — carrying an unrevised decomposition into the
-re-review, which is precisely the invalidated pairing that bullet forbids. Silently omitting a required
-dispatch is a correctness defect, where repeating one is only a cost. Splitting the marker per artifact
-(`01_charter.md` against its round snapshot, `02_subtasks.md` against its own) makes the two states
-distinguishable, and the tie-break resolves the one thing the split still cannot recover: with
-`Scope changed:` unavailable at resume, *decomposer marker absent* is ambiguous between "was never
-required" and "was required and never ran", so the rule re-dispatches. It chooses the cost over the
-defect deliberately. The id-diff and `consumed:` marking that follow the dispatch get their own marker
-for the same reason — an unmarked step between two marked ones is a step a resume may skip.
+**Why the writer/decomposer dispatch and the id-diff are left unguarded.** A dispatch that runs twice
+repeats work; it does not change what the run concludes. A writer re-dispatched against findings it
+already applied revises an already-revised charter, at the cost of one dispatch. Re-running the writer
+also re-derives `Scope changed:` — the conversational report that reaches no artifact and was the
+reason the per-artifact markers could never tell "decomposer not required" from "decomposer not yet
+run" — so the decomposer question answers itself on a resume instead of needing a tie-break rule. The
+id-diff is a pure comparison against the round-`<N>` snapshot that disregards entries already marked
+`consumed: yes`, so a second run reaches the same verdict; where the first run halted headless on
+unauthorized growth (`CHARTER — Needs input`), a resume raising the same user-routed check again is the
+intended outcome, since nothing has resolved it. The frozen `<M>` on the row is what keeps a repeated
+dispatch from ever becoming a second revision: the increment is guarded against it, so however many
+times the branch is re-entered, the run has spent exactly the one revision the operator authorized.
 
-Two residuals are disclosed rather than closed. A revision whose writer provably changed nothing leaves
-no marker and is re-dispatched on resume; and a resume that cannot establish the decomposer's marker
-re-dispatches it even when the straight-through path would not have. Both repeat a dispatch, never an
-outcome — the row's frozen `<M>` still pins the run to the single revision the operator authorized, and
-the re-review that follows still runs exactly once.
+**Why the re-review, alone among the dispatches, is guarded.** A second review of unchanged
+artifacts would not be a harmless repeat: it would reproduce the blocking set round `<N+1>` already
+recorded, and the no-progress guard one rule earlier reads two identical consecutive sets as a
+disagreement and stops at `CHARTER — Needs input` — converting a completed extension into a halt. That
+is an outcome change, so the re-review is skipped when its `## Round <N+1>` heading already exists,
+under the same once-per-round discipline the snapshot write already follows.
 
 The invariant is deliberately *not* stated as "`**Status:**` has left `In review` by the time a branch
 completes." That holds for accept, which converges, but not for extend: after its re-review the
 charter is still `In review` and the loop continues normally, which is the whole point of extending.
 Nor is it a claim about the row being last in its section — accept always ends the loop and extend's
 fall-through review can converge, so either row can stay permanently last. The invariant that actually
-holds, and the one the rule states, is about completion, not position or status: `applied` means every
-step's marker is on disk.
+holds, and the one the rule states, is about completion: `applied` means the branch's last step has
+completed, and a `pending` row means re-enter the branch and let the guards decide what still runs.
 
 **Why a `choice: stop` row resumes differently from `extend`/`accept`, and why an explicit row shape
 mirrors `## Growth authorizations`'s.** Stop's outcome — ending `CHARTER — Blocked` — is the one branch
@@ -439,7 +429,7 @@ gate reuses that grammar's fully-labeled shape rather than inventing a second on
 revision: <M> of <cap> | choice: extend|accept|stop | status: pending|applied`. The four fields are
 exactly what rule 4 and the State model need and nothing more: `<N>` and the frozen `revision: <M> of
 <cap>` together pin the row to one specific cap hit (never confused with a later hit at a raised
-`<cap>`) and supply the idempotency check the paragraph above describes, `choice` says which branch
+`<cap>`) and supply the counter guards the resume contract above describes, `choice` says which branch
 to resume or re-emit, and `status` is the completion marker.
 
 **Why the denominator moves in place rather than a new field.** A new field recording "extensions
