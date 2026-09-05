@@ -322,5 +322,161 @@ slice ships as MINOR rather than PATCH for that reason alone — nothing else in
 
 ### SUB-4 — the cap gate and user-authorized extensions
 
-*(reserved — SUB-4 adds its rationale for the cap-hit user gate and how a user-authorized
-extension is represented, building on the C020/C029 ad-hoc-extension precedent cited above.)*
+**The problem this closes.** Before this change, hitting the revision cap with blocking findings
+still open ended the run silently at `CHARTER — Blocked` — the host never asked whether the operator
+wanted to keep going. The corpus shows operators routing around this by hand rather than accepting
+the silent stop: C020 extended its cap eight times (`Reviews: 12 · Revisions used: 11 of 11 (8
+user-authorized extensions)`) with no defined choice set and no rule for what a resumed run should
+do with a mid-flight extension — the header notes the fact but the mechanism that produced it lived
+entirely outside the shipped skill. C031, by contrast, stopped `Blocked` at the cap with two residual
+findings that were *not* a repeat of round 3's set (the no-progress guard never fired) — genuine
+progress was still being made when the fixed budget ran out, and the old rule gave the operator no
+way to say so. Both cases are the same gap: the host, not the operator, was deciding that "out of
+revisions" meant "done," in two different and equally unsatisfying directions.
+
+**Why exactly three options, and why this split.** *Extend* covers C031's case — progress was real,
+more revision budget would plausibly finish it. *Accept as warnings* covers the case where the
+residual findings are real but not worth another round's cost — the existing `## Accepted warnings`
+gate (rule 3) already makes exactly this call for non-blocking findings, so extending it to a
+cap-exhausted blocking residual is a natural reuse, not a new mechanism. *Stop* preserves today's
+behavior as a first-class choice rather than an implicit default, because a cap-exhausted charter is
+sometimes genuinely not converging (a real disagreement no amount of revision resolves) and forcing
+a choice between the other two would misrepresent that. No fourth option was considered — the
+*decision itself* is always made in one synchronous ask, unlike rule 1's growth gate, which can be
+raised in one turn (a decomposer flag) and answered in a later one. What the cap gate does still
+need, once its *follow-through* is allowed to span a `/clear`, is a small lifecycle over that
+follow-through — see the next two sub-questions.
+
+**Why the host records the choice before acting, not after.** This mirrors SUB-1's snapshot-before-
+dispatch discipline and SUB-2's authorization-before-integration discipline exactly, and for the same
+reason: the loop survives `/clear` by design (Loop contract), so anything that happens only in the
+turn that decided it is invisible to a resumed run. Recording the choice to `03_review-log.md`'s
+`## Cap-gate decisions` *before* dispatching the extend, finalizing the accept, or stopping means a
+`/clear` between the ask and the follow-through still leaves a durable trace of what was decided —
+the resumed run reads it back rather than re-asking or, worse, guessing.
+
+**Why a `pending`/`applied` status, and why `applied` is set only at full completion.** Recording
+the choice *before* acting closes the gap between deciding and starting the follow-through, but it
+opens a narrower one: the follow-through itself — dispatching the extend's revision (cap raise,
+increment, snapshot, writer/decomposer dispatch, id-diff, re-review), or writing the accept's
+fingerprints and status — is not instantaneous, and a `/clear` can land partway through it. An early
+implementation of this gate learned this the hard way: marking `applied` right after the raise
+(extend's *first* step, not its last) meant a `/clear` landing between the raise and the completed
+revision spend left a `pending`-only check with nothing to resume into, since the row already read
+`applied`. So `applied` is written only once the *entire* branch outcome is reached — after extend's
+re-review has been appended, after accept's fingerprints and status write, both. Until then the row
+reads `pending`, and a resume re-enters the branch.
+
+**Why a resume re-runs the branch, guarding only counters and sets, rather than resuming at the
+first incomplete step.** The obvious alternative — every step of the follow-through names a durable
+marker its own completion leaves behind, and a resume skips each step whose marker is present — was
+built first and abandoned, because the markers themselves became the defect surface. Each one needed
+a definition precise enough to be mechanically checkable, and across six audit rounds each definition
+in turn was found wanting: a single marker for the writer/decomposer pair could not tell "writer ran"
+from "writer and decomposer ran", so a resume could skip a required decomposer; a marker derived from
+the round's `## Growth authorizations` entries was vacuously true whenever the round minted none, the
+ordinary case; and a marker line the id-diff wrote itself was a new piece of state with its own
+lifecycle to get right, contradicting the rule's own claim that it added none. Every fix to one
+definition exposed the next. The property the spec actually asks for is narrower: a recorded choice
+is honored on resume without re-asking, and one authorized extension yields one extra revision. That
+property needs only two things — the recorded row, and a guard on every step that would *change an
+outcome* if it ran twice. Those steps are exactly the ones that move a counter or a set: the `<cap>`
+raise, the `Revisions used` increment, the round snapshot, the re-review, and the accepted-warnings
+fingerprint write. Each is guarded by comparing live state the loop already keeps against the row's
+frozen `<M> of <cap>` (the two header counters), by a once-per-round rule the skill already states (the
+snapshot, the `## Round <N+1>` heading), or by set semantics the section already has (`## Accepted
+warnings` is a fingerprint set). No step needs a completion record of its own.
+
+**Why the writer/decomposer dispatch and the id-diff are left unguarded until the round is reviewed.**
+A dispatch that runs twice before the review repeats work; it does not change what the run concludes. A writer re-dispatched against findings it
+already applied revises an already-revised charter, at the cost of one dispatch. Re-running the writer
+also re-derives `Scope changed:` — the conversational report that reaches no artifact and was the
+reason the per-artifact markers could never tell "decomposer not required" from "decomposer not yet
+run" — so the decomposer question answers itself on a resume instead of needing a tie-break rule. The
+id-diff is a pure comparison against the round-`<N>` snapshot that disregards entries already marked
+`consumed: yes`, so a second run reaches the same verdict; where the first run halted headless on
+unauthorized growth (`CHARTER — Needs input`), a resume raising the same user-routed check again is the
+intended outcome, since nothing has resolved it. The frozen `<M>` on the row is what keeps a repeated
+dispatch from ever becoming a second revision: the increment is guarded against it, so however many
+times the branch is re-entered, the run has spent exactly the one revision the operator authorized.
+
+**Why the `## Round <N+1>` heading closes the whole follow-through, not only the re-review.** A
+second review of unchanged artifacts would not be a harmless repeat: it would reproduce the blocking
+set round `<N+1>` already recorded, and the no-progress guard one rule earlier reads two identical
+consecutive sets as a disagreement and stops at `CHARTER — Needs input` — converting a completed
+extension into a halt. That is an outcome change, so the re-review is skipped when its heading already
+exists, under the same once-per-round discipline the snapshot write already follows. The same heading
+must also close the dispatch and the id-diff that precede it. A resume landing after the review was
+appended but before the row was marked `applied` would otherwise re-enter the branch, re-run the writer
+against artifacts the round has already judged, and then skip the review — leaving rules 2–4 to act on
+findings that no longer describe what is on disk: a clean round would converge and publish edits no
+reviewer saw. So the heading is read as proof that the round's artifacts were reviewed as they stand,
+and everything before it in the fall-through is skipped along with the review. It is still existing
+state, not a new marker: the review log's own append step writes it.
+
+The invariant is deliberately *not* stated as "`**Status:**` has left `In review` by the time a branch
+completes." That holds for accept, which converges, but not for extend: after its re-review the
+charter is still `In review` and the loop continues normally, which is the whole point of extending.
+Nor is it a claim about the row being last in its section — accept always ends the loop and extend's
+fall-through review can converge, so either row can stay permanently last. The invariant that actually
+holds, and the one the rule states, is about completion: `applied` means the branch's last step has
+completed, and a `pending` row means re-enter the branch and let the guards decide what still runs.
+
+**Why a `choice: stop` row resumes differently from `extend`/`accept`, and why an explicit row shape
+mirrors `## Growth authorizations`'s.** Stop's outcome — ending `CHARTER — Blocked` — is the one branch
+that changes no other state: no `<cap>` raised, no fingerprint written, no `**Status:**` moved. That
+makes it safe to re-emit on every resume rather than needing a one-time completion to guard, unlike
+extend and accept, whose actions must not run twice. So the State model routes on `status: pending`
+(an interrupted extend/accept, or a stop not yet emitted) *or* `choice: stop` regardless of status
+(an already-emitted stop, re-emitted identically) — the two are different resume shapes for the same
+underlying reason: neither can be satisfied by falling through to a fresh Phase 4 review. Making any
+of this mechanically checkable needs a fixed row grammar — `## Growth authorizations` faced the
+identical problem and solved it with `- Round <N> | gap: <flag text> | status: pending`, so the cap
+gate reuses that grammar's fully-labeled shape rather than inventing a second one: `- Round <N> |
+revision: <M> of <cap> | choice: extend|accept|stop | status: pending|applied`. The four fields are
+exactly what rule 4 and the State model need and nothing more: `<N>` and the frozen `revision: <M> of
+<cap>` together pin the row to one specific cap hit (never confused with a later hit at a raised
+`<cap>`) and supply the counter guards the resume contract above describes, `choice` says which branch
+to resume or re-emit, and `status` is the completion marker.
+
+**Why the denominator moves in place rather than a new field.** A new field recording "extensions
+granted" would duplicate what the existing grepped header `Reviews: <N> · Revisions used: <M> of
+<cap>` already expresses once `<cap>` itself is allowed to move — C020's own header
+(`11 of 11 (8 user-authorized extensions)`) is direct prior art for reading the denominator as the
+live cap rather than a fixed constant. Raising `<cap>` in place also keeps the shape of the grepped
+form completely unchanged (only the value moves), which is what keeps this a PATCH-tier change under
+`CLAUDE.md` §8 — a new field or a reshaped header would force the MINOR bump that changing a grepped
+shape requires, for no behavioral benefit a value change doesn't already provide.
+
+**Why the gate fires at most once per cap value.** Re-asking every time the same `<cap>` is checked
+would turn one decision into a loop of its own — exactly the kind of repeated friction the no-progress
+guard exists to prevent one level up. Keying the "already decided" check on the exact `<M> of <cap>`
+pair (rather than, say, a boolean flag) means a *later* cap hit — after `<cap>` has been raised and a
+new revision spent — is a genuinely new decision point with a new pair, so the gate is live again
+exactly when there is something new to decide, and silent exactly when there isn't.
+
+**Why headless keeps the unconditional silent `Blocked`, unchanged.** A headless run has no channel
+to ask through, and the growth gate and the warnings gate both already established the pattern:
+an unresolvable interactive question becomes a `Needs input`/`Blocked` stop, never an assumed answer
+on the operator's behalf. Auto-picking "accept" or "extend" for a headless run would spend the
+operator's revision budget or converge a charter with unresolved blocking findings — either one
+without consent, which no other gate in this loop does. Blocked is also the only one of the three
+choices that changes nothing (no revision spent, no warnings recorded, no status change), so it is
+the only option that could ever be a safe default — and this design does not treat it as a default,
+only as headless's sole remaining path.
+
+**Why a resumed run needs a State-model-level check, not just a review-log check.** The naive
+resume path — `/clear`, re-invoke, State model sees `**Status:** In review`, dispatches Phase 4 — is
+wrong here specifically because Phase 4 would re-run a full review against *unchanged* artifacts (the
+extend's revision, or the accept's status write, never completed) and reproduce the identical blocking
+set that triggered the cap hit in the first place. That identical-set result is exactly what the
+no-progress guard is watching for one rule earlier in Phase 5 — so a naive resume would silently
+convert an already-decided "extend" into a `Needs input` stop, discarding the recorded choice instead
+of honoring it. Checking for a `status: pending` `## Cap-gate decisions` row has to happen *before* Phase
+4 is ever dispatched, which is why the fix lives in the State model (which chooses the next phase)
+rather than only in Phase 5 rule 4 (which a naive resume would never reach with fresh input). The
+follow-through itself needs no new findings to act on: the round that hit the cap already recorded
+its blocking findings under its own `## Round <N>` heading, so "extend" dispatches a revision against
+that existing record and "accept" fingerprints from it directly. Neither branch re-derives the cap-hit
+round's findings; the Phase-4 dispatch that closes extend's follow-through reviews the *next* round,
+which is the ordinary loop step a spent revision always earns, not a second look at round `<N>`.
