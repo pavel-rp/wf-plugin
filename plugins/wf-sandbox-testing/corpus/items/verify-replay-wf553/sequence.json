@@ -1,0 +1,49 @@
+{
+  "task": "WF-553",
+  "source": "_local/_archive/WF-553/04_verify.history.md",
+  "verify_fix_source": null,
+  "extracted_by": "experiments/verify-replay-baseline/kit/extract-rounds.mjs",
+  "rounds": 4,
+  "records": [
+    {
+      "seq": 1,
+      "kind": "verify-spec",
+      "round": 1,
+      "at": "2026-09-04T17:41:57Z",
+      "commit": "8151ce4b42861146d9b2de708feb7e329f68ef35",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-01.json",
+      "transcript": "rounds/round-01.md"
+    },
+    {
+      "seq": 2,
+      "kind": "verify-spec",
+      "round": 2,
+      "at": "2026-09-04T18:04:19Z",
+      "commit": "89e74d9fe20bc939a0367c77cdc04523566e03c3",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-02.json",
+      "transcript": "rounds/round-02.md"
+    },
+    {
+      "seq": 3,
+      "kind": "verify-spec",
+      "round": 3,
+      "at": "2026-09-04T18:23:02Z",
+      "commit": "c2c1a0c36f1b173ecf678fb142f09ef8a098dfda",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-03.json",
+      "transcript": "rounds/round-03.md"
+    },
+    {
+      "seq": 4,
+      "kind": "verify-spec",
+      "round": 4,
+      "at": "2026-09-04T18:32:40Z",
+      "commit": "158ab1b3eb68f14b77103d44efba49793f3f8b30",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-04.json",
+      "transcript": "rounds/round-04.md"
+    }
+  ]
+}

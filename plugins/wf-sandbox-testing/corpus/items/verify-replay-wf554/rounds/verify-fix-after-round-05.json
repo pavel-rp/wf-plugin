@@ -1,0 +1,16 @@
+{
+  "task": "WF-554",
+  "after_round": 5,
+  "kind": "verify-fix",
+  "branch": "feature/554-offer-one-explicit-user-gate-when-the",
+  "commit_at_audit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+  "source_report_audited_at": "2026-09-04T21:10:00Z",
+  "run_at": "2026-09-05",
+  "model": "claude-opus-5",
+  "auto_fixed": 1,
+  "awaiting_user": 0,
+  "skipped": 3,
+  "fixed_entries": 2,
+  "source": "_local/_archive/WF-554/05_verify-fix.history.md",
+  "transcript": "rounds/verify-fix-after-round-05.md"
+}

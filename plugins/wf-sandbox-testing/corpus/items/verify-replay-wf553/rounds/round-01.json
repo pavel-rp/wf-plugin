@@ -1,0 +1,27 @@
+{
+  "task": "WF-553",
+  "round": 1,
+  "kind": "verify-spec",
+  "body_truncated": true,
+  "branch": "feature/553-wf-553",
+  "commit": "8151ce4b42861146d9b2de708feb7e329f68ef35",
+  "base": "19ec254b7f640d837b9f4a0415e2a79a93e2db02",
+  "tree": "clean",
+  "tree_detail": "clean",
+  "verdict": "PARTIAL",
+  "verdict_note": "(22/22 requirements; 1 capability FAIL, 6 capability WARN)",
+  "audited_by": "claude-sonnet-5",
+  "audited_at": "2026-09-04T17:41:57Z",
+  "audited_at_raw": "2026-09-04T17:41:57Z",
+  "sections": [],
+  "requirements": [],
+  "requirement_tally": {},
+  "capability_findings": [],
+  "finding_tally": {},
+  "blocking_set": {
+    "requirements": [],
+    "findings": []
+  },
+  "source": "_local/_archive/WF-553/04_verify.history.md",
+  "transcript": "rounds/round-01.md"
+}

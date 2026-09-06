@@ -1,0 +1,89 @@
+{
+  "task": "WF-554",
+  "source": "_local/_archive/WF-554/04_verify.history.md",
+  "verify_fix_source": "_local/_archive/WF-554/05_verify-fix.history.md",
+  "extracted_by": "experiments/verify-replay-baseline/kit/extract-rounds.mjs",
+  "rounds": 7,
+  "records": [
+    {
+      "seq": 1,
+      "kind": "verify-spec",
+      "round": 1,
+      "at": "2026-09-04T19:50:00Z",
+      "commit": "d045bebf926346d35d8e9b5b57f0fd21c042165a",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-01.json",
+      "transcript": "rounds/round-01.md"
+    },
+    {
+      "seq": 2,
+      "kind": "verify-spec",
+      "round": 2,
+      "at": "2026-09-04T20:05:00Z",
+      "commit": "ba0351df621a641a49ed9ea0f90133938468d83a",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-02.json",
+      "transcript": "rounds/round-02.md"
+    },
+    {
+      "seq": 3,
+      "kind": "verify-spec",
+      "round": 3,
+      "at": "2026-09-04T20:13:55Z",
+      "commit": "84868d6cb4cc3de497d0706674c73c08a4d7eca8",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-03.json",
+      "transcript": "rounds/round-03.md"
+    },
+    {
+      "seq": 4,
+      "kind": "verify-spec",
+      "round": 4,
+      "at": "2026-09-04T20:36:00Z",
+      "commit": "bbbb06af1fb2f711929033dd76a4047b1a717e8f",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-04.json",
+      "transcript": "rounds/round-04.md"
+    },
+    {
+      "seq": 5,
+      "kind": "verify-spec",
+      "round": 5,
+      "at": "2026-09-04T21:10:00Z",
+      "commit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-05.json",
+      "transcript": "rounds/round-05.md"
+    },
+    {
+      "seq": 6,
+      "kind": "verify-fix",
+      "after_round": 5,
+      "at": "2026-09-04T21:10:00Z",
+      "commit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+      "auto_fixed": 1,
+      "record": "rounds/verify-fix-after-round-05.json",
+      "transcript": "rounds/verify-fix-after-round-05.md"
+    },
+    {
+      "seq": 7,
+      "kind": "verify-spec",
+      "round": 6,
+      "at": "2026-09-05T08:38:46Z",
+      "commit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-06.json",
+      "transcript": "rounds/round-06.md"
+    },
+    {
+      "seq": 8,
+      "kind": "verify-spec",
+      "round": 7,
+      "at": "2026-09-05T08:52:00Z",
+      "commit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+      "verdict": "PARTIAL",
+      "record": "rounds/round-07.json",
+      "transcript": "rounds/round-07.md"
+    }
+  ]
+}

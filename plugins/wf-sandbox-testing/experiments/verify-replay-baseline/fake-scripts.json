@@ -1,0 +1,36 @@
+{
+  "_comment": "Scripted hermetic delivery/tracker responses for a replayed /wf:verify-spec round. Per the wf-fake contract (capabilities/fake/fragments/tracker.ops.md): a JSON-array value is an ordered sequence indexed by prior calls to the same (surface, op) pair; a scalar/object is returned on every call. The audit itself reads the seeded working tree directly; the delivery reads here only identify the branch, the head, and the changed-file set the round's own header recorded. kit/materialize-round.sh rewrites current-branch-query, last-commit-timestamp-query and branch-changes-read per round into generated/fake-scripts.<task>-r<NN>.json; this file is the shape those are generated from. **Model:** claude-fable-5-1",
+  "delivery": {
+    "workspace-root-resolve": "/fixture/workspace",
+    "current-branch-query": "feature/554-offer-one-explicit-user-gate-when-the",
+    "default-base-query": "main",
+    "last-commit-timestamp-query": "2026-09-04T19:50:00Z",
+    "branch-changes-read": [
+      { "path": "plugins/wf/skills/charter/SKILL.md", "status": "M" },
+      { "path": "plugins/wf/skills/charter/references/convergence-loop.md", "status": "M" }
+    ],
+    "branch-create": { "state": "created", "base-source": "origin/main", "tracking": "origin/feature/554-offer-one-explicit-user-gate-when-the", "carry": "none" },
+    "branch-switch": { "state": "switched", "tracking": "origin/feature/554-offer-one-explicit-user-gate-when-the" },
+    "commit": { "state": "nothing-to-commit", "diffstat": "" },
+    "push-upstream": { "state": "pushed (origin/feature/554-offer-one-explicit-user-gate-when-the)" },
+    "pr-detect": { "found": false },
+    "checks-read": [],
+    "review-threads-read": { "read-performed": false, "reason": "none-published", "threads": [] },
+    "activity-read": { "commits": [], "pull-requests": [] }
+  },
+  "tracker": {
+    "resolve_config": "configured",
+    "get": {
+      "id": "WF-554",
+      "title": "Offer one explicit user gate when the revision cap is hit with blocking findings left",
+      "description": "The replayed task's own requirements are already present in the seeded task folder (00_reqs.md, 01_spec.md); this record only exists so a read does not fail.",
+      "status": "In Progress",
+      "parent": null,
+      "labels": []
+    },
+    "list_children": [],
+    "list_blockers": [],
+    "list_by_status": [],
+    "list_statuses": { "operation-supported": true, "statuses": [ { "name": "In Progress", "lifecycle": "open" }, { "name": "Done", "lifecycle": "terminal" } ] }
+  }
+}

@@ -1,0 +1,255 @@
+{
+  "task": "WF-553",
+  "round": 3,
+  "kind": "verify-spec",
+  "body_truncated": false,
+  "branch": "feature/553-wf-553",
+  "commit": "c2c1a0c36f1b173ecf678fb142f09ef8a098dfda",
+  "base": "19ec254b7f640d837b9f4a0415e2a79a93e2db02",
+  "tree": "clean",
+  "tree_detail": "clean",
+  "verdict": "PARTIAL",
+  "verdict_note": "(23/23 requirements; 2 capability FAIL, 1 capability WARN)",
+  "audited_by": "claude-sonnet-5",
+  "audited_at": "2026-09-04T18:23:02Z",
+  "audited_at_raw": "2026-09-04T18:23:02Z",
+  "sections": [
+    "Requirements",
+    "Capability findings",
+    "Deviations from derived artifacts (informational)",
+    "Recommended next actions"
+  ],
+  "requirements": [
+    {
+      "n": 1,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Decomposer contract states the per-`SUB-n`-block (40 lines) and total (220 lines) budgets for `02_subtasks.md`."
+    },
+    {
+      "n": 2,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Decomposer instructed to stay within both budgets by cutting implementation-detail prose, never by dropping an acceptance scenario or retiring a sub-task."
+    },
+    {
+      "n": 3,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Writer contract states the total-line budget (140 lines) for `01_charter.md`."
+    },
+    {
+      "n": 4,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Writer instructed to stay within budget without dropping an outcome, a constraint, or a non-goal."
+    },
+    {
+      "n": 5,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Reviewer checklist gains a row flagging an overrun, routed to the owning role by artifact, naming the block/measured-vs-allowed size."
+    },
+    {
+      "n": 6,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "The overrun check blocks in every round irrespective of WF-551's changed-text rule, stated as a named exception beside that rule."
+    },
+    {
+      "n": 7,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Decomposer: an irreducible overrun is reported as a product choice on `Flags:`, content kept, never truncated."
+    },
+    {
+      "n": 8,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Writer: the symmetric case is recorded under `## Open questions`, never truncated."
+    },
+    {
+      "n": 9,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Rationale for the chosen numbers lives in the `references/` doc, not the runtime bodies."
+    },
+    {
+      "n": 10,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "AC1 — a `02_subtasks.md` with one `SUB-n` block over its per-block budget → reviewer emits exactly one finding for this check, routed to `decomposer`, naming the block and measured vs. allowed size."
+    },
+    {
+      "n": 11,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "AC2 — `02_subtasks.md` over its total budget with every block within its per-block budget → one finding routed to `decomposer`."
+    },
+    {
+      "n": 12,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "AC3 — `01_charter.md` over its total budget → one finding routed to `charter-writer`, naming measured vs. allowed size."
+    },
+    {
+      "n": 13,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "AC4 — both artifacts within budget → this check emits no finding."
+    },
+    {
+      "n": 14,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "AC5 — a decomposer revision that successfully brings `02_subtasks.md` back within budget (without removing acceptance scenarios or retiring sub-tasks) reports the change in its output block."
+    },
+    {
+      "n": 15,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "AC6 — a writer revision that successfully brings `01_charter.md` back within budget (without dropping an outcome/constraint/non-goal) reports the change in its output block."
+    },
+    {
+      "n": 16,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "AC7 — an irreducible overrun: decomposer keeps the content, leaves the overrun, reports it as a product choice on `Flags:`, never truncates."
+    },
+    {
+      "n": 17,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Out-of-scope items correctly left untouched — no budget added to the review log; scope-freeze, WF-551's convergence rules, and the cap gate are untouched."
+    },
+    {
+      "n": 18,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Exact numeric budgets are grounded in the converged corpus (`C025–C028` decompositions at 112–220 lines; charters at 107–140 lines)."
+    },
+    {
+      "n": 19,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Core stays domain-free."
+    },
+    {
+      "n": 20,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Reviewer stays read-only."
+    },
+    {
+      "n": 21,
+      "verdict": "N/A",
+      "qualifier": null,
+      "text": "`SKILL.md`, if touched, ends no higher than its line count at the start of this slice."
+    },
+    {
+      "n": 22,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Version bump follows the charter tier rule (PATCH by default; MINOR only if a shape must change)."
+    },
+    {
+      "n": 23,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Touched files are limited to the three role agents, the `references/` doc, and the two version manifests."
+    }
+  ],
+  "requirement_tally": {
+    "PASS": 22,
+    "N/A": 1
+  },
+  "capability_findings": [
+    {
+      "capability": "audit",
+      "lens": "correctness-auditor",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "`d2421c9`'s decomposer size-budget escape hatch (commit message: \"Mirror the writer's closed enumeration in the decomposer's escape hatch\") does not actually mirror `charter-writer.md:25`'s protected pair. The writer protects \"an outcome, a"
+    },
+    {
+      "capability": "audit",
+      "lens": "correctness-auditor",
+      "severity": "PASS",
+      "qualifier": "confirmed fixed",
+      "blocking": false,
+      "text": "The previous round's FAIL (round-1 dispatch not honoring the check-15 blocking exception) and its companion WARN (Severity section's LOW bullet contradicting the exception) are both independently confirmed closed this round: the new \"Size-b"
+    },
+    {
+      "capability": "audit",
+      "lens": "consistency-auditor",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "`d2421c9`'s SUB-3 rewrite (`convergence-loop.md:167-190`) opens by asserting a single uniform derivation for all three budget numbers — \"All three are the corpus's own converged ceiling, not a headroom-padded guess\" (`:168`) and \"Each budge"
+    },
+    {
+      "capability": "audit",
+      "lens": "consistency-auditor",
+      "severity": "PASS",
+      "qualifier": "confirmed fixed",
+      "blocking": false,
+      "text": "The previous round's FAIL (the SUB-3 rationale's numbers citing \"The non-convergence pattern,\" a section that doesn't support them) and its companion WARN (the field-count arithmetic: \"about ten fields\"/\"four lines per field\" not matching t"
+    },
+    {
+      "capability": "audit",
+      "lens": "convention-auditor",
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "Same underlying gap as the correctness-auditor FAIL above, convention angle: the decomposer's `d2421c9` enumeration was written specifically to \"mirror\" the writer's closed enumeration but the two \"closed enumeration\" escape hatches diverge"
+    },
+    {
+      "capability": "audit",
+      "lens": "security-auditor",
+      "severity": "PASS",
+      "qualifier": null,
+      "blocking": false,
+      "text": "No security-relevant surface in this prose-only role-contract change (no injection sinks, auth logic, secrets, resource limits, concurrency constructs, or error-leakage paths); confirmed against the three newest commits as well as the full "
+    },
+    {
+      "capability": "audit",
+      "lens": "operational-auditor",
+      "severity": "PASS",
+      "qualifier": null,
+      "blocking": false,
+      "text": "No operational surface (dependencies, logging, accessibility, idempotency, migrations, configuration) is touched by this prose-only change; the two version-manifest fields are unchanged from the prior round."
+    },
+    {
+      "capability": "author-caps",
+      "lens": "structural-validation",
+      "severity": "CLEAN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "clean — the applies-when condition (a capability `manifest.md`, registry row, or `SKILL.md`/`interface.md` pair) is not met by this diff; no validation work performed, per the fragment's own no-op rule."
+    },
+    {
+      "capability": "author-caps",
+      "lens": "reference-existence",
+      "severity": "CLEAN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "clean — `validate_references` (scoped to every plugin's `skills`/`agents` trees): 126 files scanned, 370 references resolved, 0 findings."
+    }
+  ],
+  "finding_tally": {
+    "FAIL": 2,
+    "PASS": 4,
+    "WARN": 1,
+    "CLEAN": 2
+  },
+  "blocking_set": {
+    "requirements": [],
+    "findings": [
+      0,
+      2
+    ]
+  },
+  "source": "_local/_archive/WF-553/04_verify.history.md",
+  "transcript": "rounds/round-03.md"
+}

@@ -38,6 +38,13 @@
 #                       same enumeration + arm lookup against a synthetic declared slot.
 #  11. DISCLOSURE     — (WF-414) every arm carries machine-readable provenance {path, reason}
 #                       (canned vs real) plus its paired human-readable disclosure section.
+#  12. VERIFY REPLAY  — (WF-564) every round-replay item (items/verify-replay-*) carries a
+#                       resolvable provenance link, a chronological sequence.json, and one
+#                       structured record per audit round with its header fields, a non-empty
+#                       requirement-verdict list (or an explicit body_truncated flag), a findings
+#                       list, and the blocking set — naming the specific missing field otherwise;
+#                       and the kit that judges them (experiments/verify-replay-baseline) passes
+#                       its own selflint.sh, so the kit is validated by this same entrypoint.
 #
 # Usage: run.sh   (run every check; wired into CI as its own step)
 set -uo pipefail
@@ -476,6 +483,75 @@ check_disclosure() {
   [ "$fail" = "$before" ] && ok "disclosure: all $n arms carry a machine-readable provenance {path, reason} plus a paired canned-vs-real disclosure section"
 }
 
+# ---------------------------------------------------------------------------
+# 12. VERIFY REPLAY — (WF-564) round-replay items: per-round required fields + provenance,
+#     naming the specific missing field; then the replay kit's own self-lint.
+# ---------------------------------------------------------------------------
+check_verify_replay() {
+  local before=$fail dir name n nfiles rec f field v rel kit
+  local -a dirs=("$ITEMS"/verify-replay-*/)
+  [ -d "${dirs[0]}" ] || { err "verify-replay: no items/verify-replay-*/ folder found — WF-564 registers three"; return; }
+  for dir in "${dirs[@]}"; do
+    dir="${dir%/}"; name="$(basename "$dir")"
+    [ -f "$dir/item.md" ] || { err "verify-replay[$name]: item.md missing"; continue; }
+    if ! { grep -qE 'WF-[0-9]+' "$dir/item.md" && grep -q '04_verify.history.md' "$dir/item.md"; }; then
+      err "verify-replay[$name]: item.md has NO resolvable provenance link — it must name the WF-<n> task and its 04_verify.history.md source"
+    fi
+    grep -qi 'Canned-vs-real disclosure' "$dir/item.md" \
+      || err "verify-replay[$name]: item.md has no 'Canned-vs-real disclosure' section"
+    [ -f "$dir/sequence.json" ] || { err "verify-replay[$name]: sequence.json missing"; continue; }
+    jq -e . "$dir/sequence.json" >/dev/null 2>&1 || { err "verify-replay[$name]: sequence.json is not valid JSON"; continue; }
+    for field in task source rounds records; do
+      jq -e --arg k "$field" 'has($k) and .[$k] != null' "$dir/sequence.json" >/dev/null \
+        || err "verify-replay[$name/sequence.json]: missing field '$field'"
+    done
+    n="$(jq -r '.rounds // 0' "$dir/sequence.json")"
+    nfiles="$(ls "$dir"/rounds/round-*.json 2>/dev/null | wc -l | tr -d ' ')"
+    [ "$n" -gt 0 ] || err "verify-replay[$name]: sequence.json declares zero rounds"
+    [ "$n" = "$nfiles" ] || err "verify-replay[$name]: sequence.json declares $n round(s) but rounds/ holds $nfiles round-*.json record(s)"
+    # Every sequence record names an existing record file and an existing verbatim transcript.
+    while IFS= read -r rec; do
+      [ -f "$dir/$rec" ] || err "verify-replay[$name]: sequence.json names a record that does not exist: $rec"
+    done < <(jq -r '.records[] | .record, .transcript' "$dir/sequence.json")
+    # Per-round required fields — the specific missing field is named, never a bare "invalid".
+    for f in "$dir"/rounds/round-*.json; do
+      rel="$name/rounds/$(basename "$f")"
+      jq -e . "$f" >/dev/null 2>&1 || { err "verify-replay[$rel]: not valid JSON"; continue; }
+      for field in task round commit tree verdict audited_at requirements capability_findings blocking_set source transcript; do
+        jq -e --arg k "$field" 'has($k) and .[$k] != null' "$f" >/dev/null \
+          || err "verify-replay[$rel]: missing field '$field'"
+      done
+      v="$(jq -r '.verdict // empty' "$f")"
+      case "$v" in PASS|FAIL|PARTIAL) ;; *) err "verify-replay[$rel]: verdict '$v' is not one of PASS|FAIL|PARTIAL";; esac
+      if [ "$(jq -r '.body_truncated // false' "$f")" != "true" ]; then
+        [ "$(jq '.requirements | length' "$f")" -gt 0 ] \
+          || err "verify-replay[$rel]: requirement-verdict block is empty and the round is not flagged body_truncated"
+      fi
+      jq -e '.blocking_set | has("requirements") and has("findings")' "$f" >/dev/null \
+        || err "verify-replay[$rel]: blocking_set must carry both 'requirements' and 'findings'"
+      jq -e '[.capability_findings[]? | select(.severity == "FAIL" and .blocking != true)] | length == 0' "$f" >/dev/null \
+        || err "verify-replay[$rel]: a FAIL-severity finding is not marked blocking"
+      grep -q '^\*\*Commit:\*\*' "$dir/$(jq -r '.transcript' "$f")" 2>/dev/null \
+        || err "verify-replay[$rel]: verbatim transcript lacks its **Commit:** header"
+      grep -q '^\*\*Verdict:\*\*' "$dir/$(jq -r '.transcript' "$f")" 2>/dev/null \
+        || err "verify-replay[$rel]: verbatim transcript lacks its **Verdict:** header"
+    done
+    [ "$fail" = "$before" ] && ok "verify-replay[$name]: $n round record(s) carry every required field and a resolvable provenance link"
+  done
+  # The kit that judges these items validates under this same entrypoint.
+  kit="$PACK_DIR/experiments/verify-replay-baseline/selflint.sh"
+  if [ -f "$kit" ]; then
+    if bash "$kit" >"$TMP/verify-replay-selflint.txt" 2>&1; then
+      ok "verify-replay: experiments/verify-replay-baseline/selflint.sh passes"
+    else
+      err "verify-replay: experiments/verify-replay-baseline/selflint.sh FAILED — $(grep -m1 -E 'FAIL|ERROR' "$TMP/verify-replay-selflint.txt" || echo 'see its output')"
+    fi
+  else
+    err "verify-replay: kit self-lint missing at ${kit#$REPO_ROOT/}"
+  fi
+  [ "$fail" = "$before" ] && ok "verify-replay: all ${#dirs[@]} round-replay item(s) lint clean and the kit self-lints"
+}
+
 check_provenance
 check_slot_enum
 check_flagship
@@ -487,6 +563,7 @@ check_host_availability
 check_barecore
 check_armless_meta
 check_disclosure
+check_verify_replay
 
 if [ "$fail" -ne 0 ]; then
   echo "wf-sandbox-testing corpus self-checks: FAIL" >&2
