@@ -9,7 +9,7 @@
 **WF-554** — "Offer one explicit user gate when the revision cap is hit with blocking findings
 left" (`feature/554-offer-one-explicit-user-gate-when-the`). The sources are that task's rotated
 audit history, `_local/_archive/WF-554/04_verify.history.md`, and its rotated fix log,
-`_local/_archive/WF-554/05_verify-fix.history.md`, transcribed verbatim into `rounds/` by
+`_local/_archive/WF-554/05_verify-fix.history.md`, transcribed verbatim into `rounds/` (the structured `rounds/*.json` records ship in the pack; the verbatim `.md` transcripts live outside it, in the repo-level `corpus-archive/<item>/rounds/`) by
 `experiments/verify-replay-baseline/kit/extract-rounds.mjs`. **WF-564** — the **C033** verify-loop
 charter's baseline SUB — is the task that mined it. `_local/` is gitignored, so the source paths
 resolve only on a machine holding that archive; the `rounds/` records are the committed copy.

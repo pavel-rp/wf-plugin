@@ -12,7 +12,8 @@
 #      overrides the location); the archive is gitignored, so this is a stated local requirement,
 #      never something the kit fabricates;
 #   2. the ledger the round saw: `_local/<task>/04_verify.history.md` rebuilt newest-first from
-#      the corpus item's verbatim transcripts of every EARLIER round — so round N's rotation trail
+#      the item's verbatim transcripts of every EARLIER round (read from the repo-level
+#      corpus-archive/, or $WF_CORPUS_ARCHIVE — they ship outside the pack) — so round N's rotation trail
 #      is exactly the trail round N held when it ran;
 #   3. the fixture capability `_local/verify-replay-fixture/` (manifest + the round's recorded
 #      findings rendered into `fragments/findings.md`) and its registry row in `_local/config.md`;
@@ -33,6 +34,8 @@ set -euo pipefail
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXP_DIR="$(cd "$KIT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$EXP_DIR/../../../.." && pwd)"
+# Verbatim round transcripts live outside the pack: repo-level corpus-archive/, or $WF_CORPUS_ARCHIVE.
+ARCHIVE="${WF_CORPUS_ARCHIVE:-$REPO_ROOT/corpus-archive}"
 
 die() { echo "materialize-round.sh: ERROR — $*" >&2; exit 2; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
@@ -75,8 +78,8 @@ n=$((10#$round))
 if [ "$n" -gt 1 ]; then
   : > "$ws/_local/$task/04_verify.history.md"
   for ((k=n-1; k>=1; k--)); do
-    prev="$item/rounds/round-$(printf '%02d' "$k").md"
-    [ -f "$prev" ] || die "earlier round transcript missing: $prev"
+    prev="$ARCHIVE/$(basename "$item")/rounds/round-$(printf '%02d' "$k").md"
+    [ -f "$prev" ] || die "earlier round transcript missing: $prev — the verbatim transcripts live outside the pack (repo-level corpus-archive/); point WF_CORPUS_ARCHIVE at them"
     cat "$prev" >> "$ws/_local/$task/04_verify.history.md"
     printf '\n---\n\n' >> "$ws/_local/$task/04_verify.history.md"
   done

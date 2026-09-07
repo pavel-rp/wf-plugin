@@ -7,12 +7,16 @@
 // first, per the shared pipeline conventions' artifact-rotation rule) and, optionally, its
 // `05_verify-fix.history.md`, and writes one record per audit round into `<item>/rounds/`:
 //
-//   rounds/round-NN.md    — the round's report, verbatim (the transcript the replay feeds back)
-//   rounds/round-NN.json  — the same round, structured: header fields, every numbered
-//                           requirement verdict, every capability-findings entry
-//   rounds/verify-fix-after-round-NN.{md,json}
+//   rounds/round-NN.json  — the round, structured: header fields, every numbered requirement
+//                           verdict, every capability-findings entry (ships in the pack)
+//   rounds/verify-fix-after-round-NN.json
 //                         — a verify-fix pass, when one sits between two audit rounds
 //   sequence.json         — the chronological index of every record above
+//
+// and the verbatim transcripts (`rounds/round-NN.md`, `rounds/verify-fix-after-round-NN.md` —
+// the report the replay feeds back) into `<archive>/<item-name>/rounds/`, OUTSIDE the pack:
+// `--archive <dir>`, else $WF_CORPUS_ARCHIVE, else the repo-level `corpus-archive/`. A record's
+// `transcript` field stays item-relative; consumers resolve it under the archive.
 //
 // Rounds are ordered chronologically by their `**Audited at:**` field (the history file itself
 // is newest-first). Nothing here judges a round: it records. The mechanical replay of the
@@ -24,13 +28,14 @@
 // usage: node extract-rounds.mjs --source <04_verify.history.md> --item <item-dir> --task <id>
 //                                [--verify-fix <05_verify-fix.history.md>]
 //                                [--source-rel <provenance path>] [--verify-fix-rel <path>]
+//                                [--archive <transcript archive root>]
 //        node extract-rounds.mjs --single <04_verify.md> --task <id> --round <n>
 //                                (print ONE replayed round's structured record to stdout — the
 //                                live driver's read-back of a fresh /wf:verify-spec report)
 
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { join, resolve, dirname, basename } from "node:path";
+import { pathToFileURL, fileURLToPath } from "node:url";
 
 function die(msg) { process.stderr.write(`extract-rounds.mjs: ERROR — ${msg}\n`); process.exit(2); }
 
@@ -226,8 +231,12 @@ const source = resolve(args.source);
 if (!existsSync(source)) die(`--source not found: ${source}`);
 const itemDir = resolve(args.item);
 const roundsDir = join(itemDir, "rounds");
+const archiveRoot = resolve(args.archive || process.env.WF_CORPUS_ARCHIVE || join(dirname(fileURLToPath(import.meta.url)), "../../../../..", "corpus-archive"));
+const transcriptsDir = join(archiveRoot, basename(itemDir), "rounds");
 rmSync(roundsDir, { recursive: true, force: true });
 mkdirSync(roundsDir, { recursive: true });
+rmSync(transcriptsDir, { recursive: true, force: true });
+mkdirSync(transcriptsDir, { recursive: true });
 
 const rounds = splitReports(readFileSync(source, "utf8"), "verify-spec")
   .map(md => ({ md, rec: parseVerifyRound(md) }));
@@ -238,7 +247,7 @@ const records = [];
 rounds.forEach((r, i) => {
   const n = String(i + 1).padStart(2, "0");
   const rec = { task: args.task, round: i + 1, ...r.rec, source: args["source-rel"] || args.source, transcript: `rounds/round-${n}.md` };
-  writeFileSync(join(roundsDir, `round-${n}.md`), r.md);
+  writeFileSync(join(transcriptsDir, `round-${n}.md`), r.md);
   writeFileSync(join(roundsDir, `round-${n}.json`), JSON.stringify(rec, null, 2) + "\n");
   records.push({ seq: 0, kind: "verify-spec", round: i + 1, at: rec.audited_at, commit: rec.commit, verdict: rec.verdict, record: `rounds/round-${n}.json`, transcript: rec.transcript });
 });
@@ -256,7 +265,7 @@ if (args["verify-fix"]) {
     if (after < 0) die(`verify-fix pass could not be placed: no audit round at or before ${at}`);
     const n = String(after + 1).padStart(2, "0");
     const rec = { task: args.task, after_round: after + 1, ...p.rec, source: args["verify-fix-rel"] || args["verify-fix"], transcript: `rounds/verify-fix-after-round-${n}.md` };
-    writeFileSync(join(roundsDir, `verify-fix-after-round-${n}.md`), p.md);
+    writeFileSync(join(transcriptsDir, `verify-fix-after-round-${n}.md`), p.md);
     writeFileSync(join(roundsDir, `verify-fix-after-round-${n}.json`), JSON.stringify(rec, null, 2) + "\n");
     records.push({ seq: 0, kind: "verify-fix", after_round: after + 1, at: at, commit: p.rec.commit_at_audit, auto_fixed: p.rec.auto_fixed, record: `rounds/verify-fix-after-round-${n}.json`, transcript: rec.transcript });
   });

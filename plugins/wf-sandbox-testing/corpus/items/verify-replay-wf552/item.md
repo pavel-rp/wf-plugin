@@ -9,7 +9,7 @@
 **WF-552** — "Freeze charter scope after round 1" (`feature/552-freeze-charter-scope-after-round-1`).
 The source is that task's rotated audit history, `_local/_archive/WF-552/04_verify.history.md`
 (the `04_verify.history.md` trail the shared pipeline conventions' artifact-rotation rule leaves
-behind every re-audit), transcribed verbatim into `rounds/` by
+behind every re-audit), transcribed verbatim into `rounds/` (the structured `rounds/*.json` records ship in the pack; the verbatim `.md` transcripts live outside it, in the repo-level `corpus-archive/<item>/rounds/`) by
 `experiments/verify-replay-baseline/kit/extract-rounds.mjs`. **WF-564** — "Replay the archived
 verify histories as a regression corpus with a recorded baseline", the **C033** verify-loop charter's
 baseline SUB, is the task that mined it. `_local/` is gitignored, so the source path resolves only on
@@ -39,7 +39,7 @@ For every round `n`, replaying the round's recorded requirement verdicts and its
 the recorded **verdict**, the recorded **blocking set** (the FAIL/PARTIAL requirements plus every
 FAIL-severity finding), and — through today's `run` stop rule — the recorded **stop decision**.
 The machine-readable expectation is `experiments/verify-replay-baseline/results/baseline.json`;
-`rounds/round-NN.json` is the per-round input and `rounds/round-NN.md` the verbatim transcript.
+`rounds/round-NN.json` is the per-round input; `corpus-archive/verify-replay-wf552/rounds/round-NN.md` (repo-level, outside the pack) is the verbatim transcript.
 
 ## Canned-vs-real disclosure
 

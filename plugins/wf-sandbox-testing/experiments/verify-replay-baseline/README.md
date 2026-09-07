@@ -51,7 +51,7 @@ what the baseline shows, and what a later SUB's changed stop rule will move.
 |---|---|
 | `experiment.json` | the frozen v1 manifest: two arms (both at today's frozen ref — see "Adding an arm"), one compare, seven mechanism signals (fixture served; five lens dispatches absent; tracker writes absent), blinding vocabulary |
 | `fake-scripts.json` | the scripted delivery/tracker reads a replayed round needs; `materialize-round.sh` re-points the branch / head reads from the round record and derives the changed-file set from the host repository's recorded base..commit range (plus any `--edits` set) per round into `generated/` |
-| `kit/extract-rounds.mjs` | history → `rounds/round-NN.{md,json}` + `sequence.json` (corpus extraction); `--single` reads one fresh report back |
+| `kit/extract-rounds.mjs` | history → `rounds/round-NN.json` + `sequence.json` in the item, and the verbatim `round-NN.md` transcripts into the repo-level `corpus-archive/<item>/rounds/` (`--archive` / `$WF_CORPUS_ARCHIVE`) — the pack ships records only; `--single` reads one fresh report back |
 | `kit/rule.mjs` | the one source of the verify⇄fix stop rule (cycle cap + its documented origin) that `derive-baseline.mjs` records and `replay-check.mjs` judges by |
 | `kit/derive-baseline.mjs` | corpus records → `results/baseline.json`; `--check` proves the committed file is that derivation |
 | `kit/materialize-round.sh` | lays one round into a seeded workspace (task folder, ledger, fixture, scripts; `--edits`, `--critic`) |

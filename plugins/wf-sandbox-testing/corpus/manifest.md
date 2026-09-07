@@ -25,7 +25,8 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 - **assertion item** — a run set judged against an `expect.json` with `assert/tiers.sh`
   (per-family PASS/FAIL with variance-aware drift-vs-regression).
 - **round-replay item** (WF-564) — a recorded *successive-round* verify sequence (one
-  `rounds/round-NN.{md,json}` per audit round, transcribed verbatim from a task's rotated
+  `rounds/round-NN.json` per audit round (the verbatim `round-NN.md` transcript lives outside the
+  pack, in the repo-level `corpus-archive/<item>/rounds/`), transcribed from a task's rotated
   `04_verify.history.md`) whose per-round verdict, blocking set, and stop decision are replayed
   through today's `verify-spec`/`run` and judged against a committed baseline
   (`experiments/verify-replay-baseline/results/baseline.json`) by that kit's `replay-check.mjs`.
@@ -265,9 +266,9 @@ instead: `resolve_content({class: "slot", …})` returning `{status: "unfilled"}
 | `items/barecore-conveyor/arm.json` | the bare-core arm: registry state, `slots_covered` / `slots_exempt` (each exemption reasoned), run fingerprints, and machine-readable `provenance` |
 | `items/barecore-conveyor/runs-current/` | the 3-run bare-core conveyor set — present-but-empty op logs (zero provider ops of any surface), all seven covered slots `unfilled` on their no-op inline defaults |
 | `items/barecore-conveyor/seeded-breakage/runs/` | the negative control: `implement.start`'s inline default attempts a tracker `create_child`, tripping both the zero-call and the zero-error assertions |
-| `items/verify-replay-wf552/` | item 15 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..05.{md,json}` — the WF-552 five-round FAIL loop, verbatim + structured |
-| `items/verify-replay-wf553/` | item 16 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..04.{md,json}` — the WF-553 four-round PARTIAL loop (round 1 `body_truncated` at the source) |
-| `items/verify-replay-wf554/` | item 17 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..07.{md,json}` + `rounds/verify-fix-after-round-05.{md,json}` — the WF-554 seven-round PARTIAL loop with its verify-fix pass |
+| `items/verify-replay-wf552/` | item 15 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..05.json` (verbatim transcripts in the repo-level `corpus-archive/verify-replay-wf552/`) — the WF-552 five-round FAIL loop, structured + verbatim |
+| `items/verify-replay-wf553/` | item 16 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..04.json` (transcripts in `corpus-archive/verify-replay-wf553/`) — the WF-553 four-round PARTIAL loop (round 1 `body_truncated` at the source) |
+| `items/verify-replay-wf554/` | item 17 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..07.json` + `rounds/verify-fix-after-round-05.json` (transcripts in `corpus-archive/verify-replay-wf554/`) — the WF-554 seven-round PARTIAL loop with its verify-fix pass |
 | `../experiments/verify-replay-baseline/` | the replay kit items 15–17 are judged by: manifest, fixture capability, extractor, baseline deriver, live replay driver, `replay-check.mjs`, `selfcheck.sh`, and `results/baseline.json` |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, the coverage-ledger audit, and the round-replay lint (items 15–17 + the kit self-lint) (CI entrypoint) |

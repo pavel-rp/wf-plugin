@@ -9,7 +9,7 @@
 **WF-553** — the charter-artifact size-budget task (`feature/553-wf-553`: per-`SUB-n`-block and
 total-line budgets for `02_subtasks.md` and `01_charter.md`, with the reviewer's overrun check).
 The source is that task's rotated audit history, `_local/_archive/WF-553/04_verify.history.md`,
-transcribed verbatim into `rounds/` by `experiments/verify-replay-baseline/kit/extract-rounds.mjs`.
+transcribed verbatim into `rounds/` (the structured `rounds/*.json` records ship in the pack; the verbatim `.md` transcripts live outside it, in the repo-level `corpus-archive/<item>/rounds/`) by `experiments/verify-replay-baseline/kit/extract-rounds.mjs`.
 **WF-564** — the **C033** verify-loop charter's baseline SUB — is the task that mined it. `_local/`
 is gitignored, so the source path resolves only on a machine holding that archive; the `rounds/`
 records are the committed copy.

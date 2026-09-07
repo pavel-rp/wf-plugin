@@ -17,8 +17,8 @@
 #
 # The replayed task folders (`_local/_archive/<task>/00_reqs.md`, `01_spec.md`, `02_plan.md`) are
 # gitignored and are NOT in this image either: mount the archive read-only at run time and pass
-# `--task-src` to replay-round.sh. The kit ships every round's audit transcript; it does not ship
-# the task's own spec.
+# `--task-src` to replay-round.sh. The image carries every round's structured record and, from the
+# repo-level corpus-archive/, its verbatim transcript; it does not ship the task's own spec.
 
 FROM node:20-bookworm-slim
 
@@ -47,6 +47,11 @@ COPY plugins/wf-sandbox-testing/experiments/verify-replay-baseline        /opt/w
 COPY plugins/wf-sandbox-testing/corpus/items/verify-replay-wf552          /opt/wf-runner/corpus/items/verify-replay-wf552
 COPY plugins/wf-sandbox-testing/corpus/items/verify-replay-wf553          /opt/wf-runner/corpus/items/verify-replay-wf553
 COPY plugins/wf-sandbox-testing/corpus/items/verify-replay-wf554          /opt/wf-runner/corpus/items/verify-replay-wf554
+# The verbatim transcripts the ledger rebuild reads live outside the pack (repo-level corpus-archive/).
+COPY corpus-archive/verify-replay-wf552                                   /opt/wf-runner/corpus-archive/verify-replay-wf552
+COPY corpus-archive/verify-replay-wf553                                   /opt/wf-runner/corpus-archive/verify-replay-wf553
+COPY corpus-archive/verify-replay-wf554                                   /opt/wf-runner/corpus-archive/verify-replay-wf554
+ENV WF_CORPUS_ARCHIVE=/opt/wf-runner/corpus-archive
 RUN chmod +x /opt/wf-runner/runner/*.sh /opt/wf-runner/experiments/engine/*.sh \
              /opt/wf-runner/experiments/verify-replay-baseline/*.sh \
              /opt/wf-runner/experiments/verify-replay-baseline/kit/*.sh

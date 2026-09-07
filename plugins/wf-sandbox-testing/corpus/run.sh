@@ -55,6 +55,8 @@ REPO_ROOT="$(cd "$PACK_DIR/../.." && pwd)"
 ASSERT="$PACK_DIR/assert"
 MANIFEST="$CORPUS_DIR/manifest.md"
 ITEMS="$CORPUS_DIR/items"
+# Verbatim replay transcripts live OUTSIDE the pack (repo-level corpus-archive/, or $WF_CORPUS_ARCHIVE).
+ARCHIVE="${WF_CORPUS_ARCHIVE:-$REPO_ROOT/corpus-archive}"
 SLOT_EXEMPTIONS="$CORPUS_DIR/slot-exemptions.json"
 MAXVAR="0.34"   # the governing comparison ceiling — the named per-family threshold decision (item.md)
 
@@ -488,12 +490,13 @@ check_disclosure() {
 #     naming the specific missing field; then the replay kit's own self-lint.
 # ---------------------------------------------------------------------------
 check_verify_replay() {
-  local before=$fail item_before dir name n nfiles rec f field v rel kit
+  local before=$fail item_before dir name n nfiles rec f field v rel kit arch have_tx
   local -a dirs=("$ITEMS"/verify-replay-*/)
   [ -d "${dirs[0]}" ] || { err "verify-replay: no items/verify-replay-*/ folder found — WF-564 registers three"; return; }
   for dir in "${dirs[@]}"; do
     item_before=$fail
     dir="${dir%/}"; name="$(basename "$dir")"
+    arch="$ARCHIVE/$name"; have_tx=0; [ -d "$arch" ] && have_tx=1
     [ -f "$dir/item.md" ] || { err "verify-replay[$name]: item.md missing"; continue; }
     if ! { grep -qE 'WF-[0-9]+' "$dir/item.md" && grep -q '04_verify.history.md' "$dir/item.md"; }; then
       err "verify-replay[$name]: item.md has NO resolvable provenance link — it must name the WF-<n> task and its 04_verify.history.md source"
@@ -510,10 +513,16 @@ check_verify_replay() {
     nfiles="$(ls "$dir"/rounds/round-*.json 2>/dev/null | wc -l | tr -d ' ')"
     [ "$n" -gt 0 ] || err "verify-replay[$name]: sequence.json declares zero rounds"
     [ "$n" = "$nfiles" ] || err "verify-replay[$name]: sequence.json declares $n round(s) but rounds/ holds $nfiles round-*.json record(s)"
-    # Every sequence record names an existing record file and an existing verbatim transcript.
+    # Every sequence record names an existing record file; its verbatim transcript is checked under
+    # the archive when that is present (the pack ships records only).
     while IFS= read -r rec; do
       [ -f "$dir/$rec" ] || err "verify-replay[$name]: sequence.json names a record that does not exist: $rec"
-    done < <(jq -r '.records[] | .record, .transcript' "$dir/sequence.json")
+    done < <(jq -r '.records[] | .record' "$dir/sequence.json")
+    if [ "$have_tx" = 1 ]; then
+      while IFS= read -r rec; do
+        [ -f "$arch/$rec" ] || err "verify-replay[$name]: sequence.json names a transcript missing from ${arch#$REPO_ROOT/}: $rec"
+      done < <(jq -r '.records[] | .transcript' "$dir/sequence.json")
+    fi
     # Per-round required fields — the specific missing field is named, never a bare "invalid".
     for f in "$dir"/rounds/round-*.json; do
       rel="$name/rounds/$(basename "$f")"
@@ -535,11 +544,14 @@ check_verify_replay() {
       [ -z "$v" ] || err "verify-replay[$rel]: blocking_set.findings index(es) $v out of range for $(jq '.capability_findings | length' "$f") capability_findings"
       jq -e '[.capability_findings[]? | select(.severity == "FAIL" and .blocking != true)] | length == 0' "$f" >/dev/null \
         || err "verify-replay[$rel]: a FAIL-severity finding is not marked blocking"
-      grep -q '^\*\*Commit:\*\*' "$dir/$(jq -r '.transcript' "$f")" 2>/dev/null \
-        || err "verify-replay[$rel]: verbatim transcript lacks its **Commit:** header"
-      grep -q '^\*\*Verdict:\*\*' "$dir/$(jq -r '.transcript' "$f")" 2>/dev/null \
-        || err "verify-replay[$rel]: verbatim transcript lacks its **Verdict:** header"
+      if [ "$have_tx" = 1 ]; then
+        grep -q '^\*\*Commit:\*\*' "$arch/$(jq -r '.transcript' "$f")" 2>/dev/null \
+          || err "verify-replay[$rel]: verbatim transcript lacks its **Commit:** header"
+        grep -q '^\*\*Verdict:\*\*' "$arch/$(jq -r '.transcript' "$f")" 2>/dev/null \
+          || err "verify-replay[$rel]: verbatim transcript lacks its **Verdict:** header"
+      fi
     done
+    [ "$have_tx" = 1 ] || ok "verify-replay[$name]: transcripts not present under ${arch#$REPO_ROOT/} — records-only check (the verbatim transcripts live outside the pack; set WF_CORPUS_ARCHIVE to check them)"
     [ "$fail" = "$item_before" ] && ok "verify-replay[$name]: $n round record(s) carry every required field and a resolvable provenance link"
   done
   # The kit that judges these items validates under this same entrypoint.
