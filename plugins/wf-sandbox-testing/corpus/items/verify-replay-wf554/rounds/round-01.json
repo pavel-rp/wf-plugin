@@ -1,0 +1,202 @@
+{
+  "task": "WF-554",
+  "round": 1,
+  "kind": "verify-spec",
+  "body_truncated": false,
+  "branch": "feature/554-offer-one-explicit-user-gate-when-the",
+  "commit": "d045bebf926346d35d8e9b5b57f0fd21c042165a",
+  "base": "831930f",
+  "tree": "clean",
+  "tree_detail": "clean",
+  "verdict": "PARTIAL",
+  "verdict_note": "(16/17 requirements — see Capability findings for the reason this is not a clean PASS)",
+  "audited_by": "claude-sonnet-5",
+  "audited_at": "2026-09-04T19:50:00Z",
+  "audited_at_raw": "2026-09-04T19:50:00Z",
+  "sections": [
+    "Requirements",
+    "Capability findings",
+    "Deviations from derived artifacts (informational)",
+    "Recommended next actions"
+  ],
+  "requirements": [
+    {
+      "n": 1,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Given `Revisions used: 3 of 3` and ≥1 blocking finding, an interactive cap hit asks the user once (extend/accept/stop) and the choice is appended to the review log before anything else happens."
+    },
+    {
+      "n": 2,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing extend dispatches exactly one more revision."
+    },
+    {
+      "n": 3,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "The review-log header's `Revisions used: <M> of <cap>` denominator is raised in place, grepped `M of cap` shape unchanged."
+    },
+    {
+      "n": 4,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Hitting the cap again re-asks the gate at most once per cap hit."
+    },
+    {
+      "n": 5,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing accept records residual findings' fingerprints under `## Accepted warnings`, sets `**Status:** Converged`, final block `CHARTER — Converged with warnings`."
+    },
+    {
+      "n": 6,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing stop ends `CHARTER — Blocked` listing residual findings, artifacts preserved — same shape as today's stop."
+    },
+    {
+      "n": 7,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A recorded cap-gate choice is honored on a resumed run (after `/clear`) without re-asking."
+    },
+    {
+      "n": 8,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A headless run at the cap with blocking findings still ends `CHARTER — Blocked` exactly as today — no gate, never a hang."
+    },
+    {
+      "n": 9,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "`plugins/wf/skills/charter/SKILL.md` ends no longer than its start-of-slice line count (280 lines)."
+    },
+    {
+      "n": 10,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Rationale for the new gate lives in `references/convergence-loop.md`'s reserved SUB-4 section, not inline in `SKILL.md`."
+    },
+    {
+      "n": 11,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Domain-noun grep of the touched core skill stays clean."
+    },
+    {
+      "n": 12,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Only the user can extend the cap — never auto-extended, headless never softens this."
+    },
+    {
+      "n": 13,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Touched files limited to `SKILL.md`, the paired `references/` doc, and the two version manifests."
+    },
+    {
+      "n": 14,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Headless runs must never hang waiting on a gate."
+    },
+    {
+      "n": 15,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Phase 5 remains the sole retry owner — no other phase gains cap-adjacent state."
+    },
+    {
+      "n": 16,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Version bump is PATCH-tier and correctly applied to both manifests plus the marketplace top-level version."
+    },
+    {
+      "n": 17,
+      "verdict": "UNVERIFIABLE",
+      "qualifier": null,
+      "text": "\"Verification evidence\": replay against `_local/C031`'s final on-disk state (round 4, `Revisions used: 3 of 3`, 7 residual findings)."
+    }
+  ],
+  "requirement_tally": {
+    "PASS": 16,
+    "UNVERIFIABLE": 1
+  },
+  "capability_findings": [
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "The recorded-choice resume path is not idempotent: a `/clear` between recording an \"extend\" (or \"accept\") choice and completing its follow-through causes the follow-through to be re-applied on the next resume, since nothing marks \"already a"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "The new `## Cap-gate decisions` section has no specified entry format, unlike its two named sibling gates (`## Growth authorizations` gives an explicit `- Round <N> | gap: <flag text> | status: pending` row shape at `SKILL.md:161`). Rule 4'"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The accept branch's \"fingerprint every residual blocking finding under `## Accepted warnings`\" (`SKILL.md:192`) has no stated dedup guard, so the same resume window that risks double-raising the cap on extend can double-fingerprint on accep"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The rationale for what a cold resume's recorded-choice branch acts on (the last `## Round <N>`'s findings) is stated only in `references/convergence-loop.md` (explicitly \"not read at runtime\"), not in the runtime-read `SKILL.md` itself — un"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`03_review-log.md` is built by verbatim-appending reviewer/tracker-sourced text with no fencing; the new resume logic scans for `##`-prefixed headings as structural control markers (`SKILL.md:94`, `:192`), so crafted `##`-prefixed content i"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The Loop-contract diagram's unchanged last line (\"`no progress / rounds exhausted → stop honestly`\", `SKILL.md:23`) now contradicts the diagram's own updated line just above it (`SKILL.md:21`, \"revision cap, extendable once per cap hit\") an"
+    },
+    {
+      "capability": "author-caps",
+      "lens": null,
+      "severity": "PASS",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`validate_skill_interface` (scoped to the `charter` skill) and `validate_references` (scoped to `plugins/wf/skills/charter`) both report `status: pass`, 0 findings — no schema or dead-reference defects introduced."
+    }
+  ],
+  "finding_tally": {
+    "FAIL": 2,
+    "WARN": 4,
+    "PASS": 1
+  },
+  "blocking_set": {
+    "requirements": [],
+    "findings": [
+      0,
+      1
+    ]
+  },
+  "source": "_local/_archive/WF-554/04_verify.history.md",
+  "transcript": "rounds/round-01.md"
+}

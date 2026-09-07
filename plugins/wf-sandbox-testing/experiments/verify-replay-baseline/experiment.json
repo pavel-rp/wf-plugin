@@ -1,0 +1,82 @@
+{
+  "name": "verify-replay-baseline",
+  "arms": [
+    { "label": "A", "wf_ref": "346baf0" },
+    { "label": "B", "wf_ref": "346baf0" }
+  ],
+  "constants": {
+    "image_repo": "verify-replay-baseline",
+    "workload_ref": "346baf0",
+    "cli_version": "2.1.218",
+    "umbrella_id": "WF-554",
+    "gate_skill": "/wf:triage WF-554",
+    "fake_scripts": "fake-scripts.json",
+    "measured_skill": "/wf:verify-spec",
+    "model": "claude-opus-5",
+    "packs": "wf wf-fake",
+    "gap_seconds": 60
+  },
+  "compares": [
+    { "base": "A", "against": "B" }
+  ],
+  "mechanism_signals": [
+    {
+      "id": "fixture-findings-served",
+      "kind": "record_match",
+      "description": "The recorded findings entered through the static fixture fragment: the resolver served verify-replay-fixture's findings.md at the verify phase.",
+      "match": [
+        { "field": "", "op": "contains", "value": ["verify-replay-fixture/fragments/findings.md", "capability\":\"verify-replay-fixture"] }
+      ]
+    },
+    {
+      "id": "no-correctness-lens-dispatch",
+      "kind": "dispatch_shape",
+      "description": "No correctness lens agent is dispatched during the replayed audit.",
+      "subagent_type": "wf-audit:correctness-auditor"
+    },
+    {
+      "id": "no-security-lens-dispatch",
+      "kind": "dispatch_shape",
+      "description": "No security lens agent is dispatched during the replayed audit.",
+      "subagent_type": "wf-audit:security-auditor"
+    },
+    {
+      "id": "no-convention-lens-dispatch",
+      "kind": "dispatch_shape",
+      "description": "No convention lens agent is dispatched during the replayed audit.",
+      "subagent_type": "wf-audit:convention-auditor"
+    },
+    {
+      "id": "no-consistency-lens-dispatch",
+      "kind": "dispatch_shape",
+      "description": "No consistency lens agent is dispatched during the replayed audit.",
+      "subagent_type": "wf-audit:consistency-auditor"
+    },
+    {
+      "id": "no-operational-lens-dispatch",
+      "kind": "dispatch_shape",
+      "description": "No operational lens agent is dispatched during the replayed audit.",
+      "subagent_type": "wf-audit:operational-auditor"
+    },
+    {
+      "id": "no-tracker-write",
+      "kind": "record_match",
+      "description": "No tracker write operation is recorded anywhere in the replayed audit's transcript; the count must be zero over a non-zero basis.",
+      "match": [
+        { "field": "", "op": "contains", "value": ["\"create_child\"", "\"post_comment\"", "\"set_status\"", "\"create_umbrella\"", "\"attach_link\""] }
+      ]
+    }
+  ],
+  "blinding": {
+    "vocabulary": [
+      "verify-replay-baseline",
+      "replay corpus",
+      "baseline arm",
+      "treatment",
+      "control"
+    ],
+    "forbidden_paths": [
+      "plugins/wf-sandbox-testing/experiments/verify-replay-baseline/results"
+    ]
+  }
+}

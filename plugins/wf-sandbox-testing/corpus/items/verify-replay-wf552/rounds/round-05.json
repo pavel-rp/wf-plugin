@@ -1,0 +1,260 @@
+{
+  "task": "WF-552",
+  "round": 5,
+  "kind": "verify-spec",
+  "body_truncated": false,
+  "branch": "feature/552-freeze-charter-scope-after-round-1",
+  "commit": "2ae1037b24e7d985438c3efc82ece2b6ac8364f4",
+  "base": "8d3da8508602dbdb152c4742f25d7fede22fbe66",
+  "tree": "clean",
+  "tree_detail": "clean",
+  "verdict": "FAIL",
+  "verdict_note": "(21/22 requirements, 1 UNVERIFIABLE) — gated by capability findings (see below), not by any generic requirement",
+  "audited_by": "claude-sonnet-5",
+  "audited_at": "2026-09-04T16:14:00Z",
+  "audited_at_raw": "2026-09-04 16:14 UTC",
+  "sections": [
+    "Requirements",
+    "Capability findings",
+    "Adversarial findings",
+    "Deviations from derived artifacts (informational)",
+    "Recommended next actions"
+  ],
+  "requirements": [
+    {
+      "n": 1,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Active `OUT`/`SUB` counts stay non-increasing whenever no growth authorization is in the log"
+    },
+    {
+      "n": 2,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Retirement uses the unchanged `~~OUT-n~~ retired: <why>` / `~~SUB-n~~ retired: <why>` form"
+    },
+    {
+      "n": 3,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Ids are never renumbered (pre-existing rule, unchanged by this diff)"
+    },
+    {
+      "n": 4,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A reword/retire revision returning `Scope changed: yes` still re-dispatches the decomposer as today, and raises no growth finding (no id is new)"
+    },
+    {
+      "n": 5,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A finding / `## Open questions` entry / deferred Phase-3 `Flags:` choice needing a new id routes to `user` and is asked as the two-option gate, with the choice recorded in the review log"
+    },
+    {
+      "n": 6,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Exactly one growth revision may add ids per recorded authorization, bounded to the authorized gap and count"
+    },
+    {
+      "n": 7,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "The host's post-revision id-diff check runs immediately after *every* revision-triggering dispatch and before the next Phase 4 review, catching unauthorized growth regardless of `Scope changed:`"
+    },
+    {
+      "n": 8,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A rule-1 user answer whose integration needs a new id is itself auto-recorded as the growth authorization, with no separate gate, and `Revisions used` increments once"
+    },
+    {
+      "n": 9,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A headless run needing growth ends `CHARTER — Needs input`; it never hangs"
+    },
+    {
+      "n": 10,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Writer revision-mode contract: fix/reword/retire freely; no new `OUT-n` id without a stated growth authorization; gap recorded under the existing `## Open questions` section; no new output-block field"
+    },
+    {
+      "n": 11,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Decomposer revision-mode contract: same, reported via `Flags: [growth] <one line>`; no new output-block field"
+    },
+    {
+      "n": 12,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Reviewer checklist: a finding needing a new outcome/sub-task (including a round ≥2 reviewer meeting a charter `## Open questions` entry) routes `user`; explicitly a routing rule only, never a growth detector"
+    },
+    {
+      "n": 13,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Phase 3: a revision-mode decomposer `[growth]`-tagged `Flags:` choice defers to the Phase 5 growth gate; every other choice keeps the immediate Phase 3 ask"
+    },
+    {
+      "n": 14,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "No new writer/decomposer output-block fields introduced"
+    },
+    {
+      "n": 15,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "The host records active `OUT`/`SUB` counts per round in the review log"
+    },
+    {
+      "n": 16,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Roles keep their boundaries — growth-authorization and active-count records live only in `03_review-log.md`; the host never edits `01_charter.md`/`02_subtasks.md` beyond the pre-existing permitted metadata lines"
+    },
+    {
+      "n": 17,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Core stays domain-free"
+    },
+    {
+      "n": 18,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "`SKILL.md` ends no higher than its line count at the start of the slice"
+    },
+    {
+      "n": 19,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Version bump: PATCH"
+    },
+    {
+      "n": 20,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Touched files match exactly the constraint's list"
+    },
+    {
+      "n": 21,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "`references/convergence-loop.md`'s reserved `### SUB-2` section is filled with the slice's rationale"
+    },
+    {
+      "n": 22,
+      "verdict": "UNVERIFIABLE",
+      "qualifier": null,
+      "text": "The reqs' own \"Verification evidence\" — a replay of C031's final artifacts under the new contracts, and a first live run — showing non-increasing counts absent a logged authorization"
+    }
+  ],
+  "requirement_tally": {
+    "PASS": 21,
+    "UNVERIFIABLE": 1
+  },
+  "capability_findings": [
+    {
+      "capability": "audit",
+      "lens": "correctness",
+      "severity": "NOTE",
+      "qualifier": null,
+      "blocking": false,
+      "text": "round-4 finding status: **resolved**. Tracing the control flow: any `[growth]`-tagged item's growth-authorize dispatch always forces a full re-review before rules 2–4 are ever evaluated (`SKILL.md:186`), and so does the ordinary-answer bran"
+    },
+    {
+      "capability": "audit",
+      "lens": "correctness",
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The Phase 2/3 dispatch-prompt injection trigger (\"When a `granted, consumed: no` entry is on record for this dispatch...\", `SKILL.md:140,158`) is untouched by `2ae1037` and still has no round or dispatch-identity scoping, unlike the now-sco"
+    },
+    {
+      "capability": "audit",
+      "lens": "security",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "Rule 4's match (\"an entry ... recorded for this round\", `:192`) is a round+status set-membership filter, not a pointer to one specific entry the way rule 1's \"this dispatch's own entry\" (`:186`) is. The spec's own text (rule 1's \"disregardi"
+    },
+    {
+      "capability": "audit",
+      "lens": "security",
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "Same finding as correctness's warn above (`SKILL.md:140,158` untouched, no round scoping), independently derived."
+    },
+    {
+      "capability": "audit",
+      "lens": "consistency",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "`references/convergence-loop.md:147-150`'s new claim \"Rule 1's ordinary-answer path deliberately states only two [outcomes]\" is not true of the on-disk `SKILL.md:186` text for that sub-path, which states exactly one explicit outcome (the ro"
+    },
+    {
+      "capability": "audit",
+      "lens": "convention",
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "Same overclaim as consistency above, rated a lower-severity doc-precision nit: \"the round-4 fix narrows the overclaim from 'three' to 'two' ... but the actual `SKILL.md` text for that sub-path still names only one outcome, so the doc's rati"
+    },
+    {
+      "capability": "audit",
+      "lens": "operational",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "The once-per-round snapshot-write hoist (`SKILL.md:192`, \"every reference to this write, here and in rule 1, performs it at most once per round\") correctly covers both of rule 1's branches, closing round 4's clobbering defect. But the ordin"
+    },
+    {
+      "capability": "audit",
+      "lens": "operational",
+      "severity": "NOTE",
+      "qualifier": null,
+      "blocking": false,
+      "text": "the once-per-round snapshot-write hoist itself is confirmed correct and unqualified as to which rule-1 occurrence it binds — both the growth-authorize branch's explicit cross-reference and the ordinary-answer branch's bare \"(the write below"
+    },
+    {
+      "capability": "author-caps",
+      "lens": null,
+      "severity": "PASS",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`validate_skill_interface` (charter skill, 0 findings), `validate_references` (charter skill folder + all three role agents: 5 files/22 refs total, 0 findings), `validate_manifest` (2 manifests, 0 findings). `2ae1037` touched only prose ins"
+    },
+    {
+      "capability": "author-caps",
+      "lens": null,
+      "severity": "FAIL",
+      "qualifier": "pre-existing, not introduced by this diff",
+      "blocking": true,
+      "text": "The same stale `## Plugin Roots` `CHECK-4` errors noted in rounds 1–4 (`wf-git`, `wf-audit` ×2, `wf-author-caps`, `wf-sandbox-testing`, `wf-linear`) remain in `_local/config.md`; worktree-level drift unrelated to WF-552, unchanged this roun"
+    }
+  ],
+  "finding_tally": {
+    "NOTE": 2,
+    "WARN": 3,
+    "FAIL": 4,
+    "PASS": 1
+  },
+  "blocking_set": {
+    "requirements": [],
+    "findings": [
+      2,
+      4,
+      6,
+      9
+    ]
+  },
+  "source": "_local/_archive/WF-552/04_verify.history.md",
+  "transcript": "rounds/round-05.md"
+}

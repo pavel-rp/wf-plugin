@@ -1,0 +1,193 @@
+{
+  "task": "WF-554",
+  "round": 4,
+  "kind": "verify-spec",
+  "body_truncated": false,
+  "branch": "feature/554-offer-one-explicit-user-gate-when-the",
+  "commit": "bbbb06af1fb2f711929033dd76a4047b1a717e8f",
+  "base": "831930f",
+  "tree": "clean",
+  "tree_detail": "clean",
+  "verdict": "PARTIAL",
+  "verdict_note": "(16/17 requirements — see Capability findings for the reason this is not a clean PASS)",
+  "audited_by": "claude-sonnet-5",
+  "audited_at": "2026-09-04T20:36:00Z",
+  "audited_at_raw": "2026-09-04T20:36:00Z",
+  "sections": [
+    "Requirements",
+    "Capability findings",
+    "Deviations from derived artifacts (informational)",
+    "Recommended next actions"
+  ],
+  "requirements": [
+    {
+      "n": 1,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Given `Revisions used: 3 of 3` and ≥1 blocking finding, an interactive cap hit asks the user once (extend/accept/stop) and the choice is appended to the review log before anything else happens."
+    },
+    {
+      "n": 2,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing extend dispatches exactly one more revision."
+    },
+    {
+      "n": 3,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "The review-log header's `Revisions used: <M> of <cap>` denominator is raised in place, grepped `M of cap` shape unchanged."
+    },
+    {
+      "n": 4,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Hitting the cap again re-asks the gate at most once per cap hit."
+    },
+    {
+      "n": 5,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing accept records residual findings' fingerprints under `## Accepted warnings`, sets `**Status:** Converged`, final block `CHARTER — Converged with warnings`."
+    },
+    {
+      "n": 6,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing stop ends `CHARTER — Blocked` listing residual findings, artifacts preserved — same shape as today's stop."
+    },
+    {
+      "n": 7,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A recorded cap-gate choice is honored on a resumed run (after `/clear`) without re-asking."
+    },
+    {
+      "n": 8,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A headless run at the cap with blocking findings still ends `CHARTER — Blocked` exactly as today — no gate, never a hang."
+    },
+    {
+      "n": 9,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "`plugins/wf/skills/charter/SKILL.md` ends no longer than its start-of-slice line count (280 lines)."
+    },
+    {
+      "n": 10,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Rationale for the new gate lives in `references/convergence-loop.md`'s reserved SUB-4 section, not inline in `SKILL.md`."
+    },
+    {
+      "n": 11,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Domain-noun grep of the touched core skill stays clean."
+    },
+    {
+      "n": 12,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Only the user can extend the cap — never auto-extended, headless never softens this."
+    },
+    {
+      "n": 13,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Touched files limited to `SKILL.md`, the paired `references/` doc, and the two version manifests."
+    },
+    {
+      "n": 14,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Headless runs must never hang waiting on a gate."
+    },
+    {
+      "n": 15,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Phase 5 remains the sole retry owner — no other phase gains cap-adjacent state."
+    },
+    {
+      "n": 16,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Version bump is PATCH-tier and correctly applied to both manifests plus the marketplace top-level version."
+    },
+    {
+      "n": 17,
+      "verdict": "UNVERIFIABLE",
+      "qualifier": null,
+      "text": "\"Verification evidence\": replay against `_local/C031`'s final on-disk state (round 4, `Revisions used: 3 of 3`, 7 residual findings)."
+    }
+  ],
+  "requirement_tally": {
+    "PASS": 16,
+    "UNVERIFIABLE": 1
+  },
+  "capability_findings": [
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "The new re-entrancy rule assigns a single compound fact — \"the on-disk artifacts differ from round `<N>`'s snapshot\" — to what rule 193 (unchanged) can require as **two** sequential, conditionally-dependent dispatches: the writer, then the "
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "Between the writer/decomposer dispatch and the Phase-4 re-review, rule 193's unchanged text also performs an id-diff / `consumed: yes|no` growth-authorization step (and a possible unauthorized-growth `AskUserQuestion`). The new re-entrancy "
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The `## Round <N+1>` heading fact for \"re-review already ran\" is a plain substring/heading match over `03_review-log.md`, which is built by verbatim-appending reviewer/writer output that ultimately traces back to tracker-sourced, potentiall"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The new \"on-disk fact\" vocabulary (`SKILL.md:192`) is a fourth, unrelated name for a concept the file already names three other ways: the growth mechanism's `consumed: yes/no` marker (`:187`, `:193`), the once-per-round snapshot guard (\"ski"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`SKILL.md:192` retains the pre-existing \"marks the row `status: applied` only once its entire outcome below is reached, never earlier\" clause immediately alongside the new \"One re-entrancy rule governs every branch... mark `applied` when th"
+    },
+    {
+      "capability": "author-caps",
+      "lens": null,
+      "severity": "PASS",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`validate_skill_interface` and `validate_references`, both scoped to the `charter` skill, report `status: pass` — 0 findings (skill-interface: 1 skill checked; references: 2 files scanned, 14 references resolved against the tree). No schema"
+    }
+  ],
+  "finding_tally": {
+    "FAIL": 1,
+    "WARN": 4,
+    "PASS": 1
+  },
+  "blocking_set": {
+    "requirements": [],
+    "findings": [
+      0
+    ]
+  },
+  "source": "_local/_archive/WF-554/04_verify.history.md",
+  "transcript": "rounds/round-04.md"
+}

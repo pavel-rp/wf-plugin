@@ -24,6 +24,13 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
   `assert/compare.sh` (EQUIVALENT / DIVERGENT per family under a variance ceiling).
 - **assertion item** — a run set judged against an `expect.json` with `assert/tiers.sh`
   (per-family PASS/FAIL with variance-aware drift-vs-regression).
+- **round-replay item** (WF-564) — a recorded *successive-round* verify sequence (one
+  `rounds/round-NN.json` per audit round (the verbatim `round-NN.md` transcript lives outside the
+  pack, in the repo-level `corpus-archive/<item>/rounds/`), transcribed from a task's rotated
+  `04_verify.history.md`) whose per-round verdict, blocking set, and stop decision are replayed
+  through today's `verify-spec`/`run` and judged against a committed baseline
+  (`experiments/verify-replay-baseline/results/baseline.json`) by that kit's `replay-check.mjs`.
+  Still structural — a verdict token, an id set, a stop token — never transcript prose.
 
 ## Items
 
@@ -44,8 +51,11 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 13 | empty-slot invariant — `implement.finish` | comparison (per declared slot) | SMOKE | `implement.finish` (`plugins/wf/skills/implement/interface.md` → `## Slots`; marker in `implement/SKILL.md` Phase 5.5) | **WF-408** — "SUB-3: mirror the implement phase via three lifecycle slots"; it fires mid-conveyor, so its fill moves an external record to a **non-terminal** state and the unfilled case is the clean control for that; **C021 (WF-405)**; **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
 
 | 14 | bare-core conveyor — zero tracker calls, zero errors, seven unfilled slots | absolute assertion (zero-tolerance, no variance ceiling) | SMOKE | `barecore-conveyor` — the full `spec → plan → tasks → implement` conveyor in a registry with **zero capability rows** (both provider surfaces `unconfigured`) | **WF-414** — "SUB-5: prove and lock the ×7 bare-core empty-slot invariant"; **C021 (WF-405) OUT-4** ("works identically, locally, zero tracker traffic"); the empty-slot invariant of **C014 (WF-322)**; **C016 (WF-343) OUT-6(a)**. |
+| 15 | verify-replay — the WF-552 five-round FAIL loop | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf552` — five recorded `/wf:verify-spec` rounds (all FAIL; rounds 4–5 gated by capability findings alone) replayed through today's aggregation / blocking / stop rule | **WF-552** — `_local/_archive/WF-552/04_verify.history.md`, the rotated audit history of "Freeze charter scope after round 1" (2026-09-04, 5 rounds); mined by **WF-564** — "Replay the archived verify histories as a regression corpus with a recorded baseline", the **C033** verify-loop charter's baseline SUB. |
+| 16 | verify-replay — the WF-553 four-round PARTIAL loop | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf553` — four recorded `/wf:verify-spec` rounds (all PARTIAL with every generic requirement passing; round 1 header-only at the source, flagged `body_truncated`) | **WF-553** — `_local/_archive/WF-553/04_verify.history.md`, the rotated audit history of the charter size-budget task (2026-09-04, 4 rounds); mined by **WF-564**, the **C033** baseline SUB. |
+| 17 | verify-replay — the WF-554 seven-round PARTIAL loop with a verify-fix pass | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf554` — seven recorded `/wf:verify-spec` rounds (all PARTIAL at 16/17) with one `/wf:verify-fix` pass between rounds 5 and 6, the last two rounds auditing an uncommitted edit | **WF-554** — `_local/_archive/WF-554/04_verify.history.md` + `05_verify-fix.history.md`, the rotated histories of "Offer one explicit user gate when the revision cap is hit with blocking findings left" (2026-09-04/05, 7 rounds + 1 fix pass); mined by **WF-564**, the **C033** baseline SUB. |
 
-All fourteen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+All seventeen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
@@ -74,6 +84,21 @@ tolerated"). Two consequences make them unable to carry C021 OUT-4:
 Item 14 is therefore **additive and absolute**: it calls `assert/compare.sh` not at all, and one
 tracker-surface record anywhere in its run set is a hard failure. Its seeded-breakage set is the
 negative control proving the detector can observe a tracker call rather than passing vacuously.
+
+### Items 15–17: the round-replay items (WF-564)
+
+Items 15–17 are the first **round-replay** items: each is a recorded multi-round `/wf:verify-spec`
+loop (5, 4, and 7 audit rounds; item 17 also carries the `/wf:verify-fix` pass that sat inside its
+loop), transcribed verbatim by `experiments/verify-replay-baseline/kit/extract-rounds.mjs` and
+judged round by round. They exist because the C033 charter changes the verify-loop rules
+(aggregation, blocking, ledger, stop rule), and a loop-rule change needs a replayable corpus of
+*real* loops to show its effect on before a multi-hour live verify run is spent. Their provenance
+is the source history file itself (a `_local/_archive/WF-55x/` path plus the `WF-55x` task the
+loop belonged to); `_local/` is gitignored, so the committed `rounds/` records are the copy of
+record. Check 12 (VERIFY REPLAY) lints them: every round record carries its header fields, a
+non-empty requirement-verdict list (or an explicit `body_truncated` flag), a findings list, and a
+provenance link, naming the specific missing field otherwise, and the kit's own `selfcheck.sh` runs
+under the same check.
 
 ## Per-arm canned-vs-real disclosure ledger
 
@@ -241,7 +266,11 @@ instead: `resolve_content({class: "slot", …})` returning `{status: "unfilled"}
 | `items/barecore-conveyor/arm.json` | the bare-core arm: registry state, `slots_covered` / `slots_exempt` (each exemption reasoned), run fingerprints, and machine-readable `provenance` |
 | `items/barecore-conveyor/runs-current/` | the 3-run bare-core conveyor set — present-but-empty op logs (zero provider ops of any surface), all seven covered slots `unfilled` on their no-op inline defaults |
 | `items/barecore-conveyor/seeded-breakage/runs/` | the negative control: `implement.start`'s inline default attempts a tracker `create_child`, tripping both the zero-call and the zero-error assertions |
+| `items/verify-replay-wf552/` | item 15 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..05.json` (verbatim transcripts in the repo-level `corpus-archive/verify-replay-wf552/`) — the WF-552 five-round FAIL loop, structured + verbatim |
+| `items/verify-replay-wf553/` | item 16 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..04.json` (transcripts in `corpus-archive/verify-replay-wf553/`) — the WF-553 four-round PARTIAL loop (round 1 `body_truncated` at the source) |
+| `items/verify-replay-wf554/` | item 17 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..07.json` + `rounds/verify-fix-after-round-05.json` (transcripts in `corpus-archive/verify-replay-wf554/`) — the WF-554 seven-round PARTIAL loop with its verify-fix pass |
+| `../experiments/verify-replay-baseline/` | the replay kit items 15–17 are judged by: manifest, fixture capability, extractor, baseline deriver, live replay driver, `replay-check.mjs`, `selfcheck.sh`, and `results/baseline.json` |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
-| `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, and the coverage-ledger audit (CI entrypoint) |
+| `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, the coverage-ledger audit, and the round-replay lint (items 15–17 + the kit self-lint) (CI entrypoint) |
 | `slot-exemptions.json` | declared slots deliberately carrying no per-slot arm, each with the reason no runner arm can reach them (WF-363) |
 | `README.md` | authoring reference (never read at runtime) |

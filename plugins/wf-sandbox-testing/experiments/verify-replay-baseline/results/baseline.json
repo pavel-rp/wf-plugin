@@ -1,0 +1,776 @@
+{
+  "name": "verify-replay-baseline",
+  "derived_by": "plugins/wf-sandbox-testing/experiments/verify-replay-baseline/kit/derive-baseline.mjs",
+  "provenance": {
+    "path": "canned",
+    "reason": "Docker and CLAUDE_CODE_OAUTH_TOKEN were unavailable where this baseline was recorded, so no live replay ran: every per-round expectation below is derived mechanically from the corpus item's recorded round (verdict as recorded; blocking set and stop decision under today's documented rules). kit/replay-round.sh regenerates a live arm when a container is available; replay-check.mjs judges either the same way."
+  },
+  "rules": {
+    "source": "plugins/wf/skills/run/SKILL.md §Phase 3 (verify-spec PASS → qa-gen; FAIL/PARTIAL → verify-fix; cap at 2 verify⇄fix cycles, then halt and escalate)",
+    "verify_fix_cycle_cap": 2,
+    "blocking": "plugins/wf/skills/verify-spec/SKILL.md §Fire the verify phase — `fail` blocks shipment; `warn` is non-blocking; a non-conformance finding is a FAIL like a failed requirement"
+  },
+  "items": [
+    {
+      "task": "WF-552",
+      "item": "verify-replay-wf552",
+      "source": "_local/_archive/WF-552/04_verify.history.md",
+      "verify_fix_source": null,
+      "audit_rounds": 5,
+      "replayable_rounds": 5,
+      "rounds": [
+        {
+          "round": 1,
+          "seq": 1,
+          "commit": "d9bb9a551f5865d67046f7a004cecfd679a79056",
+          "base": "398e7d0ea2cca30d5143c4ab4187c2ec53e7405b",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "FAIL",
+          "requirement_tally": {
+            "FAIL": 4,
+            "PASS": 17,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 7,
+            "WARN": 3,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [
+              1,
+              6,
+              7,
+              8
+            ],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": "correctness",
+                "severity": "FAIL"
+              },
+              {
+                "index": 1,
+                "capability": "audit",
+                "lens": "correctness",
+                "severity": "FAIL"
+              },
+              {
+                "index": 2,
+                "capability": "audit",
+                "lens": "correctness",
+                "severity": "FAIL"
+              },
+              {
+                "index": 3,
+                "capability": "audit",
+                "lens": "security",
+                "severity": "FAIL"
+              },
+              {
+                "index": 4,
+                "capability": "audit",
+                "lens": "operational",
+                "severity": "FAIL"
+              },
+              {
+                "index": 5,
+                "capability": "audit",
+                "lens": "consistency",
+                "severity": "FAIL"
+              },
+              {
+                "index": 10,
+                "capability": "author-caps",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 11
+          },
+          "cycles_before": 0,
+          "ledger_rounds_before": 0,
+          "stop_decision": "verify-fix"
+        },
+        {
+          "round": 2,
+          "seq": 2,
+          "commit": "dbcf564e986d70f206001d7d4310caa8c464cb7c",
+          "base": "398e7d0ea2cca30d5143c4ab4187c2ec53e7405b",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "FAIL",
+          "requirement_tally": {
+            "PASS": 19,
+            "FAIL": 2,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 9,
+            "WARN": 4,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [
+              6,
+              7
+            ],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": "correctness",
+                "severity": "FAIL"
+              },
+              {
+                "index": 1,
+                "capability": "audit",
+                "lens": "correctness",
+                "severity": "FAIL"
+              },
+              {
+                "index": 2,
+                "capability": "audit",
+                "lens": "security",
+                "severity": "FAIL"
+              },
+              {
+                "index": 3,
+                "capability": "audit",
+                "lens": "security",
+                "severity": "FAIL"
+              },
+              {
+                "index": 4,
+                "capability": "audit",
+                "lens": "security",
+                "severity": "FAIL"
+              },
+              {
+                "index": 5,
+                "capability": "audit",
+                "lens": "consistency",
+                "severity": "FAIL"
+              },
+              {
+                "index": 7,
+                "capability": "audit",
+                "lens": "operational",
+                "severity": "FAIL"
+              },
+              {
+                "index": 8,
+                "capability": "audit",
+                "lens": "operational",
+                "severity": "FAIL"
+              },
+              {
+                "index": 13,
+                "capability": "author-caps",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 11
+          },
+          "cycles_before": 1,
+          "ledger_rounds_before": 1,
+          "stop_decision": "verify-fix"
+        },
+        {
+          "round": 3,
+          "seq": 3,
+          "commit": "262f55538df5e1b85174f92f99f6bfb7e2679e31",
+          "base": "8d3da8508602dbdb152c4742f25d7fede22fbe66",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "FAIL",
+          "requirement_tally": {
+            "PASS": 19,
+            "PARTIAL": 2,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 6,
+            "WARN": 4,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [
+              6,
+              7
+            ],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": "correctness",
+                "severity": "FAIL"
+              },
+              {
+                "index": 1,
+                "capability": "audit",
+                "lens": "correctness",
+                "severity": "FAIL"
+              },
+              {
+                "index": 2,
+                "capability": "audit",
+                "lens": "security",
+                "severity": "FAIL"
+              },
+              {
+                "index": 4,
+                "capability": "audit",
+                "lens": "consistency",
+                "severity": "FAIL"
+              },
+              {
+                "index": 7,
+                "capability": "audit",
+                "lens": "operational",
+                "severity": "FAIL"
+              },
+              {
+                "index": 10,
+                "capability": "author-caps",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 8
+          },
+          "cycles_before": 2,
+          "ledger_rounds_before": 2,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        },
+        {
+          "round": 4,
+          "seq": 4,
+          "commit": "febf5335e3f84ae7178921ca4e05364374eeb1c2",
+          "base": "8d3da8508602dbdb152c4742f25d7fede22fbe66",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "FAIL",
+          "requirement_tally": {
+            "PASS": 21,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 4,
+            "WARN": 2,
+            "NOTE": 1,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": "correctness",
+                "severity": "FAIL"
+              },
+              {
+                "index": 2,
+                "capability": "audit",
+                "lens": "consistency",
+                "severity": "FAIL"
+              },
+              {
+                "index": 4,
+                "capability": "audit",
+                "lens": "operational",
+                "severity": "FAIL"
+              },
+              {
+                "index": 7,
+                "capability": "author-caps",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 4
+          },
+          "cycles_before": 3,
+          "ledger_rounds_before": 3,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        },
+        {
+          "round": 5,
+          "seq": 5,
+          "commit": "2ae1037b24e7d985438c3efc82ece2b6ac8364f4",
+          "base": "8d3da8508602dbdb152c4742f25d7fede22fbe66",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "FAIL",
+          "requirement_tally": {
+            "PASS": 21,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "NOTE": 2,
+            "WARN": 3,
+            "FAIL": 4,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 2,
+                "capability": "audit",
+                "lens": "security",
+                "severity": "FAIL"
+              },
+              {
+                "index": 4,
+                "capability": "audit",
+                "lens": "consistency",
+                "severity": "FAIL"
+              },
+              {
+                "index": 6,
+                "capability": "audit",
+                "lens": "operational",
+                "severity": "FAIL"
+              },
+              {
+                "index": 9,
+                "capability": "author-caps",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 4
+          },
+          "cycles_before": 4,
+          "ledger_rounds_before": 4,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        }
+      ],
+      "verify_fix_passes": []
+    },
+    {
+      "task": "WF-553",
+      "item": "verify-replay-wf553",
+      "source": "_local/_archive/WF-553/04_verify.history.md",
+      "verify_fix_source": null,
+      "audit_rounds": 4,
+      "replayable_rounds": 3,
+      "rounds": [
+        {
+          "round": 1,
+          "seq": 1,
+          "commit": "8151ce4b42861146d9b2de708feb7e329f68ef35",
+          "base": "19ec254b7f640d837b9f4a0415e2a79a93e2db02",
+          "tree": "clean",
+          "replayable": false,
+          "not_replayable_reason": "body_truncated at the source — header only, no requirement or findings block to feed back",
+          "verdict": "PARTIAL",
+          "requirement_tally": {},
+          "finding_tally": {},
+          "blocking_set": null,
+          "cycles_before": 0,
+          "ledger_rounds_before": 0,
+          "stop_decision": "verify-fix"
+        },
+        {
+          "round": 2,
+          "seq": 2,
+          "commit": "89e74d9fe20bc939a0367c77cdc04523566e03c3",
+          "base": "19ec254b7f640d837b9f4a0415e2a79a93e2db02",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 22,
+            "N/A": 1
+          },
+          "finding_tally": {
+            "FAIL": 2,
+            "WARN": 3,
+            "PASS": 3,
+            "CLEAN": 2
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": "correctness-auditor",
+                "severity": "FAIL"
+              },
+              {
+                "index": 3,
+                "capability": "audit",
+                "lens": "consistency-auditor",
+                "severity": "FAIL"
+              }
+            ],
+            "size": 2
+          },
+          "cycles_before": 1,
+          "ledger_rounds_before": 1,
+          "stop_decision": "verify-fix"
+        },
+        {
+          "round": 3,
+          "seq": 3,
+          "commit": "c2c1a0c36f1b173ecf678fb142f09ef8a098dfda",
+          "base": "19ec254b7f640d837b9f4a0415e2a79a93e2db02",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 22,
+            "N/A": 1
+          },
+          "finding_tally": {
+            "FAIL": 2,
+            "PASS": 4,
+            "WARN": 1,
+            "CLEAN": 2
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": "correctness-auditor",
+                "severity": "FAIL"
+              },
+              {
+                "index": 2,
+                "capability": "audit",
+                "lens": "consistency-auditor",
+                "severity": "FAIL"
+              }
+            ],
+            "size": 2
+          },
+          "cycles_before": 2,
+          "ledger_rounds_before": 2,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        },
+        {
+          "round": 4,
+          "seq": 4,
+          "commit": "158ab1b3eb68f14b77103d44efba49793f3f8b30",
+          "base": "19ec254b7f640d837b9f4a0415e2a79a93e2db02",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 22,
+            "N/A": 1
+          },
+          "finding_tally": {
+            "FAIL": 1,
+            "WARN": 3,
+            "PASS": 2,
+            "CLEAN": 2
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": "correctness-auditor",
+                "severity": "FAIL"
+              }
+            ],
+            "size": 1
+          },
+          "cycles_before": 3,
+          "ledger_rounds_before": 3,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        }
+      ],
+      "verify_fix_passes": []
+    },
+    {
+      "task": "WF-554",
+      "item": "verify-replay-wf554",
+      "source": "_local/_archive/WF-554/04_verify.history.md",
+      "verify_fix_source": "_local/_archive/WF-554/05_verify-fix.history.md",
+      "audit_rounds": 7,
+      "replayable_rounds": 7,
+      "rounds": [
+        {
+          "round": 1,
+          "seq": 1,
+          "commit": "d045bebf926346d35d8e9b5b57f0fd21c042165a",
+          "base": "831930f",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 16,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 2,
+            "WARN": 4,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              },
+              {
+                "index": 1,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 2
+          },
+          "cycles_before": 0,
+          "ledger_rounds_before": 0,
+          "stop_decision": "verify-fix"
+        },
+        {
+          "round": 2,
+          "seq": 2,
+          "commit": "ba0351df621a641a49ed9ea0f90133938468d83a",
+          "base": "831930f",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 16,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 1,
+            "WARN": 3,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 1
+          },
+          "cycles_before": 1,
+          "ledger_rounds_before": 1,
+          "stop_decision": "verify-fix"
+        },
+        {
+          "round": 3,
+          "seq": 3,
+          "commit": "84868d6cb4cc3de497d0706674c73c08a4d7eca8",
+          "base": "831930f",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 16,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 1,
+            "WARN": 2,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 1
+          },
+          "cycles_before": 2,
+          "ledger_rounds_before": 2,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        },
+        {
+          "round": 4,
+          "seq": 4,
+          "commit": "bbbb06af1fb2f711929033dd76a4047b1a717e8f",
+          "base": "831930f",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 16,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 1,
+            "WARN": 4,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 1
+          },
+          "cycles_before": 3,
+          "ledger_rounds_before": 3,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        },
+        {
+          "round": 5,
+          "seq": 5,
+          "commit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+          "base": "831930f",
+          "tree": "clean",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 16,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 1,
+            "WARN": 2,
+            "PASS": 1
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 1
+          },
+          "cycles_before": 4,
+          "ledger_rounds_before": 4,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        },
+        {
+          "round": 6,
+          "seq": 7,
+          "commit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+          "base": "831930f",
+          "tree": "dirty",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 16,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 1,
+            "WARN": 5,
+            "PASS": 2
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 1
+          },
+          "cycles_before": 5,
+          "ledger_rounds_before": 5,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        },
+        {
+          "round": 7,
+          "seq": 8,
+          "commit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+          "base": "831930fb339963dd4b506513cbef8c2527e01f01",
+          "tree": "dirty",
+          "replayable": true,
+          "not_replayable_reason": null,
+          "verdict": "PARTIAL",
+          "requirement_tally": {
+            "PASS": 16,
+            "UNVERIFIABLE": 1
+          },
+          "finding_tally": {
+            "FAIL": 2,
+            "WARN": 2,
+            "PASS": 5
+          },
+          "blocking_set": {
+            "requirements": [],
+            "findings": [
+              {
+                "index": 0,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              },
+              {
+                "index": 1,
+                "capability": "audit",
+                "lens": null,
+                "severity": "FAIL"
+              }
+            ],
+            "size": 2
+          },
+          "cycles_before": 6,
+          "ledger_rounds_before": 6,
+          "stop_decision": "halt — verify⇄fix cap (2) exceeded"
+        }
+      ],
+      "verify_fix_passes": [
+        {
+          "seq": 6,
+          "after_round": 5,
+          "commit_at_audit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+          "auto_fixed": 1,
+          "awaiting_user": 0,
+          "skipped": 3
+        }
+      ]
+    }
+  ]
+}

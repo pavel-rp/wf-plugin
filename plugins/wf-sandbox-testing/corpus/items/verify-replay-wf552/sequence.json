@@ -1,0 +1,59 @@
+{
+  "task": "WF-552",
+  "source": "_local/_archive/WF-552/04_verify.history.md",
+  "verify_fix_source": null,
+  "extracted_by": "experiments/verify-replay-baseline/kit/extract-rounds.mjs",
+  "rounds": 5,
+  "records": [
+    {
+      "seq": 1,
+      "kind": "verify-spec",
+      "round": 1,
+      "at": "2026-09-04T15:05:00Z",
+      "commit": "d9bb9a551f5865d67046f7a004cecfd679a79056",
+      "verdict": "FAIL",
+      "record": "rounds/round-01.json",
+      "transcript": "rounds/round-01.md"
+    },
+    {
+      "seq": 2,
+      "kind": "verify-spec",
+      "round": 2,
+      "at": "2026-09-04T15:30:00Z",
+      "commit": "dbcf564e986d70f206001d7d4310caa8c464cb7c",
+      "verdict": "FAIL",
+      "record": "rounds/round-02.json",
+      "transcript": "rounds/round-02.md"
+    },
+    {
+      "seq": 3,
+      "kind": "verify-spec",
+      "round": 3,
+      "at": "2026-09-04T15:40:00Z",
+      "commit": "262f55538df5e1b85174f92f99f6bfb7e2679e31",
+      "verdict": "FAIL",
+      "record": "rounds/round-03.json",
+      "transcript": "rounds/round-03.md"
+    },
+    {
+      "seq": 4,
+      "kind": "verify-spec",
+      "round": 4,
+      "at": "2026-09-04T16:05:00Z",
+      "commit": "febf5335e3f84ae7178921ca4e05364374eeb1c2",
+      "verdict": "FAIL",
+      "record": "rounds/round-04.json",
+      "transcript": "rounds/round-04.md"
+    },
+    {
+      "seq": 5,
+      "kind": "verify-spec",
+      "round": 5,
+      "at": "2026-09-04T16:14:00Z",
+      "commit": "2ae1037b24e7d985438c3efc82ece2b6ac8364f4",
+      "verdict": "FAIL",
+      "record": "rounds/round-05.json",
+      "transcript": "rounds/round-05.md"
+    }
+  ]
+}

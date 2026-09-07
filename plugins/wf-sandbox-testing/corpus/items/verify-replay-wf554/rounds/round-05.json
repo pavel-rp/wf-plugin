@@ -1,0 +1,178 @@
+{
+  "task": "WF-554",
+  "round": 5,
+  "kind": "verify-spec",
+  "body_truncated": false,
+  "branch": "feature/554-offer-one-explicit-user-gate-when-the",
+  "commit": "55e292ad3161da51947b5abfb405c7ebed41cc56",
+  "base": "831930f",
+  "tree": "clean",
+  "tree_detail": "clean",
+  "verdict": "PARTIAL",
+  "verdict_note": "(16/17 requirements — see Capability findings for the reason this is not a clean PASS)",
+  "audited_by": "claude-sonnet-5",
+  "audited_at": "2026-09-04T21:10:00Z",
+  "audited_at_raw": "2026-09-04T21:10:00Z",
+  "sections": [
+    "Requirements",
+    "Capability findings",
+    "Adversarial findings",
+    "Deviations from derived artifacts (informational)",
+    "Recommended next actions"
+  ],
+  "requirements": [
+    {
+      "n": 1,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Given `Revisions used: 3 of 3` and ≥1 blocking finding, an interactive cap hit asks the user once (extend/accept/stop) and the choice is appended to the review log before anything else happens."
+    },
+    {
+      "n": 2,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing extend dispatches exactly one more revision."
+    },
+    {
+      "n": 3,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "The review-log header's `Revisions used: <M> of <cap>` denominator is raised in place, grepped `M of cap` shape unchanged."
+    },
+    {
+      "n": 4,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Hitting the cap again re-asks the gate at most once per cap hit."
+    },
+    {
+      "n": 5,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing accept records residual findings' fingerprints under `## Accepted warnings`, sets `**Status:** Converged`, final block `CHARTER — Converged with warnings`."
+    },
+    {
+      "n": 6,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing stop ends `CHARTER — Blocked` listing residual findings, artifacts preserved — same shape as today's stop."
+    },
+    {
+      "n": 7,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A recorded cap-gate choice is honored on a resumed run (after `/clear`) without re-asking."
+    },
+    {
+      "n": 8,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A headless run at the cap with blocking findings still ends `CHARTER — Blocked` exactly as today — no gate, never a hang."
+    },
+    {
+      "n": 9,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "`plugins/wf/skills/charter/SKILL.md` ends no longer than its start-of-slice line count (280 lines)."
+    },
+    {
+      "n": 10,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Rationale for the new gate lives in `references/convergence-loop.md`'s reserved SUB-4 section, not inline in `SKILL.md`."
+    },
+    {
+      "n": 11,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Domain-noun grep of the touched core skill stays clean."
+    },
+    {
+      "n": 12,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Only the user can extend the cap — never auto-extended, headless never softens this."
+    },
+    {
+      "n": 13,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Touched files limited to `SKILL.md`, the paired `references/` doc, and the two version manifests."
+    },
+    {
+      "n": 14,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Headless runs must never hang waiting on a gate."
+    },
+    {
+      "n": 15,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Phase 5 remains the sole retry owner — no other phase gains cap-adjacent state."
+    },
+    {
+      "n": 16,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Version bump is PATCH-tier and correctly applied to both manifests plus the marketplace top-level version."
+    },
+    {
+      "n": 17,
+      "verdict": "UNVERIFIABLE",
+      "qualifier": null,
+      "text": "\"Verification evidence\": replay against `_local/C031`'s final on-disk state (round 4, `Revisions used: 3 of 3`, 7 residual findings)."
+    }
+  ],
+  "requirement_tally": {
+    "PASS": 16,
+    "UNVERIFIABLE": 1
+  },
+  "capability_findings": [
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "The new id-diff/`consumed:`-marking marker is vacuously satisfied in the ordinary case, silently defeating the very unauthorized-growth guard it was added to protect. `SKILL.md:192` defines this step's marker as \"every `## Growth authorizat"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The `## Round <N+1>` marker's \"anchored at the start of a line, never as a substring\" fix (`SKILL.md:192`) closes the flat mid-line-substring forgery the prior audit flagged, but not a same-shape variant reached through the unchanged verbat"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`SKILL.md:192`'s writer clause (\"the writer (marker: `01_charter.md` differs from `01_charter.round-<N>.md`)\") lacks the explicit conditional qualifier the decomposer clause carries (\"dispatched on the straight-through path exactly when tha"
+    },
+    {
+      "capability": "author-caps",
+      "lens": null,
+      "severity": "PASS",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`validate_skill_interface` and `validate_references`, both scoped to the `charter` skill, report `status: pass` — 0 findings (skill-interface: 1 skill checked; references: 2 files scanned, 14 references resolved against the tree). No schema"
+    }
+  ],
+  "finding_tally": {
+    "FAIL": 1,
+    "WARN": 2,
+    "PASS": 1
+  },
+  "blocking_set": {
+    "requirements": [],
+    "findings": [
+      0
+    ]
+  },
+  "source": "_local/_archive/WF-554/04_verify.history.md",
+  "transcript": "rounds/round-05.md"
+}

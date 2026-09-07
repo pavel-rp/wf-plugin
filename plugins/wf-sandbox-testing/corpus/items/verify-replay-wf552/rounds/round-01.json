@@ -1,0 +1,276 @@
+{
+  "task": "WF-552",
+  "round": 1,
+  "kind": "verify-spec",
+  "body_truncated": false,
+  "branch": "feature/552-freeze-charter-scope-after-round-1",
+  "commit": "d9bb9a551f5865d67046f7a004cecfd679a79056",
+  "base": "398e7d0ea2cca30d5143c4ab4187c2ec53e7405b",
+  "tree": "clean",
+  "tree_detail": "clean",
+  "verdict": "FAIL",
+  "verdict_note": "(17/22 requirements, 1 UNVERIFIABLE)",
+  "audited_by": "claude-sonnet-5",
+  "audited_at": "2026-09-04T15:05:00Z",
+  "audited_at_raw": "2026-09-04 15:05 UTC",
+  "sections": [
+    "Requirements",
+    "Capability findings",
+    "Adversarial findings",
+    "Deviations from derived artifacts (informational)",
+    "Recommended next actions"
+  ],
+  "requirements": [
+    {
+      "n": 1,
+      "verdict": "FAIL",
+      "qualifier": null,
+      "text": "Active `OUT`/`SUB` counts stay non-increasing whenever no growth authorization is in the log"
+    },
+    {
+      "n": 2,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Retirement uses the unchanged `~~OUT-n~~ retired: <why>` / `~~SUB-n~~ retired: <why>` form"
+    },
+    {
+      "n": 3,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Ids are never renumbered (pre-existing rule, unchanged by this diff)"
+    },
+    {
+      "n": 4,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A reword/retire revision returning `Scope changed: yes` still re-dispatches the decomposer as today, and raises no growth finding (no id is new)"
+    },
+    {
+      "n": 5,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A finding / `## Open questions` entry / deferred Phase-3 `Flags:` choice needing a new id routes to `user` and is asked as the two-option gate, with the choice recorded in the review log"
+    },
+    {
+      "n": 6,
+      "verdict": "FAIL",
+      "qualifier": null,
+      "text": "Exactly one growth revision may add ids per recorded authorization, bounded to the authorized gap and count"
+    },
+    {
+      "n": 7,
+      "verdict": "FAIL",
+      "qualifier": null,
+      "text": "The host's post-revision id-diff check runs immediately after *every* revision (both a rule-1 integration dispatch and a rule-4 blocking-findings dispatch) and before the next Phase 4 review, catching unauthorized growth regardless of `Scope changed:`"
+    },
+    {
+      "n": 8,
+      "verdict": "FAIL",
+      "qualifier": null,
+      "text": "A rule-1 user answer whose integration needs a new id is itself auto-recorded as the growth authorization, with no separate gate, and `Revisions used` increments once"
+    },
+    {
+      "n": 9,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A headless run needing growth (a `[growth]`-tagged `route: user` item reaching Phase 5 rule 1) ends `CHARTER — Needs input`; it never hangs"
+    },
+    {
+      "n": 10,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Writer revision-mode contract: fix/reword/retire freely; no new `OUT-n` id without a stated growth authorization; gap recorded under the existing `## Open questions` section; no new output-block field"
+    },
+    {
+      "n": 11,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Decomposer revision-mode contract: same, reported via `Flags: [growth] <one line>`; no new output-block field (a new value within the existing enum)"
+    },
+    {
+      "n": 12,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Reviewer checklist: a finding needing a new outcome/sub-task (including a round ≥2 reviewer meeting a charter `## Open questions` entry) routes `user`; explicitly a routing rule only, never a growth detector"
+    },
+    {
+      "n": 13,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Phase 3: a revision-mode decomposer `[growth]`-tagged `Flags:` choice defers to the Phase 5 growth gate; every other choice (including an irreducible size overrun) keeps the immediate Phase 3 ask"
+    },
+    {
+      "n": 14,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "No new writer/decomposer output-block fields introduced"
+    },
+    {
+      "n": 15,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "The host records active `OUT`/`SUB` counts per round in the review log"
+    },
+    {
+      "n": 16,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Roles keep their boundaries — growth-authorization and active-count records live only in `03_review-log.md` (already host-owned outright); the host never edits `01_charter.md`/`02_subtasks.md` beyond the pre-existing permitted metadata lines"
+    },
+    {
+      "n": 17,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Core stays domain-free"
+    },
+    {
+      "n": 18,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "`SKILL.md` ends no higher than its line count at the start of the slice"
+    },
+    {
+      "n": 19,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Version bump: PATCH"
+    },
+    {
+      "n": 20,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Touched files match exactly the constraint's list"
+    },
+    {
+      "n": 21,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "`references/convergence-loop.md`'s reserved `### SUB-2` section is filled with the slice's rationale"
+    },
+    {
+      "n": 22,
+      "verdict": "UNVERIFIABLE",
+      "qualifier": null,
+      "text": "The reqs' own \"Verification evidence\" — a replay of C031's final artifacts under the new contracts, and a first live run — showing non-increasing counts absent a logged authorization"
+    }
+  ],
+  "requirement_tally": {
+    "FAIL": 4,
+    "PASS": 17,
+    "UNVERIFIABLE": 1
+  },
+  "capability_findings": [
+    {
+      "capability": "audit",
+      "lens": "correctness",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "severity high, confidence high — \"accept gap as warning\" for a `[growth]`-tagged item is recorded only under `## Growth authorizations`; the reviewer's only suppression source is the separate `## Accepted warnings` fingerprint list, and the"
+    },
+    {
+      "capability": "audit",
+      "lens": "correctness",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "severity high, confidence high — the post-revision growth check is reachable only when Phase 5 rule 4 fires the same round; a rule-1-only revision skips it entirely (folded into requirement 7 above)."
+    },
+    {
+      "capability": "audit",
+      "lens": "correctness",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "severity medium, confidence medium — no defined match/consumption key for a `## Growth authorizations` entry (folded into requirements 1 and 6 above)."
+    },
+    {
+      "capability": "audit",
+      "lens": "security",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "check: authorization gaps — the mechanical check enforces only \"an authorization exists,\" not the grant's scope (one id, the named gap, not already spent); recommends recording the gap text and an expected count, confirming exactly one matc"
+    },
+    {
+      "capability": "audit",
+      "lens": "operational",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "check: idempotency — a granted authorization behaves as a standing blank check for all later rounds up to the revision cap, reopening the exact unbounded-growth failure (C020/C031) this slice exists to close. At `plugins/wf/skills/charter/S"
+    },
+    {
+      "capability": "audit",
+      "lens": "consistency",
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "check: guard completeness — the deferred Phase-3 `[growth]`-tagged `Flags:` choice is never persisted to any artifact before Phase 5 consumes it, so a run resumed between Phase 3 and Phase 5 silently loses it, contradicting the skill's own "
+    },
+    {
+      "capability": "audit",
+      "lens": "consistency",
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "check: persistence/response alignment — the `**Active:** OUT <n> · SUB <m>` line's stated purpose (\"a resumed run reads back\") is never implemented; the actual growth check reads the on-disk snapshot files instead. At `plugins/wf/skills/cha"
+    },
+    {
+      "capability": "audit",
+      "lens": "convention",
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "naming parity — the new `\"[growth] <one line>\"` `Flags:` value's shape (`[tag] text`) diverges from its two sibling enum values' `label: text` shape. At `plugins/wf/agents/charter-decomposer.md:97`."
+    },
+    {
+      "capability": "audit",
+      "lens": "convention",
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "behavioral parity — `## Growth authorizations` is never given an entry-format/match-key specification, unlike its explicitly-modeled-on sibling `## Accepted warnings`, whose fingerprint format is fully specified. At `plugins/wf/skills/chart"
+    },
+    {
+      "capability": "author-caps",
+      "lens": null,
+      "severity": "PASS",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`validate_manifest` (2 manifests checked, 0 findings), `validate_skill_interface` (charter skill, 0 findings), `validate_references` (charter skill folder: 2 files, 14 references resolved, 0 findings; agents folder: 10 files, 24 references "
+    },
+    {
+      "capability": "author-caps",
+      "lens": null,
+      "severity": "FAIL",
+      "qualifier": "pre-existing, not introduced by this diff",
+      "blocking": true,
+      "text": "`validate_registry` reported 6 `CHECK-4` errors — stale `## Plugin Roots` entries for `wf-git`, `wf-audit` (×2 rows), `wf-author-caps`, `wf-sandbox-testing`, `wf-linear` in `_local/config.md`, each pointing at an installed version older tha"
+    }
+  ],
+  "finding_tally": {
+    "FAIL": 7,
+    "WARN": 3,
+    "PASS": 1
+  },
+  "blocking_set": {
+    "requirements": [
+      1,
+      6,
+      7,
+      8
+    ],
+    "findings": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      10
+    ]
+  },
+  "source": "_local/_archive/WF-552/04_verify.history.md",
+  "transcript": "rounds/round-01.md"
+}

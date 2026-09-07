@@ -1,0 +1,185 @@
+{
+  "task": "WF-554",
+  "round": 2,
+  "kind": "verify-spec",
+  "body_truncated": false,
+  "branch": "feature/554-offer-one-explicit-user-gate-when-the",
+  "commit": "ba0351df621a641a49ed9ea0f90133938468d83a",
+  "base": "831930f",
+  "tree": "clean",
+  "tree_detail": "clean",
+  "verdict": "PARTIAL",
+  "verdict_note": "(16/17 requirements — see Capability findings for the reason this is not a clean PASS)",
+  "audited_by": "claude-sonnet-5",
+  "audited_at": "2026-09-04T20:05:00Z",
+  "audited_at_raw": "2026-09-04T20:05:00Z",
+  "sections": [
+    "Requirements",
+    "Capability findings",
+    "Deviations from derived artifacts (informational)",
+    "Recommended next actions"
+  ],
+  "requirements": [
+    {
+      "n": 1,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Given `Revisions used: 3 of 3` and ≥1 blocking finding, an interactive cap hit asks the user once (extend/accept/stop) and the choice is appended to the review log before anything else happens."
+    },
+    {
+      "n": 2,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing extend dispatches exactly one more revision."
+    },
+    {
+      "n": 3,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "The review-log header's `Revisions used: <M> of <cap>` denominator is raised in place, grepped `M of cap` shape unchanged."
+    },
+    {
+      "n": 4,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Hitting the cap again re-asks the gate at most once per cap hit."
+    },
+    {
+      "n": 5,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing accept records residual findings' fingerprints under `## Accepted warnings`, sets `**Status:** Converged`, final block `CHARTER — Converged with warnings`."
+    },
+    {
+      "n": 6,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Choosing stop ends `CHARTER — Blocked` listing residual findings, artifacts preserved — same shape as today's stop."
+    },
+    {
+      "n": 7,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A recorded cap-gate choice is honored on a resumed run (after `/clear`) without re-asking."
+    },
+    {
+      "n": 8,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "A headless run at the cap with blocking findings still ends `CHARTER — Blocked` exactly as today — no gate, never a hang."
+    },
+    {
+      "n": 9,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "`plugins/wf/skills/charter/SKILL.md` ends no longer than its start-of-slice line count (280 lines)."
+    },
+    {
+      "n": 10,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Rationale for the new gate lives in `references/convergence-loop.md`'s reserved SUB-4 section, not inline in `SKILL.md`."
+    },
+    {
+      "n": 11,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Domain-noun grep of the touched core skill stays clean."
+    },
+    {
+      "n": 12,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Only the user can extend the cap — never auto-extended, headless never softens this."
+    },
+    {
+      "n": 13,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Touched files limited to `SKILL.md`, the paired `references/` doc, and the two version manifests."
+    },
+    {
+      "n": 14,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Headless runs must never hang waiting on a gate."
+    },
+    {
+      "n": 15,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Phase 5 remains the sole retry owner — no other phase gains cap-adjacent state."
+    },
+    {
+      "n": 16,
+      "verdict": "PASS",
+      "qualifier": null,
+      "text": "Version bump is PATCH-tier and correctly applied to both manifests plus the marketplace top-level version."
+    },
+    {
+      "n": 17,
+      "verdict": "UNVERIFIABLE",
+      "qualifier": null,
+      "text": "\"Verification evidence\": replay against `_local/C031`'s final on-disk state (round 4, `Revisions used: 3 of 3`, 7 residual findings)."
+    }
+  ],
+  "requirement_tally": {
+    "PASS": 16,
+    "UNVERIFIABLE": 1
+  },
+  "capability_findings": [
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "FAIL",
+      "qualifier": null,
+      "blocking": true,
+      "text": "The `status: applied` marker for the recorded cap-gate choice is written too early relative to the branch's actual follow-through, reopening the same resume gap the marker was added to close: for **extend**, \"its branch's action\" reads as t"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "A `## Cap-gate decisions` row that reaches `status: applied` via the **stop** branch has no corresponding State-model resume route: charter `**Status:**` stays `In review` (stop never changes it), so a resumed stop-blocked charter falls thr"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The new `## Cap-gate decisions` row grammar drops the field label on its second column, breaking the labeled-field pattern the same sentence says it mirrors from `## Growth authorizations`: the sibling row (`SKILL.md:161`) is `- Round <N> |"
+    },
+    {
+      "capability": "audit",
+      "lens": null,
+      "severity": "WARN",
+      "qualifier": null,
+      "blocking": false,
+      "text": "The Loop-contract diagram's cap-gate edge now overstates the gate's reach: it reads unconditionally \"rounds exhausted → the cap gate (extend / accept / stop)\" (`SKILL.md:23`), but rule 4 makes the three-choice gate interactive-only — headle"
+    },
+    {
+      "capability": "author-caps",
+      "lens": null,
+      "severity": "PASS",
+      "qualifier": null,
+      "blocking": false,
+      "text": "`validate_skill_interface` and `validate_references` both report `status: pass` project-wide (62 skills / 126 files scanned), 0 findings — no schema or dead-reference defects introduced by either commit."
+    }
+  ],
+  "finding_tally": {
+    "FAIL": 1,
+    "WARN": 3,
+    "PASS": 1
+  },
+  "blocking_set": {
+    "requirements": [],
+    "findings": [
+      0
+    ]
+  },
+  "source": "_local/_archive/WF-554/04_verify.history.md",
+  "transcript": "rounds/round-02.md"
+}
