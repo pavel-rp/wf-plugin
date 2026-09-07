@@ -50,12 +50,12 @@ recorded canned: real containerized replays need Docker plus `CLAUDE_CODE_OAUTH_
 where this item was mined, so `results/baseline.json` was derived mechanically from these records
 (`derive-baseline.mjs`) and is disclosed as `provenance.path: canned` there. The kit's
 `replay-round.sh` regenerates a live per-round replay when a container is available; the judging
-machinery (`replay-check.sh`) is identical either way.
+machinery (`replay-check.mjs`) is identical either way.
 
 ## Invocation
 
 ```
 bash plugins/wf-sandbox-testing/corpus/run.sh                                 # the corpus check (lints this item's records)
-bash plugins/wf-sandbox-testing/experiments/verify-replay-baseline/selflint.sh # the kit's own lint + baseline consistency
+bash plugins/wf-sandbox-testing/experiments/verify-replay-baseline/selfcheck.sh # the kit's own lint + baseline consistency
 node plugins/wf-sandbox-testing/experiments/verify-replay-baseline/kit/derive-baseline.mjs --check
 ```

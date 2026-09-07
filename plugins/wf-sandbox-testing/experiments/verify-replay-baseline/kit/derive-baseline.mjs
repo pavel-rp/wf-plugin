@@ -19,7 +19,7 @@
 //
 // and writes results/baseline.json — the expectation every later arm's replay is judged against.
 // `--check` re-derives and diffs against the committed file instead (exit 1 on drift), which is
-// what selflint.sh and corpus/run.sh call: the baseline can never silently disagree with the
+// what selfcheck.sh and corpus/run.sh call: the baseline can never silently disagree with the
 // corpus records it claims to summarize.
 //
 // Deterministic, dependency-free, no network, no timestamp in the output.
@@ -29,16 +29,11 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { RULE, stopDecision } from "./rule.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const KIT_ROOT = resolve(HERE, "..");
 const PACK_ROOT = resolve(KIT_ROOT, "../..");
-
-const RULE = {
-  source: "plugins/wf/skills/run/SKILL.md §Phase 3 (verify-spec PASS → qa-gen; FAIL/PARTIAL → verify-fix; cap at 2 verify⇄fix cycles, then halt and escalate)",
-  verify_fix_cycle_cap: 2,
-  blocking: "plugins/wf/skills/verify-spec/SKILL.md §Fire the verify phase — `fail` blocks shipment; `warn` is non-blocking; a non-conformance finding is a FAIL like a failed requirement",
-};
 
 function die(msg) { process.stderr.write(`derive-baseline.mjs: ERROR — ${msg}\n`); process.exit(2); }
 
@@ -53,12 +48,6 @@ function parseArgs(argv) {
     out[a.slice(2)] = v; i++;
   }
   return out;
-}
-
-function stopDecision(verdict, cyclesBefore) {
-  if (verdict === "PASS") return "qa-gen";
-  if (cyclesBefore < RULE.verify_fix_cycle_cap) return "verify-fix";
-  return `halt — verify⇄fix cap (${RULE.verify_fix_cycle_cap}) exceeded`;
 }
 
 export function deriveItem(itemDir) {

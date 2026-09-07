@@ -44,7 +44,7 @@
 #                       requirement-verdict list (or an explicit body_truncated flag), a findings
 #                       list, and the blocking set — naming the specific missing field otherwise;
 #                       and the kit that judges them (experiments/verify-replay-baseline) passes
-#                       its own selflint.sh, so the kit is validated by this same entrypoint.
+#                       its own selfcheck.sh, so the kit is validated by this same entrypoint.
 #
 # Usage: run.sh   (run every check; wired into CI as its own step)
 set -uo pipefail
@@ -59,7 +59,7 @@ SLOT_EXEMPTIONS="$CORPUS_DIR/slot-exemptions.json"
 MAXVAR="0.34"   # the governing comparison ceiling — the named per-family threshold decision (item.md)
 
 fail=0
-err() { printf 'FAIL: %s\n' "$1" >&2; fail=1; }
+err() { printf 'FAIL: %s\n' "$1" >&2; fail=$((fail+1)); }
 ok()  { printf 'ok:   %s\n' "$1"; }
 
 command -v jq >/dev/null 2>&1 || { echo "corpus/run.sh: jq is required" >&2; exit 2; }
@@ -488,10 +488,11 @@ check_disclosure() {
 #     naming the specific missing field; then the replay kit's own self-lint.
 # ---------------------------------------------------------------------------
 check_verify_replay() {
-  local before=$fail dir name n nfiles rec f field v rel kit
+  local before=$fail item_before dir name n nfiles rec f field v rel kit
   local -a dirs=("$ITEMS"/verify-replay-*/)
   [ -d "${dirs[0]}" ] || { err "verify-replay: no items/verify-replay-*/ folder found — WF-564 registers three"; return; }
   for dir in "${dirs[@]}"; do
+    item_before=$fail
     dir="${dir%/}"; name="$(basename "$dir")"
     [ -f "$dir/item.md" ] || { err "verify-replay[$name]: item.md missing"; continue; }
     if ! { grep -qE 'WF-[0-9]+' "$dir/item.md" && grep -q '04_verify.history.md' "$dir/item.md"; }; then
@@ -529,6 +530,9 @@ check_verify_replay() {
       fi
       jq -e '.blocking_set | has("requirements") and has("findings")' "$f" >/dev/null \
         || err "verify-replay[$rel]: blocking_set must carry both 'requirements' and 'findings'"
+      # Every blocking_set.findings entry must index an existing capability_findings record.
+      v="$(jq -r '(.capability_findings | length) as $n | [(.blocking_set.findings // [])[] | select((type != "number") or . < 0 or . >= $n)] | map(tostring) | join(",")' "$f")"
+      [ -z "$v" ] || err "verify-replay[$rel]: blocking_set.findings index(es) $v out of range for $(jq '.capability_findings | length' "$f") capability_findings"
       jq -e '[.capability_findings[]? | select(.severity == "FAIL" and .blocking != true)] | length == 0' "$f" >/dev/null \
         || err "verify-replay[$rel]: a FAIL-severity finding is not marked blocking"
       grep -q '^\*\*Commit:\*\*' "$dir/$(jq -r '.transcript' "$f")" 2>/dev/null \
@@ -536,15 +540,15 @@ check_verify_replay() {
       grep -q '^\*\*Verdict:\*\*' "$dir/$(jq -r '.transcript' "$f")" 2>/dev/null \
         || err "verify-replay[$rel]: verbatim transcript lacks its **Verdict:** header"
     done
-    [ "$fail" = "$before" ] && ok "verify-replay[$name]: $n round record(s) carry every required field and a resolvable provenance link"
+    [ "$fail" = "$item_before" ] && ok "verify-replay[$name]: $n round record(s) carry every required field and a resolvable provenance link"
   done
   # The kit that judges these items validates under this same entrypoint.
-  kit="$PACK_DIR/experiments/verify-replay-baseline/selflint.sh"
+  kit="$PACK_DIR/experiments/verify-replay-baseline/selfcheck.sh"
   if [ -f "$kit" ]; then
-    if bash "$kit" >"$TMP/verify-replay-selflint.txt" 2>&1; then
-      ok "verify-replay: experiments/verify-replay-baseline/selflint.sh passes"
+    if bash "$kit" >"$TMP/verify-replay-selfcheck.txt" 2>&1; then
+      ok "verify-replay: experiments/verify-replay-baseline/selfcheck.sh passes"
     else
-      err "verify-replay: experiments/verify-replay-baseline/selflint.sh FAILED — $(grep -m1 -E 'FAIL|ERROR' "$TMP/verify-replay-selflint.txt" || echo 'see its output')"
+      err "verify-replay: experiments/verify-replay-baseline/selfcheck.sh FAILED — $(grep -m1 -E 'FAIL|ERROR' "$TMP/verify-replay-selfcheck.txt" || echo 'see its output')"
     fi
   else
     err "verify-replay: kit self-lint missing at ${kit#$REPO_ROOT/}"

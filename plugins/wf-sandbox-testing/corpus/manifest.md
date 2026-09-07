@@ -28,7 +28,7 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
   `rounds/round-NN.{md,json}` per audit round, transcribed verbatim from a task's rotated
   `04_verify.history.md`) whose per-round verdict, blocking set, and stop decision are replayed
   through today's `verify-spec`/`run` and judged against a committed baseline
-  (`experiments/verify-replay-baseline/results/baseline.json`) by that kit's `replay-check.sh`.
+  (`experiments/verify-replay-baseline/results/baseline.json`) by that kit's `replay-check.mjs`.
   Still structural — a verdict token, an id set, a stop token — never transcript prose.
 
 ## Items
@@ -54,7 +54,7 @@ variance protocol. **No item exact-matches transcript prose.** An item is one of
 | 16 | verify-replay — the WF-553 four-round PARTIAL loop | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf553` — four recorded `/wf:verify-spec` rounds (all PARTIAL with every generic requirement passing; round 1 header-only at the source, flagged `body_truncated`) | **WF-553** — `_local/_archive/WF-553/04_verify.history.md`, the rotated audit history of the charter size-budget task (2026-09-04, 4 rounds); mined by **WF-564**, the **C033** baseline SUB. |
 | 17 | verify-replay — the WF-554 seven-round PARTIAL loop with a verify-fix pass | round-replay (recorded successive rounds vs `experiments/verify-replay-baseline/results/baseline.json`) | SMOKE | `verify-replay-wf554` — seven recorded `/wf:verify-spec` rounds (all PARTIAL at 16/17) with one `/wf:verify-fix` pass between rounds 5 and 6, the last two rounds auditing an uncommitted edit | **WF-554** — `_local/_archive/WF-554/04_verify.history.md` + `05_verify-fix.history.md`, the rotated histories of "Offer one explicit user gate when the revision cap is hit with blocking findings left" (2026-09-04/05, 7 rounds + 1 fix pass); mined by **WF-564**, the **C033** baseline SUB. |
 
-All fourteen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
+All seventeen items are **SMOKE-tier**: each judges purely structural signatures (op set, terminal
 shape, file set), which is the smoke-tier preference (charter OUT-5 / risk table — SMOKE
 prefers structural/deterministic assertions over semantic judgment, so a future PR gate
 stays trustworthy). None requires a semantic-judgment or transcript-prose assertion (locked
@@ -96,7 +96,7 @@ is the source history file itself (a `_local/_archive/WF-55x/` path plus the `WF
 loop belonged to); `_local/` is gitignored, so the committed `rounds/` records are the copy of
 record. Check 12 (VERIFY REPLAY) lints them: every round record carries its header fields, a
 non-empty requirement-verdict list (or an explicit `body_truncated` flag), a findings list, and a
-provenance link, naming the specific missing field otherwise, and the kit's own `selflint.sh` runs
+provenance link, naming the specific missing field otherwise, and the kit's own `selfcheck.sh` runs
 under the same check.
 
 ## Per-arm canned-vs-real disclosure ledger
@@ -268,7 +268,7 @@ instead: `resolve_content({class: "slot", …})` returning `{status: "unfilled"}
 | `items/verify-replay-wf552/` | item 15 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..05.{md,json}` — the WF-552 five-round FAIL loop, verbatim + structured |
 | `items/verify-replay-wf553/` | item 16 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..04.{md,json}` — the WF-553 four-round PARTIAL loop (round 1 `body_truncated` at the source) |
 | `items/verify-replay-wf554/` | item 17 (WF-564): `item.md` + `sequence.json` + `rounds/round-01..07.{md,json}` + `rounds/verify-fix-after-round-05.{md,json}` — the WF-554 seven-round PARTIAL loop with its verify-fix pass |
-| `../experiments/verify-replay-baseline/` | the replay kit items 15–17 are judged by: manifest, fixture capability, extractor, baseline deriver, live replay driver, `replay-check.sh`, `selflint.sh`, and `results/baseline.json` |
+| `../experiments/verify-replay-baseline/` | the replay kit items 15–17 are judged by: manifest, fixture capability, extractor, baseline deriver, live replay driver, `replay-check.mjs`, `selfcheck.sh`, and `results/baseline.json` |
 | `assert/tree-equal.sh` | fail-closed byte-tree comparison used by the host lifecycle fixture |
 | `run.sh` | the corpus self-check: slot enumeration, flagship green/seeded-red, review-gate, the assertion-item loop (items 3–5), the provenance audit, the coverage-ledger audit, and the round-replay lint (items 15–17 + the kit self-lint) (CI entrypoint) |
 | `slot-exemptions.json` | declared slots deliberately carrying no per-slot arm, each with the reason no runner arm can reach them (WF-363) |

@@ -16,8 +16,10 @@
 #      is exactly the trail round N held when it ran;
 #   3. the fixture capability `_local/verify-replay-fixture/` (manifest + the round's recorded
 #      findings rendered into `fragments/findings.md`) and its registry row in `_local/config.md`;
-#   4. per-round scripted delivery reads (`generated/fake-scripts.<task>-r<NN>.json`) — branch,
-#      head timestamp, changed-file set — derived from this file's committed template;
+#   4. per-round scripted delivery reads (`generated/fake-scripts.<task>-r<NN>.json`) — branch and
+#      head timestamp from the round record, the changed-file set from the host repository's
+#      recorded base..commit range (plus the --edits set once applied) — over this file's
+#      committed template; a range the host cannot resolve yields an empty set and a stated NOTE;
 #   5. optionally (`--edits <patch>`) the uncommitted edit set a dirty-tree round audited, applied
 #      with `git apply`; optionally (`--critic <file>`) a recorded critic stub, attached as a
 #      second inline finding fragment of the same fixture capability.
@@ -123,10 +125,20 @@ mkdir -p "$EXP_DIR/generated"
 gen="$EXP_DIR/generated/fake-scripts.$task-r$round.json"
 branch="$(jq -r '.branch // "main"' "$rec")"
 ts="$(jq -r '.audited_at' "$rec")"
-jq --arg b "$branch" --arg ts "$ts" '
+commit="$(jq -r '.commit' "$rec")"; base="$(jq -r '.base // empty' "$rec")"
+# The seeded tree is a history-stripped snapshot, so the round's changed-file set is derived from
+# the host repository, which holds the recorded base and commit; renames report their new path.
+if [ -n "$base" ] && git -C "$REPO_ROOT" cat-file -e "$base^{commit}" 2>/dev/null && git -C "$REPO_ROOT" cat-file -e "$commit^{commit}" 2>/dev/null; then
+  changes="$(git -C "$REPO_ROOT" diff --name-status "$base" "$commit" | jq -Rn '[inputs | split("\t") | {path: .[-1], status: .[0][0:1]}]')"
+else
+  changes='[]'
+  echo "materialize-round.sh: NOTE — $task round $round: the host repository cannot resolve base '$base'..commit '$commit', so branch-changes-read is scripted EMPTY, which is a stated deviation from the recorded input" >&2
+fi
+jq --arg b "$branch" --arg ts "$ts" --arg t "$task" --argjson c "$changes" '
   .delivery["current-branch-query"] = $b
   | .delivery["last-commit-timestamp-query"] = $ts
-  | .tracker.get.id = "'"$task"'"' "$EXP_DIR/fake-scripts.json" > "$gen"
+  | .delivery["branch-changes-read"] = $c
+  | .tracker.get.id = $t' "$EXP_DIR/fake-scripts.json" > "$gen"
 mkdir -p "$ws/_local/fake"
 cp "$gen" "$ws/_local/fake/scripts.json"
 
@@ -134,6 +146,10 @@ cp "$gen" "$ws/_local/fake/scripts.json"
 if [ -n "$edits" ]; then
   [ -f "$edits" ] || die "--edits patch not found: $edits"
   git -C "$ws" apply --whitespace=nowarn "$edits" || die "the uncommitted edit set did not apply cleanly at this round's tree"
+  # The dirty-tree round's changed-file set is the committed range plus what the patch touched.
+  dirty="$(git -C "$ws" diff --name-status | jq -Rn '[inputs | split("\t") | {path: .[-1], status: .[0][0:1]}]')"
+  jq --argjson d "$dirty" '.delivery["branch-changes-read"] = ((.delivery["branch-changes-read"] + $d) | unique_by(.path))' "$gen" > "$gen.tmp" && mv "$gen.tmp" "$gen"
+  cp "$gen" "$ws/_local/fake/scripts.json"
 elif [ "$(jq -r '.tree' "$rec")" = "dirty" ]; then
   echo "materialize-round.sh: NOTE — $task round $round audited a dirty tree ($(jq -r '.tree_detail' "$rec" | cut -c1-120)) and no --edits patch was given; the replay will audit the commit alone, which is a stated deviation from the recorded input" >&2
 fi

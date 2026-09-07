@@ -74,18 +74,18 @@ run_one() {
   [ -n "$task_src" ] && mat_cmd+=(--task-src "$task_src")
   [ -n "$edits" ] && mat_cmd+=(--edits "$edits")
   [ -n "$critic" ] && mat_cmd+=(--critic "$critic")
-  local measure="cd $ws && ${cfg:+CLAUDE_CONFIG_DIR=$cfg }claude -p '/wf:verify-spec $task' --model $model --output-format stream-json --verbose --dangerously-skip-permissions > $dest/round-$round.transcript.jsonl"
+  local measure=(claude -p "$CONST_MEASURED_SKILL $task" --model "$model" --output-format stream-json --verbose --dangerously-skip-permissions)
   local readback=(node "$VR_KIT/extract-rounds.mjs" --single "$ws/_local/$task/04_verify.md" --task "$task" --round "$((10#$round))")
   echo "replay-round.sh: [$arm] $task round $round @ $commit"
   echo "  seed:      ${seed_cmd[*]}"
   echo "  overlay:   ${mat_cmd[*]}"
-  echo "  measure:   $measure"
+  echo "  measure:   (cd $ws && ${cfg:+CLAUDE_CONFIG_DIR=$cfg }${measure[*]} > $dest/round-$round.transcript.jsonl 2>&1)"
   echo "  read-back: ${readback[*]} > $dest/round-$round.json"
   if [ "$spend" -ne 1 ]; then echo "  (dry run — pass --spend to execute)"; return 0; fi
   command -v claude >/dev/null 2>&1 || die "the claude CLI is not on PATH"
   "${seed_cmd[@]}" >&2
   "${mat_cmd[@]}" >&2
-  bash -c "$measure"
+  (cd "$ws" && env ${cfg:+"CLAUDE_CONFIG_DIR=$cfg"} "${measure[@]}" > "$dest/round-$round.transcript.jsonl" 2>&1)
   [ -f "$ws/_local/$task/04_verify.md" ] || die "the replayed audit wrote no 04_verify.md — see $dest/round-$round.transcript.jsonl"
   "${readback[@]}" > "$dest/round-$round.json"
   cp "$ws/_local/$task/04_verify.md" "$dest/round-$round.md"

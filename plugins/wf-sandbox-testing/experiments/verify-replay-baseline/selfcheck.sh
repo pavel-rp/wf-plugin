@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# selflint.sh — the verify-replay-baseline kit's own lint (WF-564).
+# selfcheck.sh — the verify-replay-baseline kit's own lint (WF-564).
 #
 # **Model:** claude-fable-5-1
 #
@@ -26,7 +26,7 @@
 #                     injects into a seeded workspace (the fixture manifest, the fragment
 #                     template, fake-scripts.json).
 #
-# Usage: selflint.sh   (exit 0 on PASS, 1 on any FAIL)
+# Usage: selfcheck.sh   (exit 0 on PASS, 1 on any FAIL)
 set -uo pipefail
 EXP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT="$EXP_DIR/kit"
@@ -37,16 +37,16 @@ REPO_ROOT="$(cd "$PACK_DIR/../.." && pwd)"
 fail=0
 err() { printf 'FAIL: %s\n' "$1" >&2; fail=1; }
 ok()  { printf 'ok:   %s\n' "$1"; }
-command -v jq   >/dev/null 2>&1 || { echo "selflint.sh: jq is required" >&2; exit 2; }
-command -v node >/dev/null 2>&1 || { echo "selflint.sh: node is required" >&2; exit 2; }
+command -v jq   >/dev/null 2>&1 || { echo "selfcheck.sh: jq is required" >&2; exit 2; }
+command -v node >/dev/null 2>&1 || { echo "selfcheck.sh: node is required" >&2; exit 2; }
 
 # 1. MANIFEST
-if ( . "$ENGINE/manifest.sh" && manifest_load "$EXP_DIR/experiment.json" ) >/dev/null 2>"$EXP_DIR/.selflint-manifest.err"; then
+if ( . "$ENGINE/manifest.sh" && manifest_load "$EXP_DIR/experiment.json" ) >/dev/null 2>"$EXP_DIR/.selfcheck-manifest.err"; then
   ok "manifest: experiment.json validates under engine/manifest.sh (frozen v1)"
 else
-  err "manifest: experiment.json rejected — $(head -1 "$EXP_DIR/.selflint-manifest.err")"
+  err "manifest: experiment.json rejected — $(head -1 "$EXP_DIR/.selfcheck-manifest.err")"
 fi
-rm -f "$EXP_DIR/.selflint-manifest.err"
+rm -f "$EXP_DIR/.selfcheck-manifest.err"
 [ "$(jq '.arms | length' "$EXP_DIR/experiment.json")" -ge 2 ] || err "manifest: fewer than two arms"
 [ "$(jq '.compares | length' "$EXP_DIR/experiment.json")" -ge 1 ] || err "manifest: no compares entry"
 jq -e '[.mechanism_signals[] | select(.kind != "record_match" and .kind != "dispatch_shape")] | length == 0' "$EXP_DIR/experiment.json" >/dev/null \
@@ -61,7 +61,7 @@ for f in experiment.json fake-scripts.json Dockerfile build-arm.sh analyze.sh RE
          results/baseline.json; do
   [ -f "$EXP_DIR/$f" ] || err "kit-files: missing $f"
 done
-for f in build-arm.sh analyze.sh selflint.sh kit/materialize-round.sh kit/replay-round.sh; do
+for f in build-arm.sh analyze.sh selfcheck.sh kit/materialize-round.sh kit/replay-round.sh; do
   [ -f "$EXP_DIR/$f" ] || continue
   bash -n "$EXP_DIR/$f" || err "kit-files: $f does not parse"
 done
@@ -83,12 +83,12 @@ grep -qE '^\|.*subagent:' "$fx/manifest.md" && err "fixture: the fixture must di
 # 4. BASELINE
 bl="$EXP_DIR/results/baseline.json"
 if [ -f "$bl" ]; then
-  if node "$KIT/derive-baseline.mjs" --check >/dev/null 2>"$EXP_DIR/.selflint-baseline.err"; then
+  if node "$KIT/derive-baseline.mjs" --check >/dev/null 2>"$EXP_DIR/.selfcheck-baseline.err"; then
     ok "baseline: results/baseline.json is the deterministic derivation of the corpus records"
   else
-    err "baseline: $(grep -m1 FAIL "$EXP_DIR/.selflint-baseline.err" || echo 'derive-baseline.mjs --check failed')"
+    err "baseline: $(grep -m1 FAIL "$EXP_DIR/.selfcheck-baseline.err" || echo 'derive-baseline.mjs --check failed')"
   fi
-  rm -f "$EXP_DIR/.selflint-baseline.err"
+  rm -f "$EXP_DIR/.selfcheck-baseline.err"
   case "$(jq -r '.provenance.path // empty' "$bl")" in
     canned|real) ;;
     "") err "baseline: no provenance.path — the baseline must disclose canned vs real";;
@@ -123,7 +123,7 @@ done < <(jq -r '.blinding.vocabulary[]' "$EXP_DIR/experiment.json")
 [ "$fail" -eq 0 ] && ok "blinding: no vocabulary word in the fixture manifest, fragment template, or fake scripts"
 
 if [ "$fail" -ne 0 ]; then
-  echo "verify-replay-baseline selflint: FAIL" >&2
+  echo "verify-replay-baseline selfcheck: FAIL" >&2
   exit 1
 fi
-echo "verify-replay-baseline selflint: PASS"
+echo "verify-replay-baseline selfcheck: PASS"

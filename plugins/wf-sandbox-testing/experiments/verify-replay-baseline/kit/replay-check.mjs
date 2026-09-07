@@ -23,10 +23,10 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { stopDecision } from "./rule.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const KIT_ROOT = resolve(HERE, "..");
-const CYCLE_CAP = 2;
 
 function die(msg) { process.stderr.write(`replay-check.mjs: ERROR — ${msg}\n`); process.exit(2); }
 function parseArgs(argv) {
@@ -39,11 +39,6 @@ function parseArgs(argv) {
     out[a.slice(2)] = v; i++;
   }
   return out;
-}
-
-function stopDecision(verdict, cyclesBefore) {
-  if (verdict === "PASS") return "qa-gen";
-  return cyclesBefore < CYCLE_CAP ? "verify-fix" : `halt — verify⇄fix cap (${CYCLE_CAP}) exceeded`;
 }
 
 // A live arm directory → the baseline's per-item shape. Rounds a live arm never produced are

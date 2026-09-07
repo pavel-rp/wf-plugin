@@ -52,12 +52,12 @@ two-cycle cap). The expectation is `experiments/verify-replay-baseline/results/b
 rounds through today's code is recorded canned — Docker plus `CLAUDE_CODE_OAUTH_TOKEN` were
 unavailable where this item was mined — so `results/baseline.json` was derived mechanically from
 these records and is disclosed as `provenance.path: canned` there. `replay-round.sh` regenerates
-a live replay when a container is available; `replay-check.sh` judges both the same way.
+a live replay when a container is available; `replay-check.mjs` judges both the same way.
 
 ## Invocation
 
 ```
 bash plugins/wf-sandbox-testing/corpus/run.sh
-bash plugins/wf-sandbox-testing/experiments/verify-replay-baseline/selflint.sh
+bash plugins/wf-sandbox-testing/experiments/verify-replay-baseline/selfcheck.sh
 node plugins/wf-sandbox-testing/experiments/verify-replay-baseline/kit/derive-baseline.mjs --check
 ```

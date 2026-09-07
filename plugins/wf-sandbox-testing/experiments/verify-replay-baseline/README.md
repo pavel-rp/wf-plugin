@@ -8,7 +8,7 @@
 those records (verdict as recorded; blocking set and stop decision under today's documented
 rules) and is disclosed as `provenance.path: canned` — no live replay ran where this kit was
 authored (no Docker, no `CLAUDE_CODE_OAUTH_TOKEN`). Everything that can be checked without a
-model **is** checked, deterministically, in CI (`corpus/run.sh` check 12 → `selflint.sh`).
+model **is** checked, deterministically, in CI (`corpus/run.sh` check 12 → `selfcheck.sh`).
 Building the images and spending a live arm are **your** actions on a Docker-capable host.
 
 **Why this kit exists.** The C033 charter changes the verify loop's rules — how findings
@@ -50,15 +50,16 @@ what the baseline shows, and what a later SUB's changed stop rule will move.
 | Path | Role |
 |---|---|
 | `experiment.json` | the frozen v1 manifest: two arms (both at today's frozen ref — see "Adding an arm"), one compare, seven mechanism signals (fixture served; five lens dispatches absent; tracker writes absent), blinding vocabulary |
-| `fake-scripts.json` | the scripted delivery/tracker reads a replayed round needs; `materialize-round.sh` re-points the branch / head / changed-file reads per round into `generated/` |
+| `fake-scripts.json` | the scripted delivery/tracker reads a replayed round needs; `materialize-round.sh` re-points the branch / head reads from the round record and derives the changed-file set from the host repository's recorded base..commit range (plus any `--edits` set) per round into `generated/` |
 | `kit/extract-rounds.mjs` | history → `rounds/round-NN.{md,json}` + `sequence.json` (corpus extraction); `--single` reads one fresh report back |
+| `kit/rule.mjs` | the one source of the verify⇄fix stop rule (cycle cap + its documented origin) that `derive-baseline.mjs` records and `replay-check.mjs` judges by |
 | `kit/derive-baseline.mjs` | corpus records → `results/baseline.json`; `--check` proves the committed file is that derivation |
 | `kit/materialize-round.sh` | lays one round into a seeded workspace (task folder, ledger, fixture, scripts; `--edits`, `--critic`) |
 | `kit/replay-round.sh` | the live driver: seed → materialize → measure → read back, per round or `--all`; dry-run unless `--spend` |
 | `kit/replay-check.mjs` | the judge: base vs against, per round, MATCH / DIVERGE / NOT-MEASURED; exit 1 on DIVERGE |
 | `kit/fixture/verify-replay-fixture/` | the fixture capability (manifest + the fragment template) |
 | `results/baseline.json` | today's per-round expectation, `provenance.path: canned` |
-| `selflint.sh` | the kit's lint (manifest, files, fixture, baseline consistency, self-compare, blinding); CI-wired via `corpus/run.sh` |
+| `selfcheck.sh` | the kit's lint (manifest, files, fixture, baseline consistency, self-compare, blinding); CI-wired via `corpus/run.sh` |
 | `Dockerfile` · `build-arm.sh` · `analyze.sh` · `runbooks/experiment.md` | the engine kit shape; the runbook is machine-derived (`run-experiment.sh --runbook`) |
 
 ## Running it
@@ -67,7 +68,7 @@ what the baseline shows, and what a later SUB's changed stop rule will move.
 ROOT="$(git rev-parse --show-toplevel)"
 K="$ROOT/plugins/wf-sandbox-testing/experiments/verify-replay-baseline"
 
-bash "$K/selflint.sh"                                   # no spend: lint + baseline consistency + self-compare
+bash "$K/selfcheck.sh"                                   # no spend: lint + baseline consistency + self-compare
 node "$K/kit/replay-check.mjs" --against "$K/results/baseline.json"   # the self-compare, printed
 
 # A live arm (billed; needs docker or a host with the claude CLI, a token, and the gitignored

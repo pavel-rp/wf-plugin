@@ -44,7 +44,9 @@ ENV WF_ARM_REF="${WF_REF}"
 COPY plugins/wf-sandbox-testing/runner                                    /opt/wf-runner/runner
 COPY plugins/wf-sandbox-testing/experiments/engine                        /opt/wf-runner/experiments/engine
 COPY plugins/wf-sandbox-testing/experiments/verify-replay-baseline        /opt/wf-runner/experiments/verify-replay-baseline
-COPY plugins/wf-sandbox-testing/corpus/items                              /opt/wf-runner/corpus/items
+COPY plugins/wf-sandbox-testing/corpus/items/verify-replay-wf552          /opt/wf-runner/corpus/items/verify-replay-wf552
+COPY plugins/wf-sandbox-testing/corpus/items/verify-replay-wf553          /opt/wf-runner/corpus/items/verify-replay-wf553
+COPY plugins/wf-sandbox-testing/corpus/items/verify-replay-wf554          /opt/wf-runner/corpus/items/verify-replay-wf554
 RUN chmod +x /opt/wf-runner/runner/*.sh /opt/wf-runner/experiments/engine/*.sh \
              /opt/wf-runner/experiments/verify-replay-baseline/*.sh \
              /opt/wf-runner/experiments/verify-replay-baseline/kit/*.sh
