@@ -243,10 +243,13 @@ no argument to update instead.
 2. Seed the **project clauses** section with the commented starter (no invented clauses).
 3. Write `_local/constitution.md` using the template below, with a `**Model:** <id>`
    attribution line.
-4. Ensure `_local/config.md` carries a `## Capabilities` table (maintain mode below) — if
+4. **Measure the written record.** Take its character length; when it exceeds the
+   40,000-character SessionStart ceiling (see "Size ceiling" below), the final-output block
+   carries a `Size:` line. Below the ceiling nothing is added.
+5. Ensure `_local/config.md` carries a `## Capabilities` table (maintain mode below) — if
    `init` already wrote one, leave it; if it's absent, append an empty one with the documented
    header so the registry exists for future runs.
-5. Emit the final-output block (`CONSTITUTION — established`).
+6. Emit the final-output block (`CONSTITUTION — established`).
 
 ## Update mode
 
@@ -286,8 +289,11 @@ instead. Mirror the update-merge / skip-if-present idempotency of `qa-gen` and `
    heading and the clause text that was there before. If it does not, say so plainly rather
    than reporting a clean update — that section is the one part of the record no other copy
    exists of.
-6. Maintain the `## Capabilities` table in `_local/config.md` (below).
-7. Emit the final-output block (`CONSTITUTION — updated` or `CONSTITUTION — unchanged`).
+6. **Measure the written record.** Take its character length; when it exceeds the
+   40,000-character SessionStart ceiling (see "Size ceiling" below), the final-output block
+   carries a `Size:` line. Below the ceiling nothing is added.
+7. Maintain the `## Capabilities` table in `_local/config.md` (below).
+8. Emit the final-output block (`CONSTITUTION — updated` or `CONSTITUTION — unchanged`).
 
 ## Clause intake
 
@@ -453,8 +459,17 @@ CONSTITUTION — <established | updated | unchanged>
 Articles: <9 core> + <capability articles present | none (core-only)> + <project section: seeded | preserved>
 Registry: <comma-separated capability names | none (core-only)>
 File:     _local/constitution.md
+Size:     <length> characters — exceeds the 40000-character SessionStart ceiling; only the first 40000 characters are injected at session start
 Next:     review _local/constitution.md and add any project clauses with /wf:constitution <clause text>; then /wf:spec <id> to start a task (the constitution is intended for consultation at spec and enforcement at verify once that wiring lands).
 ```
+
+**Size ceiling.** The `Size:` line is **conditional**: it appears only when the written record
+is longer than 40,000 characters, and is omitted entirely otherwise, so the block's existing
+lines are unchanged for every record under the ceiling. The ceiling mirrors the resolver's
+`CONSTITUTION_MAX_CHARS`: the SessionStart hook injects the record in labelled parts under the
+host's per-value hook-output cap, and a record past the ceiling is cut there, with the last
+injected part and the hook's stderr both naming the overage. A record that trips this line is
+too long to reach the session in full — trim it rather than expect the hook to carry it.
 
 On the clause-intake path:
 

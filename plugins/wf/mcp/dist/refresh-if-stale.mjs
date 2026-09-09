@@ -2567,6 +2567,25 @@ function resolveAndPersist(opts) {
 // src/resolver/constitution.ts
 var SESSION_START_EVENT = "SessionStart";
 var CONSTITUTION_RELPATH = "_local/constitution.md";
+var CONSTITUTION_MAX_CHARS = 4e4;
+var CONSTITUTION_PART_BUDGET = 9e3;
+var CONSTITUTION_PART_COUNT = Math.ceil(CONSTITUTION_MAX_CHARS / CONSTITUTION_PART_BUDGET);
+var CONSTITUTION_HEADER_RESERVE = 200;
+var CONSTITUTION_DIAGNOSTIC_RESERVE = 200;
+var CONSTITUTION_PART_USABLE = CONSTITUTION_PART_BUDGET - CONSTITUTION_HEADER_RESERVE - CONSTITUTION_DIAGNOSTIC_RESERVE;
+var CONSTITUTION_PART_ORDER_NOTE = "Parts may arrive in any order; read them in part order.";
+function constitutionPartHeader(index, count) {
+  const label2 = `wf constitution \u2014 part ${index + 1} of ${count}`;
+  return index === 0 ? `${label2}
+${CONSTITUTION_PART_ORDER_NOTE}
+
+` : `${label2}
+
+`;
+}
+function constitutionOverageNote(length, ceiling) {
+  return `[wf constitution truncated: the record is ${length} characters and the SessionStart ceiling is ${ceiling} characters; the remainder is not injected.]`;
+}
 function shouldEmitForSource(source) {
   return source !== "resume";
 }
@@ -2584,6 +2603,56 @@ function composeConstitutionContext(record) {
   const trimmed = record.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
+function constitutionOverage(record) {
+  return overageOfContext(composeConstitutionContext(record));
+}
+function overageOfContext(context) {
+  if (context === null || context.length <= CONSTITUTION_MAX_CHARS) return null;
+  return { length: context.length, ceiling: CONSTITUTION_MAX_CHARS };
+}
+function chunkBodies(text, usable, count) {
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    const remainingChunks = count - chunks.length - 1;
+    const remaining = text.length - start;
+    if (remainingChunks <= 0 || remaining <= usable) {
+      chunks.push(text.slice(start));
+      break;
+    }
+    const maxEnd = start + usable;
+    const minEnd = Math.max(start + 1, text.length - remainingChunks * usable);
+    const nl = text.lastIndexOf("\n", maxEnd);
+    if (nl >= minEnd) {
+      chunks.push(text.slice(start, nl));
+      start = nl + 1;
+    } else {
+      chunks.push(text.slice(start, maxEnd));
+      start = maxEnd;
+    }
+  }
+  return chunks;
+}
+function splitConstitution(record) {
+  const context = composeConstitutionContext(record);
+  if (context === null) return [];
+  if (context.length <= CONSTITUTION_PART_BUDGET) return [context];
+  const overage = overageOfContext(context);
+  const body = overage === null ? context : context.slice(0, CONSTITUTION_MAX_CHARS);
+  const bodies = chunkBodies(
+    body,
+    CONSTITUTION_PART_USABLE,
+    Math.ceil(body.length / CONSTITUTION_PART_USABLE)
+  );
+  const count = bodies.length;
+  return bodies.map((chunk, i) => {
+    const header = constitutionPartHeader(i, count);
+    const tail = overage !== null && i === count - 1 ? `
+
+${constitutionOverageNote(overage.length, overage.ceiling)}` : "";
+    return `${header}${chunk}${tail}`;
+  });
+}
 function sessionStartPayload(context) {
   return {
     hookSpecificOutput: {
@@ -2592,14 +2661,20 @@ function sessionStartPayload(context) {
     }
   };
 }
-function composeSessionStartStdout(source, record) {
+function composeSessionStartStdout(source, record, part = 0) {
   if (!shouldEmitForSource(source)) return null;
-  const context = composeConstitutionContext(record);
-  if (context === null) return null;
-  return JSON.stringify(sessionStartPayload(context));
+  const parts = splitConstitution(record);
+  if (!Number.isInteger(part) || part < 0 || part >= parts.length) return null;
+  return JSON.stringify(sessionStartPayload(parts[part]));
 }
 
 // src/refresh.ts
+function partIndex(argv) {
+  const at = argv.indexOf("--part");
+  if (at === -1) return 0;
+  const parsed = Number.parseInt(argv[at + 1] ?? "", 10);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
 function admittedRoot() {
   return selectWorkspaceRoot(
     {
@@ -2629,13 +2704,17 @@ function readStdin() {
     return null;
   }
 }
-function emitConstitution(root) {
+function emitConstitution(root, part) {
   const source = parseSessionSource(readStdin());
   const record = fsIO.readFile(joinSlash(root, CONSTITUTION_RELPATH));
-  const stdout = composeSessionStartStdout(source, record);
+  const stdout = composeSessionStartStdout(source, record, part);
   if (stdout !== null) {
     process.stdout.write(`${stdout}
 `);
+    const overage = constitutionOverage(record);
+    if (overage !== null && part === splitConstitution(record).length - 1) {
+      log(constitutionOverageNote(overage.length, overage.ceiling));
+    }
   }
 }
 function refreshIfStale(root) {
@@ -2671,14 +2750,25 @@ function refreshIfStale(root) {
   log(`refreshed snapshot; reasons: ${reasons.map((r) => r.code).join(", ")}.`);
 }
 try {
+  const part = partIndex(process.argv.slice(2));
   const admitted = admittedRoot();
   if (!admitted.ok) {
-    log(
-      `no work \u2014 ${admitted.source} workspace root rejected (${admitted.reason}): ${admitted.diagnostic}`
-    );
+    if (part === 0) {
+      log(
+        `no work \u2014 ${admitted.source} workspace root rejected (${admitted.reason}): ${admitted.diagnostic}`
+      );
+    }
   } else {
-    refreshIfStale(admitted.root);
-    emitConstitution(admitted.root);
+    if (part === 0) {
+      try {
+        refreshIfStale(admitted.root);
+      } catch (err) {
+        log(
+          `freshness pass skipped (${err instanceof Error ? err.message : String(err)}).`
+        );
+      }
+    }
+    emitConstitution(admitted.root, part);
   }
 } catch (err) {
   process.stderr.write(

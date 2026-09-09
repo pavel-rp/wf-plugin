@@ -5,7 +5,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/mcp/dist/refresh-if-stale.mjs\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/mcp/dist/refresh-if-stale.mjs\" --part 0",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/mcp/dist/refresh-if-stale.mjs\" --part 1",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/mcp/dist/refresh-if-stale.mjs\" --part 2",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/mcp/dist/refresh-if-stale.mjs\" --part 3",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/mcp/dist/refresh-if-stale.mjs\" --part 4",
             "timeout": 30
           }
         ]
