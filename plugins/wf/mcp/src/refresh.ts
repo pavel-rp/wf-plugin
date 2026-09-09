@@ -1,4 +1,4 @@
-// wf resolver — pre-MCP `refresh-if-stale` command (WF-271).
+// wf resolver — pre-MCP `refresh-if-stale` command (WF-271, WF-334, WF-576).
 //
 // This is the ONLY resolver lifecycle hook core declares: a SessionStart command
 // that runs BEFORE the MCP server is up, so it uses the command/CLI adapter
@@ -6,6 +6,17 @@
 // tools. It reads the persisted snapshot and refreshes it iff a declared input
 // changed, the schema/resolver version is incompatible, the cache is missing, or
 // the cache is malformed — deterministic, fingerprint-driven, NEVER time-based.
+//
+// After the freshness pass it injects the project's composed constitution into
+// the session as `additionalContext`. The host caps each hook-output value at
+// 10,000 characters, so the record travels in LABELLED PARTS: `hooks.json`
+// declares `CONSTITUTION_PART_COUNT` SessionStart entries, each invoking this
+// bundle with `--part <i>`, and every invocation emits at most the one part it
+// is responsible for (a record that fits one part leaves the higher-indexed
+// entries silent). ONLY PART 0 runs the freshness pass and any snapshot
+// rebuild: the entries run in parallel, and concurrent rebuilds would race on
+// the persisted snapshot. Parts ≥ 1 admit the root, read the record, emit
+// their part, and do nothing else.
 //
 // It is bundled to dist/refresh-if-stale.mjs (self-contained, no node_modules)
 // so it launches with a bare `node`. It always exits 0: a resolver hiccup must
@@ -20,6 +31,8 @@ import {
   CONSTITUTION_RELPATH,
   RESOLVER_GENERATOR,
   composeSessionStartStdout,
+  constitutionOverage,
+  constitutionOverageNote,
   evaluateFreshness,
   fsIO,
   joinSlash,
@@ -28,8 +41,20 @@ import {
   readSnapshot,
   resolveAndPersist,
   runPluginList,
+  shouldEmitForSource,
+  splitConstitution,
   type StaleReason,
 } from "./resolver/index.js";
+
+/** The part index this invocation is responsible for, from `--part <n>` on the
+ *  command line. Absent, unparseable, or negative → 0, so the pre-split
+ *  invocation shape (no argument) still behaves exactly as part 0. */
+function partIndex(argv: readonly string[]): number {
+  const at = argv.indexOf("--part");
+  if (at === -1) return 0;
+  const raw = argv[at + 1] ?? "";
+  return /^\d+$/.test(raw) ? Number(raw) : 0;
+}
 
 /** Select and admit this run's workspace root through the one resolver-owned
  *  API (WF-445). Pre-MCP there is no prior launch identity, so the admitted
@@ -82,20 +107,29 @@ function readStdin(): string | null {
 }
 
 /**
- * After the freshness pass, emit the project's composed constitution as the
- * SessionStart `hookSpecificOutput.additionalContext` (WF-334) — served from the
- * fingerprinted `_local/constitution.md` record (no un-fingerprinted raw read),
- * deduped across the four re-fire sources. stdout carries ONLY this single
- * hook-JSON object; nothing is written when there is no constitution record (a
- * non-wf repo, or a wf repo with no `/wf:constitution` run) or the re-fire is a
- * suppressed `resume`.
+ * Emit ONE labelled part of the project's composed constitution as the
+ * SessionStart `hookSpecificOutput.additionalContext` (WF-334, WF-576) — served
+ * from the fingerprinted `_local/constitution.md` record (no un-fingerprinted
+ * raw read), deduped across the four re-fire sources, and split under the
+ * host's per-value output cap. stdout carries ONLY this single hook-JSON
+ * object; nothing is written when there is no constitution record (a non-wf
+ * repo, or a wf repo with no `/wf:constitution` run), the re-fire is a
+ * suppressed `resume`, or `part` is past the record's last part (the entries a
+ * small record leaves idle). A record over the ceiling is cut, and the part
+ * carrying the diagnostic also logs it to stderr so the overage is visible
+ * outside the injected context.
  */
-function emitConstitution(root: string): void {
+function emitConstitution(root: string, part: number): void {
   const source = parseSessionSource(readStdin());
+  if (!shouldEmitForSource(source)) return;
   const record = fsIO.readFile(joinSlash(root, CONSTITUTION_RELPATH));
-  const stdout = composeSessionStartStdout(source, record);
+  const stdout = composeSessionStartStdout(source, record, part);
   if (stdout !== null) {
     process.stdout.write(`${stdout}\n`);
+    const overage = constitutionOverage(record);
+    if (overage !== null && part === splitConstitution(record).length - 1) {
+      log(constitutionOverageNote(overage.length, overage.ceiling));
+    }
   }
 }
 
@@ -146,6 +180,7 @@ function refreshIfStale(root: string): void {
 }
 
 try {
+  const part = partIndex(process.argv.slice(2));
   const admitted = admittedRoot();
   if (!admitted.ok) {
     // A DECLARED but unadmissible root is TERMINAL (WF-445): this run does no
@@ -154,17 +189,37 @@ try {
     // REPORTED on stderr rather than silently degrading to the current working
     // directory, which is the containment defect this replaced. Falling through
     // to the shared `process.exit(0)` below keeps the always-exit-0 invariant:
-    // terminal for the refresh, never a blocked session.
-    log(
-      `no work — ${admitted.source} workspace root rejected (${admitted.reason}): ${admitted.diagnostic}`,
-    );
+    // terminal for the refresh, never a blocked session. Every per-part entry
+    // reaches this branch, so only part 0 reports it — once per session, not
+    // once per part.
+    if (part === 0) {
+      log(
+        `no work — ${admitted.source} workspace root rejected (${admitted.reason}): ${admitted.diagnostic}`,
+      );
+    }
   } else {
-    refreshIfStale(admitted.root);
+    // Only part 0 runs the freshness pass: the per-part hook entries run in
+    // parallel, and a rebuild from more than one of them would race on the
+    // persisted snapshot. Parts ≥ 1 read the record and emit their part only.
+    if (part === 0) {
+      try {
+        refreshIfStale(admitted.root);
+      } catch (err) {
+        // A freshness-pass failure must not suppress THIS part's emission: the
+        // other parts are independent processes that never run the pass, so
+        // swallowing it here would inject a constitution missing part 1 of n.
+        // Report it and fall through to emit; the query-time backstop still
+        // validates + refreshes on the next typed query.
+        log(
+          `freshness pass skipped (${err instanceof Error ? err.message : String(err)}).`,
+        );
+      }
+    }
     // Emit the constitution AFTER the freshness pass, in its own try so a
     // composition/read hiccup never undoes the refresh or blocks the session — the
     // outer catch below preserves the always-exit-0 invariant (no payload that run,
     // and the query-time backstop still refreshes on the next typed query).
-    emitConstitution(admitted.root);
+    emitConstitution(admitted.root, part);
   }
 } catch (err) {
   // Never block a session on a resolver failure; the query-time backstop will
