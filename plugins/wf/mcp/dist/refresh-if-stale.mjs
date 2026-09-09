@@ -2672,8 +2672,8 @@ function composeSessionStartStdout(source, record, part = 0) {
 function partIndex(argv) {
   const at = argv.indexOf("--part");
   if (at === -1) return 0;
-  const parsed = Number.parseInt(argv[at + 1] ?? "", 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+  const raw = argv[at + 1] ?? "";
+  return /^\d+$/.test(raw) ? Number(raw) : 0;
 }
 function admittedRoot() {
   return selectWorkspaceRoot(
@@ -2706,6 +2706,7 @@ function readStdin() {
 }
 function emitConstitution(root, part) {
   const source = parseSessionSource(readStdin());
+  if (!shouldEmitForSource(source)) return;
   const record = fsIO.readFile(joinSlash(root, CONSTITUTION_RELPATH));
   const stdout = composeSessionStartStdout(source, record, part);
   if (stdout !== null) {

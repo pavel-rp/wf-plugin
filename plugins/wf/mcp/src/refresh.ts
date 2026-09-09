@@ -41,6 +41,7 @@ import {
   readSnapshot,
   resolveAndPersist,
   runPluginList,
+  shouldEmitForSource,
   splitConstitution,
   type StaleReason,
 } from "./resolver/index.js";
@@ -51,8 +52,8 @@ import {
 function partIndex(argv: readonly string[]): number {
   const at = argv.indexOf("--part");
   if (at === -1) return 0;
-  const parsed = Number.parseInt(argv[at + 1] ?? "", 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : 0;
+  const raw = argv[at + 1] ?? "";
+  return /^\d+$/.test(raw) ? Number(raw) : 0;
 }
 
 /** Select and admit this run's workspace root through the one resolver-owned
@@ -120,6 +121,7 @@ function readStdin(): string | null {
  */
 function emitConstitution(root: string, part: number): void {
   const source = parseSessionSource(readStdin());
+  if (!shouldEmitForSource(source)) return;
   const record = fsIO.readFile(joinSlash(root, CONSTITUTION_RELPATH));
   const stdout = composeSessionStartStdout(source, record, part);
   if (stdout !== null) {
