@@ -987,6 +987,24 @@ test("a valid profile template reads when O_NOFOLLOW is unavailable", () => {
   );
 });
 
+test("active discovery reads a valid profile template when O_NOFOLLOW is unavailable", () => {
+  withNoFollowUnavailable(
+    (capability) => writeFileSync(join(capability, "profile.template.json"), DEMO_TEMPLATE),
+    (service) => {
+      // The resolve_refresh/buildSnapshot path, not inspect_pack: the criterion is
+      // that a valid template stops being reported as a path-validity defect there.
+      const active = service.resolveRegistry().capabilities.find(
+        (candidate) => candidate.name === "demo",
+      );
+      assert.ok(active);
+      assert.equal(active.questions.length, 2);
+      const codes = service.inspect().diagnostics.map((diagnostic) => diagnostic.code);
+      assert.ok(!codes.includes("question/template-path-invalid"));
+      assert.ok(!codes.includes("question/template-unreadable-platform"));
+    },
+  );
+});
+
 test("a symlinked profile template still fails when O_NOFOLLOW is unavailable", () => {
   withNoFollowUnavailable(
     (capability) => {
