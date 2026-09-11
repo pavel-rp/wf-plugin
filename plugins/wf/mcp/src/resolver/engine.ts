@@ -57,6 +57,24 @@ type ContainedBytesResult =
       content: null;
     };
 
+/** `O_NOFOLLOW` is undefined on win32. Returning `0` there drops only the flag:
+ * the per-segment `lstatSync` check before the open, and the `fstatSync`
+ * identity re-checks after it, run unconditionally on both branches and are what
+ * actually reject a symlink or a same-window swap. */
+let noFollowFlagOverride: number | null = null;
+
+function resolveNoFollowFlag(): number {
+  if (noFollowFlagOverride !== null) return noFollowFlagOverride;
+  return typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+}
+
+/** Test seam — force the flag-availability branch. `0` emulates win32, where the
+ * constant is absent; `null` restores the platform value. Not part of the
+ * resolver's runtime contract. */
+export function setNoFollowFlagForTests(value: number | null): void {
+  noFollowFlagOverride = value;
+}
+
 function readContainedCapabilityBytes(
   root: string,
   selectedPath: string,
@@ -120,11 +138,12 @@ function readContainedCapabilityBytes(
     }
     targetValidated = true;
 
-    if (typeof constants.O_NOFOLLOW !== "number" || constants.O_NOFOLLOW === 0) {
-      return { status: "unsupported", path: lexicalPath, content: null };
-    }
+    const noFollow = resolveNoFollowFlag();
     const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
-    fd = openSync(canonicalTarget, constants.O_RDONLY | constants.O_NOFOLLOW | nonBlock);
+    fd = openSync(
+      canonicalTarget,
+      noFollow === 0 ? constants.O_RDONLY | nonBlock : constants.O_RDONLY | noFollow | nonBlock,
+    );
     const opened = fstatSync(fd, { bigint: true });
     if (!opened.isFile() || !sameIdentity(expected, opened)) {
       return { status: "unsafe", path: lexicalPath, content: null };

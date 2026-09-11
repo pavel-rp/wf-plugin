@@ -353,6 +353,16 @@ export function buildSnapshot(
                   message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
                 },
               ]);
+            } else if (templateRead.status === "unsupported") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-unreadable-platform",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: no contained-file reader is available to read the declared template on this platform.`,
+                },
+              ]);
             } else if (templateRead.status !== "ok") {
               appendQuestionDiagnostics(diagnostics, [
                 {

@@ -19,7 +19,7 @@ import {
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { resolveSnapshot } from "../src/resolver/engine.js";
+import { resolveSnapshot, setNoFollowFlagForTests } from "../src/resolver/engine.js";
 import { sha256Hex } from "../src/resolver/fingerprint.js";
 import { createDefaultPorts, resolveContainedRegistryWritePath } from "../src/ports.js";
 import {
@@ -922,6 +922,121 @@ test("symlinked profile templates fail installed-pack and active discovery", () 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+const NOFOLLOW_PLUGIN_LIST = (install: string): string =>
+  JSON.stringify([
+    {
+      id: "wf-demo@local",
+      version: "1.2.3",
+      scope: "user",
+      enabled: true,
+      installPath: normalizeSlashes(install),
+    },
+  ]);
+
+/** Lay down a real workspace + installed pack, run `body` with `O_NOFOLLOW`
+ *  forced unavailable (what win32 exhibits natively), and clean up either way. */
+function withNoFollowUnavailable(
+  seedTemplate: (capability: string) => void,
+  body: (service: ResolverService) => void,
+): void {
+  const root = mkdtempSync(join(tmpdir(), "wf-template-nofollow-"));
+  setNoFollowFlagForTests(0);
+  try {
+    const workspace = join(root, "workspace");
+    const install = join(root, "wf-demo");
+    const capability = join(install, "capabilities", "demo");
+    mkdirSync(join(workspace, "_local"), { recursive: true });
+    mkdirSync(capability, { recursive: true });
+    writeFileSync(
+      join(workspace, "_local", "config.md"),
+      `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+    );
+    writeFileSync(join(capability, "manifest.md"), DEMO_MANIFEST);
+    seedTemplate(capability);
+
+    const pluginListRaw = NOFOLLOW_PLUGIN_LIST(install);
+    const production = createDefaultPorts(normalizeSlashes(workspace));
+    const ports: ResolverServicePorts = {
+      ...production,
+      listPlugins: () => ({ ...parsePluginList(pluginListRaw), ok: true }),
+      resolveFresh: () =>
+        resolveSnapshot({
+          workspaceRoot: normalizeSlashes(workspace),
+          pluginListRaw,
+          now: () => new Date("2026-08-19T00:00:00.000Z"),
+        }),
+    };
+    body(new ResolverService(ports));
+  } finally {
+    setNoFollowFlagForTests(null);
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("a valid profile template reads when O_NOFOLLOW is unavailable", () => {
+  withNoFollowUnavailable(
+    (capability) => writeFileSync(join(capability, "profile.template.json"), DEMO_TEMPLATE),
+    (service) => {
+      const inspected = service.inspectPack("wf-demo@local");
+      assert.deepEqual(inspected.capabilities[0].questionDiagnostics, []);
+      assert.equal(inspected.capabilities[0].questions.length, 2);
+      assert.equal(inspected.valid, true);
+    },
+  );
+});
+
+test("a symlinked profile template still fails when O_NOFOLLOW is unavailable", () => {
+  withNoFollowUnavailable(
+    (capability) => {
+      const outside = join(capability, "..", "..", "..", "outside.json");
+      writeFileSync(outside, DEMO_TEMPLATE);
+      symlinkSync(outside, join(capability, "profile.template.json"));
+    },
+    (service) => {
+      const inspected = service.inspectPack("wf-demo@local");
+      assert.equal(inspected.valid, false);
+      assert.deepEqual(inspected.capabilities[0].questions, []);
+      assert.ok(
+        inspected.capabilities[0].questionDiagnostics.some(
+          (diagnostic) => diagnostic.code === "question/template-path-invalid",
+        ),
+      );
+    },
+  );
+});
+
+test("an unsupported template read is diagnosed apart from an invalid path", () => {
+  const ports = makePorts();
+  const inspected = new ResolverService({
+    ...ports,
+    readContainedFile: undefined,
+  }).inspectPack("wf-demo@local");
+
+  assert.equal(inspected.valid, false);
+  assert.deepEqual(inspected.capabilities[0].questions, []);
+  const codes = inspected.capabilities[0].questionDiagnostics.map(
+    (diagnostic) => diagnostic.code,
+  );
+  assert.ok(codes.includes("question/template-unreadable-platform"));
+  assert.ok(!codes.includes("question/template-path-invalid"));
+
+  const registered = makePorts({
+    files: {
+      [`${WS}/_local/config.md`]: `${BASE_CONFIG}\n## Capabilities\n\n| Capability | Path |\n|---|---|\n| demo | plugin:wf-demo/capabilities/demo |\n`,
+    },
+  });
+  const snapshot = resolveSnapshot({
+    workspaceRoot: WS,
+    io: { readFile: registered.readFile },
+    pluginListRaw: PLUGIN_LIST,
+    now: () => new Date("2026-07-16T00:00:00.000Z"),
+    generator: RESOLVER_GENERATOR,
+  });
+  const snapshotCodes = snapshot.diagnostics.map((diagnostic) => diagnostic.code);
+  assert.ok(snapshotCodes.includes("question/template-unreadable-platform"));
+  assert.ok(!snapshotCodes.includes("question/template-path-invalid"));
 });
 
 test("a non-regular profile-template path is never body-served", () => {
