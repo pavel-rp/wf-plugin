@@ -25359,6 +25359,16 @@ function buildSnapshot(inputs, io) {
                   message: `pack \`${packName}\`, field \`profile-template\`: declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
                 }
               ]);
+            } else if (templateRead.status === "unsupported") {
+              appendQuestionDiagnostics(diagnostics, [
+                {
+                  code: "question/template-reader-unavailable",
+                  pack: packName,
+                  question: null,
+                  field: "profile-template",
+                  message: `pack \`${packName}\`, field \`profile-template\`: no contained-file reader is available to read the declared template.`
+                }
+              ]);
             } else if (templateRead.status !== "ok") {
               appendQuestionDiagnostics(diagnostics, [
                 {
@@ -25847,6 +25857,14 @@ function readOrNull(absPath) {
     throw err;
   }
 }
+var noFollowFlagOverride = null;
+function hasStatIdentity(stat) {
+  return stat.dev !== 0n || stat.ino !== 0n;
+}
+function resolveNoFollowFlag() {
+  if (noFollowFlagOverride !== null) return noFollowFlagOverride;
+  return typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+}
 function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
   const lexicalPath = resolveContainedCapabilityPath(root, selectedPath);
   if (lexicalPath === null || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
@@ -25893,11 +25911,15 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
       return { status: "too-large", path: lexicalPath, content: null };
     }
     targetValidated = true;
-    if (typeof constants.O_NOFOLLOW !== "number" || constants.O_NOFOLLOW === 0) {
-      return { status: "unsupported", path: lexicalPath, content: null };
+    const noFollow = resolveNoFollowFlag();
+    if (noFollow === 0 && !hasStatIdentity(expected)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
     }
     const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
-    fd = openSync(canonicalTarget, constants.O_RDONLY | constants.O_NOFOLLOW | nonBlock);
+    fd = openSync(
+      canonicalTarget,
+      noFollow === 0 ? constants.O_RDONLY | nonBlock : constants.O_RDONLY | noFollow | nonBlock
+    );
     const opened = fstatSync(fd, { bigint: true });
     if (!opened.isFile() || !sameIdentity(expected, opened)) {
       return { status: "unsafe", path: lexicalPath, content: null };
@@ -33530,6 +33552,16 @@ var ResolverService = class _ResolverService {
                 "profile-template",
                 "question/template-too-large",
                 `declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`
+              )
+            ];
+          } else if (templateRead.status === "unsupported") {
+            questionDiagnostics = [
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-reader-unavailable",
+                "no contained-file reader is available to read the declared template."
               )
             ];
           } else if (templateRead.status !== "ok") {

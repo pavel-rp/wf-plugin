@@ -57,6 +57,31 @@ type ContainedBytesResult =
       content: null;
     };
 
+/** `O_NOFOLLOW` is undefined on win32. Returning `0` there drops only the flag:
+ * the per-segment `lstatSync` check before the open, and the `fstatSync`
+ * identity re-checks after it, run unconditionally on both branches and are what
+ * actually reject a symlink or a same-window swap. */
+let noFollowFlagOverride: number | null = null;
+
+/** Whether a stat carries real device/inode identity. Some non-NTFS win32 mounts
+ * report `0` for both, which makes a `dev`/`ino` comparison pass unconditionally —
+ * so identity cannot stand in for `O_NOFOLLOW` there. */
+export function hasStatIdentity(stat: { dev: bigint; ino: bigint }): boolean {
+  return stat.dev !== 0n || stat.ino !== 0n;
+}
+
+function resolveNoFollowFlag(): number {
+  if (noFollowFlagOverride !== null) return noFollowFlagOverride;
+  return typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+}
+
+/** Test seam — force the flag-availability branch. `0` emulates win32, where the
+ * constant is absent; `null` restores the platform value. Not part of the
+ * resolver's runtime contract. */
+export function setNoFollowFlagForTests(value: number | null): void {
+  noFollowFlagOverride = value;
+}
+
 function readContainedCapabilityBytes(
   root: string,
   selectedPath: string,
@@ -120,11 +145,18 @@ function readContainedCapabilityBytes(
     }
     targetValidated = true;
 
-    if (typeof constants.O_NOFOLLOW !== "number" || constants.O_NOFOLLOW === 0) {
-      return { status: "unsupported", path: lexicalPath, content: null };
+    const noFollow = resolveNoFollowFlag();
+    if (noFollow === 0 && !hasStatIdentity(expected)) {
+      // Without the flag, `sameIdentity` across the open is the only thing left
+      // that rejects a swapped target — and it is vacuous on a volume whose stat
+      // reports no identity at all. Refuse rather than open unguarded.
+      return { status: "unsafe", path: lexicalPath, content: null };
     }
     const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
-    fd = openSync(canonicalTarget, constants.O_RDONLY | constants.O_NOFOLLOW | nonBlock);
+    fd = openSync(
+      canonicalTarget,
+      noFollow === 0 ? constants.O_RDONLY | nonBlock : constants.O_RDONLY | noFollow | nonBlock,
+    );
     const opened = fstatSync(fd, { bigint: true });
     if (!opened.isFile() || !sameIdentity(expected, opened)) {
       return { status: "unsafe", path: lexicalPath, content: null };

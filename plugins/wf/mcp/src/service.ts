@@ -4967,6 +4967,16 @@ export class ResolverService {
                 `declared template must be at most ${MAX_PROFILE_TEMPLATE_BYTES} UTF-8 bytes.`,
               ),
             ];
+          } else if (templateRead.status === "unsupported") {
+            questionDiagnostics = [
+              makeQuestionDiagnostic(
+                name,
+                null,
+                "profile-template",
+                "question/template-reader-unavailable",
+                "no contained-file reader is available to read the declared template.",
+              ),
+            ];
           } else if (templateRead.status !== "ok") {
             questionDiagnostics = [
               makeQuestionDiagnostic(
