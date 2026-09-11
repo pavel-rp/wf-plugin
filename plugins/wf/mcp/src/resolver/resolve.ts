@@ -356,11 +356,11 @@ export function buildSnapshot(
             } else if (templateRead.status === "unsupported") {
               appendQuestionDiagnostics(diagnostics, [
                 {
-                  code: "question/template-unreadable-platform",
+                  code: "question/template-reader-unavailable",
                   pack: packName,
                   question: null,
                   field: "profile-template",
-                  message: `pack \`${packName}\`, field \`profile-template\`: no contained-file reader is available to read the declared template on this platform.`,
+                  message: `pack \`${packName}\`, field \`profile-template\`: no contained-file reader is available to read the declared template.`,
                 },
               ]);
             } else if (templateRead.status !== "ok") {

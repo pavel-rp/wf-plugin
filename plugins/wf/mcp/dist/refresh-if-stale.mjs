@@ -1913,11 +1913,11 @@ function buildSnapshot(inputs, io) {
             } else if (templateRead.status === "unsupported") {
               appendQuestionDiagnostics(diagnostics, [
                 {
-                  code: "question/template-unreadable-platform",
+                  code: "question/template-reader-unavailable",
                   pack: packName,
                   question: null,
                   field: "profile-template",
-                  message: `pack \`${packName}\`, field \`profile-template\`: no contained-file reader is available to read the declared template on this platform.`
+                  message: `pack \`${packName}\`, field \`profile-template\`: no contained-file reader is available to read the declared template.`
                 }
               ]);
             } else if (templateRead.status !== "ok") {
@@ -2408,6 +2408,9 @@ function readOrNull(absPath) {
   }
 }
 var noFollowFlagOverride = null;
+function hasStatIdentity(stat) {
+  return stat.dev !== 0n || stat.ino !== 0n;
+}
 function resolveNoFollowFlag() {
   if (noFollowFlagOverride !== null) return noFollowFlagOverride;
   return typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
@@ -2459,6 +2462,9 @@ function readContainedCapabilityBytes(root, selectedPath, maxBytes) {
     }
     targetValidated = true;
     const noFollow = resolveNoFollowFlag();
+    if (noFollow === 0 && !hasStatIdentity(expected)) {
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
     const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
     fd = openSync(
       canonicalTarget,

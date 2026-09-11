@@ -63,6 +63,13 @@ type ContainedBytesResult =
  * actually reject a symlink or a same-window swap. */
 let noFollowFlagOverride: number | null = null;
 
+/** Whether a stat carries real device/inode identity. Some non-NTFS win32 mounts
+ * report `0` for both, which makes a `dev`/`ino` comparison pass unconditionally —
+ * so identity cannot stand in for `O_NOFOLLOW` there. */
+export function hasStatIdentity(stat: { dev: bigint; ino: bigint }): boolean {
+  return stat.dev !== 0n || stat.ino !== 0n;
+}
+
 function resolveNoFollowFlag(): number {
   if (noFollowFlagOverride !== null) return noFollowFlagOverride;
   return typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
@@ -139,6 +146,12 @@ function readContainedCapabilityBytes(
     targetValidated = true;
 
     const noFollow = resolveNoFollowFlag();
+    if (noFollow === 0 && !hasStatIdentity(expected)) {
+      // Without the flag, `sameIdentity` across the open is the only thing left
+      // that rejects a swapped target — and it is vacuous on a volume whose stat
+      // reports no identity at all. Refuse rather than open unguarded.
+      return { status: "unsafe", path: lexicalPath, content: null };
+    }
     const nonBlock = typeof constants.O_NONBLOCK === "number" ? constants.O_NONBLOCK : 0;
     fd = openSync(
       canonicalTarget,

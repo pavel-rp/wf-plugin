@@ -4973,8 +4973,8 @@ export class ResolverService {
                 name,
                 null,
                 "profile-template",
-                "question/template-unreadable-platform",
-                "no contained-file reader is available to read the declared template on this platform.",
+                "question/template-reader-unavailable",
+                "no contained-file reader is available to read the declared template.",
               ),
             ];
           } else if (templateRead.status !== "ok") {

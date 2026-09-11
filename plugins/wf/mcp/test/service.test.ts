@@ -19,7 +19,11 @@ import {
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { resolveSnapshot, setNoFollowFlagForTests } from "../src/resolver/engine.js";
+import {
+  hasStatIdentity,
+  resolveSnapshot,
+  setNoFollowFlagForTests,
+} from "../src/resolver/engine.js";
 import { sha256Hex } from "../src/resolver/fingerprint.js";
 import { createDefaultPorts, resolveContainedRegistryWritePath } from "../src/ports.js";
 import {
@@ -1000,7 +1004,7 @@ test("active discovery reads a valid profile template when O_NOFOLLOW is unavail
       assert.equal(active.questions.length, 2);
       const codes = service.inspect().diagnostics.map((diagnostic) => diagnostic.code);
       assert.ok(!codes.includes("question/template-path-invalid"));
-      assert.ok(!codes.includes("question/template-unreadable-platform"));
+      assert.ok(!codes.includes("question/template-reader-unavailable"));
     },
   );
 });
@@ -1025,6 +1029,16 @@ test("a symlinked profile template still fails when O_NOFOLLOW is unavailable", 
   );
 });
 
+test("stat identity is required before O_NOFOLLOW may be dropped", () => {
+  // Without the flag, the cross-open dev/ino comparison is the only remaining
+  // guard against a swapped target — and on a volume that reports no identity it
+  // compares 0n to 0n and passes unconditionally, so the read must refuse instead.
+  assert.equal(hasStatIdentity({ dev: 0n, ino: 0n }), false);
+  assert.equal(hasStatIdentity({ dev: 0n, ino: 42n }), true);
+  assert.equal(hasStatIdentity({ dev: 2049n, ino: 0n }), true);
+  assert.equal(hasStatIdentity({ dev: 2049n, ino: 42n }), true);
+});
+
 test("an unsupported template read is diagnosed apart from an invalid path", () => {
   const ports = makePorts();
   const inspected = new ResolverService({
@@ -1037,7 +1051,7 @@ test("an unsupported template read is diagnosed apart from an invalid path", () 
   const codes = inspected.capabilities[0].questionDiagnostics.map(
     (diagnostic) => diagnostic.code,
   );
-  assert.ok(codes.includes("question/template-unreadable-platform"));
+  assert.ok(codes.includes("question/template-reader-unavailable"));
   assert.ok(!codes.includes("question/template-path-invalid"));
 
   const registered = makePorts({
@@ -1053,7 +1067,7 @@ test("an unsupported template read is diagnosed apart from an invalid path", () 
     generator: RESOLVER_GENERATOR,
   });
   const snapshotCodes = snapshot.diagnostics.map((diagnostic) => diagnostic.code);
-  assert.ok(snapshotCodes.includes("question/template-unreadable-platform"));
+  assert.ok(snapshotCodes.includes("question/template-reader-unavailable"));
   assert.ok(!snapshotCodes.includes("question/template-path-invalid"));
 });
 
