@@ -44,7 +44,7 @@ Your searches and reads stay in your isolated context. Your entire final message
 ```
 RESEARCH-GATHERER — RQ<n>: <COMPLETE | INSUFFICIENT | ERROR>
 Model: <model-id from your system prompt, or "unknown">
-Stop rule: <saturation | budget | exhaustion | no-changing-search>
+Stop rule: <saturation | budget | exhaustion | no-changing-search | none — ERROR only>
 Answer: <two sentences at most, or "insufficient evidence">
 Claims:
 - C<n>.1 | <claim> | grade <Strong|Moderate|Weak|Insufficient> | sources <keys>
