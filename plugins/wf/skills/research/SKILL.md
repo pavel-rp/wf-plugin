@@ -32,16 +32,16 @@ Before the first bundled resolver MCP call, run `pwd -P` and use the returned ab
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `<topic \| research-id>` | NO | Auto-detected: a research id (`R` + digits, or `<ABBR>-R` + digits) resumes that research folder; anything else is the topic, taken verbatim. Empty → Zero-argument default. |
-| `--no-intake` | NO | Produce the research docs and verdict only; never seed a charter intake, even when the verdict is Practical. Recorded in the brief so a resumed run honours it. |
+| `<topic \| research-id>` | NO | Auto-detected once every `--`-prefixed option is removed: a research id (`R` + digits, or `<ABBR>-R` + digits) resumes that research folder; anything else is the topic, taken verbatim. Nothing left → Zero-argument default, with any options still applied. |
+| `--no-intake` | NO | Produce the research docs and verdict only; never seed a charter intake, even when the verdict is Practical. Recorded in the brief so a resumed run honours it; passed on a resume, it sets the existing brief's `**Intake mode:**` to `no-intake` — the flag can narrow a run, never widen one. |
 
 **Validation:**
 
 - The raw invocation input is: `$ARGUMENTS`.
-- A research id with no matching folder under `{task-root}` (direct children, then `_archive/`) → stop: "No research folder matches `<id>`."
+- A research id with no matching folder under `{task-root}` (direct children, then `_archive/`), or whose matching folder holds no `00_brief.md`, → stop: "No resumable research folder matches `<id>`." An interrupted creation is re-run as a new topic.
 - A matched folder under `_archive/` → re-emit its final block read-only; never resume archived research.
 
-**Zero-argument default:** scan the direct children of `{task-root}` for research folders (`R<NNN>__*` or `<ABBR>-R<NNN>__*` containing `00_brief.md`) that are unfinished — `02_verdict.md` absent, its `**Challenge:**` line reads `pending`, or its `**Intake:**` line reads `awaiting-decision`, `pending`, or `seeding <charter-id>`. Exactly one → resume it at the state its artifacts imply (State model). Several → list them with titles and ask which. None → ask for a topic.
+**Zero-argument default:** scan the direct children of `{task-root}` for research folders (`R<NNN>__*` or `<ABBR>-R<NNN>__*` containing `00_brief.md`) that are unfinished — `00_brief.md` reads `**Plan:** Draft`, `02_verdict.md` is absent, its `**Challenge:**` line reads `pending`, or its `**Intake:**` line reads `awaiting-decision`, `pending`, or `seeding <charter-id>`. Exactly one → resume it at the state its artifacts imply (State model). Several → list them with titles and ask which. None → ask for a topic.
 
 ---
 
@@ -69,6 +69,8 @@ Before the first bundled resolver MCP call, run `pwd -P` and use the returned ab
 ---
 
 ## State model (resume from artifacts, not memory)
+
+Rows are checked top to bottom and the first match applies, so a brief sent back to `**Plan:** Draft` resumes Phase 1 even while older findings or a verdict remain.
 
 | Observed state | Next step |
 | --- | --- |
@@ -131,7 +133,7 @@ How sure the analysis is that the recommendation is right, given the evidence ba
 
 ### Phase 0 — Resolve input, mint id, create folder
 
-1. Detect the input form (Arguments table). A research id resumes via the State model; `--no-intake` is noted.
+1. Detect the input form (Arguments table), removing options first. A research id resumes via the State model; `--no-intake` on a resume rewrites only the brief's `**Intake mode:**` line, to `no-intake`.
 2. **New topic only** — on a research-id resume skip steps 2–4 entirely: never mint an id, and never rewrite the existing brief, which holds the clarification and plan state the State model resumes from. Research id: scan `{task-root}` (including `_archive/`) for folders matching `R` + digits + `__` or `<ABBR>-R` + digits + `__`, take the highest number + 1, zero-padded to 3 digits, starting at `R001`.
 3. Slug: lowercase the first ~50 characters of the topic, spaces and special characters to hyphens. Folder: `{task-root}/<research-id>__<slug>/`, a direct child of `{task-root}`.
 4. Write `00_brief.md`: `# <research-id> — <title>`, the topic **verbatim**, date, `**Captured by:** <model-id>` (`unknown` if unavailable), `**Intake mode:** seed | no-intake`, `**Plan:** Draft`, and empty `## Clarifications`, `## Key assumptions`, `## Research questions`, `## Plan`, and `## Local evidence` sections. Refresh the index for it (Per-artifact index).
@@ -148,12 +150,14 @@ Scope the research before any search budget is spent.
    - **Focused** — a single fact or current recommendation: ≤5 searches, ≤8 fetches.
    - **Comparison** — two to four named alternatives: ≤10 searches, ≤15 fetches.
    - **Survey** — open landscape or immature practice: ≤15 searches, ≤25 fetches; include `T2` practitioner evidence explicitly, since practice outruns published research there.
-6. Present the brief's assumptions, questions, reversibility, and plan via `AskUserQuestion`: *approve* / *revise* (take the correction, rewrite, re-present) / *stop*. On approval set `**Plan:** Approved`. On stop, end `RESEARCH — Needs input`.
-7. **Headless run:** skip every ask; each material ambiguity becomes an `[unconfirmed]` assumption under `## Clarifications`, reversibility defaults to **hard to reverse** when unclear, and the plan is approved as written.
+
+   Each budget is the question's total across attempts: the first gatherer gets two-thirds of it, and a retry gets only the remaining third.
+6. Present the brief's assumptions, questions, reversibility, and plan via `AskUserQuestion`: *approve* / *revise* (take the correction, rewrite, re-present) / *stop*. On approval set `**Plan:** Approved` and refresh the index for the brief (Per-artifact index). On stop, end `RESEARCH — Needs input`.
+7. **Headless run:** skip every ask; each material ambiguity becomes an `[unconfirmed]` assumption under `## Clarifications`, reversibility defaults to **hard to reverse** when unclear, and the plan is approved as written — set `**Plan:** Approved` and refresh the index for the brief.
 
 ### Phase 2 — Gather local evidence (bounded)
 
-From at most 15 file reads, record under `## Local evidence` in `00_brief.md`, each item keyed `[L<n>]` with its path:
+From at most 15 file reads, record under `## Local evidence` in `00_brief.md`, each item keyed `[L<n>]` with its path. Never read or record a secret-bearing file — environment and credential files, private keys, token stores, or a version-control-ignored file outside `{task-root}` — and never copy a secret value found in any other file; list such a file as excluded, by path only:
 
 - The project's composed constitution (`_local/constitution.md`, when present) and the constraints it imposes.
 - Prior decisions on the topic: decision records, design docs, and earlier research folders under `{task-root}`.
@@ -161,13 +165,13 @@ From at most 15 file reads, record under `## Local evidence` in `00_brief.md`, e
 - Recorded metrics or measurements relevant to the questions' outcomes.
 - The approaches the codebase already uses for the topic (a `Grep`/`Glob` pass).
 
-This sets each question's *Context* and is carried into every gatherer. `L` evidence that contradicts an assumption is recorded against it now. Never widen the research questions from what is found here; a new material question goes back to Phase 1.
+This sets each question's *Context* and is carried into every gatherer. `L` evidence that contradicts an assumption is recorded against it now. Never widen the research questions from what is found here; a new material question goes back to Phase 1. Refresh the index for the brief (Per-artifact index).
 
 ### Phase 3 — Gather external evidence (parallel, isolated)
 
 Raw pages stay in the gatherers' contexts and never reach this one. The gatherer's role contract owns the search procedure — breadth-first mapping, the disconfirming-evidence share of the budget, fetch-and-quote backing, the SIFT gate, hard-constraint facts, and the stop rules.
 
-Immediately before the gatherer execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role: "research-gatherer"`, `unitIds` — one canonical `<research-id>:RQ<n>` token per research question, in question order — `shapeEvidence: { workSurface: "external-context", atomicity: "composite", unitCount: <number of research questions>, unitsIndependent: true, ambiguity: "material", risk: "low", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: <number of research questions> }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact operational record separately from artifact `**Researched by:**` attribution. Hard-stop before work on `status: stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly — `bounded-parallel` runs at most `effectiveParallelism` gatherers at once, in question order — pass the model selector only when non-null, and preserve inherited effort. The host evaluates each returned block against its fixed status token and required fields. When any unit is insufficient, submit one `postAttempt` with top-level `sufficient: false` and `signals: ["failed-validation"]`, whose `units` report **every** unit of the retained decision — `sufficient: true` with `signals: []` for each block that is `COMPLETE` or `INSUFFICIENT`, `sufficient: false` with `signals: ["failed-validation"]` for each that is missing, `ERROR`, or backed by no fetched source — then re-dispatch only the `retry.unitIds` the resolver returns, once, with sufficient units retained; a gatherer never replaces itself.
+Immediately before the gatherer execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role: "research-gatherer"`, `unitIds` — one canonical `<research-id>:RQ<n>` token per research question, in question order — `shapeEvidence: { workSurface: "external-context", atomicity: "composite", unitCount: <number of research questions>, unitsIndependent: true, ambiguity: "material", risk: "low", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: <number of research questions> }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact operational record separately from artifact `**Researched by:**` attribution. Hard-stop before work on `status: stop` or non-null `diagnostic`; otherwise obey `executionShape` exactly — `bounded-parallel` runs at most `effectiveParallelism` gatherers at once, in question order — pass the model selector only when non-null, and preserve inherited effort. The host evaluates each returned block against its fixed status token and required fields. When any unit is insufficient, submit one `postAttempt` with top-level `sufficient: false` and `signals: ["failed-validation"]`, whose `units` report **every** unit of the retained decision — `sufficient: true` with `signals: []` for each block that is `COMPLETE` or `INSUFFICIENT`, `sufficient: false` with `signals: ["failed-validation"]` for each that is missing, `ERROR`, or backed by no fetched source — then re-dispatch only the `retry.unitIds` the resolver returns, once, each with the remaining third of its question's budget, and with sufficient units retained; a gatherer never replaces itself.
 
 Invoke the **Task** tool once per routed unit, `subagent_type: wf:research-gatherer`, passing (fill the placeholders; paths absolute, forward slashes):
 
@@ -221,27 +225,27 @@ Verification is a separate step from gathering — never skipped because a gathe
    - **Practical** — every row passes.
    - **Practical — spike first** — the only failing rows are Solved enough or Sizeable, every failure traces to a **Spike** question, and every other row passes. The intake asks the charter to schedule the spike before any work that depends on its answer.
    - **Not practical** — otherwise, naming the dominant reason: `not deliverable`, `no admissible option`, `unbounded`, `blocked on <question>`, `unfavourable outside view`, or `evidence insufficient`.
-5. `**Intake:**` — `pending` when the verdict is Practical or Practical — spike first and the brief's intake mode is `seed`; `skipped (--no-intake)` when the mode is `no-intake`; `n/a` otherwise.
+5. `**Intake:**` — `awaiting-decision` when the verdict is Practical or Practical — spike first and the brief's intake mode is `seed`; `skipped (--no-intake)` when the mode is `no-intake`; `n/a` otherwise.
 6. Refresh the index for `02_verdict.md` (Per-artifact index).
 
 ### Phase 6 — Independent challenge
 
 The analysis that gathered and weighed the evidence does not get the last word on it. The challenger's role contract owns the pre-mortem, the counter-case, and the evidence audit; it is deliberately given the findings and the verdict but **not** the topic's original wording or the brief's clarifications, so it is not anchored to the framing.
 
-Immediately before the challenger execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role: "research-challenger"`, `unitIds: ["<research-id>:challenge"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: true, returnContract: "judgment", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact operational record, hard-stop on `status: stop` or non-null `diagnostic`, obey `executionShape` exactly, pass the model selector only when non-null, and preserve inherited effort. Only a missing or `ERROR` block may be submitted as `postAttempt` for one parent-owned retry, with top-level `sufficient: false`, `signals: ["failed-validation"]`, and no `units` — the challenger never replaces itself.
+Immediately before the challenger execution, call `resolve_routing` with `workspaceRoot: <captured workspaceRoot>`, `role: "research-challenger"`, `unitIds: ["<research-id>:challenge"]`, `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "material", risk: "elevated", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: true, returnContract: "judgment", requestedParallelism: 1 }`, `supportsModelSelector: true`, and `supportsEffortSelector: false`. Emit the compact operational record, hard-stop on `status: stop` or non-null `diagnostic`, obey `executionShape` exactly, pass the model selector only when non-null, and preserve inherited effort. Only a missing or `ERROR` block may be submitted as `postAttempt` for one parent-owned retry, with top-level `sufficient: false`, `signals: ["failed-validation"]`, and no `units`; a first attempt gets 7 searches and 10 fetches and the retry 3 and 5, so both together stay within 10 and 15 — the challenger never replaces itself.
 
 Invoke the **Task** tool, `subagent_type: wf:research-challenger`, passing:
 
-> Findings: `<abs path to 01_findings.md>`. Verdict: `<abs path to 02_verdict.md>`. Reference scales: `<this skill's Reference scales section, verbatim>`. Return only the final block your role contract defines.
+> Findings: `<abs path to 01_findings.md>`. Verdict: `<abs path to 02_verdict.md>`. Budget: `<searches>` searches, `<fetches>` fetches. Reference scales: `<this skill's Reference scales section, verbatim>`. Return only the final block your role contract defines.
 
 Then:
 
 1. Verify every new source the challenger cites by the Phase 4 procedure before it counts. Append each verified one to `01_findings.md` `## Sources` under the next free `[S<n>]` key and rewrite its `N<n>` key to that `[S<n>]` key everywhere it is cited. Append each unverifiable one to `## Excluded sources` and strip its key from every challenge; a challenge left with no verified source counts as reasoning only. No `N<n>` key reaches the verdict or the intake.
 2. Add `## Challenge` to `02_verdict.md`: each challenge with its disposition — **accepted** (name the section changed) or **rebutted** (with the verified evidence that answers it). A challenge answered only by reasoning is rebutted only by evidence or left **open**. Apply every accepted change, regrade affected claims, and re-evaluate Confidence and the Practicality rows; an open high-severity challenge caps Confidence at `Low`.
 3. When the block is still missing or `ERROR` after the one retry, record `## Challenge` as `not performed — <reason>`, cap Confidence at `Low`, and add a warning.
-4. Set `**Challenge:** done`. Recompute `**Verdict:**` and `**Intake:**` from the updated rows, writing `awaiting-decision` wherever Phase 5's rule would give `pending` — only the explicit decision below turns it into `pending`, so a resumed run can never seed without one.
+4. Recompute `**Verdict:**` and `**Intake:**` from the updated rows by Phase 5's rule, then set `**Challenge:** done` — only the explicit decision below turns `awaiting-decision` into `pending`, so a resumed run can never seed without one.
 5. Present the verdict, confidence, and the accepted and open challenges via `AskUserQuestion`. When `**Intake:**` is `awaiting-decision`: *seed charter intake* (set `**Intake:** pending`) / *don't seed* (set `**Intake:** declined`). When the verdict is Not practical: *accept verdict* / *override to Practical* (record `**Override:** <user's reason>` under `## Practicality`, set `pending` when the mode is `seed`). The override is offered only when a recommendation exists: for `no admissible option` or `evidence insufficient` the choices are *accept verdict* or *revise and re-run* — record the replacement option or relaxed constraint under `## Clarifications`, set `**Plan:** Draft`, and return to Phase 1 — never a seed. **Headless:** take the verdict as written with no override, and turn `awaiting-decision` into `pending`.
-6. Refresh the index for `02_verdict.md` (Per-artifact index).
+6. Refresh the index for `01_findings.md` when step 1 appended to it, then for `02_verdict.md` (Per-artifact index).
 
 ### Phase 7 — Seed the charter intake
 
@@ -286,7 +290,7 @@ Runs only when `**Intake:**` is `pending` or `seeding <charter-id>`.
 
 ---
 
-End every pass with this block as the very last output — nothing after it:
+End every pass with this block as the very last output — nothing after it. `Next:` is `/wf:charter <charter-id>` when an intake was seeded; `/wf:research <research-id>` when the run ended at Needs input or Blocked with a folder to resume; `none — terminus` otherwise.
 
 ```
 RESEARCH — <Complete | Needs input | Blocked>
@@ -302,5 +306,3 @@ Intake:     <charter-id — abs path | skipped (--no-intake) | declined | n/a | 
 Warnings:   <warnings, or —>
 Next:       <exactly one of: /wf:charter <charter-id> | /wf:research <research-id> | none — terminus>
 ```
-
-`Next:` is `/wf:charter <charter-id>` when an intake was seeded; `/wf:research <research-id>` when the run ended at Needs input or Blocked with a folder to resume; `none — terminus` otherwise.
