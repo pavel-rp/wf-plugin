@@ -65,6 +65,9 @@ implement-index	included	plugins/wf/skills/implement/SKILL.md	/wf:index	index	mo
 verify-spec-index	included	plugins/wf/skills/verify-spec/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 tt-index	included	plugins/wf/skills/tt/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 charter-index	included	plugins/wf/skills/charter/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+research-gatherer	included	plugins/wf/skills/research/SKILL.md	wf:research-gatherer	research-gatherer	model=true;effort=false	external-context,composite,dynamic,true,material,low,material,judgment,required,false,judgment,dynamic	research
+research-challenger	included	plugins/wf/skills/research/SKILL.md	wf:research-challenger	research-challenger	model=true;effort=false	external-context,atomic,1,false,material,elevated,material,judgment,required,true,judgment,1	research
+research-index	included	plugins/wf/skills/research/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 capability-phase	excluded	plugins/wf/skills/**	manifest subagent dispatch	WF-400	—	dynamic capability contribution	—
 qa-provider	excluded	plugins/wf/skills/qa-auto/SKILL.md	qa-execution engine/host	WF-400	—	registry-derived provider dispatch	—
 pack-owned	excluded	plugins/wf-*/**	pack caller	WF-400	—	capability-pack-owned	—
