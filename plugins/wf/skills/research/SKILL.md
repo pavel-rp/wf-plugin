@@ -133,7 +133,7 @@ How sure the analysis is that the recommendation is right, given the evidence ba
 
 ### Phase 0 — Resolve input, mint id, create folder
 
-1. Detect the input form (Arguments table), removing options first. A research id resumes via the State model; `--no-intake` on a resume rewrites only the brief's `**Intake mode:**` line, to `no-intake`.
+1. Detect the input form (Arguments table), removing options first. A research id resumes via the State model; `--no-intake` on a resume rewrites the brief's `**Intake mode:**` line to `no-intake`, and when `02_verdict.md` reads `**Intake:** awaiting-decision` or `pending` it also rewrites that line to `skipped (--no-intake)` and refreshes the verdict's index, so no seed decision or seed follows. A `seeding <charter-id>` line is left as it is: that seed is already underway and completes, with a warning that `--no-intake` arrived after it began.
 2. **New topic only** — on a research-id resume skip steps 2–4 entirely: never mint an id, and never rewrite the existing brief, which holds the clarification and plan state the State model resumes from. Research id: scan `{task-root}` (including `_archive/`) for folders matching `R` + digits + `__` or `<ABBR>-R` + digits + `__`, take the highest number + 1, zero-padded to 3 digits, starting at `R001`.
 3. Slug: lowercase the first ~50 characters of the topic, spaces and special characters to hyphens. Folder: `{task-root}/<research-id>__<slug>/`, a direct child of `{task-root}`.
 4. Write `00_brief.md`: `# <research-id> — <title>`, the topic **verbatim**, date, `**Captured by:** <model-id>` (`unknown` if unavailable), `**Intake mode:** seed | no-intake`, `**Plan:** Draft`, and empty `## Clarifications`, `## Key assumptions`, `## Research questions`, `## Plan`, and `## Local evidence` sections. Refresh the index for it (Per-artifact index).
@@ -151,9 +151,9 @@ Scope the research before any search budget is spent.
    - **Comparison** — two to four named alternatives: ≤10 searches, ≤15 fetches.
    - **Survey** — open landscape or immature practice: ≤15 searches, ≤25 fetches; include `T2` practitioner evidence explicitly, since practice outruns published research there.
 
-   Each budget is the question's total across attempts: the first gatherer gets two-thirds of it, and a retry gets only the remaining third.
-6. Present the brief's assumptions, questions, reversibility, and plan via `AskUserQuestion`: *approve* / *revise* (take the correction, rewrite, re-present) / *stop*. On approval set `**Plan:** Approved` and refresh the index for the brief (Per-artifact index). On stop, end `RESEARCH — Needs input`.
-7. **Headless run:** skip every ask; each material ambiguity becomes an `[unconfirmed]` assumption under `## Clarifications`, reversibility defaults to **hard to reverse** when unclear, and the plan is approved as written — set `**Plan:** Approved` and refresh the index for the brief.
+   Each budget is the question's total across gatherer attempts: the first gatherer gets two-thirds of each cap, rounded down, and a retry gets only the remainder (Focused: 3 searches and 5 fetches, then 2 and 3). Phase 4's verification re-fetches sit outside these caps, bounded to one re-fetch per load-bearing source.
+6. Present the brief's assumptions, questions, reversibility, and plan via `AskUserQuestion`: *approve* / *revise* (take the correction, rewrite, re-present) / *stop*. On approval, first move any `01_findings.md` and `02_verdict.md` left by an earlier pass into `superseded-<n>/` inside the research folder (the next free `<n>`), so the State model never mistakes them for this pass's output; then set `**Plan:** Approved` and refresh the index for the brief (Per-artifact index). On stop, end `RESEARCH — Needs input`.
+7. **Headless run:** skip every ask; each material ambiguity becomes an `[unconfirmed]` assumption under `## Clarifications`, reversibility defaults to **hard to reverse** when unclear, and the plan is approved as written — supersede any earlier findings and verdict as in step 6, set `**Plan:** Approved`, and refresh the index for the brief.
 
 ### Phase 2 — Gather local evidence (bounded)
 
@@ -224,7 +224,7 @@ Verification is a separate step from gathering — never skipped because a gathe
 4. Verdict:
    - **Practical** — every row passes.
    - **Practical — spike first** — the only failing rows are Solved enough or Sizeable, every failure traces to a **Spike** question, and every other row passes. The intake asks the charter to schedule the spike before any work that depends on its answer.
-   - **Not practical** — otherwise, naming the dominant reason: `not deliverable`, `no admissible option`, `unbounded`, `blocked on <question>`, `unfavourable outside view`, or `evidence insufficient`.
+   - **Not practical** — otherwise, naming the dominant reason: `not deliverable`, `no admissible option`, `unbounded`, `not testable`, `not sizeable`, `blocked on <question>`, `unfavourable outside view`, or `evidence insufficient` (which also covers a failing Solved enough row).
 5. `**Intake:**` — `awaiting-decision` when the verdict is Practical or Practical — spike first and the brief's intake mode is `seed`; `skipped (--no-intake)` when the mode is `no-intake`; `n/a` otherwise.
 6. Refresh the index for `02_verdict.md` (Per-artifact index).
 
@@ -240,12 +240,12 @@ Invoke the **Task** tool, `subagent_type: wf:research-challenger`, passing:
 
 Then:
 
-1. Verify every new source the challenger cites by the Phase 4 procedure before it counts. Append each verified one to `01_findings.md` `## Sources` under the next free `[S<n>]` key and rewrite its `N<n>` key to that `[S<n>]` key everywhere it is cited. Append each unverifiable one to `## Excluded sources` and strip its key from every challenge; a challenge left with no verified source counts as reasoning only. No `N<n>` key reaches the verdict or the intake.
+1. Verify every new source the challenger cites by the Phase 4 procedure before it counts. A verified source whose URL — ignoring scheme, trailing slash, and fragment — already appears in `01_findings.md` `## Sources` reuses that `[S<n>]` key and never counts as an additional independent source; append each other verified one under the next free `[S<n>]` key. Either way, rewrite its `N<n>` key to the `[S<n>]` key everywhere it is cited. Append each unverifiable one to `## Excluded sources` and strip its key from every challenge. An existing `[S<n>]` key the challenger cites counts only when its source row reads `verified: yes`; strip any other from the challenge. A challenge left with no verified source counts as reasoning only. No `N<n>` key reaches the verdict or the intake.
 2. Add `## Challenge` to `02_verdict.md`: each challenge with its disposition — **accepted** (name the section changed) or **rebutted** (with the verified evidence that answers it). A challenge answered only by reasoning is rebutted only by evidence or left **open**. Apply every accepted change, regrade affected claims, and re-evaluate Confidence and the Practicality rows; an open high-severity challenge caps Confidence at `Low`.
 3. When the block is still missing or `ERROR` after the one retry, record `## Challenge` as `not performed — <reason>`, cap Confidence at `Low`, and add a warning.
 4. Recompute `**Verdict:**` and `**Intake:**` from the updated rows by Phase 5's rule, then set `**Challenge:** done` — only the explicit decision below turns `awaiting-decision` into `pending`, so a resumed run can never seed without one.
-5. Present the verdict, confidence, and the accepted and open challenges via `AskUserQuestion`. When `**Intake:**` is `awaiting-decision`: *seed charter intake* (set `**Intake:** pending`) / *don't seed* (set `**Intake:** declined`). When the verdict is Not practical: *accept verdict* / *override to Practical* (record `**Override:** <user's reason>` under `## Practicality`, set `pending` when the mode is `seed`). The override is offered only when a recommendation exists: for `no admissible option` or `evidence insufficient` the choices are *accept verdict* or *revise and re-run* — record the replacement option or relaxed constraint under `## Clarifications`, set `**Plan:** Draft`, and return to Phase 1 — never a seed. **Headless:** take the verdict as written with no override, and turn `awaiting-decision` into `pending`.
-6. Refresh the index for `01_findings.md` when step 1 appended to it, then for `02_verdict.md` (Per-artifact index).
+5. Present the verdict, confidence, and the accepted and open challenges via `AskUserQuestion`. When `**Intake:**` is `awaiting-decision`: *seed charter intake* (set `**Intake:** pending`) / *don't seed* (set `**Intake:** declined`). When the verdict is Not practical: *accept verdict* / *override to Practical* (record `**Override:** <user's reason>` under `## Practicality`, and set `**Intake:**` to `pending` when the mode is `seed` or `skipped (--no-intake)` when it is `no-intake`). The override is offered only when a recommendation exists and the reason is not `not deliverable`: for `not deliverable`, `no admissible option`, or `evidence insufficient` the choices are *accept verdict* or *revise and re-run* — record the revised scope, replacement option, or relaxed constraint under `## Clarifications`, set `**Plan:** Draft`, and return to Phase 1, whose approval supersedes the old findings and verdict — never a seed. **Headless:** take the verdict as written with no override, and turn `awaiting-decision` into `pending`.
+6. Refresh the index for `01_findings.md` when step 1 or step 2 changed it, then for `02_verdict.md` (Per-artifact index).
 
 ### Phase 7 — Seed the charter intake
 
@@ -265,7 +265,7 @@ Runs only when `**Intake:**` is `pending` or `seeding <charter-id>`.
    - `## Spike first` — only for Practical — spike first: each Spike question with its experiment, time box, and the decision it settles. Also record each one under `## Clarifications` as `Q: Must this spike complete before dependent work? A: Yes — <the decision it settles>`, the log both charter roles read, so the decomposer schedules it early and names it under `Depends on:` for every sub-task that needs its answer. `/wf:charter` owns that ordering; this skill only states the constraint.
    - `## Research references` — `../<research-folder-name>/01_findings.md` and `../<research-folder-name>/02_verdict.md` (relative to the charter folder, since the two folders are siblings), then every source key the recommendation cites: `[S<n>]` with its title and URL, `[L<n>]` with its repository path and what it records.
    - `## Deferred` — every **Deferrable** unresolved question.
-3. Set `02_verdict.md` `**Intake:** <charter-id> — <charter-folder-abs>`.
+3. Set `02_verdict.md` `**Intake:** <charter-id> — <charter-folder-abs>`, then refresh the index for `02_verdict.md` (Per-artifact index).
 
 ---
 
