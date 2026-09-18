@@ -1,6 +1,6 @@
 # postmortem capability manifest
 
-**Version:** 0.2.0
+**Version:** 0.3.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** postmortem (a native feature capability; **registration is required**)
 **Kind:** feature (ships the guided `/wf-postmortem:postmortem` skill and `/wf-postmortem:init`; attaches **no** SDD phase fragment)
@@ -33,10 +33,11 @@ fragment rows (the `sandbox-testing`/`pr-review`-before-its-slot precedent).
 
 ## Scope of this release
 
-This manifest registers the capability that ships the scope-resolution and session-reading slices of
-a larger, multi-sub-task charter (C035, umbrella WF-587). Reading an explicitly named session record
-in an isolated reader has landed; **locating** session records by scope, verifying claimed
-mechanisms, stating fix direction, enforcing a read cap, and drawing fallback evidence each arrive
-with a later sub-task, extending this same skill body in place rather than adding a new capability.
-Registering `postmortem` today changes no core phase behaviour and names no path or convention
-specific to any one repository.
+This manifest registers the capability that ships the scope-resolution, session-reading, and
+mechanism-verification slices of a larger, multi-sub-task charter (C035, umbrella WF-587). Reading an
+explicitly named session record in an isolated reader, and checking every reader-suggested mechanism
+two-sided against the audited pack's executed-version text and a checked session locator, have both
+landed. **Locating** session records by scope, stating fix direction, enforcing a read cap, and
+drawing fallback evidence each arrive with a later sub-task, extending this same skill body in place
+rather than adding a new capability. Registering `postmortem` today changes no core phase behaviour
+and names no path or convention specific to any one repository.

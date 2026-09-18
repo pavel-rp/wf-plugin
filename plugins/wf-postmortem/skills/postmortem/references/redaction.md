@@ -20,23 +20,26 @@ Applied in this order over the text about to be written, each match replaced ind
 4. **Long high-entropy hex or base64 runs** — a contiguous run of 32 or more hex characters, or 40
    or more base64 characters (`[A-Za-z0-9+/=]`). This rule carries exactly one exemption, and it is
    mechanical, not a judgment call: the run is exempt only when it is **character-for-character
-   identical** to a value this run already resolved from the filesystem (a resolved `--folder`,
-   `--repo`, or `--session` path segment). The `--session` case is not an afterthought: a session
-   record's own filename is frequently a long hex or base64-shaped identifier, and without the
-   exemption the shape rule would redact a resolved record path out of the report's own Scope and
-   Coverage lines — destroying the locator the report exists to carry. The exemption stays keyed on
-   an exact match against a path this run actually resolved, so an unresolved name never earns it.
-   Anything else matching the shape is redacted, even when it looks like a
-   commit hash or a version string — over-redacting a hash costs a reader nothing, while judging a
-   secret exempt because it resembles one is the failure this rule exists to prevent.
+   identical** to a value this run already resolved from the filesystem — a resolved `--folder`,
+   `--repo`, or `--session` path segment, or a subagent-record path Phase 3.5 step 1's
+   sibling-directory discovery resolved for a named session. The `--session` case is not an
+   afterthought: a session record's own filename (top-level or subagent) is frequently a long hex or
+   base64-shaped identifier, and without the exemption the shape rule would redact a resolved record
+   path out of the report's own Scope and Coverage lines — destroying the locator the report exists
+   to carry. The exemption stays keyed on an exact match against a path this run actually resolved,
+   so an unresolved name never earns it. Anything else matching the shape is redacted, even when it
+   looks like a commit hash or a version string — over-redacting a hash costs a reader nothing, while
+   judging a secret exempt because it resembles one is the failure this rule exists to prevent.
 
 ## The marker
 
 Every recognized match is replaced with the literal marker `[REDACTED]` — never a partial mask,
 never a hash of the original value, and never the original length preserved (a length-preserving
 mask itself leaks information about the secret's shape). The marker carries no reference back to
-the original value; this skill locates and reads no session record, so a matched string always
-originates from the prompt itself.
+the original value. A matched string reaching this write path originates either from the CLI prompt
+(this skill's own context never reads a session record directly) or from a dispatched
+`session-reader`/`excerpt-fetcher` return block, both already passed through their own
+credential-shape redaction before this write path's second pass ever sees them (`SKILL.md` Phase 4).
 
 ## What this does and does not guarantee
 
@@ -53,9 +56,11 @@ originates from the prompt itself.
 
 Before any `Write` to the report file or a scratch file, run the text through every shape in order
 and substitute `[REDACTED]` for each match, then write the substituted text. Apply this to every
-value pulled from the prompt — the failure description, and any resolved skill/folder/repository
-name — before it is echoed into the Scope section, and before any of it is used in a folder or file
-name.
+value pulled from the prompt — the failure description, any resolved skill/folder/repository name,
+every named session record path (resolved or unresolved), and a `--cap` override value — before it
+is echoed into the Scope section, and before any of it is used in a folder or file name. Apply it
+also to every field composed from a `session-reader`/`excerpt-fetcher` return block (observations,
+hypothesis/mechanism text, attachment notes) before Phase 4 writes them into the report.
 
 Redaction defends against credential shapes only. Neutralizing markdown structure in the same text
 (newlines and backticks collapsed to spaces, the entire leading run of `#` characters stripped —
