@@ -511,10 +511,16 @@ its compact, already-redacted block comes back.
      (`session-reader.md`'s own procedure), not a claim that those words appear verbatim anywhere in
      the material, so searching for it literally would systematically miss a correct hypothesis:
      1. **The linked observation's own text**, when one exists — from step 4's merged observation set
-        (Supporting or Disconfirming), find the observation whose own `locator:` is
+        (Supporting or Disconfirming), find every observation whose own `locator:` is
         character-for-character identical to this hypothesis's `locator:`. Observations are
         descriptions of something specific the reader actually saw, not a higher-level inference like
         a mechanism is, so this is the closer, more literal anchor the excerpt search should prefer.
+        **More than one observation can share the same locator** (`session-reader.md`'s locator
+        grammar is coarse — a bare session path or a `#subagent:<file>` form, with no line-range, so
+        every observation drawn from the same record or the same subagent file carries an identical
+        value). When several match, prefer the **Supporting** list over Disconfirming, and within a
+        list take the **first** one in the merged set's own order (step 4's window-then-list order) —
+        a fixed, mechanical tie-break, not a judgment call.
      2. **The mechanism's own text**, only when no observation shares this hypothesis's exact
         locator. This is a stated, accepted fallback, not a full fix: since a mechanism is still an
         inferred paraphrase even here, a correct hypothesis may legitimately fail to literal-match and
@@ -535,18 +541,16 @@ its compact, already-redacted block comes back.
    - **Tiering, both sides passing.** Neither tier depends on a locator ever carrying a line-range
      window — a mechanism's `locator:` from `session-reader.md` never does (only a bare session path
      or a `#subagent:<file>` form); both tiers below are reachable against real reader output as it
-     actually exists:
-     The session side is always the same shape when it succeeds at all — Phase 3.5 step 6 always
-     dispatches the claimed mechanism text itself, verbatim, as the `grep -F` search anchor for a
-     whole-record locator (never a shorter or paraphrased fragment), so a successful session-side
-     fetch is always an exact literal match. The tier split is therefore decided **entirely by the
-     source side**:
-     - **`mechanically-observed`** — the source side's `file:line` match is an exact substring of the
-       claimed mechanism text itself (not a paraphrase or a nearby-but-different line). Both sides are
-       then byte-for-byte deterministic matches — no judgment call on either side.
+     actually exists. The tier split is decided **entirely by the source side** — the session side's
+     shape (an observation-text anchor when one is linked, the mechanism-text fallback otherwise, per
+     the priority order just above) does not itself distinguish the two tiers:
+     - **`mechanically-observed`** — the source text at the resolved `file:line` contains the claimed
+       mechanism's own wording as an exact substring (not a paraphrase, and not a nearby-but-different
+       line). This is a byte-for-byte deterministic match — no judgment call on the source side, and
+       the session side already passed (whichever anchor confirmed it).
      - **`independently-verified`** — both sides verify (the mechanism text is present at the resolved
        version, and the fetched excerpt shows the reported observation), but the source side needed a
-       judgment call rather than an exact string match — the text states the mechanism in different
+       judgment call rather than an exact substring match — the text states the mechanism in different
        words at a `file:line` that is still recognizably the same mechanism.
    - **Either side failing, or a `present-day-only` version label** → the hypothesis stays exactly
      where it already was — an unpromoted hypothesis at the **`unverified`** tier. This is not a
