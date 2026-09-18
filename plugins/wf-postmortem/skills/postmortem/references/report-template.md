@@ -33,7 +33,7 @@ nothing says so.>
 - **Skill:** <resolved skill name | "unscoped">
 - **Folder or repository:** <resolved path, verbatim | "not named" | "<name> — unresolved (no matching filesystem path)">
 - **Read cap:** <override value, if named | "default, not yet enforced">
-- **Session scope:** <"current workspace only" | "current workspace plus <named project>">
+- **Session scope:** <"current workspace only" | "current workspace only (project named: <named project> — not yet searched)">
 - **Named session records:** <one line per `--session` value, in the order passed>
   - `<resolved path>` — resolved
   - `<named path>` — unresolved (no matching filesystem path)
@@ -140,9 +140,9 @@ hypothesis counts, neither of which exists yet (arrives with a later charter sub
 POSTMORTEM — written
 
 Report:   {task-root}/PM<NNN>__<slug>/report.md
-Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<override|default, not yet enforced> · session-scope=<current workspace only|current workspace plus <project>>
+Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<override|default, not yet enforced> · session-scope=<current workspace only|current workspace only (project named: <project> — not yet searched)>
 Sessions: <n> named · <r> resolved · <u> unresolved
-Coverage: <path>=<read|read in part (<reason>)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id> tier=<requested|host-fallback (<reason>)>] · …
+Coverage: <path>=<read|read in part (<reason>)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] · …
 Finding:  <one line — what was found | not found>
 Next:     none — terminus
 ```

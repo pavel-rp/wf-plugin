@@ -20,15 +20,16 @@ Applied in this order over the text about to be written, each match replaced ind
 4. **Long high-entropy hex or base64 runs** — a contiguous run of 32 or more hex characters, or 40
    or more base64 characters (`[A-Za-z0-9+/=]`). This rule carries exactly one exemption, and it is
    mechanical, not a judgment call: the run is exempt only when it is **character-for-character
-   identical** to a value this run already resolved from the filesystem (a resolved `--folder`,
-   `--repo`, or `--session` path segment). The `--session` case is not an afterthought: a session
-   record's own filename is frequently a long hex or base64-shaped identifier, and without the
-   exemption the shape rule would redact a resolved record path out of the report's own Scope and
-   Coverage lines — destroying the locator the report exists to carry. The exemption stays keyed on
-   an exact match against a path this run actually resolved, so an unresolved name never earns it.
-   Anything else matching the shape is redacted, even when it looks like a
-   commit hash or a version string — over-redacting a hash costs a reader nothing, while judging a
-   secret exempt because it resembles one is the failure this rule exists to prevent.
+   identical** to a value this run already resolved from the filesystem — a resolved `--folder`,
+   `--repo`, or `--session` path segment, or a subagent-record path Phase 3.5 step 1's
+   sibling-directory discovery resolved for a named session. The `--session` case is not an
+   afterthought: a session record's own filename (top-level or subagent) is frequently a long hex or
+   base64-shaped identifier, and without the exemption the shape rule would redact a resolved record
+   path out of the report's own Scope and Coverage lines — destroying the locator the report exists
+   to carry. The exemption stays keyed on an exact match against a path this run actually resolved,
+   so an unresolved name never earns it. Anything else matching the shape is redacted, even when it
+   looks like a commit hash or a version string — over-redacting a hash costs a reader nothing, while
+   judging a secret exempt because it resembles one is the failure this rule exists to prevent.
 
 ## The marker
 
@@ -53,9 +54,11 @@ originates from the prompt itself.
 
 Before any `Write` to the report file or a scratch file, run the text through every shape in order
 and substitute `[REDACTED]` for each match, then write the substituted text. Apply this to every
-value pulled from the prompt — the failure description, and any resolved skill/folder/repository
-name — before it is echoed into the Scope section, and before any of it is used in a folder or file
-name.
+value pulled from the prompt — the failure description, any resolved skill/folder/repository name,
+every named session record path (resolved or unresolved), and a `--cap` override value — before it
+is echoed into the Scope section, and before any of it is used in a folder or file name. Apply it
+also to every field composed from a `session-reader`/`excerpt-fetcher` return block (observations,
+hypothesis/mechanism text, attachment notes) before Phase 4 writes them into the report.
 
 Redaction defends against credential shapes only. Neutralizing markdown structure in the same text
 (newlines and backticks collapsed to spaces, the entire leading run of `#` characters stripped —
