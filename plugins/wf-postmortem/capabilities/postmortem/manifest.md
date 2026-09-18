@@ -2,7 +2,7 @@
 
 **Version:** 0.1.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
-**Capability:** postmortem (a native feature capability; **registration is required** — see references)
+**Capability:** postmortem (a native feature capability; **registration is required**)
 **Kind:** feature (ships the guided `/wf-postmortem:postmortem` skill and `/wf-postmortem:init`; attaches **no** SDD phase fragment)
 **Model:** claude-sonnet-5
 

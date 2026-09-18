@@ -1,7 +1,7 @@
 ---
 name: postmortem
 description: Turns a maintainer's prose failure report into an explicit, echoed hunt scope and a fixed-shape report skeleton — resolving a required failure description plus optional skill/folder-or-repository/read-cap, echoing every resolved value and every applied default. Asks one question for a missing description in an interactive run; stops with no report in a run with no interactive channel. Locates and reads no session record in this release. Use when a maintainer wants to start a guided postmortem hunt over prior agent sessions and needs the scope and report skeleton fixed before locating or reading arrives with a later release.
-allowed-tools: [Read, Write, Grep, Glob, Bash, AskUserQuestion]
+allowed-tools: [Read, Write, Glob, Bash, AskUserQuestion]
 ---
 
 # /wf-postmortem:postmortem — Resolve a failure prompt to an echoed hunt scope
@@ -85,8 +85,11 @@ at most one.
 3. **Folder or repository.** Take at most one of `--folder`/`--repo`. Resolve it against the local
    filesystem only (`Glob`/`Bash` existence check) — never against any session store, which is out
    of scope for this release. Three outcomes:
-   - Neither passed → the scope defaults to the current workspace's sessions only.
-   - Passed and resolves to an existing filesystem path → echo the resolved path verbatim.
+   - Neither passed → the scope defaults to the current workspace's sessions only; `session-scope`
+     echoes `"current workspace only"`.
+   - Passed and resolves to an existing filesystem path → echo the resolved path verbatim;
+     `session-scope` echoes `"current workspace plus <project>"`, where `<project>` is the resolved
+     path itself (the same value just echoed for `--folder`/`--repo`).
    - Passed and does **not** resolve to an existing filesystem path → echo it as unresolved
      (`"<name> — unresolved (no matching filesystem path)"`) and attempt no further lookup. The
      `session-scope` echo (Final Output) for this outcome states `"current workspace only"` — an
@@ -133,11 +136,14 @@ redacting write path rather than being minted from the raw prompt.
    to 3 digits, starting at `PM001`. Slug the **redacted** failure description (step 2's output, not
    the raw prompt) into a short lowercase-hyphenated fragment (same style as `/wf:research`'s
    `R<NNN>__<slug>` scheme).
-4. **Create the folder, guarding against a collision.** Check whether `{task-root}/PM<NNN>__<slug>/`
-   already exists before creating it — two runs minting concurrently, or a leftover folder from a
-   prior run, can otherwise collide. On a collision, re-scan `{task-root}` and re-mint the next
-   number (step 3) rather than writing into the existing folder. This release records no per-task
-   index row for the minted folder (charter assumption #9).
+4. **Create the folder with an atomic fail-if-exists create** — a plain existence check followed by
+   a separate create is a check-then-act race (two concurrent invocations can both pass the check
+   before either creates, and both mint the same `PM<NNN>`); instead attempt the create directly as
+   one exclusive operation that fails when the target already exists, and treat only *that
+   operation's own failure* as the collision signal. On that failure, re-scan `{task-root}` and
+   re-mint the next number (step 3), then retry the same atomic create — never re-check-then-create
+   in two steps. This release records no per-task index row for the minted folder (charter
+   assumption #9).
 
 ---
 

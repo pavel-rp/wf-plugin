@@ -1,6 +1,6 @@
 # postmortem redacting write path
 
-Runtime-read only from the write path (Phase 4 of `SKILL.md`) — never read at boot. Every report
+Runtime-read only from the write path (Phase 3 of `SKILL.md`) — never read at boot. Every report
 write and every scratch write this skill performs routes through this one path before anything
 reaches disk. The guarantee is **shape-based**: a string matching a recognized credential- or
 token-shape is replaced with a redaction marker before the write; a secret of an unrecognized shape
@@ -32,7 +32,7 @@ originates from the prompt itself.
 ## What this does and does not guarantee
 
 - **Does:** guarantee that a string matching one of the shapes above never reaches disk through
-  this skill's own writes — the report file and any scratch file under `{task-root}/scratch/`.
+  this skill's own writes — the report file and any scratch file under the fixed `_local/scratch/`.
 - **Does not:** guarantee that every secret is caught. A credential or token of an unrecognized
   shape is an accepted residual risk (charter risk table, spec Scope) — this skill ships no
   general-purpose secret scanner, only the shape list above.
