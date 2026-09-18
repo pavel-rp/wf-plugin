@@ -17,10 +17,14 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
   `/wf:init` when absent), resolves a required failure description plus optional skill / folder or
   repository / read-cap override, echoes every resolved value and every applied default into a
   report's Scope section, then **reads every session record named with the repeatable `--session`
-  flag** and writes the fixed ten-section report. An interactive run with no failure description asks
-  exactly one question; a run with no interactive channel stops with a stated reason and writes
-  nothing. A run naming no session record — or only records that do not resolve — also stops with a
-  stated reason and writes nothing.
+  flag** and writes the fixed ten-section report. Every reader-suggested mechanism carrying a locator
+  is then **checked two-sided** — against the audited pack's own skill/contract/manifest text at the
+  run's resolved executed version, and against a bounded, redacted excerpt fetched fresh at the
+  locator through an interim host-side fetcher — and promoted to a confirmed contributing factor only
+  when both sides verify (or verify mechanically on both, at an exact `file:line` and an exact
+  locator). An interactive run with no failure description asks exactly one question; a run with no
+  interactive channel stops with a stated reason and writes nothing. A run naming no session record —
+  or only records that do not resolve — also stops with a stated reason and writes nothing.
 - **`session-reader`** — the pack's isolated reader agent, dispatched once per named session (or once
   per ordered window of a record too large for one reader) on a model tier cheaper than the skill's
   own, falling back to the host's tier and **saying so** when the host is already lowest or the
@@ -35,17 +39,16 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
 
 ## What this slice deliberately excludes
 
-This is the second of seven sub-tasks under charter C035 ("Postmortem: verified defect reports mined
-from prior sessions", umbrella WF-587). This slice reads the sessions the maintainer **names**; it
-still **locates** none, and it **confirms** none. Later sub-tasks add:
+This is the third of seven sub-tasks under charter C035 ("Postmortem: verified defect reports mined
+from prior sessions", umbrella WF-587). This slice reads the sessions the maintainer **names** and
+**confirms** any reader-suggested mechanism that checks out two-sided; it still **locates** no session
+of its own. Later sub-tasks add:
 
 - Locating sessions behind a replaceable seam, ranked and never silently dropped (a later
   sub-task) — until it lands, `--session` is the only session input, and the maintainer's explicit
   list is the only bound on a hunt.
-- Verifying every claimed mechanism against the executed-version skill text and a checked session
-  locator (a later sub-task) — until it lands, every mechanism a reader suggests is reported as a
-  hypothesis and every count is `reader-counted` at the `unverified` tier, never mechanically
-  observed.
+- Deterministic, mechanically-observed measured-effect counts (a later sub-task) — every count stays
+  `reader-counted` at the `unverified` tier until then, whatever this slice confirms about a mechanism.
 - Stating a fix direction and a rule-based next-step recommendation (a later sub-task).
 - A per-run read cap with ranked reading, `skipped (budget)` listing, and follow-up continuation (a
   later sub-task).
@@ -67,3 +70,5 @@ contributes nothing and every core phase behaves exactly as before.
 - `skills/postmortem/SKILL.md` — the guided skill body.
 - `skills/postmortem/references/report-template.md` — the fixed ten-section report template.
 - `skills/postmortem/references/redaction.md` — the shared redacting write path's recognized shapes.
+- `skills/postmortem/references/excerpt-fetcher.md` — the interim, provisional host-side bounded,
+  redacted excerpt fetcher the two-sided confirmation check uses on the session side.

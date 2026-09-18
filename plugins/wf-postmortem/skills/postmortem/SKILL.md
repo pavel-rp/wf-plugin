@@ -1,6 +1,6 @@
 ---
 name: postmortem
-description: Hunts a described failure through prior agent sessions the maintainer names explicitly, reading each named session record in its own isolated reader agent on a cheaper model tier — in ordered windows when a record is too large for one reader — and writing a report whose summary, evidence record, reader-counted measured effect and coverage statement are composed only from those readers' compact, already-redacted blocks. Hunts evidence against the described failure as deliberately as evidence for it, says "not found" rather than fabricating a match, and stops with no report when no named record resolves. Use when a maintainer suspects a process defect and wants it looked for across named prior sessions without raw session content entering the host context.
+description: Hunts a described failure through prior agent sessions the maintainer names explicitly, reading each named session record in its own isolated reader agent on a cheaper model tier — in ordered windows when a record is too large for one reader — then checks every reader-suggested mechanism two-sided, against the audited pack's text at the run's resolved executed version and against a bounded, redacted excerpt at the reader's own locator, promoting only what verifies on both sides to a confirmed contributing factor. Hunts evidence against the described failure as deliberately as evidence for it, says "not found" rather than fabricating a match, and stops with no report when no named record resolves. Use when a maintainer suspects a process defect and wants it looked for — and any suggested mechanism checked, not just asserted — across named prior sessions without raw session content entering the host context.
 allowed-tools: [Task, Write, Glob, Bash, AskUserQuestion]
 ---
 
@@ -10,12 +10,15 @@ Turn a prose failure report into an explicit hunt scope, echoed verbatim, then *
 record the maintainer names** — each in its own isolated reader agent, on a model tier cheaper than
 this skill's own, in ordered windows when the record is too large for one reader — and compose the
 report's Summary, Evidence Record, Measured Effect, Coverage and Hypotheses from those readers'
-compact, already-redacted blocks.
+compact, already-redacted blocks. Every hypothesis carrying a locator is then **checked two-sided** —
+against the audited pack's own skill/contract/manifest text at the run's resolved executed version,
+and against a bounded, redacted excerpt fetched fresh at the hypothesis's locator — and promoted to a
+confirmed contributing factor only when both sides verify (or verify mechanically on both).
 
-Two things this release deliberately does **not** do, because they belong to later sub-tasks of the
+One thing this release deliberately does **not** do, because it belongs to a later sub-task of the
 same charter (C035, umbrella WF-587): it **locates** no session (the maintainer names them with
-`--session`), and it **confirms** no mechanism (every mechanism a reader suggests is listed as a
-hypothesis, and every count is reader-counted at the unverified tier).
+`--session`). Every measured-effect count also stays `reader-counted` at the `unverified` tier —
+deterministic counting is that same later sub-task's territory (SUB-2), not this one's.
 
 ---
 
@@ -65,8 +68,18 @@ it does, an unnamed record is simply not in the hunt.
 - Resolve `--folder`/`--repo` against the local filesystem only, via the single existence-check
   primitive `Bash`: `test -e '<path>'`, with every `'` in the value replaced by `'\''` first
   (Phase 1 step 3).
-- Read the report template and redaction references via `resolve_content({ workspaceRoot, ... })`
-  (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`).
+- Read the report template, redaction, and excerpt-fetcher references via
+  `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`,
+  `skill: postmortem`).
+- Fetch a bounded, redacted excerpt at a hypothesis's session locator through the interim fetcher
+  (`excerpt-fetcher.md`) — `Bash`: `test -e '<path>'`, then `sed -n '<start>,<end>p' '<path>'`
+  (windowed locator) or `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>'` (whole-record locator with
+  a search anchor), each single-quoted with every `'` replaced by `'\''` first — never concatenated
+  into a composed command line, and never passed to `Glob` as a pattern (Phase 3.5 step 6).
+- Compare the skill, contract, or manifest text of the pack under audit at a resolved version — the
+  versioned plugin-cache install path when its folder is readable, or the target plugin's own
+  `.claude-plugin/plugin.json` history (`Bash`: `git log`, `git show <sha>:<path>`) otherwise — as
+  the source side of the two-sided check (Phase 3.5 step 5a).
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any
   scratch file inside the fixed, literal `_local/scratch/` — both only through the redacting write
@@ -98,8 +111,13 @@ it does, an unnamed record is simply not in the hunt.
 - Pin a model in the reader's dispatch, or in the reader agent's own file; the tier comes from
   `resolve_routing` and the reader reports what it actually ran on.
 - Improvise a merge, a coverage verdict, or a composed section outside the rules stated in Phase 3.5
-  — and never promote a reader's suggested mechanism to a confirmed factor, or a reader-counted
-  figure to a mechanically-observed one.
+  — a mechanism is promoted to a confirmed factor **only** through the two-sided check Phase 3.5
+  step 6 states (never on one side alone, and never on a `present-day-only` version resolution), and
+  a reader-counted figure is never promoted to a mechanically-observed one — that arrives only with
+  the deterministic counting a later charter sub-task (SUB-2) supplies.
+- Treat a run's own success or progress statement — in the material or in an artifact it wrote — as
+  evidence, or let it confirm a factor or a measured effect. It may be quoted as what the run claimed
+  (the existing `run-reported` tier), never as what happened.
 - Write outside the report's own seeded folder and the fixed, literal `_local/scratch/`.
 - Touch `plugins/wf/` or any other existing pack.
 - Write a report, or any scratch file, without first passing every value through the redacting
@@ -331,9 +349,80 @@ its compact, already-redacted block comes back.
    rounded up to `read`, and a failing session never stops the run — the hunt completes over the
    others.
 
-5. **Compose the report sections from the merged results only.** Summary, Evidence Record, Measured
-   Effect and Coverage are built from the returned blocks and nothing else — this context never saw
-   the records, so it has nothing else to build them from.
+5. **Resolve the executed version, for each hypothesis carrying a locator, of the pack under audit
+   (the skill/contract/manifest text the mechanism claims something about).** Follow this order and
+   label which branch resolved it — never skip a branch to reach a more convenient one:
+
+   a. **Versioned plugin-cache install path.** When the located session's own text names a
+      version-pinned base directory for the audited skill (the shape
+      `.../plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>` — the same form this
+      skill's own tool preamble carries on every dispatch), and that path's `<version>` folder exists
+      and is readable on this host, compare the skill/contract/manifest text at that install path
+      directly. Label: `<version>` (install path).
+   b. **No readable cache folder for that version.** The version string from (a) resolved, but its
+      cache folder is absent or the read is denied (the cache sits outside the workspace, exactly
+      like the session store) → resolve the commit that set that exact `version` string in the
+      audited plugin's `.claude-plugin/plugin.json` history — `Bash`: `git log -- <plugin.json
+      path>`, then compare the skill text at that commit's tree (`Bash`: `git show
+      <sha>:<path-to-the-skill-or-contract-file>`). Label: `<version>` (manifest history), no
+      approximate marker — the version itself is exact, only the cache lookup failed.
+   c. **No versioned path at all.** Neither (a) nor (b) resolves anything — the session names no
+      install path this skill can recognise → resolve the located session's own date against that
+      same `plugin.json` commit history (the version whose bump commit's date is on or most recently
+      before the session's date) and compare the skill text at that commit's tree the same way.
+      Label: **"version approximate (date-resolved)"** — a run executes what was installed, not what
+      the repository carried that day, so this is stated as an approximation, never as exact.
+   d. **Neither resolves.** No install path, and no readable commit history for the audited plugin at
+      all (no repository checkout, or the plugin has no version-bump history) → fall back to the
+      present-day text of the skill/contract/manifest file. Label: **`present-day-only`**. Note
+      whether that file's `git log` history is readable — and if it is, whether the present-day text
+      differs from what a nearby historical version would show — or state plainly that the history is
+      unavailable when it is not. **A `present-day-only` factor is never eligible for promotion** to a
+      confirmed factor in step 6, regardless of what the comparison finds.
+
+   Phrase every comparison in this step as "compare the skill text at `<version>`" or "compare the
+   text at commit `<sha>`'s tree" — **never** a read/glob verb immediately followed on the same line
+   by a path ending in `SKILL.md` (or any other audited file) — so
+   `plugins/wf/skills/_contracts/out4-skill-read-guard.sh` continues to classify every one of these as
+   an evidence read of data, never a load-step instruction. These reads target the **audited pack's**
+   text at a resolved past or present point, never this skill's own body, and they never invoke a
+   sibling skill by any means other than the Skill tool.
+
+6. **Check each hypothesis two-sided and tier it.** For each hypothesis a reader returned that
+   carries a locator:
+
+   - **Source side.** Using step 5's resolved version and label, locate the claimed mechanism's exact
+     `file:line` in the compared text. Not present at that version (even if present in today's text,
+     under branch (d)) → the source side has **failed**; the hypothesis is not promoted.
+   - **Session side.** Fetch a bounded, redacted excerpt at the hypothesis's own locator through the
+     interim fetcher (`excerpt-fetcher.md`), supplying the claimed mechanism text as the search anchor
+     when the locator carries no explicit window. **Not found**, **read denied**, or an excerpt that
+     does not show the reported observation → the session side has **failed**; the hypothesis is not
+     promoted.
+   - **Tiering, both sides passing:**
+     - An exact `file:line` match on the source side **and** an exact-locator excerpt match on the
+       session side (the fetched excerpt shows the observation at precisely the locator named, no
+       broader search needed) → **`mechanically-observed`**.
+     - Both sides otherwise verify (the mechanism text is present at the resolved version, and the
+       fetched excerpt shows the reported observation, without both being the exact-match case above)
+       → **`independently-verified`**.
+   - **Either side failing, or a `present-day-only` version label** → the hypothesis stays exactly
+     where it already was — an unpromoted hypothesis at the **`unverified`** tier. This is not a
+     demotion; nothing about a hypothesis's tier is worse for having been checked and not confirmed.
+   - **A confirmed factor never rests on a run's own statement of success or progress.** A
+     `run-reported` observation may point at where to look; it is never itself the mechanism match on
+     either side.
+   - **Measured-effect counts are untouched by this step.** Every count stays `reader-counted` at the
+     `unverified` tier regardless of how many hypotheses this step confirms — deterministic counting
+     needs the locator seam a later charter sub-task (SUB-2) supplies, not this one.
+
+   A hypothesis with **no** locator at all (a reader-suggested mechanism with nothing to check either
+   side against) is never checked by this step — it stays a hypothesis, exactly as before.
+
+7. **Compose the report sections from the merged results and step 6's checks.** Summary, Evidence
+   Record, Measured Effect and Coverage are built from the returned blocks and nothing else — this
+   context never saw the records directly, so it has nothing else to build them from beyond what
+   steps 5-6 fetched and compared for confirmation.
    - **Summary** — what was found across every read session. When no session yielded a supporting
      observation, the Summary states **"not found"** plainly, and Scope and Coverage are still fully
      populated. Fabricate no match, and never soften a "not found" into a weak positive.
@@ -342,8 +431,19 @@ its compact, already-redacted block comes back.
    - **Measured Effect** — the reader-counted figures, each labelled `reader-counted` at the
      `unverified` tier. No count here is mechanically observed in this release, and no token or
      monetary figure appears at all.
-   - **Contributing Factors → Hypotheses** — every mechanism a reader suggested, listed as a
-     hypothesis. This release confirms nothing, so the confirmed half stays unfilled.
+   - **Contributing Factors → Confirmed** — one entry per hypothesis step 6 promoted, each carrying
+     its resolved version (with the "version approximate (date-resolved)" label where applicable),
+     `file:line`, the checked session locator, and its tier (`independently-verified` or
+     `mechanically-observed`). Empty when step 6 promoted nothing this run.
+   - **Contributing Factors → Hypotheses** — every mechanism a reader suggested that step 6 did
+     **not** promote, still listed as a hypothesis. A promoted mechanism moves to the confirmed half
+     and is not duplicated here.
+   - **Component and Version** — filled from a confirmed factor's resolved version and `file:line`
+     when at least one exists this run; otherwise states plainly that no factor was confirmed this
+     run (never the template's generic "not yet produced" text, since this release *can* confirm one
+     — it simply did not, this time).
+   - **Localisation** — filled with the file(s) named by every confirmed factor's `file:line` when at
+     least one exists; otherwise the template's stated reason.
    - **Coverage** — every **resolved** named record exactly once, under its verdict from step 4,
      plus each reader's stated model and tier.
 
@@ -357,11 +457,14 @@ its compact, already-redacted block comes back.
    Phase 3.
 2. **Fill the Scope section** with every resolved value and every applied default from Phase 1,
    verbatim after Phase 3's redaction — including every named session record, resolved or unresolved.
-   Fill **Summary, Evidence Record, Measured Effect, Coverage, and the Hypotheses half of
-   Contributing Factors** from Phase 3.5's composed results. Fill the remaining sections — Component
-   and Version, Localisation, Fix Direction, Recommendation, and the confirmed half of Contributing
-   Factors — with the template's stated "not yet produced" text; this release genuinely cannot fill
-   them, and saying so is the honest gap the staged delivery produces.
+   Fill **Summary, Evidence Record, Measured Effect, Coverage, both halves of Contributing Factors,
+   Component and Version, and Localisation** from Phase 3.5's composed results (step 7) — the
+   confirmed half of Contributing Factors, Component and Version, and Localisation are filled from
+   real two-sided checks when at least one factor was confirmed this run, and state their own
+   honest "none confirmed this run" reason otherwise. Fill the two sections this release still
+   genuinely cannot produce — **Fix Direction and Recommendation** — with the template's stated "not
+   yet produced" text; a fix direction and a rule-based recommendation are a later charter sub-task's
+   work (SUB-5), not this one's.
 
    Everything composed in Phase 3.5 already passed each reader's own redaction. Run it through the
    redacting write path again anyway — the write path is the backstop for disk, and applying it twice
@@ -400,6 +503,22 @@ its compact, already-redacted block comes back.
   excerpt. This is a contract of the reader agent, restated here because the host relies on it.
 - **The described failure matches nothing in any read session.** The Summary states "not found",
   Scope and Coverage are still fully populated, and no factor or hypothesis is fabricated.
+- **A hypothesis's mechanism resolves only to `present-day-only` text (Phase 3.5 step 5d).** The
+  hypothesis is never promoted, whatever the excerpt shows on the session side — the version label
+  alone is disqualifying.
+- **A hypothesis's locator excerpt does not show the reported observation, or the excerpt fetcher
+  reports "not found" or "read denied" (`excerpt-fetcher.md`).** The session side has failed; the
+  hypothesis stays at the `unverified` tier, unpromoted — never a wider retry and never a fall-through
+  to reading more of the record.
+- **A hypothesis carries no locator at all.** It is never checked two-sided (there is nothing to fetch
+  against); it stays a hypothesis exactly as before this task.
+- **No hypothesis is promoted this run.** `Contributing Factors → Confirmed`, `Component and
+  Version`, and `Localisation` each state plainly that no factor was confirmed this run — never the
+  original "not yet produced" text, since this release *can* confirm a factor and simply did not,
+  this time.
+- **The guided live hunt's hand-diagnosed defect has aged out of the 30-day window before this task
+  runs it.** Recorded not-runnable with that stated reason; acceptance rests on the synthetic
+  fixtures instead, and no session is fabricated or preserved to force a pass.
 - **A dispatch edge that cannot honour a model selector, or a host already on the lowest tier.** The
   reader runs on the host's own tier and the report states that per reader, with the reason — never
   presented as the cheaper tier the host asked for.

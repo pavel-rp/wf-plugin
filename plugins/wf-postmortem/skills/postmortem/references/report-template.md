@@ -3,11 +3,14 @@
 Runtime-read only on the write path (Phase 4 of `SKILL.md`) — never read at boot. The verbatim
 shape every `{task-root}/PM<NNN>__<slug>/report.md` follows, in this section order.
 
-Summary, Scope, the Hypotheses half of Contributing Factors, Evidence Record, Measured Effect and
-Coverage are **filled from the reader return blocks** this release collects. The four that remain —
-Component and Version, Localisation, Fix Direction, Recommendation — state their own reason
-explicitly, verbatim, rather than being omitted: a reader must be able to tell "not produced yet"
-from "produced and empty."
+Summary, Scope, both halves of Contributing Factors, Evidence Record, Measured Effect, Component and
+Version, Localisation, and Coverage are **filled from the reader return blocks and the two-sided
+confirmation check** this release runs against them. Component and Version, the confirmed half of
+Contributing Factors, and Localisation state their own honest "none confirmed this run" reason when
+no hypothesis was promoted — that is a per-run outcome, not a per-release gap, since this release
+*can* confirm a factor. The two sections that remain a genuine per-release gap — Fix Direction and
+Recommendation — state their own reason explicitly, verbatim, rather than being omitted: a reader
+must be able to tell "not produced yet" from "produced and empty."
 
 ```markdown
 # Postmortem — <failure description, one line>
@@ -37,21 +40,32 @@ nothing says so.>
 
 ## Component and Version
 
-Not yet produced — component and version attribution needs a checked session locator and executed-version
-resolution against skill/contract/manifest text (arrives with a later charter sub-task).
+<When at least one factor was confirmed this run: the component (skill/contract/manifest file) and
+its resolved version — from the confirmed factor with the strongest tier when more than one exists —
+stated as `<component> at <version>` (with the "version approximate (date-resolved)" label carried
+verbatim where that branch resolved it). When none was confirmed this run: "No factor confirmed this
+run — component and version attribution follows a hypothesis's mechanism being checked two-sided
+against the executed-version source text and a checked session locator (Contributing Factors, below);
+none passed both sides this run.">
 
 ## Contributing Factors
 
-**Confirmed factors:** none — this release confirms no mechanism. Confirming a factor needs two-sided
-verification against the executed-version source text and a checked session locator, which arrives
-with a later charter sub-task. Every mechanism below is a hypothesis, never a confirmed factor.
+**Confirmed factors:** <one entry per hypothesis promoted this run, each stating the mechanism, its
+resolved version (with the approximate label where applicable), `file:line`, the checked session
+locator, and its tier (`independently-verified` or `mechanically-observed`) — or, when none was
+promoted, "none confirmed this run — every mechanism below is checked two-sided before promotion; none
+passed both sides.">
+
+- <mechanism, one line> — `<file:line>` at version `<version>` — locator: `<session path>` — tier:
+  `<independently-verified | mechanically-observed>`
 
 ### Hypotheses
 
-<One entry per mechanism any reader suggested, merged across sessions. Each states the mechanism in
-one line and names the session locator(s) that prompted it. A hypothesis is never promoted here, and
-the absence of confirmed factors above is not a defect of this report — it is this release's honest
-limit.>
+<One entry per mechanism any reader suggested that was not promoted above, merged across sessions.
+Each states the mechanism in one line and names the session locator(s) that prompted it. A promoted
+mechanism moves to the confirmed half and is not duplicated here; a hypothesis that failed either
+side of the check, or resolved only to `present-day-only` text, stays exactly here at the
+`unverified` tier — checking it and not confirming it is not a defect of this report.>
 
 - <mechanism, one line> — suggested from `<locator>`
 
@@ -77,8 +91,9 @@ treated as evidence that it happened.>
 
 ## Localisation
 
-Not yet produced — file-level localisation needs a confirmed contributing factor (arrives with a
-later charter sub-task).
+<When at least one factor was confirmed this run: one line per confirmed factor's `file:line`. When
+none was confirmed this run: "No factor confirmed this run — localisation is filled from a confirmed
+contributing factor's `file:line`; none exists this run.">
 
 ## Measured Effect
 
@@ -137,10 +152,12 @@ Next:     none — terminus
   record that does not resolve to a filesystem path is stated as `"<name> — unresolved (no matching
   filesystem path)"`, and no session-store lookup is attempted for it. An unresolved session record
   appears in Scope only — never in Coverage, which lists what was actually read.
-- **Every non-filled section states its own reason** for not being filled yet, naming which later
-  charter sub-task fills it — this is not boilerplate, it is the honest gap the charter's staged
-  delivery produces. Four sections remain unfilled in this release: Component and Version,
-  Localisation, Fix Direction, and Recommendation.
+- **A section left unfilled states its own reason.** Component and Version, the confirmed half of
+  Contributing Factors, and Localisation state "none confirmed this run" when no hypothesis passed
+  the two-sided check this run — a per-run outcome, since this release can confirm a factor. Fix
+  Direction and Recommendation state which later charter sub-task fills them (SUB-5) — a genuine
+  per-release gap, not a per-run one. Either way, saying so explicitly is the point: a reader must be
+  able to tell "not produced yet" from "produced and empty."
 - **Evidence Record quotes are already redacted** when they arrive — each reader applied the shared
   shape rules before its block left isolation — and the write path applies them again as the disk
   backstop. Quote short excerpts only; never a region of a record.
@@ -150,8 +167,11 @@ Next:     none — terminus
 - **Every count is labelled `reader-counted` at the `unverified` tier.** No count in this release was
   produced deterministically, so none may be presented as mechanically observed. No token or monetary
   figure appears anywhere in the report.
-- **Every mechanism is a hypothesis.** This release confirms nothing; a reader's suggestion never
-  appears as a confirmed factor.
+- **A mechanism is promoted only through the two-sided check.** A reader's suggestion becomes a
+  confirmed factor only when the source-side text at its resolved executed version and the
+  session-side excerpt at its locator both verify (or both verify mechanically, at an exact
+  `file:line` and an exact locator) — never on one side alone, and never when the version resolves
+  only to `present-day-only` text. Everything else stays a hypothesis at the `unverified` tier.
 - **Coverage carries each resolved record exactly once** under one of the four verdicts, with the
   model that reader ran on and whether that was the requested cheaper tier or the host-tier fallback
   (with its reason). A windowed session appears once, not once per window.
