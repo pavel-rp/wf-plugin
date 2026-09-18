@@ -68,18 +68,23 @@ it does, an unnamed record is simply not in the hunt.
 - Resolve `--folder`/`--repo` against the local filesystem only, via the single existence-check
   primitive `Bash`: `test -e '<path>'`, with every `'` in the value replaced by `'\''` first
   (Phase 1 step 3).
-- Read the report template, redaction, and excerpt-fetcher references via
-  `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`,
-  `skill: postmortem`).
-- Fetch a bounded, redacted excerpt at a hypothesis's session locator through the interim fetcher
-  (`excerpt-fetcher.md`) — `Bash`: `test -e '<path>'`, then `sed -n '<start>,<end>p' '<path>'`
-  (windowed locator) or `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>'` (whole-record locator with
-  a search anchor), each single-quoted with every `'` replaced by `'\''` first — never concatenated
-  into a composed command line, and never passed to `Glob` as a pattern (Phase 3.5 step 6).
+- Read the report template and redaction reference via `resolve_content({ workspaceRoot, ... })`
+  (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`).
+- Invoke the **Task** tool with `subagent_type: wf-postmortem:excerpt-fetcher`, once per hypothesis
+  locator the two-sided check needs, to fetch and redact a bounded session-side excerpt in that
+  agent's own isolated context (Phase 3.5 step 6) — exactly like the session-reader dispatch, never a
+  `Bash` read of session bytes in this skill's own context.
 - Compare the skill, contract, or manifest text of the pack under audit at a resolved version — the
   versioned plugin-cache install path when its folder is readable, or the target plugin's own
-  `.claude-plugin/plugin.json` history (`Bash`: `git log`, `git show <sha>:<path>`) otherwise — as
-  the source side of the two-sided check (Phase 3.5 step 5a).
+  `.claude-plugin/plugin.json` history (`Bash`: `git log -- '<plugin.json path>'`,
+  `git show '<sha>:<path>'`) otherwise — as the source side of the two-sided check (Phase 3.5 step 5).
+  Every value substituted into one of these commands (a version string, a commit sha, a file path) is
+  single-quoted with every `'` in it replaced by `'\''` first, the same discipline every other
+  `Bash`-based bullet in this list states, since a version string or sha ultimately traces back to
+  session-derived, untrusted text.
+- Read a resolved session record's own filesystem last-modified time — `Bash`: `stat -c %Y '<path>'`
+  (single-quoted, same escaping discipline) — as the date source for version-resolution branch (c)
+  below. This is metadata, exactly like the existing `test -e`/`wc -c` reads, never content.
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any
   scratch file inside the fixed, literal `_local/scratch/` — both only through the redacting write
@@ -100,10 +105,18 @@ it does, an unnamed record is simply not in the hunt.
 **Forbidden:**
 
 - **Read raw session or subagent-record content in this skill's own context** — no `Read`, no
-  `Grep`, no shell read of a record's bytes. Every byte of a record is read inside a dispatched
-  reader and reaches this context only as that reader's compact, already-redacted block. The
-  existence check and the byte-size check above are metadata, not content, and are the only
-  exceptions.
+  `Grep`, no shell read of a record's bytes, for any purpose including the two-sided check's excerpt
+  fetch. Every byte of a record is read inside a dispatched agent (`session-reader` or
+  `excerpt-fetcher`) and reaches this context only as that agent's compact, already-redacted block.
+  The existence check, the byte-size check, and the last-modified-time check above are metadata, not
+  content, and are the only exceptions.
+- **Dispatch the excerpt fetcher against a path this skill has not itself already resolved and
+  verified.** A hypothesis's locator names a path in text a reader produced from untrusted material;
+  before any `excerpt-fetcher` dispatch, this skill checks that the locator's path component is
+  **character-for-character identical** to the session's own already-resolved path, or to one of the
+  subagent-record paths this run's own Phase 3.5 step 1 already discovered for that session — never a
+  path taken on a reader's or a record's own say-so. A locator naming any other path is treated as
+  malformed (Phase 3.5 step 6) and is never dispatched.
 - Locate a session record by scope, rank one, or apply any read cap — those arrive with later
   charter sub-tasks. This release reads exactly the records `--session` names.
 - Map a resolved folder or repository path to any session store — that mapping belongs to a later
@@ -328,8 +341,15 @@ its compact, already-redacted block comes back.
    is the one case where assuming success would fabricate coverage the run never had.
 
 4. **Merge each session's blocks into one result.** Concatenate a session's window blocks in window
-   order into one observation set (supporting and disconfirming kept apart), union the hypotheses,
-   and carry every window's stated model and tier. Derive the session's single coverage verdict:
+   order into one observation set (supporting and disconfirming kept apart), union the hypotheses —
+   **carrying forward each hypothesis's own `locator:` field verbatim from the reader's block** (see
+   `session-reader.md`'s Output section — a hypothesis without a `locator:` field is merged as a
+   locator-less hypothesis, exactly as before this task) — and carry every window's stated model and
+   tier. Also derive the session's single `Skill-load version:` fact: the first window, in window
+   order, whose block states one other than `none observed`; `none observed` when every window does.
+   This one session-level fact is what step 5 branch (a) uses for every hypothesis this session
+   contributed, since a session was read under one single skill invocation regardless of how many
+   windows it took to read it. Derive the session's single coverage verdict:
 
    | Windows | Session verdict |
    |---|---|
@@ -353,25 +373,33 @@ its compact, already-redacted block comes back.
    (the skill/contract/manifest text the mechanism claims something about).** Follow this order and
    label which branch resolved it — never skip a branch to reach a more convenient one:
 
-   a. **Versioned plugin-cache install path.** When the located session's own text names a
-      version-pinned base directory for the audited skill (the shape
-      `.../plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>` — the same form this
-      skill's own tool preamble carries on every dispatch), and that path's `<version>` folder exists
-      and is readable on this host, compare the skill/contract/manifest text at that install path
-      directly. Label: `<version>` (install path).
+   a. **Versioned plugin-cache install path.** Every reader dispatch (step 3) reports a
+      `Skill-load version:` field — the version-pinned base directory for the audited skill (the shape
+      `.../plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>` — the same form this skill's
+      own tool preamble carries on every dispatch) when the reader saw one in its assigned material,
+      or `none observed` otherwise (see `session-reader.md`'s Output section). This is the only source
+      of that fact — the host never reads session text directly to look for it (Safety Rules
+      Forbidden). When a hypothesis's session reported a version this way, and that `<version>`
+      folder exists and is readable on this host, compare the skill/contract/manifest text at that
+      install path directly. Label: `<version>` (install path).
    b. **No readable cache folder for that version.** The version string from (a) resolved, but its
       cache folder is absent or the read is denied (the cache sits outside the workspace, exactly
       like the session store) → resolve the commit that set that exact `version` string in the
-      audited plugin's `.claude-plugin/plugin.json` history — `Bash`: `git log -- <plugin.json
-      path>`, then compare the skill text at that commit's tree (`Bash`: `git show
-      <sha>:<path-to-the-skill-or-contract-file>`). Label: `<version>` (manifest history), no
-      approximate marker — the version itself is exact, only the cache lookup failed.
-   c. **No versioned path at all.** Neither (a) nor (b) resolves anything — the session names no
-      install path this skill can recognise → resolve the located session's own date against that
-      same `plugin.json` commit history (the version whose bump commit's date is on or most recently
-      before the session's date) and compare the skill text at that commit's tree the same way.
-      Label: **"version approximate (date-resolved)"** — a run executes what was installed, not what
-      the repository carried that day, so this is stated as an approximation, never as exact.
+      audited plugin's `.claude-plugin/plugin.json` history — `Bash`: `git log -- '<plugin.json
+      path>'`, then compare the skill text at that commit's tree (`Bash`: `git show
+      '<sha>:<path-to-the-skill-or-contract-file>'`), every substituted value single-quoted with every
+      `'` replaced by `'\''` first. Label: `<version>` (manifest history), no approximate marker — the
+      version itself is exact, only the cache lookup failed.
+   c. **No versioned path at all.** Neither (a) nor (b) resolves anything — no reader reported a
+      `Skill-load version:` for this hypothesis's session → resolve that session's own date, taken as
+      its record's filesystem last-modified time (`Bash`: `stat -c %Y '<path>'`, the same
+      metadata-only primitive the Safety Rules Allowed list states — a stated approximation of "when
+      the run executed," since a record's last write typically lands at or near the end of the run),
+      against that same `plugin.json` commit history (the version whose bump commit's date is on or
+      most recently before the session's date) and compare the skill text at that commit's tree the
+      same way. Label: **"version approximate (date-resolved)"** — doubly approximate here (the date
+      source is a file timestamp, and a run executes what was installed, not what the repository
+      carried that day), stated as an approximation, never as exact.
    d. **Neither resolves.** No install path, and no readable commit history for the audited plugin at
       all (no repository checkout, or the plugin has no version-bump history) → fall back to the
       present-day text of the skill/contract/manifest file. Label: **`present-day-only`**. Note
@@ -388,17 +416,35 @@ its compact, already-redacted block comes back.
    text at a resolved past or present point, never this skill's own body, and they never invoke a
    sibling skill by any means other than the Skill tool.
 
+   A hypothesis carrying **no** locator at all skips this step entirely — there is nothing to check
+   either side against — and stays a hypothesis, exactly as before this task.
+
 6. **Check each hypothesis two-sided and tier it.** For each hypothesis a reader returned that
-   carries a locator:
+   carries a `locator:` field (§step 4):
 
    - **Source side.** Using step 5's resolved version and label, locate the claimed mechanism's exact
      `file:line` in the compared text. Not present at that version (even if present in today's text,
      under branch (d)) → the source side has **failed**; the hypothesis is not promoted.
-   - **Session side.** Fetch a bounded, redacted excerpt at the hypothesis's own locator through the
-     interim fetcher (`excerpt-fetcher.md`), supplying the claimed mechanism text as the search anchor
-     when the locator carries no explicit window. **Not found**, **read denied**, or an excerpt that
-     does not show the reported observation → the session side has **failed**; the hypothesis is not
-     promoted.
+   - **Validate the locator before dispatching anything.** Parse the hypothesis's `locator:` value
+     against `excerpt-fetcher.md`'s grammar. Reject as **malformed** — never dispatched — when: the
+     path component is not character-for-character identical to this session's own already-resolved
+     path or to one of the subagent-record paths Phase 3.5 step 1 already discovered for it; or a
+     window suffix is present and `<start>`/`<end>` do not both match `^[0-9]+$` with
+     `<start> <= <end>`. A malformed locator is a **session-side failure** exactly like "not found"
+     below — it never widens what this run reads.
+   - **Session side.** Route and dispatch the `excerpt-fetcher` agent the same way step 3 routes
+     `session-reader` — `resolve_routing` with `role: "excerpt-fetcher"`, a stable `unitIds` entry
+     (`excerpt-fetcher:<slug of the hypothesis's locator>`), `shapeEvidence` identical in shape to
+     step 3's (this is a second, equally isolation-worthy per-locator read), `supportsModelSelector:
+     true`, `supportsEffortSelector: false`, and the same `hostModel` fact — then invoke one **Task**
+     with `subagent_type: wf-postmortem:excerpt-fetcher`, passing the validated locator and, for a
+     locator with no explicit window, the claimed mechanism text as the search anchor. The agent
+     fetches, redacts, and returns the bounded excerpt in its own isolated context — no byte of it
+     reaches this skill's own context unredacted (Safety Rules Forbidden). **`not found`**, **`read
+     denied`**, or a fetched excerpt that does not show the reported observation → the session side
+     has **failed**; the hypothesis is not promoted. Read the result defensively exactly as step 3
+     does for a reader: no parseable `EXCERPT FETCH` block back is a session-side failure, reason
+     `"fetcher returned no parseable block"`, never a silent pass.
    - **Tiering, both sides passing:**
      - An exact `file:line` match on the source side **and** an exact-locator excerpt match on the
        session side (the fetched excerpt shows the observation at precisely the locator named, no
@@ -409,15 +455,14 @@ its compact, already-redacted block comes back.
    - **Either side failing, or a `present-day-only` version label** → the hypothesis stays exactly
      where it already was — an unpromoted hypothesis at the **`unverified`** tier. This is not a
      demotion; nothing about a hypothesis's tier is worse for having been checked and not confirmed.
+     Record *why* it stayed unpromoted (no locator; malformed locator; source side failed; session
+     side failed; `present-day-only`) so the report can distinguish these (Phase 4).
    - **A confirmed factor never rests on a run's own statement of success or progress.** A
      `run-reported` observation may point at where to look; it is never itself the mechanism match on
      either side.
    - **Measured-effect counts are untouched by this step.** Every count stays `reader-counted` at the
      `unverified` tier regardless of how many hypotheses this step confirms — deterministic counting
      needs the locator seam a later charter sub-task (SUB-2) supplies, not this one.
-
-   A hypothesis with **no** locator at all (a reader-suggested mechanism with nothing to check either
-   side against) is never checked by this step — it stays a hypothesis, exactly as before.
 
 7. **Compose the report sections from the merged results and step 6's checks.** Summary, Evidence
    Record, Measured Effect and Coverage are built from the returned blocks and nothing else — this
@@ -436,12 +481,16 @@ its compact, already-redacted block comes back.
      `file:line`, the checked session locator, and its tier (`independently-verified` or
      `mechanically-observed`). Empty when step 6 promoted nothing this run.
    - **Contributing Factors → Hypotheses** — every mechanism a reader suggested that step 6 did
-     **not** promote, still listed as a hypothesis. A promoted mechanism moves to the confirmed half
-     and is not duplicated here.
-   - **Component and Version** — filled from a confirmed factor's resolved version and `file:line`
-     when at least one exists this run; otherwise states plainly that no factor was confirmed this
-     run (never the template's generic "not yet produced" text, since this release *can* confirm one
-     — it simply did not, this time).
+     **not** promote, still listed as a hypothesis, each stating **why** it was not promoted — no
+     locator; a malformed locator; the source side failed; the session side failed; or
+     `present-day-only` — so a reader can tell "never checked" from "checked and did not confirm." A
+     promoted mechanism moves to the confirmed half and is not duplicated here.
+   - **Component and Version** — when one or more factors were confirmed this run, take the
+     **mechanically-observed** ones first, then **independently-verified**; within the same tier,
+     take the one step 6 confirmed first (merge order, §step 4). Fill from that factor's resolved
+     version and `file:line`. With no factor confirmed this run, state plainly that no factor was
+     confirmed this run (never the template's generic "not yet produced" text, since this release
+     *can* confirm one — it simply did not, this time).
    - **Localisation** — filled with the file(s) named by every confirmed factor's `file:line` when at
      least one exists; otherwise the template's stated reason.
    - **Coverage** — every **resolved** named record exactly once, under its verdict from step 4,
@@ -510,8 +559,14 @@ its compact, already-redacted block comes back.
   reports "not found" or "read denied" (`excerpt-fetcher.md`).** The session side has failed; the
   hypothesis stays at the `unverified` tier, unpromoted — never a wider retry and never a fall-through
   to reading more of the record.
+- **A hypothesis's locator names a path this run never resolved, or a malformed window
+  (`excerpt-fetcher.md`'s host-side gate).** Nothing is dispatched for it — the session side is
+  failed by the gate itself, before any `Task` invocation, exactly as "not found" is handled.
 - **A hypothesis carries no locator at all.** It is never checked two-sided (there is nothing to fetch
   against); it stays a hypothesis exactly as before this task.
+- **No reader reports a `Skill-load version:` for a hypothesis's session (branch (a) never applies).**
+  Version resolution falls through to branch (b)/(c)/(d) in order, exactly as when no versioned path
+  resolves for any other reason.
 - **No hypothesis is promoted this run.** `Contributing Factors → Confirmed`, `Component and
   Version`, and `Localisation` each state plainly that no factor was confirmed this run — never the
   original "not yet produced" text, since this release *can* confirm a factor and simply did not,

@@ -13,8 +13,13 @@ The two-sided confirmation step (Phase 3.5 step 6) needs a **fresh, bounded, red
 hypothesis's session locator, to check that the excerpt actually shows the observation the reader
 reported. A reader's own quoted excerpt (already in its return block) is not enough on its own — the
 whole point of the host re-checking is that the host looks again, independently, rather than taking
-the reader's word for its own quote. This fetcher is the host's own bounded read primitive for that
-second look, confined to exactly the byte span a locator names.
+the reader's word for its own quote. This document describes **two things**: the locator grammar the
+skill and the fetcher agent share, and the **host-side validation gate** every locator passes through
+before a fetch is ever dispatched. The bounded read itself, and the redaction pass over what it
+returns, both run **inside the isolated `wf-postmortem:excerpt-fetcher` agent** (`agents/
+excerpt-fetcher.md`) — never in the skill's own context, exactly like every other session read this
+pack performs (`session-reader.md`). This mirrors `SKILL.md`'s own unchanged invariant: no byte of a
+session record is ever read outside a dispatched agent.
 
 ## Locator grammar
 
@@ -31,76 +36,76 @@ Extends `session-reader.md`'s existing locator forms with an optional line-range
 a **whole-record** locator; the confirmation step (Phase 3.5 step 6) always supplies a search anchor
 alongside a whole-record locator, since fetching an entire record defeats the bound below.
 
-## The bounded read primitive
+## The host-side validation gate (before any dispatch)
 
-Every fetch is one of exactly two shapes, both single-quoted with every `'` in a caller-controlled
-value replaced by `'\''` first — the same discipline `SKILL.md` Phase 1 already applies to
-`--session`, `--folder`, and `--repo`. Neither shape is ever concatenated into a composed command
-line, and neither ever passes a caller-controlled value to `Glob` as a pattern.
+A hypothesis's `locator:` field is text a reader produced from untrusted material — it is **never**
+substituted into a path on the strength of the reader's say-so alone. Before dispatching
+`excerpt-fetcher`, the skill validates the locator itself:
 
-1. **Confirm the target exists** — `Bash`: `test -e '<path>'` (the top-level record, or the named
-   subagent file). A locator whose path does not exist is **not found**; the confirmation step treats
-   that side as failed and takes no further action for it.
+1. **Path allow-list.** The locator's path component must be **character-for-character identical**
+   to the session's own already-resolved path (from `--session`), or to one of the subagent-record
+   paths Phase 3.5 step 1 already discovered for that same session. Any other path — one a reader
+   merely mentioned, or one shaped like a path but never independently resolved this run — fails
+   validation. This is the same discipline the redaction reference's long-hex/base64 exemption
+   already uses ("exempt only when character-for-character identical to a value this run already
+   resolved") applied to a locator instead of a redaction exemption.
+2. **Window integers.** When a `#L<start>-<end>` suffix is present, both `<start>` and `<end>` must
+   match `^[0-9]+$` and satisfy `<start> <= <end>`. Anything else — a non-numeric value, a negative
+   number spelled with a leading `-` that collides with the suffix's own `-` separator, an inverted
+   range — fails validation.
+
+**A locator that fails either check is malformed.** The skill dispatches nothing for it; the
+hypothesis's session side is recorded as failed for that reason, exactly like `not found` from the
+fetcher itself (Phase 3.5 step 6). This is a mechanical gate, not a judgment call — it runs the same
+way for every locator, every hypothesis, every run.
+
+## What runs inside the isolated fetcher
+
+Once a locator passes the gate above, the skill routes and dispatches `wf-postmortem:excerpt-fetcher`
+(`agents/excerpt-fetcher.md`) exactly as it dispatches `session-reader` — its own `resolve_routing`
+call, its own Task invocation, one dispatch per hypothesis locator. Inside that agent's own isolated
+context, and only there:
+
+1. **Confirm the target exists** — `Bash`: `test -e '<path>'`, single-quoted with every `'` in the
+   value replaced by `'\''` first. Does not exist → **not found**.
 2. **Fetch the excerpt:**
-   - **Windowed locator** (`#L<start>-<end>` present) — `Bash`: `sed -n '<start>,<end>p' '<path>'`.
-     The window is capped at **200 lines** before the fetch runs (`<end> - <start> + 1 <= 200`); a
-     locator naming a wider window is clamped to the first 200 lines of its own span, not refused,
-     since the excerpt ceiling below still bounds what actually reaches this skill's context.
-   - **Whole-record locator with a search anchor** — the confirmation step supplies the anchor (the
-     claimed mechanism text, or the reader's own quoted fragment). `Bash`:
-     `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>'`, single-quoted with the same escaping
-     discipline. `-F` treats the anchor as a literal string, never a regular expression — a
-     caller-controlled anchor is never interpreted as pattern syntax. `-m1` stops at the first match,
-     and the fixed 20-line pad on each side keeps the search itself bounded rather than scanning the
-     whole record for context. No match within that bounded search is an **excerpt not found**
-     outcome — never a wider retry, and never a fall-through to reading more of the record.
-3. **Apply the excerpt ceiling.** The fetched text — from either shape above — is truncated to
-   **4,000 characters** before anything else touches it, with a trailing `… [truncated]` marker when
-   truncation occurred. This is the fixed ceiling the confirmation step's excerpt is bounded by; it
-   is deliberately smaller than the 200,000-character session-windowing budget (Phase 3.5 step 2),
-   since this is a targeted excerpt around one locator, not a session-sized read.
+   - **Windowed locator** — `Bash`: `sed -n '<start>,<end>p' '<path>'`, clamped to **200 lines**
+     before the fetch runs — a locator naming a wider window is clamped to its own first 200 lines,
+     not refused, since the excerpt ceiling below still bounds what the fetcher returns.
+   - **Whole-record locator with a search anchor** — `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>'
+     '<path>'`, the anchor single-quoted the same way. `-F` treats it as a literal string, never a
+     regular expression. No match within that bounded search → **not found** — never a wider retry.
+   - A denied read at either step → **read denied**.
+3. **Apply the excerpt ceiling.** The fetched text is truncated to **4,000 characters**, with a
+   trailing `… [truncated]` marker when truncation occurred — deliberately smaller than the
+   200,000-character session-windowing budget (Phase 3.5 step 2), since this is a targeted excerpt
+   around one locator, not a session-sized read.
+4. **Redact before the block leaves the agent's context.** The agent obtains `redaction.md` itself
+   (the same reference the skill's own write path uses) and runs the entire excerpt through every
+   recognized shape, substituting `[REDACTED]` for each match — **before** it returns anything. The
+   skill's own write path (Phase 4) still applies the same redaction again as the disk backstop, but
+   the excerpt is never unredacted at any point the skill's own context can see it.
 
-**Subagent form.** `<session path>#subagent:<file>` and its windowed variant resolve against the
-named subagent file directly — the same `<path>` substitution as the top-level form, just pointed at
-the subagent record instead. No new directory listing is needed: the subagent file's own path is
-already the locator's own literal value, never derived by pattern-matching a caller-supplied string.
+The agent returns one compact `EXCERPT FETCH` block (`agents/excerpt-fetcher.md`'s Output section) —
+`Locator`, `Model`, `Outcome` (`fetched | not found | read denied | error: <reason>`), and the
+redacted `Excerpt` text. Read this result defensively exactly as Phase 3.5 step 3 reads a reader's
+result: no parseable block back is a session-side failure, never a silent pass.
 
-## Redaction (mandatory, before this excerpt reaches the skill's own context)
+## Outcomes, as the confirmation step sees them
 
-**No fetched excerpt is used anywhere — not in the compose step's comparison, not in the report —
-before it has passed through the redacting write path.** Obtain `redaction.md` the same way Phase 3
-already does (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `plugin:
-wf-postmortem`, `skill: postmortem`, `ref: redaction.md` — the same reference Phase 3 step 1 already
-holds; do not re-fetch it if that reference is already in hand this run) and run the fetched text
-through every recognized shape in order, substituting `[REDACTED]` for each match, exactly as Phase 4
-already does for report content. This is not optional and not deferred to the write path alone: an
-excerpt that never reaches disk (because the session side failed and the hypothesis stays a
-hypothesis) still passed through this skill's own context on the way, so the same guarantee applies
-there too.
-
-## Outcomes
-
-Every fetch resolves to exactly one of:
-
-- **Fetched** — the target existed, the excerpt was produced (windowed or anchored), and it has been
-  redacted. The confirmation step compares this text against the reader's reported observation.
-- **Not found** — the target path does not exist, or (whole-record locator) the supplied anchor
-  matched nothing within the bounded search. The confirmation step treats this as a failed
-  session-side check for that hypothesis.
-- **Read denied** — the host denies the read (the session store sits outside the workspace, exactly
-  as Phase 3.5's own reader dispatches can meet a denied read). Treated the same as **not found** for
-  the confirmation step's purposes — an isolated fetch primitive cannot answer a permission prompt any
-  more than an isolated reader can, so a denial is a stated failure, never a hang and never a silent
-  pass.
+- **Fetched** — the skill compares the returned, already-redacted excerpt text against the reader's
+  reported observation.
+- **Not found**, **read denied**, or **malformed** (failed the host-side gate before dispatch) — the
+  session side has failed for that hypothesis; it is not promoted this run.
 
 ## What this does and does not guarantee
 
-- **Does:** confine every fetch to the exact locator named, apply the same shape-based redaction
-  every other write in this skill applies, and never read more than the bounded window or the bounded
-  anchor search allows.
+- **Does:** confine every fetch to a locator the skill has independently validated, run the bounded
+  read and its redaction entirely inside an isolated agent, and never read more than the bounded
+  window or the bounded anchor search allows.
 - **Does not:** locate, rank, or scope sessions — that stays outside this fetcher's job entirely
   (a later charter sub-task's seam). This fetcher only re-reads a path a hypothesis's locator already
-  names.
+  names, once the host has confirmed that path is one this run already resolved.
 - **Does not** replace the reader's own return block — it supplements it with a second, independent
   look the host takes itself, which is the entire reason two-sided confirmation re-checks rather than
   trusting the reader's quote alone.

@@ -41,12 +41,14 @@ nothing says so.>
 ## Component and Version
 
 <When at least one factor was confirmed this run: the component (skill/contract/manifest file) and
-its resolved version — from the confirmed factor with the strongest tier when more than one exists —
-stated as `<component> at <version>` (with the "version approximate (date-resolved)" label carried
-verbatim where that branch resolved it). When none was confirmed this run: "No factor confirmed this
-run — component and version attribution follows a hypothesis's mechanism being checked two-sided
-against the executed-version source text and a checked session locator (Contributing Factors, below);
-none passed both sides this run.">
+its resolved version, selected by taking the `mechanically-observed` confirmed factors before the
+`independently-verified` ones, and within the same tier the one confirmed first in merge order (one
+factor, deterministically, even when several were confirmed) — stated as `<component> at <version>`
+(with the "version approximate (date-resolved)" label carried verbatim where that branch resolved
+it). When none was confirmed this run: "No factor confirmed this run — component and version
+attribution follows a hypothesis's mechanism being checked two-sided against the executed-version
+source text and a checked session locator (Contributing Factors, below); none passed both sides this
+run.">
 
 ## Contributing Factors
 
@@ -62,12 +64,16 @@ passed both sides.">
 ### Hypotheses
 
 <One entry per mechanism any reader suggested that was not promoted above, merged across sessions.
-Each states the mechanism in one line and names the session locator(s) that prompted it. A promoted
-mechanism moves to the confirmed half and is not duplicated here; a hypothesis that failed either
-side of the check, or resolved only to `present-day-only` text, stays exactly here at the
-`unverified` tier — checking it and not confirming it is not a defect of this report.>
+Each states the mechanism in one line, names the session locator(s) that prompted it when it carries
+one, and states **why** it was not promoted — one of: "not checked — no locator"; "not checked —
+malformed locator"; "checked — source side failed" (the mechanism text was not present at the
+resolved version); "checked — session side failed" (the excerpt did not show the observation, was not
+found, or was denied); or "not eligible — version resolved to `present-day-only`". A promoted
+mechanism moves to the confirmed half and is not duplicated here; every reason above still leaves the
+hypothesis at the `unverified` tier — checking it and not confirming it is not a defect of this
+report.>
 
-- <mechanism, one line> — suggested from `<locator>`
+- <mechanism, one line> — suggested from `<locator | "no locator">` — <reason it was not promoted>
 
 ## Evidence Record
 

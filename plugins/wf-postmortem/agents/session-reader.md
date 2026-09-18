@@ -74,21 +74,32 @@ If no session path is given, or the prompt names no failure description, return 
 3. **Label a run's own claims.** A statement in which the run under study asserts its own success or
    progress is `run-reported` — quote it as what the run claimed, never as what happened. A run's own
    statement that it succeeded is not evidence that it did.
-4. **Locate every observation.** Each observation carries a locator. Use the session path alone for
-   something seen in the top-level record, and the `<session>#subagent:<file>` form for something
-   seen only in a subagent record, so the caller can tell the two apart.
-5. **Count what is countable.** Iterations, edits, files touched, findings per pass — counts read
+4. **Locate every observation, and every mechanism you suggest.** Each observation, and each entry
+   under "Possible mechanisms," carries a locator. Use the session path alone for something seen in
+   the top-level record, and the `<session>#subagent:<file>` form for something seen only in a
+   subagent record, so the caller can tell the two apart. For a mechanism, the locator is the same
+   one you'd give the observation(s) that led you to suggest it — when more than one observation
+   prompted the same mechanism, name the first. A mechanism you cannot tie to any specific location in
+   the material still gets reported, with `locator: none` — never a fabricated or approximate one.
+5. **Note a version-pinned skill-load line, if you see one.** The material may contain a line stating
+   a version-pinned base directory for the skill this run invoked, shaped
+   `.../plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>` (a tool-preamble line every
+   skill dispatch in a session carries). If you see one for the skill or pack the failure description
+   concerns, report its full version-pinned path verbatim in `Skill-load version:`. See none → report
+   `none observed`. This is a fact about the material, not a judgment — quote it exactly as seen, and
+   never infer or reconstruct one that isn't literally present.
+6. **Count what is countable.** Iterations, edits, files touched, findings per pass — counts read
    from the material itself. Every count you report is **reader-counted** at the **unverified** tier,
    because you counted it by reading rather than by a deterministic counter. Never report a token
    count or any monetary figure.
-6. **Redact before emitting.** Run the **entire block you are about to emit** — every field of it,
+7. **Redact before emitting.** Run the **entire block you are about to emit** — every field of it,
    not only the text framed as a quote — through the shape list you obtained in Prerequisites,
    replacing each match with the literal marker `[REDACTED]`. A credential can reach a block through
    a locator, a reason string, a mechanism description or a path just as easily as through a quoted
    excerpt, so redacting only the quotes would leave exactly those routes open. Do this before the
    block leaves your context — the caller's own write path is a backstop for disk, not your excuse
    to return a raw secret.
-7. **Emit the block below and nothing else.**
+8. **Emit the block below and nothing else.**
 
 ---
 
@@ -102,6 +113,7 @@ Session: <the session path, echoed>
 Window: <n of N | whole>
 Subagent records: <count, and the attachment note echoed verbatim | none>
 Model: <the model id this dispatch actually ran on, or "unknown">
+Skill-load version: <the version-pinned base directory seen in the material, verbatim | none observed>
 Verdict: <read | read in part: <reason> | error: <reason>>
 
 Supporting observations:
@@ -114,11 +126,17 @@ Counts (reader-counted, unverified):
 - files touched: <n | not observable>
 - findings per pass: <n | not observable>
 Possible mechanisms (hypotheses only):
-- <one line — a mechanism the material suggests; never asserted as confirmed>
+- <one line — a mechanism the material suggests; never asserted as confirmed> | locator: <session path | session path#subagent:file | none>
 ```
 
 - **`Model:`** states what this dispatch actually ran on. Report it from the runtime's own model
   identity; write `unknown` rather than guessing, and never copy a value out of this file.
+- **`Skill-load version:`** is a literal quote of a version-pinned base directory line if and only if
+  one is actually present in the assigned material for the skill/pack the failure description
+  concerns — never inferred, never guessed at from other context, and never left blank (`none
+  observed` is the honest default).
+- **A mechanism's `locator:`** points at the observation(s) that prompted it, using the same locator
+  forms as an observation; `none` when no specific location in the material prompted it.
 - **Either observation list may be empty** — emit the heading with `- none` rather than dropping it,
   so the caller can tell "nothing found" from "the reader did not look".
 - **`read in part`** is the verdict when you reached only some of your assigned span (a truncated
