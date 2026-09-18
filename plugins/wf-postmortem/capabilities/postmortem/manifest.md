@@ -1,6 +1,6 @@
 # postmortem capability manifest
 
-**Version:** 0.1.0
+**Version:** 0.2.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** postmortem (a native feature capability; **registration is required**)
 **Kind:** feature (ships the guided `/wf-postmortem:postmortem` skill and `/wf-postmortem:init`; attaches **no** SDD phase fragment)
@@ -9,9 +9,10 @@
 ---
 
 postmortem ships a **guided session-mining skill** that turns a maintainer's prose failure report
-into an explicit, echoed hunt scope and a fixed-shape report skeleton. Everything reaches its user
-by **native plugin composition** — `/wf-postmortem:postmortem` is invoked directly as a skill, never
-fired by a phase.
+into an explicit, echoed hunt scope and then **reads the session records the maintainer names**, each
+in its own isolated reader agent, composing the report from those readers' compact, already-redacted
+return blocks. Everything reaches its user by **native plugin composition** —
+`/wf-postmortem:postmortem` is invoked directly as a skill, never fired by a phase.
 
 It owns **no** provider surface and contributes **no** phase fragment — it does not touch the
 `spec → plan → tasks → implement → verify → qa` spine. Registering it is a **presence-only**
@@ -32,9 +33,10 @@ fragment rows (the `sandbox-testing`/`pr-review`-before-its-slot precedent).
 
 ## Scope of this release
 
-This manifest registers the capability that ships the scope-resolution slice of a larger,
-multi-sub-task charter (C035, umbrella WF-587): locating and reading session records, verifying
-claimed mechanisms, stating fix direction, enforcing a read cap, and drawing fallback evidence each
-arrive with a later sub-task, extending this same skill body in place rather than adding a new
-capability. Registering `postmortem` today changes no core phase behaviour and names no path or
-convention specific to any one repository.
+This manifest registers the capability that ships the scope-resolution and session-reading slices of
+a larger, multi-sub-task charter (C035, umbrella WF-587). Reading an explicitly named session record
+in an isolated reader has landed; **locating** session records by scope, verifying claimed
+mechanisms, stating fix direction, enforcing a read cap, and drawing fallback evidence each arrive
+with a later sub-task, extending this same skill body in place rather than adding a new capability.
+Registering `postmortem` today changes no core phase behaviour and names no path or convention
+specific to any one repository.
