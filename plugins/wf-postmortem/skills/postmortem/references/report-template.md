@@ -102,8 +102,8 @@ name is not listed here — it appears in Scope instead, because nothing about i
 
 - `<session path>` — read · model: <id> · tier: <requested | host-fallback (<reason>)>
 - `<session path>` — read in part (<reason>) · model: <id> · tier: <…>
-- `<session path>` — skipped (reader error: <reason>)
-- `<session path>` — skipped (access denied)
+- `<session path>` — skipped (reader error: <reason>) · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
+- `<session path>` — skipped (access denied) · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
 
 **Not covered by this release:** locating sessions by scope, the 30-day retention window, the
 located-set count, and the per-run read cap — each arrives with a later charter sub-task. This hunt
