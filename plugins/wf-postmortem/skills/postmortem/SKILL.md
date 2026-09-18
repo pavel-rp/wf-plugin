@@ -68,7 +68,7 @@ at most one.
 - Write outside the report's own seeded folder and `{task-root}/scratch/`.
 - Touch `plugins/wf/` or any other existing pack.
 - Write a report, or any scratch file, without first passing every value through the redacting
-  write path (`references/redaction.md`).
+  write path (`redaction.md`, resolved via `resolve_content`).
 - Guess whether an interactive channel is available — establish it from the tool catalog itself
   (Phase 2).
 - Ask more than one question per run.
@@ -129,10 +129,10 @@ folder. This release records no per-task index row for it (charter assumption #9
    postmortem`, `ref: report-template.md` / `ref: redaction.md`) — never a raw `Read` of the
    plugin-cache path.
 2. **Redact every value pulled from the prompt** — the failure description and any resolved
-   skill/folder/repository name — by running each through the redaction reference's recognized
-   shapes before it is written anywhere, per `references/redaction.md`. This applies to the report
-   file and to any scratch file this run produces; there is exactly one write path and every write
-   passes through it.
+   skill/folder/repository name — by running each through `redaction.md`'s recognized shapes
+   (obtained in step 1 via `resolve_content`) before it is written anywhere. This applies to the
+   report file and to any scratch file this run produces; there is exactly one write path and every
+   write passes through it.
 3. **Fill the Scope section** with every resolved value and every applied default from Phase 1,
    verbatim after redaction. Fill the Summary and every other section with the template's stated
    "not yet produced" text — this release cannot fill them (no session has been located or read).
