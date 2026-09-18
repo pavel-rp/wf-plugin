@@ -18,8 +18,12 @@ Applied in this order over the text about to be written, each match replaced ind
    `ghs_`, `github_pat_`, `sk-`, or `xox[baprs]-`, followed by 16 or more alphanumeric/`-`/`_`
    characters.
 4. **Long high-entropy hex or base64 runs** — a contiguous run of 32 or more hex characters, or 40
-   or more base64 characters (`[A-Za-z0-9+/=]`), that is not itself part of a normal path, hash
-   label, or version string already present in the surrounding scope-resolution context.
+   or more base64 characters (`[A-Za-z0-9+/=]`). This rule carries exactly one exemption, and it is
+   mechanical, not a judgment call: the run is exempt only when it is **character-for-character
+   identical** to a value this run already resolved from the filesystem (a resolved `--folder` or
+   `--repo` path segment). Anything else matching the shape is redacted, even when it looks like a
+   commit hash or a version string — over-redacting a hash costs a reader nothing, while judging a
+   secret exempt because it resembles one is the failure this rule exists to prevent.
 
 ## The marker
 
@@ -32,7 +36,8 @@ originates from the prompt itself.
 ## What this does and does not guarantee
 
 - **Does:** guarantee that a string matching one of the shapes above never reaches disk through
-  this skill's own writes — the report file and any scratch file under the fixed `_local/scratch/`.
+  this skill's own writes — the report file and any scratch file under the fixed
+  `{task-root}/scratch/`.
 - **Does not:** guarantee that every secret is caught. A credential or token of an unrecognized
   shape is an accepted residual risk (charter risk table, spec Scope) — this skill ships no
   general-purpose secret scanner, only the shape list above.
@@ -44,4 +49,10 @@ originates from the prompt itself.
 Before any `Write` to the report file or a scratch file, run the text through every shape in order
 and substitute `[REDACTED]` for each match, then write the substituted text. Apply this to every
 value pulled from the prompt — the failure description, and any resolved skill/folder/repository
-name — before it is echoed into the Scope section.
+name — before it is echoed into the Scope section, and before any of it is used in a folder or file
+name.
+
+Redaction defends against credential shapes only. Neutralizing markdown structure in the same text
+(newlines and backticks collapsed to spaces, a leading `#` stripped, so the text can forge neither a
+heading nor a fenced block) is a separate, mandatory step that runs after this one — `SKILL.md`
+Phase 3 step 2 owns it.
