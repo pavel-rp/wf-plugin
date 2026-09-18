@@ -20,8 +20,13 @@ Applied in this order over the text about to be written, each match replaced ind
 4. **Long high-entropy hex or base64 runs** — a contiguous run of 32 or more hex characters, or 40
    or more base64 characters (`[A-Za-z0-9+/=]`). This rule carries exactly one exemption, and it is
    mechanical, not a judgment call: the run is exempt only when it is **character-for-character
-   identical** to a value this run already resolved from the filesystem (a resolved `--folder` or
-   `--repo` path segment). Anything else matching the shape is redacted, even when it looks like a
+   identical** to a value this run already resolved from the filesystem (a resolved `--folder`,
+   `--repo`, or `--session` path segment). The `--session` case is not an afterthought: a session
+   record's own filename is frequently a long hex or base64-shaped identifier, and without the
+   exemption the shape rule would redact a resolved record path out of the report's own Scope and
+   Coverage lines — destroying the locator the report exists to carry. The exemption stays keyed on
+   an exact match against a path this run actually resolved, so an unresolved name never earns it.
+   Anything else matching the shape is redacted, even when it looks like a
    commit hash or a version string — over-redacting a hash costs a reader nothing, while judging a
    secret exempt because it resembles one is the failure this rule exists to prevent.
 
