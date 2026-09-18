@@ -81,10 +81,13 @@ If no session path is given, or the prompt names no failure description, return 
    from the material itself. Every count you report is **reader-counted** at the **unverified** tier,
    because you counted it by reading rather than by a deterministic counter. Never report a token
    count or any monetary figure.
-6. **Redact before emitting.** Run every excerpt you are about to quote through the shape list you
-   obtained in Prerequisites, replacing each match with the literal marker `[REDACTED]`. Do this
-   before the block leaves your context — the caller's own write path is a backstop for disk, not
-   your excuse to return a raw secret.
+6. **Redact before emitting.** Run the **entire block you are about to emit** — every field of it,
+   not only the text framed as a quote — through the shape list you obtained in Prerequisites,
+   replacing each match with the literal marker `[REDACTED]`. A credential can reach a block through
+   a locator, a reason string, a mechanism description or a path just as easily as through a quoted
+   excerpt, so redacting only the quotes would leave exactly those routes open. Do this before the
+   block leaves your context — the caller's own write path is a backstop for disk, not your excuse
+   to return a raw secret.
 7. **Emit the block below and nothing else.**
 
 ---

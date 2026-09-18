@@ -81,7 +81,7 @@ it does, an unnamed record is simply not in the hunt.
 - Detect a named record's attached subagent records by the provisional sibling-directory rule
   (Phase 3.5 step 1), using `Glob` on that directory only — never on a caller-supplied path as a
   pattern.
-- Invoke the **Task** tool with `subagent_type: session-reader`, once per session or per window, to
+- Invoke the **Task** tool with `subagent_type: wf-postmortem:session-reader`, once per session or per window, to
   read the record in that agent's own isolated context.
 
 **Forbidden:**
@@ -297,9 +297,16 @@ its compact, already-redacted block comes back.
      the lowest tier, or the dispatch edge cannot honour a model selector" case, and the report
      **says so** per reader rather than quietly presenting it as the requested tier.
 
-   Then invoke one **Task** with `subagent_type: session-reader`, passing the failure description,
+   Then invoke one **Task** with `subagent_type: wf-postmortem:session-reader`, passing the failure description,
    the session path, the window (`n of N` or `whole`) with its span, the attached subagent-record
    paths, and the provisional attachment note to echo back.
+
+   **Read the result defensively.** A dispatch can come back with no `SESSION READ` block at all, or
+   with one that cannot be parsed — the agent failed to start, was interrupted, or returned prose.
+   Treat any such result as that unit's `error` verdict, reason `"reader returned no parseable block"`,
+   and carry it into the merge exactly as a reader-reported `error` would be. Never infer a verdict
+   from a missing block, and never treat an absent block as a silent `read` — an unparseable result
+   is the one case where assuming success would fabricate coverage the run never had.
 
 4. **Merge each session's blocks into one result.** Concatenate a session's window blocks in window
    order into one observation set (supporting and disconfirming kept apart), union the hypotheses,
@@ -309,8 +316,15 @@ its compact, already-redacted block comes back.
    |---|---|
    | every window `read` | `read` |
    | at least one `read`, and at least one `read in part` or `error` | `read in part (<first failing window's reason>)` |
-   | every window `error` | `skipped (reader error: <first reason>)` |
    | every window `error`, and the reason is a denied read | `skipped (access denied)` |
+   | every window `error` (any other reason) | `skipped (reader error: <first reason>)` |
+   | otherwise — at least one window not `read` | `read in part (<first non-read window's reason>)` |
+
+   The table is **exhaustive by construction**: the first three rows name the pure cases, and the
+   final catch-all absorbs every remaining combination, so no mix of window verdicts can leave a
+   session without one. A window whose routing decision returned `status: stop` never ran, so it
+   counts as that unit's `error` for merge purposes with the routing diagnostic as its reason —
+   otherwise a stopped dispatch would fall through the table it was never represented in.
 
    A one-window session takes its own verdict directly. A session listed as `read in part` is never
    rounded up to `read`, and a failing session never stops the run — the hunt completes over the
@@ -425,7 +439,7 @@ POSTMORTEM — written
 Report:   {task-root}/PM<NNN>__<slug>/report.md
 Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<override|default, not yet enforced> · session-scope=<current workspace only|current workspace plus <project>>
 Sessions: <n> named · <r> resolved · <u> unresolved
-Coverage: <path>=<read|read in part (<reason>)|skipped (reader error)|skipped (access denied)> [model=<id> tier=<requested|host-fallback (<reason>)>] · …
+Coverage: <path>=<read|read in part (<reason>)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id> tier=<requested|host-fallback (<reason>)>] · …
 Finding:  <one line — what was found | not found>
 Next:     none — terminus
 ```
