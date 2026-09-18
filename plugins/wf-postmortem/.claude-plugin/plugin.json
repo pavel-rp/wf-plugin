@@ -1,0 +1,19 @@
+{
+  "name": "wf-postmortem",
+  "version": "0.1.0",
+  "description": "wf postmortem pack: the postmortem capability, a presence-only feature that ships a guided skill turning a maintainer's prose failure report into an explicit, echoed hunt scope plus a fixed-shape report skeleton. Owns no provider surface and attaches no phase fragment — it ships inert until registered and behaves identically whether or not it is. This slice resolves scope only; locating and reading sessions, verification, fix direction, and cap enforcement arrive with later charter sub-tasks. Ships /wf-postmortem:postmortem, the guided skill, plus /wf-postmortem:init for one-command self-registration.",
+  "author": {
+    "name": "Pavel Kalabin",
+    "url": "https://github.com/pavel-rp"
+  },
+  "repository": "https://github.com/pavel-rp/wf-plugin",
+  "license": "UNLICENSED",
+  "keywords": [
+    "wf",
+    "postmortem",
+    "session-mining",
+    "defect-report",
+    "capabilities",
+    "agent-skills"
+  ]
+}
