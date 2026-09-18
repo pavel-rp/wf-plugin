@@ -36,8 +36,8 @@ originates from the prompt itself.
 ## What this does and does not guarantee
 
 - **Does:** guarantee that a string matching one of the shapes above never reaches disk through
-  this skill's own writes — the report file and any scratch file under the fixed
-  `{task-root}/scratch/`.
+  this skill's own writes — the report file and any scratch file under the fixed, literal
+  `_local/scratch/`.
 - **Does not:** guarantee that every secret is caught. A credential or token of an unrecognized
   shape is an accepted residual risk (charter risk table, spec Scope) — this skill ships no
   general-purpose secret scanner, only the shape list above.
@@ -53,6 +53,6 @@ name — before it is echoed into the Scope section, and before any of it is use
 name.
 
 Redaction defends against credential shapes only. Neutralizing markdown structure in the same text
-(newlines and backticks collapsed to spaces, a leading `#` stripped, so the text can forge neither a
-heading nor a fenced block) is a separate, mandatory step that runs after this one — `SKILL.md`
-Phase 3 step 2 owns it.
+(newlines and backticks collapsed to spaces, the entire leading run of `#` characters stripped —
+`^#+`, not a single one — so the text can forge neither a heading nor a fenced block) is a separate,
+mandatory step that runs after this one — `SKILL.md` Phase 3 step 2 owns it.

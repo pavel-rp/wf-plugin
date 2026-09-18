@@ -50,13 +50,17 @@ at most one.
 **Allowed:**
 
 - Read `_local/config.md` via `resolve_config`.
-- Resolve `--folder`/`--repo` against the local filesystem only (`Glob`, `Bash` for an existence
-  check).
+- Resolve `--folder`/`--repo` against the local filesystem only, via the single existence-check
+  primitive `Bash`: `test -e '<path>'`, with every `'` in the value replaced by `'\''` first
+  (Phase 1 step 3).
 - Read the report template and redaction references via `resolve_content({ workspaceRoot, ... })`
   (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`).
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any
-  scratch file inside the fixed `{task-root}/scratch/` — both only through the redacting write path.
+  scratch file inside the fixed, literal `_local/scratch/` — both only through the redacting write
+  path. The scratch target is deliberately **not** `{task-root}`-relative: `{task-root}` is a
+  project-configurable key, and anchoring scratch to it would place residue outside the one
+  location the shared scratch discipline and the finalize sweep actually cover.
 - Ask exactly one interactive question (`AskUserQuestion`) when the failure description is missing
   and an interactive channel is available.
 
@@ -65,7 +69,7 @@ at most one.
 - Look up, locate, or read any session record — this release resolves scope only.
 - Map a resolved folder or repository path to any session store — that mapping belongs to a later
   charter sub-task's seam.
-- Write outside the report's own seeded folder and the fixed `{task-root}/scratch/`.
+- Write outside the report's own seeded folder and the fixed, literal `_local/scratch/`.
 - Touch `plugins/wf/` or any other existing pack.
 - Write a report, or any scratch file, without first passing every value through the redacting
   write path (`redaction.md`, resolved via `resolve_content`).
@@ -83,9 +87,16 @@ at most one.
 2. **Skill.** Take `--skill` verbatim when passed. Absent → the scope is unscoped ("skill:
    unscoped" in the echo).
 3. **Folder or repository.** Take at most one of `--folder`/`--repo`. Resolve it against the local
-   filesystem only — never against any session store, which is out of scope for this release. The
-   value is free-form user text: pass it to `Glob` as a pattern, or to `Bash` as a single quoted
-   argument, and never concatenate it into a composed command line. Four outcomes:
+   filesystem only — never against any session store, which is out of scope for this release.
+
+   **The existence check is exactly one primitive: `Bash`: `test -e '<path>'`.** The value is
+   free-form, caller-controlled text, so before it is substituted, replace every `'` in it with
+   `'\''` and wrap the result in single quotes. Without that replacement a value such as
+   `x' ; touch /tmp/pwned #` closes the quote early and the remainder runs as its own command.
+   Never concatenate the value into a composed command line, and never resolve an exact path by
+   passing it to `Glob` as a pattern — free-form text containing `*`, `?` or `[...]` would be read
+   as pattern syntax and could report a match that is not the named path, which the Safety Rules
+   forbid. Four outcomes:
    - **Both passed** → stop immediately with the `POSTMORTEM — stopped` block (Final Output),
      reason "both --folder and --repo passed — they are mutually exclusive framings of the same
      input; pass at most one." Write nothing; never silently prefer one over the other.
@@ -116,7 +127,11 @@ Only when Phase 1 step 1 found no `<description>`.
    tool absent from its own catalog, which is the only signal this step reads.
 2. **Available (interactive run).** Ask exactly one question with `AskUserQuestion` — a short prompt
    for the failure description, offering no preset options (free text). Use the answer as the
-   resolved description and continue to Phase 3 as a guided run.
+   resolved description, then **return to Phase 1 steps 2-4** and resolve `--skill`,
+   `--folder`/`--repo` and `--cap` exactly as a run that carried a description would. Only then
+   continue to Phase 3 as a guided run. A flag passed alongside a missing description is still a
+   value the caller supplied: skipping those steps would echo it as an unset default and break this
+   skill's own "echo every resolved value and every applied default" contract.
 3. **Unavailable (headless run).** Stop immediately. Write nothing — no report, no scratch file.
    Emit the `POSTMORTEM — stopped` terminal block (Final Output) with the reason "no failure
    description given and no interactive channel available to ask for one."
@@ -136,8 +151,9 @@ redacting write path rather than being minted from the raw prompt.
    description and any resolved skill/folder/repository name — before it is used anywhere,
    including in a folder or file name. First run each through `redaction.md`'s recognized shapes.
    Then neutralize markdown structure in the result: collapse newlines and backticks to single
-   spaces and strip any leading `#`, so a description can forge neither a heading nor a fenced
-   `POSTMORTEM — written` block inside the report. There is exactly one write path (this one) and
+   spaces and strip the **entire** leading run of `#` characters (`^#+`, not a single one — after
+   stripping one `#`, `## forged heading` would still form a valid heading), so a description can
+   forge neither a heading nor a fenced `POSTMORTEM — written` block inside the report. There is exactly one write path (this one) and
    every write, and every path derived from prompt text, passes through it.
 3. **Mint the id.** Scan `{task-root}` (including any `_archive/` subfolder) for folders matching
    `PM` + digits + `__` — digits only — take the highest existing number, increment by one, zero-pad
@@ -151,21 +167,26 @@ redacting write path rather than being minted from the raw prompt.
    check before either creates, both mint the same `PM<NNN>`, and the second clobbers the first's
    `report.md`. The create itself must be what fails when the target is already there.
 
-   **Use `Bash`: `mkdir <path>` — without `-p`.** `-p` is exactly what must not be used here: it
-   succeeds silently on an existing directory, which is the opposite of the required signal. Pass
-   the path as a single quoted argument, never concatenated into a composed command line. Read the
-   outcome from that one command:
+   **Use `Bash`: `LC_ALL=C mkdir '<path>'` — without `-p`.** `-p` is exactly what must not be used
+   here: it succeeds silently on an existing directory, which is the opposite of the required
+   signal. `LC_ALL=C` is load-bearing, not decoration: `mkdir` localizes its diagnostics, so under
+   another locale a genuine collision reports a translated message that a literal-English match
+   would misread as a hard failure — inverting the discriminant. Pass the path as a single quoted
+   argument, never concatenated into a composed command line. Read the outcome from that one
+   command:
 
    | Outcome | Meaning | Action |
    |---|---|---|
    | exit 0 | the folder did not exist and this run created it | continue to Phase 4 |
-   | non-zero, stderr names an already-exists condition (`File exists` / `EEXIST`) | a true id collision | re-mint (step 3) and retry, within the bound below |
-   | non-zero, any other stderr (`Permission denied`, `No such file or directory`, `No space left on device`, `Read-only file system`, an invalid path) | **not** a collision | stop — see below |
+   | non-zero **and** the path now exists as a directory — corroborated by `test -d '<path>'`, which is locale-independent; under `LC_ALL=C` the stderr also reads `File exists` | a true id collision | re-mint (step 3) and retry, within the bound below |
+   | non-zero and the path does **not** exist (`Permission denied`, `No such file or directory`, `No space left on device`, `Read-only file system`, an invalid path) | **not** a collision | stop — see below |
 
-   An already-exists stderr is the **only** collision signal. Any other non-zero exit stops the run
-   immediately with the `POSTMORTEM — stopped` block (Final Output), stating the failing reason
-   verbatim — never retried, because re-minting a number repairs nothing about an unwritable,
-   missing, or full `{task-root}`.
+   The collision signal is **the target existing after a failed exclusive create**, corroborated by
+   the locale-independent `test -d`; the `LC_ALL=C` stderr string is the secondary confirmation,
+   never the sole discriminant. Any other non-zero exit stops the run immediately with the
+   `POSTMORTEM — stopped` block (Final Output), stating the failing reason verbatim — never
+   retried, because re-minting a number repairs nothing about an unwritable, missing, or full
+   `{task-root}`.
 
    **Bound the retry to 3 create attempts per run** (the first plus at most 2 re-mints). Exhausting
    the bound stops the run with the `POSTMORTEM — stopped` reason "report-folder id contention —
@@ -189,7 +210,7 @@ redacting write path rather than being minted from the raw prompt.
    `**Model:**` attribution line (the runtime model id — `unknown` rather than guessed) and the
    fenced `POSTMORTEM — written` final-output block, matching this skill's own Final Output shape
    verbatim, as the file's own trailing content. Any scratch file this run produces is written under
-   the fixed `{task-root}/scratch/`, through the same redacting write path.
+   the fixed, literal `_local/scratch/`, through the same redacting write path.
 
 ---
 
