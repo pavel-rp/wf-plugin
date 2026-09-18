@@ -20,7 +20,8 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
   flag** and writes the fixed ten-section report. Every reader-suggested mechanism carrying a locator
   is then **checked two-sided** — against the audited pack's own skill/contract/manifest text at the
   run's resolved executed version, and against a bounded, redacted excerpt fetched fresh at the
-  locator through an interim host-side fetcher — and promoted to a confirmed contributing factor only
+  locator through an interim, isolated fetcher agent, dispatched after the host itself resolves and
+  validates the locator to a real path — and promoted to a confirmed contributing factor only
   when both sides verify (or verify mechanically on both, at an exact `file:line` and an exact
   locator). An interactive run with no failure description asks exactly one question; a run with no
   interactive channel stops with a stated reason and writes nothing. A run naming no session record —
@@ -66,9 +67,11 @@ contributes nothing and every core phase behaves exactly as before.
 - `capabilities/postmortem/manifest.md` — the presence-only capability manifest.
 - `agents/session-reader.md` — the isolated per-session reader agent (no `tools:` field, no pinned
   model; the model comes from the dispatch and the block reports what it ran on).
+- `agents/excerpt-fetcher.md` — the interim, provisional isolated agent that fetches and redacts one
+  bounded excerpt at a host-resolved path, standing in for the not-yet-landed SUB-2 access point.
 - `skills/init/SKILL.md` — the compatibility-alias onboarding skill.
 - `skills/postmortem/SKILL.md` — the guided skill body.
 - `skills/postmortem/references/report-template.md` — the fixed ten-section report template.
 - `skills/postmortem/references/redaction.md` — the shared redacting write path's recognized shapes.
-- `skills/postmortem/references/excerpt-fetcher.md` — the interim, provisional host-side bounded,
-  redacted excerpt fetcher the two-sided confirmation check uses on the session side.
+- `skills/postmortem/references/excerpt-fetcher.md` — the locator grammar and the host-side
+  parse-and-validate gate that resolves a locator to a real path before dispatching the fetcher agent.
