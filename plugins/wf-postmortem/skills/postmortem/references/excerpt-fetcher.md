@@ -61,8 +61,9 @@ parses the locator and resolves it to **the one real filesystem path** it names:
    instead of a redaction exemption — and it is what lets a `subagent:<file>` locator resolve to a
    real path at all, rather than the literal (nonexistent) compound string.
 3. **Window integers.** When an `L<start>-<end>` segment is present, both `<start>` and `<end>` must
-   match `^[0-9]+$` and satisfy `<start> <= <end>`. Anything else — a non-numeric value, an inverted
-   range — fails validation.
+   match `^[1-9][0-9]*$` (a positive integer — `0` excluded, since line numbers are 1-based) and
+   satisfy `<start> <= <end>`. Anything else — a non-numeric value, a bare `0`, an inverted range —
+   fails validation.
 
 **A locator that fails any of these is malformed.** The skill dispatches nothing for it; the
 hypothesis's session side is recorded as failed for that reason, exactly like `not found` from the

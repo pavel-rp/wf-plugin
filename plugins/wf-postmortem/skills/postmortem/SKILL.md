@@ -476,8 +476,9 @@ its compact, already-redacted block comes back.
      - A `subagent:<file>` segment → the path is whichever entry in this session's own discovered
        subagent-record paths (Phase 3.5 step 1) has `<file>` as its own filename. No such entry →
        **malformed**.
-     - A `L<start>-<end>` segment, if present → both must match `^[0-9]+$` with
-       `<start> <= <end>`; otherwise **malformed**.
+     - A `L<start>-<end>` segment, if present → both must match `^[1-9][0-9]*$` (a positive integer —
+       `0` is excluded, since line numbers are 1-based) with `<start> <= <end>`; otherwise
+       **malformed**.
 
      **A malformed locator is a session-side failure exactly like "not found" below — it is never
      dispatched.** This parsing is mechanical and runs identically for every locator; it never widens
@@ -533,6 +534,12 @@ its compact, already-redacted block comes back.
    - **Measured-effect counts are untouched by this step.** Every count stays `reader-counted` at the
      `unverified` tier regardless of how many hypotheses this step confirms — deterministic counting
      needs the locator seam a later charter sub-task (SUB-2) supplies, not this one.
+   - **This step's own dispatch fan-out has no cap in this release**, exactly like `--cap`'s
+     read-cap override above (Phase 1 step 4): one `excerpt-fetcher` dispatch per hypothesis carrying
+     a locator, with no bound on how many hypotheses a reader may report or how many sessions windowed
+     reading produces. Since a session record is untrusted content, this is a real, accepted scope
+     boundary for this release, not an oversight — a per-run bound arrives with the same later charter
+     sub-task that enforces `--cap` (SUB-7), not this one.
 
 7. **Compose the report sections from the merged results and step 6's checks.** Summary, Evidence
    Record, Measured Effect and Coverage are built from the returned blocks and nothing else — this

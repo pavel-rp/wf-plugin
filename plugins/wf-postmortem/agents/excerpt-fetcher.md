@@ -33,7 +33,10 @@ that comparison is the caller's job, once your redacted text is back in its hand
 ## Prerequisites
 
 Before the first bundled resolver MCP call in this agent, run `pwd -P` and use the returned absolute
-current Agent/session workspace directory as `workspaceRoot` in every call.
+current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree
+Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot`
+explicitly on every resolver call; omission is a hard schema error, and the resolver has no default
+or fallback root.
 
 **Obtain the redaction rules first, before fetching any excerpt.** Call `resolve_content({
 workspaceRoot, class: "references-template", plugin: "wf-postmortem", skill: "postmortem", ref:
@@ -51,7 +54,7 @@ Your prompt carries:
 |---|---|
 | path | The **exact, real filesystem path** to read — already resolved and validated by the caller against a path it independently discovered this run (the session's own resolved path, or one of its discovered subagent-record paths). Trust this path outright; you do no validation of your own. |
 | window | Optional `{start, end}` line numbers (1-based, inclusive), already parsed and integer-validated by the caller. |
-| search anchor | Present only when no `window` is given. The claimed mechanism text (or the reader's own quoted fragment) to search for. |
+| search anchor | Present only when no `window` is given. Always the claimed mechanism text, verbatim — the caller never sends a shorter or paraphrased fragment. |
 
 If `path` is missing, or both `window` and `search anchor` are missing, return `NO INPUT` and stop —
 there is nothing to bound the fetch by.
