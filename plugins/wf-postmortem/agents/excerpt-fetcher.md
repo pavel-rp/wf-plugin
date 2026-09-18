@@ -70,12 +70,16 @@ there is nothing to bound the fetch by.
      with the anchor single-quoted the same way (`-F` — literal string, never a regular expression).
      No match within that bounded search → **`not found`**. Never a wider retry.
    - A denied read at either step → **`read denied`**.
-3. **Truncate to the excerpt ceiling.** Cut the fetched text to **4,000 characters**, appending
-   `… [truncated]` when truncation occurred.
-4. **Redact before emitting.** Run the **entire excerpt** through the shape list you obtained in
-   Prerequisites, replacing every recognized match with the literal marker `[REDACTED]`. Do this
-   before the block leaves your context — you are the only place this text is ever read, so there is
-   no backstop after you.
+3. **Redact first, before any truncation.** Run the **entire fetched excerpt** through the shape list
+   you obtained in Prerequisites, replacing every recognized match with the literal marker
+   `[REDACTED]`. This must happen **before** truncation (step 4) — a credential- or token-shaped run
+   straddling a later truncation cut would have its second half removed before the shape list ever
+   sees it, letting the truncated first half of a real secret survive unredacted. Redacting the whole
+   excerpt first closes that gap. Do this before the block leaves your context — you are the only
+   place this text is ever read, so there is no backstop after you.
+4. **Truncate the already-redacted text to the excerpt ceiling.** Cut it to **4,000 characters**,
+   appending `… [truncated]` when truncation occurred. Truncating after redaction can only ever cut
+   `[REDACTED]` markers or ordinary text, never a live secret shape.
 5. **Emit the block below and nothing else.**
 
 ---

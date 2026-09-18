@@ -69,8 +69,9 @@ already resolved.
 
 Once a locator passes the gate above, the skill routes and dispatches `wf-postmortem:excerpt-fetcher`
 (`agents/excerpt-fetcher.md`) exactly as it dispatches `session-reader` — its own `resolve_routing`
-call (with `validation: "mechanical"` and `returnContract: "mechanically-judgeable"`, since a bounded
-fetch-and-redact is not the open-ended judgment call a session hunt is), its own Task invocation, one
+call (with `toolWork: "bounded"`, `validation: "mechanical"` and `returnContract:
+"mechanically-judgeable"`, since a single bounded `test`/`sed`/`grep` call and a redaction pass is not
+the open-ended judgment call a session hunt is), its own Task invocation, one
 dispatch per hypothesis locator — passing the **resolved real path**, the parsed `window` (when
 present), and, only when there is no window, the search anchor. Inside that agent's own isolated
 context, and only there:
@@ -88,15 +89,19 @@ context, and only there:
      limitation of this interim fetcher, not a silent misclassification: the resulting `not found` is
      the honest outcome, since the anchor genuinely cannot appear literally in unredacted material.
    - A denied read at either step → **read denied**.
-3. **Apply the excerpt ceiling.** The fetched text is truncated to **4,000 characters**, with a
-   trailing `… [truncated]` marker when truncation occurred — deliberately smaller than the
+3. **Redact first, before any truncation.** The agent obtains `redaction.md` itself (the same
+   reference the skill's own write path uses) and runs the **entire fetched excerpt** through every
+   recognized shape, substituting `[REDACTED]` for each match — **before** truncation (step 4), and
+   before it returns anything. This order matters: a credential- or token-shaped run straddling a
+   later truncation cut would have its second half removed before the shape list ever saw it, letting
+   the truncated first half of a real secret survive unredacted — redacting the whole excerpt first
+   closes that gap. The skill's own write path (Phase 4) still applies the same redaction again as the
+   disk backstop, but the excerpt is never unredacted at any point the skill's own context can see it.
+4. **Truncate the already-redacted text to the excerpt ceiling.** Cut it to **4,000 characters**, with
+   a trailing `… [truncated]` marker when truncation occurred — deliberately smaller than the
    200,000-character session-windowing budget (Phase 3.5 step 2), since this is a targeted excerpt
-   around one locator, not a session-sized read.
-4. **Redact before the block leaves the agent's context.** The agent obtains `redaction.md` itself
-   (the same reference the skill's own write path uses) and runs the entire excerpt through every
-   recognized shape, substituting `[REDACTED]` for each match — **before** it returns anything. The
-   skill's own write path (Phase 4) still applies the same redaction again as the disk backstop, but
-   the excerpt is never unredacted at any point the skill's own context can see it.
+   around one locator, not a session-sized read. Truncating after redaction can only ever cut
+   `[REDACTED]` markers or ordinary text, never a live secret shape.
 
 The agent returns one compact `EXCERPT FETCH` block (`agents/excerpt-fetcher.md`'s Output section) —
 `Path`, `Model`, `Verdict` (`fetched | not found | read denied | error: <reason>`), and the redacted

@@ -83,8 +83,10 @@ it does, an unnamed record is simply not in the hunt.
   `Bash`-based bullet in this list states, since a version string or sha ultimately traces back to
   session-derived, untrusted text.
 - Read a resolved session record's own filesystem last-modified time — `Bash`: `stat -c %Y '<path>'`
-  (single-quoted, same escaping discipline) — as the date source for version-resolution branch (c)
-  below. This is metadata, exactly like the existing `test -e`/`wc -c` reads, never content.
+  (GNU/Linux), or, only when that command itself errors, `stat -f %m '<path>'` (BSD/macOS) as the one
+  stated fallback — both single-quoted, same escaping discipline — as the date source for
+  version-resolution branch (c) below. This is metadata, exactly like the existing `test -e`/`wc -c`
+  reads, never content.
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any
   scratch file inside the fixed, literal `_local/scratch/` — both only through the redacting write
@@ -111,12 +113,14 @@ it does, an unnamed record is simply not in the hunt.
   The existence check, the byte-size check, and the last-modified-time check above are metadata, not
   content, and are the only exceptions.
 - **Dispatch the excerpt fetcher against a path this skill has not itself already resolved and
-  verified.** A hypothesis's locator names a path in text a reader produced from untrusted material;
-  before any `excerpt-fetcher` dispatch, this skill checks that the locator's path component is
-  **character-for-character identical** to the session's own already-resolved path, or to one of the
-  subagent-record paths this run's own Phase 3.5 step 1 already discovered for that session — never a
-  path taken on a reader's or a record's own say-so. A locator naming any other path is treated as
-  malformed (Phase 3.5 step 6) and is never dispatched.
+  verified.** A hypothesis's locator is a compound string a reader produced from untrusted material;
+  before any `excerpt-fetcher` dispatch, this skill parses the locator and resolves it to **the one
+  real path it names**, never the compound string itself: a bare locator's path component must be
+  **character-for-character identical** to the session's own already-resolved path; a
+  `#subagent:<file>` locator resolves instead to whichever entry in this run's own Phase 3.5 step 1
+  discovered subagent-record paths has `<file>` as its own filename — never a path taken on a
+  reader's or a record's own say-so. A locator that resolves to neither is treated as malformed
+  (Phase 3.5 step 6) and is never dispatched.
 - Locate a session record by scope, rank one, or apply any read cap — those arrive with later
   charter sub-tasks. This release reads exactly the records `--session` names.
 - Map a resolved folder or repository path to any session store — that mapping belongs to a later
@@ -370,56 +374,71 @@ its compact, already-redacted block comes back.
    others.
 
 5. **Resolve the executed version, for each hypothesis carrying a locator, of the pack under audit
-   (the skill/contract/manifest text the mechanism claims something about).** Follow this order and
-   label which branch resolved it — never skip a branch to reach a more convenient one:
+   (the skill/contract/manifest text the mechanism claims something about).**
 
-   a. **Versioned plugin-cache install path.** Every reader dispatch (step 3) reports a
-      `Skill-load version:` field — the version-pinned base directory for the audited skill (the shape
-      `.../plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>` — the same form this skill's
-      own tool preamble carries on every dispatch) when the reader saw one in its assigned material,
-      or `none observed` otherwise (see `session-reader.md`'s Output section). This is the only source
-      of that fact — the host never reads session text directly to look for it (Safety Rules
-      Forbidden). **Validate this string before using any part of it as a path**, the same mechanical
-      discipline step 6 applies to a hypothesis locator: every `/`-separated segment from
-      `plugins/cache/` onward must match `^[A-Za-z0-9._-]+$` (no `/`, no `..`, no shell metacharacter),
-      the `<marketplace>` and `<plugin>` segments must equal this run's own already-known values for
-      the pack under audit (never taken from the reported string), and `<version>` must match
-      `^[0-9]+(\.[0-9]+){0,3}[A-Za-z0-9.-]*$`. A string that does not parse this way is treated
-      exactly like `none observed` — fall through to branch (b)/(c)/(d) — never partially trusted.
-      When it validates, and that `<version>` folder exists and is readable on this host, compare the
-      skill/contract/manifest text at that install path directly — **no separate read primitive is
-      needed here**, unlike (b)/(c): the validated path already names the on-disk directory to compare
-      against, with nothing further to resolve. Label: `<version>` (install path).
-   b. **No readable cache folder for that version.** The version string from (a) validated, but its
-      cache folder is absent or the read is denied (the cache sits outside the workspace, exactly
-      like the session store) → resolve the commit that set that exact `version` string in the
-      audited plugin's `.claude-plugin/plugin.json` history — `Bash`: `git log -- '<plugin.json
-      path>'`, then compare the skill text at that commit's tree (`Bash`: `git show
-      '<sha>:<path-to-the-skill-or-contract-file>'`), every substituted value single-quoted with every
-      `'` replaced by `'\''` first. **No commit in that history ever set exactly that version
-      string** (the history is readable, but that exact string never appears) → this branch also does
-      not resolve; continue to (c). Label when it does resolve: `<version>` (manifest history), no
-      approximate marker — the version itself is exact, only the cache lookup failed.
-   c. **No versioned path at all.** Neither (a) nor (b) resolves anything — no reader reported a
-      validated `Skill-load version:` for this hypothesis's session, or (b)'s history lookup found no
-      matching commit → resolve that session's own date, taken as its record's filesystem
-      last-modified time — `Bash`: `stat -c %Y '<path>'` (GNU/Linux), and only if that command itself
-      errors, `stat -f %m '<path>'` (BSD/macOS) as the one stated fallback; if **both** error, this
-      branch does not resolve either and the run falls through to (d) — against that same
-      `plugin.json` commit history (the version whose bump commit's date is on or most recently before
-      the session's date) and compare the skill text at that commit's tree the same way. This is a
-      stated approximation of "when the run executed" (a record's last write typically lands at or
-      near the end of the run), on top of which the date-to-version match is itself approximate.
-      Label: **"`<version>` — version approximate (date-resolved)"** — the resolved version string is
-      still named, with the approximation stated alongside it, never exact.
-   d. **Neither resolves.** No install path, no readable commit history for the audited plugin at all
-      (no repository checkout, no plugin.json history covering that install path's version, or the
-      plugin has no version-bump history), and no `stat` primitive available on this host → fall back
-      to the present-day text of the skill/contract/manifest file. Label: **`present-day-only`**. Note
-      whether that file's `git log` history is readable — and if it is, whether the present-day text
-      differs from what a nearby historical version would show — or state plainly that the history is
-      unavailable when it is not. **A `present-day-only` factor is never eligible for promotion** to a
-      confirmed factor in step 6, regardless of what the comparison finds.
+   **Identity comes from one source only: a reader-reported, validated `Skill-load version:`
+   string.** Every reader dispatch (step 3) reports this field — the version-pinned base directory for
+   the skill a session invoked (the shape `.../plugins/cache/<marketplace>/<plugin>/<version>/skills/
+   <skill>` — the same form this skill's own tool preamble carries on every dispatch) when the reader
+   saw one in its assigned material, or `none observed` otherwise (`session-reader.md`'s Output
+   section). This is the **only** source of the marketplace/plugin/skill identity every branch below
+   needs — the host never reads session text directly to look for it (Safety Rules Forbidden), and
+   `--skill` (Phase 1 step 2) is never used as an identity source here: it scopes which *sessions* are
+   hunted, and states no marketplace/plugin pairing on its own.
+
+   **Validate the string before trusting any part of it — traversal-safe shape, not identity
+   matching** (there is no predetermined value to match against; the string itself, once proven safe
+   to use as a path, *is* the identity for this hypothesis's session): the value must match exactly
+   `plugins/cache/<seg>/<seg>/<seg>/skills/<seg>` (a fixed 4-segment shape after the literal
+   `plugins/cache/` anchor — marketplace, plugin, version, skill, in that order, with nothing extra),
+   where **each `<seg>` matches `^[A-Za-z0-9._-]+$` and is not exactly `.` or `..`** (the regex alone
+   does not exclude those two literal values — reject them explicitly as a separate check). A string
+   that does not parse this way — including `none observed` — means **this hypothesis's session
+   reported no usable identity at all**, and version resolution for it stops here: the source side is
+   **failed** (never a partial trust, never a guess at identity from any other source), which leaves
+   the hypothesis unpromoted at `unverified`, exactly like any other source-side failure. This is a
+   **stated limitation** of the interim mechanism (a real one — most sessions may report none), not a
+   silent gap: resolving a mechanism's owning file with no reader-reported hint at all is out of this
+   task's scope.
+
+   Once validated, hold `<marketplace>`, `<plugin>`, `<version>`, `<skill>` for this hypothesis and
+   follow this order, labelling which branch resolved it — never skip a branch to reach a more
+   convenient one:
+
+   a. **Versioned plugin-cache install path.** The validated `<version>` folder exists and is readable
+      on this host → compare the skill/contract/manifest text at that install path directly — **no
+      separate read primitive is needed here**, unlike (b)/(c): the validated path already names the
+      on-disk directory to compare against, with nothing further to resolve. Label: `<version>`
+      (install path).
+   b. **No readable cache folder for that version.** The `<version>` folder is absent or the read is
+      denied (the cache sits outside the workspace, exactly like the session store) → resolve the
+      commit that set that exact `<version>` string in `<plugin>`'s own `.claude-plugin/plugin.json`
+      history — `Bash`: `git log -- '<plugin.json path>'`, then compare the skill text at that
+      commit's tree (`Bash`: `git show '<sha>:<path-to-the-skill-or-contract-file>'`), every
+      substituted value single-quoted with every `'` replaced by `'\''` first. **No commit in that
+      history ever set exactly that version string** (the history is readable, but that exact string
+      never appears) → this branch also does not resolve; continue to (c). Label when it does
+      resolve: `<version>` (manifest history), no approximate marker — the version itself is exact,
+      only the cache lookup failed.
+   c. **The cache lookup and the exact-version history match both failed.** Resolve this hypothesis's
+      session's own date, taken as its record's filesystem last-modified time — `Bash`: `stat -c %Y
+      '<path>'` (GNU/Linux), and only if that command itself errors, `stat -f %m '<path>'` (BSD/macOS)
+      as the one stated fallback; if **both** error, this branch does not resolve either and the run
+      falls through to (d) — against that same `<plugin>`'s `.claude-plugin/plugin.json` commit
+      history (the version whose bump commit's date is on or most recently before the session's date)
+      and compare the skill text at that commit's tree the same way. This is a stated approximation of
+      "when the run executed" (a record's last write typically lands at or near the end of the run),
+      on top of which the date-to-version match is itself approximate. Label: **"`<version>` — version
+      approximate (date-resolved)"** — the resolved version string is still named, with the
+      approximation stated alongside it, never exact.
+   d. **Neither resolves.** No readable commit history for `<plugin>` at all (no repository checkout,
+      or the plugin has no version-bump history), and no `stat` primitive available on this host →
+      fall back to the present-day text of the skill/contract/manifest file at `<skill>`. Label:
+      **`present-day-only`**. Note whether that file's `git log` history is readable — and if it is,
+      whether the present-day text differs from what a nearby historical version would show — or
+      state plainly that the history is unavailable when it is not. **A `present-day-only` factor is
+      never eligible for promotion** to a confirmed factor in step 6, regardless of what the
+      comparison finds.
 
    Phrase every comparison in this step as "compare the skill text at `<version>`" or "compare the
    text at commit `<sha>`'s tree" — **never** a read/glob verb immediately followed on the same line
@@ -461,10 +480,11 @@ its compact, already-redacted block comes back.
    - **Session side.** Route and dispatch the `excerpt-fetcher` agent the same way step 3 routes
      `session-reader` — `resolve_routing` with `role: "excerpt-fetcher"`, a stable `unitIds` entry
      (`excerpt-fetcher:<slug of the hypothesis's locator>`), `shapeEvidence` identical to step 3's
-     **except** `ambiguity: "none"`, `validation: "mechanical"`, and `returnContract:
-     "mechanically-judgeable"` (a bounded fetch-and-redact, not a judgment call — unlike
-     `session-reader`'s open-ended hunt), `supportsModelSelector: true`, `supportsEffortSelector:
-     false`, and the same `hostModel` fact — then invoke one **Task** with `subagent_type:
+     **except** `ambiguity: "none"`, `toolWork: "bounded"`, `validation: "mechanical"`, and
+     `returnContract: "mechanically-judgeable"` (a single bounded `test`/`sed`/`grep` call and a
+     redaction pass, not the open-ended hunt `session-reader` performs), `supportsModelSelector: true`,
+     `supportsEffortSelector: false`, and the same `hostModel` fact — then invoke one **Task** with
+     `subagent_type:
      wf-postmortem:excerpt-fetcher`, passing **the one resolved real path** above (never the compound
      locator string), the parsed window (when present), and, for a locator with no window, the
      claimed mechanism text as the search anchor. The agent fetches, redacts, and returns the bounded
@@ -480,13 +500,21 @@ its compact, already-redacted block comes back.
      appear literally in the unredacted material), never presented as anything stronger. It resolves
      when SUB-2's own access point replaces this interim fetcher with a locator-based lookup that
      does not depend on anchor-text search.
-   - **Tiering, both sides passing:**
-     - An exact `file:line` match on the source side **and** an exact-locator excerpt match on the
-       session side (the fetched excerpt shows the observation at precisely the locator named, no
-       broader search needed) → **`mechanically-observed`**.
-     - Both sides otherwise verify (the mechanism text is present at the resolved version, and the
-       fetched excerpt shows the reported observation, without both being the exact-match case above)
-       → **`independently-verified`**.
+   - **Tiering, both sides passing.** Neither tier depends on a locator ever carrying a line-range
+     window — a mechanism's `locator:` from `session-reader.md` never does (only a bare session path
+     or a `#subagent:<file>` form); both tiers below are reachable against real reader output as it
+     actually exists:
+     - **`mechanically-observed`** — the source side's `file:line` match is an exact substring of the
+       claimed mechanism text (not a paraphrase or a nearby-but-different line), **and** the session
+       side's `grep -F` search anchor **was the claimed mechanism text itself, verbatim** (not a
+       looser or partial fragment) and matched. Both sides are then byte-for-byte deterministic
+       matches — no paraphrase, no judgment call, on either side.
+     - **`independently-verified`** — both sides verify (the mechanism text is present at the resolved
+       version, and the fetched excerpt shows the reported observation), but at least one side needed
+       a judgment call rather than an exact string match — e.g. the source text states the mechanism
+       in different words at a `file:line` that is still recognizably the same mechanism, or the
+       search anchor was a shorter or paraphrased fragment of the mechanism text rather than the exact
+       text itself.
    - **Either side failing, or a `present-day-only` version label** → the hypothesis stays exactly
      where it already was — an unpromoted hypothesis at the **`unverified`** tier. This is not a
      demotion; nothing about a hypothesis's tier is worse for having been checked and not confirmed.
