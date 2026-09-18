@@ -69,9 +69,9 @@ hypothesis counts, neither of which exists yet (arrives with a later charter sub
 
 POSTMORTEM — written
 
-Report: {task-root}/PM<NNN>__<slug>/report.md
-Scope:  <one-line echo of the resolved description + defaults applied>
-Next:   none — terminus
+Report:  {task-root}/PM<NNN>__<slug>/report.md
+Scope:   description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<override|default, not yet enforced> · session-scope=<current workspace only|current workspace plus <project>>
+Next:    none — terminus
 ```
 
 ## Filling rules

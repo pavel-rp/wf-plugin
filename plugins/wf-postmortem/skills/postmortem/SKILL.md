@@ -1,7 +1,7 @@
 ---
 name: postmortem
 description: Turns a maintainer's prose failure report into an explicit, echoed hunt scope and a fixed-shape report skeleton — resolving a required failure description plus optional skill/folder-or-repository/read-cap, echoing every resolved value and every applied default. Asks one question for a missing description in an interactive run; stops with no report in a run with no interactive channel. Locates and reads no session record in this release. Use when a maintainer wants to start a guided postmortem hunt over prior agent sessions and needs the scope and report skeleton fixed before locating or reading arrives with a later release.
-allowed-tools: [Read, Write, Grep, Glob, Bash]
+allowed-tools: [Read, Write, Grep, Glob, Bash, AskUserQuestion]
 ---
 
 # /wf-postmortem:postmortem — Resolve a failure prompt to an echoed hunt scope
@@ -53,10 +53,10 @@ at most one.
 - Resolve `--folder`/`--repo` against the local filesystem only (`Glob`, `Bash` for an existence
   check).
 - Read the report template and redaction references via `resolve_content({ workspaceRoot, ... })`
-  (`class: references-template`, `skill: postmortem`).
+  (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`).
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any
-  scratch file inside `{task-root}/scratch/` — both only through the redacting write path.
+  scratch file inside the fixed `_local/scratch/` — both only through the redacting write path.
 - Ask exactly one interactive question (`AskUserQuestion`) when the failure description is missing
   and an interactive channel is available.
 
@@ -65,7 +65,7 @@ at most one.
 - Look up, locate, or read any session record — this release resolves scope only.
 - Map a resolved folder or repository path to any session store — that mapping belongs to a later
   charter sub-task's seam.
-- Write outside the report's own seeded folder and `{task-root}/scratch/`.
+- Write outside the report's own seeded folder and the fixed `_local/scratch/`.
 - Touch `plugins/wf/` or any other existing pack.
 - Write a report, or any scratch file, without first passing every value through the redacting
   write path (`redaction.md`, resolved via `resolve_content`).
@@ -88,7 +88,10 @@ at most one.
    - Neither passed → the scope defaults to the current workspace's sessions only.
    - Passed and resolves to an existing filesystem path → echo the resolved path verbatim.
    - Passed and does **not** resolve to an existing filesystem path → echo it as unresolved
-     (`"<name> — unresolved (no matching filesystem path)"`) and attempt no further lookup.
+     (`"<name> — unresolved (no matching filesystem path)"`) and attempt no further lookup. The
+     `session-scope` echo (Final Output) for this outcome states `"current workspace only"` — an
+     unresolved name never widens the session scope, since nothing about it was confirmed to name
+     another project.
 4. **Read cap.** Take `--cap` verbatim when passed and echo it as the override in force. Absent →
    echo `"default, not yet enforced"` — this release neither assigns a real default value nor
    enforces any cap; that arrives with a later charter sub-task.
@@ -112,33 +115,47 @@ Only when Phase 1 step 1 found no `<description>`.
 
 ---
 
-## Phase 3: Mint the report folder
+## Phase 3: Redact, then mint the report folder
 
-Scan `{task-root}` (including any `_archive/` subfolder) for folders matching `PM` + digits + `__`
-— digits only — take the highest existing number, increment by one, zero-pad to 3 digits, starting
-at `PM001`. Slug the failure description into a short lowercase-hyphenated fragment (same style as
-`/wf:research`'s `R<NNN>__<slug>` scheme). Create `{task-root}/PM<NNN>__<slug>/` — this run's report
-folder. This release records no per-task index row for it (charter assumption #9).
+Redaction runs **before** any value pulled from the prompt is used in a path or a file — the report
+folder's own name is a write, exactly like the file inside it, so it passes through the same
+redacting write path rather than being minted from the raw prompt.
+
+1. **Obtain the redaction reference** via `resolve_content({ workspaceRoot, ... })` (`class:
+   references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: redaction.md`) — never
+   a raw `Read` of the plugin-cache path.
+2. **Redact every value pulled from the prompt** — the failure description and any resolved
+   skill/folder/repository name — by running each through `redaction.md`'s recognized shapes before
+   it is used anywhere, including in a folder or file name. There is exactly one write path (this
+   one) and every write, and every path derived from prompt text, passes through it.
+3. **Mint the id.** Scan `{task-root}` (including any `_archive/` subfolder) for folders matching
+   `PM` + digits + `__` — digits only — take the highest existing number, increment by one, zero-pad
+   to 3 digits, starting at `PM001`. Slug the **redacted** failure description (step 2's output, not
+   the raw prompt) into a short lowercase-hyphenated fragment (same style as `/wf:research`'s
+   `R<NNN>__<slug>` scheme).
+4. **Create the folder, guarding against a collision.** Check whether `{task-root}/PM<NNN>__<slug>/`
+   already exists before creating it — two runs minting concurrently, or a leftover folder from a
+   prior run, can otherwise collide. On a collision, re-scan `{task-root}` and re-mint the next
+   number (step 3) rather than writing into the existing folder. This release records no per-task
+   index row for the minted folder (charter assumption #9).
 
 ---
 
 ## Phase 4: Write the report
 
-1. **Obtain the report template and redaction reference**, each via one
-   `resolve_content({ workspaceRoot, ... })` call (`class: references-template`, `skill:
-   postmortem`, `ref: report-template.md` / `ref: redaction.md`) — never a raw `Read` of the
-   plugin-cache path.
-2. **Redact every value pulled from the prompt** — the failure description and any resolved
-   skill/folder/repository name — by running each through `redaction.md`'s recognized shapes
-   (obtained in step 1 via `resolve_content`) before it is written anywhere. This applies to the
-   report file and to any scratch file this run produces; there is exactly one write path and every
-   write passes through it.
-3. **Fill the Scope section** with every resolved value and every applied default from Phase 1,
-   verbatim after redaction. Fill the Summary and every other section with the template's stated
-   "not yet produced" text — this release cannot fill them (no session has been located or read).
-4. **Write** `{task-root}/PM<NNN>__<slug>/report.md` per the template shape, including the
+1. **Obtain the report template** via `resolve_content({ workspaceRoot, ... })` (`class:
+   references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: report-template.md`) —
+   never a raw `Read` of the plugin-cache path. The redaction reference was already obtained in
+   Phase 3.
+2. **Fill the Scope section** with every resolved value and every applied default from Phase 1,
+   verbatim after Phase 3's redaction. Fill the Summary and every other section with the template's
+   stated "not yet produced" text — this release cannot fill them (no session has been located or
+   read).
+3. **Write** `{task-root}/PM<NNN>__<slug>/report.md` per the template shape, including the
    `**Model:**` attribution line (the runtime model id — `unknown` rather than guessed) and the
-   fenced `POSTMORTEM — written` final-output block as the file's own trailing content.
+   fenced `POSTMORTEM — written` final-output block, matching this skill's own Final Output shape
+   verbatim, as the file's own trailing content. Any scratch file this run produces is written under
+   the fixed `_local/scratch/`, through the same redacting write path.
 
 ---
 

@@ -149,6 +149,8 @@ One step, and it is the whole skill.
 - **A root override is in play:** it targets the same admitted workspace
   `/wf:init` targets, because this skill enters that one route rather than
   re-deriving a root of its own.
+- **Recovery ran before the route:** it is reported on its own channel,
+  separately from the delta, exactly as `/wf:init` reports it.
 - **The apply is rolled back:** the canonical transaction's rollback restores
   the workspace and reports it on the canonical envelope. This skill neither
   performs nor narrates an undo of its own.
