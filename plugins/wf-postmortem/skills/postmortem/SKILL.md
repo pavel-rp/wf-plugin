@@ -1,7 +1,7 @@
 ---
 name: postmortem
 description: Hunts a described failure through prior agent sessions the maintainer names explicitly, reading each named session record in its own isolated reader agent on a cheaper model tier — in ordered windows when a record is too large for one reader — then checks every reader-suggested mechanism two-sided, against the audited pack's text at the run's resolved executed version and against a bounded, redacted excerpt at the reader's own locator, promoting only what verifies on both sides to a confirmed contributing factor. Hunts evidence against the described failure as deliberately as evidence for it, says "not found" rather than fabricating a match, and stops with no report when no named record resolves. Use when a maintainer suspects a process defect and wants it looked for — and any suggested mechanism checked, not just asserted — across named prior sessions without raw session content entering the host context.
-allowed-tools: [Task, Write, Glob, Bash, AskUserQuestion]
+allowed-tools: [Task, Write, Read, Grep, Glob, Bash, AskUserQuestion]
 ---
 
 # /wf-postmortem:postmortem — Resolve a failure prompt to an echoed hunt scope
@@ -74,14 +74,20 @@ it does, an unnamed record is simply not in the hunt.
   locator the two-sided check needs, to fetch and redact a bounded session-side excerpt in that
   agent's own isolated context (Phase 3.5 step 6) — exactly like the session-reader dispatch, never a
   `Bash` read of session bytes in this skill's own context.
-- Compare the skill, contract, or manifest text of the pack under audit at a resolved version — the
-  versioned plugin-cache install path when its folder is readable, or the target plugin's own
-  `.claude-plugin/plugin.json` history (`Bash`: `git log -- '<plugin.json path>'`,
-  `git show '<sha>:<path>'`) otherwise — as the source side of the two-sided check (Phase 3.5 step 5).
-  Every value substituted into one of these commands (a version string, a commit sha, a file path) is
-  single-quoted with every `'` in it replaced by `'\''` first, the same discipline every other
-  `Bash`-based bullet in this list states, since a version string or sha ultimately traces back to
-  session-derived, untrusted text.
+- **Read (`Read`/`Grep`) the skill, contract, or manifest text of the pack under audit** — never a
+  session or subagent record — at a resolved version, as the source side of the two-sided check
+  (Phase 3.5 step 5): directly at the validated plugin-cache install path (branch a) or at the
+  present-day path (branch d), with `Grep` available for locating a claimed mechanism's `file:line`
+  within that text. This is the one place this skill reads file content directly in its own context,
+  and it is deliberately **not** the session-content prohibition below: the audited pack's own
+  skill/contract/manifest text is ordinary repository/install-tree prose, not a session record, and
+  reading it is the entire point of the source-side check.
+- Resolve which version's tree to read that text from, when the install path itself is not directly
+  readable (branches b/c) — the target plugin's own `.claude-plugin/plugin.json` history (`Bash`:
+  `git log -- '<plugin.json path>'`, `git show '<sha>:<path>'`), every substituted value (a version
+  string, a commit sha, a file path) single-quoted with every `'` replaced by `'\''` first, the same
+  discipline every other `Bash`-based bullet in this list states, since a version string or sha
+  ultimately traces back to session-derived, untrusted text.
 - Read a resolved session record's own filesystem last-modified time — `Bash`: `stat -c %Y '<path>'`
   (GNU/Linux), or, only when that command itself errors, `stat -f %m '<path>'` (BSD/macOS) as the one
   stated fallback — both single-quoted, same escaping discipline — as the date source for
@@ -504,17 +510,18 @@ its compact, already-redacted block comes back.
      window — a mechanism's `locator:` from `session-reader.md` never does (only a bare session path
      or a `#subagent:<file>` form); both tiers below are reachable against real reader output as it
      actually exists:
+     The session side is always the same shape when it succeeds at all — Phase 3.5 step 6 always
+     dispatches the claimed mechanism text itself, verbatim, as the `grep -F` search anchor for a
+     whole-record locator (never a shorter or paraphrased fragment), so a successful session-side
+     fetch is always an exact literal match. The tier split is therefore decided **entirely by the
+     source side**:
      - **`mechanically-observed`** — the source side's `file:line` match is an exact substring of the
-       claimed mechanism text (not a paraphrase or a nearby-but-different line), **and** the session
-       side's `grep -F` search anchor **was the claimed mechanism text itself, verbatim** (not a
-       looser or partial fragment) and matched. Both sides are then byte-for-byte deterministic
-       matches — no paraphrase, no judgment call, on either side.
+       claimed mechanism text itself (not a paraphrase or a nearby-but-different line). Both sides are
+       then byte-for-byte deterministic matches — no judgment call on either side.
      - **`independently-verified`** — both sides verify (the mechanism text is present at the resolved
-       version, and the fetched excerpt shows the reported observation), but at least one side needed
-       a judgment call rather than an exact string match — e.g. the source text states the mechanism
-       in different words at a `file:line` that is still recognizably the same mechanism, or the
-       search anchor was a shorter or paraphrased fragment of the mechanism text rather than the exact
-       text itself.
+       version, and the fetched excerpt shows the reported observation), but the source side needed a
+       judgment call rather than an exact string match — the text states the mechanism in different
+       words at a `file:line` that is still recognizably the same mechanism.
    - **Either side failing, or a `present-day-only` version label** → the hypothesis stays exactly
      where it already was — an unpromoted hypothesis at the **`unverified`** tier. This is not a
      demotion; nothing about a hypothesis's tier is worse for having been checked and not confirmed.

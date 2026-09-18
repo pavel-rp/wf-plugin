@@ -1,6 +1,12 @@
-# postmortem interim excerpt fetcher (provisional)
+# postmortem interim excerpt fetcher (provisional) — authoring reference
 
-Runtime-read only from the compose step (Phase 3.5 step 6 of `SKILL.md`) — never read at boot.
+**Authoring-only — never fetched at runtime.** `SKILL.md` Phase 3.5 steps 5-6 already state the full
+operative locator grammar, parse-and-validate gate, and dispatch procedure inline (the behavior-bearing
+ops text); this document is the paired rationale — why the gate is shaped this way, and the fuller
+picture of what the isolated `excerpt-fetcher` agent does with what it receives — kept out of the
+runtime-read `SKILL.md` body per this repo's ops/reference split. A future edit to the gate or the
+grammar changes `SKILL.md` first; update this file to match, not the other way around.
+
 **This fetcher is explicitly provisional.** It stands in for the session-side "one access point" a
 later charter sub-task (SUB-2) owns, exactly as Phase 3.5 step 1's sibling-directory rule stands in
 for that same sub-task's real record layout. It will be replaced without changing the two-sided
