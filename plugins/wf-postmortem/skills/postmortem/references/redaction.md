@@ -36,8 +36,10 @@ Applied in this order over the text about to be written, each match replaced ind
 Every recognized match is replaced with the literal marker `[REDACTED]` — never a partial mask,
 never a hash of the original value, and never the original length preserved (a length-preserving
 mask itself leaks information about the secret's shape). The marker carries no reference back to
-the original value; this skill locates and reads no session record, so a matched string always
-originates from the prompt itself.
+the original value. A matched string reaching this write path originates either from the CLI prompt
+(this skill's own context never reads a session record directly) or from a dispatched
+`session-reader`/`excerpt-fetcher` return block, both already passed through their own
+credential-shape redaction before this write path's second pass ever sees them (`SKILL.md` Phase 4).
 
 ## What this does and does not guarantee
 

@@ -425,11 +425,17 @@ its compact, already-redacted block comes back.
    b. **No readable cache folder for that version.** The `<version>` folder is absent or the read is
       denied (the cache sits outside the workspace, exactly like the session store) → resolve the
       commit that set that exact `<version>` string in `<plugin>`'s own `.claude-plugin/plugin.json`
-      history — `Bash`: `git log -- '<plugin.json path>'`, then compare the skill text at that
-      commit's tree (`Bash`: `git show '<sha>:<path-to-the-skill-or-contract-file>'`), every
-      substituted value single-quoted with every `'` replaced by `'\''` first. **No commit in that
-      history ever set exactly that version string** (the history is readable, but that exact string
-      never appears) → this branch also does not resolve; continue to (c). Label when it does
+      history as an explicit walk, not a single command: (i) `Bash`: `git log -- '<plugin.json
+      path>'` to list every commit touching that file, oldest-to-newest reasoning not required —
+      just the full candidate set; (ii) for each candidate commit's sha, in the order `git log`
+      returned them, `Bash`: `git show '<sha>:<plugin.json path>'` and check whether its own
+      `version` field equals `<version>` exactly; (iii) the **first** candidate whose `version` field
+      matches is the commit this branch resolves to — stop walking there. Then compare the skill text
+      at that same commit's tree (`Bash`: `git show '<sha>:<path-to-the-skill-or-contract-file>'`),
+      every substituted value (the version string, each candidate sha, the file path) single-quoted
+      with every `'` replaced by `'\''` first. **No candidate commit's `version` field ever equals
+      `<version>`** (the history is readable, but that exact string never appears) → this branch also
+      does not resolve; continue to (c). Label when it does
       resolve: `<version>` (manifest history), no approximate marker — the version itself is exact,
       only the cache lookup failed.
    c. **The cache lookup and the exact-version history match both failed.** Resolve this hypothesis's
@@ -499,20 +505,33 @@ its compact, already-redacted block comes back.
      `supportsEffortSelector: false`, and the same `hostModel` fact — then invoke one **Task** with
      `subagent_type:
      wf-postmortem:excerpt-fetcher`, passing **the one resolved real path** above (never the compound
-     locator string), the parsed window (when present), and, for a locator with no window, the
-     claimed mechanism text as the search anchor. The agent fetches, redacts, and returns the bounded
-     excerpt in its own isolated context — no byte of it reaches this skill's own context unredacted
-     (Safety Rules Forbidden). **`not found`**, **`read denied`**, or a fetched excerpt that does not
-     show the reported observation → the session side has **failed**; the hypothesis is not promoted.
-     Read the result defensively exactly as step 3 does for a reader: no parseable `EXCERPT FETCH`
-     block back is a session-side failure, reason `"fetcher returned no parseable block"`, never a
-     silent pass.
-   - **A search anchor that is itself redacted (contains `[REDACTED]`) can never match raw session
-     text.** This is a stated, accepted limitation of the interim fetcher, not a silent
-     misclassification: the resulting `not found` is the honest outcome (the anchor genuinely cannot
-     appear literally in the unredacted material), never presented as anything stronger. It resolves
-     when SUB-2's own access point replaces this interim fetcher with a locator-based lookup that
-     does not depend on anchor-text search.
+     locator string), the parsed window (when present), and, for a locator with no window, **the
+     search anchor chosen as follows** — **never the mechanism's own text as the first choice**, since
+     a mechanism is the reader's own inferred, paraphrased sentence about what the material suggests
+     (`session-reader.md`'s own procedure), not a claim that those words appear verbatim anywhere in
+     the material, so searching for it literally would systematically miss a correct hypothesis:
+     1. **The linked observation's own text**, when one exists — from step 4's merged observation set
+        (Supporting or Disconfirming), find the observation whose own `locator:` is
+        character-for-character identical to this hypothesis's `locator:`. Observations are
+        descriptions of something specific the reader actually saw, not a higher-level inference like
+        a mechanism is, so this is the closer, more literal anchor the excerpt search should prefer.
+     2. **The mechanism's own text**, only when no observation shares this hypothesis's exact
+        locator. This is a stated, accepted fallback, not a full fix: since a mechanism is still an
+        inferred paraphrase even here, a correct hypothesis may legitimately fail to literal-match and
+        fall back to `unverified` — an honest miss, never presented as a disconfirmation.
+
+     The agent fetches, redacts, and returns the bounded excerpt in its own isolated context — no byte
+     of it reaches this skill's own context unredacted (Safety Rules Forbidden). **`not found`**,
+     **`read denied`**, or a fetched excerpt that does not show the reported observation → the session
+     side has **failed**; the hypothesis is not promoted. Read the result defensively exactly as
+     step 3 does for a reader: no parseable `EXCERPT FETCH` block back is a session-side failure,
+     reason `"fetcher returned no parseable block"`, never a silent pass.
+   - **A search anchor that is itself redacted (contains `[REDACTED]`), or one that is a genuine
+     paraphrase absent verbatim from the raw material (the mechanism-text fallback above), can never
+     match raw session text.** This is a stated, accepted limitation of the interim fetcher, not a
+     silent misclassification: the resulting `not found` is the honest outcome, never presented as
+     anything stronger. Both cases resolve only when SUB-2's own access point replaces this interim
+     fetcher with a real locator-based lookup that does not depend on anchor-text search at all.
    - **Tiering, both sides passing.** Neither tier depends on a locator ever carrying a line-range
      window — a mechanism's `locator:` from `session-reader.md` never does (only a bare session path
      or a `#subagent:<file>` form); both tiers below are reachable against real reader output as it
