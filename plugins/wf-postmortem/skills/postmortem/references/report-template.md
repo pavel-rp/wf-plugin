@@ -138,10 +138,11 @@ confirmed contributing factor; none exists this run." **Marked:** `— (no confi
 
 <Every resolved named session record, and every session the locator seam located, each exactly once,
 under exactly one verdict. An unresolved `--session` name is not listed here — it appears in Scope
-instead, because nothing about it was ever read. On a located run, each entry also carries the date
-step 0's locator returned for it, and this section states the 30-day window's own cutoff, the cap in
-force — whether or not either excluded anything — and labels a hunt session. A named `--session` entry
-has no locator-supplied date; state `n/a — named session` there instead of omitting the field.>
+instead, because nothing about it was ever read. This section states the cap in force **on every run,
+located or named**, whether or not it excluded anything. On a located run each entry also carries the
+date step 0's locator returned for it, and the section additionally states the 30-day window's own
+cutoff and labels a hunt session. A named `--session` entry has no locator-supplied date; state
+`n/a — named session` there instead of omitting the field.>
 
 - `<session path>` — read · date: <YYYY-MM-DD | n/a — named session> · model: <id> · tier: <requested | host-fallback (<reason>)> <[hunt-session] when labelled>
 - `<session path>` — read in part (<reason>) · date: <…> · model: <id> · tier: <…>
@@ -191,7 +192,9 @@ confirmed factor never changes the route.
 
 <Present only on a report that has been extended by at least one `--report` follow-up; omitted
 entirely from a first-run report. One dated entry per follow-up run, oldest first, appended below the
-previous entry — never replacing one.>
+previous entry — never replacing one. This log is the one section that accumulates rather than being
+recomputed, and it is deliberately unbounded: no pruning, consolidation, or entry cap ships in this
+release (`continuation.md` Part D states why).>
 
 **<YYYY-MM-DD HH:MM> follow-up:**
 - Newly read this run: <one path per session, including any explicit `--session` retry (listed here
@@ -260,10 +263,10 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
 - **Coverage carries each resolved-or-located record exactly once** under one of the five verdicts
   (`read`, `read in part`, `skipped (budget)`, `skipped (reader error)`, `skipped (access denied)`),
   with the model that reader ran on, whether that was the requested cheaper tier or the host-tier
-  fallback (with its reason), and — on a located run — the 30-day window's own cutoff, the cap in
-  force, and a hunt-session label where one applies. A windowed session appears once, not once per
-  window. On a follow-up, "sessions this hunt cannot see" and the Continuation entry are additive —
-  neither ever removes a session from Coverage.
+  fallback (with its reason), plus **the cap in force on every run, located or named** — and, on a
+  located run only, the 30-day window's own cutoff and a hunt-session label where one applies. A
+  windowed session appears once, not once per window. On a follow-up, "sessions this hunt cannot see"
+  and the Continuation entry are additive — neither ever removes a session from Coverage.
 - **A "not found" report is a complete report.** Summary says so plainly, and Scope and Coverage are
   filled exactly as they would be for a hunt that found something. No match is ever fabricated to
   avoid an empty Summary.

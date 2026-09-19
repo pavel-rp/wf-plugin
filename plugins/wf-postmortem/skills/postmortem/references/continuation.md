@@ -1,11 +1,12 @@
 # postmortem follow-up: `--report` resolution and continuation
 
-Runtime-read reference for `SKILL.md` Phase 0.5 and Phase 3.5's follow-up-specific dispatch/merge
-rules — obtained via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
-`plugin: wf-postmortem`, `skill: postmortem`, `ref: continuation.md`) at the start of Phase 0.5, never
-read at boot. This is the full, behavior-bearing procedure `SKILL.md` points to rather than restates
-inline, per this repo's skill-body-length budget; it is followed exactly, not merely consulted for
-background.
+Runtime-read reference for `SKILL.md` Phase 0.5, Phase 3.5's follow-up-specific dispatch/merge rules,
+and Phase 4's pre-overwrite re-verification (Part E) — obtained via `resolve_content({ workspaceRoot,
+... })` (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref:
+continuation.md`) at the start of Phase 0.5, never read at boot. This is the full, behavior-bearing
+procedure `SKILL.md` points to rather than restates inline, per this repo's skill-body-length budget;
+it is followed exactly, not merely consulted for background. Obtained once, it stays in context
+through Phase 4 — Part E is not a second fetch, but it *is* a second, independent check.
 
 ## Part A: Resolve `--report <path>` (Phase 0.5)
 
@@ -42,6 +43,13 @@ skips straight to Phase 1, unchanged by anything below.
    Write nothing. **Only once this passes** does step 3 below read the file — the direct-`Read`
    exemption `SKILL.md`'s Safety Rules state for the pack's own report artifact is tied to this
    confinement, never to the file's content alone.
+
+   **Record the target's identity, then carry it forward.** Once every check above passes, capture
+   the resolved path's device/inode pair — `Bash`: `stat -c '%d:%i' '<path>'` (BSD: `stat -f '%d:%i'`),
+   the same escaping as step 1 — and hand it, with the canonicalized parent and grandparent, to Part E.
+   **This check gates step 3's `Read` and nothing else.** It does *not* gate Phase 4's overwrite, which
+   happens phases later; Part E is what gates that, and Part E re-derives everything rather than
+   trusting anything recorded here beyond this one identity value, which exists only to be compared.
 3. **Report validation.** `Read` the resolved (now confinement-checked) file directly — this is the
    pack's own report artifact, never a session or subagent record, so it is not covered by the
    session-content prohibition (the same carve-out `SKILL.md`'s Safety Rules already state for reading
@@ -91,8 +99,9 @@ skips straight to Phase 1, unchanged by anything below.
      override), otherwise the prior report's own recorded cap value (or the shipped default when that
      value is unresolvable, step 4), never the shipped default silently re-applied over an explicit
      prior override;
-   - the follow-up flag itself, the prior report's folder path, and everything step 4 parsed — the
-     accumulated state Part B and Part C below extend.
+   - the follow-up flag itself, the prior report's folder path, the recorded device/inode identity
+     (step 2, for Part E), and everything step 4 parsed — the accumulated state Part B and Part C
+     below extend.
 
    Any `--session` value also passed this run still resolves through Phase 1 step 5's own existence
    check, exactly as on a first run, and an unresolved one is still reported unresolved in Scope —
@@ -208,4 +217,62 @@ Recommendation and before the fenced final-output block) stating:
   spec Success Criterion 6).
 
 Every part of this write, including the Continuation entry itself, passes through the same redacting
-write path (`redaction.md`) as a first run's report — nothing here is exempt.
+write path (`redaction.md`) as a first run's report — nothing here is exempt. **Part E below runs
+after all of this is composed and immediately before the write actually lands.**
+
+**The Continuation log is unbounded — a stated, accepted scope boundary of this release.** It grows
+by exactly one entry per follow-up run and is never pruned, consolidated, or capped, unlike every
+other report section, each of which is fully recomputed (and so naturally bounded) on every run. That
+asymmetry is deliberate: the log is the report's own audit trail, and an entry records what a given
+run read, newly capped, lost to "cannot see", and changed — facts a later recompute over the
+accumulated set cannot reconstruct, because the intermediate states are gone. A maintainer who does
+not want a report's log to keep growing starts a fresh hunt without `--report` rather than editing or
+trimming the log; no rollup rule ships in this release.
+
+## Part E: Re-verify the write target immediately before the overwrite (Phase 4 step 2.5)
+
+Part A step 2's confinement check ran back in Phase 0.5. By the time `SKILL.md` Phase 4 reaches its
+write, the whole of Phase 1 through Phase 3.5 has run in between — input resolution, redaction, the
+locator dispatch, one `session-reader` dispatch per session or window, the two-sided check's excerpt
+fetches — many tool calls and non-trivial real time. **A check that old does not describe the file
+Phase 4 is about to overwrite**, so Phase 0.5's result is never carried over as if it still held: in
+that interval the `report.md` could have been replaced by a symlink, or its parent folder swapped,
+and an overwrite trusting the stale check would follow the new target wherever it points.
+
+**As the last action before the `Write`, and only then**, over the same resolved `--report` path:
+
+1. **Re-run the whole of Part A step 2 from scratch** — the `report.md` basename, the `test -L`
+   non-symlink check on the path itself, the freshly re-canonicalized parent matching `^PM[0-9]+__.+$`,
+   and the freshly re-canonicalized grandparent compared character-for-character against the freshly
+   re-canonicalized `{task-root}`. Re-derive every one of these from the filesystem now; reuse no
+   canonicalized string, and no pass/fail conclusion, computed in Phase 0.5.
+2. **Compare the recorded identity.** `Bash`: `stat -c '%d:%i' '<path>'` (BSD: `stat -f '%d:%i'`),
+   same escaping, compared character-for-character against the pair Part A step 2 recorded. A
+   differing device/inode pair means the file now at that path is not the file this run validated and
+   read — a distinct failure from step 1's, and one step 1 alone cannot catch, since a swapped-in
+   regular file at the same confined path satisfies every structural check.
+
+Either failing → **stop** with `POSTMORTEM — stopped`, reason `"--report <path> changed between
+validation and write — nothing written"`. Write nothing at all: no report, no partial report, no
+scratch copy, no Continuation entry. **Never re-validate-and-proceed** — a target that moved under a
+running hunt is reported to the maintainer, never silently adopted as the new write destination, even
+when it would pass a fresh check on its own terms. The composed report is discarded with the run; the
+prior report on disk is left exactly as it was.
+
+### The residual race, stated plainly
+
+This is a check-then-write shape, not an atomic one, and it is worth being exact about what it does
+and does not buy. The tooling available to this skill exposes no way to write through the very file
+descriptor the check validated — no `O_NOFOLLOW` open handed to the writer, no `openat`-relative
+write, no atomic compare-and-replace — so a window remains between step 2's `stat` and the `Write`
+itself, in which a local actor holding write access to the report's own parent directory could still
+swap the target. Steps 1-2 narrow that window from the full Phase 1-3.5 span to two consecutive tool
+calls, which is as narrow as these primitives allow; **they do not close it.**
+
+The guarantee this pack therefore offers is *"the write target was confined, non-symlinked, and the
+same file this run read, as of immediately before the write"* — never *"the write cannot be
+redirected."* Anyone who needs the stronger guarantee gets it from the filesystem, by not granting
+write access to `{task-root}` and its report folders to anything but the maintainer running the hunt.
+Should a future release gain a write primitive that accepts an already-validated descriptor, or an
+atomic replace-if-unchanged, this Part is what should be rewritten to use it, and this paragraph is
+what should be deleted.

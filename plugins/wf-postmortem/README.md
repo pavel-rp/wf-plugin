@@ -88,8 +88,9 @@ contributes nothing and every core phase behaves exactly as before.
 - `skills/postmortem/references/report-template.md` — the fixed report template, including the
   per-run read cap, the `skipped (budget)` verdict, and the follow-up Continuation section.
 - `skills/postmortem/references/continuation.md` — the `--report <path>` follow-up procedure: prior
-  report validation and parsing, the retry-set construction, the cap application, the merge with the
-  prior accumulated state, the recompute, and the Continuation log entry.
+  report validation and path confinement, the retry-set construction, the cap application, the merge
+  with the prior accumulated state, the recompute, the Continuation log entry, and the pre-overwrite
+  re-verification (Part E) that re-runs the confinement check immediately before the write.
 - `skills/postmortem/references/redaction.md` — the shared redacting write path's recognized shapes.
 - `skills/postmortem/references/locator.md` — **the one seam**: every piece of host-specific
   knowledge of the session-record store, its layout, its structural fields, and the 30-day window,
