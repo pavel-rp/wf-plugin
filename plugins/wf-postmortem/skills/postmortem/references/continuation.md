@@ -50,7 +50,16 @@ skips straight to Phase 1, unchanged by anything below.
    **This check gates step 3's `Read` and nothing else.** It does *not* gate Phase 4's overwrite, which
    happens phases later; Part E is what gates that, and Part E re-derives everything rather than
    trusting anything recorded here beyond this one identity value, which exists only to be compared.
-3. **Report validation.** `Read` the resolved (now confinement-checked) file directly — this is the
+3. **Report validation.** **Size it before reading it.** The report is read unwindowed into this
+   skill's own context, and its Continuation log grows by one entry per follow-up without bound
+   (Part D), so an old report is the one file in this pack that can outgrow the reader. Measure it
+   first — `Bash`: `wc -c '<path>'`, the same metadata primitive and escaping `SKILL.md` Phase 3.5
+   step 2 uses on a session record — and apply the **same 200,000-character ceiling**. Over it → stop,
+   reason `"--report <path> is too large to continue — <n> characters, ceiling 200000"`, and write
+   nothing; a report that has outgrown the ceiling is continued by starting a fresh hunt without
+   `--report`, never by a partial read. This is a hard stop rather than the windowed read a session
+   record gets: a report must be parsed whole to be extended safely, and half of one is worse than
+   none. Then `Read` the resolved (now confinement-checked, now sized) file directly — this is the
    pack's own report artifact, never a session or subagent record, so it is not covered by the
    session-content prohibition (the same carve-out `SKILL.md`'s Safety Rules already state for reading
    the audited pack's own text). No parseable `POSTMORTEM — written` block found anywhere in the file
@@ -166,6 +175,20 @@ stays, `skipped (budget)` — a newly-located session capped out for the first t
 such in Part D's Continuation entry, never silently indistinguishable from one the prior report already
 listed that way.
 
+**One exemption, and only one: a session that already carries a Coverage entry is never *demoted* by
+the cap.** The retry set can exceed the cap on its own — a maintainer may name any number of
+`--session` retries, and Part B orders them ahead of the ranked remainder — so an explicit retry of an
+already-`read` (or otherwise already-terminal) session can be pushed past the cap boundary by the
+retry set's own size. **When that happens it keeps its existing Coverage entry exactly as the prior
+report recorded it — verdict, date, model, tier, observations, counts and all — and is not reassigned
+`skipped (budget)`.** Reassigning it would discard evidence this hunt has already paid for and
+already written down, and would do it behind a "Newly capped this run" line indistinguishable from an
+ordinary first-time cap. Only a session with **no** entry in the prior report's Coverage — one located
+for the first time this run — may receive a fresh `skipped (budget)` assignment past the cap. Part D's
+Continuation entry records an exempted retry on its own line: `Requested but not reached this run:
+<path> — cap in force (<n>) reached before this retry; prior entry retained`, so the maintainer learns
+their retry did not run rather than silently reading a stale row as fresh.
+
 **Dispatch and merge** the capped retry set through `SKILL.md` Phase 3.5 steps 2-4 unchanged (windowing
 decision, routed reader dispatch, per-session verdict merge) — these mechanics do not distinguish a
 follow-up's sessions from a first run's.
@@ -183,6 +206,32 @@ counts, and Coverage row without bound — the second run's fresh result still s
 first's, never adds to it. A session **not** dispatched this run — already terminal and not named this
 run, or still `skipped (budget)`/newly `skipped (budget)` after Part C's cap — keeps exactly its
 existing entry (or gains its first `skipped (budget)` entry, per Part B), untouched by this step.
+
+**The upsert is guarded on verdict quality: a replacement never loses evidence.** A dispatch can fail
+for reasons that say nothing about the session — the verdict table (`SKILL.md` Phase 3.5 step 4) lets
+any dispatched session come back `skipped (reader error: …)` or `skipped (access denied)`, a retry
+included. Replacing a prior `read`/`read in part` entry with one of those would erase real
+observations, real counts, and any Contributing Factor their hypotheses had earned, on nothing better
+than a transient failure. So rank this run's verdict against the one it would overwrite, on the fixed
+order `read` > `read in part` > `skipped (reader error)` / `skipped (access denied)` (the two failure
+verdicts rank equal), and apply:
+
+- **This run's verdict is `read` or `read in part`** → replace in full, exactly as above. New evidence
+  always supersedes old evidence, including a `read in part` superseding an earlier `read`: both are
+  real reads of a record that may itself have changed, and the fresher one is the truthful one.
+- **This run's verdict is `skipped (reader error)` or `skipped (access denied)`, over a prior
+  `read`/`read in part`** → **keep the prior entry** — its verdict, observations, counts and
+  hypotheses all stand, untouched. Do not merge the two and do not blend the counts. Record the failed
+  attempt instead, on its own Part D Continuation line: `Retry failed, prior evidence retained: <path>
+  — <this run's failure verdict and reason>`. Coverage keeps showing the prior verdict, because that
+  is still the best thing this hunt knows about the session.
+- **Both are failure verdicts** → replace, so the reason shown is this run's own and does not go
+  stale. Nothing is lost: neither entry carries observations.
+
+The point is that the Continuation log must always distinguish **"new evidence overturned the old"**
+from **"a retry failed and the old evidence survived"**. "Sections changed" alone cannot carry that
+distinction, which is exactly why the failure case gets its own named line rather than an entry in
+that field.
 
 **Recompute over the full accumulated set.** Run `SKILL.md` Phase 3.5 steps 5-8 (executed-version
 resolution, the two-sided check, section composition, the fix-direction and routing recommendation) —
@@ -208,6 +257,12 @@ Recommendation and before the fenced final-output block) stating:
   upsert is what its fresh entry replaced);
 - every session newly assigned `skipped (budget)` this run for the first time (Part B/C) — distinct
   from a session that was already `skipped (budget)` in the version overwritten, which is not relisted;
+- every explicit `--session` retry the cap did not reach, one line each, as
+  `Requested but not reached this run: <path> — cap in force (<n>) reached before this retry; prior
+  entry retained` (Part C's cap exemption) — never folded into "Newly capped this run";
+- every retry that was dispatched and came back a failure verdict over a prior `read`/`read in part`,
+  one line each, as `Retry failed, prior evidence retained: <path> — <failure verdict and reason>`
+  (Part C's verdict-quality guard) — never folded into "Sections changed";
 - every session that moved to "sessions this hunt cannot see" this run, with its reason;
 - which sections changed relative to the version this run overwrote — Summary, Contributing Factors,
   Component and Version, Localisation, and Measured Effect are compared by content, Recommendation by
@@ -228,6 +283,13 @@ run read, newly capped, lost to "cannot see", and changed — facts a later reco
 accumulated set cannot reconstruct, because the intermediate states are gone. A maintainer who does
 not want a report's log to keep growing starts a fresh hunt without `--report` rather than editing or
 trimming the log; no rollup rule ships in this release.
+
+**Unbounded on disk is not unbounded on the read path.** The log grows without limit, but the file
+that holds it is the one a follow-up reads back into this skill's own context, so that read is
+explicitly bounded instead: Part A step 3 sizes the report with `wc -c` and stops at the same
+200,000-character ceiling a session record gets, before any `Read`. Growth is therefore accepted, and
+the failure mode it would otherwise cause — an oversize report quietly consuming a follow-up's
+context — is a stated stop with a stated remedy, not a risk left open.
 
 ## Part E: Re-verify the write target immediately before the overwrite (Phase 4 step 2.5)
 

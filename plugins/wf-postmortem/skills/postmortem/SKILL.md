@@ -451,9 +451,9 @@ first, the `locator`), and only its compact, already-redacted or already-structu
   the cap.** Read in ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never
   dropped, retrievable by a further `--report` follow-up unless it ages out or is removed first.
   **A `--report <path>`** that does not resolve, is not confined under `{task-root}`'s own
-  `PM<digits>__.../report.md` shape, is not a postmortem report, conflicts with the prior report's
-  recorded Scope, or whose target changed between Phase 0.5's check and Phase 4's re-check (Part E) —
-  each stops and writes nothing; a differing hunt is a new invocation without `--report`.
+  `PM<digits>__.../report.md` shape, exceeds the 200,000-character ceiling, is not a postmortem
+  report, conflicts with the prior report's recorded Scope, or whose target changed between Phase
+  0.5's check and Phase 4's re-check (Part E) — each stops (Phase 0.5) and writes nothing.
 - **A malformed `--cap` value** (not a positive integer) stops at Phase 1 step 4; write nothing.
 - **A `skipped (budget)` session aged out of the window, or removed from the store, by a follow-up.**
   Moves to "sessions this hunt cannot see" with that reason (`continuation.md` Part B); the run
@@ -492,7 +492,7 @@ Stopped:
 ```
 POSTMORTEM — stopped
 
-Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "_local/config.md absent — run /wf:init first">
+Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "_local/config.md absent — run /wf:init first">
 Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", "re-run with a failure description", or "re-run --report <path> without the conflicting flag">
 ```
 

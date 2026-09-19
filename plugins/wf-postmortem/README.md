@@ -25,7 +25,9 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
   then recency, hunt sessions always last) and none is silently dropped; every session beyond the cap
   is listed `skipped (budget)`, retrievable by a later `--report <path>` follow-up that reads those
   sessions and extends the same report file in place — one hunt, one report, however many runs it
-  takes. A session's iterations, edits, and files-touched counts are `mechanically-observed` wherever
+  takes — unless it ages out of the 30-day window or is removed from the store first, in which case
+  the follow-up moves it to "sessions this hunt cannot see" with that reason rather than failing.
+  A session's iterations, edits, and files-touched counts are `mechanically-observed` wherever
   the seam counts them deterministically. Every reader-suggested mechanism carrying a locator is then
   **checked two-sided** — against the audited pack's own skill/contract/manifest text at the run's
   resolved executed version, and against a bounded, redacted excerpt fetched fresh at the locator
