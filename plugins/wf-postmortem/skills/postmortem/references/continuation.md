@@ -165,6 +165,11 @@ Part D's Continuation entry names it as such.
 hunt cannot see" coverage entry, with that reason. This is not a failure: the run proceeds over
 whatever the fresh return does contain.
 
+**The coverage cross-check (`coverage-cross-check.md`) reruns fresh every follow-up**, over this same
+freshly re-located scope and the freshly re-enumerated task folders/delivery history — never carried
+forward from the prior report. "Runs with no session record" is therefore rewritten from scratch each
+run, exactly like every other recomputed section (Part C), never patched incrementally.
+
 ## Part C: Cap, dispatch, merge, and recompute
 
 **Cap the retry set** — explicit retries first, then the ranked remainder, in that order — at exactly
@@ -264,6 +269,11 @@ Recommendation and before the fenced final-output block) stating:
   one line each, as `Retry failed, prior evidence retained: <path> — <failure verdict and reason>`
   (Part C's verdict-quality guard) — never folded into "Sections changed";
 - every session that moved to "sessions this hunt cannot see" this run, with its reason;
+- **fallback evidence drawn/retired this run** (`coverage-cross-check.md`): every fallback-evidence
+  entry newly drawn this run, by finding, or "none"; and, for the first run a finding is confirmed
+  from sessions alone after previously carrying fallback evidence, a dated note beside that finding's
+  existing fallback-evidence entries recording the confirmation — the fallback entries stay in the
+  report, still labelled, and no further fallback evidence is drawn for that finding afterward;
 - which sections changed relative to the version this run overwrote — Summary, Contributing Factors,
   Component and Version, Localisation, and Measured Effect are compared by content, Recommendation by
   its **fired rule**: if the rule number is unchanged from the version overwritten, state
