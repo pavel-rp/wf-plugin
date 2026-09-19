@@ -1,6 +1,6 @@
 ---
 name: excerpt-fetcher
-description: Fetches one bounded, redacted excerpt at a single, host-resolved and host-validated filesystem path — a windowed line-range fetch, or a bounded anchored search over the whole file — in its own isolated context, so raw session bytes never reach the caller. Read-only and analysis-only. Invoked via the Task tool by the postmortem skill's two-sided confirmation check, once per hypothesis locator, standing in for the not-yet-landed SUB-2 session-side access point.
+description: Fetches one bounded, redacted excerpt at a single, host-resolved and host-validated filesystem path — a windowed line-range fetch, or a bounded anchored search over the whole file — in its own isolated context, so raw session bytes never reach the caller. Read-only and analysis-only. Invoked via the Task tool by the postmortem skill's two-sided confirmation check, once per hypothesis locator, standing in for a real locator-based session-side access point that has not yet landed.
 user-invocable: false
 ---
 
@@ -15,9 +15,10 @@ user-invocable: false
 > **This agent deliberately pins no model,** for the same reason `session-reader.md` pins none: the
 > model comes from the dispatch, not from this file.
 
-> **This agent is explicitly provisional.** It stands in for the session-side "one access point" a
-> later charter sub-task (SUB-2) owns. It will be replaced without changing its caller's contract once
-> that access point lands.
+> **This agent is explicitly provisional.** It stands in for a session-side access point that fetches
+> by locator rather than by anchor search. The locate seam that owns where session records live and
+> what shape they have does **not** supply that — it is a separate, later replacement, which will drop
+> in without changing this agent's caller contract.
 
 You receive **one, already host-resolved and host-validated filesystem path** — never a compound
 locator string — and fetch a small, bounded excerpt at it. The caller delegates this fetch to you

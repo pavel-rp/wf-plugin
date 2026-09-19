@@ -106,19 +106,22 @@ For each hypothesis a reader returned that carries a `locator:` field other than
   `locator:` value on `#` into its path component and zero or more of `subagent:<file>` /
   `L<start>-<end>` segments (`excerpt-fetcher.md`'s grammar). Resolve **the one real filesystem path**
   this locator names — never the compound string itself:
-  - No `subagent:` segment → the path is this session's own already-resolved path (from `--session`).
-    Reject as **malformed** if the locator's path component is not character-for-character identical
-    to it.
+  - No `subagent:` segment → the path is this session's own already-resolved path — **from `--session`
+    on a named run, or the locator's own return on a located run** (Phase 3.5 step 0, via
+    `references/locator.md`), the same two sources `excerpt-fetcher.md`'s gate names. Reject as
+    **malformed** if the locator's path component is not character-for-character identical to it.
   - A `subagent:<file>` segment → the path is whichever entry in this session's own discovered
-    subagent-record paths (Phase 3.5 step 1) has `<file>` as its own filename. No such entry →
-    **malformed**.
+    subagent-record paths (Phase 3.5 step 0, via `references/locator.md`) has `<file>` as its own
+    filename. No such entry → **malformed**.
   - A `L<start>-<end>` segment, if present → both must match `^[1-9][0-9]*$` (a positive integer — `0`
     is excluded, since line numbers are 1-based) with `<start> <= <end>`; otherwise **malformed**.
 
   **A malformed locator is a session-side failure exactly like "not found" below — it is never
   dispatched.** This parsing is mechanical and runs identically for every locator; it never widens
-  what this run reads, since every resolved path was already independently discovered by this run
-  (from `--session` or Phase 3.5 step 1), never taken from the locator string itself.
+  what this run reads, since every resolved path was already independently discovered by this run —
+  a session's own path from `--session` on a named run or from the locator's own return on a located
+  run, and every subagent-record path from that same Phase 3.5 step 0 dispatch — never taken from the
+  locator string itself.
 - **Session side.** Route and dispatch the `excerpt-fetcher` agent the same way Phase 3.5 step 3
   routes `session-reader` — `resolve_routing` with `role: "excerpt-fetcher"`, a stable `unitIds` entry
   (`excerpt-fetcher:<slug of the hypothesis's locator>`), `shapeEvidence` identical to step 3's
@@ -159,8 +162,11 @@ For each hypothesis a reader returned that carries a `locator:` field other than
   paraphrase absent verbatim from the raw material (the mechanism-text fallback above), can never
   match raw session text.** This is a stated, accepted limitation of the interim fetcher, not a silent
   misclassification: the resulting `not found` is the honest outcome, never presented as anything
-  stronger. Both cases resolve only when SUB-2's own access point replaces this interim fetcher with a
-  real locator-based lookup that does not depend on anchor-text search at all.
+  stronger. **The locate seam (`references/locator.md`) does not close either case.** That seam owns
+  where session records live, what shape they have, and which structural fields may be counted — not
+  excerpt retrieval; the fetcher still finds its text by anchor search, so both cases stay open until
+  this anchor-search fetcher is replaced by a real locator-based lookup that does not depend on
+  anchor text at all.
 - **Tiering, both sides passing.** Neither tier depends on a locator ever carrying a line-range window
   — a mechanism's `locator:` from `session-reader.md` never does (only a bare session path or a
   `#subagent:<file>` form); both tiers below are reachable against real reader output as it actually
@@ -182,9 +188,11 @@ For each hypothesis a reader returned that carries a `locator:` field other than
   `present-day-only`) so the report can distinguish these (Phase 4).
 - **A confirmed factor never rests on a run's own statement of success or progress.** A `run-reported`
   observation may point at where to look; it is never itself the mechanism match on either side.
-- **Measured-effect counts are untouched by this step.** Every count stays `reader-counted` at the
-  `unverified` tier regardless of how many hypotheses this step confirms — deterministic counting
-  needs the locator seam a later charter sub-task (SUB-2) supplies, not this one.
+- **Measured-effect counts are untouched by this step.** No count changes tier here, however many
+  hypotheses this step confirms: a count is `mechanically-observed` only when the locate seam itself
+  produced it deterministically at Phase 3.5 step 0 (`references/locator.md` §6), and every count that
+  seam did not produce — findings per pass always — stays `reader-counted` at the `unverified` tier.
+  This step confirms mechanisms, never counts.
 - **This step's own dispatch fan-out has no cap in this release**, exactly like `--cap`'s read-cap
   override (Phase 1 step 4): one `excerpt-fetcher` dispatch per hypothesis carrying a locator, with no
   bound on how many hypotheses a reader may report or how many sessions windowed reading produces.
