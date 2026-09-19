@@ -289,7 +289,17 @@ that holds it is the one a follow-up reads back into this skill's own context, s
 explicitly bounded instead: Part A step 3 sizes the report with `wc -c` and stops at the same
 200,000-character ceiling a session record gets, before any `Read`. Growth is therefore accepted, and
 the failure mode it would otherwise cause — an oversize report quietly consuming a follow-up's
-context — is a stated stop with a stated remedy, not a risk left open.
+context — becomes a stated stop with a stated remedy rather than a silent context exhaustion.
+
+**What that remedy costs, stated plainly.** Starting a fresh hunt without `--report` starts a *new*
+report: none of the accumulated Evidence Record, Contributing Factors, Coverage or Continuation log
+carries over, and this release ships no salvage, export, or rollup path to move any of it across. A
+hunt that crosses the ceiling therefore loses its accumulated continuity permanently, through this
+pack's own tooling. That is the **accepted product decision** for this release — the ceiling is a
+tail-scenario guard (a realistic Continuation entry runs a few hundred to ~2k characters, so reaching
+it from the log alone implies on the order of a hundred follow-ups against one report), and a bounded
+stop with total-continuity loss was judged better than an unbounded read that degrades a follow-up's
+own context. It is recorded here as a known cost, not as a solved problem.
 
 ## Part E: Re-verify the write target immediately before the overwrite (Phase 4 step 2.5)
 

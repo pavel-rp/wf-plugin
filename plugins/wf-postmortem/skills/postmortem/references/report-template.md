@@ -202,6 +202,14 @@ release (`continuation.md` Part D states why).>
   prior one), or "none">
 - Newly capped this run: <one path per session newly assigned `skipped (budget)` for the first time —
   distinct from a session already `skipped (budget)` before this run, which is not relisted — or "none">
+- Requested but not reached this run: <one line per explicit `--session` retry the cap did not reach,
+  as `<path> — cap in force (<n>) reached before this retry; prior entry retained` — an already-covered
+  session is never demoted to `skipped (budget)` by the cap, so it is never folded into the bullet
+  above; or "none">
+- Retry failed, prior evidence retained: <one line per dispatched retry that came back
+  `skipped (reader error: …)` or `skipped (access denied)` over a prior `read`/`read in part`, as
+  `<path> — <failure verdict and reason>` — the prior entry stands and is not overwritten, so this is
+  never folded into "Sections changed" below; or "none">
 - Moved to "sessions this hunt cannot see": <one path per session with its reason, or "none">
 - Sections changed: <Summary | Contributing Factors | Component and Version | Localisation | Measured
   Effect — named plainly, or "none" when the recompute produced no observable change>

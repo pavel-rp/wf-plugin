@@ -130,13 +130,12 @@ fallback when named values resolved none. **Beside `--report`** it does not conf
 Runs before Phase 1, only when `--report <path>` was passed; absent → skip straight to Phase 1.
 Obtain `continuation.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
 `plugin: wf-postmortem`, `skill: postmortem`, `ref: continuation.md`) — never a raw `Read` of the
-plugin-cache path — and follow it **in full**, kept in a paired reference for the skill-body-length
-budget. **Part A** validates the path and the report, parses the prior report's full accumulated
-state and folder path, and stops with no write on a validation failure or a scope conflict against
-any `<description>`/`--skill`/`--folder`/`--repo` also passed this run. On success, Phase 1 treats the
-inherited values as if passed this run, and Phase 2's missing-description question never fires.
-**Parts B-E** govern the retry set, the cap, the merge, the recompute, the Continuation entry and the
-pre-overwrite re-verification — applied at the points named in Phase 3, 3.5, and 4 below.
+plugin-cache path — and follow it **in full**. **Part A** validates the path and the report, parses
+the prior report's full accumulated state and folder path, and stops with no write on a validation
+failure or a scope conflict against any `<description>`/`--skill`/`--folder`/`--repo` also passed this
+run. On success, Phase 1 treats the inherited values as if passed this run, and Phase 2's
+missing-description question never fires. **Parts B-E** govern the retry set, the cap, the merge, the
+recompute, the Continuation entry and the pre-overwrite re-verification — applied in Phase 3, 3.5, 4.
 
 ---
 
@@ -257,8 +256,7 @@ first, the `locator`), and only its compact, already-redacted or already-structu
 
    Read defensively: no parseable `LOCATE` block, or `LOCATE ERROR: <cause>`, stops the run — write no
    report. `LOCATE OK` with an empty list is **not** a stop — proceed as "not found." The block's own
-   `Model:` field is this dispatch's diagnostic only — Coverage's per-session `model:`/`tier:` stays
-   sourced from that session's own reader dispatch (step 3).
+   `Model:` is this dispatch's diagnostic only; Coverage's per-session `model:`/`tier:` comes from step 3.
 
 2. **Decide windowing.** Measure each resolved record with `Bash`: `wc -c '<path>'` (metadata, not
    content). A record exceeding **200,000 characters** is read in ordered windows cut on **line
@@ -274,6 +272,9 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    **sessions**, never reader-dispatch windows: an oversize session split into several windows still
    counts as one unit. Ranking is untouched — a capped-out session keeps its rank and its own
    Coverage entry, retrievable by a later `--report` follow-up unless it ages out or is removed first.
+   **On a follow-up, one exemption applies here** (`continuation.md` Part C): a session that already
+   holds a Coverage entry is never *demoted* to `skipped (budget)` by this split — it keeps that entry
+   unchanged, and only a never-before-covered session is freshly assigned the verdict past the cap.
 
 3. **Route and dispatch one reader per session or per window** that step 2.5 carried into this step
    (never a capped-out entry). Immediately before **each** dispatch
@@ -298,9 +299,8 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    input and echoed verbatim by `session-reader.md`, redacted by `redaction.md`, and never omitted
    (`none` when nothing is attached).
 
-   **Read the result defensively.** No `SESSION READ` block, or one that can't be parsed → that
-   unit's `error` verdict, reason `"reader returned no parseable block"`, carried into the merge like
-   any reader-reported `error`. Never infer a verdict from a missing block.
+   **Read the result defensively.** No `SESSION READ` block, or one that can't be parsed → that unit's
+   `error` verdict, reason `"reader returned no parseable block"`. Never infer from a missing block.
 
 4. **Merge each session's blocks into one result.** Concatenate a session's window blocks in window
    order into one observation set (supporting/disconfirming kept apart), union the hypotheses —
@@ -329,13 +329,12 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    `mechanically-observed`; every count the seam did not produce stays `reader-counted`/`unverified`.
 
 5-6. **Resolve the executed version, then check each hypothesis two-sided and tier it.** Obtain
-   `version-resolution.md` via `resolve_content({ workspaceRoot, ... })` (`class:
-   references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref:
-   version-resolution.md`) and follow it **in full** — kept in a paired reference for the
-   skill-body-length budget. It resolves the executed version through four ordered branches (install
-   path, manifest history, date-resolved, present-day-only — never promotable), checks each
-   locator-carrying hypothesis two-sided, and tiers it `mechanically-observed`, `independently-verified`,
-   or `unverified` with the reason recorded.
+   `version-resolution.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
+   `plugin: wf-postmortem`, `skill: postmortem`, `ref: version-resolution.md`) and follow it **in
+   full**. It resolves the executed version through four ordered branches (install path, manifest
+   history, date-resolved, present-day-only — never promotable), checks each locator-carrying
+   hypothesis two-sided, and tiers it `mechanically-observed`, `independently-verified`, or
+   `unverified` with the reason recorded.
 
 7. **Compose the report sections from the merged results and step 6's checks.** Summary, Evidence
    Record, Measured Effect and Coverage are built from the returned blocks and steps 5-6's fetches
@@ -449,7 +448,9 @@ first, the `locator`), and only its compact, already-redacted or already-structu
   the id stays taken. **The pack installed but not registered** — no core phase behaves differently.
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than
   the cap.** Read in ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never
-  dropped, retrievable by a further `--report` follow-up unless it ages out or is removed first.
+  dropped, retrievable by a further `--report` follow-up unless it ages out or is removed first. On a
+  follow-up, a session already holding a Coverage entry keeps it instead of being demoted to
+  `skipped (budget)` (`continuation.md` Part C's cap exemption).
   **A `--report <path>`** that does not resolve, is not confined under `{task-root}`'s own
   `PM<digits>__.../report.md` shape, exceeds the 200,000-character ceiling, is not a postmortem
   report, conflicts with the prior report's recorded Scope, or whose target changed between Phase
@@ -481,11 +482,10 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
 `Follow-up:` is `n/a — first run` normally; on a follow-up it names the prior report's path, the count
 newly read, and whether Recommendation's rule changed (mirrors `continuation.md` Part D). `Sessions:`
 counts `--session` values (an unresolved name stays visible) or the located-set size — **on a
-follow-up it states the full accumulated set, matching `Coverage:`, never only this run's fresh
-locate**. `Window:` states the cutoff on every located run, `n/a` otherwise. `Coverage:` per record,
-its model/tier (`not dispatched`/`n/a` when capped) and `[hunt-session]` when labelled. `Finding:`
-reads `not found` verbatim when nothing was found. `Next:` mirrors Recommendation's fired rule
-verbatim — never a placeholder or a dispatch.
+follow-up, the full accumulated set, matching `Coverage:`**. `Window:` states the cutoff on every
+located run, `n/a` otherwise. `Coverage:` per record, its model/tier (`not dispatched`/`n/a` when
+capped) and `[hunt-session]` when labelled. `Finding:` reads `not found` verbatim. `Next:` mirrors
+Recommendation's fired rule verbatim — never a placeholder or a dispatch.
 
 Stopped:
 
@@ -493,7 +493,7 @@ Stopped:
 POSTMORTEM — stopped
 
 Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "_local/config.md absent — run /wf:init first">
-Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", "re-run with a failure description", or "re-run --report <path> without the conflicting flag">
+Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", "re-run with a failure description", "re-run --report <path> without the conflicting flag", "re-run with a positive integer --cap", or "re-run without --report to start a fresh hunt" (the too-large-report remedy)>
 ```
 
 **The final-output block must always be the very last thing output to chat.**
