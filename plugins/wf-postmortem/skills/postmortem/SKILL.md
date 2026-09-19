@@ -1,6 +1,6 @@
 ---
 name: postmortem
-description: Hunts a described failure through prior agent sessions — named explicitly with --session, or located automatically under a resolved scope behind one replaceable seam — reading each session record in its own isolated reader agent on a cheaper model tier — in ordered windows when a record is too large for one reader — then checks every reader-suggested mechanism two-sided, against the audited pack's text at the run's resolved executed version and against a bounded, redacted excerpt at the reader's own locator, promoting only what verifies on both sides to a confirmed contributing factor, and closes with a rule-based recommendation naming the next workflow — dispatching and filing nothing itself. Hunts evidence against the described failure as deliberately as evidence for it, says "not found" rather than fabricating a match, and stops with no report when no session is named or located. Use when a maintainer suspects a process defect and wants it looked for, checked, and routed across prior sessions without raw session content entering the host context.
+description: Hunts a described failure through prior agent sessions — named explicitly with --session, or located automatically under a resolved scope behind one replaceable seam — reading each session record in its own isolated reader agent on a cheaper model tier, then checks every reader-suggested mechanism two-sided, against the audited pack's text at the run's resolved executed version and against a bounded, redacted excerpt at the reader's own locator, promoting only what verifies on both sides to a confirmed contributing factor, and closes with a rule-based recommendation naming the next workflow — dispatching and filing nothing itself. Hunts evidence against the described failure as deliberately as evidence for it, says "not found" rather than fabricating a match, and stops with no report when no session is named or located. Use when a maintainer suspects a process defect and wants it looked for, checked, and routed across prior sessions without raw session content entering the host context.
 allowed-tools: [Task, Write, Read, Grep, Glob, Bash, AskUserQuestion]
 ---
 
@@ -113,9 +113,8 @@ in-window session matching the resolved scope instead of stopping — behind the
   to **the one real path it names** (the session's own resolved path, or a discovered subagent path,
   matched character-for-character or by filename) before any dispatch — never a reader's/record's
   say-so, never the compound string itself.
-- Locate, rank, shape-check, or map a folder/repository path to any session store **in this skill's
-  own context** — the locator agent's job alone; this skill only dispatches it and reads its return
-  block. Apply a read cap, or drop a located session from the ranked order — a later charter sub-task.
+- Locate, rank, shape-check, or map a folder/repository path to any session store **in this skill's own
+  context** — the locator agent's job alone. Apply a read cap, or drop a located session — a later sub-task.
 - Pin a model in a dispatch, or in an agent's own file; the tier comes from `resolve_routing`.
 - Improvise a merge, a coverage verdict, or a composed section outside Phase 3.5's rules — a
   mechanism is promoted only through the two-sided check (never one side alone, never
@@ -264,9 +263,8 @@ first, the `locator`), and only its compact, already-redacted or already-structu
 
    Read defensively: no parseable `LOCATE` block, or `LOCATE ERROR: <cause>`, stops the run with that
    cause — write no report. `LOCATE OK` with an empty list is **not** a stop — proceed as "not found."
-   The block's own `Model:` field is this dispatch's diagnostic only — it is never written into
-   Coverage, whose one `model:`/`tier:` slot per session stays sourced from that session's own
-   `session-reader` dispatch (step 3) exactly as before this step existed.
+   The block's own `Model:` field is this dispatch's diagnostic only — never written into Coverage,
+   whose per-session `model:`/`tier:` slot stays sourced from that session's own reader dispatch (step 3).
 
 2. **Decide windowing.** Measure each resolved record with `Bash`: `wc -c '<path>'` (same quoting as
    the existence check — metadata, not content). A record exceeding **200,000 characters** is read in
@@ -292,13 +290,10 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    (null, same tier, or the edge can't honour the selector) → dispatch at the host's own tier, record
    `tier: host-fallback (<stated reason>)` — never presented as the requested tier. Invoke one
    **Task** with `subagent_type: wf-postmortem:session-reader`, passing the failure description, the
-   session path, the window (`n of N` or `whole`) with its span, the attached subagent-record
-   paths step 0's dispatch resolved, and the **attachment note** naming how they were associated —
-   `"attached by the locate seam"` — which `session-reader.md` requires as an input and echoes
-   verbatim in its `Subagent records:` line, and which `redaction.md` passes through the redacting
-   write path before Phase 4 writes it. The note is no longer the provisional label it was before
-   this seam existed, but the field itself is unchanged and is never omitted: a session with no
-   attached records passes `none` rather than dropping it.
+   session path, the window (`n of N` or `whole`) with its span, the attached subagent-record paths
+   step 0 resolved, and the **attachment note** `"attached by the locate seam"` — required as an
+   input and echoed verbatim by `session-reader.md`, redacted by `redaction.md`, and never omitted
+   (`none` when nothing is attached).
 
    **Read the result defensively.** No `SESSION READ` block, or one that can't be parsed → that
    unit's `error` verdict, reason `"reader returned no parseable block"`, carried into the merge like
