@@ -90,9 +90,11 @@ Applied to every top-level record, and to every `subagents/` entry, that the loc
   on this line and must not be demanded of it:** a record opens with one or more header lines (an
   observed `type` of `mode`, `last-prompt`, `bridge-session` and similar) that carry `sessionId` but
   no `timestamp`, so requiring one here would reject every conforming record;
-- at least one line in the file carries a `timestamp` field — found by the same bounded forward scan
-  §3 uses to compute the date, not assumed of any fixed line. A record in which no line carries one
-  is unrecognized, because §3's window computation has nothing to place it against;
+- at least one line in the file carries a `timestamp` field — found by the same forward scan §3 uses
+  to compute the date, not assumed of any fixed line. A record in which no line carries one is
+  unrecognized, because §3's window computation has nothing to place it against; establishing that
+  negative requires reaching end-of-file, so this scan carries no size cap of its own — §6's
+  "Scan bound" paragraph governs it, and this clause claims nothing further;
 - when a sibling subagent-record directory exists for it, every file directly inside its `subagents/`
   folder is one half of a complete `agent-<dispatch-id>.jsonl` + `agent-<dispatch-id>.meta.json` pair
   (an orphaned half is unrecognized, not silently skipped).
