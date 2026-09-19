@@ -52,6 +52,18 @@ Stop at the first rule that matches:
 
 1. **No confirmed factor and no hypothesis** ("not found" — Contributing Factors → Confirmed empty,
    and Hypotheses empty). Recommendation: no route. The report is a terminus.
+
+   **This rule is deliberately narrower than it looks, and the narrowing is stated rather than
+   discovered.** A fallback-evidence hypothesis counts here exactly like any other — the spec is
+   explicit that a hypothesis fallback evidence supports "counts as any other hypothesis in routing"
+   — and the coverage cross-check's trigger (b) enters one for **every** in-scope run that left no
+   session record (`coverage-cross-check.md`). Any actively-developed project usually has at least
+   one such run, so on a default-scoped hunt Hypotheses is rarely empty and **rule 1 usually does not
+   fire even when the described failure genuinely matched nothing**; rule 2 (research) fires instead,
+   carrying those hypotheses as its topic. Rule 1 remains reachable — a narrowly scoped hunt, or one
+   whose every in-scope run did leave a matching session, still reaches it — but a "not found"
+   Summary and a terminus recommendation are **not** the same claim and do not imply each other. The
+   Summary is what states "not found"; this rule states only whether there is anywhere left to route.
 2. **No confirmed factor, or Part A's marker is `resting on an open choice`.** Recommendation:
    research — `/wf:research`, with this report's Summary and Contributing Factors going in as the
    free-text topic argument. This rule fires even when one or more hypotheses exist (the "only

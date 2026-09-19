@@ -180,7 +180,8 @@ session is still present>
 
 **Runs with no session record** (every hunt, cross-checked against task folders and delivery
 history): <one line per in-scope, in-window task folder or delivery entry matched to no session, as
-`<task folder path | delivery entry id> — key attempted: <task id | branch | "date only">` plus, when
+`<task folder path | delivery entry id> — key attempted: <`<task id>` · `<branch>` — every key
+actually tried for this candidate, both when both were found | "date only">` plus, when
 relevant, the delivery-history reason (`no reachable delivery history`, or `delivery history is not
 readable for a named --folder/--repo target`) and `eval log unreadable — <reason>` each as their own
 line, or "- none" when every in-scope, in-window candidate matched a session. When the enumeration
@@ -238,6 +239,14 @@ release (`continuation.md` Part D states why).>
   `<path> — <failure verdict and reason>` — the prior entry stands and is not overwritten, so this is
   never folded into "Sections changed" below; or "none">
 - Moved to "sessions this hunt cannot see": <one path per session with its reason, or "none">
+- Fallback evidence drawn this run: <one line per `fallback evidence` entry newly drawn, as
+  `<the draw key> — trigger (a) | trigger (b)`, or "none">
+- Fallback evidence retired this run: <one line per finding this run's own two-sided check now
+  confirms from sessions alone, as `<the draw key> — confirmed from sessions; no further fallback
+  evidence drawn` — the existing entries stay, still labelled, superseded by the dated note; or "none">
+- Fallback evidence suppressed (duplicate key): <one line per draw the dedup guard discarded, as
+  `<the draw key> — already present, nothing drawn`, so a suppressed draw is distinguishable from a
+  draw never attempted; or "none">
 - Sections changed: <Summary | Contributing Factors | Component and Version | Localisation | Measured
   Effect — named plainly, or "none" when the recompute produced no observable change>
 - Recommendation: <"unchanged (rule `<n>` still fires)" | "changed — rule `<old>` → rule `<new>`",
@@ -309,8 +318,10 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
   record" is always populated (or "- none"), whether or not any fallback evidence is drawn. Fallback
   evidence is drawn only on trigger (a) — a finding's Confirmed is empty and no in-scope session
   remains `skipped (budget)` — or trigger (b) — the cross-check names an in-scope, in-window candidate
-  matched to no session, filed against that candidate itself (never a pre-existing finding, since no
-  hypothesis is ever tied to a run nobody read a session for). While any in-scope session is `skipped
+  matched to no session, filed against that candidate itself: most often as its own new Hypotheses
+  entry, since no hypothesis is ordinarily tied to a run nobody read a session for, though it may
+  instead be filed as corroborating/disconfirming material alongside an existing hypothesis when the
+  drawn text plausibly describes that same mechanism (`coverage-cross-check.md` case (i)). While any in-scope session is `skipped
   (budget)`, trigger (a) is suppressed and Recommendation/Summary states a follow-up should read those
   sessions first; trigger (b) still fires regardless (full rules: `coverage-cross-check.md`, mirrored
   here so the two documents cannot drift).

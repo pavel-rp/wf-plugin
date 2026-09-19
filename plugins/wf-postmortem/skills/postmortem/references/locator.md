@@ -64,9 +64,15 @@ shape signal), never for what they *say*:
   line's value, and stop. The opening header lines (§2) carry `sessionId` and neither `timestamp` nor
   `gitBranch`, so demanding it on the first line would report `none observed` for every conforming
   record and silently degrade every one of its matches to date-only. Only when **no** line in the
-  record carries a `gitBranch` field is the value `none observed` — a real absence, not an artifact of
-  which line was read. This scan is the same single sequential walk §2's shape check and §6's counting
-  already perform, not a further traversal, and it carries no size cap of its own (§6's "Scan bound").
+  record carries a `gitBranch` field **whose value is a non-empty string** is the value `none
+  observed`. An **empty or whitespace-only** value counts as the same real absence and is reported as
+  `none observed` too, never returned verbatim: a host may stamp the field empty for a detached HEAD
+  or a non-repository working directory, and an empty string would match no id and no branch while
+  also failing to be the sentinel, leaving that session permanently unmatchable and its real task
+  folder wrongly reported as having left no session. A value that is present and non-empty is
+  returned raw, unparsed. This scan is the same single sequential walk §2's shape check and §6's
+  counting already perform, not a further traversal, and it carries no size cap of its own (§6's
+  "Scan bound").
 - **Count-only shape fields** (§6 alone reads these, and only to count line shapes, never to inspect
   the substance behind them): the line's own turn-role/entry-type marker (to count turn boundaries);
   a tool-invocation line's own tool-name field (to test whether it names a file-mutating tool); and,

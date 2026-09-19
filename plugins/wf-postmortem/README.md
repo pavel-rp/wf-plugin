@@ -56,17 +56,26 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
 - **`/wf-postmortem:init`** — a one-command compatibility alias into the canonical `/wf:init`
   lifecycle, seeding `wf-postmortem` into the selection round.
 
-## What this slice deliberately excludes
+## What this pack deliberately excludes
 
-This is the sixth of seven sub-tasks under charter C035 ("Postmortem: verified defect reports mined
-from prior sessions", umbrella WF-587). This slice bounds each hunt with a per-run read cap (default
-15, overridable with `--cap`), lists every ranked session beyond it `skipped (budget)`, and lets a
-`--report <path>` follow-up continue a capped hunt — reading those skipped sessions and extending the
-same report file in place, with a dated Continuation entry. One later sub-task remains:
+This is the last of seven sub-tasks under charter C035 ("Postmortem: verified defect reports mined
+from prior sessions", umbrella WF-587); the charter's shipping scope is now complete. This slice adds
+an always-run coverage cross-check that names every in-scope, in-window task folder or delivery entry
+that left no matching session, and draws `fallback evidence`-labelled entries from task folders, the
+fleet scoreboard, a configured eval log and delivery history — but only when a finding is
+under-evidenced from sessions alone or a run left no session record. Fallback evidence never confirms
+a factor and never raises the confirmed-factor count.
 
-- Naming sessions a hunt cannot see because a run left no session record at all, and fallback evidence
-  drawn from task folders and delivery history when a finding is under-evidenced from sessions alone
-  (the coverage cross-check, a later sub-task).
+Still deliberately out of scope:
+
+- **Cross-repo candidate enumeration.** On a `--folder`/`--repo` hunt the cross-check locates and
+  reports that project's sessions, but does not enumerate its task folders or delivery history —
+  both sources are bound to the launch workspace — and Coverage says so rather than comparing this
+  project's runs against another project's sessions.
+- **Eval-log wiring.** The `**Eval Log Path:**` key under a project's own `postmortem` section in
+  `_local/config.md` is read verbatim under that exact heading when present, confined to the
+  workspace and size-capped; no pack scaffolds or asks for it, so it contributes nothing until a
+  project sets it by hand.
 
 ## Install and register
 
