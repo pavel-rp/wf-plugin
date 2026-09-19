@@ -180,12 +180,13 @@ session is still present>
 
 **Runs with no session record** (every hunt, cross-checked against task folders and delivery
 history): <one line per in-scope, in-window task folder or delivery entry matched to no session, as
-`<task folder path | delivery entry id> — key attempted: <task id | "date only">` plus, when
+`<task folder path | delivery entry id> — key attempted: <task id | branch | "date only">` plus, when
 relevant, the delivery-history reason (`no reachable delivery history`, or `delivery history is not
 readable for a named --folder/--repo target`) and `eval log unreadable — <reason>` each as their own
 line, or "- none" when every in-scope, in-window candidate matched a session. When the enumeration
-was narrowed, state the root it ran against — or `- none — n/a: named-session run, no scope to
-cross-check` on an attach-only hunt — so a narrowed cross-check is never read as an exhaustive one.
+was narrowed, state the root it ran against — or, on a named-session hunt, `- none — named-session
+run: no resolved scope, so no in-scope run could be cross-checked` — so a narrowed cross-check is
+never read as an exhaustive one.
 Distinct from, and additional to, "sessions this hunt cannot see" above — that list is prior sessions
 this run can no longer reach; this one is runs that never had a session to reach. Rendered on every
 hunt, whether or not fallback evidence below is drawn.>

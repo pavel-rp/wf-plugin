@@ -31,11 +31,15 @@ runs and hide the named target's real gaps. So:
   history is not readable for a named --folder/--repo target` as its stated Coverage reason. Step 1
   still runs, so the cross-check still runs — it is narrowed, never skipped, and Coverage says which
   root it ran against.
-- **Attach-only mode** (one or more `--session` values resolved, `locator.md` §7) — the hunt is an
-  explicit list of named records, not a scope, so there is no in-scope run set to cross-check against.
-  Part A renders its subsection as `- none — n/a: named-session run, no scope to cross-check` and
-  performs no enumeration. Part B's trigger (b) therefore cannot fire on such a run; trigger (a) is
-  unaffected and still evaluated normally.
+- **Attach-only mode** (one or more `--session` values resolved, `locator.md` §7) — Part A still runs,
+  as it does on every hunt; what it finds is the empty set, by construction rather than by exception.
+  A named-session hunt is an explicit list of records, not a resolved scope, so there is no in-scope
+  run population to enumerate: the candidate set is empty, every step below therefore yields nothing,
+  and Part A states that as its own coverage fact — `- none — named-session run: no resolved scope,
+  so no in-scope run could be cross-checked`. This is the same shape as any other empty result, and
+  it is stated rather than omitted for exactly the reason the whole subsection exists: a reader must
+  be able to tell "nothing unmatched" from "nothing looked at". Trigger (b) consequently has no
+  candidate to fire on; trigger (a) is unaffected and evaluated normally.
 
 **1. Enumerate candidate task folders.** `Glob` `{task-root}`'s immediate child directories under the
 step-0 enumeration root,
@@ -44,8 +48,13 @@ fails the same task-id-shape test `wf:standup` Phase 4 applies (a tracker-shaped
 `T<NNN>` scheme — any folder carrying a 3+-digit run). Take each surviving folder's id from its own
 name and its date from its most-recently-modified artifact's mtime (`00_reqs.md`/`01_spec.md`/
 `02_plan.md`/`04_verify.md`/`06_qa.md`/`07_qa-report.md`/`index.md` — whichever exists and is
-newest). A folder outside the hunt's resolved scope or the 30-day window is not a candidate at all —
-it never reaches matching (below) and never appears in "Runs with no session record."
+newest). Take its **branch string**, when it has one, from the first `**Branch:**` line any of those
+same artifacts carries, read as the literal value on that line with surrounding backticks stripped —
+the line `wf:verify-spec` and `wf:verify-fix` already write into their own reports. A folder whose
+artifacts carry no such line simply has no branch string; that is ordinary, never an error, and the
+id comparison still runs for it. A folder outside the hunt's resolved scope or the 30-day window is
+not a candidate at all — it never reaches matching (below) and never appears in "Runs with no session
+record."
 
 **2. Enumerate delivery history.** Resolve the `delivery` surface once (`resolve_provider({
 workspaceRoot, surface: "delivery" })`) and invoke its `activity-read` operation, windowed to at
@@ -69,18 +78,20 @@ none), so every comparison below runs through the branch fact, the one identity 
 actually surfaces:
 
 - **`mechanically-observed`** — the candidate's extracted id equals the first 3+-digit run of the
-  session's `Branch:` value (compared as strings, exact). This is the **only** identity comparison
-  either side can support, and it is deliberately the only one stated: **no candidate kind ever
-  carries a full branch string of its own.** A task folder yields an id and a date (step 1); a
-  delivery entry yields an id and a date (step 2) from commit-subject/PR-title text, which carries no
-  branch field at all. An "identical full branch strings" comparison would therefore be unreachable
-  for every candidate, so it is not offered — a rule no input can satisfy reads as coverage the
-  mechanism does not have.
-- **`inferred`** — only when the comparison above is impossible (the session's `Branch:` is `none
-  observed`, or the candidate has no extractable id of its own), a same-calendar-day match between the
-  candidate's date and the session's own date is the sole fallback. Never applied when the id-versus-
-  branch comparison could have been attempted on both sides, even if it found no match — a failed id
-  comparison is a genuine non-match, not grounds to fall back to dates.
+  session's `Branch:` value, **or** the candidate's own extracted branch string and the session's
+  `Branch:` value are identical (case-sensitive, exact). Either equality is sufficient. **Which of
+  the two is even attempted depends on the candidate kind, and this is stated rather than left
+  implicit:** a task folder supplies both an id and — when step 1 found one — a branch string, so both
+  comparisons run for it; a delivery entry supplies an id and a date only, because `activity-read`'s
+  return shape carries no branch field at all (`plugins/wf/skills/standup/SKILL.md:56`), so only the
+  id comparison ever runs for one. A comparison whose input one side does not supply is simply not
+  attempted — never scored as a failed comparison, which would wrongly bar the `inferred` tier below.
+- **`inferred`** — only when **neither** comparison above could be attempted (the session's `Branch:`
+  is `none observed`, or the candidate supplied neither an id nor a branch string of its own), a
+  same-calendar-day match between the candidate's date and the session's own date is the sole
+  fallback. Never applied when either comparison could have been attempted on both sides, even if it
+  found no match — a failed identity comparison is a genuine non-match, not grounds to fall back to
+  dates.
 
 A candidate matching **any** session under either tier is covered — it contributes nothing further
 to this step. A candidate matching **no** session is unmatched.
@@ -133,10 +144,10 @@ is never suppressed by budget state.
 **Sourcing, when a trigger fires.** Draw additional Evidence Record / Contributing Factors →
 Hypotheses entries from:
 
-- the matched (trigger (a): the task folder whose own id equals the first 3+-digit run of the
-  hypothesis's own session locator's `Branch:` fact, the same comparison Part A step 3 makes;
-  trigger (b): the unmatched candidate itself) task folder's own artifacts — read directly in this
-  skill's own context (Safety Rules Allowed; neither a session nor a subagent record);
+- the matched (trigger (a): the task folder that matches the hypothesis's own session locator under
+  Part A step 3's own rule, applied unchanged — never a looser one improvised here; trigger (b): the
+  unmatched candidate itself) task folder's own artifacts — read directly in this skill's own context
+  (Safety Rules Allowed; neither a session nor a subagent record);
 - `_local/fleet/scoreboard.md`, when present;
 - a project-configured eval-log path, read only when `_local/config.md` names one under this
   project's own `postmortem` config section (e.g. an `**Eval Log Path:**` line) — absent today in
