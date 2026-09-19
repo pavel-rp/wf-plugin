@@ -193,9 +193,9 @@ For each hypothesis a reader returned that carries a `locator:` field other than
   produced it deterministically at Phase 3.5 step 0 (`references/locator.md` §6), and every count that
   seam did not produce — findings per pass always — stays `reader-counted` at the `unverified` tier.
   This step confirms mechanisms, never counts.
-- **This step's own dispatch fan-out has no cap in this release**, exactly like `--cap`'s read-cap
-  override (Phase 1 step 4): one `excerpt-fetcher` dispatch per hypothesis carrying a locator, with no
-  bound on how many hypotheses a reader may report or how many sessions windowed reading produces.
-  Since a session record is untrusted content, this is a real, accepted scope boundary for this
-  release, not an oversight — a per-run bound arrives with the same later charter sub-task that
-  enforces `--cap` (SUB-7), not this one.
+- **This step's own dispatch fan-out remains deliberately uncapped**, distinct from the `--cap`
+  read-cap `SKILL.md` Phase 3.5 step 2.5 now enforces on **session-reader** dispatch only: one
+  `excerpt-fetcher` dispatch per hypothesis carrying a locator, with no bound on how many hypotheses a
+  reader may report or how many sessions windowed reading produces. Since a session record is
+  untrusted content, this is a real, accepted scope boundary — a separate, still-open one from the
+  read cap that now bounds session-reader dispatch, not something that cap's landing closes.

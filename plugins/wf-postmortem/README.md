@@ -17,23 +17,25 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
 - **`/wf-postmortem:postmortem`** — the guided skill. Reads `_local/config.md` first (stops toward
   `/wf:init` when absent), resolves a required failure description plus optional skill / folder or
   repository / read-cap override, echoes every resolved value and every applied default into a
-  report's Scope section, then **reads every session record in scope** — named explicitly with the
-  repeatable `--session` flag, or, when none is named, **located automatically** under the resolved
-  scope (skill / folder or repository / current-workspace default, within the host's 30-day retention
-  window) behind one replaceable seam — and writes the fixed ten-section report. Every located session
-  is ranked (scope-match specificity, then recency, hunt sessions always last) and none is silently
-  dropped; a session's iterations, edits, and files-touched counts are `mechanically-observed`
-  wherever the seam counts them deterministically. Every reader-suggested mechanism carrying a locator
-  is then **checked two-sided** — against the audited pack's own skill/contract/manifest text at the
-  run's resolved executed version, and against a bounded, redacted excerpt fetched fresh at the
-  locator through an interim, isolated fetcher agent, dispatched after the host itself resolves and
-  validates the locator to a real path — and promoted to a confirmed contributing factor only
-  when both sides verify (or verify mechanically on both, at an exact `file:line` and an exact
-  locator). An interactive run with no failure description asks exactly one question; a run with no
-  interactive channel stops with a stated reason and writes nothing. A run naming only `--session`
-  records that fail to resolve also stops with a stated reason and writes nothing — never falling back
-  to locating. A locator that meets an unreadable store or an unrecognized record shape fails loudly
-  the same way.
+  report's Scope section, then **reads every session record in scope, up to a per-run read cap**
+  (default 15, overridable with `--cap`) — named explicitly with the repeatable `--session` flag, or,
+  when none is named, **located automatically** under the resolved scope (skill / folder or repository
+  / current-workspace default, within the host's 30-day retention window) behind one replaceable seam
+  — and writes the fixed report template. Every located session is ranked (scope-match specificity,
+  then recency, hunt sessions always last) and none is silently dropped; every session beyond the cap
+  is listed `skipped (budget)`, retrievable by a later `--report <path>` follow-up that reads those
+  sessions and extends the same report file in place — one hunt, one report, however many runs it
+  takes. A session's iterations, edits, and files-touched counts are `mechanically-observed` wherever
+  the seam counts them deterministically. Every reader-suggested mechanism carrying a locator is then
+  **checked two-sided** — against the audited pack's own skill/contract/manifest text at the run's
+  resolved executed version, and against a bounded, redacted excerpt fetched fresh at the locator
+  through an interim, isolated fetcher agent, dispatched after the host itself resolves and validates
+  the locator to a real path — and promoted to a confirmed contributing factor only when both sides
+  verify (or verify mechanically on both, at an exact `file:line` and an exact locator). An interactive
+  run with no failure description asks exactly one question; a run with no interactive channel stops
+  with a stated reason and writes nothing. A run naming only `--session` records that fail to resolve
+  also stops with a stated reason and writes nothing — never falling back to locating. A locator that
+  meets an unreadable store or an unrecognized record shape fails loudly the same way.
 - **`session-reader`** — the pack's isolated reader agent, dispatched once per named session (or once
   per ordered window of a record too large for one reader) on a model tier cheaper than the skill's
   own, falling back to the host's tier and **saying so** when the host is already lowest or the
@@ -54,15 +56,15 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
 
 ## What this slice deliberately excludes
 
-This is the fifth of seven sub-tasks under charter C035 ("Postmortem: verified defect reports mined
-from prior sessions", umbrella WF-587). This slice locates every in-window session matching a hunt's
-resolved scope behind one replaceable seam, ranks it without dropping any, and promotes its
-deterministic counts to `mechanically-observed`. Later sub-tasks add:
+This is the sixth of seven sub-tasks under charter C035 ("Postmortem: verified defect reports mined
+from prior sessions", umbrella WF-587). This slice bounds each hunt with a per-run read cap (default
+15, overridable with `--cap`), lists every ranked session beyond it `skipped (budget)`, and lets a
+`--report <path>` follow-up continue a capped hunt — reading those skipped sessions and extending the
+same report file in place, with a dated Continuation entry. One later sub-task remains:
 
-- A per-run read cap with ranked reading, `skipped (budget)` listing, and follow-up continuation (a
-  later sub-task) — until it lands, every located session is read, in ranked order, with no cap.
-- Naming sessions a hunt cannot see, and fallback evidence from task folders and delivery history
-  (a later sub-task).
+- Naming sessions a hunt cannot see because a run left no session record at all, and fallback evidence
+  drawn from task folders and delivery history when a finding is under-evidenced from sessions alone
+  (the coverage cross-check, a later sub-task).
 
 ## Install and register
 
@@ -83,7 +85,11 @@ contributes nothing and every core phase behaves exactly as before.
   needs, distinct from the `locator` agent's own locate/rank/count job.
 - `skills/init/SKILL.md` — the compatibility-alias onboarding skill.
 - `skills/postmortem/SKILL.md` — the guided skill body.
-- `skills/postmortem/references/report-template.md` — the fixed ten-section report template.
+- `skills/postmortem/references/report-template.md` — the fixed report template, including the
+  per-run read cap, the `skipped (budget)` verdict, and the follow-up Continuation section.
+- `skills/postmortem/references/continuation.md` — the `--report <path>` follow-up procedure: prior
+  report validation and parsing, the retry-set construction, the cap application, the merge with the
+  prior accumulated state, the recompute, and the Continuation log entry.
 - `skills/postmortem/references/redaction.md` — the shared redacting write path's recognized shapes.
 - `skills/postmortem/references/locator.md` — **the one seam**: every piece of host-specific
   knowledge of the session-record store, its layout, its structural fields, and the 30-day window,

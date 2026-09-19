@@ -180,8 +180,8 @@ Sessions that pass the shape check (§2) and the scope/window filter (§3) are r
 
 Every candidate that reaches this step appears in the final ranked list exactly once; nothing here
 removes a candidate. The caller (`SKILL.md`) reads sessions in this order and lists every one of them
-in coverage — ranking orders reading, it does not gate it (that arrives with a later charter sub-task's
-read cap).
+in coverage — ranking orders reading, it does not gate it. `SKILL.md` Phase 3.5 step 2.5 is what
+applies the per-run read cap, over this seam's full ranked list, gating dispatch, never ranking.
 
 ---
 
@@ -236,9 +236,11 @@ before a session is even located.
 **Scan bound.** This counting pass reads every line of a session's top-level record and its attached
 subagent records once, sequentially, to tally the fields above — the same one-pass walk the shape
 check (§2) already performs, not a second traversal. It carries no separate size or candidate-count
-cap of its own this release, unlike the sibling reader's explicit 200,000-character windowing bound —
-a stated, accepted scope boundary (a per-run cap arrives with the same later charter sub-task that
-enforces `--cap`), not an oversight.
+cap of its own, unlike the sibling reader's explicit 200,000-character windowing bound: this seam
+locates, ranks, and counts the **full** matching set regardless of `SKILL.md`'s per-run read cap,
+which is applied afterward, over this seam's own output, at the fixed cap-split point (Phase 3.5 step
+2.5) — a stated, deliberate separation between locating/ranking (unbounded) and reading (capped), not
+an oversight.
 
 ---
 
