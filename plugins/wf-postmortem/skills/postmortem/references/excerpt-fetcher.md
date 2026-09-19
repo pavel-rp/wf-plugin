@@ -53,8 +53,10 @@ parses the locator and resolves it to **the one real filesystem path** it names:
 1. **Split** the locator on `#` into its path component and zero or more of a `subagent:<file>`
    segment and an `L<start>-<end>` segment (Phase 3.5 step 6).
 2. **Resolve the real path, by allow-list, never by trusting the string.** No `subagent:` segment →
-   the real path is the session's own already-resolved path (from `--session`, or the locator's own
-   return); the locator's path component must be **character-for-character identical** to it. A
+   the real path is the session's own already-resolved path — **from `--session` on a named run, or
+   the locator's own return on a located run** (Phase 3.5 step 0, via `references/locator.md`), the
+   same two sources `version-resolution.md` step 6 names; the locator's path component must be
+   **character-for-character identical** to it. A
    `subagent:<file>` segment → the real path is whichever entry in this session's own discovered
    subagent-record paths (Phase 3.5 step 0, via `references/locator.md`) has `<file>` as its filename;
    no such entry fails validation. This is the same discipline
@@ -130,12 +132,16 @@ parseable block back is a session-side failure, never a silent pass.
   run, run the bounded read and its redaction entirely inside an isolated agent — the agent itself
   never parses a locator or sees the compound string — and never read more than the bounded window or
   the bounded anchor search allows.
-- **Does not:** locate, rank, or scope sessions — that stays outside this fetcher's job entirely
-  (a later charter sub-task's seam). This fetcher only re-reads a path a hypothesis's locator already
-  names, once the host has resolved and confirmed that path is one this run already discovered.
+- **Does not:** locate, rank, or scope sessions — that stays outside this fetcher's job entirely and
+  belongs to the locate seam (`references/locator.md`). This fetcher only re-reads a path a
+  hypothesis's locator already names, once the host has resolved and confirmed that path is one this
+  run already discovered — from `--session` on a named run, from the locator's own return on a located
+  run, or from that same dispatch's discovered subagent-record paths.
 - **Does not** replace the reader's own return block — it supplements it with a second, independent
   look the host takes itself, which is the entire reason two-sided confirmation re-checks rather than
   trusting the reader's quote alone.
 - **Does not** guarantee a match when the search anchor is itself redacted text — an accepted,
-  stated limitation of this interim fetcher (above), resolved only once SUB-2's own access point
-  replaces anchor-text search with a real locator lookup.
+  stated limitation of this interim fetcher (above). **The locate seam (`references/locator.md`) does
+  not lift it:** that seam owns where records live, their shape, and their countable structural
+  fields, not excerpt retrieval, so the limitation stands until anchor-text search is itself replaced
+  by a real locator lookup.
