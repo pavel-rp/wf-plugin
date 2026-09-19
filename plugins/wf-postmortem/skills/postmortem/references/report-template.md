@@ -33,10 +33,14 @@ nothing says so.>
 - **Skill:** <resolved skill name | "unscoped">
 - **Folder or repository:** <resolved path, verbatim | "not named" | "<name> — unresolved (no matching filesystem path)">
 - **Read cap:** <override value, if named | "default, not yet enforced">
-- **Session scope:** <"current workspace only" | "current workspace only (project named: <named project> — not yet searched)">
-- **Named session records:** <one line per `--session` value, in the order passed>
+- **Session scope:** <"current workspace only" | "<resolved project path>">
+- **Session source:** <"named (--session)" | "located (seam)">
+- **Window (located runs only):** <the 30-day cutoff, stated regardless of whether it excluded anything | "n/a — named-session run">
+- **Named session records (named runs only):** <one line per `--session` value, in the order passed>
   - `<resolved path>` — resolved
   - `<named path>` — unresolved (no matching filesystem path)
+- **Located sessions (located runs only):** stated in full in Coverage, below — this section names
+  only the scope and window that bounded the locate operation, never a duplicate listing.
 
 ## Component and Version
 
@@ -103,13 +107,13 @@ contributing factor's `file:line`; none exists this run.">
 
 ## Measured Effect
 
-<Counts read from the sessions themselves, one group per session. Every count in this release is
-labelled `reader-counted` and carries the `unverified` tier, because a reader counted it by reading
-rather than a deterministic counter — the mechanically-observed tier arrives with the locator seam in
-a later charter sub-task. No token count and no monetary figure appears here or anywhere in this
-report.>
+<Counts read from the sessions themselves, one group per session. A located session's iterations,
+edits, and files-touched counts are labelled `mechanically-observed` wherever the locator seam counted
+them deterministically, with no model judgment; every other count — findings per pass, always, and any
+count for a named session or one the seam could not produce — is labelled `reader-counted` at the
+`unverified` tier. No token count and no monetary figure appears here or anywhere in this report.>
 
-- `<session path>` — iterations: <n | not observable> · edits: <n | not observable> · files touched: <n | not observable> · findings per pass: <n | not observable> — all **reader-counted**, tier **unverified**
+- `<session path>` — iterations: <n | not observable> · edits: <n | not observable> · files touched: <n | not observable> · findings per pass: <n | not observable> — each labelled **mechanically-observed** or **reader-counted**, per count, at its own real tier
 
 ## Fix Direction
 
@@ -130,17 +134,21 @@ confirmed contributing factor; none exists this run." **Marked:** `— (no confi
 
 ## Coverage
 
-<Every resolved named session record, each exactly once, under exactly one verdict. An unresolved
-name is not listed here — it appears in Scope instead, because nothing about it was ever read.>
+<Every resolved named session record, and every session the locator seam located, each exactly once,
+under exactly one verdict. An unresolved `--session` name is not listed here — it appears in Scope
+instead, because nothing about it was ever read. On a located run, this section also states the
+30-day window's own cutoff — whether or not it excluded anything — and labels a hunt session.>
 
-- `<session path>` — read · model: <id> · tier: <requested | host-fallback (<reason>)>
+- `<session path>` — read · model: <id> · tier: <requested | host-fallback (<reason>)> <[hunt session] when labelled>
 - `<session path>` — read in part (<reason>) · model: <id> · tier: <…>
 - `<session path>` — skipped (reader error: <reason>) · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
 - `<session path>` — skipped (access denied) · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
 
-**Not covered by this release:** locating sessions by scope, the 30-day retention window, the
-located-set count, and the per-run read cap — each arrives with a later charter sub-task. This hunt
-covered exactly the records named on the command line.
+**Window:** <the 30-day cutoff, stated on every located run | "n/a — named-session run">
+
+**Not covered by this release:** the per-run read cap and `skipped (budget)` listing, follow-up
+continuation, and the coverage cross-check against task folders and delivery history — each arrives
+with a later charter sub-task. Until then, every located session is read, in ranked order, with no cap.
 
 ## Recommendation
 
@@ -171,9 +179,10 @@ confirmed factor never changes the route.
 POSTMORTEM — written
 
 Report:   {task-root}/PM<NNN>__<slug>/report.md
-Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<override|default, not yet enforced> · session-scope=<current workspace only|current workspace only (project named: <project> — not yet searched)>
-Sessions: <n> named · <r> resolved · <u> unresolved
-Coverage: <path>=<read|read in part (<reason>)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] · …
+Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<override|default, not yet enforced> · session-scope=<current workspace only|<resolved project path>>
+Sessions: <n> named · <r> resolved · <u> unresolved | <n> located
+Window:   <30-day cutoff, stated on every located run | n/a — named-session run>
+Coverage: <path>=<read|read in part (<reason>)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] [hunt-session] · …
 Finding:  <one line — what was found | not found>
 Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <framing> | file a work item from this report, then /wf:spec <id>>
 ```
@@ -207,17 +216,19 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
 - **Both evidence halves are mandatory.** Supporting and disconfirming each get their heading, and an
   empty one reads `- none`. Dropping the disconfirming half would hide exactly the evidence the
   reader contract goes out of its way to collect.
-- **Every count is labelled `reader-counted` at the `unverified` tier.** No count in this release was
-  produced deterministically, so none may be presented as mechanically observed. No token or monetary
-  figure appears anywhere in the report.
+- **A count is labelled `mechanically-observed` only when the locator seam produced it with no model
+  judgment.** Every other count — findings per pass, always — is `reader-counted` at `unverified`; a
+  reader-counted figure is never presented as mechanically observed. No token or monetary figure
+  appears anywhere in the report.
 - **A mechanism is promoted only through the two-sided check.** A reader's suggestion becomes a
   confirmed factor only when the source-side text at its resolved executed version and the
   session-side excerpt at its locator both verify (or both verify mechanically, at an exact
   `file:line` and an exact locator) — never on one side alone, and never when the version resolves
   only to `present-day-only` text. Everything else stays a hypothesis at the `unverified` tier.
-- **Coverage carries each resolved record exactly once** under one of the four verdicts, with the
-  model that reader ran on and whether that was the requested cheaper tier or the host-tier fallback
-  (with its reason). A windowed session appears once, not once per window.
+- **Coverage carries each resolved-or-located record exactly once** under one of the four verdicts,
+  with the model that reader ran on, whether that was the requested cheaper tier or the host-tier
+  fallback (with its reason), and — on a located run — the 30-day window's own cutoff and a
+  hunt-session label where one applies. A windowed session appears once, not once per window.
 - **A "not found" report is a complete report.** Summary says so plainly, and Scope and Coverage are
   filled exactly as they would be for a hunt that found something. No match is ever fabricated to
   avoid an empty Summary.

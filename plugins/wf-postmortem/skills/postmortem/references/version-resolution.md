@@ -110,15 +110,15 @@ For each hypothesis a reader returned that carries a `locator:` field other than
     Reject as **malformed** if the locator's path component is not character-for-character identical
     to it.
   - A `subagent:<file>` segment → the path is whichever entry in this session's own discovered
-    subagent-record paths (Phase 3.5 step 1) has `<file>` as its own filename. No such entry →
-    **malformed**.
+    subagent-record paths (Phase 3.5 step 0, via `references/locator.md`) has `<file>` as its own
+    filename. No such entry → **malformed**.
   - A `L<start>-<end>` segment, if present → both must match `^[1-9][0-9]*$` (a positive integer — `0`
     is excluded, since line numbers are 1-based) with `<start> <= <end>`; otherwise **malformed**.
 
   **A malformed locator is a session-side failure exactly like "not found" below — it is never
   dispatched.** This parsing is mechanical and runs identically for every locator; it never widens
   what this run reads, since every resolved path was already independently discovered by this run
-  (from `--session` or Phase 3.5 step 1), never taken from the locator string itself.
+  (from `--session` or Phase 3.5 step 0), never taken from the locator string itself.
 - **Session side.** Route and dispatch the `excerpt-fetcher` agent the same way Phase 3.5 step 3
   routes `session-reader` — `resolve_routing` with `role: "excerpt-fetcher"`, a stable `unitIds` entry
   (`excerpt-fetcher:<slug of the hypothesis's locator>`), `shapeEvidence` identical to step 3's

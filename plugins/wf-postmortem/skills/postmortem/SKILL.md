@@ -1,24 +1,24 @@
 ---
 name: postmortem
-description: Hunts a described failure through prior agent sessions the maintainer names explicitly, reading each named session record in its own isolated reader agent on a cheaper model tier — in ordered windows when a record is too large for one reader — then checks every reader-suggested mechanism two-sided, against the audited pack's text at the run's resolved executed version and against a bounded, redacted excerpt at the reader's own locator, promoting only what verifies on both sides to a confirmed contributing factor, and closes with a rule-based recommendation naming the next workflow — dispatching and filing nothing itself. Hunts evidence against the described failure as deliberately as evidence for it, says "not found" rather than fabricating a match, and stops with no report when no named record resolves. Use when a maintainer suspects a process defect and wants it looked for, checked, and routed across named prior sessions without raw session content entering the host context.
+description: Hunts a described failure through prior agent sessions — named explicitly with --session, or located automatically under a resolved scope behind one replaceable seam — reading each session record in its own isolated reader agent on a cheaper model tier — in ordered windows when a record is too large for one reader — then checks every reader-suggested mechanism two-sided, against the audited pack's text at the run's resolved executed version and against a bounded, redacted excerpt at the reader's own locator, promoting only what verifies on both sides to a confirmed contributing factor, and closes with a rule-based recommendation naming the next workflow — dispatching and filing nothing itself. Hunts evidence against the described failure as deliberately as evidence for it, says "not found" rather than fabricating a match, and stops with no report when no session is named or located. Use when a maintainer suspects a process defect and wants it looked for, checked, and routed across prior sessions without raw session content entering the host context.
 allowed-tools: [Task, Write, Read, Grep, Glob, Bash, AskUserQuestion]
 ---
 
 # /wf-postmortem:postmortem — Resolve a failure prompt to an echoed hunt scope
 
 Turn a prose failure report into an explicit hunt scope, echoed verbatim, then **read every session
-record the maintainer names** — each in its own isolated reader agent, on a model tier cheaper than
-this skill's own, in ordered windows when the record is too large for one reader — and compose the
-report's Summary, Evidence Record, Measured Effect, Coverage and Hypotheses from those readers'
-compact, already-redacted blocks. Every hypothesis carrying a locator is then **checked two-sided** —
-against the audited pack's own skill/contract/manifest text at the run's resolved executed version,
-and against a bounded, redacted excerpt fetched fresh at the hypothesis's locator — and promoted to a
-confirmed contributing factor only when both sides verify (or verify mechanically on both).
-
-One thing this release deliberately does **not** do, because it belongs to a later sub-task of the
-same charter (C035, umbrella WF-587): it **locates** no session (the maintainer names them with
-`--session`). Every measured-effect count also stays `reader-counted` at the `unverified` tier —
-deterministic counting is that same later sub-task's territory (SUB-2), not this one's.
+record in scope** — named explicitly with `--session`, or, when none was named, located automatically
+under the resolved scope behind one replaceable seam (`references/locator.md`) owning all host-specific
+knowledge of where sessions live, how subagent records attach, and the 30-day retention window — each
+session read in its own isolated reader agent, on a model tier cheaper than this skill's own, in
+ordered windows when too large for one reader — and compose the report's Summary, Evidence Record,
+Measured Effect, Coverage and Hypotheses from those readers' compact, already-redacted blocks. Every
+hypothesis carrying a locator is then **checked two-sided** — against the audited pack's own
+skill/contract/manifest text at the run's resolved executed version, and against a bounded, redacted
+excerpt fetched fresh at the hypothesis's locator — and promoted to a confirmed contributing factor
+only when both sides verify (or verify mechanically on both). A located session's iterations, edits,
+and files-touched counts are `mechanically-observed` wherever the seam can count them deterministically;
+every other count — findings per pass always — stays `reader-counted` at `unverified`.
 
 ---
 
@@ -45,7 +45,7 @@ stop and report that the resolver runtime is not loaded — do not hand-parse co
 | Argument | Required | Description |
 |---|---|---|
 | `<description>` | conditionally | The failure description. Required unless the run can ask interactively for it. |
-| `--session <path>` | YES | One session record to read, named explicitly. **Repeatable** — pass it once per record. At least one must resolve or the run stops. |
+| `--session <path>` | NO | One session record to read, named explicitly. **Repeatable** — pass it once per record. Omit entirely to have the seam locate sessions under the resolved scope instead. |
 | `--skill <name>` | NO | Scope the hunt to one named skill. Omit for an unscoped hunt. |
 | `--folder <path>` | NO | Scope the hunt to a named local folder. Resolved against the filesystem only. |
 | `--repo <name>` | NO | Scope the hunt to a named repository. Resolved against the filesystem only. |
@@ -54,9 +54,10 @@ stop and report that the resolver runtime is not loaded — do not hand-parse co
 `--folder` and `--repo` are mutually exclusive framings of the same "another project" input — pass
 at most one.
 
-`--session` is the **only** session input in this release: the hunt runs over the records the
-maintainer names and no others. Locating records by scope arrives with a later charter sub-task; until
-it does, an unnamed record is simply not in the hunt.
+**Naming `--session` values confines the hunt to exactly those records**, exactly as before this task,
+and at least one must resolve or the run stops. **Omitting `--session` entirely** now locates every
+in-window session matching the resolved scope instead of stopping — behind the seam
+(`references/locator.md`) — never as a fallback when named values were passed but none resolved.
 
 ---
 
@@ -68,13 +69,15 @@ it does, an unnamed record is simply not in the hunt.
 - Resolve `--folder`/`--repo` against the local filesystem only, via the single existence-check
   primitive `Bash`: `test -e '<path>'`, with every `'` in the value replaced by `'\''` first
   (Phase 1 step 3).
-- Read the report template, redaction reference, `version-resolution.md`, and `recommendation.md`
-  via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
-  wf-postmortem`, `skill: postmortem`).
+- Read the report template, redaction reference, `version-resolution.md`, and `recommendation.md` via
+  `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`).
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:excerpt-fetcher`, once per hypothesis
   locator the two-sided check needs, to fetch and redact a bounded session-side excerpt in that
   agent's own isolated context (`version-resolution.md` step 6) — exactly like the session-reader
   dispatch, never a `Bash` read of session bytes in this skill's own context.
+- Invoke the **Task** tool with `subagent_type: wf-postmortem:locator`, exactly once per run (Phase
+  3.5 step 0), to locate/attach/rank/count sessions in that agent's own isolated context — the only
+  component in this pack that walks the session store directly; this skill never does.
 - **Read (`Read`/`Grep`) the skill, contract, or manifest text of the pack under audit** — never a
   session or subagent record — at a resolved version, per `version-resolution.md`'s branches (a)/(d).
   This is the one place this skill reads file content directly in its own context, and it is
@@ -86,20 +89,16 @@ it does, an unnamed record is simply not in the hunt.
   first, since a version string, sha, or path ultimately traces back to session-derived, untrusted
   text. These reads (plus the `test -e`/`wc -c` existence/size checks) are metadata or the audited
   pack's own text — never session content.
-- Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id.
+- Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id, and ask exactly one interactive
+  question (`AskUserQuestion`) when the failure description is missing and a channel is available.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any
   scratch file inside the fixed, literal `_local/scratch/` — both only through the redacting write
   path. The scratch target is deliberately **not** `{task-root}`-relative: `{task-root}` is a
   project-configurable key, and anchoring scratch to it would place residue outside the one
   location the shared scratch discipline and the finalize sweep actually cover.
-- Ask exactly one interactive question (`AskUserQuestion`) when the failure description is missing
-  and an interactive channel is available.
 - Resolve each `--session` value against the local filesystem with the same single existence-check
   primitive used for `--folder`/`--repo` (`Bash`: `test -e '<path>'`, single-quoted with every `'`
   replaced by `'\''` first), and size it with `Bash`: `wc -c '<path>'` under the same quoting.
-- Detect a named record's attached subagent records by the provisional sibling-directory rule
-  (Phase 3.5 step 1), using `Glob` on that directory only — never on a caller-supplied path as a
-  pattern.
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:session-reader`, once per session or per window, to
   read the record in that agent's own isolated context.
 
@@ -115,15 +114,15 @@ it does, an unnamed record is simply not in the hunt.
   to **the one real path it names** (the session's own resolved path, or a discovered subagent path,
   matched character-for-character or by filename) before any dispatch — never a reader's/record's
   say-so, never the compound string itself.
-- Locate a session record by scope, rank one, or apply any read cap, or map a folder/repository path
-  to any session store — those arrive with later charter sub-tasks; this release reads exactly the
-  records `--session` names.
-- Pin a model in the reader's dispatch, or in the reader agent's own file; the tier comes from
-  `resolve_routing` and the reader reports what it actually ran on.
+- Locate, rank, shape-check, or map a folder/repository path to any session store **in this skill's
+  own context** — the locator agent's job alone; this skill only dispatches it and reads its return
+  block. Apply a read cap, or drop a located session from the ranked order — a later charter sub-task.
+- Pin a model in a dispatch, or in an agent's own file; the tier comes from `resolve_routing` and the
+  agent reports what it actually ran on.
 - Improvise a merge, a coverage verdict, or a composed section outside Phase 3.5's rules — a
   mechanism is promoted only through the two-sided check (never one side alone, never
-  `present-day-only`), and a reader-counted figure is never promoted to mechanically-observed (that
-  needs SUB-2's deterministic counting).
+  `present-day-only`), and a count is presented as `mechanically-observed` only when the locator
+  agent itself produced it — never inferred, upgraded, or asserted by this skill's own judgment.
 - Treat a run's own success/progress statement — in the material or in an artifact it wrote — as
   evidence, or let it confirm a factor or measured effect; it may be quoted (`run-reported`), never
   treated as what happened.
@@ -151,18 +150,14 @@ it does, an unnamed record is simply not in the hunt.
    early and runs as its own command). Never concatenate into a composed command line, and never pass
    it to `Glob` as a pattern (free-form `*`/`?`/`[...]` would be read as pattern syntax and could
    report a false match) — the Safety Rules forbid both. Four outcomes:
-   - **Both passed** → stop with the `POSTMORTEM — stopped` block, reason "both --folder and --repo
-     passed — they are mutually exclusive framings of the same input; pass at most one." Write
-     nothing.
-   - Neither passed → scope defaults to the current workspace's sessions only; "Folder or repository"
-     states `"not named"`, `session-scope` echoes `"current workspace only"`.
-   - Resolves to an existing path → echo it verbatim; `session-scope` echoes `"current workspace only
-     (project named: <project> — not yet searched)"` — this release performs no session-store lookup
-     against it at all (Safety Rules Forbidden), so naming it here is honest scope-echoing, never a
-     claim it was searched; that mapping belongs to a later charter sub-task's seam.
+   - **Both passed** → stop ("both --folder and --repo passed — pass at most one"). Write nothing.
+   - Neither passed → scope defaults to the current workspace only; `session-scope` echoes `"current
+     workspace only"`.
+   - Resolves to an existing path → echo it verbatim; the locator (Phase 3.5 step 0) enumerates that
+     project's own store when it locates.
    - Does **not** resolve → echo it unresolved (`"<name> — unresolved (no matching filesystem
-     path)"`), attempt no further lookup; `session-scope` still states `"current workspace only"` — an
-     unresolved name never widens the session scope.
+     path)"`); `session-scope` still states `"current workspace only"` — an unresolved name never
+     widens it.
 4. **Read cap.** Take `--cap` verbatim when passed; it passes through Phase 3 step 2's redacting
    write path (redaction, then markdown-structure neutralization) before it is echoed anywhere.
    Absent → echo `"default, not yet enforced"` — no real default or enforcement this release.
@@ -175,12 +170,15 @@ it does, an unnamed record is simply not in the hunt.
      joins neither the hunt set nor the coverage statement; **the hunt proceeds over the rest** —
      reported, never silently dropped, never a stop on its own.
 
-   **The stop condition.** When **no** `--session` value was passed, or **every** passed value failed
-   to resolve, stop with the `POSTMORTEM — stopped` block, reason `"no session record named"` or
-   `"no named session record resolved — <n> named, 0 resolved"` respectively. **Write nothing** — a
-   hunt with nothing to read never produces a report. Deliberately asymmetric with the bullet above:
-   one unresolved name beside a resolving one is a coverage fact, while *all* unresolved leaves no
-   evidence at all.
+   **The stop condition — named values only.** When **every** passed `--session` value failed to
+   resolve, stop with the `POSTMORTEM — stopped` block, reason `"no named session record resolved —
+   <n> named, 0 resolved"`. **Write nothing.** This never falls back to locating — a hunt that named
+   records and got none is a different failure from a hunt that named none at all. Deliberately
+   asymmetric with the bullet above: one unresolved name beside a resolving one is a coverage fact,
+   while *all* unresolved leaves no evidence at all.
+
+   **When no `--session` value was passed at all**, this is not a stop: proceed to Phase 3.5 step 0,
+   which locates sessions under the resolved scope instead (`references/locator.md`).
 
 ---
 
@@ -197,8 +195,8 @@ Only when Phase 1 step 1 found no `<description>`.
    Phase 1 steps 2-5** and resolve `--skill`/`--folder`/`--repo`/`--cap`/`--session` exactly as a run
    that carried a description would (skipping those steps would echo a supplied flag as an unset
    default), then continue to Phase 3 as a guided run.
-3. **Unavailable (headless run).** Stop immediately. Write nothing. Emit `POSTMORTEM — stopped` with
-   reason "no failure description given and no interactive channel available to ask for one."
+3. **Unavailable (headless run).** Stop. Write nothing. Emit `POSTMORTEM — stopped` with reason "no
+   failure description given and no interactive channel available to ask for one."
 
 ---
 
@@ -232,41 +230,41 @@ redacting write path rather than being minted from the raw prompt.
    `PM<NNN>` and the second clobbers the first's `report.md`. The create itself must be what fails.
 
    **Use `Bash`: `LC_ALL=C mkdir '<path>'` — without `-p`** (which would succeed silently on an
-   existing directory, the opposite of the needed signal). `LC_ALL=C` is load-bearing: under another
-   locale a genuine collision's translated stderr could be misread as a hard failure. Single-quoted
-   path, never concatenated. Read the outcome:
-
-   | Outcome | Meaning | Action |
-   |---|---|---|
-   | exit 0 | folder created | continue to Phase 4 |
-   | non-zero **and** the path now exists as a directory (`test -d '<path>'`, locale-independent) | true id collision | re-mint (step 3), retry within the bound below |
-   | non-zero and the path does **not** exist (permission/missing/full-disk/read-only/invalid path) | **not** a collision | stop — see below |
-
-   The collision signal is the target existing after a failed exclusive create, corroborated by
-   `test -d`. Any other non-zero exit stops immediately with the `POSTMORTEM — stopped` block, stating
-   the failing reason verbatim — never retried, since re-minting repairs nothing about an unwritable,
-   missing, or full `{task-root}`.
-
-   **Bound the retry to 3 create attempts per run** (the first plus at most 2 re-mints). Exhausting it
-   stops with reason "report-folder id contention — 3 consecutive collisions"; never loop further.
+   existing directory). `LC_ALL=C` is load-bearing: under another locale a genuine collision's
+   translated stderr could be misread as a hard failure. Single-quoted path, never concatenated.
+   Exit 0 → folder created, continue to Phase 4. Non-zero **and** the path now exists as a directory
+   (`test -d '<path>'`, locale-independent) → true id collision, re-mint (step 3) and retry, bounded
+   at **3 create attempts per run** (the first plus at most 2 re-mints); exhausting it stops with
+   reason "report-folder id contention — 3 consecutive collisions." Non-zero and the path does **not**
+   exist (permission/missing/full-disk/read-only/invalid path) → **not** a collision; stop immediately
+   with the `POSTMORTEM — stopped` block stating the failing reason verbatim — never retried, since
+   re-minting repairs nothing about an unwritable, missing, or full `{task-root}`.
 
    This release records no per-task index row for the minted folder (charter assumption #9).
 
 ---
 
-## Phase 3.5: Read every named session in an isolated reader
+## Phase 3.5: Read every named or located session in an isolated reader
 
 Runs after the report folder exists and before anything is written into it. **No byte of a session
-record is read in this context** — every read happens inside a dispatched `session-reader`, and only
-its compact, already-redacted block comes back.
+record is read in this context** — every read happens inside a dispatched `session-reader` (or,
+first, the `locator`), and only its compact, already-redacted or already-structural block comes back.
 
-1. **Attach subagent records (provisional).** For each resolved session record `<name>.<ext>`, treat
-   a sibling directory `<name>/` in the same parent directory, when one exists, as that session's
-   subagent-record folder, and take every file directly inside it (non-recursive) as part of the same
-   session — dispatched together, so one session is one reader. No sibling directory → no subagent
-   records; that is normal, not an error. **Explicitly provisional:** stands in for the locator seam
-   a later charter sub-task owns; replaceable without changing the reader's contract, and the note
-   echoed to the reader says so.
+0. **Locate and/or attach, via the seam, exactly once per run.** Route with `role: "locator"`,
+   `unitIds: ["locator:hunt"]`, `shapeEvidence` identical in shape to step 3 below except
+   `ambiguity: "none"`, `toolWork: "bounded"`, `validation: "mechanical"`, and
+   `returnContract: "mechanically-judgeable"` (a bounded enumeration-and-shape-check, not the
+   open-ended judgment a reader performs). Invoke one **Task** with
+   `subagent_type: wf-postmortem:locator` — **no `--session` resolved** (Phase 1 step 5): pass the
+   resolved scope (workspace path, `--skill`, the 30-day window cutoff) and, when the runtime
+   discloses one, the active-session fact `locator.md` names for hunt-session detection; the returned
+   ranked list is this run's hunt set. **One or more `--session` values resolved**: pass exactly those
+   paths instead of a scope — the agent skips enumeration/scope-matching/ranking/the window filter,
+   but still shape-checks and attaches subagent records for each, in the order passed (the only
+   attachment source for a named record too, now that the flat sibling stand-in is retired).
+
+   Read defensively: no parseable `LOCATE` block, or `LOCATE ERROR: <cause>`, stops the run with that
+   cause — write no report. `LOCATE OK` with an empty list is **not** a stop — proceed as "not found."
 
 2. **Decide windowing.** Measure each resolved record with `Bash`: `wc -c '<path>'` (same quoting as
    the existence check — metadata, not content). A record exceeding **200,000 characters** is read in
@@ -290,18 +288,14 @@ its compact, already-redacted block comes back.
    Take the returned `model.value`: non-null and **cheaper** than `hostModel` on the shipped
    `haiku → sonnet → opus` ordering → dispatch at that model, record `tier: requested`; otherwise
    (null, same tier, or the edge can't honour the selector) → dispatch at the host's own tier, record
-   `tier: host-fallback (<stated reason>)` — the report says so per reader, never presenting a
-   fallback as the requested tier.
+   `tier: host-fallback (<stated reason>)` — never presented as the requested tier. Invoke one
+   **Task** with `subagent_type: wf-postmortem:session-reader`, passing the failure description, the
+   session path, the window (`n of N` or `whole`) with its span, and the attached subagent-record
+   paths step 0's dispatch resolved.
 
-   Invoke one **Task** with `subagent_type: wf-postmortem:session-reader`, passing the failure
-   description, the session path, the window (`n of N` or `whole`) with its span, the attached
-   subagent-record paths, and the provisional attachment note to echo back.
-
-   **Read the result defensively.** No `SESSION READ` block, or one that can't be parsed (the agent
-   failed to start, was interrupted, or returned prose) → that unit's `error` verdict, reason
-   `"reader returned no parseable block"`, carried into the merge like any reader-reported `error`.
-   Never infer a verdict from a missing block — an unparseable result assumed successful would
-   fabricate coverage the run never had.
+   **Read the result defensively.** No `SESSION READ` block, or one that can't be parsed → that
+   unit's `error` verdict, reason `"reader returned no parseable block"`, carried into the merge like
+   any reader-reported `error`. Never infer a verdict from a missing block.
 
 4. **Merge each session's blocks into one result.** Concatenate a session's window blocks in window
    order into one observation set (supporting and disconfirming kept apart), union the hypotheses —
@@ -320,11 +314,16 @@ its compact, already-redacted block comes back.
    | every window `error` (any other reason) | `skipped (reader error: <first reason>)` |
    | otherwise — at least one window not `read` | `read in part (<first non-read window's reason>)` |
 
-   Exhaustive by construction — the catch-all absorbs every remaining combination, so no window-verdict
-   mix leaves a session without one. A window whose routing decision returned `status: stop` never
-   ran and counts as that unit's `error`, with the routing diagnostic as its reason. A one-window
-   session takes its own verdict directly; `read in part` is never rounded up to `read`, and a
-   failing session never stops the run.
+   Exhaustive by construction — no window-verdict mix leaves a session without one. A window whose
+   routing decision returned `status: stop` never ran and counts as that unit's `error`. A one-window
+   session takes its own verdict directly; `read in part` is never rounded up, and a failing session
+   never stops the run. A session step 0 marked `skipped (access denied)` is never dispatched to a
+   reader — its verdict is that status, unchanged.
+
+   **Carry forward step 0's own per-session facts**: rank position (located sessions only), the
+   hunt-session flag, and any of iterations/edits/files-touched the seam counted deterministically —
+   which replaces the reader-counted figure for that session at `mechanically-observed`; every count
+   the seam did not produce stays `reader-counted` at `unverified`.
 
 5-6. **Resolve the executed version, then check each hypothesis two-sided and tier it.** Obtain
    `version-resolution.md` via `resolve_content({ workspaceRoot, ... })` (`class:
@@ -349,9 +348,9 @@ its compact, already-redacted block comes back.
      populated. Fabricate no match, and never soften a "not found" into a weak positive.
    - **Evidence Record** — every observation, supporting and disconfirming both, each with its
      locator and tier. The disconfirming ones are not optional and are not a footnote.
-   - **Measured Effect** — the reader-counted figures, each labelled `reader-counted` at the
-     `unverified` tier. No count here is mechanically observed in this release, and no token or
-     monetary figure appears at all.
+   - **Measured Effect** — a located session's counts state whichever of iterations/edits/files-touched
+     step 0 produced deterministically, labelled `mechanically-observed`; every other count stays
+     `reader-counted` at `unverified`. No token or monetary figure appears at all.
    - **Contributing Factors → Confirmed** — one entry per hypothesis step 6 promoted, each carrying
      its resolved version (with the "version approximate (date-resolved)" label where applicable),
      `file:line`, the checked session locator, and its tier (`independently-verified` or
@@ -365,8 +364,9 @@ its compact, already-redacted block comes back.
      generic "not yet produced" — this release *can* confirm one, it simply did not this time).
    - **Localisation** — filled with the file(s) named by every confirmed factor's `file:line` when at
      least one exists; otherwise the template's stated reason.
-   - **Coverage** — every **resolved** named record exactly once, under its verdict from step 4,
-     plus each reader's stated model and tier.
+   - **Coverage** — every resolved or located record, exactly once, under its verdict from step 4,
+     each reader's model and tier, and (for a located run) the ranked order, the hunt-session label
+     when set, and the 30-day window's cutoff, stated whether or not it excluded anything.
 
 8. **State the fix direction, then compute the rule-based recommendation.** Obtain
    `recommendation.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
@@ -413,55 +413,54 @@ its compact, already-redacted block comes back.
 - **`_local/config.md` absent.** Stop and point to `/wf:init`; write nothing.
 - **A named folder or repository that does not resolve to a filesystem path.** Report it unresolved
   in the Scope section (Phase 1 step 3); no session-store lookup is attempted; the run proceeds.
-- **No `--session` passed, or every named record unresolved.** Stop with the stated reason (Phase 1
-  step 5); write no report folder and no scratch file. **One** record unresolved beside ones that do
-  → the Scope section marks it and the hunt proceeds over the rest, appearing in no coverage line.
+- **Every named `--session` record unresolved.** Stop (Phase 1 step 5); write nothing — never a
+  fall-back to locating. **One** unresolved beside ones that resolve → marked in Scope, hunt proceeds
+  over the rest, no coverage line. **No `--session` passed at all** is not this case: the locator
+  (Phase 3.5 step 0) locates instead.
+- **The locator's whole-store read fails, or meets an unrecognized record shape.** `LOCATE ERROR:
+  <cause>` stops immediately with that cause; write no report (`references/locator.md`) — distinct
+  from one located session's own denied read, which stays `skipped (access denied)` and never stops
+  the run. A **resolved scope locating no session** (`LOCATE OK`, empty list) is not this case either:
+  Summary states "not found," Coverage states the window and the empty set — a complete, non-error
+  report. A session **older than the 30-day window** gets no coverage entry of any kind; Coverage
+  still states the window regardless.
+- **The running session, or an earlier session in which `postmortem` itself ran, is located.** Both
+  rank last regardless of match or recency (`references/locator.md`), keep an ordinary coverage
+  status, and are labelled as hunt sessions — never `skipped (self)`, never dropped.
 - **A session record larger than one reader's context.** Read in ordered, line-boundary windows, one
-  reader per window, merged into one per-session result; Coverage lists the session **once** (Phase
-  3.5 steps 2 and 4). **One window unreadable** → `read in part` with that window's stated reason —
-  never rounded up, never dropped.
-- **A reader errors, or the host denies the read of a record.** Listed as `skipped (reader error:
-  <reason>)` or `skipped (access denied)`; the hunt completes over the remaining sessions — an
-  isolated reader cannot answer a permission prompt, so a denied read is a stated error, never a hang.
-- **A session carrying instruction-shaped text.** The reader treats every record as untrusted data;
-  if the text surfaces at all it is a quoted, redacted excerpt — a reader-agent contract restated here
-  because the host relies on it.
+  reader per window, merged into one per-session result; Coverage lists it **once**. One unreadable
+  window → `read in part` with the stated reason — never rounded up, never dropped.
+- **A reader errors, or the host denies the read of a record.** `skipped (reader error: <reason>)` or
+  `skipped (access denied)`; the hunt completes over the rest — an isolated reader cannot answer a
+  permission prompt, so a denied read is a stated error, never a hang.
+- **A session carrying instruction-shaped text.** Treated as untrusted data; if it surfaces at all it
+  is a quoted, redacted excerpt.
 - **The described failure matches nothing in any read session.** Summary states "not found", Scope
-  and Coverage stay fully populated, nothing is fabricated, and rule 1 fires: `Next: none — terminus`.
-- **Any two-sided-check failure mode** — `present-day-only` resolution, an excerpt that doesn't show
-  the observation, `not found`/`read denied` from the fetcher, a malformed or absent locator, or no
-  reader-reported `Skill-load version:` — leaves the hypothesis unpromoted at `unverified`, with the
-  specific reason recorded; never a wider retry, never a fall-through to reading more of the record.
-  Full branch-by-branch detail: `version-resolution.md`.
-- **The rule-based recommendation** (`recommendation.md`) fires on the report's own fields alone:
-  rule 2 — no confirmed factor (hypotheses or not), or a Fix Direction resting on an open choice —
-  research, `/wf:research`, never spec; rule 3 — two or more confirmed factors, or Localisation
-  spanning more than one skill or contract (each counted once) — charter, `/wf:charter`. Nothing is
-  dispatched, invoked, or filed; recomputing this later is a later charter sub-task (SUB-7).
-- **The guided live hunt's hand-diagnosed defect has aged out of the 30-day window before this task
-  runs it.** Recorded not-runnable with that stated reason; acceptance rests on the synthetic
-  fixtures instead, and no session is fabricated or preserved to force a pass.
-- **A dispatch edge that cannot honour a model selector, or a host already on the lowest tier.** The
-  reader runs on the host's own tier and the report states that per reader, with the reason — never
-  presented as the cheaper tier the host asked for.
-- **No failure description.** Interactive run → ask exactly one question (Phase 2 step 2), then
-  proceed guided. No interactive channel, or an empty-after-trimming description → stop with a stated
-  reason; write no report — never an unguided hunt.
-- **Both `--folder` and `--repo` passed.** Stop with a stated reason (Phase 1 step 3); never silently
-  prefer one framing over the other.
-- **A redaction match, or markdown structure (a leading `#`, a fenced block, newlines), inside the
-  description.** Phase 3 step 2's redact-then-neutralize pass is what reaches the Scope section — the
-  report never carries the original matched string, and the value can forge neither a heading nor a
-  second `POSTMORTEM — written` block.
-- **A report-folder create that fails for a reason other than an already-exists collision** — an
-  unwritable/missing `{task-root}`, a full disk, a read-only filesystem. Stop with that reason (Phase
-  3 step 4); never retried. **Three consecutive id collisions** hits the same bound and stops with a
-  stated contention reason.
-- **A seeded folder left with no `report.md`** by a run interrupted between Phase 3 and Phase 4. The
-  next scan still counts the id as taken (ids are never reused); the empty folder stays for the
-  maintainer — reclaiming it is out of scope.
-- **The pack installed but not registered.** No core `wf:*` phase behaves differently; this skill's
-  own invocation is unaffected, since it attaches to no phase.
+  and Coverage stay fully populated, and rule 1 fires: `Next: none — terminus`.
+- **Any two-sided-check failure mode** — `present-day-only`, an excerpt that doesn't show the
+  observation, `not found`/`read denied`, a malformed/absent locator, or no `Skill-load version:` —
+  leaves the hypothesis `unverified` with the reason recorded; never a wider retry. Full detail:
+  `version-resolution.md`.
+- **The rule-based recommendation** (`recommendation.md`) fires on the report's own fields: rule 2 —
+  no confirmed factor, or Fix Direction resting on an open choice — research, never spec; rule 3 —
+  two or more confirmed factors, or Localisation spanning more than one skill/contract — charter.
+  Nothing is dispatched, invoked, or filed.
+- **The guided live hunt's hand-diagnosed defect aged out of the 30-day window.** Recorded
+  not-runnable with the reason; acceptance rests on synthetic fixtures instead.
+- **A dispatch edge that cannot honour a model selector, or a host already on the lowest tier.** Runs
+  on the host's own tier and states that, with the reason — never presented as the requested tier.
+- **No failure description.** Interactive → ask one question (Phase 2), proceed guided. No channel,
+  or empty-after-trimming → stop; write no report.
+- **Both `--folder` and `--repo` passed.** Stop; never silently prefer one framing.
+- **A redaction match, or markdown structure, inside the description.** Phase 3 step 2's
+  redact-then-neutralize pass is what reaches the Scope section — never the original matched string,
+  and it can forge neither a heading nor a second final-output block.
+- **A report-folder create that fails for a reason other than a collision** — unwritable/missing
+  `{task-root}`, a full disk, read-only. Stop with that reason; never retried. Three consecutive
+  collisions hits the same bound.
+- **A seeded folder left with no `report.md`** by an interrupted run. The id stays taken; the empty
+  folder stays for the maintainer.
+- **The pack installed but not registered.** No core phase behaves differently.
 
 ---
 
@@ -473,25 +472,27 @@ Written:
 POSTMORTEM — written
 
 Report:   {task-root}/PM<NNN>__<slug>/report.md
-Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<override|default, not yet enforced> · session-scope=<current workspace only|current workspace only (project named: <project> — not yet searched)>
-Sessions: <n> named · <r> resolved · <u> unresolved
-Coverage: <path>=<read|read in part (<reason>)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] · …
+Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/repo=<resolved|not named|<name> — unresolved> · cap=<override|default, not yet enforced> · session-scope=<current workspace only|<resolved project path>>
+Sessions: <n> named · <r> resolved · <u> unresolved | <n> located
+Window:   <30-day cutoff, stated on every located run | n/a — named-session run>
+Coverage: <path>=<read|read in part (<reason>)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] [hunt-session] · …
 Finding:  <one line — what was found | not found>
 Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <framing> | file a work item from this report, then /wf:spec <id>>
 ```
 
-`Sessions:` counts the `--session` values as passed, so an unresolved name is visible rather than
-absent. `Coverage:` carries one entry per **resolved** record — each exactly once, whatever its
-verdict — with the model each reader actually ran on and whether that was the requested cheaper tier
-or the host-tier fallback. `Finding:` reads `not found` verbatim when no session yielded a supporting
-observation. `Next:` mirrors Recommendation's fired rule verbatim — never a placeholder or a dispatch.
+`Sessions:` counts `--session` values as passed on a named run (an unresolved name stays visible), or
+the locator's located-set size on a located run. `Window:` states the 30-day cutoff on every located
+run regardless of whether it excluded anything; `n/a` on a named-session run. `Coverage:` one entry
+per resolved-or-located record, each exactly once, with its reader's model/tier and `[hunt-session]`
+when labelled. `Finding:` reads `not found` verbatim when nothing was found, including an empty
+located set. `Next:` mirrors Recommendation's fired rule verbatim — never a placeholder or a dispatch.
 
 Stopped:
 
 ```
 POSTMORTEM — stopped
 
-Reason: <one sentence — e.g. "no session record named", "no named session record resolved — <n> named, 0 resolved", "no failure description given and no interactive channel available to ask for one", or "_local/config.md absent — run /wf:init first">
+Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", or "_local/config.md absent — run /wf:init first">
 Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", or "re-run with a failure description">
 ```
 

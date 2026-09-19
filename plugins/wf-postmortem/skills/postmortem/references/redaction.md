@@ -21,8 +21,8 @@ Applied in this order over the text about to be written, each match replaced ind
    or more base64 characters (`[A-Za-z0-9+/=]`). This rule carries exactly one exemption, and it is
    mechanical, not a judgment call: the run is exempt only when it is **character-for-character
    identical** to a value this run already resolved from the filesystem — a resolved `--folder`,
-   `--repo`, or `--session` path segment, or a subagent-record path Phase 3.5 step 1's
-   sibling-directory discovery resolved for a named session. The `--session` case is not an
+   `--repo`, or `--session` path segment, or a subagent-record path the locator seam (Phase 3.5 step 0,
+   via `references/locator.md`) discovered for a session. The `--session` case is not an
    afterthought: a session record's own filename (top-level or subagent) is frequently a long hex or
    base64-shaped identifier, and without the exemption the shape rule would redact a resolved record
    path out of the report's own Scope and Coverage lines — destroying the locator the report exists

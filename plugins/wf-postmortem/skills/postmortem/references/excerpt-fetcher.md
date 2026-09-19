@@ -7,11 +7,12 @@ picture of what the isolated `excerpt-fetcher` agent does with what it receives 
 runtime-read `SKILL.md` body per this repo's ops/reference split. A future edit to the gate or the
 grammar changes `SKILL.md` first; update this file to match, not the other way around.
 
-**This fetcher is explicitly provisional.** It stands in for the session-side "one access point" a
-later charter sub-task (SUB-2) owns, exactly as Phase 3.5 step 1's sibling-directory rule stands in
-for that same sub-task's real record layout. It will be replaced without changing the two-sided
-confirmation logic's contract once that access point lands — nothing that calls this fetcher needs
-to change, only what answers the call.
+**This fetcher is explicitly provisional.** It stands in for the session-side "one access point" the
+locator seam (`references/locator.md`, Phase 3.5 step 0) now owns for locating, ranking, and
+attaching subagent records — this fetcher still owns only the bounded, redacted excerpt re-read a
+confirmed hypothesis's locator needs. It will be replaced without changing the two-sided confirmation
+logic's contract once a fuller access point lands — nothing that calls this fetcher needs to change,
+only what answers the call.
 
 ## What this is for
 
@@ -52,10 +53,11 @@ parses the locator and resolves it to **the one real filesystem path** it names:
 1. **Split** the locator on `#` into its path component and zero or more of a `subagent:<file>`
    segment and an `L<start>-<end>` segment (Phase 3.5 step 6).
 2. **Resolve the real path, by allow-list, never by trusting the string.** No `subagent:` segment →
-   the real path is the session's own already-resolved path (from `--session`); the locator's path
-   component must be **character-for-character identical** to it. A `subagent:<file>` segment → the
-   real path is whichever entry in this session's own discovered subagent-record paths (Phase 3.5
-   step 1) has `<file>` as its filename; no such entry fails validation. This is the same discipline
+   the real path is the session's own already-resolved path (from `--session`, or the locator's own
+   return); the locator's path component must be **character-for-character identical** to it. A
+   `subagent:<file>` segment → the real path is whichever entry in this session's own discovered
+   subagent-record paths (Phase 3.5 step 0, via `references/locator.md`) has `<file>` as its filename;
+   no such entry fails validation. This is the same discipline
    the redaction reference's long-hex/base64 exemption already uses ("exempt only when
    character-for-character identical to a value this run already resolved") applied to a locator
    instead of a redaction exemption — and it is what lets a `subagent:<file>` locator resolve to a
