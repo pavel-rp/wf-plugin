@@ -103,6 +103,9 @@ contributes nothing and every core phase behaves exactly as before.
   with the prior accumulated state, the recompute, the Continuation log entry, and the pre-overwrite
   re-verification (Part E) that re-runs the confinement check immediately before the write.
 - `skills/postmortem/references/redaction.md` — the shared redacting write path's recognized shapes.
+- `skills/postmortem/references/coverage-cross-check.md` — the always-run coverage cross-check
+  against task folders and delivery history, and the trigger-gated draw of labelled `fallback
+  evidence` from task folders, the fleet scoreboard, a configured eval log, and delivery history.
 - `skills/postmortem/references/locator.md` — **the one seam**: every piece of host-specific
   knowledge of the session-record store, its layout, its structural fields, and the 30-day window,
   plus the ranking, hunt-session-detection, and deterministic-counting rules — named nowhere else in

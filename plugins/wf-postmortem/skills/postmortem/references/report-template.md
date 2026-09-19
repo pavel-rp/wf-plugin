@@ -173,6 +173,14 @@ cutoff and labels a hunt session. A named `--session` entry has no locator-suppl
 entry beyond it is `skipped (budget)` above, never dropped, retrievable by a later `--report`
 follow-up unless it ages out or is removed first (see "sessions this hunt cannot see" below).
 
+**Under-evidenced trigger suppressed (budget):** <n> in-scope session(s) still skipped — read them
+before drawing fallback evidence | "none — no in-scope session remains skipped (budget)" | "n/a —
+named-session run: no located scope to suppress against". Filled only when trigger (a)'s capped-hunt
+suppression applies this run — at least one in-scope session is still `skipped (budget)` and at least
+one finding remains under-evidenced — naming the count of still-skipped in-scope sessions and stating
+the same follow-up-should-read-first recommendation `coverage-cross-check.md`'s
+capped-hunt-suppression rule requires.
+
 **Sessions this hunt cannot see** (follow-up runs only): <a prior `skipped (budget)` session absent
 from this run's fresh locate-mode return, with the reason — "aged out of the 30-day window" or
 "removed from the store" — one line per session, or "- none" when every prior `skipped (budget)`
@@ -180,8 +188,10 @@ session is still present>
 
 **Runs with no session record** (every hunt, cross-checked against task folders and delivery
 history): <one line per in-scope, in-window task folder or delivery entry matched to no session, as
-`<task folder path | delivery entry id> — key attempted: <`<task id>` · `<branch>` — every key
-actually tried for this candidate, both when both were found | "date only">` plus, when
+`<task folder path | delivery entry id> — key attempted: <`<task id>` · `<branch>` — both keys tried,
+found for both | `<task id>` alone — a task id was found but no branch string was (every delivery
+entry, and any task folder with no `**Branch:**` line) | "date only" — the candidate supplied no
+identity at all>` plus, when
 relevant, the delivery-history reason (`no reachable delivery history`, or `delivery history is not
 readable for a named --folder/--repo target`) and `eval log unreadable — <reason>` each as their own
 line, or "- none" when every in-scope, in-window candidate matched a session. When the enumeration
@@ -321,9 +331,12 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
   matched to no session, filed against that candidate itself: most often as its own new Hypotheses
   entry, since no hypothesis is ordinarily tied to a run nobody read a session for, though it may
   instead be filed as corroborating/disconfirming material alongside an existing hypothesis when the
-  drawn text plausibly describes that same mechanism (`coverage-cross-check.md` case (i)). While any in-scope session is `skipped
-  (budget)`, trigger (a) is suppressed and Recommendation/Summary states a follow-up should read those
-  sessions first; trigger (b) still fires regardless (full rules: `coverage-cross-check.md`, mirrored
-  here so the two documents cannot drift).
+  drawn text plausibly describes that same mechanism (`coverage-cross-check.md` case (i)). While any
+  in-scope session is `skipped (budget)` and at least one finding remains under-evidenced, trigger (a)
+  is suppressed and Coverage's own **"Under-evidenced trigger suppressed (budget)"** line states the
+  still-skipped count and that a follow-up should read those sessions before fallback evidence is
+  drawn — the renderable statement of that fact, filled whenever the suppression condition holds and
+  "- none"/"- n/a" otherwise; trigger (b) still fires regardless (full rules:
+  `coverage-cross-check.md`, mirrored here so the two documents cannot drift).
 - **The final-output block is part of the file**, not just chat output — a downstream reader of the
   report file sees the same `POSTMORTEM — written` block this skill prints to chat.
