@@ -58,7 +58,7 @@ skips straight to Phase 1, unchanged by anything below.
 
    A section stating its own "none/not yet produced" reason parses as empty, not as a parse failure.
    A **Read cap** field not matching the `<n> (default|override)` shape this task introduces (e.g. a
-   pre-593 report's own `"default, not yet enforced"` text) parses as **unresolvable**: step 5 below
+   pre-593 report's own `"default, not yet enforced"` text) parses as **unresolvable**: step 7 below
    falls back to the shipped default (15, source `default`) exactly as a first run would, unless
    `--cap` overrides.
 5. **Redact this run's freshly passed values before the scope-conflict check.** Run each of
