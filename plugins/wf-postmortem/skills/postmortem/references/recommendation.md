@@ -9,8 +9,9 @@ budget; it is followed exactly, not merely consulted for background.
 Both halves below are read strictly from **this run's own composed report fields** — the confirmed
 factors and hypotheses step 6/7 already produced — never from a session record directly, and never
 recomputed against anything outside this report. Nothing here dispatches, invokes, or files any work
-item; naming a next command is the entire job (Scope, charter SUB-5 — recomputing this on a follow-up
-run is SUB-7's territory, not this one's).
+item; naming a next command is the entire job. A `--report` follow-up recomputes this by re-running
+this same procedure over the accumulated report fields (`continuation.md` Part C) — no new rule, no
+new field, just a fresh pass over a larger input.
 
 ## Part A: the Fix Direction section and its marker
 
@@ -89,5 +90,6 @@ exactly as the Recommendation section states it:
 - Rule 4 → `Next:     file a work item from this report, then /wf:spec <id>`
 
 Never dispatch, invoke, or pre-fill any of these commands — naming the exact next step is the whole
-job; running it, or filing the work item on the spec route, is the maintainer's or a later run's own
-act (Scope; SUB-7 owns recomputing this on a follow-up).
+job; running it, or filing the work item on the spec route, is the maintainer's own act. A `--report`
+follow-up restates the fired rule here fresh, over the full accumulated report (`continuation.md` Part
+C/D) — mirrored into the Continuation entry when it differs from the rule the prior write fired.
