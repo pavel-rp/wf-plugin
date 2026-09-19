@@ -7,15 +7,14 @@ allowed-tools: [Task, Write, Read, Grep, Glob, Bash, AskUserQuestion]
 # /wf-postmortem:postmortem — Resolve a failure prompt to an echoed hunt scope
 
 Turn a prose failure report into an explicit hunt scope, echoed verbatim, then **read every session
-record in scope** — named explicitly with `--session`, or, when none was named, located automatically
-behind one replaceable seam (`locator.md`) — each in its own isolated reader agent on a cheaper model
-tier, in ordered windows when too large for one reader, up to a **per-run read cap** (default 15,
-overridable) — and compose the report's Summary, Evidence Record, Measured Effect, Coverage and
-Hypotheses from those readers' compact, already-redacted blocks. Every hypothesis carrying a locator
-is then **checked two-sided** against the audited pack's own text at the run's resolved executed
-version and a bounded, redacted excerpt at the locator, promoted only when both sides verify. A
-`--report <path>` follow-up inherits a prior report's scope, reads the sessions the cap left `skipped
-(budget)`, and extends that same report in place (Phase 0.5).
+record in scope** — named with `--session`, or, when none was named, located behind one replaceable
+seam (`locator.md`) — each in its own isolated reader agent on a cheaper model tier, in ordered
+windows when too large for one reader, up to a **per-run read cap** (default 15, overridable), and
+compose Summary, Evidence Record, Measured Effect, Coverage and Hypotheses from those readers'
+compact, already-redacted blocks. Every hypothesis carrying a locator is then **checked two-sided**
+against the audited pack's own text at the run's resolved executed version and a bounded, redacted
+excerpt at the locator, promoted only when both sides verify. A `--report <path>` follow-up inherits
+a prior report's scope, reads the sessions the cap left `skipped (budget)`, extends it in place (0.5).
 
 ---
 
@@ -52,8 +51,7 @@ stop and report that the resolver runtime is not loaded — do not hand-parse co
 `--folder` and `--repo` are mutually exclusive framings of the same "another project" input — pass
 at most one. **Naming `--session` values confines the hunt to exactly those records**, and at least
 one must resolve or the run stops; omitting it entirely locates instead (`locator.md`) — never a
-fallback when named values were passed but none resolved. **Beside `--report`**, this confining
-behavior does not apply — Phase 0.5 and `continuation.md`.
+fallback when named values resolved none. **Beside `--report`** it does not confine — Phase 0.5.
 
 ---
 
@@ -70,8 +68,9 @@ behavior does not apply — Phase 0.5 and `continuation.md`.
   `plugin: wf-postmortem`).
 - Resolve `--report`'s path with the same existence-check primitive as `--folder`/`--repo`/`--session`,
   then confirm it is confined under `{task-root}`'s own `PM<digits>__.../report.md` shape (canonicalized
-  both sides, never a string-prefix match or a symlinked file), and only then **`Read`** it to check
-  for its `POSTMORTEM — written` block and parse its sections (`continuation.md` Part A).
+  both sides, never a string-prefix match or a symlinked file) — **twice: before the `Read` (Phase 0.5,
+  `continuation.md` Part A) and again, with its recorded identity, as the last action before Phase 4's
+  overwrite (Part E)**. One check never stands in for the other; only then may it be **`Read`** or written.
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:excerpt-fetcher`, once per hypothesis
   locator the two-sided check needs, to fetch and redact a bounded session-side excerpt in that
   agent's own isolated context (`version-resolution.md` step 6) — never a `Bash` read of session bytes
@@ -83,16 +82,15 @@ behavior does not apply — Phase 0.5 and `continuation.md`.
 - **Read (`Read`/`Grep`) the skill, contract, or manifest text of the pack under audit** — never a
   session or subagent record — at a resolved version, per `version-resolution.md`'s branches (a)/(d).
   Ordinary repository/install-tree prose, not a session record — outside the prohibition below.
-- Resolve which version's tree to read that text from, and read a session's own filesystem
-  last-modified time, per `version-resolution.md`'s branches (b)/(c) — `Bash`: `git log`, `git show`,
-  `stat -c %Y`/`stat -f %m`, values single-quoted the same way. These (plus the `test -e`/`wc -c`
-  checks) are metadata or the audited pack's own text — never session content.
+- Resolve which version's tree to read that text from, read a session's own filesystem last-modified
+  time (`version-resolution.md` branches (b)/(c)), and read the `--report` target's own device/inode
+  identity for Part E — `Bash`: `git log`, `git show`, `stat -c '%Y'`/`'%d:%i'` (BSD: `stat -f '%m'`/
+  `'%d:%i'`), single-quoted the same way. These, with `test -e`/`test -L`/`wc -c`, are metadata only.
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id, and ask exactly one interactive
   question (`AskUserQuestion`) when the failure description is missing and a channel is available.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any scratch
-  file inside the fixed, literal `_local/scratch/` — both only through the redacting write path. The
-  scratch target is deliberately **not** `{task-root}`-relative, so residue always lands where the
-  shared scratch discipline and the finalize sweep cover it.
+  file inside the fixed, literal `_local/scratch/` (deliberately **not** `{task-root}`-relative, so
+  residue lands where the finalize sweep covers it) — both only through the redacting write path.
 - Resolve each `--session` value with the same existence-check primitive used for `--folder`/`--repo`,
   and size it with `Bash`: `wc -c '<path>'` under the same quoting.
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:session-reader`, once per session or per
@@ -137,16 +135,15 @@ budget. **Part A** validates the path and the report, parses the prior report's 
 state and folder path, and stops with no write on a validation failure or a scope conflict against
 any `<description>`/`--skill`/`--folder`/`--repo` also passed this run. On success, Phase 1 treats the
 inherited values as if passed this run, and Phase 2's missing-description question never fires.
-**Parts B-D** govern the retry set, the cap, the merge, the recompute, and the Continuation entry —
-applied at the points named in Phase 3, 3.5, and 4 below.
+**Parts B-E** govern the retry set, the cap, the merge, the recompute, the Continuation entry and the
+pre-overwrite re-verification — applied at the points named in Phase 3, 3.5, and 4 below.
 
 ---
 
 ## Phase 1: Resolve inputs and defaults
 
 1. **Failure description.** Take `<description>` verbatim when passed. When absent, proceed to
-   Phase 2 before resolving anything else — a missing description is handled there, not defaulted
-   here.
+   Phase 2 before resolving anything else — handled there, never defaulted here.
 2. **Skill.** Take `--skill` verbatim when passed. Absent → the scope is unscoped ("skill:
    unscoped" in the echo).
 3. **Folder or repository.** Take at most one of `--folder`/`--repo`. Resolve it against the local
@@ -160,12 +157,15 @@ applied at the points named in Phase 3, 3.5, and 4 below.
    verbatim, the locator (Phase 3.5 step 0) enumerates that project's store; **does not resolve** →
    echo it unresolved (`"<name> — unresolved (no matching filesystem path)"`), `session-scope` still
    states `"current workspace only"` — an unresolved name never widens it.
-4. **Read cap.** Take `--cap` verbatim when passed (through Phase 3 step 2's redacting write path)
-   and record its source as `override`. Absent → the cap is the real default **15**, source `default`
-   — unless this is a `--report` follow-up with no `--cap` passed this run, in which case the cap is
-   the prior report's own recorded value (Phase 0.5), never silently re-defaulted over an explicit
-   prior override. Either way this is the **cap in force**, enforced at Phase 3.5 step 2.5: it gates
-   only dispatch count, never the locator's own ranking or Coverage listing.
+4. **Read cap.** When `--cap` is passed, **validate it before anything uses it**: the value must
+   match `^[1-9][0-9]*$` — a positive integer, no sign, no decimal, no unit, no leading zero. It
+   fails → stop, reason `"--cap <value> is not a positive integer"`, write nothing; never coerced,
+   truncated, or silently replaced by the default. Valid → take it verbatim (through Phase 3 step 2's
+   redacting write path), source `override`. Absent → the real default **15**, source `default` —
+   unless this is a `--report` follow-up with no `--cap` this run, where the cap is the prior report's
+   own recorded value (Phase 0.5), never silently re-defaulted over an explicit prior override. Either
+   way this is the **cap in force**, enforced at Phase 3.5 step 2.5: it gates only dispatch count,
+   never the locator's own ranking or Coverage listing.
 5. **Named session records.** Collect every `--session` value in the order passed. Resolve each with
    the **same single primitive** step 3 uses — same quoting, same `Glob`-as-pattern prohibition.
 
@@ -189,9 +189,8 @@ Only when Phase 1 step 1 found no `<description>`.
    `AskUserQuestion` is present. Never guess from context; a headless dispatch has it absent from its
    own catalog, the only signal this step reads.
 2. **Available (interactive run).** Ask exactly one free-text question, no preset options. Use the
-   answer as the resolved description, then **return to Phase 1 steps 2-5** and resolve
-   `--skill`/`--folder`/`--repo`/`--cap`/`--session` exactly as a run that carried a description
-   would, then continue to Phase 3 as a guided run.
+   answer as the resolved description, then **return to Phase 1 steps 2-5**, resolving
+   `--skill`/`--folder`/`--repo`/`--cap`/`--session` as any run would, and continue to Phase 3.
 3. **Unavailable (headless run).** Stop. Write nothing. Reason: "no failure description given and no
    interactive channel available to ask for one."
 
@@ -200,8 +199,7 @@ Only when Phase 1 step 1 found no `<description>`.
 ## Phase 3: Redact, then mint the report folder
 
 Redaction runs **before** any value pulled from the prompt is used in a path or a file — the report
-folder's own name is a write, exactly like the file inside it, so it passes through the same
-redacting write path rather than being minted from the raw prompt.
+folder's own name is a write, so it passes through the same redacting write path too.
 
 **A validated `--report` follow-up (Phase 0.5) skips id-minting and folder-creation entirely** —
 reuse the prior report's own folder path parsed there; proceed directly to Phase 3.5 without steps
@@ -231,10 +229,9 @@ override), even though no new folder or id is minted this run.
    created, continue to Phase 4. Non-zero **and** the path now exists as a directory (`test -d
    '<path>'`) → true id collision, re-mint (step 3) and retry, bounded at **3 attempts per run**;
    exhausting it stops with "report-folder id contention — 3 consecutive collisions." Non-zero and the
-   path does **not** exist (permission/missing/full-disk/read-only) → **not** a collision; stop
-   immediately with that reason verbatim — never retried, since re-minting repairs nothing about an
-   unwritable, missing, or full `{task-root}`. This release records no per-task index row for the
-   minted folder (charter assumption #9).
+   path does **not** exist (permission/missing/full-disk/read-only) → **not** a collision; stop with
+   that reason verbatim, never retried — re-minting repairs nothing about an unwritable, missing, or
+   full `{task-root}`. This release records no per-task index row for it (charter assumption #9).
 
 ---
 
@@ -327,10 +324,9 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    assigned `skipped (budget)` never reaches this step** — no observation, hypothesis, or count from
    it flows into steps 5-7 below.
 
-   **Carry forward step 0's own per-session facts**: date, rank (located sessions only), the
-   hunt-session flag, and any seam-counted iterations/edits/files-touched — replacing the
-   reader-counted figure at `mechanically-observed`; every count the seam did not produce stays
-   `reader-counted` at `unverified`.
+   **Carry forward step 0's own per-session facts**: date, rank (located only), the hunt-session flag,
+   and any seam-counted iterations/edits/files-touched — replacing the reader-counted figure at
+   `mechanically-observed`; every count the seam did not produce stays `reader-counted`/`unverified`.
 
 5-6. **Resolve the executed version, then check each hypothesis two-sided and tier it.** Obtain
    `version-resolution.md` via `resolve_content({ workspaceRoot, ... })` (`class:
@@ -342,9 +338,8 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    or `unverified` with the reason recorded.
 
 7. **Compose the report sections from the merged results and step 6's checks.** Summary, Evidence
-   Record, Measured Effect and Coverage are built from the returned blocks and nothing else — this
-   context never saw the records directly, so it has nothing else to build them from beyond what
-   steps 5-6 fetched and compared for confirmation. **On a follow-up**, this runs over
+   Record, Measured Effect and Coverage are built from the returned blocks and steps 5-6's fetches
+   and nothing else — this context never saw the records directly. **On a follow-up**, this runs over
    `continuation.md` Part C's full accumulated set, not only this run's new reads.
    - **Summary** — what was found across every read session; states **"not found"** plainly when no
      session yielded a supporting observation, with Scope and Coverage still fully populated. Fabricate
@@ -374,18 +369,18 @@ first, the `locator`), and only its compact, already-redacted or already-structu
 
 8. **State the fix direction, then compute the rule-based recommendation.** Obtain
    `recommendation.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
-   `plugin: wf-postmortem`, `skill: postmortem`, `ref: recommendation.md`) and follow it in full. It
-   composes Fix Direction from a confirmed factor (`stated` or `resting on an open choice`), then
-   evaluates the four routing rules, first match, over the confirmed-factor count, hypothesis count,
-   Localisation list, and that marker.
+   `plugin: wf-postmortem`, `skill: postmortem`, `ref: recommendation.md`) — never a raw `Read` of
+   the plugin-cache path — and follow it in full: it composes Fix Direction from a confirmed factor
+   (`stated` or `resting on an open choice`), then evaluates the four routing rules, first match, over
+   the confirmed-factor count, hypothesis count, Localisation list, and that marker.
 
 ---
 
 ## Phase 4: Write the report
 
 1. **Obtain the report template** via `resolve_content({ workspaceRoot, ... })` (`class:
-   references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: report-template.md`).
-   The redaction reference was already obtained in Phase 3.
+   references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: report-template.md`) —
+   never a raw `Read` of the plugin-cache path. The redaction reference came from Phase 3.
 2. **Fill the Scope section** with every resolved value and applied default from Phase 1, verbatim
    after Phase 3's redaction. Fill **Summary, Evidence Record, Measured Effect, Coverage, both halves
    of Contributing Factors, Component and Version, and Localisation** from Phase 3.5's composed results
@@ -397,8 +392,11 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    redaction; run it through the redacting write path again anyway as the disk backstop, which also
    applies the markdown-structure neutralization half (Phase 3 step 2's collapse-newlines-and-backticks,
    strip-leading-`#`-run rule) to every field composed from a `session-reader`/`excerpt-fetcher` return
-   block — closing the same report-forgery class on the session-content channel that the CLI-prompt
-   channel already closes.
+   block — closing the same report-forgery class the CLI-prompt channel already closes.
+2.5. **On a follow-up, re-verify the write target — the last action before step 3's `Write`.** Phase
+   0.5's confinement check is stale by now: all of Phase 1-3.5 ran since. Re-run `continuation.md`
+   **Part E** in full (the whole confinement check again from scratch, plus the recorded device/inode
+   identity comparison) and stop with nothing written if any part of it fails or the identity differs.
 3. **Write** `{task-root}/PM<NNN>__<slug>/report.md` per the template shape, including the
    `**Model:**` attribution line (the runtime model id — `unknown` rather than guessed) and the
    fenced `POSTMORTEM — written` final-output block, matching this skill's own Final Output shape
@@ -452,10 +450,11 @@ first, the `locator`), and only its compact, already-redacted or already-structu
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than
   the cap.** Read in ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never
   dropped, retrievable by a further `--report` follow-up unless it ages out or is removed first.
-  **`--report <path>`** does not resolve, is
-  not confined under `{task-root}`'s own `PM<digits>__.../report.md` shape, is not a postmortem report,
-  or conflicts with the prior report's own recorded Scope — each stops (Phase 0.5) and writes nothing;
-  a differing hunt is a new invocation without `--report`, never a silent overwrite.
+  **A `--report <path>`** that does not resolve, is not confined under `{task-root}`'s own
+  `PM<digits>__.../report.md` shape, is not a postmortem report, conflicts with the prior report's
+  recorded Scope, or whose target changed between Phase 0.5's check and Phase 4's re-check (Part E) —
+  each stops and writes nothing; a differing hunt is a new invocation without `--report`.
+- **A malformed `--cap` value** (not a positive integer) stops at Phase 1 step 4; write nothing.
 - **A `skipped (budget)` session aged out of the window, or removed from the store, by a follow-up.**
   Moves to "sessions this hunt cannot see" with that reason (`continuation.md` Part B); the run
   does not fail.
@@ -481,8 +480,9 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
 
 `Follow-up:` is `n/a — first run` normally; on a follow-up it names the prior report's path, the count
 newly read, and whether Recommendation's rule changed (mirrors `continuation.md` Part D). `Sessions:`
-counts `--session` values (an unresolved name stays visible) or the located-set size. `Window:` states
-the cutoff on every located run, `n/a` on a named-session run. `Coverage:` one entry per record, with
+counts `--session` values (an unresolved name stays visible) or the located-set size — **on a
+follow-up it states the full accumulated set, matching `Coverage:`, never only this run's fresh
+locate**. `Window:` states the cutoff on every located run, `n/a` otherwise. `Coverage:` per record,
 its model/tier (`not dispatched`/`n/a` when capped) and `[hunt-session]` when labelled. `Finding:`
 reads `not found` verbatim when nothing was found. `Next:` mirrors Recommendation's fired rule
 verbatim — never a placeholder or a dispatch.
@@ -492,7 +492,7 @@ Stopped:
 ```
 POSTMORTEM — stopped
 
-Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report conflicts with the prior report's own scope — <field> differs", "_local/config.md absent — run /wf:init first">
+Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "_local/config.md absent — run /wf:init first">
 Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", "re-run with a failure description", or "re-run --report <path> without the conflicting flag">
 ```
 
