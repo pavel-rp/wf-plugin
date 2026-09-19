@@ -30,6 +30,15 @@ lookup table, so it generalizes to any project the maintainer names, not only th
 **Top-level session record.** A file directly inside the store root (non-recursive at this level) whose
 name ends `.jsonl`. Its basename (with the extension removed) is the session's id.
 
+**Quoting discipline for every store access.** This seam is the only component in the pack that walks
+the session store, so the escaping rule lives here and is not optional. Every path substituted into a
+shell command — the store root, a candidate record, a subagent-record entry — is **single-quoted, with
+every `'` in the value replaced by `'\''` first**, exactly as `SKILL.md`'s own existence and size checks
+do. A store root is derived from a workspace path the caller resolved, and a record filename comes from
+the store's own directory listing; neither is this pack's own literal, so neither is ever interpolated
+bare. Never expand a glob through the shell and never pass a path as a `Glob` pattern — enumerate the
+directory and match names as data.
+
 **Attached subagent records.** When a directory bearing the *exact same basename* as a top-level
 record's id sits directly inside the store root (a sibling of the `.jsonl` file, not nested under it),
 that directory is the session's own subagent-record folder. Inside it:
@@ -77,15 +86,20 @@ Applied to every top-level record, and to every `subagents/` entry, that the loc
 
 **Recognized** — all of the following hold:
 - the file's name ends `.jsonl`;
-- its first line is well-formed JSON and carries both a `sessionId` field and a `timestamp` field —
-  the latter required here, not merely assumed later, because §3's window computation reads it
-  unconditionally from this same line;
+- its first line is well-formed JSON and carries a `sessionId` field. **A `timestamp` is not required
+  on this line and must not be demanded of it:** a record opens with one or more header lines (an
+  observed `type` of `mode`, `last-prompt`, `bridge-session` and similar) that carry `sessionId` but
+  no `timestamp`, so requiring one here would reject every conforming record;
+- at least one line in the file carries a `timestamp` field — found by the same bounded forward scan
+  §3 uses to compute the date, not assumed of any fixed line. A record in which no line carries one
+  is unrecognized, because §3's window computation has nothing to place it against;
 - when a sibling subagent-record directory exists for it, every file directly inside its `subagents/`
   folder is one half of a complete `agent-<dispatch-id>.jsonl` + `agent-<dispatch-id>.meta.json` pair
   (an orphaned half is unrecognized, not silently skipped).
 
 **Unrecognized** — the extension is not `.jsonl`; the first line is not well-formed JSON, or lacks
-`sessionId` or `timestamp`; a `subagents/` entry has no matching pair-half; or the sibling directory
+`sessionId`; no line in the file carries a `timestamp`; a `subagents/` entry has no matching
+pair-half; or the sibling directory
 exists but holds no `subagents/` folder at all where the top-level record's own first line implies
 subagent activity occurred (a stated, conservative signal — this release does not attempt to name
 every implying field, only to fail loudly rather than guess when the layout looks inconsistent with
@@ -126,8 +140,11 @@ located set to that project's sessions, never any other unnamed project's.
 `.../skills/<the named skill>` — appears anywhere in its top-level record or in any of its attached
 subagent records. Absent `--skill`, every candidate matches this dimension trivially (unscoped).
 
-**Date — the 30-day window.** A candidate's date is its `timestamp` field's earliest occurrence (its
-first line, in file order). A candidate whose date falls outside the trailing 30 days from the locate
+**Date — the 30-day window.** A candidate's date is the **earliest `timestamp` value in file order** —
+found by scanning forward from the first line until a line carrying one is reached, then stopping.
+It is **not** read from a fixed line: the opening header lines (§2) carry `sessionId` and no
+`timestamp`, so the first timestamped line is typically a few lines in. A candidate whose date falls
+outside the trailing 30 days from the locate
 operation's own run time is **not located and not read** — it receives no coverage entry of any kind
 (not even a "skipped" one), and the caller states the window itself in coverage regardless of whether
 any candidate was excluded by it. This is a hard filter applied before ranking, not a ranking penalty.

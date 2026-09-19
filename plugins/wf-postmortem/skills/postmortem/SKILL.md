@@ -266,7 +266,7 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    cause — write no report. `LOCATE OK` with an empty list is **not** a stop — proceed as "not found."
    The block's own `Model:` field is this dispatch's diagnostic only — it is never written into
    Coverage, whose one `model:`/`tier:` slot per session stays sourced from that session's own
-   `session-reader` dispatch (step 4) exactly as before this step existed.
+   `session-reader` dispatch (step 3) exactly as before this step existed.
 
 2. **Decide windowing.** Measure each resolved record with `Bash`: `wc -c '<path>'` (same quoting as
    the existence check — metadata, not content). A record exceeding **200,000 characters** is read in
@@ -292,8 +292,13 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    (null, same tier, or the edge can't honour the selector) → dispatch at the host's own tier, record
    `tier: host-fallback (<stated reason>)` — never presented as the requested tier. Invoke one
    **Task** with `subagent_type: wf-postmortem:session-reader`, passing the failure description, the
-   session path, the window (`n of N` or `whole`) with its span, and the attached subagent-record
-   paths step 0's dispatch resolved.
+   session path, the window (`n of N` or `whole`) with its span, the attached subagent-record
+   paths step 0's dispatch resolved, and the **attachment note** naming how they were associated —
+   `"attached by the locate seam"` — which `session-reader.md` requires as an input and echoes
+   verbatim in its `Subagent records:` line, and which `redaction.md` passes through the redacting
+   write path before Phase 4 writes it. The note is no longer the provisional label it was before
+   this seam existed, but the field itself is unchanged and is never omitted: a session with no
+   attached records passes `none` rather than dropping it.
 
    **Read the result defensively.** No `SESSION READ` block, or one that can't be parsed → that
    unit's `error` verdict, reason `"reader returned no parseable block"`, carried into the merge like
