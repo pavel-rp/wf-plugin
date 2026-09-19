@@ -22,7 +22,7 @@ Authoring/reference documentation. **No skill reads this file at runtime.**
   scope (skill / folder or repository / current-workspace default, within the host's 30-day retention
   window) behind one replaceable seam — and writes the fixed ten-section report. Every located session
   is ranked (scope-match specificity, then recency, hunt sessions always last) and none is silently
-  dropped; a located session's iterations, edits, and files-touched counts are `mechanically-observed`
+  dropped; a session's iterations, edits, and files-touched counts are `mechanically-observed`
   wherever the seam counts them deterministically. Every reader-suggested mechanism carrying a locator
   is then **checked two-sided** — against the audited pack's own skill/contract/manifest text at the
   run's resolved executed version, and against a bounded, redacted excerpt fetched fresh at the

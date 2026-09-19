@@ -107,10 +107,12 @@ contributing factor's `file:line`; none exists this run.">
 
 ## Measured Effect
 
-<Counts read from the sessions themselves, one group per session. A located session's iterations,
-edits, and files-touched counts are labelled `mechanically-observed` wherever the locator seam counted
-them deterministically, with no model judgment; every other count — findings per pass, always, and any
-count for a named session or one the seam could not produce — is labelled `reader-counted` at the
+<Counts read from the sessions themselves, one group per session. A session's iterations, edits, and
+files-touched counts are labelled `mechanically-observed` wherever the locator seam counted them
+deterministically, with no model judgment — **whether the session was located or named**, since the
+seam's attach-only mode counts a named session's records on exactly the same structural pass; the tier
+follows how the count was produced, never how the session was reached. Every other count — findings
+per pass, always, and any count the seam did not produce — is labelled `reader-counted` at the
 `unverified` tier. No token count and no monetary figure appears here or anywhere in this report.>
 
 - `<session path>` — iterations: <n | not observable> · edits: <n | not observable> · files touched: <n | not observable> · findings per pass: <n | not observable> — each labelled **mechanically-observed** or **reader-counted**, per count, at its own real tier

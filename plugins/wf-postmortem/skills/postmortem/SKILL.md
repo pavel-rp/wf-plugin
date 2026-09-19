@@ -16,7 +16,7 @@ Measured Effect, Coverage and Hypotheses from those readers' compact, already-re
 hypothesis carrying a locator is then **checked two-sided** — against the audited pack's own
 skill/contract/manifest text at the run's resolved executed version, and against a bounded, redacted
 excerpt fetched fresh at the hypothesis's locator — and promoted to a confirmed contributing factor
-only when both sides verify (or verify mechanically on both). A located session's iterations, edits,
+only when both sides verify (or verify mechanically on both). A session's iterations, edits,
 and files-touched counts are `mechanically-observed` wherever the seam can count them deterministically;
 every other count — findings per pass always — stays `reader-counted` at `unverified`.
 
