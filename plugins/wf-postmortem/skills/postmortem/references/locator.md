@@ -59,6 +59,14 @@ shape signal), never for what they *say*:
   read here and also returned to the caller (§8, `agents/locator.md`'s `Branch:` line) — the one
   scope/identity fact the caller sees directly, so a hunt's coverage cross-check can match a session to
   a task folder or delivery entry by branch name with no new read of session content.
+  **`gitBranch` is read by the same forward scan §3 applies to `timestamp`, never from a fixed line:**
+  scan forward from the first line until a line carrying a `gitBranch` field is reached, take that
+  line's value, and stop. The opening header lines (§2) carry `sessionId` and neither `timestamp` nor
+  `gitBranch`, so demanding it on the first line would report `none observed` for every conforming
+  record and silently degrade every one of its matches to date-only. Only when **no** line in the
+  record carries a `gitBranch` field is the value `none observed` — a real absence, not an artifact of
+  which line was read. This scan is the same single sequential walk §2's shape check and §6's counting
+  already perform, not a further traversal, and it carries no size cap of its own (§6's "Scan bound").
 - **Count-only shape fields** (§6 alone reads these, and only to count line shapes, never to inspect
   the substance behind them): the line's own turn-role/entry-type marker (to count turn boundaries);
   a tool-invocation line's own tool-name field (to test whether it names a file-mutating tool); and,

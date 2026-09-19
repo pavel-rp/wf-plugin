@@ -165,10 +165,15 @@ Part D's Continuation entry names it as such.
 hunt cannot see" coverage entry, with that reason. This is not a failure: the run proceeds over
 whatever the fresh return does contain.
 
-**The coverage cross-check (`coverage-cross-check.md`) reruns fresh every follow-up**, over this same
-freshly re-located scope and the freshly re-enumerated task folders/delivery history — never carried
-forward from the prior report. "Runs with no session record" is therefore rewritten from scratch each
-run, exactly like every other recomputed section (Part C), never patched incrementally.
+**The coverage cross-check's Part A (`coverage-cross-check.md`) reruns fresh every follow-up**, over
+this same freshly re-located scope and the freshly re-enumerated task folders/delivery history —
+never carried forward from the prior report. "Runs with no session record" is therefore rewritten
+from scratch each run, exactly like every other recomputed section (Part C), never patched
+incrementally. **Part B's written fallback-evidence entries are the stated exemption:** each is
+deduplicated by its own draw key against what the prior report already carries, so an entry that is
+already present is kept unchanged rather than re-drawn (`coverage-cross-check.md` "Follow-up
+behaviour"). Recomputing the coverage list and re-drawing the evidence are two different things —
+only the first happens unconditionally.
 
 ## Part C: Cap, dispatch, merge, and recompute
 

@@ -98,13 +98,14 @@ prevent.>
 **Supporting**
 
 - <what was observed, one line> — locator: `<session path | task-folder path | delivery-entry id>` |
-  tier: <reader-observed | run-reported | inferred | mechanically-observed>
+  tier: <reader-observed | run-reported | inferred | mechanically-observed> <[fallback evidence] when
+  labelled>
 
 **Disconfirming**
 
 - <what was observed that counts against the described failure> — locator: `<session
   path#subagent:<file> | task-folder path | delivery-entry id>` | tier: <reader-observed | run-reported
-  | inferred | mechanically-observed>
+  | inferred | mechanically-observed> <[fallback evidence] when labelled>
 
 <When either list is empty, state "- none" rather than dropping the heading — a reader must be able
 to tell "nothing found" from "not looked for". A `run-reported` tier marks a statement in which the
@@ -179,11 +180,15 @@ session is still present>
 
 **Runs with no session record** (every hunt, cross-checked against task folders and delivery
 history): <one line per in-scope, in-window task folder or delivery entry matched to no session, as
-`<task folder path | delivery entry id> — key attempted: <task id | branch | "date only">` plus, when
-relevant, `— no reachable delivery history` as its own reason, or "- none" when every in-scope,
-in-window candidate matched a session. Distinct from, and additional to, "sessions this hunt cannot
-see" above — that list is prior sessions this run can no longer reach; this one is runs that never
-had a session to reach. Rendered on every hunt, whether or not fallback evidence below is drawn.>
+`<task folder path | delivery entry id> — key attempted: <task id | "date only">` plus, when
+relevant, the delivery-history reason (`no reachable delivery history`, or `delivery history is not
+readable for a named --folder/--repo target`) and `eval log unreadable — <reason>` each as their own
+line, or "- none" when every in-scope, in-window candidate matched a session. When the enumeration
+was narrowed, state the root it ran against — or `- none — n/a: named-session run, no scope to
+cross-check` on an attach-only hunt — so a narrowed cross-check is never read as an exhaustive one.
+Distinct from, and additional to, "sessions this hunt cannot see" above — that list is prior sessions
+this run can no longer reach; this one is runs that never had a session to reach. Rendered on every
+hunt, whether or not fallback evidence below is drawn.>
 
 ## Recommendation
 

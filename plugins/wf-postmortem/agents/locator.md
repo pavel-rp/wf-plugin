@@ -153,7 +153,9 @@ Located sessions (in ranked order — attach-only mode: in the order given):
 - **`Branch:`** is the one field readable and stated in **both** modes, never `n/a` — the seam's own
   structural read of `gitBranch` (`locator.md` §1) already happens for every candidate regardless of
   mode; this just returns it. Unlike `Date:`/`Scope-match:`/`Hunt session:`, it carries no
-  named-session exemption.
+  named-session exemption. `none observed` is written **only** when §1's forward scan reached
+  end-of-file without any line carrying a `gitBranch` field — never because the record's opening
+  header lines omit one, which is the ordinary shape.
 - **`LOCATE OK` with an empty "Located sessions" list** (locate mode only) is a valid, complete
   outcome — the "not found" case — never treated by the caller as an error.
 - **`LOCATE ERROR: <cause>`** ends the block there — no "Located sessions" section follows, and the

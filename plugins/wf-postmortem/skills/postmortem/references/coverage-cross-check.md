@@ -14,7 +14,31 @@ could not see even when every finding it holds is already well evidenced.
 
 ## Part A: the coverage cross-check (always runs, draws no evidence)
 
-**1. Enumerate candidate task folders.** `Glob` `{task-root}`'s immediate child directories,
+**0. Fix the enumeration root — both sides must describe the same project.** The located session set
+is scoped to whichever project the hunt named: the current workspace by default, or a named
+`--folder`/`--repo` target's own session store (`locator.md` §3). Part A's candidates must come from
+that **same** project, never from the current workspace while the sessions came from another one — a
+cross-project comparison would flood "Runs with no session record" with this project's own unrelated
+runs and hide the named target's real gaps. So:
+
+- **No `--folder`/`--repo` named** (the ordinary case) — the enumeration root is the current
+  `workspaceRoot`; steps 1 and 2 run in full.
+- **A `--folder`/`--repo` target was named and resolved** (`SKILL.md` Phase 1) — the enumeration root
+  is that resolved absolute path. Step 1 enumerates `{task-root}` **under that path**, not under
+  `workspaceRoot`. Step 2's delivery read cannot follow: `resolve_provider` resolves the delivery
+  surface for the invocation's own `workspaceRoot` and takes no other root, so delivery history for a
+  named target is not readable from here. Take step 2's degrade-to-empty branch, with `delivery
+  history is not readable for a named --folder/--repo target` as its stated Coverage reason. Step 1
+  still runs, so the cross-check still runs — it is narrowed, never skipped, and Coverage says which
+  root it ran against.
+- **Attach-only mode** (one or more `--session` values resolved, `locator.md` §7) — the hunt is an
+  explicit list of named records, not a scope, so there is no in-scope run set to cross-check against.
+  Part A renders its subsection as `- none — n/a: named-session run, no scope to cross-check` and
+  performs no enumeration. Part B's trigger (b) therefore cannot fire on such a run; trigger (a) is
+  unaffected and still evaluated normally.
+
+**1. Enumerate candidate task folders.** `Glob` `{task-root}`'s immediate child directories under the
+step-0 enumeration root,
 excluding `_archive/`, this pack's own `PM<digits>__.../` report folders, and any other folder that
 fails the same task-id-shape test `wf:standup` Phase 4 applies (a tracker-shaped id or the local
 `T<NNN>` scheme — any folder carrying a 3+-digit run). Take each surviving folder's id from its own
@@ -28,10 +52,15 @@ workspaceRoot, surface: "delivery" })`) and invoke its `activity-read` operation
 least 30 days, for both commits and pull requests — mirroring `wf:standup` Phase 2's own
 degrade-to-empty discipline exactly: `state: unconfigured`/`unrecoverable`, or a mid-run read
 failure, is never a stop. On either outcome, proceed over task folders alone and state in Coverage
-that delivery history was unreachable, with the reason (`no delivery provider registered` or the
-read's own failure reason). Take each returned entry's id from its commit subject or PR title's
-first 3+-digit run — the same extraction convention `plugins/wf/skills/spec/SKILL.md`'s Validation
-section already uses for id matching elsewhere in this codebase.
+that delivery history was unreachable, with the reason (`no delivery provider registered`, the read's
+own failure reason, or step 0's `delivery history is not readable for a named --folder/--repo
+target`). Take each returned entry's id from its commit subject or PR title's first 3+-digit run —
+the same extraction convention `plugins/wf/skills/spec/SKILL.md`'s Validation section already uses
+for id matching elsewhere in this codebase — **and its date from the entry's own timestamp** (a
+commit's `timestamp`, a pull request's `updated-at`; both are already in `activity-read`'s return
+shape, `plugins/wf/skills/standup/SKILL.md:56`). The date is captured for **every** entry, including
+one whose text yields no id: without it an id-less entry could never match any session under any
+tier and would always land in "Runs with no session record" even when it plainly correlates by date.
 
 **3. Match.** For a candidate (a task folder or a delivery entry) and a session (from Phase 3.5's
 located/read set, each now carrying the locator's `Branch:` fact per `locator.md` §8) — this pack's
@@ -40,13 +69,18 @@ none), so every comparison below runs through the branch fact, the one identity 
 actually surfaces:
 
 - **`mechanically-observed`** — the candidate's extracted id equals the first 3+-digit run of the
-  session's `Branch:` value, **or** the two full branch strings are identical (case-sensitive, exact).
-  Either equality is sufficient.
-- **`inferred`** — only when neither comparison above is possible (the session's `Branch:` is `none
-  observed`, or the candidate itself has no extractable id/branch on its own side), a same-calendar-day
-  match between the candidate's date and the session's own date is the sole fallback. Never applied
-  when a branch comparison could have been attempted on both sides, even if it found no match — a
-  failed branch comparison is a genuine non-match, not grounds to fall back to dates.
+  session's `Branch:` value (compared as strings, exact). This is the **only** identity comparison
+  either side can support, and it is deliberately the only one stated: **no candidate kind ever
+  carries a full branch string of its own.** A task folder yields an id and a date (step 1); a
+  delivery entry yields an id and a date (step 2) from commit-subject/PR-title text, which carries no
+  branch field at all. An "identical full branch strings" comparison would therefore be unreachable
+  for every candidate, so it is not offered — a rule no input can satisfy reads as coverage the
+  mechanism does not have.
+- **`inferred`** — only when the comparison above is impossible (the session's `Branch:` is `none
+  observed`, or the candidate has no extractable id of its own), a same-calendar-day match between the
+  candidate's date and the session's own date is the sole fallback. Never applied when the id-versus-
+  branch comparison could have been attempted on both sides, even if it found no match — a failed id
+  comparison is a genuine non-match, not grounds to fall back to dates.
 
 A candidate matching **any** session under either tier is covered — it contributes nothing further
 to this step. A candidate matching **no** session is unmatched.
@@ -54,11 +88,14 @@ to this step. A candidate matching **no** session is unmatched.
 **4. Extend Coverage with "Runs with no session record."** List every unmatched, in-scope, in-window
 candidate — task folder or delivery entry — under a new Coverage subsection distinct from, and
 additional to, the existing "Sessions this hunt cannot see" list (the read-cap/aged-out list this
-pack's earlier read-cap slice introduced). Each entry states the key attempted (the task id or
-branch string tried, or "date only" when no id/branch was extractable from the candidate itself) and,
-when relevant, "no reachable delivery history" as its own reason. This subsection renders even when
-empty (`- none`) and even when Part B never fires — it is a coverage fact, not a symptom of a thin
-finding.
+pack's earlier read-cap slice introduced). Each entry states the key attempted — the candidate's own
+extracted task id, compared against each located session's `Branch:` fact, or `date only` when the
+candidate had no extractable id and only the date tier was available — and, when relevant, the
+delivery-history reason from step 2 as its own line. When step 0 narrowed the enumeration (a named
+`--folder`/`--repo` target, or attach-only mode), the subsection states which root it ran against, or
+its `n/a` reason, so a reader never mistakes a narrowed cross-check for an exhaustive one. This
+subsection renders even when empty (`- none`) and even when Part B never fires — it is a coverage
+fact, not a symptom of a thin finding.
 
 This cross-check **draws no evidence, promotes no factor, and confirms nothing** — it only names
 which in-scope runs have no matching session. Everything past this point belongs to Part B.
@@ -96,14 +133,19 @@ is never suppressed by budget state.
 **Sourcing, when a trigger fires.** Draw additional Evidence Record / Contributing Factors →
 Hypotheses entries from:
 
-- the matched (trigger (a): the hypothesis's own session locator's task folder if one shares its id/
-  branch; trigger (b): the unmatched candidate itself) task folder's own artifacts — read directly in
-  this skill's own context (Safety Rules Allowed; neither a session nor a subagent record);
+- the matched (trigger (a): the task folder whose own id equals the first 3+-digit run of the
+  hypothesis's own session locator's `Branch:` fact, the same comparison Part A step 3 makes;
+  trigger (b): the unmatched candidate itself) task folder's own artifacts — read directly in this
+  skill's own context (Safety Rules Allowed; neither a session nor a subagent record);
 - `_local/fleet/scoreboard.md`, when present;
 - a project-configured eval-log path, read only when `_local/config.md` names one under this
   project's own `postmortem` config section (e.g. an `**Eval Log Path:**` line) — absent today in
   every project this pack ships against, so this source contributes nothing until a project adds
-  that key; never an error, never a placeholder path;
+  that key; never an error, never a placeholder path. **When the key is present but the path cannot
+  be read** (it does not exist, has moved, or the read is denied), that is not a stop either and not
+  the same silence as an absent key: this source contributes nothing and Coverage states
+  `eval log unreadable — <the reason>` on its own line, so a project that configured the key learns
+  its configuration is stale instead of reading a quietly thinner report;
 - the matched delivery entry's own commit/PR text, when Part A matched one.
 
 Redact every value pulled from any of these sources through the existing redacting write path
@@ -138,15 +180,26 @@ composes) recording that the finding is now confirmed and no further fallback ev
 it. No fallback evidence is ever deleted or unlabelled — the note supersedes it in the reader's
 attention, not in the record.
 
-**Trigger (b) is deduplicated across follow-ups by candidate identity, the one exemption to "rewritten
-from scratch" above.** Part A's own enumeration and matching are still recomputed fresh every run —
-that is never skipped — but before trigger (b) draws a **new** Hypotheses entry for an unmatched
-candidate, check whether the report already carries a `fallback evidence` Hypotheses entry whose
-"suggested from" names that same candidate's own path/id (a task folder id or delivery-entry id,
-compared exactly). **Already present** → keep the existing entry unchanged; draw nothing further for
-it this run, even though Part A will re-list it under "Runs with no session record" again (that list
-is a coverage fact, recomputed every run regardless; the Hypotheses entry it may have triggered once
-is not). **Not present** → draw it fresh, exactly as on a first run. This is what keeps a candidate
-that stays unmatched across many follow-ups from accumulating a duplicate Hypotheses entry each time,
-honoring the "one hunt, one report" constraint the same way Part C's upsert already does for
-session-sourced entries.
+**Every fallback-evidence draw is deduplicated across follow-ups before it is written — the one
+exemption to "rewritten from scratch" above, and it covers both triggers and all three dispositions.**
+Part A's own enumeration and matching are still recomputed fresh every run — that is never skipped,
+and "Runs with no session record" is re-listed in full every run regardless of what follows, because
+that list is a coverage fact and not a symptom of a draw. What is deduplicated is only the **written
+fallback-evidence entry**. Before writing any such entry, compute its **draw key** and check whether
+the report already carries a `fallback evidence` entry with that same key, compared exactly as
+strings:
+
+| Disposition | Draw key |
+|---|---|
+| Trigger (b), case (ii) — a new Hypotheses entry for an unmatched candidate | that candidate's own path/id, as its "suggested from" states it |
+| Trigger (b), case (i) — corroborating/disconfirming material filed against an **existing** hypothesis | that candidate's own path/id, as the Evidence Record line's `locator:` states it, paired with that hypothesis's own mechanism line |
+| Trigger (a) — corroborating material for a hypothesis that stays unconfirmed | that hypothesis's own mechanism line, paired with the source the material was drawn from (task-folder path, `_local/fleet/scoreboard.md`, the configured eval-log path, or the delivery-entry id) |
+
+**Already present** → keep the existing entry unchanged and draw nothing further for that key this
+run. **Not present** → draw it fresh, exactly as on a first run. Without this, a candidate that stays
+unmatched, or a hypothesis that never gets confirmed, accumulates a duplicate entry from the same
+deterministic sources on every unrelated follow-up — the identical hazard for all three dispositions,
+so the guard is stated once over all three rather than for whichever one was noticed first. This
+honors the "one hunt, one report" constraint the same way Part C's upsert already does for
+session-sourced entries. A dedup hit is silent: it is neither a finding nor a coverage entry, because
+the entry it would have duplicated is already in the report saying the same thing.

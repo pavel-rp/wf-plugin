@@ -92,10 +92,12 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:session-reader`, once per session or per window, to read
   the record in that agent's own isolated context.
 - For the coverage cross-check (Phase 3.5 step 7.5): `Glob`/`Read` `{task-root}`'s immediate child folders and their
-  own artifacts, `_local/fleet/scoreboard.md` when present, and a project-configured eval-log path named under
-  `_local/config.md`'s `postmortem` section when one is set, directly in this skill's own context (none of these is a
-  session or subagent record); invoke `activity-read` through the resolved `delivery` provider record, degrading to
-  task-folders-only (never a stop) on `unconfigured`/`unrecoverable`, with the reason stated in Coverage.
+  own artifacts under the enumeration root `coverage-cross-check.md` Part A step 0 fixes, `_local/fleet/scoreboard.md`
+  when present, and a project-configured eval-log path named under `_local/config.md`'s `postmortem` section when one
+  is set, directly in this skill's own context (none of these is a session or subagent record); resolve the delivery
+  surface with `resolve_provider({ workspaceRoot, surface: "delivery" })` and invoke `activity-read` through the
+  resolved record, degrading to task-folders-only (never a stop) on `unconfigured`/`unrecoverable`, on a mid-run read
+  failure, or on a named `--folder`/`--repo` target, with the reason stated in Coverage.
 
 **Forbidden:**
 
@@ -341,7 +343,8 @@ compact, already-redacted or already-structural block comes back.
      locator, and its tier (`independently-verified` or `mechanically-observed`). Empty when step 6 promoted nothing
      this run.
    - **Contributing Factors → Hypotheses** — every unpromoted mechanism, stating **why** (no locator; malformed
-     locator; source/session side failed; `present-day-only`). A promoted mechanism is not duplicated here.
+     locator; source/session side failed; `present-day-only`; or fallback evidence only — trigger (a)/(b), step
+     7.5). A promoted mechanism is not duplicated here.
    - **Component and Version** — when confirmed, take the **mechanically-observed** factor first, then
      **independently-verified**, ties broken by merge order; fill from its version and `file:line`. Otherwise state
      plainly that no factor was confirmed this run (never "not yet produced" — this release *can* confirm one).
@@ -378,7 +381,7 @@ compact, already-redacted or already-structural block comes back.
    path. The redaction reference came from Phase 3.
 2. **Fill the Scope section** with every resolved value and applied default from Phase 1, verbatim after Phase 3's
    redaction. Fill **Summary, Evidence Record, Measured Effect, Coverage, both halves of Contributing Factors,
-   Component and Version, and Localisation** from Phase 3.5's composed results (step 7) — the confirmed half,
+   Component and Version, and Localisation** from Phase 3.5's composed results (steps 7-7.5) — the confirmed half,
    Component and Version, and Localisation state their own honest "none confirmed this run" reason when nothing was
    confirmed. Fill **Fix Direction and Recommendation** from step 8's results, mirroring the fired rule onto the Final
    Output block's `Next:` line below.
