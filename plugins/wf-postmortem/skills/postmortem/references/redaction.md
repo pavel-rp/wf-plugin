@@ -64,7 +64,25 @@ is echoed into the Scope section, and before any of it is used in a folder or fi
 also to every field composed from a `session-reader`/`excerpt-fetcher` return block (observations,
 hypothesis/mechanism text, attachment notes) before Phase 4 writes them into the report.
 
+**Fallback-evidence-sourced text is covered the same way, before it ever reaches Evidence Record,
+Hypotheses, or Coverage** (`coverage-cross-check.md`): a matched task folder's own artifact excerpts,
+any text read from `_local/fleet/scoreboard.md`, text read from a project-configured eval-log source,
+and the matched delivery entry's own commit/PR text — plus the "Runs with no session record" Coverage
+line's **full text**, both its leading `<task folder path | delivery entry id>` identifier and its
+key-attempted string, since both are mechanically extracted from the same untrusted candidate sources
+(a task-folder directory name, or an id/subject drawn from delivery-entry text) and land in the
+written report exactly like any other fallback-sourced value. Each passes through this same shape
+list, substituted the same way, before it is labelled `fallback evidence` (Evidence Record/Hypotheses)
+or written as a Coverage line — this write path draws no distinction between a reader's return block
+and a fallback or cross-check source once the text is in hand.
+
 Redaction defends against credential shapes only. Neutralizing markdown structure in the same text
 (newlines and backticks collapsed to spaces, the entire leading run of `#` characters stripped —
 `^#+`, not a single one — so the text can forge neither a heading nor a fenced block) is a separate,
-mandatory step that runs after this one — `SKILL.md` Phase 3 step 2 owns it.
+mandatory step that runs after this one: `SKILL.md` Phase 3 step 2 owns it for every value pulled from
+the prompt, and Phase 4 step 2 owns it for every field composed from a `session-reader`/
+`excerpt-fetcher` return block **or from the coverage cross-check** — fallback-evidence entries and the
+full "Runs with no session record" Coverage line text (leading identifier and key-attempted string
+both) — the same full scope this section's own fallback-evidence paragraph now names for the
+credential-shape pass above; the two passes cover identical ground, deliberately, so they cannot drift
+apart again.

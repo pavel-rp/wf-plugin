@@ -1,6 +1,6 @@
 # postmortem capability manifest
 
-**Version:** 0.4.0
+**Version:** 0.5.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** postmortem (a native feature capability; **registration is required**)
 **Kind:** feature (ships the guided `/wf-postmortem:postmortem` skill and `/wf-postmortem:init`; attaches **no** SDD phase fragment)
@@ -35,12 +35,13 @@ fragment rows (the `sandbox-testing`/`pr-review`-before-its-slot precedent).
 ## Scope of this release
 
 This manifest registers the capability that ships the scope-resolution, session-locating,
-session-reading, mechanism-verification, and read-cap/continuation slices of a larger, multi-sub-task
-charter (C035, umbrella WF-587). Reading a session record (named explicitly, or **located**
-automatically behind one replaceable seam) in an isolated reader, checking every reader-suggested
-mechanism two-sided against the audited pack's executed-version text and a checked session locator,
-and bounding each hunt with a per-run read cap that a `--report <path>` follow-up can continue in
-place, have all landed. **Drawing fallback evidence** from task folders and delivery history arrives
-with one remaining sub-task, extending this same skill body in place rather than adding a new
-capability. Registering `postmortem` today changes no core phase behaviour and names no path or
+session-reading, mechanism-verification, read-cap/continuation, and coverage-cross-check/
+fallback-evidence slices of a charter (C035, umbrella WF-587). Reading a session record (named
+explicitly, or **located** automatically behind one replaceable seam) in an isolated reader, checking
+every reader-suggested mechanism two-sided against the audited pack's executed-version text and a
+checked session locator, bounding each hunt with a per-run read cap that a `--report <path>`
+follow-up can continue in place, and — on every hunt — cross-checking coverage against task folders
+and delivery history to name any in-scope run left with no session, drawing labelled fallback
+evidence only when a finding is under-evidenced from sessions alone or left no session record, have
+all landed. Registering `postmortem` today changes no core phase behaviour and names no path or
 convention specific to any one repository.

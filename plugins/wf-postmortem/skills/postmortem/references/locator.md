@@ -55,7 +55,24 @@ subagent — never an error and never a shape mismatch.
 **Structural fields.** Each line of a `.jsonl` file (top-level or a `subagents/` entry) is one JSON
 object. Two groups of fields are structural — read for what they *are* (a type, a name, a count-only
 shape signal), never for what they *say*:
-- **Scope/identity fields:** `sessionId`, `timestamp`, `cwd`, `gitBranch`, `version`.
+- **Scope/identity fields:** `sessionId`, `timestamp`, `cwd`, `gitBranch`, `version`. `gitBranch` is
+  read here and also returned to the caller (§8, `agents/locator.md`'s `Branch:` line) — the one
+  scope/identity fact the caller sees directly, so a hunt's coverage cross-check can match a session to
+  a task folder or delivery entry by branch name with no new read of session content.
+  **`gitBranch` is read by the same forward scan §3 applies to `timestamp`, never from a fixed line:**
+  scan forward from the first line until a line carrying a `gitBranch` field is reached, take that
+  line's value, and stop. The opening header lines (§2) carry `sessionId` and neither `timestamp` nor
+  `gitBranch`, so demanding it on the first line would report `none observed` for every conforming
+  record and silently degrade every one of its matches to date-only. Only when **no** line in the
+  record carries a `gitBranch` field **whose value is a non-empty string** is the value `none
+  observed`. An **empty or whitespace-only** value counts as the same real absence and is reported as
+  `none observed` too, never returned verbatim: a host may stamp the field empty for a detached HEAD
+  or a non-repository working directory, and an empty string would match no id and no branch while
+  also failing to be the sentinel, leaving that session permanently unmatchable and its real task
+  folder wrongly reported as having left no session. A value that is present and non-empty is
+  returned raw, unparsed. This scan is the same single sequential walk §2's shape check and §6's
+  counting already perform, not a further traversal, and it carries no size cap of its own (§6's
+  "Scan bound").
 - **Count-only shape fields** (§6 alone reads these, and only to count line shapes, never to inspect
   the substance behind them): the line's own turn-role/entry-type marker (to count turn boundaries);
   a tool-invocation line's own tool-name field (to test whether it names a file-mutating tool); and,
@@ -271,10 +288,12 @@ one of two modes — the mode, not whether it runs at all, is what depends on `-
 
 One ranked list, `LOCATE OK` (even when the list is empty — an empty list under scope is the "not
 found" outcome, still a success, not an error) or `LOCATE ERROR: <cause>` (§2's fail-loud cases). Each
-listed entry carries: the session's own resolved path, its date, its scope-match specificity, whether it
-carries attached subagent records (and their resolved paths, for the caller's later
-`excerpt-fetcher.md` allow-list), whether it is a hunt session, its per-session status when the locator
-itself could not read it (`skipped (access denied)`; never `skipped (self)`), and any of §6's counts the
-seam produced for it. The 30-day window's own cutoff date is always stated, whether or not it excluded
-anything. `SKILL.md` reads this list defensively exactly as it reads a `session-reader`/`excerpt-fetcher`
-return block — no parseable result is a stated error, never a silent empty pass.
+listed entry carries: the session's own resolved path, its date, its raw `gitBranch` value (or `none
+observed`), its scope-match specificity, whether it carries attached subagent records (and their
+resolved paths, for the caller's later `excerpt-fetcher.md` allow-list), whether it is a hunt session,
+its per-session status when the locator itself could not read it (`skipped (access denied)`; never
+`skipped (self)`), and any of §6's counts the seam produced for it. The branch fact is stated in both
+modes — it carries no named-session exemption. The 30-day window's own cutoff date is always stated,
+whether or not it excluded anything. `SKILL.md` reads this list defensively exactly as it reads a
+`session-reader`/`excerpt-fetcher` return block — no parseable result is a stated error, never a silent
+empty pass.

@@ -75,9 +75,18 @@ resolved version); "checked — session side failed" (the excerpt did not show t
 found, or was denied); or "not eligible — version resolved to `present-day-only`". A promoted
 mechanism moves to the confirmed half and is not duplicated here; every reason above still leaves the
 hypothesis at the `unverified` tier — checking it and not confirming it is not a defect of this
-report.>
+report. A mechanism supported only by `fallback evidence` (`coverage-cross-check.md`) also lists
+here, its "why not promoted" naming the gating trigger that drew it — "fallback evidence only —
+trigger (a): no factor confirmed from sessions alone" or "fallback evidence only — trigger (b):
+matched run left no session record" — and it stays a Hypothesis regardless of how corroborating that
+evidence is; confirmation reaches only through the two-sided check. **Trigger (b)** most often
+introduces its own new entry here rather than augmenting an existing one — an unmatched run has no
+session, so no existing hypothesis is already tied to it — in which case "suggested from" names the
+candidate's own task-folder path or delivery-entry id (never a session locator, since none exists for
+this candidate) and the mechanism text is drawn from that candidate's own fallback-sourced artifacts.>
 
-- <mechanism, one line> — suggested from `<locator | "no locator">` — <reason it was not promoted>
+- <mechanism, one line> — suggested from `<session locator | task-folder path | delivery-entry id |
+  "no locator">` — <reason it was not promoted>
 
 ## Evidence Record
 
@@ -88,16 +97,24 @@ prevent.>
 
 **Supporting**
 
-- <what was observed, one line> — locator: `<session path>` | tier: <reader-observed | run-reported>
+- <what was observed, one line> — locator: `<session path | task-folder path | delivery-entry id>` |
+  tier: <reader-observed | run-reported | inferred | mechanically-observed> <[fallback evidence] when
+  labelled>
 
 **Disconfirming**
 
-- <what was observed that counts against the described failure> — locator: `<session path>#subagent:<file>` | tier: <reader-observed | run-reported>
+- <what was observed that counts against the described failure> — locator: `<session
+  path#subagent:<file> | task-folder path | delivery-entry id>` | tier: <reader-observed | run-reported
+  | inferred | mechanically-observed> <[fallback evidence] when labelled>
 
 <When either list is empty, state "- none" rather than dropping the heading — a reader must be able
 to tell "nothing found" from "not looked for". A `run-reported` tier marks a statement in which the
 run under study claimed its own success or progress; it is quoted as what that run claimed and never
-treated as evidence that it happened.>
+treated as evidence that it happened. An entry may instead carry the **`fallback evidence`** label
+alongside its own tier (`inferred` or `mechanically-observed`) — distinct from the `reader-observed`/
+`run-reported` tiers above — when it was drawn from a task folder, the fleet scoreboard, a configured
+eval-log, or a delivery entry rather than from a session (`coverage-cross-check.md`); it is never
+confirming and never raises the confirmed-factor count.>
 
 ## Localisation
 
@@ -156,13 +173,34 @@ cutoff and labels a hunt session. A named `--session` entry has no locator-suppl
 entry beyond it is `skipped (budget)` above, never dropped, retrievable by a later `--report`
 follow-up unless it ages out or is removed first (see "sessions this hunt cannot see" below).
 
+**Under-evidenced trigger suppressed (budget):** <n> in-scope session(s) still skipped — read them
+before drawing fallback evidence | "none — no in-scope session remains skipped (budget)" | "n/a —
+named-session run: no located scope to suppress against". Filled only when trigger (a)'s capped-hunt
+suppression applies this run — at least one in-scope session is still `skipped (budget)` and at least
+one finding remains under-evidenced — naming the count of still-skipped in-scope sessions and stating
+the same follow-up-should-read-first recommendation `coverage-cross-check.md`'s
+capped-hunt-suppression rule requires.
+
 **Sessions this hunt cannot see** (follow-up runs only): <a prior `skipped (budget)` session absent
 from this run's fresh locate-mode return, with the reason — "aged out of the 30-day window" or
 "removed from the store" — one line per session, or "- none" when every prior `skipped (budget)`
 session is still present>
 
-**Not covered by this release:** the coverage cross-check against task folders and delivery history,
-and its trigger-gated fallback evidence — each arrives with a later charter sub-task.
+**Runs with no session record** (every hunt, cross-checked against task folders and delivery
+history): <one line per in-scope, in-window task folder or delivery entry matched to no session, as
+`<task folder path | delivery entry id> — key attempted: <`<task id>` · `<branch>` — both keys tried,
+found for both | `<task id>` alone — a task id was found but no branch string was (every delivery
+entry, and any task folder with no `**Branch:**` line) | "date only" — the candidate supplied no
+identity at all>` plus, when
+relevant, the delivery-history reason (`no reachable delivery history`, or `delivery history is not
+readable for a named --folder/--repo target`) and `eval log unreadable — <reason>` each as their own
+line, or "- none" when every in-scope, in-window candidate matched a session. When the enumeration
+was narrowed, state the root it ran against — or, on a named-session hunt, `- none — named-session
+run: no resolved scope, so no in-scope run could be cross-checked` — so a narrowed cross-check is
+never read as an exhaustive one.
+Distinct from, and additional to, "sessions this hunt cannot see" above — that list is prior sessions
+this run can no longer reach; this one is runs that never had a session to reach. Rendered on every
+hunt, whether or not fallback evidence below is drawn.>
 
 ## Recommendation
 
@@ -211,6 +249,14 @@ release (`continuation.md` Part D states why).>
   `<path> — <failure verdict and reason>` — the prior entry stands and is not overwritten, so this is
   never folded into "Sections changed" below; or "none">
 - Moved to "sessions this hunt cannot see": <one path per session with its reason, or "none">
+- Fallback evidence drawn this run: <one line per `fallback evidence` entry newly drawn, as
+  `<the draw key> — trigger (a) | trigger (b)`, or "none">
+- Fallback evidence retired this run: <one line per finding this run's own two-sided check now
+  confirms from sessions alone, as `<the draw key> — confirmed from sessions; no further fallback
+  evidence drawn` — the existing entries stay, still labelled, superseded by the dated note; or "none">
+- Fallback evidence suppressed (duplicate key): <one line per draw the dedup guard discarded, as
+  `<the draw key> — already present, nothing drawn`, so a suppressed draw is distinguishable from a
+  draw never attempted; or "none">
 - Sections changed: <Summary | Contributing Factors | Component and Version | Localisation | Measured
   Effect — named plainly, or "none" when the recompute produced no observable change>
 - Recommendation: <"unchanged (rule `<n>` still fires)" | "changed — rule `<old>` → rule `<new>`",
@@ -278,5 +324,19 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
 - **A "not found" report is a complete report.** Summary says so plainly, and Scope and Coverage are
   filled exactly as they would be for a hunt that found something. No match is ever fabricated to
   avoid an empty Summary.
+- **The coverage cross-check runs on every hunt; fallback evidence is gated.** "Runs with no session
+  record" is always populated (or "- none"), whether or not any fallback evidence is drawn. Fallback
+  evidence is drawn only on trigger (a) — a finding's Confirmed is empty and no in-scope session
+  remains `skipped (budget)` — or trigger (b) — the cross-check names an in-scope, in-window candidate
+  matched to no session, filed against that candidate itself: most often as its own new Hypotheses
+  entry, since no hypothesis is ordinarily tied to a run nobody read a session for, though it may
+  instead be filed as corroborating/disconfirming material alongside an existing hypothesis when the
+  drawn text plausibly describes that same mechanism (`coverage-cross-check.md` case (i)). While any
+  in-scope session is `skipped (budget)` and at least one finding remains under-evidenced, trigger (a)
+  is suppressed and Coverage's own **"Under-evidenced trigger suppressed (budget)"** line states the
+  still-skipped count and that a follow-up should read those sessions before fallback evidence is
+  drawn — the renderable statement of that fact, filled whenever the suppression condition holds and
+  "- none"/"- n/a" otherwise; trigger (b) still fires regardless (full rules:
+  `coverage-cross-check.md`, mirrored here so the two documents cannot drift).
 - **The final-output block is part of the file**, not just chat output — a downstream reader of the
   report file sees the same `POSTMORTEM — written` block this skill prints to chat.

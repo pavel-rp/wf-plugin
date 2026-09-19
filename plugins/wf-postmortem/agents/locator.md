@@ -140,6 +140,7 @@ Store root: <resolved | did not exist (zero candidates) | unreadable | n/a — a
 Located sessions (in ranked order — attach-only mode: in the order given):
 - Path: <the top-level record's resolved path>
   Date: <the candidate's own date | n/a — named session>
+  Branch: <the candidate's own branch value as `locator.md` §1 reads it, raw | none observed>
   Scope-match: <n> of <m> named elements | n/a — named session
   Subagent records: <n> attached (<their resolved paths, comma-separated> | none)
   Hunt session: <yes | no | n/a — named session>
@@ -149,6 +150,13 @@ Located sessions (in ranked order — attach-only mode: in the order given):
 
 - **`Model:`** states what this dispatch actually ran on, from the runtime's own model identity;
   `unknown` rather than guessed — never omitted, in either mode.
+- **`Branch:`** is the one field readable and stated in **both** modes, never `n/a` — the seam's own
+  structural read of the branch scope/identity field (`locator.md` §1, which names it; this file
+  deliberately does not) already happens for every candidate regardless of mode, and this just
+  returns it. Unlike `Date:`/`Scope-match:`/`Hunt session:`, it carries no named-session exemption.
+  `none observed` is written **only** on the outcome §1 defines as a real absence — its forward scan
+  reaching end-of-file with no line carrying the field — never because a record's opening header
+  lines omit it, which is the ordinary shape.
 - **`LOCATE OK` with an empty "Located sessions" list** (locate mode only) is a valid, complete
   outcome — the "not found" case — never treated by the caller as an error.
 - **`LOCATE ERROR: <cause>`** ends the block there — no "Located sessions" section follows, and the
