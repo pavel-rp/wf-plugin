@@ -8,7 +8,7 @@ allowed-tools: [Task, Write, Read, Grep, Glob, Bash, AskUserQuestion]
 
 Turn a prose failure report into an explicit hunt scope, echoed verbatim, then **read every session
 record in scope** — named explicitly with `--session`, or, when none was named, located automatically
-under the resolved scope behind one replaceable seam (`references/locator.md`) owning all host-specific
+under the resolved scope behind one replaceable seam (`locator.md`) owning all host-specific
 knowledge of where sessions live, how subagent records attach, and the 30-day retention window — each
 session read in its own isolated reader agent, on a model tier cheaper than this skill's own, in
 ordered windows when too large for one reader — and compose the report's Summary, Evidence Record,
@@ -57,7 +57,7 @@ at most one.
 **Naming `--session` values confines the hunt to exactly those records**, exactly as before this task,
 and at least one must resolve or the run stops. **Omitting `--session` entirely** now locates every
 in-window session matching the resolved scope instead of stopping — behind the seam
-(`references/locator.md`) — never as a fallback when named values were passed but none resolved.
+(`locator.md`) — never as a fallback when named values were passed but none resolved.
 
 ---
 
@@ -176,7 +176,7 @@ in-window session matching the resolved scope instead of stopping — behind the
    while *all* unresolved leaves no evidence at all.
 
    **When no `--session` value was passed at all**, this is not a stop: proceed to Phase 3.5 step 0,
-   which locates sessions under the resolved scope instead (`references/locator.md`).
+   which locates sessions under the resolved scope instead (`locator.md`).
 
 ---
 
@@ -423,14 +423,14 @@ first, the `locator`), and only its compact, already-redacted or already-structu
   over the rest, no coverage line. **No `--session` passed at all** is not this case: the locator
   (Phase 3.5 step 0) locates instead.
 - **The locator's whole-store read fails, or meets an unrecognized record shape.** `LOCATE ERROR:
-  <cause>` stops immediately with that cause; write no report (`references/locator.md`) — distinct
+  <cause>` stops immediately with that cause; write no report (`locator.md`) — distinct
   from one located session's own denied read, which stays `skipped (access denied)` and never stops
   the run. A **resolved scope locating no session** (`LOCATE OK`, empty list) is not this case either:
   Summary states "not found," Coverage states the window and the empty set — a complete, non-error
   report. A session **older than the 30-day window** gets no coverage entry of any kind; Coverage
   still states the window regardless.
 - **The running session, or an earlier session in which `postmortem` itself ran, is located.** Both
-  rank last regardless of match or recency (`references/locator.md`), keep an ordinary coverage
+  rank last regardless of match or recency (`locator.md`), keep an ordinary coverage
   status, and are labelled as hunt sessions — never `skipped (self)`, never dropped.
 - **A session record larger than one reader's context.** Read in ordered, line-boundary windows, one
   reader per window, merged into one per-session result; Coverage lists it **once**. One unreadable

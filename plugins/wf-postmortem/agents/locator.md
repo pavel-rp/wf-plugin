@@ -18,7 +18,7 @@ user-invocable: false
 
 > **This agent names no host-specific record path, filename convention, or field name of its own.**
 > Every fact of that kind — where sessions live, what a record file is named, how a subagent record
-> attaches, which structural fields exist — lives in exactly one place, `references/locator.md`, which
+> attaches, which structural fields exist — lives in exactly one place, `locator.md`, which
 > this agent obtains at the start of every dispatch and follows exactly. A future host release that
 > changes any of those facts changes that one file; this agent's own body never needs to change.
 
