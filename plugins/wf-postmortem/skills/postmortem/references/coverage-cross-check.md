@@ -24,13 +24,22 @@ runs and hide the named target's real gaps. So:
 - **No `--folder`/`--repo` named** (the ordinary case) — the enumeration root is the current
   `workspaceRoot`; steps 1 and 2 run in full.
 - **A `--folder`/`--repo` target was named and resolved** (`SKILL.md` Phase 1) — the enumeration root
-  is that resolved absolute path. Step 1 enumerates `{task-root}` **under that path**, not under
-  `workspaceRoot`. Step 2's delivery read cannot follow: `resolve_provider` resolves the delivery
-  surface for the invocation's own `workspaceRoot` and takes no other root, so delivery history for a
-  named target is not readable from here. Take step 2's degrade-to-empty branch, with `delivery
-  history is not readable for a named --folder/--repo target` as its stated Coverage reason. Step 1
-  still runs, so the cross-check still runs — it is narrowed, never skipped, and Coverage says which
-  root it ran against.
+  is that resolved absolute path. **Obtain that project's own task root the same way this run obtained
+  its own** — a second `resolve_config({ workspaceRoot: <the resolved target path> })` call, reading
+  `coreConfig.taskRoot` from *its* answer. Never re-express this project's `{task-root}` under the
+  other path by string substitution: `taskRoot` is that project's own configured value and there is no
+  formula that derives one project's from another's. The named target is an ordinary wf project or it
+  is not one, and the call is what distinguishes them: **when it resolves**, step 1 enumerates that
+  returned task root under the target path. **When it does not** — the target has no `_local/config.md`,
+  or the resolver reports it uninitialized — there is no task-folder population there to cross-check,
+  which is a coverage fact and never a stop: skip step 1 too, and state `target project is not wf-
+  initialized — no task folders to cross-check` in Coverage alongside the delivery reason below.
+  Step 2's delivery read cannot follow either way: `resolve_provider` resolves the delivery surface
+  for the invocation's own `workspaceRoot` and takes no other root, so delivery history for a named
+  target is not readable from here. Take step 2's degrade-to-empty branch, with `delivery history is
+  not readable for a named --folder/--repo target` as its stated Coverage reason. The cross-check
+  still runs on this path — narrowed, never silently skipped, and Coverage always says which root it
+  ran against and what it could not reach there.
 - **Attach-only mode** (one or more `--session` values resolved, `locator.md` §7) — Part A still runs,
   as it does on every hunt; what it finds is the empty set, by construction rather than by exception.
   A named-session hunt is an explicit list of records, not a resolved scope, so there is no in-scope
@@ -45,8 +54,11 @@ runs and hide the named target's real gaps. So:
 step-0 enumeration root,
 excluding `_archive/`, this pack's own `PM<digits>__.../` report folders, and any other folder that
 fails the same task-id-shape test `wf:standup` Phase 4 applies (a tracker-shaped id or the local
-`T<NNN>` scheme — any folder carrying a 3+-digit run). Take each surviving folder's id from its own
-name and its date from its most-recently-modified artifact's mtime (`00_reqs.md`/`01_spec.md`/
+`T<NNN>` scheme — any folder carrying a 3+-digit run). Take each surviving folder's id as **its own
+name's first 3+-digit run** — the same extraction step 2 applies to a delivery entry's text, stated
+identically here because step 3 compares both kinds' ids against the same thing; the literal slugged
+folder name is not the id and would never match. Take its date from its most-recently-modified
+artifact's mtime (`00_reqs.md`/`01_spec.md`/
 `02_plan.md`/`04_verify.md`/`06_qa.md`/`07_qa-report.md`/`index.md` — whichever exists and is
 newest). Take its **branch string**, when it has one, from the first `**Branch:**` line any of those
 same artifacts carries, read as the literal value on that line with surrounding backticks stripped —
@@ -71,11 +83,25 @@ shape, `plugins/wf/skills/standup/SKILL.md:56`). The date is captured for **ever
 one whose text yields no id: without it an id-less entry could never match any session under any
 tier and would always land in "Runs with no session record" even when it plainly correlates by date.
 
-**3. Match.** For a candidate (a task folder or a delivery entry) and a session (from Phase 3.5's
-located/read set, each now carrying the locator's `Branch:` fact per `locator.md` §8) — this pack's
-data contract carries no session-side task-id field (`agents/session-reader.md`'s Output block has
-none), so every comparison below runs through the branch fact, the one identity `locator.md` §1/§8
-actually surfaces:
+**3. Match.** For a candidate (a task folder or a delivery entry) and a session — this pack's data
+contract carries no session-side task-id field (`agents/session-reader.md`'s Output block has none),
+so every comparison below runs through the branch fact, the one identity `locator.md` §1/§8 actually
+surfaces.
+
+**The session pool is step 0's full `LOCATE OK` return, every listed entry, not step 4's merged
+per-session set.** This distinction is load-bearing and is the reason the pool is named here rather
+than assumed: `SKILL.md` step 4 merges only the sessions that were actually dispatched and read, and
+a session step 2.5 assigned `skipped (budget)` never reaches it. But the locator states `Branch:` for
+**every** entry it lists, read or not (`agents/locator.md`'s Output block, `locator.md` §8) — so a
+budget-skipped session's branch fact is available here, and matching against it is exactly what this
+step needs. Drawing the pool from the read set instead would report every run correlating to a
+budget-skipped session as having left **no session record**, when the hunt located its session and
+merely ran out of budget to read it — the precise opposite of what "Runs with no session record"
+claims, and a coverage statement that manufactures gaps is worse than one that admits them. A session
+the locator listed as `skipped (access denied)` is in the pool on the same footing, for the same
+reason. Matching consumes only the `Branch:` and date facts the locator already returned; it reads no
+session and dispatches nothing, so including an unread session here costs nothing and breaks no
+isolation rule.
 
 - **`mechanically-observed`** — the candidate's extracted id equals the first 3+-digit run of the
   session's `Branch:` value, **or** the candidate's own extracted branch string and the session's
@@ -86,12 +112,15 @@ actually surfaces:
   return shape carries no branch field at all (`plugins/wf/skills/standup/SKILL.md:56`), so only the
   id comparison ever runs for one. A comparison whose input one side does not supply is simply not
   attempted — never scored as a failed comparison, which would wrongly bar the `inferred` tier below.
-- **`inferred`** — only when **neither** comparison above could be attempted (the session's `Branch:`
-  is `none observed`, or the candidate supplied neither an id nor a branch string of its own), a
-  same-calendar-day match between the candidate's date and the session's own date is the sole
-  fallback. Never applied when either comparison could have been attempted on both sides, even if it
-  found no match — a failed identity comparison is a genuine non-match, not grounds to fall back to
-  dates.
+- **`inferred`** — only when **neither** comparison above could be attempted, a same-calendar-day
+  match between the candidate's date and the session's own date is the sole fallback. Two situations
+  reach it, and they are not symmetric across candidate kinds: the session's `Branch:` is `none
+  observed` (possible for any candidate), or the candidate supplied no identity of its own — which in
+  practice means **a delivery entry** whose commit-subject/PR-title text yields no 3+-digit run, since
+  step 1's own admission filter already excludes a task folder that has no digit run before it can
+  become a candidate at all. Never applied when either comparison could have been attempted on both
+  sides, even if it found no match — a failed identity comparison is a genuine non-match, not grounds
+  to fall back to dates.
 
 A candidate matching **any** session under either tier is covered — it contributes nothing further
 to this step. A candidate matching **no** session is unmatched.
@@ -99,9 +128,11 @@ to this step. A candidate matching **no** session is unmatched.
 **4. Extend Coverage with "Runs with no session record."** List every unmatched, in-scope, in-window
 candidate — task folder or delivery entry — under a new Coverage subsection distinct from, and
 additional to, the existing "Sessions this hunt cannot see" list (the read-cap/aged-out list this
-pack's earlier read-cap slice introduced). Each entry states the key attempted — the candidate's own
-extracted task id, compared against each located session's `Branch:` fact, or `date only` when the
-candidate had no extractable id and only the date tier was available — and, when relevant, the
+pack's earlier read-cap slice introduced). Each entry states **every key step 3 actually attempted
+for that candidate**, so a reader can tell a thin attempt from an exhaustive one: the candidate's own
+extracted task id; **and** its own branch string, named as its own attempted key, whenever step 1
+found one for it; or `date only` when the candidate supplied no identity at all and the date tier was
+the only one available. Then, when relevant, the
 delivery-history reason from step 2 as its own line. When step 0 narrowed the enumeration (a named
 `--folder`/`--repo` target, or attach-only mode), the subsection states which root it ran against, or
 its `n/a` reason, so a reader never mistakes a narrowed cross-check for an exhaustive one. This

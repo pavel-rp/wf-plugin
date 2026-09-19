@@ -94,10 +94,12 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 - For the coverage cross-check (Phase 3.5 step 7.5): `Glob`/`Read` `{task-root}`'s immediate child folders and their
   own artifacts under the enumeration root `coverage-cross-check.md` Part A step 0 fixes, `_local/fleet/scoreboard.md`
   when present, and a project-configured eval-log path named under `_local/config.md`'s `postmortem` section when one
-  is set, directly in this skill's own context (none of these is a session or subagent record); resolve the delivery
-  surface with `resolve_provider({ workspaceRoot, surface: "delivery" })` and invoke `activity-read` through the
-  resolved record, degrading to task-folders-only (never a stop) on `unconfigured`/`unrecoverable`, on a mid-run read
-  failure, or on a named `--folder`/`--repo` target, with the reason stated in Coverage.
+  is set, directly in this skill's own context (none of these is a session or subagent record); on a named
+  `--folder`/`--repo` hunt, one further `resolve_config({ workspaceRoot: <the resolved target path> })` to obtain that
+  project's own `taskRoot` rather than re-expressing this one's; resolve the delivery surface with
+  `resolve_provider({ workspaceRoot, surface: "delivery" })` and invoke `activity-read` through the resolved record,
+  degrading to task-folders-only (never a stop) on `unconfigured`/`unrecoverable`, on a mid-run read failure, or on a
+  named `--folder`/`--repo` target, with the reason stated in Coverage.
 
 **Forbidden:**
 
