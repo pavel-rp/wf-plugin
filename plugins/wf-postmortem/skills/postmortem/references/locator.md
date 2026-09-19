@@ -81,10 +81,13 @@ line the marker appears on.
 
 ## 2. The shape check — fail loudly, never partial
 
-Applied to every top-level record, and to every `subagents/` entry, that the locate operation's scope
-(§3) would otherwise include.
+Applied to every top-level record, and to every **`.jsonl` record** inside a `subagents/` folder, that
+the locate operation's scope (§3) would otherwise include. **A `agent-<dispatch-id>.meta.json` sidecar
+is not a record and is never shape-checked as one** — it is dispatch metadata, and the only thing asked
+of it is that it complete its pair (below). Testing it for a `.jsonl` extension, a first-line
+`sessionId`, or a `timestamp` would reject every session that has subagent records at all.
 
-**Recognized** — all of the following hold:
+**Recognized** — all of the following hold for a record:
 - the file's name ends `.jsonl`;
 - its first line is well-formed JSON and carries a `sessionId` field. **A `timestamp` is not required
   on this line and must not be demanded of it:** a record opens with one or more header lines (an
@@ -99,9 +102,11 @@ Applied to every top-level record, and to every `subagents/` entry, that the loc
   folder is one half of a complete `agent-<dispatch-id>.jsonl` + `agent-<dispatch-id>.meta.json` pair
   (an orphaned half is unrecognized, not silently skipped).
 
-**Unrecognized** — the extension is not `.jsonl`; the first line is not well-formed JSON, or lacks
-`sessionId`; no line in the file carries a `timestamp`; a `subagents/` entry has no matching
-pair-half; or the sibling directory
+**Unrecognized** — for a **record**: its extension is not `.jsonl`, its first line is not well-formed
+JSON or lacks `sessionId`, or no line in it carries a `timestamp`. For a **pair**: either half of an
+`agent-<dispatch-id>.jsonl` + `agent-<dispatch-id>.meta.json` pair is missing. Also unrecognized when
+a file directly inside `subagents/` is neither a `.jsonl` record nor a `.meta.json` sidecar, or the
+sibling directory
 exists but holds no `subagents/` folder at all where the top-level record's own first line implies
 subagent activity occurred (a stated, conservative signal — this release does not attempt to name
 every implying field, only to fail loudly rather than guess when the layout looks inconsistent with
