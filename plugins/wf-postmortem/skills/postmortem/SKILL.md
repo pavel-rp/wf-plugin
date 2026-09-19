@@ -70,9 +70,10 @@ behavior does not apply — Phase 0.5 and `continuation.md`.
   `continuation.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
   `plugin: wf-postmortem`).
 - Resolve `--report`'s path with the same existence-check primitive as `--folder`/`--repo`/`--session`,
-  and **`Read`** the resolved report file to check for its `POSTMORTEM — written` block and parse its
-  sections (Phase 0.5, `continuation.md` Part A) — the pack's own artifact, outside the session-content
-  prohibition below.
+  then confirm it is confined under `{task-root}`'s own `PM<digits>__.../report.md` shape (canonicalized
+  both sides, never a string-prefix match), and only then **`Read`** it to check for its `POSTMORTEM —
+  written` block and parse its sections (`continuation.md` Part A) — outside the prohibition below,
+  but only once confinement is confirmed.
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:excerpt-fetcher`, once per hypothesis
   locator the two-sided check needs, to fetch and redact a bounded session-side excerpt in that
   agent's own isolated context (`version-resolution.md` step 6) — never a `Bash` read of session bytes
@@ -112,7 +113,8 @@ behavior does not apply — Phase 0.5 and `continuation.md`.
 - Locate, rank, shape-check, or map a folder/repository path to any session store **in this skill's own
   context** — the locator agent's job alone. **Drop** a located session, or apply the cap anywhere but
   the fixed cap-split point (Phase 3.5 step 2.5) — a session beyond the cap is still ranked and listed
-  as `skipped (budget)`, always retrievable by a later `--report` follow-up.
+  as `skipped (budget)`, retrievable by a later follow-up unless it ages out or is removed from the
+  store first (a stated coverage fact, `continuation.md` Part B — not a drop).
 - Pin a model in a dispatch, or in an agent's own file; the tier comes from `resolve_routing`.
 - Improvise a merge, a coverage verdict, or a composed section outside Phase 3.5's rules — a mechanism
   is promoted only through the two-sided check, and a count is `mechanically-observed` only when the
@@ -244,19 +246,19 @@ Runs after the report folder exists and before anything is written into it. **No
 record is read in this context** — every read happens inside a dispatched `session-reader` (or,
 first, the `locator`), and only its compact, already-redacted or already-structural block comes back.
 
-0. **Locate and/or attach, via the seam.** **On a `--report` follow-up**, this step and step 2.5 below
-   run under `continuation.md` Part B instead of the two branches below (re-locate, fold in any named
-   retry — the one stated exception to "exactly once per run" for a retry the fresh return doesn't
-   surface). Otherwise, route with `role: "locator"`, `unitIds: ["locator:hunt"]`, `shapeEvidence`
-   identical in shape to step 3 below except `ambiguity: "none"`, `toolWork: "bounded"`, `validation:
-   "mechanical"`, and `returnContract: "mechanically-judgeable"`; `supportsModelSelector: true`,
-   `supportsEffortSelector: false`, and `hostModel` set the same way step 3 sets it. Invoke one
-   **Task** with `subagent_type: wf-postmortem:locator` — **no `--session` resolved**: pass the
-   resolved scope (workspace path, `--skill`, the window cutoff) and, when disclosed, the
-   active-session fact for hunt-session detection; the returned ranked list is this run's hunt set.
-   **One or more `--session` values resolved**: pass exactly those paths instead — the agent skips
-   enumeration/scope-matching/ranking/the window filter but still shape-checks and attaches subagent
-   records for each, in the order passed.
+0. **Locate and/or attach, via the seam.** **On a `--report` follow-up**, this step runs under
+   `continuation.md` Part B instead of the two branches below (re-locate, fold in named retries — the
+   one exception to "exactly once per run" for a retry the fresh return doesn't surface); step 2.5's
+   cap-split then applies under Part C. Otherwise route with `role: "locator"`, `unitIds:
+   ["locator:hunt"]`, `shapeEvidence` identical in shape to step 3 below except `ambiguity: "none"`,
+   `toolWork: "bounded"`, `validation: "mechanical"`, and `returnContract: "mechanically-judgeable"`;
+   `supportsModelSelector: true`, `supportsEffortSelector: false`, and `hostModel` set the same way
+   step 3 sets it. Invoke one **Task** with `subagent_type: wf-postmortem:locator` — **no `--session`
+   resolved**: pass the resolved scope (workspace path, `--skill`, the window cutoff) and, when
+   disclosed, the active-session fact for hunt-session detection; the returned ranked list is this
+   run's hunt set. **One or more `--session` values resolved**: pass exactly those paths instead — the
+   agent skips enumeration/scope-matching/ranking/the window filter but still shape-checks and attaches
+   subagent records for each, in the order passed.
 
    Read defensively: no parseable `LOCATE` block, or `LOCATE ERROR: <cause>`, stops the run — write no
    report. `LOCATE OK` with an empty list is **not** a stop — proceed as "not found." The block's own
@@ -438,13 +440,12 @@ first, the `locator`), and only its compact, already-redacted or already-structu
   charter. Nothing is dispatched.
 - **The guided live hunt's hand-diagnosed defect aged out of the window.** Recorded not-runnable;
   acceptance rests on synthetic fixtures instead. **A dispatch edge that cannot honour a model
-  selector, or a host on the lowest tier**, runs on the host's own tier and states that — never
-  presented as the requested tier.
+  selector, or a host on the lowest tier**, runs on the host's own tier and states that.
 - **No failure description.** Interactive → ask one question (Phase 2). No channel, or
-  empty-after-trimming → stop; write no report. **Both `--folder` and `--repo` passed.** Stop; never
-  silently prefer one framing. **A redaction match, or markdown structure, inside the description** —
-  Phase 3 step 2's redact-then-neutralize pass is what reaches Scope; it forges neither a heading nor
-  a second final-output block.
+  empty-after-trimming → stop; write no report. **Both `--folder` and `--repo` passed** stops; never
+  silently prefer one. **A redaction match, or markdown structure, in the description** — Phase 3 step
+  2's redact-then-neutralize pass is what reaches Scope; it forges neither a heading nor a second
+  final-output block.
 - **A report-folder create failing for a reason other than a collision** — unwritable/missing
   `{task-root}`, a full disk, read-only. Stop with that reason; never retried. Three consecutive
   collisions hits the same bound. **A seeded folder left with no `report.md`** by an interrupted run —
@@ -452,9 +453,9 @@ first, the `locator`), and only its compact, already-redacted or already-structu
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than
   the cap.** Read in ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never
   dropped, retrievable by a further `--report` follow-up. **`--report <path>`** does not resolve, is
-  not a postmortem report, or conflicts with the prior report's own recorded Scope — each stops
-  (Phase 0.5) and writes nothing; a differing hunt is a new invocation without `--report`, never a
-  silent overwrite.
+  not confined under `{task-root}`'s own `PM<digits>__.../report.md` shape, is not a postmortem report,
+  or conflicts with the prior report's own recorded Scope — each stops (Phase 0.5) and writes nothing;
+  a differing hunt is a new invocation without `--report`, never a silent overwrite.
 - **A `skipped (budget)` session aged out of the window, or removed from the store, by a follow-up.**
   Moves to "sessions this hunt cannot see" with that reason (`continuation.md` Part B); the run
   does not fail.
@@ -491,7 +492,7 @@ Stopped:
 ```
 POSTMORTEM — stopped
 
-Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not a postmortem report", "--report conflicts with the prior report's own scope — <field> differs", or "_local/config.md absent — run /wf:init first">
+Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report conflicts with the prior report's own scope — <field> differs", "_local/config.md absent — run /wf:init first">
 Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", "re-run with a failure description", or "re-run --report <path> without the conflicting flag">
 ```
 

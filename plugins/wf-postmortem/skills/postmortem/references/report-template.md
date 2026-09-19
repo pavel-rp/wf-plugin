@@ -143,9 +143,9 @@ step 0's locator returned for it, and this section states the 30-day window's ow
 force — whether or not either excluded anything — and labels a hunt session. A named `--session` entry
 has no locator-supplied date; state `n/a — named session` there instead of omitting the field.>
 
-- `<session path>` — read · date: <YYYY-MM-DD | n/a — named session> · model: <id> · tier: <requested | host-fallback (<reason>)> <[hunt session] when labelled>
+- `<session path>` — read · date: <YYYY-MM-DD | n/a — named session> · model: <id> · tier: <requested | host-fallback (<reason>)> <[hunt-session] when labelled>
 - `<session path>` — read in part (<reason>) · date: <…> · model: <id> · tier: <…>
-- `<session path>` — skipped (budget) · date: <…> · model: not dispatched · tier: n/a <[hunt session] when labelled>
+- `<session path>` — skipped (budget) · date: <…> · model: not dispatched · tier: n/a <[hunt-session] when labelled>
 - `<session path>` — skipped (reader error: <reason>) · date: <…> · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
 - `<session path>` — skipped (access denied) · date: <…> · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
 
@@ -161,20 +161,6 @@ session is still present>
 
 **Not covered by this release:** the coverage cross-check against task folders and delivery history,
 and its trigger-gated fallback evidence — each arrives with a later charter sub-task.
-
-## Continuation
-
-<Present only on a report that has been extended by at least one `--report` follow-up; omitted
-entirely from a first-run report. One dated entry per follow-up run, oldest first, appended below the
-previous entry — never replacing one.>
-
-**<YYYY-MM-DD HH:MM> follow-up:**
-- Newly read this run: <one path per session, including any explicit `--session` retry, or "none">
-- Moved to "sessions this hunt cannot see": <one path per session with its reason, or "none">
-- Sections changed: <Summary | Contributing Factors | Component and Version | Localisation | Measured
-  Effect — named plainly, or "none" when the recompute produced no observable change>
-- Recommendation: <"unchanged (rule `<n>` still fires)" | "changed — rule `<old>` → rule `<new>`",
-  restating the new rule's hand-off in full when changed>
 
 ## Recommendation
 
@@ -199,6 +185,24 @@ two distinct skills/contracts", "one confirmed factor, one skill or contract, fi
 
 Every hypothesis listed above stays listed regardless of which rule fired; a hypothesis beside a
 confirmed factor never changes the route.
+
+## Continuation
+
+<Present only on a report that has been extended by at least one `--report` follow-up; omitted
+entirely from a first-run report. One dated entry per follow-up run, oldest first, appended below the
+previous entry — never replacing one.>
+
+**<YYYY-MM-DD HH:MM> follow-up:**
+- Newly read this run: <one path per session, including any explicit `--session` retry (listed here
+  even when it names a session the prior report already marked `read` — its fresh entry replaced the
+  prior one), or "none">
+- Newly capped this run: <one path per session newly assigned `skipped (budget)` for the first time —
+  distinct from a session already `skipped (budget)` before this run, which is not relisted — or "none">
+- Moved to "sessions this hunt cannot see": <one path per session with its reason, or "none">
+- Sections changed: <Summary | Contributing Factors | Component and Version | Localisation | Measured
+  Effect — named plainly, or "none" when the recompute produced no observable change>
+- Recommendation: <"unchanged (rule `<n>` still fires)" | "changed — rule `<old>` → rule `<new>`",
+  restating the new rule's hand-off in full when changed>
 
 ---
 
