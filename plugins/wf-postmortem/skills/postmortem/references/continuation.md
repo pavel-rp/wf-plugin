@@ -26,6 +26,13 @@ skips straight to Phase 1, unchanged by anything below.
    already-resolved absolute `{task-root}` (from `resolve_config`'s `workspaceRoot` +
    `coreConfig.taskRoot`) canonicalized the same way. Require **all** of:
    - the file's own basename is exactly `report.md`;
+   - **the resolved `--report` path itself is not a symlink**: `Bash`: `test -L '<path>'` (same
+     escaping as step 1) must **fail** (exit non-zero). The directory-level canonicalization above
+     already defeats a symlinked *directory* on the path — `cd` follows it and `pwd -P` reports the
+     real location it resolves to — but never dereferences the final **file** component, since nothing
+     `cd`s into a file; without this separate check, a `report.md` that is itself a symlink, sitting
+     inside an otherwise-legitimate `PM<n>__slug/` folder, would pass every check above and then have
+     step 3's `Read` and Phase 4's overwrite silently follow it to whatever it targets;
    - the canonicalized parent directory's own basename matches `^PM[0-9]+__.+$` (Phase 3's own minting
      shape);
    - the canonicalized **grandparent** directory is character-for-character identical to the

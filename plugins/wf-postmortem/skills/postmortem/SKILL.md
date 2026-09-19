@@ -8,15 +8,14 @@ allowed-tools: [Task, Write, Read, Grep, Glob, Bash, AskUserQuestion]
 
 Turn a prose failure report into an explicit hunt scope, echoed verbatim, then **read every session
 record in scope** — named explicitly with `--session`, or, when none was named, located automatically
-under the resolved scope behind one replaceable seam (`locator.md`) — each in its own isolated reader
-agent on a cheaper model tier, in ordered windows when too large for one reader, up to a **per-run
-read cap** (default 15, overridable) — and compose the report's Summary, Evidence Record, Measured
-Effect, Coverage and Hypotheses from those readers' compact, already-redacted blocks. Every hypothesis
-carrying a locator is then **checked two-sided** — against the audited pack's own
-skill/contract/manifest text at the run's resolved executed version, and against a bounded, redacted
-excerpt fetched fresh at the hypothesis's locator — and promoted to a confirmed contributing factor
-only when both sides verify. A `--report <path>` follow-up inherits a prior report's scope, reads the
-sessions the cap left `skipped (budget)`, and extends that same report in place (Phase 0.5).
+behind one replaceable seam (`locator.md`) — each in its own isolated reader agent on a cheaper model
+tier, in ordered windows when too large for one reader, up to a **per-run read cap** (default 15,
+overridable) — and compose the report's Summary, Evidence Record, Measured Effect, Coverage and
+Hypotheses from those readers' compact, already-redacted blocks. Every hypothesis carrying a locator
+is then **checked two-sided** against the audited pack's own text at the run's resolved executed
+version and a bounded, redacted excerpt at the locator, promoted only when both sides verify. A
+`--report <path>` follow-up inherits a prior report's scope, reads the sessions the cap left `skipped
+(budget)`, and extends that same report in place (Phase 0.5).
 
 ---
 
@@ -47,7 +46,7 @@ stop and report that the resolver runtime is not loaded — do not hand-parse co
 | `--skill <name>` | NO | Scope the hunt to one named skill. Omit for an unscoped hunt. |
 | `--folder <path>` | NO | Scope the hunt to a named local folder. Resolved against the filesystem only. |
 | `--repo <name>` | NO | Scope the hunt to a named repository. Resolved against the filesystem only. |
-| `--cap <n>` | NO | Override the read cap (default **15**) — how many sessions this run dispatches a reader for. Every ranked session beyond it is `skipped (budget)`, retrievable by a later `--report` follow-up. |
+| `--cap <n>` | NO | Override the read cap (default **15**) — how many sessions this run dispatches a reader for. Every ranked session beyond it is `skipped (budget)`, retrievable by a later `--report` follow-up unless it ages out or is removed first. |
 | `--report <path>` | NO | Continue a prior report (Phase 0.5): inherits its description/scope, re-locates, reads its `skipped (budget)` sessions up to the cap, extends `report.md` in place. A conflicting `<description>`/`--skill`/`--folder`/`--repo` stops the run. |
 
 `--folder` and `--repo` are mutually exclusive framings of the same "another project" input — pass
@@ -71,9 +70,8 @@ behavior does not apply — Phase 0.5 and `continuation.md`.
   `plugin: wf-postmortem`).
 - Resolve `--report`'s path with the same existence-check primitive as `--folder`/`--repo`/`--session`,
   then confirm it is confined under `{task-root}`'s own `PM<digits>__.../report.md` shape (canonicalized
-  both sides, never a string-prefix match), and only then **`Read`** it to check for its `POSTMORTEM —
-  written` block and parse its sections (`continuation.md` Part A) — outside the prohibition below,
-  but only once confinement is confirmed.
+  both sides, never a string-prefix match or a symlinked file), and only then **`Read`** it to check
+  for its `POSTMORTEM — written` block and parse its sections (`continuation.md` Part A).
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:excerpt-fetcher`, once per hypothesis
   locator the two-sided check needs, to fetch and redact a bounded session-side excerpt in that
   agent's own isolated context (`version-resolution.md` step 6) — never a `Bash` read of session bytes
@@ -278,7 +276,7 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    model, no tier ("not dispatched") — bypassing step 4's Windows table entirely. The cap counts
    **sessions**, never reader-dispatch windows: an oversize session split into several windows still
    counts as one unit. Ranking is untouched — a capped-out session keeps its rank and its own
-   Coverage entry, retrievable by a later `--report` follow-up.
+   Coverage entry, retrievable by a later `--report` follow-up unless it ages out or is removed first.
 
 3. **Route and dispatch one reader per session or per window** that step 2.5 carried into this step
    (never a capped-out entry). Immediately before **each** dispatch
@@ -370,9 +368,9 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    - **Localisation** — filled with the file(s) named by every confirmed factor's `file:line` when at
      least one exists; otherwise the template's stated reason.
    - **Coverage** — every record, exactly once, under its verdict from step 2.5 (`skipped (budget)`)
-     or step 4, each entry's model/tier (`not dispatched`/`n/a` when capped), its date, and (located
-     runs) the rank, the hunt-session label, the cap in force, and the window cutoff. **Follow-ups**
-     also state `continuation.md` Part B's "sessions this hunt cannot see" entries, with the reason.
+     or step 4, its model/tier (`not dispatched`/`n/a` when capped), its date, and the cap in force
+     (every run) — plus, on a located run, the rank, the hunt-session label, and the window cutoff.
+     **Follow-ups** also state `continuation.md` Part B's "cannot see" entries, with the reason.
 
 8. **State the fix direction, then compute the rule-based recommendation.** Obtain
    `recommendation.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
@@ -418,7 +416,8 @@ first, the `locator`), and only its compact, already-redacted or already-structu
   in Scope (Phase 1 step 3); no session-store lookup is attempted; the run proceeds.
 - **Every named `--session` record unresolved.** Stop (Phase 1 step 5); write nothing — never a
   fall-back to locating. **One** unresolved beside resolving ones → marked in Scope, hunt proceeds
-  over the rest. **No `--session` at all** is not this case: the locator locates instead.
+  over the rest. **No `--session` at all** is not this case: the locator locates instead. Beside a
+  validated `--report` follow-up, this stop condition does not apply (`continuation.md` Part A step 7).
 - **The locator's whole-store read fails, or meets an unrecognized record shape.** `LOCATE ERROR:
   <cause>` stops immediately; write no report — distinct from one session's own denied read
   (`skipped (access denied)`, never a stop). A **resolved scope locating no session** is not this
@@ -452,7 +451,8 @@ first, the `locator`), and only its compact, already-redacted or already-structu
   the id stays taken. **The pack installed but not registered** — no core phase behaves differently.
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than
   the cap.** Read in ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never
-  dropped, retrievable by a further `--report` follow-up. **`--report <path>`** does not resolve, is
+  dropped, retrievable by a further `--report` follow-up unless it ages out or is removed first.
+  **`--report <path>`** does not resolve, is
   not confined under `{task-root}`'s own `PM<digits>__.../report.md` shape, is not a postmortem report,
   or conflicts with the prior report's own recorded Scope — each stops (Phase 0.5) and writes nothing;
   a differing hunt is a new invocation without `--report`, never a silent overwrite.

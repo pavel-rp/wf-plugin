@@ -151,8 +151,9 @@ has no locator-supplied date; state `n/a — named session` there instead of omi
 
 **Window:** <the 30-day cutoff, stated on every located run | "n/a — named-session run">
 
-**Read cap:** <n> in force (default | override) — every ranked entry beyond it is `skipped (budget)`
-above, never dropped, retrievable by a later `--report` follow-up.
+**Read cap:** <n> in force (default | override), on every run whether located or named — every ranked
+entry beyond it is `skipped (budget)` above, never dropped, retrievable by a later `--report`
+follow-up unless it ages out or is removed first (see "sessions this hunt cannot see" below).
 
 **Sessions this hunt cannot see** (follow-up runs only): <a prior `skipped (budget)` session absent
 from this run's fresh locate-mode return, with the reason — "aged out of the 30-day window" or
