@@ -95,9 +95,8 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
   subagent record), each scoped and degraded exactly as `coverage-cross-check.md` Part A states: `Glob`/`Read` task
   folders and their artifacts under the enumeration root its step 0 fixes, `_local/fleet/scoreboard.md`, and a
   configured eval-log path; `resolve_config` and `resolve_provider({ workspaceRoot, surface: "delivery" })` (plus
-  `activity-read`, which degrades to task-folders-only and never stops the run) always against this run's own
-  `workspaceRoot`, never against a named `--folder`/`--repo` target's path — neither call takes a foreign root, so a
-  named target narrows the cross-check to "n/a" instead (`coverage-cross-check.md` Part A step 0).
+  `activity-read`, degrading to task-folders-only, never stopping the run) always against this run's own
+  `workspaceRoot`, never a named `--folder`/`--repo` target's — neither takes a foreign root (Part A step 0).
 
 **Forbidden:**
 
