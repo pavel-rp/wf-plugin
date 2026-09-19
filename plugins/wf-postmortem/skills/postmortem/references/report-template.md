@@ -113,8 +113,20 @@ report.>
 
 ## Fix Direction
 
-Not yet produced — fix direction follows from a confirmed contributing factor (arrives with a later
-charter sub-task).
+<Composed only from a confirmed contributing factor, above — kept apart from the Evidence Record,
+which stays a record of what was observed, never of what to do about it.>
+
+**When at least one factor was confirmed this run:** one short paragraph naming the concrete change
+the confirmed mechanism points at, grounded in that factor's own text — followed by:
+
+**Marked:** `stated` (a single remedy follows directly from the confirmed mechanism, with no other
+reasonable way to address it visible in this report's own evidence) | `resting on an open choice`
+(stating the fix would require picking between two or more materially different remedies, or the
+confirmed evidence pins down that something is wrong without pinning down which specific change
+corrects it — name the choice being deferred).
+
+**When no factor was confirmed this run:** "No factor confirmed this run — a fix direction follows a
+confirmed contributing factor; none exists this run." **Marked:** `— (no confirmed factor)`.
 
 ## Coverage
 
@@ -132,8 +144,27 @@ covered exactly the records named on the command line.
 
 ## Recommendation
 
-Not yet produced — the rule-based next-step recommendation is computed from confirmed-factor and
-hypothesis counts, neither of which exists yet (arrives with a later charter sub-task).
+<The rule that fired, evaluated in this fixed order over this report's own fields — the
+confirmed-factor count, the hypothesis count, the Localisation file/contract list, and the Fix
+Direction marker above — first match wins (full rule text: `recommendation.md`).>
+
+**Rule fired:** <1 | 2 | 3 | 4> — <one line naming the trigger, e.g. "no confirmed factor and no
+hypothesis", "fix direction resting on an open choice", "two confirmed factors", "localisation names
+two distinct skills/contracts", "one confirmed factor, one skill or contract, fix direction stated">
+
+<One of, matching the fired rule, verbatim:>
+
+- **Rule 1:** No route recommended — this report is a terminus.
+- **Rule 2:** Research recommended — `/wf:research` — pass this report's Summary and Contributing
+  Factors in as the free-text topic argument.
+- **Rule 3:** Charter recommended — `/wf:charter` — pass this report's Summary and Contributing
+  Factors in as the free-text feature-idea argument.
+- **Rule 4:** Spec recommended — file a work item from this report (a tracker issue, or a local task
+  when no tracker is registered), then run `/wf:spec <id>` against it — never `/wf:spec` taking this
+  report directly.
+
+Every hypothesis listed above stays listed regardless of which rule fired; a hypothesis beside a
+confirmed factor never changes the route.
 
 ---
 
@@ -144,7 +175,7 @@ Scope:    description="<resolved, redacted>" · skill=<name|unscoped> · folder/
 Sessions: <n> named · <r> resolved · <u> unresolved
 Coverage: <path>=<read|read in part (<reason>)|skipped (reader error: <reason>)|skipped (access denied)> [model=<id|not dispatched> tier=<requested|host-fallback (<reason>)|n/a>] · …
 Finding:  <one line — what was found | not found>
-Next:     none — terminus
+Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <framing> | file a work item from this report, then /wf:spec <id>>
 ```
 
 ## Filling rules
@@ -159,11 +190,17 @@ Next:     none — terminus
   filesystem path)"`, and no session-store lookup is attempted for it. An unresolved session record
   appears in Scope only — never in Coverage, which lists what was actually read.
 - **A section left unfilled states its own reason.** Component and Version, the confirmed half of
-  Contributing Factors, and Localisation state "none confirmed this run" when no hypothesis passed
-  the two-sided check this run — a per-run outcome, since this release can confirm a factor. Fix
-  Direction and Recommendation state which later charter sub-task fills them (SUB-5) — a genuine
-  per-release gap, not a per-run one. Either way, saying so explicitly is the point: a reader must be
-  able to tell "not produced yet" from "produced and empty."
+  Contributing Factors, Localisation, and Fix Direction each state "none/no factor confirmed this
+  run" when nothing passed the two-sided check — a per-run outcome, since this release can confirm a
+  factor. Saying so explicitly is the point: a reader must be able to tell "nothing this run" from
+  "produced and empty."
+- **Fix Direction is composed only from a confirmed contributing factor**, kept apart from the
+  Evidence Record, and marked `stated` or `resting on an open choice` — that marker is one of
+  Recommendation's four load-bearing inputs. **Recommendation states the rule that fired and the
+  hand-off**, computed strictly from the confirmed-factor count, the hypothesis count, the
+  Localisation file/contract list (each distinct skill or contract counted once), and the Fix
+  Direction marker — reproducible from those four alone, first match wins, and mirrored onto the
+  Final Output block's `Next:` line. Nothing here is dispatched, invoked, or filed by this skill.
 - **Evidence Record quotes are already redacted** when they arrive — each reader applied the shared
   shape rules before its block left isolation — and the write path applies them again as the disk
   backstop. Quote short excerpts only; never a region of a record.
