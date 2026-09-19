@@ -44,11 +44,21 @@ No sibling directory for a given top-level record is a normal, common case — m
 subagent — never an error and never a shape mismatch.
 
 **Structural fields.** Each line of a `.jsonl` file (top-level or a `subagents/` entry) is one JSON
-object. The fields this seam reads — and the only ones it reads — are `sessionId`, `timestamp`, `cwd`,
-`gitBranch`, and `version`. Every other field in the line, and the entire substance of any message,
-tool-call, or tool-result content the line carries, is never read, never inspected, and never returned
-by this seam under any circumstance: reading those fields is what this seam offers instead of a content
-read, not a narrower version of one.
+object. Two groups of fields are structural — read for what they *are* (a type, a name, a count-only
+shape signal), never for what they *say*:
+- **Scope/identity fields:** `sessionId`, `timestamp`, `cwd`, `gitBranch`, `version`.
+- **Count-only shape fields** (§6 alone reads these, and only to count line shapes, never to inspect
+  the substance behind them): the line's own turn-role/entry-type marker (to count turn boundaries);
+  a tool-invocation line's own tool-name field (to test whether it names a file-mutating tool); and,
+  only on a line already identified as a file-mutating tool-invocation by its tool-name field, the
+  single argument field that names the target file path (to dedupe by path) — never any other
+  argument, and never the tool's result.
+
+Every other field in the line, and the entire substance of any message, tool-call argument, or
+tool-result content the line carries, is never read, never inspected, and never returned by this seam
+under any circumstance: reading the fields above is what this seam offers instead of a content read,
+not a narrower version of one — a tool name and a file path are structural facts about the shape of a
+line, not the content of what the run said or did with them.
 
 **Skill-load fact.** A `.jsonl` line may additionally carry a tool-preamble marker whose value is a
 version-pinned base directory shaped `.../plugins/cache/<marketplace>/<plugin>/<version>/skills/<skill>`
@@ -67,16 +77,19 @@ Applied to every top-level record, and to every `subagents/` entry, that the loc
 
 **Recognized** — all of the following hold:
 - the file's name ends `.jsonl`;
-- its first line is well-formed JSON and carries a `sessionId` field;
+- its first line is well-formed JSON and carries both a `sessionId` field and a `timestamp` field —
+  the latter required here, not merely assumed later, because §3's window computation reads it
+  unconditionally from this same line;
 - when a sibling subagent-record directory exists for it, every file directly inside its `subagents/`
   folder is one half of a complete `agent-<dispatch-id>.jsonl` + `agent-<dispatch-id>.meta.json` pair
   (an orphaned half is unrecognized, not silently skipped).
 
 **Unrecognized** — the extension is not `.jsonl`; the first line is not well-formed JSON, or lacks
-`sessionId`; a `subagents/` entry has no matching pair-half; or the sibling directory exists but holds
-no `subagents/` folder at all where the top-level record's own first line implies subagent activity
-occurred (a stated, conservative signal — this release does not attempt to name every implying field,
-only to fail loudly rather than guess when the layout looks inconsistent with itself).
+`sessionId` or `timestamp`; a `subagents/` entry has no matching pair-half; or the sibling directory
+exists but holds no `subagents/` folder at all where the top-level record's own first line implies
+subagent activity occurred (a stated, conservative signal — this release does not attempt to name
+every implying field, only to fail loudly rather than guess when the layout looks inconsistent with
+itself).
 
 **On unrecognized, at the whole-store or per-record enumeration level:** the locate operation fails
 loudly for the whole hunt — return `LOCATE ERROR: unrecognized record shape — <path> — <what did not
@@ -174,17 +187,16 @@ read, counted, or reported otherwise.
 ## 6. Deterministic counting
 
 For a session that is actually read (this seam does not itself read message content — this counting
-runs as part of the same structural pass §1 describes, over the same fields plus a count of matching
-line shapes, never full content):
+runs as part of the same structural pass §1 describes, over exactly the count-only shape fields §1
+names, never full content):
 
 - **Iterations** — the count of distinct top-level conversational turns in the record (a mechanical
-  count of role-transition boundaries in the JSONL line sequence, not an interpretation of what happened
-  in a turn).
-- **Edits** — the count of tool-call lines whose tool name is a file-mutating one (an editing or writing
-  tool call), counted structurally from the line's own tool-name field — never by reading the edit's
-  content or the file's own text.
-- **Files touched** — the count of **distinct** file-path values named by those same edit tool-calls'
-  own structural arguments, deduplicated by exact path string.
+  count of role-transition boundaries, read from §1's turn-role/entry-type marker, not an
+  interpretation of what happened in a turn).
+- **Edits** — the count of tool-invocation lines whose tool-name field (§1) is a file-mutating one (an
+  editing or writing tool call) — never by reading the edit's content or the file's own text.
+- **Files touched** — the count of **distinct** file-path values named by those same lines' own
+  target-file argument (§1), deduplicated by exact path string.
 
 Each of these three counts, when the seam can extract it from the structural fields with **no model
 judgment**, carries the `mechanically-observed` tier and replaces a reader-reported figure for the same
@@ -197,22 +209,35 @@ A session the locator could not read at all (`skipped (access denied)`, or exclu
 at the whole-run level) produces no seam-counted figures for itself; nothing here changes what happens
 before a session is even located.
 
+**Scan bound.** This counting pass reads every line of a session's top-level record and its attached
+subagent records once, sequentially, to tally the fields above — the same one-pass walk the shape
+check (§2) already performs, not a second traversal. It carries no separate size or candidate-count
+cap of its own this release, unlike the sibling reader's explicit 200,000-character windowing bound —
+a stated, accepted scope boundary (a per-run cap arrives with the same later charter sub-task that
+enforces `--cap`), not an oversight.
+
 ---
 
 ## 7. The `--session` regression path
 
 `SKILL.md` Phase 1 already resolves every `--session` value exactly as before this task — this seam
-changes nothing about that resolution. What changes is the trigger for using this seam at all:
+changes nothing about that resolution. This seam is dispatched **exactly once per run**, always, in
+one of two modes — the mode, not whether it runs at all, is what depends on `--session`:
 
-- **One or more `--session` values were passed, and at least one resolves.** The hunt runs over exactly
-  those resolved records, precisely as today; this seam is **never invoked** — a named hunt stays fully
-  explicit, and locating never widens it.
+- **One or more `--session` values were passed, and at least one resolves.** The hunt runs over
+  exactly those resolved records, precisely as today — a named hunt stays fully explicit, and locating
+  never widens it. This seam still runs, in its **attach-only mode**: given the resolved paths
+  directly (never a scope), it applies §2's shape check and discovers each one's attached subagent
+  records (§1) — the only source of that knowledge now that the flat sibling-directory stand-in is
+  retired — but performs no enumeration, no scope-matching (§3), no ranking (§4), and no window filter.
 - **One or more `--session` values were passed, and none resolves.** `SKILL.md` still stops with its
-  existing stated reason (`"no named session record resolved — <n> named, 0 resolved"`); this seam is
-  **never invoked** as a fallback — an all-unresolved named hunt never silently becomes a located one.
-- **No `--session` value was passed at all.** This is the **only** condition under which `SKILL.md`
-  dispatches this seam. The hunt then runs over whatever this seam locates under the resolved scope
-  (§3) — "not found" (§8) is a valid, complete outcome of that dispatch, not a stop.
+  existing stated reason (`"no named session record resolved — <n> named, 0 resolved"`) **before**
+  this seam would be dispatched — this seam is never invoked as a fallback, and an all-unresolved named
+  hunt never silently becomes a located one.
+- **No `--session` value was passed at all.** This seam runs in its **locate mode**: given the resolved
+  scope (§3) instead of a path list, it enumerates, shape-checks, scope-matches, ranks (§4), and
+  window-filters. The hunt then runs over whatever it locates — "not found" (§8) is a valid, complete
+  outcome of that dispatch, not a stop.
 
 ---
 

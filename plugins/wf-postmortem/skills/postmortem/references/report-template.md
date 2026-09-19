@@ -136,13 +136,15 @@ confirmed contributing factor; none exists this run." **Marked:** `— (no confi
 
 <Every resolved named session record, and every session the locator seam located, each exactly once,
 under exactly one verdict. An unresolved `--session` name is not listed here — it appears in Scope
-instead, because nothing about it was ever read. On a located run, this section also states the
-30-day window's own cutoff — whether or not it excluded anything — and labels a hunt session.>
+instead, because nothing about it was ever read. On a located run, each entry also carries the date
+step 0's locator returned for it, and this section states the 30-day window's own cutoff — whether or
+not it excluded anything — and labels a hunt session. A named `--session` entry has no locator-supplied
+date; state `n/a — named session` there instead of omitting the field.>
 
-- `<session path>` — read · model: <id> · tier: <requested | host-fallback (<reason>)> <[hunt session] when labelled>
-- `<session path>` — read in part (<reason>) · model: <id> · tier: <…>
-- `<session path>` — skipped (reader error: <reason>) · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
-- `<session path>` — skipped (access denied) · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
+- `<session path>` — read · date: <YYYY-MM-DD | n/a — named session> · model: <id> · tier: <requested | host-fallback (<reason>)> <[hunt session] when labelled>
+- `<session path>` — read in part (<reason>) · date: <…> · model: <id> · tier: <…>
+- `<session path>` — skipped (reader error: <reason>) · date: <…> · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
+- `<session path>` — skipped (access denied) · date: <…> · model: <id | not dispatched> · tier: <requested | host-fallback (<reason>) | n/a>
 
 **Window:** <the 30-day cutoff, stated on every located run | "n/a — named-session run">
 

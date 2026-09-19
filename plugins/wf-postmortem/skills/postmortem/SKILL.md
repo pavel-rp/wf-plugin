@@ -76,8 +76,7 @@ in-window session matching the resolved scope instead of stopping — behind the
   agent's own isolated context (`version-resolution.md` step 6) — exactly like the session-reader
   dispatch, never a `Bash` read of session bytes in this skill's own context.
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:locator`, exactly once per run (Phase
-  3.5 step 0), to locate/attach/rank/count sessions in that agent's own isolated context — the only
-  component in this pack that walks the session store directly; this skill never does.
+  3.5 step 0) — the only component in this pack that walks the session store directly.
 - **Read (`Read`/`Grep`) the skill, contract, or manifest text of the pack under audit** — never a
   session or subagent record — at a resolved version, per `version-resolution.md`'s branches (a)/(d).
   This is the one place this skill reads file content directly in its own context, and it is
@@ -117,8 +116,7 @@ in-window session matching the resolved scope instead of stopping — behind the
 - Locate, rank, shape-check, or map a folder/repository path to any session store **in this skill's
   own context** — the locator agent's job alone; this skill only dispatches it and reads its return
   block. Apply a read cap, or drop a located session from the ranked order — a later charter sub-task.
-- Pin a model in a dispatch, or in an agent's own file; the tier comes from `resolve_routing` and the
-  agent reports what it actually ran on.
+- Pin a model in a dispatch, or in an agent's own file; the tier comes from `resolve_routing`.
 - Improvise a merge, a coverage verdict, or a composed section outside Phase 3.5's rules — a
   mechanism is promoted only through the two-sided check (never one side alone, never
   `present-day-only`), and a count is presented as `mechanically-observed` only when the locator
@@ -254,7 +252,8 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    `unitIds: ["locator:hunt"]`, `shapeEvidence` identical in shape to step 3 below except
    `ambiguity: "none"`, `toolWork: "bounded"`, `validation: "mechanical"`, and
    `returnContract: "mechanically-judgeable"` (a bounded enumeration-and-shape-check, not the
-   open-ended judgment a reader performs). Invoke one **Task** with
+   open-ended judgment a reader performs); `supportsModelSelector: true`, `supportsEffortSelector:
+   false`, and `hostModel` set the same way step 3 sets it. Invoke one **Task** with
    `subagent_type: wf-postmortem:locator` — **no `--session` resolved** (Phase 1 step 5): pass the
    resolved scope (workspace path, `--skill`, the 30-day window cutoff) and, when the runtime
    discloses one, the active-session fact `locator.md` names for hunt-session detection; the returned
@@ -265,6 +264,9 @@ first, the `locator`), and only its compact, already-redacted or already-structu
 
    Read defensively: no parseable `LOCATE` block, or `LOCATE ERROR: <cause>`, stops the run with that
    cause — write no report. `LOCATE OK` with an empty list is **not** a stop — proceed as "not found."
+   The block's own `Model:` field is this dispatch's diagnostic only — it is never written into
+   Coverage, whose one `model:`/`tier:` slot per session stays sourced from that session's own
+   `session-reader` dispatch (step 4) exactly as before this step existed.
 
 2. **Decide windowing.** Measure each resolved record with `Bash`: `wc -c '<path>'` (same quoting as
    the existence check — metadata, not content). A record exceeding **200,000 characters** is read in
@@ -320,24 +322,21 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    never stops the run. A session step 0 marked `skipped (access denied)` is never dispatched to a
    reader — its verdict is that status, unchanged.
 
-   **Carry forward step 0's own per-session facts**: rank position (located sessions only), the
-   hunt-session flag, and any of iterations/edits/files-touched the seam counted deterministically —
+   **Carry forward step 0's own per-session facts**: its date, rank position (located sessions only),
+   the hunt-session flag, and any of iterations/edits/files-touched the seam counted deterministically —
    which replaces the reader-counted figure for that session at `mechanically-observed`; every count
    the seam did not produce stays `reader-counted` at `unverified`.
 
 5-6. **Resolve the executed version, then check each hypothesis two-sided and tier it.** Obtain
    `version-resolution.md` via `resolve_content({ workspaceRoot, ... })` (`class:
    references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref:
-   version-resolution.md`) — never a raw `Read` of the plugin-cache path — and follow it **in full**;
-   it is the behavior-bearing procedure for these two steps, kept in a paired reference for the
-   repo's skill-body-length budget, not background reading. It resolves a hypothesis's executed
-   version from a reader-reported `Skill-load version:` string (validated traversal-safe) through
-   four ordered branches — install path, manifest history, date-resolved, present-day-only (never
-   promotable) — then checks each locator-carrying hypothesis two-sided (an exact `file:line` source
-   match plus a host-validated, isolated `excerpt-fetcher` dispatch on the session side, anchored on
-   the linked observation's text in preference to the mechanism's own paraphrase) and tiers a
-   double pass `mechanically-observed`, a single judgment-call pass `independently-verified`, and
-   anything else `unverified` with the specific reason recorded for Phase 4.
+   version-resolution.md`) and follow it **in full** — the behavior-bearing procedure for these two
+   steps, kept in a paired reference for the skill-body-length budget. It resolves a hypothesis's
+   executed version from a reader-reported `Skill-load version:` string through four ordered branches
+   — install path, manifest history, date-resolved, present-day-only (never promotable) — then checks
+   each locator-carrying hypothesis two-sided (an exact `file:line` source match plus an isolated
+   `excerpt-fetcher` dispatch on the session side) and tiers a double pass `mechanically-observed`, a
+   judgment-call pass `independently-verified`, anything else `unverified` with the reason recorded.
 
 7. **Compose the report sections from the merged results and step 6's checks.** Summary, Evidence
    Record, Measured Effect and Coverage are built from the returned blocks and nothing else — this
@@ -365,8 +364,9 @@ first, the `locator`), and only its compact, already-redacted or already-structu
    - **Localisation** — filled with the file(s) named by every confirmed factor's `file:line` when at
      least one exists; otherwise the template's stated reason.
    - **Coverage** — every resolved or located record, exactly once, under its verdict from step 4,
-     each reader's model and tier, and (for a located run) the ranked order, the hunt-session label
-     when set, and the 30-day window's cutoff, stated whether or not it excluded anything.
+     each reader's model/tier, its date (`n/a — named session` for a named record), and (for a located
+     run) the ranked order, the hunt-session label when set, and the 30-day window's cutoff, stated
+     whether or not it excluded anything.
 
 8. **State the fix direction, then compute the rule-based recommendation.** Obtain
    `recommendation.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,

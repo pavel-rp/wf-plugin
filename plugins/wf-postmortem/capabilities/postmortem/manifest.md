@@ -9,10 +9,11 @@
 ---
 
 postmortem ships a **guided session-mining skill** that turns a maintainer's prose failure report
-into an explicit, echoed hunt scope and then **reads the session records the maintainer names**, each
-in its own isolated reader agent, composing the report from those readers' compact, already-redacted
-return blocks. Everything reaches its user by **native plugin composition** —
-`/wf-postmortem:postmortem` is invoked directly as a skill, never fired by a phase.
+into an explicit, echoed hunt scope and then **reads session records in scope** — named explicitly by
+the maintainer, or located automatically behind one replaceable seam — each in its own isolated
+reader agent, composing the report from those readers' compact, already-redacted return blocks.
+Everything reaches its user by **native plugin composition** — `/wf-postmortem:postmortem` is invoked
+directly as a skill, never fired by a phase.
 
 It owns **no** provider surface and contributes **no** phase fragment — it does not touch the
 `spec → plan → tasks → implement → verify → qa` spine. Registering it is a **presence-only**
