@@ -75,8 +75,25 @@ every emitted `Task:` line keep `{task-id}` verbatim.
    error and no stop. Report "Branch gate skipped — no delivery provider registered
    (bare-core mode)." and continue. **One matching row** — resolve the current branch via
    `current-branch-query` and apply step 2.
-2. **If the resolved branch name contains `/{task-id}-` or `/{numeric-id}-`**, compared
-   case-insensitively — proceed. **Otherwise** —
+2. **If the resolved branch name contains `/{task-id}-`, where `{task-id}` differs from
+   `{numeric-id}`**, compared case-insensitively — proceed; that prefixed id is already
+   resolved to exactly one task folder, so this arm cannot collide. **If it contains
+   `/{numeric-id}-` without a distinct `/{task-id}-` match** — the collision-prone shape,
+   covering both a prefixed id whose branch carries only the numeric run and a bare-numeric
+   `{task-id}` where the two arms are the same term. Proceed only behind the
+   **numeric-suffix collision guard**: scan `{task-root}` **and `{task-root}/_archive/`**
+   for another folder whose own first-3+-digit run equals `{numeric-id}` but whose full
+   name differs from `{task-id}`, reusing the same folder-scan and extraction convention as
+   "Id inference from the current branch" above (no new id-shape logic, no branch search, no
+   tracker query); the archive is scanned because a finalized task's folder moves there
+   while its branch may still exist. **None exists** — proceed. **Another such folder
+   exists** — do *not* proceed; fall through to the dispatch branch below exactly as an
+   unmatched branch would. Neither this gate nor `wf:branch`'s own substitution predicate
+   carries a bare-numeric skip: both evaluate both arms and apply the same guard, which is
+   what makes them return the same verdict for the same `(current-branch, {task-id})` pair.
+   The guard is an absence-of-evidence check over visible folders, not an existence proof —
+   a concurrently-shipped colliding task in an isolated worktree is outside its reach
+   (stated residual, see `agents/branch.md` Step 3). **Otherwise** (neither arm matches) —
    call `resolve_routing` immediately before dispatch with `workspaceRoot: <absolute pwd -P workspace root>`, `role: "branch"`, `unitIds: ["pipeline:branch"]`,
    `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
    unitsIndependent: false, ambiguity: "none", risk: "elevated", toolWork: "bounded",
