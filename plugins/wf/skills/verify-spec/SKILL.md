@@ -17,12 +17,11 @@ Verification is **strict and evidence-based**: every requirement must be resolve
 PASS / FAIL / PARTIAL / N/A / UNVERIFIABLE with a concrete `file:line` citation or a
 clearly stated reason for the verdict. No vibes, no "looks good".
 
-This skill is **capability-agnostic**. Its default is a generic spec-conformance audit
-plus a **lean adversarial pass** — a closed, two-class check that runs inline and reports
-defects a conformant change can still carry. On top of that default it **fires the
-`verify` phase**, aggregating any `finding`s contributed by whatever capabilities the
-project has registered — without naming, requiring, or assuming any of them. With no
-capability registered, the generic verdict and the adversarial pass stand alone.
+This skill is **capability-agnostic**. Its default is a generic spec-conformance audit plus a
+**lean adversarial pass** — a closed, two-class check that runs inline and reports defects a
+conformant change can still carry. On top of that it **fires the `verify` phase**, aggregating
+any `finding`s contributed by whatever capabilities are registered — without naming, requiring,
+or assuming any of them. With none registered, the generic verdict and lean pass stand alone.
 
 ---
 
@@ -51,9 +50,8 @@ Parse the first token. Recognized forms:
 1. Resolve the task id per the shared pipeline conventions doc — obtained via the
    `wf-resolver` MCP tool `resolve_content({ workspaceRoot, ... })` (`class: shared`, `ref: pipeline-conventions.md`),
    never a raw `Read` of the plugin-cache path — §"Id inference from the current branch";
-   inferred from the branch via `current-branch-query` (the `wf-resolver`
-   `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" below) and
-   resolved against `{task-root}`, naming `/wf:verify-spec` in its stop messages.
+   inferred from the branch via `current-branch-query` (see "Direct provider resolution"
+   below) and resolved against `{task-root}`, naming `/wf:verify-spec` in its stop messages.
 2. Confirm the resolved task folder's requirements artifact (`00_reqs.md`) exists. If
    not, stop and ask the user to either pass the id explicitly or point at a
    requirements path.
@@ -82,22 +80,19 @@ id inference above, and the Implementation-scope branch name below) and
 `last-commit-timestamp-query` (the spec-staleness edge case) — is reached by calling the
 bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query that
 returns the run-scoped resolution record `{ surface, owner, fragmentPath, state,
-degradation, diagnostics }`. The resolver has already resolved the `## Capabilities`
-registry, the owning capability's `manifest.md`, and any plugin-anchored root (post
-install-manifest self-heal, `capability-registry.ops.md` §"Recorded-root-first
-resolution with install-manifest self-heal"); core performs **no** registry / manifest /
+degradation, diagnostics }`. The resolver has already resolved the `## Capabilities` registry,
+the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest
+self-heal, `capability-registry.ops.md`); core performs **no** registry / manifest /
 plugin-root read of its own. Obtain the operation body through the resolver's
 `resolve_content({ workspaceRoot, ... })` content surface (`class: fragment`, keyed on the record's `owner` and
-fragment `ref`) and follow it in this skill's own context to dispatch the operation —
-never a raw `Read` of the resolved path. On `state: unconfigured` or `unrecoverable` (no
-readable `delivery` provider), both operations fall back silently to their
-plain-directory-safe cases — no error, no capability term surfaces. If the `wf-resolver`
-service is unavailable, stop and report that the resolver runtime is not loaded — do not
-hand-parse the registry (WF-272 diagnostics/recovery). This audit's core evidence-gathering
-(the diff, commit coordinates, and dirty-tree state — see "Implementation scope" below) has
-no delivery operation of its own today, so it is gathered directly against the local working
-tree regardless of resolution state — a documented contract-completeness gap, not a
-workaround.
+fragment `ref`) and follow it in this skill's own context — never a raw `Read` of the
+resolved path. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider),
+both operations fall back silently to their plain-directory-safe cases — no error, no
+capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that
+the resolver runtime is not loaded — do not hand-parse the registry (WF-272). This audit's core evidence-gathering
+(the diff, commit coordinates, and dirty-tree state — see "Implementation scope" below) has no
+delivery operation of its own today, so it is gathered directly against the local working tree
+regardless of resolution state — a documented contract-completeness gap, not a workaround.
 
 ---
 
@@ -119,19 +114,16 @@ Always read, in order:
    today (the gap noted above; the operation set is in
    `plugins/wf/skills/_contracts/capability-registry.contract.md` §"The delivery provider
    surface"). Gather the following by outcome, never as a literal command:
-   - the current branch name — via `current-branch-query` (the `wf-resolver`
-     `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution" above)
+   - the current branch name — via `current-branch-query` (see "Direct provider resolution")
    - the current HEAD commit coordinate (full SHA)
    - the base commit coordinate where the branch diverged from `main`
    - whether the working tree is clean or dirty, and which files are dirty if so
    - the changed-file summary (file list + insertion/deletion counts) against `main`
    - the full diff content against `main`
 
-   This is the set of code actually under audit. Don't verify against uncommitted noise
-   from unrelated files; call those out separately. Record the branch, HEAD SHA, base
-   SHA, and dirty-tree flag in the report header — this lets a reader tell which commit
-   a stale report corresponds to, and lets a re-run detect when the branch has moved
-   since the audit ran (cited `file:line` citations go stale with every commit).
+   This is the set of code actually under audit. Don't verify against uncommitted noise from
+   unrelated files; call those out separately. Record the branch, HEAD SHA, base SHA, and
+   dirty-tree flag in the report header, so a re-run can tell when the branch has moved.
 
 ---
 
@@ -196,21 +188,17 @@ Verdicts:
 
 ## The lean adversarial pass
 
-The audit above answers *"does the change do what the requirements say?"*. It cannot
-answer *"is what the change does actually right?"* — a change can conform to its own
-requirements exactly and still be wrong. This pass is core's own answer to the second
-question, and it is a **lean default**: it ships with core, runs on a completely empty
-registry, and names no capability.
+The audit above answers *"does the change do what the requirements say?"* — not *"is what the
+change does actually right?"*. This pass is core's own answer to the second question, a **lean
+default**: it ships with core, runs on an empty registry, and names no capability.
 
-**It adds no dispatch.** It runs inline, in this skill's own context, over the changed
-lines already gathered under "Implementation scope" — no Task call, no subagent, no
-further resolver call, and no evidence gathering of its own. It is strictly additive to
-the phase below and alters none of it.
+**It adds no dispatch.** It runs inline, in this skill's own context, over the changed lines
+already gathered under "Implementation scope" — no Task call, no subagent, no further resolver
+call, and no evidence gathering of its own. It is strictly additive to the phase below.
 
 **It reports; it does not gate.** An adversarial finding never changes a requirement's
-verdict, never changes the report's `**Verdict:**` line, and never changes the
-final-output block or its status token. This introduces no stop, no prompt, and no gate
-that did not exist before.
+verdict, the report's `**Verdict:**` line, or the final-output block and its status token.
+It introduces no stop, no prompt, and no gate that did not exist before.
 
 ### The two defect classes — this list is closed
 
@@ -223,8 +211,7 @@ Check the changed lines for exactly these two, and nothing else:
    control decision whose correctness depends on a precondition the change neither states
    nor enforces, and the surrounding code does not already guarantee.
 
-Do not widen this list. An open-ended hunt is what makes such a pass expensive and what
-makes it invent findings; the closed list is what holds it inside the budget.
+Do not widen this list — an open-ended hunt is what makes such a pass invent findings.
 
 ### The two-sided citation rule
 
@@ -238,16 +225,15 @@ If either side cannot be cited, there is no finding. **Never reportable**, howev
 plausible: a speculation ("consider whether…", "this might…"); a restatement of the change
 itself as a risk; a finding whose evidence is an **absence** (that no test, guard, comment,
 or handler was found — an absence is not a citation); a style, naming, or preference nit;
-or a requirement already resolved above. Reporting nothing on a change carrying neither
-class is this pass working correctly, not failing.
+or a requirement already resolved above.
+Reporting nothing on a change carrying neither class is this pass working correctly, not failing.
 
 Hold reportable findings as **candidates** tagged with the provenance `core`; this section
 compares nothing. They are reconciled against the phase below once both sets are in hand
-(§"Reconcile against the lean pass"), then rendered under the report's `## Adversarial findings`
-section, present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — so omit it entirely only when none of the three exists. Rationale
-and worked examples live in the paired reference `adversarial-pass.md` — obtained, when a
-reader wants it, via `resolve_content({ workspaceRoot, ... })` (`class: references-template`,
-`skill: verify-spec`, `ref: adversarial-pass.md`) — and are never read on this path.
+(§"Reconcile against the lean pass"), then rendered under `## Adversarial findings` — a section
+present whenever the run has anything to record. Rationale and worked examples live in
+`adversarial-pass.md`, obtained via `resolve_content` (`class: references-template`,
+`skill: verify-spec`) — never read here.
 
 ---
 
@@ -337,9 +323,38 @@ by **phase name / contribution-kind name**, never by heading:
 matches `verify` under the `finding` kind, the whole phase produces **nothing** and the
 generic verdict stands alone (no capability findings section, no capability/stack/domain
 term surfaced, no broken subagent reference, no STOP). A malformed `dispatch` is that
-contributor's own no-op — never a STOP — and is reported as incomplete coverage below. A
-capability's findings feed the verdict on the same footing as generic requirements (a
-finding that asserts non-conformance is a FAIL, exactly like a failed requirement).
+contributor's own no-op — never a STOP — and is reported as incomplete coverage below. Whether
+an aggregated finding gates the verdict is decided by §"The blocking set" below, never by its
+mere existence.
+
+### The blocking set
+
+What gates the verdict is a **blocking set**, assembled once here:
+
+- **Every requirement `FAIL`/`PARTIAL`** from the pass above — always blocking, on its own
+  `file:line` evidence, with no classification step.
+- **Every aggregated `finding` whose `severity` is `fail` *and* that is anchored.**
+  **Requirement-anchored:** it names the extracted requirement it contradicts and quotes the
+  contradicting evidence — a nonexistent requirement number or mere topical overlap does not
+  qualify. **Change-anchored:** its `location` **or any cited evidence line** falls inside the
+  branch-vs-`main` diff gathered under "Implementation scope" — location alone is not the test,
+  so a finding citing one changed line and one unchanged line it breaks still qualifies.
+
+Anchoring is a per-finding judgment call, not a string match, and it classifies only the
+findings aggregated at step 4 — never a requirement verdict, and never a lean-pass candidate
+(those stay non-gating). Until a confirmation step exists, an anchored `fail` blocks unconfirmed.
+
+A `fail` anchored to neither is **pre-existing**; a `warn` is non-blocking whatever its anchor.
+Both are recorded — under `## Pre-existing` and `## Accepted warnings` — never dropped, and
+neither ever dismisses a requirement `FAIL`/`PARTIAL`. **Never pre-existing — blocking instead,
+rendered under `## Capability findings`**: a `fail` citing a file the header flags dirty, or any
+`fail` judged when the branch-vs-`main` diff is empty, since the audited window does not cover
+that work and absence of an anchor there proves nothing. The three buckets are exhaustive.
+
+`**Verdict:** PASS` **iff the blocking set is empty**; otherwise `FAIL`, or `PARTIAL` when the
+set holds only `PARTIAL` requirements. The report's `**Verdict:**`, the chat summary's verdict
+line, and the `VERIFY —` status token all read this one set, so adding a non-blocking finding
+or reordering classified findings never changes the verdict.
 
 ### Reconcile against the lean pass
 
@@ -366,18 +381,15 @@ Two outputs, always both:
 1. **Full report** — written to the task folder's `04_verify.md`, which always holds the
    latest run. Before overwriting, rotate the prior `04_verify.md` into
    `04_verify.history.md` per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`,
-   `class: shared`, `ref: pipeline-conventions.md`)
-   §"Artifact rotation into `.history.md`". This gives a trail of every prior audit run at
-   this path, so the user can compare findings across iterations and see what a fix broke
-   or regressed. Each archived entry is self-identifying via its own header
-   (`**Commit:** <SHA>`, `**Audited at:** <timestamp>`). When the `<path-to-00_reqs.md>`
-   override form is used, write both files as siblings of that file instead.
+   `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`".
+   Each archived entry is self-identifying via its own header (`**Commit:** <SHA>`,
+   `**Audited at:** <timestamp>`). When the `<path-to-00_reqs.md>` override form is used,
+   write both files as siblings of that file instead.
 2. **Chat summary** — concise overview printed inline so the user can triage pass/fail
    without opening the file.
 
-Write the file first, then print the chat summary. If the write fails (permissions,
-path missing), stop and report the failure — do NOT fall back to printing the full
-report inline.
+Write the file first, then print the chat summary. If the write fails (permissions, path
+missing), stop and report the failure — do NOT fall back to printing the full report inline.
 
 **After writing the report**, invoke `/wf:index {task-id} verify "<a> PASS · <b> FAIL · <c> PARTIAL"`
 to record the audit in the per-task index. Substitute each placeholder with its own
@@ -387,40 +399,32 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 ### Full report shape (`04_verify.md`)
 
 The verbatim `04_verify.md` output shape — the report header, `## Requirements`,
-`## Capability findings`, `## Adversarial findings`, `## Deviations`, and
-`## Recommended next actions` structure —
-lives at `verify-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })`
-(`class: references-template`, `skill: verify-spec`, `ref: verify-template.md`), never a
-raw `Read` of the plugin-cache path. It is read only on this write path, so it stays out of
-the boot body. Follow it, then emit it with placeholders substituted. Keep quoted snippets short — one or two lines max; the reader
-clicks `file:line` for the rest.
+`## Capability findings`, `## Pre-existing`, `## Accepted warnings`, `## Adversarial findings`,
+`## Deviations`, and `## Recommended next actions` — lives at `verify-template.md`, obtained via
+`resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-spec`,
+`ref: verify-template.md`), never a raw `Read` of the plugin-cache path. Read only on this write
+path; follow it, emit it with placeholders substituted, and keep quoted snippets to 1–2 lines.
 
 ### Chat summary shape
 
-The verbatim ordered shape — the verdict line, the report pointer, the FAIL/PARTIAL
-bullets, the capability- and adversarial-findings lines, the top next actions, and the
-conditional `/wf:verify-fix` suggestion with its inclusion test — lives at
-`chat-summary.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })`
-(`class: references-template`, `skill: verify-spec`, `ref: chat-summary.md`), never a raw
-`Read` of the plugin-cache path. Like the report template beside it, it is read only on
-this write path, so it stays out of the boot body. Follow it, then emit it with
-placeholders substituted. Target ~15 lines total; if the summary grows past that, trim
-detail, not items.
+The verbatim ordered shape — the verdict line, the report pointer, the FAIL/PARTIAL bullets,
+the capability- and adversarial-findings lines, the top next actions, and the conditional
+`/wf:verify-fix` suggestion with its inclusion test — lives at `chat-summary.md`, obtained via
+`resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-spec`,
+`ref: chat-summary.md`), never a raw `Read` of the plugin-cache path. Read only on this write
+path; follow it, emit with placeholders substituted, target ~15 lines, trimming detail not items.
 
 ### Record the phase-completion receipt
 
-Reached **after** the report is written, so the receipt attests work that actually
-happened. Call the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot,
-kind: "phase-receipt", subject: "verify-spec", taskId: {task-id}, artifactPath:
-"<the report path just written>" })` — normally `<task-folder>/04_verify.md`, and on the
-`<path-to-00_reqs.md>` override form the sibling path it actually went to, so the resolver
-digests the file that exists; skip the call when that path lies outside the workspace, the
-same carve-out the index step takes. The resolver derives the run identity, the workspace,
-the timestamp and the sequence itself, digests the named artifact itself, and seals the
-record — this skill asserts none of them, which is what makes the receipt proof rather
-than a claim, and why it never writes the destination directly. **Non-blocking, always:**
-a `refused` outcome (or an unavailable resolver) is reported in one line and changes
-nothing else — the verdict is unaffected and the block below is emitted unchanged.
+Reached **after** the report is written, so the receipt attests work that actually happened. Call
+the bundled `wf-resolver` MCP tool `record_run_evidence({ workspaceRoot, kind: "phase-receipt",
+subject: "verify-spec", taskId: {task-id}, artifactPath: "<the report path just written>" })` —
+normally `<task-folder>/04_verify.md`, and on the `<path-to-00_reqs.md>` override form the
+sibling path it went to; skip it when that path lies outside the workspace, the same carve-out
+the index step takes. The resolver derives the run identity, workspace, timestamp, sequence and
+digest itself — this skill asserts none of them and never writes the destination directly.
+**Non-blocking, always:** a `refused` outcome or unavailable resolver is reported in one line
+and changes nothing else — the verdict is unaffected and the block below emitted unchanged.
 
 End with the final-output block (see below).
 
@@ -435,8 +439,7 @@ End with the final-output block (see below).
 - Will NOT invent requirements not present in the spec. A capability's invariants surface
   as capability `finding`s at the `verify` phase, not as fabricated requirement-list rows.
 - Will NOT name, require, or assume any capability — including when reconciling the two
-  adversarial sources. It iterates the registry and aggregates whatever is contributed;
-  with none registered, the generic verdict plus the lean adversarial pass stand alone.
+  adversarial sources or classifying a finding into the blocking set.
 
 ---
 
@@ -444,10 +447,9 @@ End with the final-output block (see below).
 
 - **Spec is stale**: run the staleness check per the shared pipeline conventions doc
   (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`)
-  §"Report/spec staleness check", comparing `last-commit-timestamp-query` (the
-  `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query, see "Direct provider resolution"
-  above) against the spec header's fetch/author date. If the branch has moved since, warn the
-  user — the spec may have been updated since — and continue anyway, but flag it.
+  §"Report/spec staleness check", comparing `last-commit-timestamp-query` (see "Direct
+  provider resolution") against the spec header's fetch/author date. If the branch has moved
+  since, warn the user and continue anyway, but flag it.
 - **Requirements reference files that no longer exist**: the file may have moved or been
   renamed. `Glob` for the basename before giving up. If truly missing, mark the
   dependent requirements UNVERIFIABLE and say why.
@@ -460,19 +462,16 @@ End with the final-output block (see below).
   weren't included.
 - **Change carries neither adversarial defect class**: the lean pass reports nothing, and the
   `## Adversarial findings` section is omitted **only when** the run withdrew no candidate and every
-  contributor delivered — otherwise it renders on those records alone, because the omission rule
-  never suppresses an audit trace. On a genuinely clean change, do not synthesize a "no issues found" entry, and do not relax the two-sided citation rule to produce one.
+  contributor delivered. Never synthesize a "no issues found" entry or relax the citation rule.
 - **Empty registry**: the lean adversarial pass still runs — it is a core default, not a
-  contribution — while the phase below produces nothing. The generic verdict plus any
-  adversarial findings stand alone, with no capability term surfaced.
+  contribution — while the phase below produces nothing. The generic verdict stands alone; the
+  two non-blocking sections still render empty, and no capability term surfaces.
 - **A contributor fails or returns nothing**: an unregistered `subagent:` agent, an errored
   dispatch, or an unparseable block contributes no findings — never a STOP, and the generic
-  audit still stands. But it contributed nothing *and is not clean*: state it with its
-  provenance and mark the adversarial coverage **incomplete**, so the surviving findings are
-  never presented as a complete adversarial pass. Reporting only — no verdict change.
+  audit still stands. It contributed nothing *and is not clean*: state it with its provenance
+  and mark the adversarial coverage **incomplete**. Reporting only — no verdict change.
 - **Re-run after fixes**: `04_verify.md` is overwritten and the prior report rotated into
-  `04_verify.history.md`, giving a trail across iterations — useful when a fix regresses or
-  the same finding keeps reappearing. That file grows unbounded; prune it manually.
+  `04_verify.history.md`, giving a trail across iterations. It grows unbounded; prune manually.
 
 ---
 
@@ -488,7 +487,8 @@ Report: <task-folder>/04_verify.md
 Next: <branched on the verdict — see below>
 ```
 
-The `Next:` line is **always present**, branched on the verdict:
+`N`/`M` count only the blocking-set members rendered under `## Capability findings` — the same
+counts the chat summary's capability-findings line prints. The `Next:` line is **always present**, branched on the verdict:
 
 - **PASS** → `/wf:qa-gen {task-id}` (proceed to QA).
 - **FAIL/PARTIAL with at least one mechanically fixable finding** → `/wf:verify-fix {task-id}`

@@ -13,13 +13,21 @@ follows.
 
 Print, in this order:
 
-- **Verdict line:** `**Verdict:** <PASS | FAIL | PARTIAL>` — `<n>/<total>` requirements.
+- **Verdict line:** `**Verdict:** <PASS | FAIL | PARTIAL>` — `<n>/<total>` requirements. Echo
+  the report's own `**Verdict:**` value verbatim; it is computed from the blocking set, so a
+  non-blocking finding listed below never contradicts a `PASS` here.
 - **Report pointer:** one line — `Report: <task-folder>/04_verify.md`.
 - **FAILs and PARTIALs:** one bullet each — short requirement name, one-line reason,
   `file:line` citation. Skip the section entirely if none.
-- **Capability findings:** one line — either `none` (no capability contributed at
-  `verify`) or `<N> findings across <M> capabilities: <comma-separated shortlist, each
-  tagged with its source>`.
+- **Capability findings:** one line — either `none` (**no blocking-set member under
+  `## Capability findings`** — whether because no capability contributed at `verify`, or
+  because everything they contributed was routed to a non-gating section) or
+  `<N> findings across <M> capabilities: <comma-separated
+  shortlist, each tagged with its source>`. `<N>` counts the blocking-set members rendered under
+  the report's `## Capability findings` and `<M>` the capabilities they came from; append
+  `· <P> pre-existing · <W> accepted warnings` when either non-blocking section carries entries,
+  so they are visible without changing the verdict. A run with contributors but nothing blocking
+  therefore reads `none · <P> pre-existing · <W> accepted warnings`, never `0 findings across 1`.
 - **Adversarial findings:** one line — either `none` or `<N>: <comma-separated shortlist>`,
   then `· <W> withdrawn` when any were, and `· coverage incomplete (<provenance>)` when a
   contributor failed. Non-gating: this line never changes the verdict line above it.

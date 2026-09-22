@@ -1,6 +1,6 @@
 # `04_verify.md` full output shape
 
-The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path). The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — which subordinates the omission rule: omit the whole section on a clean change only, meaning a run that produced no surviving finding, withdrew no candidate, and had every contributor deliver.
+The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path); when routing leaves it with no entry, it renders the single line `- none`. The `## Pre-existing` and `## Accepted warnings` sections are **unconditional — always rendered, even empty**, so the ledger shape is stable across runs. The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — which subordinates the omission rule: omit the whole section on a clean change only, meaning a run that produced no surviving finding, withdrew no candidate, and had every contributor deliver.
 
 ## Contents
 
@@ -41,9 +41,45 @@ Only present when one or more capabilities contributed `finding`s at the `verify
 its `finding` fragment carries one) as a trailing `— Remedy: <text>` clause; omit the
 clause when the fragment carries none.
 
+This section carries the `fail`-severity aggregated findings that made the **blocking set** —
+those that are requirement- or change-anchored. A `fail` or `warn` that did not make it is
+recorded in exactly one of the two non-gating sections below instead of here, so every
+aggregated finding appears exactly once in the report and none is ever dropped. A `[PASS]`
+assertion row carries no severity, is not a finding, and is never routed — it always stays here.
+The section's presence rule, its grouping, and its bullet shape are unchanged by that routing;
+when the routing leaves it with no entry at all, render the single line `- none`.
+
 - **<source capability>** — [FAIL] <finding> at `path/to/file:L` — <evidence> — Remedy: <bounded edit>
 - **<source capability>** — [FAIL] <finding> at `path/to/file:L` — <evidence>
 - **<source capability>** — [PASS] <rule asserted, no divergence found>
+- none
+
+## Pre-existing
+
+**Always rendered, even when empty** — unlike the conditional `## Adversarial findings` section
+below, this one and `## Accepted warnings` are unconditional, so the ledger shape is stable
+across runs. On an empty registry it renders with no entries; never omit it, and never replace
+an empty render with a "none found" placeholder beyond the single `- none` line.
+
+One entry per aggregated `fail`-severity finding that is anchored to neither a contradicted
+requirement nor a line in the branch diff, and that the dirty-file / empty-diff carve-out does
+not claim — non-blocking, tagged with its source capability.
+Entries are keyed by `file:section`, where `section` is the enclosing markdown heading for
+prose, the enclosing symbol or declaration for source, and the file itself when neither exists.
+A pre-existing entry never dismisses a requirement `FAIL`/`PARTIAL`.
+
+- **<source capability>** — `path/to/file:<section>` — <finding> — <evidence>
+- none
+
+## Accepted warnings
+
+**Always rendered, even when empty**, on the same unconditional rule as `## Pre-existing` above.
+
+One entry per aggregated `warn`-severity finding, whatever its anchor — a `warn` is
+non-blocking by severity alone and needs no anchor check — tagged with its source capability.
+
+- **<source capability>** — <finding> at `path/to/file:L` — <evidence>
+- none
 
 ## Adversarial findings
 
