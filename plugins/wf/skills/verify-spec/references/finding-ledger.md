@@ -15,6 +15,7 @@ here in full.
 - [Round-number derivation](#round-number-derivation)
 - [Rebuild algorithm](#rebuild-algorithm)
 - [Match / insert / retire (one round's step)](#match--insert--retire-one-rounds-step)
+- [Pre-dispatch derivation (changed sections, round ≥2)](#pre-dispatch-derivation-changed-sections-round-2)
 - [Worked example](#worked-example)
 
 ## Ledger field set
@@ -213,6 +214,27 @@ and **that round's own reported findings** — against the ledger-so-far:
   the render.
 
 `refuted` is never assigned by any rule above; see §"Status vocabulary".
+
+## Pre-dispatch derivation (changed sections, round ≥2)
+
+`verify-spec/SKILL.md` §"Fire the `verify` phase" now runs round-number derivation (above) and
+the prior-rounds fold ("Rebuild algorithm" steps 1-2) **before** dispatch, not after — the
+algorithm itself is unchanged, only *when* it runs. At round ≥2 it also derives one more thing,
+new to that split: a second diff, distinct from `SKILL.md`'s branch-vs-`main` diff gathered
+under "Implementation scope", between the **prior round's `**Commit:**`** (parsed off the same
+most-recent trail entry the round-derivation boundary walk reads) and the **current working
+tree**, dirty files included, never `HEAD`. Map every changed hunk's location through the same
+`section` derivation the aggregator already uses for fingerprints (`verify-template.md`
+§"Pre-existing" — the enclosing markdown heading for prose, the enclosing symbol/declaration for
+source, the file itself when neither exists), and dedupe into a `file:section` list —
+`changed_sections`. This runs the section-key function forward (from a diff, to build a list)
+rather than backward (from a finding's citation, to key it); no new section-key rule is
+authored. Round 1 skips this entirely — there is no prior round to diff against.
+
+**Working-tree narrowing.** At round 1, `SKILL.md`'s "Uncommitted changes" edge case still
+applies — verify against `HEAD`. At round ≥2 the working tree *is* the audited change
+(`verify-fix` never commits between rounds), so both the report header's `**Tree:**` dirty-file
+list and the `changed_sections` diff above read the working tree, not `HEAD`.
 
 ## Worked example
 

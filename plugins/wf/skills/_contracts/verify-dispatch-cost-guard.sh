@@ -32,6 +32,12 @@ if ! grep -q 'finding contract inline in the dispatch prompt' "$VERIFY"; then
   report_fail "verify-spec must inline the finding contract in enabled dispatch prompts"
 fi
 
+for marker in 'round: <N>' 'open_fingerprints:' 'changed_sections:'; do
+  if ! grep -qF "$marker" "$VERIFY"; then
+    report_fail "verify-spec must carry the round-aware dispatch field '$marker'"
+  fi
+done
+
 agent_count=0
 for agent in "$AUDIT_ROOT"/agents/{correctness,security,convention,consistency,operational}-auditor.md; do
   agent_count=$((agent_count + 1))
@@ -40,6 +46,9 @@ for agent in "$AUDIT_ROOT"/agents/{correctness,security,convention,consistency,o
   fi
   if grep -Eq 'resolve_content.*finding-contract|ref: fragments/finding-contract.md' "$agent"; then
     report_fail "$(basename "$agent") still fetches the finding contract"
+  fi
+  if ! grep -q 'dispatch prompt carries `round >= 2`' "$agent"; then
+    report_fail "$(basename "$agent") is missing the round-aware mandate step"
   fi
   lens="$(basename "$agent" -auditor.md)"
   upper="$(printf '%s' "$lens" | tr '[:lower:]' '[:upper:]')"
@@ -62,5 +71,6 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 printf 'PASS: caller-side lens gate precedes Task dispatch\n'
+printf 'PASS: round-aware dispatch fields and lens mandates are present\n'
 printf 'PASS: five lens agents perform zero finding-contract/profile fetches\n'
 printf 'PASS: five manifest rows and final-output shapes remain intact\n'

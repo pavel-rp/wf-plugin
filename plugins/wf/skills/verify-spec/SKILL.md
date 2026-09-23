@@ -225,6 +225,14 @@ present whenever the run has anything to record. Rationale and worked examples l
 
 ## Fire the `verify` phase (aggregate capability findings)
 
+**Before dispatch** (moved here, not after as before): derive round `N`, fold prior rounds into
+a ledger-so-far, and (round ≥2) the `changed_sections` list — algorithm unchanged, only *when*
+it runs moved; the new changed-section diff and round 1→round ≥2 working-tree narrowing are
+specified in full at `finding-ledger.md` §"Pre-dispatch derivation (changed sections, round ≥2)"
+(`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`,
+`ref: finding-ledger.md`). Hold `N`, ledger-so-far, `changed_sections` for the dispatch below
+and §"The finding ledger".
+
 After the generic per-requirement audit, fire the **`verify`** phase and aggregate any **`finding`** contribution the registered capabilities attach to it. Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — never `## Capabilities`/`manifest.md` directly — referencing the taxonomy by phase name / contribution-kind name, never heading:
 
 1. **Call `resolve_registry({ workspaceRoot, ... })`.** It returns the ordered active `capabilities[]` (in
@@ -297,6 +305,19 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the
    child never self-replaces. If the Task target itself is unavailable, preserve the
    existing optional-contributor no-op.
+
+   **Round ≥2 extension.** When `N >= 2`, append three fields to that same block — after
+   `findings:`, before the closing severity-rule line — same bytes across all five lenses:
+
+   ```text
+   round: <N>
+   open_fingerprints:
+   - <fingerprint> — <defect> — last seen: <lens>/<check>[, <lens>/<check>, …]
+   changed_sections:
+   - <file:section>
+   ```
+
+   At `N == 1`, emit the block exactly as above — byte-identical to the pre-change baseline.
 4. **Aggregate and collapse** — group by `file:section` (the location derivation
    `## Pre-existing` reuses); assign a lens-independent `defect` key per distinct defect
    there, collapsing same-defect findings into one listing every contributing lens, its
@@ -362,20 +383,12 @@ nothing was aggregated.
 
 ## The finding ledger
 
-Before `## Output`, rebuild — never recompute — a fingerprint ledger from `04_verify.md` /
-`04_verify.history.md`, so a finding seen in a prior round is recognized here by lookup, not
-reinvented, and one that stops recurring is retired rather than dropped. Field set, status
-vocabulary, the rebuild algorithm, and round-number derivation live in `finding-ledger.md`
-(`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`,
-`ref: finding-ledger.md`, never a raw `Read`) — followed in-context here, the role
-`verify-template.md` plays at `## Output` below.
-
-**Outcomes:** a fingerprint both the ledger and this run's aggregated findings name is
-**matched** — `first-seen` survives, only `status`/`contributing lenses` update. One only this
-run reports is **inserted**, `first-seen` = the round just derived. One the ledger holds but
-this run no longer names is **retired** as `status: fixed`, kept, never dropped.
-
-The round number derived here renders only as the `## Ledger` section's `**Round:**` line.
+Apply `finding-ledger.md`'s §"Match / insert / retire" once more, using `N` and this run's own
+aggregated findings against the ledger-so-far derived at the top of §"Fire the `verify` phase",
+then render `## Ledger` per `verify-template.md`. Outcomes, field set, and status vocabulary are
+`finding-ledger.md`'s (`resolve_content({ workspaceRoot, ... })`, `class: references-template`,
+`skill: verify-spec`, `ref: finding-ledger.md`) — round `N` renders only as `## Ledger`'s
+`**Round:**` line.
 
 ---
 
@@ -456,8 +469,8 @@ End with the final-output block (see below).
   giving up; if truly missing, mark the dependent requirements UNVERIFIABLE and say why.
 - **Branch has commits from multiple tasks**: inspect the commit history between base and
   HEAD; verify only this task's files, list unrelated commits separately.
-- **Uncommitted changes**: verify against `HEAD`, not the working tree — note the dirty
-  files as excluded.
+- **Uncommitted changes (round 1 only)**: verify against `HEAD` — dirty files excluded; at
+  round ≥2 the working tree is the audited change instead.
 - **Change carries neither adversarial defect class**: the lean pass reports nothing; omit
   `## Adversarial findings` only when nothing was withdrawn and every contributor delivered —
   never synthesize a "no issues found" entry or relax the citation rule.
