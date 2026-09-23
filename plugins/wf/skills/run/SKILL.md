@@ -38,6 +38,8 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 | `--from <phase>`| NO       | Force the starting phase (`spec`, `plan`, `implement`, `verify`, `qa`, …), overriding artifact-derived state. |
 | `--to <phase>`  | NO       | Stop once the named phase completes. |
 | `--no-triage`   | NO       | Skip the opening triage step and enter the full chain directly. |
+| `--headless`    | NO       | Explicit signal that no operator is present to answer the verify⇄fix stop gate (§"The verify⇄fix stop gate"). Never inferred from context — a headless driver (`ship`, `fleet`'s fallback chain) always passes it. At a gate with no `--gate` answered, emits `RUN — blocked` without prompting. |
+| `--gate <extend\|accept\|stop>` | NO | Answers the verify⇄fix stop gate this invocation reaches, if any, once. Composes with `--headless` (unattended answer) or stands alone (a pre-committed interactive answer). Spent after answering one stop; a later stop in the same invocation gets no second free answer from it. |
 
 `--resume` is accepted as an explicit alias for the default behavior (re-derive state and advance); it is implied whenever no `--from` is given.
 
@@ -122,13 +124,34 @@ Read `index.md` if present; otherwise scan the task folder. Determine the furthe
 
 1. Apply the phase-graph edges, branching on the statuses read in Phase 2:
    - `triage` verdict `blocked`/`clarify` → **halt**, surface the reason. `lite` → next is `/wf:lite`. `full`/`split` → enter the chain at the first missing artifact.
-   - `verify-spec` `PASS` → skip `verify-fix`, next is `qa-gen`. `FAIL`/`PARTIAL` → next is `verify-fix`; after it, next is `verify-spec` again. Cap at **2** verify⇄fix cycles, then halt and escalate.
+   - `verify-spec` `PASS` → skip `verify-fix`, next is `qa-gen`. `FAIL`/`PARTIAL` at round 1 (no prior round to compare) → next is `verify-fix`, unconditionally. `FAIL`/`PARTIAL` at round ≥2 → apply §"The verify⇄fix stop gate": a blocking-fingerprint set that shrank since the prior round continues to `verify-fix` (cap permitting); a stable-or-grown set, or the cap itself, stops the loop through the gate. Cap stays **2** verify⇄fix cycles per run attempt; an `extend` gate choice adds exactly one more cycle, uncapped for interactive extends.
    - `qa-auto` `PASS` → done (ready for review). `FAIL`/`INCOMPLETE` → next is `qa-followup`; after it (which itself re-runs `qa-auto --only`), re-read `07_qa-report.md`. Cap at **2** qa⇄followup cycles, then halt and escalate.
    - `--from`/`--to` bound the range; `--no-triage` skips the triage edge.
 2. **Gate policy:**
    - `--step` (opt-in): dispatch exactly one phase, then stop with the resume line.
    - implicit gate (both modes): **always stop *before* a source-writing, approval-gated, interactive, or browser phase** — `implement`, `lite`, `verify-fix`, `qa-followup` (source/approval), plus `qa-auto`/`qa-run` (browser-driven, kept an explicit step) — and print the command for explicit human launch. The default walk never auto-advances into one; `--step` stops after every phase anyway.
    - any `Error` / `BRANCH — Error` / `ESCALATED` / `blocked` / `clarify` token → **halt** regardless of flag.
+
+---
+
+## The verify⇄fix stop gate
+
+Reached only at round ≥2 of a `FAIL`/`PARTIAL` `verify-spec` (Phase 3). Compares **blocking fingerprint sets** — the fingerprints listed under the current `04_verify.md`'s `## Capability findings` heading (round `N`) against the same heading in the most recent `04_verify.history.md` entry (round `N-1`) — **and**, since a loop can be entirely requirement-driven with no capability finding ever fingerprinted, the requirement pass count each report's own header already carries (`**Verdict:** … (<passed>/<total> requirements)`).
+
+**Progress test.** **Progress** — at least one round-`N-1` fingerprint absent from round `N`'s set, **or** round `N`'s `<passed>` count exceeds round `N-1`'s — continue to `verify-fix` (cap permitting). **No progress** — round `N`'s fingerprint set equal to or a superset of round `N-1`'s (nothing cleared, whether or not something new appeared) **and** `<passed>` did not increase — stop **early**, before spending the cap's remaining cycle. Reaching the existing 2-cycle cap with either signal still improving also stops, through this same gate — improvement is progress, not an exemption from the cap.
+
+**One gate, asked once per stop.** Compute the loop identity `L` and round `N` per `finding-ledger.md` §"Loop identity" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`) — read `N` off `04_verify.md`'s `**Round:**` line, never recomputed here. Before asking anything, call `read_run_evidence({ workspaceRoot, taskId })` and look for a `matched` entry `kind: gate-approval`, `subject: verify-loop:l<L>:r<N>:<choice>` — if found, this exact stop was already answered (a resumed run after `/clear`, or a same-invocation re-check); skip straight to "Act on the choice" below with that recorded `<choice>`, asking nothing.
+
+No matching record:
+
+- **`--headless`** — if `--gate <choice>` was passed at this invocation's entry **and** it has not already answered an earlier stop this invocation, record `verify-loop:l<L>:r<N>:<choice>` via `record_run_evidence({ workspaceRoot, kind: "gate-approval", subject: "verify-loop:l<L>:r<N>:<choice>", taskId })` — no `artifactPath`; no artifact is approved, this is `invocation-only` by design. Then act on `<choice>`. Otherwise (no `--gate`, or it already answered an earlier stop this run) → emit `RUN — blocked` without prompting; record no choice; the ledger is intact.
+- **Interactive** (no `--headless`) — ask the operator once: `extend` (one more verify⇄fix cycle) / `accept` (demote the open blocking lens residue, if a requirement `FAIL`/`PARTIAL` is also open the loop still stops on that) / `stop` (halt now). Record the answer the same way, then act on it. An interactive `extend` may be answered again at each later stop within the same loop — no counter bounds it beyond the operator's own repeated choice.
+
+**Act on the choice:**
+
+- **`extend`** → re-enter at `/wf:verify-fix {task-id} --attempt <k+1>` for exactly one more cycle, then `verify-spec` again as usual.
+- **`accept`** → dispatch no `verify-fix`; instead re-invoke `/wf:verify-spec {task-id}` once more (an extra invocation, not a verify⇄fix cycle) so its accept hook (`verify-spec/SKILL.md` §"The blocking set", reading this same `l<L>:r<N>:accept` record) demotes the open blocking lens residue into `## Accepted warnings` and recomputes `**Verdict:**`. Re-derive Phase 2/3 from the result as usual — PASS (no open requirement issue) advances to `qa-gen`; a requirement `FAIL`/`PARTIAL` still open stops `RUN — blocked` naming it, without asking the gate again (the `l<L>:r<N>` record already answered this stop).
+- **`stop`** → `RUN — blocked` now, ledger intact.
 
 ---
 
@@ -165,6 +188,9 @@ Do **not**, in either mode, execute a phase inline in your own context (Safety R
 - **`02_plan.md` partially checked:** implement is *in progress*, not done — next command is `/wf:implement <id>` (it resumes from the first unchecked step on its own).
 - **`04_verify.md` is `PASS` but source changed since:** staleness guard warns; offer `--from verify`.
 - **verify⇄fix or qa⇄followup exceeds 2 cycles:** halt with `RUN — blocked`, summarize the stuck findings, hand to the user.
+- **verify⇄fix stops early (no progress before the cap):** the blocking fingerprint set was stable or grew between two rounds — §"The verify⇄fix stop gate" fires before the cap is spent, not only at it.
+- **`--headless` at a verify⇄fix stop with no `--gate`:** `RUN — blocked`, no prompt, no recorded choice, ledger intact — a headless driver never hangs waiting for an answer it cannot give.
+- **A recorded gate choice from an earlier loop on the same task:** never matches a later loop's stop — the loop identity `L` differs, so a record like `verify-loop:l0:r3:accept` from a finished, `PASS`-ended loop does not answer a new loop's own round-3 stop; the gate is asked (or `--gate` consulted) fresh.
 - **`TRIAGE — lite`:** dispatch `/wf:lite <id>` and stop; the lite flow has its own single gate and terminal state. In the default walk, `lite` is a gated phase — the loop halts before it and names `/wf:lite <id>`.
 - **Walk (default), phase subagent returns an error/refusal:** halt immediately (`RUN — error`, or `RUN — blocked` for a `blocked`/`clarify` outcome), surface the subagent's reason, and name the command for a manual retry. Do not keep looping.
 - **Walk (default), no forward progress:** if a dispatched phase returns but its artifact is still missing/incomplete on re-derivation, halt with `RUN — error` (progress guard) rather than re-dispatching the same phase forever.
@@ -193,6 +219,6 @@ Then:       /clear, then /wf:run {task-id}   (re-derives state and continues the
 Halted:     <one-line reason>
 ```
 
-The `Ran:` line is present in the default walk and lists the phases the loop executed this invocation (e.g. `triage → spec → plan`); omit it entirely in `--step`. `Gate:` in the default walk is `stopped before <phase>` when the loop halted at a gated phase, `auto-complete` when the chain reached its terminal review-ready state, or `halted (<reason>)` on a phase failure or the progress guard; in `--step` it is `step`.
+The `Ran:` line is present in the default walk and lists the phases the loop executed this invocation (e.g. `triage → spec → plan`); omit it entirely in `--step`. `Gate:` in the default walk is `stopped before <phase>` when the loop halted at a gated phase, `auto-complete` when the chain reached its terminal review-ready state, or `halted (<reason>)` on a phase failure, the progress guard, or a verify⇄fix stop gate (`<reason>` then names the stop — e.g. `verify-loop stable at round 3, no --gate (headless)` or `verify-loop cap reached, gate: stop`); in `--step` it is `step`.
 
 **The final-output block must always be the very last thing output to chat.**

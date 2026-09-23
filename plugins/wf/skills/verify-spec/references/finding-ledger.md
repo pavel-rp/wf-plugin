@@ -16,6 +16,8 @@ here in full.
 - [Rebuild algorithm](#rebuild-algorithm)
 - [Match / insert / retire (one round's step)](#match--insert--retire-one-rounds-step)
 - [Pre-dispatch derivation (changed sections, round ≥2)](#pre-dispatch-derivation-changed-sections-round-2)
+- [Loop identity (L)](#loop-identity-l)
+- [Gate-accept demotion](#gate-accept-demotion)
 - [Worked example](#worked-example)
 
 ## Ledger field set
@@ -247,6 +249,20 @@ introduced — this is a read of the ledger-so-far the fold already built.
 applies — verify against `HEAD`. At round ≥2 the working tree *is* the audited change
 (`verify-fix` never commits between rounds), so both the report header's `**Tree:**` dirty-file
 list and the `changed_sections` diff above read the working tree, not `HEAD`.
+
+## Loop identity (L)
+
+Paired with round `N` (above) to key a `/wf:run` verify-loop stop-gate record (`verify-loop:l<L>:r<N>:<choice>`, `run/SKILL.md` §"The verify⇄fix stop gate") so a record from a prior, already-finished loop on the same task can never answer a later loop's stop.
+
+**L = the count of entries in `04_verify.history.md` whose header carries `**Verdict:** PASS`** — one such entry per loop this task has already finished (a loop ends exactly when `verify-spec` renders `PASS`, at which point that report is the next invocation's rotated-into-history entry). `L = 0` on a fresh task (no history, or no `PASS` entry in it yet) and increments by one each time a further loop completes and a new one later starts. Computed identically by `/wf:run` (to mint a stop-gate record's subject) and by `verify-spec`'s gate-accept demotion (to look one up) — both read only `04_verify.history.md`, never the current not-yet-rotated `04_verify.md`, and never recompute or cache it across invocations.
+
+## Gate-accept demotion
+
+Applied by `verify-spec/SKILL.md` §"The blocking set" as its own last step, after that section's three buckets (blocking, pre-existing, accepted-non-blocking) are assembled and before `**Verdict:**` is derived from them — the hook `/wf:run`'s own `accept` gate choice relies on.
+
+Using round `N` (already derived) and loop identity `L` (above), call `read_run_evidence({ workspaceRoot, taskId })` and look for a `matched` entry `kind: gate-approval`, `subject: verify-loop:l<L>:r<N>:accept`. **No match** — proceed exactly as `verify-spec/SKILL.md` already specifies; this hook does nothing. **Matched** — move every fingerprint currently rendering under `## Capability findings` (the blocking set's lens-anchored members — never a requirement `FAIL`/`PARTIAL`, which this hook never touches) into `## Accepted warnings` instead, tagged `accepted: gate` alongside its existing provenance, and update the ledger fold (§"Match / insert / retire") for each to `status: accepted` accordingly. Recompute `**Verdict:**` from the reduced blocking set: `PASS` when it is now empty (no requirement issue was open either), otherwise the requirement-driven `FAIL`/`PARTIAL` it already carried — a gate `accept` demotes lens residue only, it never overrides a requirement verdict.
+
+This hook consumes no record and sets no flag of its own — matching `l<L>:r<N>:accept` again on a later, unrelated re-run of the same round would reapply the same demotion idempotently; it never applies to a *different* round or loop, since the subject is round- and loop-qualified.
 
 ## Worked example
 
