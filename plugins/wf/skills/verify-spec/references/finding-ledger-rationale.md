@@ -61,6 +61,22 @@ every later run's own gather step re-applies the same rule and re-collapses the 
 again, so the one-time non-atomic write is permanently absorbed on the read side and never
 corrupts a `first-seen` or a round tally, on this run or any future one.
 
+## Pre-dispatch derivation
+
+**Why a second diff, distinct from `SKILL.md`'s branch-vs-`main` diff.** "Implementation
+scope" answers "what does this task change against `main`" — the spec-conformance frame. The
+pre-dispatch diff answers a narrower, round-scoped question: "what changed since the ledger
+was last rebuilt" — the prior round's `**Commit:**` to the current working tree — so round ≥2
+lenses can be narrowed to sections a fix pass actually touched, plus every still-open
+fingerprint, instead of re-auditing the whole implementation scope every round. The two diffs
+serve different consumers and would silently swap purposes if collapsed into one.
+
+**Why round ≥2 reads the working tree, never `HEAD`.** `verify-fix` never commits between
+rounds — its fixes sit uncommitted between one `verify-spec` round and the next — so `HEAD`
+is stale the moment round ≥2 begins. Reading the working tree is what makes `changed_sections`
+and the rendered `**Tree:**` list describe the change a round ≥2 audit is actually looking at,
+dirty files included.
+
 ## Worked example
 
 `corpus-archive/verify-replay-wf554/rounds/round-01.md` through `round-07.md` are seven real
