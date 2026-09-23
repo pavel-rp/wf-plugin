@@ -77,11 +77,13 @@ candidates split across `AGREE`/`DISAGREE`/`UNVERIFIABLE`, and `refuted` when ev
 `verdict:` field, never the header, to that candidate.
 
 **Parsing contract.** The block is well-formed only when: it carries exactly one entry per
-candidate sent, in the same order (matched by `fingerprint`, not position — a critic that
-reorders is still well-formed); every entry's `verdict:` is one of the three closed tokens; and
-every `AGREE`/`DISAGREE` entry carries a non-empty `citation:` naming a `file:L`. Anything
-short of this — a missing candidate, an extra entry, an unrecognized `verdict:` token, an
-`AGREE`/`DISAGREE` with no citation, or no parseable block at all — is malformed.
+candidate sent, each entry paired to its candidate by `fingerprint` — never by position, so a
+response that lists its entries in a different order from the candidates sent is still
+well-formed as long as every candidate's fingerprint has exactly one matching entry; every
+entry's `verdict:` is one of the three closed tokens; and every `AGREE`/`DISAGREE` entry
+carries a non-empty `citation:` naming a `file:L`. Anything short of this — a missing
+candidate, an extra entry, an unrecognized `verdict:` token, an `AGREE`/`DISAGREE` with no
+citation, or no parseable block at all — is malformed.
 
 ## Malformed or failed dispatch
 
