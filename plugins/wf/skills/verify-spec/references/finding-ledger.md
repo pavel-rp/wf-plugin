@@ -231,6 +231,14 @@ source, the file itself when neither exists), and dedupe into a `file:section` l
 rather than backward (from a finding's citation, to key it); no new section-key rule is
 authored. Round 1 skips this entirely — there is no prior round to diff against.
 
+**`open_fingerprints` derivation.** Also at round ≥2: read `open_fingerprints` off the same
+ledger-so-far the fold above just produced — every entry whose `status` field (§"Status
+vocabulary") is `open`, and only those; `fixed`/`pre-existing`/`accepted` entries are not
+carried into the dispatch prompt. For each, render its `fingerprint`, its `defect` field, and
+`last seen: <lens>/<check>` read verbatim off that entry's `contributing lenses` field (the
+provenance already recorded there, unchanged by this read). No new field or status is
+introduced — this is a read of the ledger-so-far the fold already built.
+
 **Working-tree narrowing.** At round 1, `SKILL.md`'s "Uncommitted changes" edge case still
 applies — verify against `HEAD`. At round ≥2 the working tree *is* the audited change
 (`verify-fix` never commits between rounds), so both the report header's `**Tree:**` dirty-file
