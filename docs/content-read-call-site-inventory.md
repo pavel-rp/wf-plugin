@@ -280,6 +280,7 @@ emit it with placeholders substituted"). One call site per (skill → template):
 | `wf/skills/qa-gen` | `qa-template.md`, `report-format.md`, `api-scenarios.md` |
 | `wf/skills/classify` | `rubric.md` |
 | `wf/skills/init` | `config-template.md` |
+| `wf/skills/ship` | `context-ceiling.md`, `finding-ledger.md` (verify-spec), `attempt-ledger.md` (verify-fix) |
 | `wf-browser-qa/skills/qa-engine` | `preconditions.md`, `output-format.md`, `visual-verification.md` |
 | `wf-angular/skills/qa-host` | `backend-host.md`, `scaffold-templates.md` |
 | `wf-angular/skills/test-page` | `page-test-template.md`, `harness.md`, `component-injection.md`, `bootstrap.md`, `backend-smoke.md` |
