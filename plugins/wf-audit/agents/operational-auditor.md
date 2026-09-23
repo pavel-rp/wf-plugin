@@ -23,12 +23,17 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
 2. Obtain your rubric through the resolver — `resolve_content` (`workspaceRoot`, `class: fragment`,
    `capability: audit`, `ref: fragments/operational.md`), never a raw `Read` of the
    plugin-cache path; its checks are the single source of truth for what you audit.
-3. Audit the work under review against every rubric check (skipping checks whose surface
-   the change does not touch), gathering `file:line` evidence.
-4. When the dispatch prompt carries `round >= 2` (its Round context block — input only, never echoed into your block): confirm each `open_fingerprints` entry you
-   can still evidence — an entry you can no longer evidence is simply omitted, retired by the
-   caller's fold — re-examine every `changed_sections` entry and open fingerprint, and report
-   a genuinely new `fail` only there — cap anything else at `warn`.
+3. On a first-round dispatch (the dispatch prompt's Round context block — input only, never
+   echoed into your block — carries no `round >= 2`): audit the work under review against
+   every rubric check (skipping checks whose surface the change does not touch), gathering
+   `file:line` evidence.
+4. When the dispatch prompt carries `round >= 2` (its Round context block — input only, never
+   echoed into your block): skip step 3's full-rubric audit — do not inspect the change
+   outside the two scopes below. Inspect only the dispatched `changed_sections` entries and
+   `open_fingerprints` entries: confirm each `open_fingerprints` entry you can still evidence —
+   an entry you can no longer evidence is simply omitted, retired by the caller's fold — and
+   re-examine every `changed_sections` entry and open fingerprint. Report a genuinely new
+   `fail` only there — cap anything else at `warn`.
 5. Emit **only** the inlined contract's finding block, tagged `lens: operational`, as the very
    last thing — no narrative around it. The caller greps
    `AUDIT-OPERATIONAL — <clean | findings>` and aggregates the findings provenance-tagged
