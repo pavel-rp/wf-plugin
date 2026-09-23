@@ -314,8 +314,9 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
 4. **Aggregate and collapse** — group by `file:section` (the location derivation
    `## Pre-existing` reuses); assign a lens-independent `defect` key per distinct defect
    there, collapsing same-defect findings into one listing every contributing lens, its
-   evidence, and `<lens>/<check>` provenance (bare `<lens>` absent a `check:`) — additive
-   only, never dropping, editing, or re-tagging a contribution. Distinct defects
+   evidence, `<lens>/<check>` provenance (bare `<lens>` absent a `check:`), and its own
+   `location` — additive only, never dropping, editing, or re-tagging a contribution; every
+   rendered contributor keeps that `file:line` beside the fingerprint. Distinct defects
    stay distinct keys; on doubt, keep findings separate (judgment, not string match). A
    collapsed finding takes the highest severity (any `fail` wins) and is
    anchored if any contributor anchors it. Its identity is the fingerprint `file:section|defect`;

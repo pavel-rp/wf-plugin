@@ -26,8 +26,10 @@ aggregator's `<lens>/<check>` provenance — and never computes or names a finge
 
 A finding collapsed from several lenses keeps every contributor's `location` and evidence
 line as its **cited lines**; the core's identity tests (blocking-set anchoring, lean-pass
-overlap) match on any cited line, never on one lens's line alone. A lens therefore cites
-its own line exactly and never adjusts it to agree with another lens.
+overlap) match on any cited line, never on one lens's line alone. The report renders each
+contributor's `location` beside the fingerprint, never in place of it, because that line is
+where a remedy is applied. A lens therefore cites its own line exactly and never adjusts it
+to agree with another lens.
 
 ## Finding shape
 

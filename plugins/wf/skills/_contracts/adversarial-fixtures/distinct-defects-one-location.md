@@ -52,6 +52,23 @@ same section, and both issue lines mention `unit.owner.id`. Whether they name on
 two cannot be told from the blocks alone. The aggregator keeps them separate, as two findings
 with distinct `defect` keys, and drops neither. It never merges by guess.
 
+## Whole-run totals
+
+EXPECT: total-defect-keys=4
+EXPECT: total-findings=4
+
+The two pairs are four lens findings from one run over one change, all in the `validate`
+section. `defect-keys=2` and `findings=2` above count the first pair only; the
+`ambiguous-` lines count the ambiguous pair only. The pairs are counted apart and never
+merged with each other: the ambiguous pair's line-5 dereference is not folded into the first
+pair's line-3 missing-null-guard, on the same never-merge-on-doubt rule. So the run's report
+carries **four** findings under four distinct fingerprints, not two:
+
+- `changed/validate-unit.txt:validate|missing-null-guard` — `correctness/2` at `changed/validate-unit.txt:3`
+- `changed/validate-unit.txt:validate|hardcoded-secret` — `security/3` at `changed/validate-unit.txt:4`
+- `changed/validate-unit.txt:validate|second-unguarded-dereference` — `correctness/2` at `changed/validate-unit.txt:5`
+- `changed/validate-unit.txt:validate|secret-passed-onward` — `security/3` at `changed/validate-unit.txt:5`
+
 ## Still not gated by mere existence
 
 EXPECT: gating=none

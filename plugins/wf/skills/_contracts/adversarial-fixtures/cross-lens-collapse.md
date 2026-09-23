@@ -75,6 +75,40 @@ diff, and a core lean-pass candidate whose changed-side citation is line 2 overl
 finding although the anchoring contributor cited line 3. No single lens's line decides the
 match.
 
+## Every lens and its cited line survive the render
+
+EXPECT: cited-line=kept-per-contributor
+EXPECT: dropped-lens=rejected
+
+The collapsed finding renders under its fingerprint with one nested line per contributor,
+each naming its `<lens>/<check>` **and** its own cited `file:L` — the line `/wf:verify-fix`
+edits at. The guard's collapse evaluator accepts the first block below and must reject the
+other two: one drops a contributing lens (`security/6`), the other keeps every lens but drops
+the cited lines.
+
+```render-accepted
+- **audit** — [FAIL] owner is dereferenced without a null guard at `changed/validate-unit.txt:validate|missing-null-guard` — collapsed from 4 lenses:
+  - `correctness/2` at `changed/validate-unit.txt:3` — `log(unit.owner.id)` runs with no owner check — Remedy: guard `unit.owner` before line 3
+  - `security/6` at `changed/validate-unit.txt:2` — the early return leaves the thrown dereference error reaching the caller
+  - `convention/2` at `changed/validate-unit.txt:3` — sibling validators guard `owner` before use
+  - `consistency/3` at `changed/validate-unit.txt:3` — the guard at line 2 does not cover the line-3 dereference
+```
+
+```render-dropped-lens
+- **audit** — [FAIL] owner is dereferenced without a null guard at `changed/validate-unit.txt:validate|missing-null-guard` — collapsed from 3 lenses:
+  - `correctness/2` at `changed/validate-unit.txt:3` — `log(unit.owner.id)` runs with no owner check
+  - `convention/2` at `changed/validate-unit.txt:3` — sibling validators guard `owner` before use
+  - `consistency/3` at `changed/validate-unit.txt:3` — the guard at line 2 does not cover the line-3 dereference
+```
+
+```render-dropped-line
+- **audit** — [FAIL] owner is dereferenced without a null guard at `changed/validate-unit.txt:validate|missing-null-guard` — collapsed from 4 lenses:
+  - `correctness/2` — `log(unit.owner.id)` runs with no owner check
+  - `security/6` — the early return leaves the thrown dereference error reaching the caller
+  - `convention/2` — sibling validators guard `owner` before use
+  - `consistency/3` — the guard at line 2 does not cover the line-3 dereference
+```
+
 ## Still not gated by mere existence
 
 EXPECT: gating=none

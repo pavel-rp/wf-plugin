@@ -49,7 +49,10 @@
 #      findings with distinct keys. A collapsed finding's identity is its fingerprint and
 #      its cited lines are every contributor's location and evidence line; the aggregation
 #      step, the blocking-set anchor test, the lean-pass Overlap test, the Withdrawn line,
-#      the template and the contract all state that one any-cited-line match.
+#      the template and the contract all state that one any-cited-line match. Every finding
+#      line renders the fingerprint AND each contributor's cited `file:L` (the line
+#      /wf:verify-fix edits at); --selftest proves a render that drops a lens or a cited
+#      line is rejected.
 #
 # Model: claude-opus-5[1m]
 #
@@ -117,6 +120,40 @@ subordination_violations() {
     || printf 'verify-spec must mirror the subordinated render rule at its gating sentence\n'
 }
 
+# collapse_violations <rendered-bullet-text> <provenance-csv> <path>
+#
+# WF-566. Prints one line per violated collapse-render obligation; prints nothing when the
+# rendered collapsed finding keeps every contributing lens, each with its cited line.
+# PURE on its arguments, like subordination_violations, so the selftest can point it at a
+# seeded render that drops a lens (must be rejected) and the default run at the fixture's
+# accepted render (must be accepted).
+collapse_violations() {
+  local render="$1" prov="$2" path="$3" p count=0 nested
+  local IFS=','
+  for p in $prov; do
+    count=$((count + 1))
+    printf '%s\n' "$render" | grep -qF -- "  - \`$p\` at \`$path:" \
+      || printf 'contributor %s is dropped or lacks its cited %s:L line\n' "$p" "$path"
+  done
+  printf '%s\n' "$render" | grep -qF -- "collapsed from $count lenses:" \
+    || printf 'the headline must say collapsed from %s lenses\n' "$count"
+  nested="$(printf '%s\n' "$render" | grep -c '^  - ')"
+  if [ "$nested" -ne "$count" ]; then
+    printf 'the render nests %s contributor lines, expected %s\n' "$nested" "$count"
+  fi
+  if printf '%s\n' "$render" | grep '^  - ' | grep -qvF '` at `'; then
+    printf 'a contributor line renders its provenance without its cited file:L\n'
+  fi
+}
+
+# fixture_block <fixture-file> <fence-tag> — prints the body of one tagged fenced block.
+fixture_block() {
+  awk -v tag="$2" '$0 == "```" tag {f=1; next} f && $0 == "```" {f=0} f' "$1"
+}
+
+COLLAPSE_PROV='correctness/2,security/6,convention/2,consistency/3'
+COLLAPSE_PATH='changed/validate-unit.txt'
+
 # --- --selftest: prove the subordination check is not inert --------------------
 # Seeded synthetic cases only; the live-tree scan is the default (no-argument) run. Both are
 # wired into registry-fixtures/run.sh, because a live-tree scan that cannot be shown to
@@ -169,6 +206,29 @@ PARTIAL_TEMPLATE
     selftest_fail=$((selftest_fail + 1))
   else
     printf 'PASS: selftest/live-accepted — the subordinated wording in the live tree is accepted\n'
+  fi
+
+  # Cases 4-6 — WF-566. A collapse that drops a lens, or a contributor line that drops its
+  # cited file:L, must be rejected; the fixture's accepted render must pass the same evaluator.
+  collapse_fx="$FIX_DIR/cross-lens-collapse.md"
+  for tag in render-dropped-lens render-dropped-line; do
+    seeded="$(fixture_block "$collapse_fx" "$tag")"
+    if [ -z "$seeded" ]; then
+      printf 'FAIL: selftest/%s — the seeded block is missing from the collapse fixture\n' "$tag"
+      selftest_fail=$((selftest_fail + 1))
+    elif [ -z "$(collapse_violations "$seeded" "$COLLAPSE_PROV" "$COLLAPSE_PATH")" ]; then
+      printf 'FAIL: selftest/%s — the defective collapse render was accepted; the check is inert\n' "$tag"
+      selftest_fail=$((selftest_fail + 1))
+    else
+      printf 'PASS: selftest/%s — the defective collapse render is rejected\n' "$tag"
+    fi
+  done
+  accepted="$(fixture_block "$collapse_fx" render-accepted)"
+  if [ -z "$accepted" ] || [ -n "$(collapse_violations "$accepted" "$COLLAPSE_PROV" "$COLLAPSE_PATH")" ]; then
+    printf 'FAIL: selftest/collapse-accepted — the fixture'"'"'s accepted collapse render was rejected or missing\n'
+    selftest_fail=$((selftest_fail + 1))
+  else
+    printf 'PASS: selftest/collapse-accepted — every lens with its cited line is accepted\n'
   fi
 
   if [ "$selftest_fail" -ne 0 ]; then
@@ -559,12 +619,31 @@ need "$TEMPLATE" "the Capability findings collapsed headline must use the same f
   '[FAIL] <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:'
 need "$TEMPLATE" "the Pre-existing collapsed entry must render its own fingerprint-keyed shape" \
   '— `path/to/file:<section>|<defect>` — <finding> — collapsed from <N> lenses:'
-need "$TEMPLATE" "an uncollapsed Capability findings bullet must be keyed by the fingerprint with provenance" \
-  '[FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` — <evidence>'
-need "$TEMPLATE" "an uncollapsed Accepted warnings bullet must be keyed by the fingerprint with provenance" \
-  '**<source capability>** — <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` — <evidence>'
-need "$TEMPLATE" "an uncollapsed Pre-existing entry must carry its provenance" \
-  '— <finding> — `<lens>/<check>` — <evidence>'
+need "$TEMPLATE" "an uncollapsed Capability findings bullet must carry the fingerprint and the lens's cited file:L" \
+  '[FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence>'
+need "$TEMPLATE" "an uncollapsed Accepted warnings bullet must carry the fingerprint and the lens's cited file:L" \
+  '**<source capability>** — <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence>'
+need "$TEMPLATE" "an uncollapsed Pre-existing entry must carry its provenance and cited file:L" \
+  '— <finding> — `<lens>/<check>` at `path/to/file:L` — <evidence>'
+need "$TEMPLATE" "a collapsed contributor line must keep that lens's cited file:L beside its provenance" \
+  "  - \`<lens>/<check>\` at \`path/to/file:L\` — <that lens's own evidence>"
+# /wf:verify-fix edits only at a cited file:L, so no finding bullet or contributor line may
+# render its provenance with the cited line dropped (the round-5 regression).
+if grep -qE '`<lens>(/<check>)?` — ' "$TEMPLATE"; then
+  report_fail "a finding line renders <lens>/<check> without its cited file:L — /wf:verify-fix needs it"
+fi
+if [ -f "$FIX_DIR/cross-lens-collapse.md" ]; then
+  accepted_render="$(fixture_block "$FIX_DIR/cross-lens-collapse.md" render-accepted)"
+  if [ -z "$accepted_render" ]; then
+    report_fail "the collapse fixture must carry its accepted render block"
+  else
+    while IFS= read -r v; do
+      [ -n "$v" ] && report_fail "collapse fixture accepted render: $v"
+    done <<EOF
+$(collapse_violations "$accepted_render" "$COLLAPSE_PROV" "$COLLAPSE_PATH")
+EOF
+  fi
+fi
 need "$TEMPLATE" "a collapsed contributor line must keep that lens's own remedy" \
   "— Remedy: <that lens's recommendation>"
 need "$TEMPLATE" "a collapse spanning capabilities must keep each contributor's capability" \
@@ -607,6 +686,10 @@ else
     'EXPECT: identity=fingerprint'
   need "$COLLAPSE" "the collapse fixture must assert identity tests match any cited line" \
     'EXPECT: identity-match=any-cited-line'
+  need "$COLLAPSE" "the collapse fixture must assert a render that drops a lens is rejected" \
+    'EXPECT: dropped-lens=rejected'
+  need "$COLLAPSE" "the collapse fixture must assert every contributor keeps its cited file:L" \
+    'EXPECT: cited-line=kept-per-contributor'
 fi
 
 if [ ! -f "$NO_COLLAPSE" ]; then
@@ -630,6 +713,10 @@ else
     'EXPECT: ambiguous-defect-keys=2'
   need "$NO_COLLAPSE" "an ambiguous pair must never lose a finding" \
     'EXPECT: ambiguous-findings=2'
+  need "$NO_COLLAPSE" "the no-collapse fixture must state its whole-run defect-key total" \
+    'EXPECT: total-defect-keys=4'
+  need "$NO_COLLAPSE" "the no-collapse fixture must state its whole-run finding total" \
+    'EXPECT: total-findings=4'
   need "$NO_COLLAPSE" "the no-collapse fixture must assert it is not gated by mere existence" \
     'EXPECT: gating=none'
 fi
