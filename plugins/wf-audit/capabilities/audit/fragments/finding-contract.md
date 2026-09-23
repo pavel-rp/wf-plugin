@@ -52,6 +52,13 @@ findings:
 `warn` is non-blocking. Findings require concrete evidence; never report speculation,
 style nits, or requirements already covered by the generic audit.
 
+## Round context (round ≥2 input, not output)
+
+At round ≥2 the caller also sends a separate **Round context** block — `round:`,
+`open_fingerprints:`, `changed_sections:` — *above* the return template, never inside it.
+It is input the lens reads; the finding shape above is unchanged and a lens never echoes
+those keys into its `AUDIT-<LENS>` block. At round 1 no Round context block is sent.
+
 ## Clean result
 
 If every rubric check passes, return the block with an empty `findings:` list and `AUDIT-<LENS> — clean`. The core proceeds either way: a lens contributes findings and never halts the workflow itself.

@@ -26,7 +26,7 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
 3. Audit the work under review against every rubric check, comparing each change to its
    established siblings (grep the neighbors in the same area) and gathering `file:line`
    evidence.
-4. When the dispatch prompt carries `round >= 2`: confirm each `open_fingerprints` entry you
+4. When the dispatch prompt carries `round >= 2` (its Round context block — input only, never echoed into your block): confirm each `open_fingerprints` entry you
    can still evidence — an entry you can no longer evidence is simply omitted, retired by the
    caller's fold — re-examine every `changed_sections` entry and open fingerprint, and report
    a genuinely new `fail` only there — cap anything else at `warn`.

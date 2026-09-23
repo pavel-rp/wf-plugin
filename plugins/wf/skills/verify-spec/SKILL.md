@@ -271,9 +271,21 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    Include `actualModel` only when exposed and emit the compact operational record
    separately from report attribution. A `status: stop`, diagnostic, malformed derived
    role, or non-`isolated` shape is a hard stop before Task; otherwise invoke one Task
-   with `subagent_type: <agent>`, passing the artifact under audit **and the following
+   with `subagent_type: <agent>`, passing the artifact under audit, the **Round context**
+   block below when `N >= 2`, **and the following
    finding contract inline in the dispatch prompt** (identical bytes to every enabled
-   lens; no per-agent resolver fetch):
+   lens; no per-agent resolver fetch).
+
+   **Round context** — caller-supplied input the lens reads, never part of its return
+   shape: at `N >= 2` send it as its own block *above* the return template, identical bytes
+   across all five lenses; at `N == 1` omit it, so the prompt stays byte-identical to baseline.
+
+   ```text
+   Round context (input only — never echo these keys into the returned block):
+   round: <N>
+   open_fingerprints: <ledger-so-far `open` entries — fingerprint, defect, "last seen: <lens>/<check>">
+   changed_sections: <the `file:section` list derived above>
+   ```
 
    ```text
    Return only this block — one item per evidenced issue, `findings:` empty when clean:
@@ -298,16 +310,6 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the
    child never self-replaces. If the Task target itself is unavailable, preserve the
    existing optional-contributor no-op.
-
-   **Round ≥2 extension.** When `N >= 2`, append after `findings:`, before the closing severity-rule line, identical bytes across all five lenses:
-
-   ```text
-   round: <N>
-   open_fingerprints: <ledger-so-far `open` entries — fingerprint, defect, "last seen: <lens>/<check>">
-   changed_sections: <the `file:section` list derived above>
-   ```
-
-   At `N == 1`, omit this extension — the dispatch-prompt block stays byte-identical to baseline.
 4. **Aggregate and collapse** — group by `file:section` (the location derivation
    `## Pre-existing` reuses); assign a lens-independent `defect` key per distinct defect
    there, collapsing same-defect findings into one listing every contributing lens, its
