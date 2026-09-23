@@ -99,7 +99,8 @@ Always read, in order:
 2. **Parent task** if referenced. If a parent `00_reqs.md` exists under `{task-root}/`,
    read it for inherited constraints (mapping tables, naming conventions, cross-task
    rules).
-3. **Implementation scope** — the diff of the current branch vs `main`, plus the commit
+3. **`04_verify.history.md`**, when present, alongside the current (not-yet-rotated) `04_verify.md` — derive round `N` here, per `finding-ledger.md` §"Round-number derivation" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`), so item 4 below can key its `HEAD`-vs-working-tree choice on it. The ledger-so-far fold itself still runs later, under §"Fire the `verify` phase".
+4. **Implementation scope** — the diff of the current branch vs `main`, plus the commit
    coordinates the audit runs against. No delivery operation covers diff/log inspection
    today (the gap noted above; the operation set is in
    `plugins/wf/skills/_contracts/capability-registry.contract.md` §"The delivery provider
@@ -107,15 +108,13 @@ Always read, in order:
    - the current branch name — via `current-branch-query` (see "Direct provider resolution")
    - the current HEAD commit coordinate (full SHA)
    - the base commit coordinate where the branch diverged from `main`
-   - whether the working tree is clean or dirty, and which files are dirty if so
+   - whether the working tree is clean or dirty, and which files are dirty if so — **round 1** (`N == 1`) diffs against `HEAD`; **round ≥2** the working tree itself is the audited change (`verify-fix` never commits between rounds) — `finding-ledger.md`'s working-tree narrowing
    - the changed-file summary (file list + insertion/deletion counts) against `main`
    - the full diff content against `main`
 
    This is the set of code actually under audit. Don't verify against uncommitted noise from
    unrelated files; call those out separately. Record the branch, HEAD SHA, base SHA, and
    dirty-tree flag in the report header, so a re-run can tell when the branch has moved.
-4. **`04_verify.history.md`**, when present — the rotated trail §"The finding ledger" rebuilds
-   the ledger and round number from, alongside the current (not-yet-rotated) `04_verify.md`.
 
 ---
 
@@ -225,7 +224,7 @@ present whenever the run has anything to record. Rationale and worked examples l
 
 ## Fire the `verify` phase (aggregate capability findings)
 
-**Before dispatch** (moved here, not after as before): derive round `N`, fold prior rounds into a ledger-so-far, and (round ≥2) `open_fingerprints` (the ledger-so-far's `open`-status entries) and `changed_sections` — algorithm unchanged, only *when* it runs moved; both new derivations and the round 1→round ≥2 working-tree narrowing are specified in full at `finding-ledger.md` §"Pre-dispatch derivation (changed sections, round ≥2)" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`). Hold all four for the dispatch below and §"The finding ledger".
+**Before dispatch** (moved here, not after as before): using round `N` already derived under §"Inputs to load" item 3, fold prior rounds into a ledger-so-far, and (round ≥2) derive `open_fingerprints` (the ledger-so-far's `open`-status entries) and `changed_sections` — algorithm unchanged, only *when* it runs moved; both new derivations are specified in full at `finding-ledger.md` §"Pre-dispatch derivation (changed sections, round ≥2)" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`). Hold all four for the dispatch below and §"The finding ledger".
 
 After the generic per-requirement audit, fire the **`verify`** phase and aggregate any **`finding`** contribution the registered capabilities attach to it. Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — never `## Capabilities`/`manifest.md` directly — referencing the taxonomy by phase name / contribution-kind name, never heading:
 
@@ -374,7 +373,7 @@ nothing was aggregated.
 
 ## The finding ledger
 
-Apply `finding-ledger.md`'s §"Match / insert / retire" once more — `N` and this run's own aggregated findings against the ledger-so-far from §"Fire the `verify` phase" — then render `## Ledger` per `verify-template.md` (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`) — round `N` renders only as `## Ledger`'s `**Round:**` line.
+Apply `finding-ledger.md`'s §"Match / insert / retire" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`) once more — `N` and this run's own aggregated findings against the ledger-so-far from §"Fire the `verify` phase" — then render `## Ledger` per `verify-template.md`'s shape (fetched at `## Output` below) — round `N` renders only as `## Ledger`'s `**Round:**` line.
 
 ---
 

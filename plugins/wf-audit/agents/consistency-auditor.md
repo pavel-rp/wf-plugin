@@ -27,9 +27,9 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
    isolation), then audit it against every rubric check, gathering `file:line` evidence on
    both sides of each pair.
 4. When the dispatch prompt carries `round >= 2`: confirm each `open_fingerprints` entry you
-   can still evidence (say so if you can't, so the fold can retire it), re-examine every
-   `changed_sections` entry and open fingerprint, and report a genuinely new `fail` only there
-   — cap anything else at `warn`.
+   can still evidence — an entry you can no longer evidence is simply omitted, retired by the
+   caller's fold — re-examine every `changed_sections` entry and open fingerprint, and report
+   a genuinely new `fail` only there — cap anything else at `warn`.
 5. Emit **only** the inlined contract's finding block, tagged `lens: consistency`, as the very
    last thing — no narrative around it. The caller greps
    `AUDIT-CONSISTENCY — <clean | findings>` and aggregates the findings provenance-tagged
