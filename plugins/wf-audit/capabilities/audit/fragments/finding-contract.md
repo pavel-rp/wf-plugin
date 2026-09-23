@@ -24,6 +24,11 @@ when neither exists); `defect` is a lens-independent key the aggregator assigns,
 lens itself. A lens contributes only its own `check:` field (below) — raw material for the
 aggregator's `<lens>/<check>` provenance — and never computes or names a fingerprint.
 
+A finding collapsed from several lenses keeps every contributor's `location` and evidence
+line as its **cited lines**; the core's identity tests (blocking-set anchoring, lean-pass
+overlap) match on any cited line, never on one lens's line alone. A lens therefore cites
+its own line exactly and never adjusts it to agree with another lens.
+
 ## Finding shape
 
 For each real issue, emit one finding and return only this block:

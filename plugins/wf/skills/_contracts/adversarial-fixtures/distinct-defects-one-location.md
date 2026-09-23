@@ -1,6 +1,6 @@
 # Fixture expectations — two distinct defects at the same location stay two findings
 
-Seventh fixture in the reconciliation set (WF-566), grounded in the same embedded change as
+Seventh fixture in the reconciliation set, grounded in the same embedded change as
 `cross-lens-collapse.md` (not `defective-change.md` — see that fixture's note). Same registry
 as `audit-registered.md` (`../registry-fixtures/pass-audit-only.md`). Two lenses (correctness,
 security) report **different** defects at the **same** `file:section` — a missing-null-guard
@@ -43,3 +43,10 @@ EXPECT: doubt-policy=keep-separate
 Where the aggregator cannot tell whether two findings at one location name the same
 defect, it keeps them separate rather than merge by guess — the same rule this fixture's
 two genuinely distinct defects exercise at its clearest.
+
+## Still not gated by mere existence
+
+EXPECT: gating=none
+
+Keeping the two findings separate changes nothing about how either is classified: each is
+still judged for the blocking set by its own anchoring (§"The blocking set").

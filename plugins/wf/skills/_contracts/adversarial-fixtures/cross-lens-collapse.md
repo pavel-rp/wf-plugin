@@ -1,14 +1,14 @@
 # Fixture expectations — four lenses report the same defect at one location
 
-Sixth fixture in the reconciliation set (WF-566), grounded in its own embedded change
-below (not `defective-change.md` — that fixture's `changed/preflight-check.txt` has no
-`validate` symbol; this one names its own backing content, per the sibling-fixture
-convention). Same registry as `audit-registered.md` (`../registry-fixtures/pass-audit-only.md`)
-— the real five lenses, unchanged. Unlike the other three fixtures in this set (which cover
-the lean-pass/lens reconciliation), this one tests SUB-2's cross-lens collapse rule in
-isolation: four of the five lenses (correctness, security, convention, consistency) each
-independently report the **same** real defect at the **same** `file:section`, on their own
-evidence and their own rubric `check:` number. The fifth lens (operational) is clean.
+Sixth fixture in the reconciliation set, grounded in its own embedded change below rather
+than `defective-change.md`: that fixture's `changed/preflight-check.txt` carries no enclosing
+symbol, so it cannot exercise a `file:section` shared by several lenses. Same registry as
+`audit-registered.md` (`../registry-fixtures/pass-audit-only.md`) — the real five lenses,
+unchanged. Unlike the other fixtures in this set (which cover the lean-pass/lens
+reconciliation), this one tests the cross-lens collapse rule in isolation: four of the five
+lenses (correctness, security, convention, consistency) each independently report the
+**same** real defect at the **same** `file:section`, on their own evidence and their own
+rubric `check:` number. The fifth lens (operational) is clean.
 
 ---
 
@@ -50,13 +50,24 @@ EXPECT: contributor-severities=correctness:fail,security:warn
 EXPECT: collapsed-severity=fail
 EXPECT: anchor-if-any=true
 
-Suppose correctness reports this same defect as `fail` (anchored to the changed line 3)
-while security reports it as `warn` (same defect, lower confidence). The collapsed finding
-takes the higher severity — `fail` — and is anchored because at least one contributor
-(correctness) anchors it, per `verify-spec/SKILL.md`'s round-2 reconciliation sentence
-("takes the highest severity ... and is anchored if any contributor anchors it"). A
-collapsed finding's severity is never averaged, downgraded to the weakest contributor, or
-decided by which lens happened to report first.
+Correctness reports this defect as `fail`, citing the changed line 3; security reports it
+as `warn`, citing line 2. The collapsed finding takes the higher severity — `fail` — and is
+anchored because at least one contributor (correctness) anchors it. A collapsed finding's
+severity is never averaged, downgraded to the weakest contributor, or decided by which lens
+happened to report first.
+
+## Identity is the fingerprint, matched on any cited line
+
+EXPECT: identity=fingerprint
+EXPECT: cited-lines=changed/preflight-check.txt:2,changed/preflight-check.txt:3
+EXPECT: identity-match=any-cited-line
+
+The contributors cite different lines (2 and 3) inside the shared `validate` section, so the
+collapsed finding's identity is its fingerprint, and both lines stay its cited lines. Every
+identity test matches on any of them: the blocking-set anchor test finds line 3 inside the
+diff, and a core lean-pass candidate whose changed-side citation is line 2 overlaps this
+finding although the anchoring contributor cited line 3. No single lens's line decides the
+match.
 
 ## Still not gated by mere existence
 

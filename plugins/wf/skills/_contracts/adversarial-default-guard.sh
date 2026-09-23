@@ -46,7 +46,10 @@
 #      fingerprint `file:section|defect`. Two fixtures prove the behaviour: four lens
 #      findings at one location collapse into one finding naming all four lenses with
 #      evidence and provenance intact, and two distinct defects at one location stay two
-#      findings with distinct keys.
+#      findings with distinct keys. A collapsed finding's identity is its fingerprint and
+#      its cited lines are every contributor's location and evidence line; the aggregation
+#      step, the blocking-set anchor test, the lean-pass Overlap test, the Withdrawn line,
+#      the template and the contract all state that one any-cited-line match.
 #
 # Model: claude-opus-5[1m]
 #
@@ -531,6 +534,20 @@ need "$VERIFY" "the aggregation step must state a severity-reconciliation rule f
   'severity (any `fail` wins)'
 need "$VERIFY" "the severity-reconciliation rule must anchor a collapsed finding if any contributor anchors it" \
   'anchored if any contributor anchors it'
+need "$VERIFY" "the aggregation step must define a collapsed finding's cited lines once" \
+  "its **cited lines** (every contributor's \`location\` and evidence lines)"
+need "$VERIFY" "the blocking-set anchor test must match on any cited line of a collapsed finding" \
+  '**Change-anchored:** any of its **cited lines** (step 4)'
+if ! printf '%s' "$recon" | grep -qF 'with a **cited line** (step 4)'; then
+  report_fail "the lean-pass Overlap test must match on any cited line of a collapsed finding"
+fi
+if ! printf '%s' "$recon" | grep -qF "naming its cover's fingerprint"; then
+  report_fail "a Withdrawn line must name its collapsed cover by fingerprint"
+fi
+if [ -f "$CONTRACT" ]; then
+  need "$CONTRACT" "the finding contract must state the any-cited-line identity match" \
+    'match on any cited line, never on one lens'
+fi
 
 need "$TEMPLATE" "the Pre-existing section must key entries by the full fingerprint" \
   'the full fingerprint `file:section|defect`'
@@ -540,6 +557,12 @@ need "$TEMPLATE" "the Capability findings collapsed headline must be keyed by th
   'collapsed from <N> lenses'
 need "$TEMPLATE" "the Capability findings collapsed headline must use the same fingerprint form as Pre-existing" \
   '[FAIL] <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:'
+need "$TEMPLATE" "the Pre-existing collapsed entry must render its own fingerprint-keyed shape" \
+  '— `path/to/file:<section>|<defect>` — <finding> — collapsed from <N> lenses:'
+need "$TEMPLATE" "a collapsed warn must render keyed by its fingerprint" \
+  'A `warn` collapsed from multiple lenses is keyed by its fingerprint'
+need "$TEMPLATE" "the Withdrawn line must name a collapsed cover by fingerprint" \
+  "finding \`path/to/file:<section>|<defect>\`, one of whose cited lines"
 
 COLLAPSE="$FIX_DIR/cross-lens-collapse.md"
 NO_COLLAPSE="$FIX_DIR/distinct-defects-one-location.md"
@@ -563,6 +586,10 @@ else
     'EXPECT: collapsed-severity=fail'
   need "$COLLAPSE" "the collapse fixture must assert the collapsed finding is anchored if any contributor anchors it" \
     'EXPECT: anchor-if-any=true'
+  need "$COLLAPSE" "the collapse fixture must assert identity is the fingerprint" \
+    'EXPECT: identity=fingerprint'
+  need "$COLLAPSE" "the collapse fixture must assert identity tests match any cited line" \
+    'EXPECT: identity-match=any-cited-line'
 fi
 
 if [ ! -f "$NO_COLLAPSE" ]; then
@@ -578,6 +605,8 @@ else
     'EXPECT: findings=2'
   need "$NO_COLLAPSE" "the no-collapse fixture must assert the never-merge-on-doubt policy" \
     'EXPECT: doubt-policy=keep-separate'
+  need "$NO_COLLAPSE" "the no-collapse fixture must assert it is not gated by mere existence" \
+    'EXPECT: gating=none'
 fi
 
 if [ "$fail" -ne 0 ]; then

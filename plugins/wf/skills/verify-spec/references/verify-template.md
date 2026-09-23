@@ -65,7 +65,8 @@ never a single evidence field standing in for all of them:
 
 The collapsed headline is keyed by the same fingerprint `## Pre-existing` uses — never a bare
 `file:L` — because the contributing lenses may cite different lines within the shared
-`file:section`; no single lens's line is privileged.
+`file:section`; no single lens's line is privileged. Every nested contributor line stays a
+**cited line** of the finding, so anchoring and lean-pass overlap match on any of them.
 
 ## Pre-existing
 
@@ -92,6 +93,7 @@ with its own evidence and `<lens>/<check>` provenance:
 
 - **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — collapsed from <N> lenses:
   - `<lens>/<check>` — <that lens's own evidence>
+  - `<lens>` — <evidence from a contributor that carries no `check:`>
 
 ## Accepted warnings
 
@@ -102,6 +104,12 @@ non-blocking by severity alone and needs no anchor check — tagged with its sou
 
 - **<source capability>** — <finding> at `path/to/file:L` — <evidence>
 - none
+
+A `warn` collapsed from multiple lenses is keyed by its fingerprint and nests every
+contributor exactly as `## Capability findings` does:
+
+- **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:
+  - `<lens>/<check>` — <that lens's own evidence>
 
 ## Adversarial findings
 
@@ -126,7 +134,8 @@ Withdrawn — present only when reconciliation withdrew at least one core candid
 each, so a suppressed candidate is visible rather than silently absent:
 
 - **core** — [bound] <the candidate> at `path/to/file:L` — withdrawn: covered by
-  `<source capability>`'s finding at the same line on the same evidence
+  `<source capability>`'s finding `path/to/file:<section>|<defect>`, one of whose cited lines
+  is the same line, on the same evidence
 
 Coverage — present only when a contributor failed, was unavailable, or returned an
 unparseable block. Omit entirely when every contributor delivered (an empty `findings:` list
