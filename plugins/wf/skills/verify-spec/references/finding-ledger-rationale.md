@@ -77,6 +77,25 @@ is stale the moment round ≥2 begins. Reading the working tree is what makes `c
 and the rendered `**Tree:**` list describe the change a round ≥2 audit is actually looking at,
 dirty files included.
 
+## Gate-accept demotion
+
+**Why the demotion hook can't use this invocation's own round `N`.** `/wf:run`'s stop gate fires
+at round `N` (a `FAIL`/`PARTIAL`), reads `N` verbatim off the just-written `04_verify.md`'s own
+`**Round:**` line, and mints `verify-loop:l<L>:r<N>:accept` under that value (`run/SKILL.md`
+§"The verify⇄fix stop gate"). An `accept` choice then re-invokes `/wf:verify-spec` once more —
+"an extra invocation, not a verify⇄fix cycle" — and this fresh invocation derives its *own*
+round via the ordinary walk (§"Round-number derivation"). At that moment `04_verify.md` on disk
+is still the round-`N` report (rotation into `.history.md` happens later, at the write step),
+so the walk counts it as one more current-shape entry more recent than the boundary — deriving
+`N + 1` for this invocation. That derivation is *correct* for this invocation's own new report
+(each bare `verify-spec` re-invocation is genuinely a new round by the walk's own rule, per
+`run/SKILL.md`'s "Round `N` … counts `verify-spec` re-invocations alone"), but it is the wrong
+value to look up the accept record under: the record was filed as `r<N>`, and a lookup keyed
+on `r<N+1>` never matches, so the demotion silently never fires (the WF-671 defect). Reading
+`N_stop` directly off that same not-yet-rotated `04_verify.md`'s `**Round:**` line — the exact
+value `/wf:run` used to mint the record — sidesteps the mismatch entirely rather than trying to
+thread `/wf:run`'s `N` through the re-invocation's own command line.
+
 ## Worked example
 
 `corpus-archive/verify-replay-wf554/rounds/round-01.md` through `round-07.md` are seven real
