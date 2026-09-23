@@ -23,7 +23,7 @@ For a single-pass small task, `/wf:lite` is still the right tool — `wf:run` wi
 ## Command Syntax
 
 ```
-/wf:run [<id>] [--auto | --step] [--from <phase>] [--to <phase>] [--no-triage]
+/wf:run [<id>] [--auto | --step] [--from <phase>] [--to <phase>] [--no-triage] [--headless] [--gate <extend|accept|stop>]
 ```
 
 ### Arguments
@@ -145,7 +145,7 @@ Reached only at round ≥2 of a `FAIL`/`PARTIAL` `verify-spec` (Phase 3). Compar
 
 No matching record:
 
-- **`--headless`** — if `--gate <choice>` was passed at this invocation's entry **and** it has not already answered an earlier stop this invocation, record `verify-loop:l<L>:r<N>:<choice>` via `record_run_evidence({ workspaceRoot, kind: "gate-approval", subject: "verify-loop:l<L>:r<N>:<choice>", taskId })` — no `artifactPath`; no artifact is approved, this is `invocation-only` by design. Then act on `<choice>`. Otherwise (no `--gate`, or it already answered an earlier stop this run) → emit `RUN — blocked` without prompting; record no choice; the ledger is intact.
+- **`--headless`** — if `--gate <choice>` was passed at this invocation's entry **and** it has not already answered an earlier stop this invocation, request `verify-loop:l<L>:r<N>:<choice>` via `record_run_evidence({ workspaceRoot, kind: "gate-approval", subject: "verify-loop:l<L>:r<N>:<choice>", taskId })` — no `artifactPath`; no artifact is approved, this is `invocation-only` by design. **Check the response before acting on `<choice>` — never act unconditionally on the request alone:** `recorded` → act on `<choice>` below. `refused` (e.g. a full or unreadable ledger) → do **not** act on `<choice>`; a choice whose downstream behavior relies on a recorded approval (`accept`'s re-invoked `verify-spec` reads this same record back; `extend` resumes a cycle on its strength) must never proceed as though the write had landed. Instead emit `RUN — blocked` naming the record call's `diagnostic` as the reason; record no choice; the ledger is intact. Otherwise (no `--gate`, or it already answered an earlier stop this run) → emit `RUN — blocked` without prompting; record no choice; the ledger is intact.
 - **Interactive** (no `--headless`) — ask the operator once via `AskUserQuestion`: `extend` (one more verify⇄fix cycle) / `accept` (demote the open blocking lens residue, if a requirement `FAIL`/`PARTIAL` is also open the loop still stops on that) / `stop` (halt now). Record the answer the same way, then act on it. An interactive `extend` may be answered again at each later stop within the same loop — no counter bounds it beyond the operator's own repeated choice.
 
 **Act on the choice:**
@@ -191,6 +191,7 @@ Do **not**, in either mode, execute a phase inline in your own context (Safety R
 - **verify⇄fix or qa⇄followup exceeds 2 cycles:** halt with `RUN — blocked`, summarize the stuck findings, hand to the user.
 - **verify⇄fix stops early (no progress before the cap):** the blocking fingerprint set was stable or grew between two rounds — §"The verify⇄fix stop gate" fires before the cap is spent, not only at it.
 - **`--headless` at a verify⇄fix stop with no `--gate`:** `RUN — blocked`, no prompt, no recorded choice, ledger intact — a headless driver never hangs waiting for an answer it cannot give.
+- **`--headless` gate-choice record comes back `refused`:** `RUN — blocked` naming the refusal's `diagnostic`, no choice recorded, ledger intact — `<choice>` is never acted on off an unrecorded approval; a full or unreadable ledger degrades to a halt, not a silent proceed.
 - **A recorded gate choice from an earlier loop on the same task:** never matches a later loop's stop — the loop identity `L` differs, so a record like `verify-loop:l0:r3:accept` from a finished, `PASS`-ended loop does not answer a new loop's own round-3 stop; the gate is asked (or `--gate` consulted) fresh.
 - **`TRIAGE — lite`:** dispatch `/wf:lite <id>` and stop; the lite flow has its own single gate and terminal state. In the default walk, `lite` is a gated phase — the loop halts before it and names `/wf:lite <id>`.
 - **Walk (default), phase subagent returns an error/refusal:** halt immediately (`RUN — error`, or `RUN — blocked` for a `blocked`/`clarify` outcome), surface the subagent's reason, and name the command for a manual retry. Do not keep looping.
