@@ -138,7 +138,7 @@ report carries the round number this run derived.
 
 | Fingerprint | Defect | First-seen round | Status | Contributing lenses |
 |---|---|---|---|---|
-| `path/to/file:<section>\|<defect>` | `<defect>` | `<N>` | `<open \| fixed \| refuted \| warn \| pre-existing \| accepted>` | `<lens>/<check>, <lens>/<check>` |
+| `path/to/file:<section>\|<defect>` | `<defect>` | `<first-seen round>` | `<open \| fixed \| refuted \| warn \| pre-existing \| accepted>` | `<lens>/<check>, <lens>/<check>` |
 | none | | | | |
 
 `none` renders as the single row above only when the ledger is empty (no round of the current
