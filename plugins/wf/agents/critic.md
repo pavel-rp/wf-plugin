@@ -83,7 +83,8 @@ CRITIC — <confirmed | mixed | refuted>
 2. ...
 ```
 
-One numbered entry per candidate you were given, in the same order, matched by `fingerprint`.
+One numbered entry per candidate you were given, each paired to its candidate by `fingerprint`
+— never by position.
 `<confirmed | mixed | refuted>` on the header summarizes the batch (all `AGREE` / a split /
 all `DISAGREE`) — it is not itself consulted by the caller for any one candidate; each numbered
 entry's own `verdict:` is what gates that candidate.
