@@ -118,13 +118,13 @@ def derive(raw):
     c["destination_no_committed_class"] = ".wf/" not in dest and ".wf/" not in step
     c["destination_sibling_not_share"] = "sibling" in dest and "never a share of it" in dest
     c["destination_no_new_exception"] = "adds no skill to the write-scope exception list" in dest
+    c["destination_same_article"] = "same write-scope article" in dest
 
     # --- the attempt-qualified trigger (additive to the terminal-row one) ---
     c["attempt_trigger_declared"] = "second, additive" in dest and "attempt-qualified" in dest
     c["attempt_trigger_keyed_on_halt"] = "verify-loop-halt" in dest
     c["attempt_trigger_before_spawn"] = "before a replacement is spawned" in dest
     c["attempt_trigger_not_skipped"] = "skipped as already-persisted" in dest
-    c["destination_same_article"] = "same write-scope article" in dest
 
     # The declaration must describe the path the step ACTUALLY writes. Without
     # this the two halves drift independently and the guard sees neither.
