@@ -1,8 +1,8 @@
 # The finding ledger — field set, algorithm, and round derivation
 
-Read at runtime, at the rebuild step `verify-spec/SKILL.md`'s `## The finding ledger` section
-names. Rationale, the extended walkthrough, and a worked example: `finding-ledger-rationale.md`
-(paired reference, never read at runtime).
+The paired ops half for `verify-spec/SKILL.md`'s `## The finding ledger` section — read at
+runtime, at the rebuild step that section names. Rationale, the extended walkthrough, and a
+worked example: `finding-ledger-rationale.md` (paired reference, never read at runtime).
 
 ## Ledger field set
 
