@@ -1,7 +1,7 @@
 ---
 name: run
 description: Drives a task through the wf:* pipeline by detecting the current phase from the task folder's artifacts, deciding the next phase, enforcing the inter-phase gate, and by default walking the safe front of the chain hands-off via the wf:phase-runner subagent — halting before any source-writing or gated phase — with a --step mode that instead names one command at a time. Resumable from any point after a context reset. wf:run writes nothing in its own context — each phase runs isolated, in its own subagent (default) or as its own native invocation (--step), so phase exploration never bleeds into the orchestrator. Use to walk spec→plan→implement→verify→qa as one tracked flow instead of remembering which slash command comes next.
-allowed-tools: [Read, Glob, Grep, Bash, Task]
+allowed-tools: [Read, Glob, Grep, Bash, Task, AskUserQuestion]
 ---
 
 # /wf:run — Pipeline driver for the wf:* chain
@@ -61,6 +61,7 @@ Disambiguation: the leading non-`--`-prefixed token is the `<id>` argument — p
 - Read-only resolution via `workspace-root-resolve`, `current-branch-query`, and `last-commit-timestamp-query` (the `wf-resolver` `resolve_config({ workspaceRoot, ... })` / `resolve_provider({ workspaceRoot, surface: "delivery" })` queries).
 - Read `index.md` and the `00_…08` artifacts to derive state.
 - In the default walk (`--auto`), never in `--step`: invoke the **Task** tool with `subagent_type: wf:phase-runner` to run an auto-front phase (`triage`/`spec`/`plan`/`verify-spec`/`qa-gen`) in an isolated context. The subagent — not `wf:run` — does the reads and writes; `wf:run` still writes nothing in its own context.
+- Prompt the operator via `AskUserQuestion` at the verify⇄fix stop gate (§"The verify⇄fix stop gate"), interactive mode only.
 
 **Forbidden:**
 
@@ -145,7 +146,7 @@ Reached only at round ≥2 of a `FAIL`/`PARTIAL` `verify-spec` (Phase 3). Compar
 No matching record:
 
 - **`--headless`** — if `--gate <choice>` was passed at this invocation's entry **and** it has not already answered an earlier stop this invocation, record `verify-loop:l<L>:r<N>:<choice>` via `record_run_evidence({ workspaceRoot, kind: "gate-approval", subject: "verify-loop:l<L>:r<N>:<choice>", taskId })` — no `artifactPath`; no artifact is approved, this is `invocation-only` by design. Then act on `<choice>`. Otherwise (no `--gate`, or it already answered an earlier stop this run) → emit `RUN — blocked` without prompting; record no choice; the ledger is intact.
-- **Interactive** (no `--headless`) — ask the operator once: `extend` (one more verify⇄fix cycle) / `accept` (demote the open blocking lens residue, if a requirement `FAIL`/`PARTIAL` is also open the loop still stops on that) / `stop` (halt now). Record the answer the same way, then act on it. An interactive `extend` may be answered again at each later stop within the same loop — no counter bounds it beyond the operator's own repeated choice.
+- **Interactive** (no `--headless`) — ask the operator once via `AskUserQuestion`: `extend` (one more verify⇄fix cycle) / `accept` (demote the open blocking lens residue, if a requirement `FAIL`/`PARTIAL` is also open the loop still stops on that) / `stop` (halt now). Record the answer the same way, then act on it. An interactive `extend` may be answered again at each later stop within the same loop — no counter bounds it beyond the operator's own repeated choice.
 
 **Act on the choice:**
 
