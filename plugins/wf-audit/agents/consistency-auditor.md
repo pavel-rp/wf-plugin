@@ -23,13 +23,15 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
 2. Obtain your rubric through the resolver — `resolve_content` (`workspaceRoot`, `class: fragment`,
    `capability: audit`, `ref: fragments/consistency.md`), never a raw `Read` of the
    plugin-cache path; its checks are the single source of truth for what you audit.
-3. Read the **whole** change first (this lens reasons across hunks, not one file in
-   isolation), then audit it against every rubric check, gathering `file:line` evidence on
-   both sides of each pair.
-4. When the dispatch prompt carries `round >= 2` (its Round context block — input only, never echoed into your block): confirm each `open_fingerprints` entry you
-   can still evidence — an entry you can no longer evidence is simply omitted, retired by the
-   caller's fold — re-examine every `changed_sections` entry and open fingerprint, and report
-   a genuinely new `fail` only there — cap anything else at `warn`.
+3. At round 1 (or when the dispatch prompt carries no Round context block): read the **whole**
+   change first (this lens reasons across hunks, not one file in isolation), then audit it
+   against every rubric check, gathering `file:line` evidence on both sides of each pair.
+4. When the dispatch prompt carries `round >= 2` (its Round context block — input only, never
+   echoed into your block): skip the whole-change read and the full rubric audit entirely — do
+   not open or audit any file outside the two scopes below. Confirm each `open_fingerprints`
+   entry you can still evidence — an entry you can no longer evidence is simply omitted, retired
+   by the caller's fold — then inspect only the `changed_sections` entries named in that block.
+   Report a genuinely new `fail` only within those two scopes — cap anything else at `warn`.
 5. Emit **only** the inlined contract's finding block, tagged `lens: consistency`, as the very
    last thing — no narrative around it. The caller greps
    `AUDIT-CONSISTENCY — <clean | findings>` and aggregates the findings provenance-tagged
