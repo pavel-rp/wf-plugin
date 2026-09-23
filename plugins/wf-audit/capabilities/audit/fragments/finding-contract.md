@@ -15,6 +15,15 @@ The verify caller resolves the source capability profile once. When its values e
 
 Auditor agents never repeat this gate. Reaching an auditor is proof that the caller enabled it.
 
+## Fingerprint
+
+Once aggregated, every finding carries a stable cross-lens identity — the fingerprint
+`file:section|defect`. `file:section` is the existing location derivation (the enclosing
+markdown heading for prose, the enclosing symbol or declaration for source, the file itself
+when neither exists); `defect` is a lens-independent key the aggregator assigns, never the
+lens itself. A lens contributes only its own `check:` field (below) — raw material for the
+aggregator's `<lens>/<check>` provenance — and never computes or names a fingerprint.
+
 ## Finding shape
 
 For each real issue, emit one finding and return only this block:
@@ -26,12 +35,15 @@ lens: <lens>
 findings:
 - severity: <fail | warn>
   location: <file:line, or unit identifier>
+  check: <this lens's own rubric item number>
   issue: <the concrete defect, one line>
   evidence: <what proves it — a quoted line or grep result>
   recommendation: <the concrete bounded change, or "escalate">
 ```
 
-`fail` is a real defect that blocks shipment. `warn` is a genuine non-blocking concern. Findings require concrete evidence; never report speculation, style nits, or requirements already covered by the generic audit.
+`fail` is a candidate for the core-computed blocking set, not an unconditional gate. `warn`
+is a genuine non-blocking concern. Findings require concrete evidence; never report
+speculation, style nits, or requirements already covered by the generic audit.
 
 ## Clean result
 

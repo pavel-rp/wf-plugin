@@ -64,11 +64,13 @@ an empty render with a "none found" placeholder beyond the single `- none` line.
 One entry per aggregated `fail`-severity finding that is anchored to neither a contradicted
 requirement nor a line in the branch diff, and that the dirty-file / empty-diff carve-out does
 not claim — non-blocking, tagged with its source capability.
-Entries are keyed by `file:section`, where `section` is the enclosing markdown heading for
-prose, the enclosing symbol or declaration for source, and the file itself when neither exists.
-A pre-existing entry never dismisses a requirement `FAIL`/`PARTIAL`.
+Entries are keyed by the full fingerprint `file:section|defect`, where `section` is the
+enclosing markdown heading for prose, the enclosing symbol or declaration for source, and the
+file itself when neither exists, and `defect` is the aggregator-assigned key naming the
+specific defect at that location. A pre-existing entry never dismisses a requirement
+`FAIL`/`PARTIAL`.
 
-- **<source capability>** — `path/to/file:<section>` — <finding> — <evidence>
+- **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — <evidence>
 - none
 
 ## Accepted warnings

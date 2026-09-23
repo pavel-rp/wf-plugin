@@ -239,12 +239,7 @@ present whenever the run has anything to record. Rationale and worked examples l
 
 ## Fire the `verify` phase (aggregate capability findings)
 
-After the generic per-requirement audit, fire the **`verify`** phase and aggregate any
-**`finding`** contributions the registered capabilities attach to it.
-
-Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — do
-**not** read `## Capabilities` or any `manifest.md` yourself — referencing the taxonomy
-by **phase name / contribution-kind name**, never by heading:
+After the generic per-requirement audit, fire the **`verify`** phase and aggregate any **`finding`** contribution the registered capabilities attach to it. Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — never `## Capabilities`/`manifest.md` directly — referencing the taxonomy by phase name / contribution-kind name, never heading:
 
 1. **Call `resolve_registry({ workspaceRoot, ... })`.** It returns the ordered active `capabilities[]` (in
    registry order), each already resolved from the registry and its `manifest.md`:
@@ -303,12 +298,13 @@ by **phase name / contribution-kind name**, never by heading:
    findings:
    - severity: <fail | warn>
      location: <file:line, or unit identifier>
+     check: <this lens's own rubric item number>
      issue: <the concrete defect, one line>
      evidence: <what proves it — a quoted line or grep result>
      recommendation: <the concrete bounded change, or "escalate">
 
-   `fail` blocks shipment; `warn` is non-blocking. Report no speculation, style nits,
-   or restated generic requirements.
+   `fail` is a candidate for the core-computed blocking set, not an unconditional gate;
+   `warn` is non-blocking. Report no speculation, style nits, or restated requirements.
    ```
 
    Pass `model.value` only when non-null (effort is unsupported), and forward only the
@@ -316,16 +312,19 @@ by **phase name / contribution-kind name**, never by heading:
    and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the
    child never self-replaces. If the Task target itself is unavailable, preserve the
    existing optional-contributor no-op.
-4. **Aggregate provenance-tagged** — render every contributor's findings, each tagged
-   with its **source capability** (the `name` field); registry order is cosmetic.
+4. **Aggregate and collapse** — group by `file:section` (the location derivation
+   `## Pre-existing` reuses); assign a lens-independent `defect` key per distinct defect
+   at that location, collapsing findings naming the same defect at one location into one
+   that lists every contributing lens, its evidence, and `<lens>/<check>` provenance —
+   additive only, never dropping, editing, or re-tagging a contribution. Distinct defects
+   stay distinct keys; on doubt, keep findings separate (judgment, not string match).
+   Findings render tagged with their **source capability**; registry order is cosmetic.
 
-**No-op:** if `resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]` or no fragment
-matches `verify` under the `finding` kind, the whole phase produces **nothing** and the
-generic verdict stands alone (no capability findings section, no capability/stack/domain
-term surfaced, no broken subagent reference, no STOP). A malformed `dispatch` is that
-contributor's own no-op — never a STOP — and is reported as incomplete coverage below. Whether
-an aggregated finding gates the verdict is decided by §"The blocking set" below, never by its
-mere existence.
+**No-op:** an empty `capabilities[]`, or no fragment matching `verify`/`finding`, means the
+phase produces **nothing** — generic verdict alone, no capability/stack/domain term, no
+broken subagent reference, no STOP. A malformed `dispatch` is that contributor's own
+no-op, reported as incomplete coverage below, never a STOP. Whether a finding gates the
+verdict is decided by §"The blocking set" below, never by its mere existence.
 
 ### The blocking set
 

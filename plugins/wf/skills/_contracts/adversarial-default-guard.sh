@@ -36,6 +36,18 @@
 #      byte-for-byte like a clean one. The check is negative-tested via --selftest, and the
 #      two rendered-edge-case fixtures exist.
 #
+# WF-566 adds the seventh property — every finding carries a fingerprint and a cross-lens
+# duplicate of the same defect collapses into one:
+#
+#   7. The finding contract and its `SKILL.md` inline copy both declare the `check:` field
+#      and the identical restated `fail`-as-candidate wording (never "blocks shipment").
+#      The aggregation step states the `file:section` + lens-independent `defect`-key
+#      collapse rule. The `## Pre-existing` template entry is keyed by the full
+#      fingerprint `file:section|defect`. Two fixtures prove the behaviour: four lens
+#      findings at one location collapse into one finding naming all four lenses with
+#      evidence and provenance intact, and two distinct defects at one location stay two
+#      findings with distinct keys.
+#
 # Model: claude-opus-5[1m]
 #
 # Usage:
@@ -52,6 +64,7 @@ EMPTY_REG="$ROOT/plugins/wf/skills/_contracts/registry-fixtures/pass-empty.md"
 FIX_DIR="$ROOT/plugins/wf/skills/_contracts/adversarial-fixtures"
 DEFECTIVE="$FIX_DIR/defective-change.md"
 CLEAN="$FIX_DIR/clean-change.md"
+CONTRACT="$ROOT/plugins/wf-audit/capabilities/audit/fragments/finding-contract.md"
 fail=0
 
 report_fail() {
@@ -488,6 +501,71 @@ else
   fi
 fi
 
+# --- 7. Fingerprint and cross-lens collapse (WF-566) ---------------------------
+if [ ! -f "$CONTRACT" ]; then
+  report_fail "the finding contract fragment is missing"
+else
+  need "$CONTRACT" "the finding contract must declare the fingerprint concept" \
+    'file:section|defect'
+  need "$CONTRACT" "the finding contract must declare the check field" \
+    "check: <this lens's own rubric item number>"
+  need "$CONTRACT" "the finding contract must restate fail as a blocking-set candidate, not an unconditional gate" \
+    'is a candidate for the core-computed blocking set, not an unconditional gate'
+fi
+
+need "$VERIFY" "the inlined contract copy must declare the check field" \
+  "check: <this lens's own rubric item number>"
+need "$VERIFY" "the inlined contract copy must restate fail as a blocking-set candidate, verbatim-consistent with the source contract" \
+  'is a candidate for the core-computed blocking set, not an unconditional gate'
+need "$VERIFY" "the aggregation step must state the file:section grouping" \
+  'group by `file:section`'
+need "$VERIFY" "the aggregation step must state the lens-independent defect key" \
+  "assign a lens-independent \`defect\` key"
+need "$VERIFY" "the aggregation step must protect a contribution from being dropped, edited, or re-tagged" \
+  'never dropping, editing, or re-tagging a contribution'
+need "$VERIFY" "the aggregation step must keep distinct defects at one location separate" \
+  'stay distinct keys'
+need "$VERIFY" "the aggregation step must never merge on doubt" \
+  'on doubt, keep findings separate'
+
+need "$TEMPLATE" "the Pre-existing section must key entries by the full fingerprint" \
+  'the full fingerprint `file:section|defect`'
+need "$TEMPLATE" "the Pre-existing bullet shape must show the fingerprint form" \
+  'path/to/file:<section>|<defect>'
+
+COLLAPSE="$FIX_DIR/cross-lens-collapse.md"
+NO_COLLAPSE="$FIX_DIR/distinct-defects-one-location.md"
+
+if [ ! -f "$COLLAPSE" ]; then
+  report_fail "the cross-lens-collapse fixture is missing"
+else
+  need "$COLLAPSE" "the collapse fixture must reuse the real five-lens registry" \
+    'pass-audit-only.md'
+  need "$COLLAPSE" "the collapse fixture must assert the collapse case" \
+    'EXPECT: case=collapse'
+  need "$COLLAPSE" "the collapse fixture must assert exactly one defect key" \
+    'EXPECT: defect-keys=1'
+  need "$COLLAPSE" "the collapse fixture must name all four contributing lenses" \
+    'EXPECT: lenses=correctness,security,convention,consistency'
+  need "$COLLAPSE" "the collapse fixture must assert per-lens provenance is preserved" \
+    'EXPECT: evidence=preserved-per-lens'
+fi
+
+if [ ! -f "$NO_COLLAPSE" ]; then
+  report_fail "the distinct-defects-one-location fixture is missing"
+else
+  need "$NO_COLLAPSE" "the no-collapse fixture must reuse the real five-lens registry" \
+    'pass-audit-only.md'
+  need "$NO_COLLAPSE" "the no-collapse fixture must assert the no-collapse case" \
+    'EXPECT: case=no-collapse'
+  need "$NO_COLLAPSE" "the no-collapse fixture must assert two distinct defect keys" \
+    'EXPECT: defect-keys=2'
+  need "$NO_COLLAPSE" "the no-collapse fixture must assert two surviving findings" \
+    'EXPECT: findings=2'
+  need "$NO_COLLAPSE" "the no-collapse fixture must assert the never-merge-on-doubt policy" \
+    'EXPECT: doubt-policy=keep-separate'
+fi
+
 if [ "$fail" -ne 0 ]; then
   exit 1
 fi
@@ -500,3 +578,4 @@ printf 'PASS: reconciliation is one-directional, dispatch-free and names no capa
 printf 'PASS: both overlap outcomes pinned; a failed contributor withdraws nothing\n'
 printf 'PASS: one-row registry plus registered/lens-failure expectation fixtures intact\n'
 printf 'PASS: the Adversarial findings section survives on a Withdrawn or Coverage record alone\n'
+printf 'PASS: every finding carries a fingerprint; cross-lens duplicates collapse, distinct defects stay separate\n'
