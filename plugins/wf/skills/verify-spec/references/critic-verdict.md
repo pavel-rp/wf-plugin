@@ -134,6 +134,7 @@ CRITIC — mixed
 ```
 
 Candidate 1 stays blocking (`## Capability findings`, confirmed). Candidate 2 leaves the
-blocking set (`## Refuted by critic`, ledger status `refuted`). Candidate 3 demotes to `warn`
-(`## Accepted warnings`, ledger status `warn`). The `**Verdict:**` line reflects only candidate
-1 plus any unconditional requirement `FAIL`/`PARTIAL` — never candidates 2 or 3.
+blocking set into `## Accepted warnings` tagged `critic: DISAGREE` (ledger status `refuted`).
+Candidate 3 also moves to `## Accepted warnings`, tagged `critic: UNVERIFIABLE` (ledger status
+`warn`). The `**Verdict:**` line reflects only candidate 1 plus any unconditional requirement
+`FAIL`/`PARTIAL` — never candidates 2 or 3.

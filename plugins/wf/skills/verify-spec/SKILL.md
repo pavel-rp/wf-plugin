@@ -349,9 +349,10 @@ set" below); requirement verdicts never enter the critic — they already block 
 - **Apply the result** per `critic-verdict.md` §"Malformed or failed dispatch" and §"Verdict
   block": a malformed or failed dispatch fail-closes the whole batch (every candidate stays
   blocking, unconfirmed, the report names the failure); a well-formed one applies each
-  candidate's own verdict — `AGREE` confirms blocking, `DISAGREE` refutes it into
-  `## Refuted by critic` (ledger `refuted`), `UNVERIFIABLE` demotes it into `## Accepted
-  warnings` (ledger `warn`, distinct from an originally-`warn` finding's `accepted`).
+  candidate's own verdict — `AGREE` confirms blocking; `DISAGREE` refutes it, moving it into
+  `## Accepted warnings` tagged `critic: DISAGREE` with the citation (ledger `refuted`);
+  `UNVERIFIABLE` also moves it into `## Accepted warnings`, tagged `critic: UNVERIFIABLE`
+  (ledger `warn`, distinct from an originally-`warn` finding's `accepted`).
 
 ### The blocking set
 
@@ -371,14 +372,15 @@ topical overlap does not qualify. **Change-anchored:** any of its **cited lines*
 falls inside the branch-vs-`main` diff gathered under "Implementation scope" — one changed
 line suffices beside unchanged ones.
 
-A `fail` anchored to neither is **pre-existing**; a `DISAGREE`d candidate is **refuted**; a
-`warn` — including an `UNVERIFIABLE` demotion — is non-blocking whatever its anchor. All three
-are recorded — under `## Pre-existing`, `## Refuted by critic`, and `## Accepted warnings` —
-never dropped, and none ever dismisses a requirement `FAIL`/`PARTIAL`. **Never pre-existing —
-blocking-candidate instead, routed to the critic above**: a `fail` citing a file the header
+A `fail` anchored to neither is **pre-existing**; a `DISAGREE`d candidate is **refuted**, and a
+`warn` — including an `UNVERIFIABLE` demotion — is non-blocking, whatever its anchor. Both are
+recorded — a refuted or demoted candidate under `## Accepted warnings` (tagged `critic:
+DISAGREE`/`UNVERIFIABLE` with the citation), a `pre-existing` fail under `## Pre-existing` —
+never dropped, and neither ever dismisses a requirement `FAIL`/`PARTIAL`. **Never pre-existing
+— blocking-candidate instead, routed to the critic above**: a `fail` citing a file the header
 flags dirty, or any `fail` judged when the branch-vs-`main` diff is empty, since the audited
-window does not cover that work and absence of an anchor there proves nothing. The four
-buckets (blocking, pre-existing, refuted, accepted) are exhaustive.
+window does not cover that work and absence of an anchor there proves nothing. The three
+buckets (blocking, pre-existing, accepted-non-blocking) are exhaustive.
 
 `**Verdict:** PASS` **iff the blocking set is empty**; otherwise `FAIL`, or `PARTIAL` when the
 set holds only `PARTIAL` requirements. The report's `**Verdict:**`, the chat summary's verdict

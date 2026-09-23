@@ -10,6 +10,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 VERIFY="$ROOT/plugins/wf/skills/verify-spec/SKILL.md"
 AUDIT_ROOT="$ROOT/plugins/wf-audit"
 MANIFEST="$AUDIT_ROOT/capabilities/audit/manifest.md"
+CRITIC_AGENT="$ROOT/plugins/wf/agents/critic.md"
+CRITIC_VERDICT="$ROOT/plugins/wf/skills/verify-spec/references/critic-verdict.md"
+INVENTORY="$ROOT/plugins/wf/skills/_contracts/core-dispatch-inventory.tsv"
 fail=0
 
 report_fail() {
@@ -82,6 +85,47 @@ if [ "$manifest_rows" -ne 5 ]; then
   report_fail "audit manifest must retain all five verify finding dispatch rows"
 fi
 
+# WF-570: the isolated critic pass — exactly one dispatch per round covering the whole
+# candidate set, placed after aggregation and before the blocking set, fail-closed on a
+# malformed/failed dispatch, and skipped entirely on an empty candidate set.
+critic_section_line="$(grep -n '### Confirm candidate blocking findings' "$VERIFY" | cut -d: -f1)"
+aggregate_line="$(grep -n 'Aggregate and collapse' "$VERIFY" | head -n1 | cut -d: -f1)"
+blocking_set_line="$(grep -n '^### The blocking set' "$VERIFY" | cut -d: -f1)"
+if [ -z "$critic_section_line" ] || [ -z "$aggregate_line" ] || [ -z "$blocking_set_line" ] \
+   || [ "$aggregate_line" -ge "$critic_section_line" ] || [ "$critic_section_line" -ge "$blocking_set_line" ]; then
+  report_fail "verify-spec must place the critic pass after aggregation and before the blocking set"
+fi
+
+if ! grep -q 'the whole candidate set in one dispatch' "$VERIFY"; then
+  report_fail "verify-spec must dispatch the critic exactly once per round over the whole candidate set"
+fi
+
+if ! grep -q 'Empty candidate set.*no dispatch' "$VERIFY"; then
+  report_fail "verify-spec must skip the critic dispatch on an empty candidate set"
+fi
+
+if ! grep -q 'fail-closes the whole batch' "$VERIFY"; then
+  report_fail "verify-spec must fail-close every candidate on a malformed or failed critic dispatch"
+fi
+
+if ! grep -q 'requirement verdicts never enter the critic' "$VERIFY"; then
+  report_fail "verify-spec must keep requirement verdicts out of the critic dispatch"
+fi
+
+if [ ! -f "$CRITIC_AGENT" ]; then
+  report_fail "missing critic agent at plugins/wf/agents/critic.md"
+elif ! grep -q 'AGREE | DISAGREE | UNVERIFIABLE' "$CRITIC_AGENT"; then
+  report_fail "critic agent is missing its closed AGREE/DISAGREE/UNVERIFIABLE verdict contract"
+fi
+
+if [ ! -f "$CRITIC_VERDICT" ]; then
+  report_fail "missing paired reference plugins/wf/skills/verify-spec/references/critic-verdict.md"
+fi
+
+if ! grep -Eq '^verify-critic[[:space:]]+included[[:space:]]' "$INVENTORY"; then
+  report_fail "core-dispatch-inventory.tsv must carry an included verify-critic row"
+fi
+
 if [ "$fail" -ne 0 ]; then
   exit 1
 fi
@@ -91,3 +135,4 @@ printf 'PASS: round-aware dispatch fields and lens mandates are present\n'
 printf 'PASS: Round context block precedes and stays outside the return template\n'
 printf 'PASS: five lens agents perform zero finding-contract/profile fetches\n'
 printf 'PASS: five manifest rows and final-output shapes remain intact\n'
+printf 'PASS: the critic pass is placed after aggregation, fail-closed, and pinned by an inventory row\n'

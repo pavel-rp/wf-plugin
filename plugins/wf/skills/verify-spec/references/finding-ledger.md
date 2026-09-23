@@ -44,30 +44,29 @@ required on every entry:
   it was first seen or since it was last reopened.
 - **fixed** — the fingerprint was in the ledger but no current-run finding names it; retired,
   never dropped.
-- **refuted** — the fingerprint's most recent match landed in the report's `## Refuted by
-  critic` bucket — a candidate the isolated critic (`verify-spec/SKILL.md` §"Confirm candidate
-  blocking findings") returned `DISAGREE` on, cited code and all. Assigned only when a critic
-  dispatch actually ran and returned that verdict for this fingerprint; a candidate the critic
-  never saw (empty candidate set) or a dispatch that failed/was malformed never reaches this
-  status — it stays `open` instead (fail-closed).
+- **refuted** — the fingerprint's most recent match landed in `## Accepted warnings` **and**
+  that match carries the critic's `DISAGREE` tag (`verify-spec/SKILL.md` §"Confirm candidate
+  blocking findings") — a candidate the isolated critic returned `DISAGREE` on, cited code and
+  all. Assigned only when a critic dispatch actually ran and returned that verdict for this
+  fingerprint; a candidate the critic never saw (empty candidate set) or a dispatch that
+  failed/was malformed never reaches this status — it stays `open` instead (fail-closed).
 - **warn** — the fingerprint's most recent match landed in `## Accepted warnings` **and** that
-  match carries the critic's `UNVERIFIABLE` demotion tag (`verify-spec/SKILL.md` §"Confirm
-  candidate blocking findings") — a candidate that was `fail`-severity and anchored until the
-  critic could not confirm or refute it. Distinct from `accepted` (below): both bucket-match in
-  `## Accepted warnings`, but only a critic-demoted entry carries the tag this status reads.
+  match carries the critic's `UNVERIFIABLE` tag — a candidate that was `fail`-severity and
+  anchored until the critic could not confirm or refute it. Distinct from both `refuted` and
+  `accepted` (below): all three bucket-match in `## Accepted warnings`, but each is read off a
+  different tag state on that match — `DISAGREE` tag, `UNVERIFIABLE` tag, or no critic tag.
 - **pre-existing** — the fingerprint's most recent match landed in the report's
   `## Pre-existing` bucket (a `fail` anchored to neither a requirement nor the diff).
 - **accepted** — the fingerprint's most recent match landed in `## Accepted warnings` **without**
-  the critic's `UNVERIFIABLE` demotion tag — every originally-`warn`-severity finding, whatever
-  its anchor.
+  any critic tag — every originally-`warn`-severity finding, whatever its anchor.
 
 A fingerprint's status is set from **where its most recent match rendered** — the bucket
-decides it, with one severity-adjacent branch inside a single bucket (`## Accepted warnings`,
-`warn` vs `accepted`, above) and none elsewhere: `## Capability findings` → `open` (always;
-that bucket never holds anything but a critic-confirmed or fail-closed blocking `fail`),
-`## Pre-existing` → `pre-existing`, `## Refuted by critic` → `refuted`, `## Accepted warnings`
-→ `warn` or `accepted` per the tag test above — then overridden to `fixed` when a round's own
-findings name the fingerprint nowhere at all. **Single-valued, not layered** — an
+decides it, with one three-way tag branch inside a single bucket (`## Accepted warnings`,
+`refuted` vs `warn` vs `accepted`, above) and none elsewhere: `## Capability findings` → `open`
+(always; that bucket never holds anything but a critic-confirmed or fail-closed blocking
+`fail`), `## Pre-existing` → `pre-existing`, `## Accepted warnings` → `refuted`/`warn`/`accepted`
+per the tag test above — then overridden to `fixed` when a round's own findings name the
+fingerprint nowhere at all. **Single-valued, not layered** — an
 entry carries exactly one status field, so retiring a `pre-existing`/`accepted` fingerprint to
 `fixed` deliberately discards which bucket it last matched: once nothing reports it, which
 bucket it used to render in has no further consequence for anything this rebuild does, so

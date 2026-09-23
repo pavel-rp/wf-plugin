@@ -1,8 +1,6 @@
 # `04_verify.md` full output shape
 
-The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path); when routing leaves it with no entry, it renders the single line `- none`. The `## Pre-existing`, `## Accepted warnings`, and `## Ledger` sections are **unconditional — always rendered, even empty**, so the report shape is stable across runs. The `## Refuted by critic` section is **unconditional — always rendered, even empty**, on the
-same stable-shape rule as `## Pre-existing` and `## Accepted warnings`; it renders `- none` on a
-run with no critic dispatch (empty candidate set) or with every candidate confirmed. The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — which subordinates the omission rule: omit the whole section on a clean change only, meaning a run that produced no surviving finding, withdrew no candidate, and had every contributor deliver.
+The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path); when routing leaves it with no entry, it renders the single line `- none`. The `## Pre-existing`, `## Accepted warnings`, and `## Ledger` sections are **unconditional — always rendered, even empty**, so the report shape is stable across runs. A candidate the critic pass (`verify-spec/SKILL.md` §"Confirm candidate blocking findings") refutes or cannot verify also renders in `## Accepted warnings`, tagged `critic: DISAGREE`/`UNVERIFIABLE` with the citation — no separate section for it. The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — which subordinates the omission rule: omit the whole section on a clean change only, meaning a run that produced no surviving finding, withdrew no candidate, and had every contributor deliver.
 
 ## Contents
 
@@ -46,7 +44,7 @@ clause when the fragment carries none.
 This section carries the `fail`-severity aggregated findings that made the **blocking set** —
 anchored candidates the critic confirmed (`AGREE`), plus every candidate when a critic dispatch
 itself failed or was malformed (fail-closed, unconfirmed). A `fail` or `warn` that did not make
-it is recorded in exactly one of the three non-gating sections below instead of here, so every
+it is recorded in exactly one of the two non-gating sections below instead of here, so every
 aggregated finding appears exactly once in the report and none is ever dropped. A `[PASS]`
 assertion row carries no severity, is not a finding, and is never routed — it always stays here.
 The section's presence rule, its grouping, and its bullet shape are unchanged by that routing;
@@ -132,23 +130,17 @@ contributor exactly as `## Capability findings` does:
 - **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:
   - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
 
-A candidate the critic returned `UNVERIFIABLE` on renders here too — it was `fail`-severity and
-anchored until the critic could not confirm or refute it — appending `` — critic: UNVERIFIABLE
-at `path/to/file:L` `` so it reads distinctly from an originally-`warn` entry above (ledger
-status `warn`, not `accepted`; `finding-ledger.md` §"Status vocabulary"):
+A candidate the critic pass classified also renders here — never dropped, and never dismissing a
+requirement `FAIL`/`PARTIAL` (which never reaches the critic at all):
 
-- **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — critic: UNVERIFIABLE at `path/to/file:L`
-
-## Refuted by critic
-
-**Always rendered, even when empty**, on the same unconditional rule as `## Pre-existing` and
-`## Accepted warnings` above — a run with no critic dispatch (empty candidate set) or with every
-candidate confirmed renders `- none`. One entry per refuted candidate, non-blocking, tagged with
-its source capability and the critic's own cited refutation — never dropped, and a refutation
-never dismisses a requirement `FAIL`/`PARTIAL` (which never reaches the critic at all).
-
-- **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — critic: DISAGREE at `path/to/file:L` — "<cited code>"
-- none
+- a `DISAGREE`d candidate — refuted, tagged `critic: DISAGREE` with the critic's own citation
+  (ledger status `refuted`; `finding-ledger.md` §"Status vocabulary"):
+  `` - **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — critic: DISAGREE at `path/to/file:L` — "<cited code>"``
+- a candidate the critic returned `UNVERIFIABLE` on — it was `fail`-severity and anchored until
+  the critic could not confirm or refute it — tagged `critic: UNVERIFIABLE` with the critic's
+  one-line reason (ledger status `warn`, distinct from an originally-`warn` finding's
+  `accepted`):
+  `` - **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — critic: UNVERIFIABLE at `path/to/file:L```
 
 ## Ledger
 
