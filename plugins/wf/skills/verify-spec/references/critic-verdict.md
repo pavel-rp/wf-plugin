@@ -40,8 +40,9 @@ from static reading alone — say why in one line).
 Task under audit: {task-id} — read {task-folder}/00_reqs.md for context only; do not
 re-derive requirements or report anything outside the candidate list below.
 
-Workspace root: {absolute workspace root} — resolve every cited path against this root
-before opening it, per your own containment bound.
+Workspace root: {absolute workspace root} — a cross-check against the root you derive
+yourself; bound every cited path against your own root before opening it, per your own
+containment bound.
 
 The artifact is frozen: do not re-run the audit, re-read the diff for new defects, or
 report a candidate not listed here.

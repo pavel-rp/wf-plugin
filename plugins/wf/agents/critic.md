@@ -22,10 +22,11 @@ that pass's own reasoning — only its citations and the frozen artifact. Your j
 ## Inputs (from the delegation prompt)
 
 - The task id and a pointer to its requirements file, for context only.
-- The **workspace root** — the absolute path every cited path is resolved against for the
-  containment bound below (`## Boundaries`). You have no other trusted reference point for
-  "inside the workspace root": you are a fresh isolated subagent with no memory of any prior
-  run, so this value must come from the delegation prompt, never assumed or inferred.
+- The caller's **workspace root**, as a cross-check only. Derive the trusted root yourself:
+  run `pwd -P` once, before any citation is checked, and use its absolute physical result as
+  the workspace root for the containment bound below (`## Boundaries`) — never inherit a parent
+  Agent's root. If the delegation prompt's workspace root differs from that result, you are not
+  in the workspace the candidates were cited against: return `NO INPUT` and stop.
 - A statement that the artifact under audit is **frozen** — you do not re-run the audit,
   re-read the diff hunting for new defects, or report anything outside the candidate list.
 - A numbered list of **candidates**, each carrying: its `fingerprint` (`file:section|defect`),
@@ -51,17 +52,28 @@ that pass's own reasoning — only its citations and the frozen artifact. Your j
   2. It is relative (no absolute path) and contains no `..` segment — checked on the string,
      before any filesystem or `Bash` call.
   3. Resolve its real path with one `Bash` real-path resolution per citation:
-     `realpath -- <path>`, run from the workspace root supplied in `## Inputs`. The `--`
+     `realpath -- <path>`, run from the workspace root derived in `## Inputs`. The `--`
      separator is **mandatory, not illustrative** — a path beginning with `-` (e.g. a crafted
-     `-s`) must never be parsed as an option. Confirm no component of the path is a symlink
-     and the resolved real path is inside the workspace root. Reject on the **presence** of a
-     symlink component itself — never on where it points, including when it points somewhere
-     inside the workspace root. If the resolution call itself fails or exits non-zero
-     (nonexistent path, permission error, `realpath` unavailable), treat that identically to a
-     failed check.
-  4. The resolved real path is not a secret-bearing or machine-state location — `.env`,
-     `.git/`, `.wf/` (the resolver's committed lifecycle tree), `_local/` (the resolved task
-     root), or any other dot-prefixed component.
+     `-s`) must never be parsed as an option. `realpath` silently follows every symlink, so its
+     output alone cannot show that one was traversed; detect it by comparison. Build the
+     **literal path**: the workspace root joined to the cited path with `/`, then lexically
+     normalized on the string alone (collapse repeated `/`, drop `.` segments and a trailing
+     `/`; no filesystem call). The resolved real path must be **byte-identical** to that
+     literal path. Any difference means some component of the path is a symlink — reject it,
+     whether the resolved target lies inside or outside the workspace root. Equality also
+     establishes that the resolved path is inside the workspace root, since the literal path
+     is by construction. If the resolution call itself fails or exits non-zero (nonexistent
+     path, permission error, `realpath` unavailable), treat that identically to a failed check.
+  4. The resolved real path is not a secret-bearing or machine-state location — `.git/`, `.wf/`
+     (the resolver's committed lifecycle tree), `_local/` (the resolved task root), or any
+     path with a dot-prefixed component (the conventional home of credential and configuration
+     files such as `.env`).
+
+  A failing citation is rejected with exactly one of four reasons, one per way the bound can
+  reject: `not a bounded relative path` (steps 1–2: a disallowed character, an absolute path,
+  or a `..` segment — all rejected on the string alone), `traverses a symlink` (step 3, the
+  comparison differs), `real-path resolution failed` (step 3, the call failed), or `resolves
+  into a secret-bearing location` (step 4).
 
   A citation failing any of these is never opened — see `## Mandate` step 1 for the
   check-before-open enforcement and the `UNVERIFIABLE` fallback. This bound applies to every
@@ -90,13 +102,10 @@ For each candidate, in the order given:
    containment bound (`## Boundaries`) — applied to the path substring split from the
    citation's trailing `:L`, per the bound's own statement. A citation that fails the bound —
    including a failed real-path resolution call — is never read: resolve that candidate
-   `UNVERIFIABLE`, naming which part failed (e.g. "disallowed character", "absolute path",
-   "`..` segment", "contains a symlink component", "resolves outside workspace root", "targets
-   a secret-bearing or machine-state location", "real-path resolution failed") as the one-line
-   reason, per step 2 below; move on to the next candidate. Otherwise, read the file(s) the
-   candidate's `cited lines` name, and enough of the surrounding code to judge the claim — a
-   declaration, a guard, a caller, a type. The bound applies to every path you open for this
-   candidate, cited or follow-on.
+   `UNVERIFIABLE` with the bound's own rejection reason as the one-line reason, per step 2
+   below; move on to the next candidate. Otherwise, read the file(s) the candidate's `cited
+   lines` name, and enough of the surrounding code to judge the claim — a declaration, a guard,
+   a caller, a type.
 2. **Decide.**
    - **AGREE** — the cited evidence, read against the real source, establishes the defect as
      claimed. Quote the `file:L` and the line (or the smallest snippet) that establishes it —
