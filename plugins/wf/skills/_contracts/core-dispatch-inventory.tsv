@@ -62,6 +62,7 @@ lite-index-reqs	included	plugins/wf/skills/lite/SKILL.md	/wf:index	index	model=f
 lite-index-plan	included	plugins/wf/skills/lite/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 lite-index-final	included	plugins/wf/skills/lite/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 implement-index	included	plugins/wf/skills/implement/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
+verify-critic	included	plugins/wf/skills/verify-spec/SKILL.md	wf:critic	critic	model=true;effort=false	external-context,atomic,1,false,bounded,elevated,material,mechanical,required,false,mechanically-judgeable,1	parent
 verify-spec-index	included	plugins/wf/skills/verify-spec/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 tt-index	included	plugins/wf/skills/tt/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent
 charter-index	included	plugins/wf/skills/charter/SKILL.md	/wf:index	index	model=false;effort=false	index-wrapper-mediated	parent

@@ -31,6 +31,11 @@ Print, in this order:
 - **Adversarial findings:** one line — either `none` or `<N>: <comma-separated shortlist>`,
   then `· <W> withdrawn` when any were, and `· coverage incomplete (<provenance>)` when a
   contributor failed. Non-gating: this line never changes the verdict line above it.
+- **Critic:** one line — `not dispatched (no candidates)` when the candidate set was empty;
+  `<A> confirmed · <R> refuted · <U> unverifiable (→ warn)` on a well-formed dispatch (omit
+  zero-count categories); or `dispatch <failed | malformed> — <N> held blocking, unconfirmed`
+  on a fail-closed batch. Non-gating on its own — a refutation already removed that candidate
+  from the blocking set the verdict line above reads, and this line never re-derives it.
 - **Top next actions:** 1–3 bullets — the most important items from the report's
   "Recommended next actions".
 - **`/wf:verify-fix` suggestion (conditional):** one line —
