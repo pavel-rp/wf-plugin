@@ -256,8 +256,8 @@ Spawn each shipper with the **Agent tool**: `subagent_type: general-purpose`, `i
 >
 > Only if that Skill is genuinely unavailable or its checks loop cannot run, use the project-pipeline fallback. Route and execute each edge independently in this exact order:
 >
-> 1. Route with `workspaceRoot: <workspace-root>`, `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke the initial `/wf:run <ID>` through the Skill tool.
-> 2. On every resume, route independently with `workspaceRoot: <workspace-root>`, `role: "phase-runner"` and `unitIds: ["ship:run-resume"]` before `/wf:run <ID>`, then invoke it again through the Skill tool.
+> 1. Route with `workspaceRoot: <workspace-root>`, `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke the initial `/wf:run <ID> --headless` through the Skill tool — `--headless` so an unanswerable verify⇄fix stop gate resolves to a clean `RUN — blocked` rather than a wait nobody here can satisfy.
+> 2. On every resume, route independently with `workspaceRoot: <workspace-root>`, `role: "phase-runner"` and `unitIds: ["ship:run-resume"]` before `/wf:run <ID> --headless`, then invoke it again through the Skill tool.
 > 3. On each `RUN — gated` handoff, route with `workspaceRoot: <workspace-root>`, `role: "phase-runner"` and `unitIds: ["ship:phase"]`, then invoke the exact `/wf:<phase> <ID>` through the Skill tool.
 > 4. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with `workspaceRoot: <workspace-root>`, `role: "pr"` and `unitIds: ["ship:pr"]`, then invoke `/wf:pr <ID>` through the Skill tool.
 > 5. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with `workspaceRoot: <workspace-root>`, `role: "finalize"` and `unitIds: ["ship:finalize"]`, then invoke `/wf:tf <ID>` through the Skill tool.

@@ -340,6 +340,8 @@ A `fail` anchored to neither is **pre-existing** (`## Pre-existing`); a `DISAGRE
 
 `**Verdict:** PASS` **iff the blocking set is empty**; otherwise `FAIL`, or `PARTIAL` when the set holds only `PARTIAL` requirements. The report's `**Verdict:**`, the chat summary's verdict line, and the `VERIFY —` status token all read this one set, so adding a non-blocking finding or reordering classified findings never changes the verdict.
 
+**Gate-accept demotion.** As this section's own last step, apply `finding-ledger.md` §"Gate-accept demotion" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`) — a recorded `/wf:run` verify-loop `accept` choice matching this round demotes the open blocking lens residue into `## Accepted warnings` and recomputes `**Verdict:**` above; no match, no effect. A requirement `FAIL`/`PARTIAL` is never overridden by this hook.
+
 ### Reconcile against the lean pass
 
 Both adversarial sources have now produced output. Reconcile them here, over the
