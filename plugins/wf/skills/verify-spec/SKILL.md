@@ -27,17 +27,9 @@ or assuming any of them. With none registered, the generic verdict and lean pass
 
 ## Prerequisites
 
-**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP
 Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and use the returned absolute current Agent/session workspace directory as `workspaceRoot` in every call. In a linked-worktree Agent, that cwd is the Agent's own worktree; never inherit a parent Agent's root. Pass `workspaceRoot` explicitly on every resolver call; omission is a hard schema error, and the resolver has no default or fallback root.
 
-service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath,
-coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core
-performs no direct config-file parse). All references to `{task-root}` below come from
-`coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is
-uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the
-user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and
-report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse
-config as a fallback. Task folders live at `{task-root}/{task-id}/`.
+**Before any other phase**, obtain project config from the bundled `wf-resolver` MCP service via `resolve_config({ workspaceRoot, ... })` — it returns `{ workspaceRoot, registryPath, coreConfig{ taskRoot, … }, idShape }`, already resolved from `_local/config.md` (core performs no direct config-file parse). All references to `{task-root}` below come from `coreConfig.taskRoot` — never hardcode it. If the resolver reports the project is uninitialized (no resolved config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service is unavailable, stop and report that the resolver runtime is not loaded (restart Claude Code) — do not hand-parse config as a fallback. Task folders live at `{task-root}/{task-id}/`.
 
 ---
 
@@ -75,24 +67,22 @@ author it (`/wf:spec`) or pass a path explicitly.
 
 ## Direct provider resolution (how `current-branch-query` and `last-commit-timestamp-query` are reached)
 
-Every delivery operation this file invokes — `current-branch-query` (the empty-dispatch
-id inference above, and the Implementation-scope branch name below) and
-`last-commit-timestamp-query` (the spec-staleness edge case) — is reached by calling the
-bundled `wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })` — the typed query that
-returns the run-scoped resolution record `{ surface, owner, fragmentPath, state,
-degradation, diagnostics }`. The resolver has already resolved the `## Capabilities` registry,
-the owning capability's `manifest.md`, and any plugin-anchored root (post install-manifest
-self-heal, `capability-registry.ops.md`); core performs **no** registry / manifest /
-plugin-root read of its own. Obtain the operation body through the resolver's
-`resolve_content({ workspaceRoot, ... })` content surface (`class: fragment`, keyed on the record's `owner` and
-fragment `ref`) and follow it in this skill's own context — never a raw `Read` of the
-resolved path. On `state: unconfigured` or `unrecoverable` (no readable `delivery` provider),
-both operations fall back silently to their plain-directory-safe cases — no error, no
-capability term surfaces. If the `wf-resolver` service is unavailable, stop and report that
-the resolver runtime is not loaded — do not hand-parse the registry (WF-272). This audit's core evidence-gathering
-(the diff, commit coordinates, and dirty-tree state — see "Implementation scope" below) has no
-delivery operation of its own today, so it is gathered directly against the local working tree
-regardless of resolution state — a documented contract-completeness gap, not a workaround.
+Every delivery operation this file invokes — `current-branch-query` (empty-dispatch id
+inference above, and the Implementation-scope branch name below) and
+`last-commit-timestamp-query` (the spec-staleness edge case) — is reached via the bundled
+`wf-resolver` MCP tool `resolve_provider({ workspaceRoot, surface: "delivery" })`, the typed
+query returning `{ surface, owner, fragmentPath, state, degradation, diagnostics }`. The
+resolver has already resolved the `## Capabilities` registry, the owning capability's
+`manifest.md`, and any plugin-anchored root; core performs no registry/manifest/plugin-root
+read of its own. Obtain the operation body via `resolve_content({ workspaceRoot, ... })`
+(`class: fragment`, keyed on the record's `owner` and `ref`) and follow it in-context — never
+a raw `Read`. On `state: unconfigured`/`unrecoverable`, both operations fall back silently to
+their plain-directory-safe cases — no error, no capability term surfaces. If `wf-resolver` is
+unavailable, stop and report the resolver runtime is not loaded — do not hand-parse the
+registry (WF-272). This audit's core evidence-gathering (diff, commit coordinates, dirty-tree
+state — "Implementation scope" below) has no delivery operation of its own today, so it is
+gathered directly against the local working tree regardless of resolution state — a documented
+contract-completeness gap, not a workaround.
 
 ---
 
@@ -124,6 +114,8 @@ Always read, in order:
    This is the set of code actually under audit. Don't verify against uncommitted noise from
    unrelated files; call those out separately. Record the branch, HEAD SHA, base SHA, and
    dirty-tree flag in the report header, so a re-run can tell when the branch has moved.
+4. **`04_verify.history.md`**, when present — the rotated trail §"The finding ledger" rebuilds
+   the ledger and round number from, alongside the current (not-yet-rotated) `04_verify.md`.
 
 ---
 
@@ -132,14 +124,13 @@ Always read, in order:
 From `00_reqs.md`, produce a flat numbered checklist. Each item should be one atomic,
 checkable claim. Rules:
 
-- One bullet in the source may expand into multiple atomic items (e.g., "declare X enum
-  with values A=1, B=2" → one item for existence, one per value).
-- Include every "must", "should", and "do NOT" statement. Negatives count as
-  requirements and need evidence that the forbidden thing is absent.
-- Pull constraints out of tables (mapping tables, value tables) as separate items —
-  each row is typically its own check.
+- One bullet may expand into multiple atomic items (e.g., "declare X enum with values
+  A=1, B=2" → one item for existence, one per value).
+- Include every "must", "should", "do NOT" statement — negatives need evidence the
+  forbidden thing is absent.
+- Pull constraints out of tables as separate items — each row is typically its own check.
 - STOP-AND-ESCALATE gates are requirements: verify they were honored.
-- "Notes to Implementer" / pattern references are context, not requirements — do not
+- "Notes to Implementer" / pattern references are context, not requirements — don't
   fabricate checks from them unless the prose says "must follow".
 
 Show the user this extracted list before verifying, so they can catch misreadings early
@@ -156,33 +147,28 @@ to `Grep`/`Glob` only when none fits, or for file-pattern searches.
 For each extracted requirement, gather evidence:
 
 - **File existence / location** → `Glob` or `Read`. Cite the path.
-- **Symbol existence / shape** → `Grep` for the symbol, then `Read` the surrounding
-  block. Cite `file:line`.
-- **Value-level claims** (enum values, default values, property types) → `Read` the
-  exact lines. Quote them in the verdict.
-- **Absence claims** (no forbidden pattern, no duplicate declarations) → `Grep` across
-  the touched files and surrounding area. A clean `Grep` result is valid evidence; say
-  "grep returned 0 hits in <scope>".
-- **Equivalence / "no drift" claims** → `Read` both sides, diff mentally, cite the
-  matching lines.
+- **Symbol existence / shape** → `Grep` the symbol, `Read` the surrounding block, cite `file:line`.
+- **Value-level claims** (enum/default values, property types) → `Read` the exact lines;
+  quote them in the verdict.
+- **Absence claims** (no forbidden pattern, no duplicate declarations) → `Grep` the touched
+  files and surrounding area; a clean result is valid evidence — say "grep returned 0 hits
+  in <scope>".
+- **Equivalence / "no drift" claims** → `Read` both sides, diff mentally, cite the matching lines.
 
 Verdicts:
 
 - **PASS** — evidence matches the requirement exactly. Cite it.
-- **FAIL** — evidence contradicts, or the required artifact is missing. State what the
-  spec asked for and what you found. When the fix is a concrete, bounded edit at the
-  cited location (a literal value, a missing enum/interface member, a marker comment to
-  insert or replace, a forbidden line to comment out) — not a design call — record it as
-  a one-line **Remedy**. Omit `Remedy` when the fix requires judgment, spans multiple
-  files, or has no single obvious edit.
-- **PARTIAL** — requirement has N sub-claims and M < N are satisfied. List which
-  sub-claims fail. Same `Remedy` rule as FAIL, applied per failing sub-claim where a
-  bounded edit exists.
-- **N/A** — requirement was explicitly scoped out by a later note or parent constraint.
-  Cite the source of the exclusion.
-- **UNVERIFIABLE** — requirement cannot be checked from static code alone (e.g., "works
-  at runtime"). Say so; suggest a runtime check (`npm test`, Chrome MCP,
-  `tsc --noEmit`).
+- **FAIL** — evidence contradicts, or the required artifact is missing. State what the spec
+  asked for and what you found. When the fix is a concrete, bounded edit at the cited
+  location (a literal value, a missing enum/interface member, a marker comment to insert or
+  replace, a forbidden line to comment out) — not a design call — record it as a one-line
+  **Remedy**; omit `Remedy` when the fix needs judgment, spans multiple files, or has no
+  single obvious edit.
+- **PARTIAL** — N sub-claims, M < N satisfied. List which sub-claims fail. Same `Remedy` rule
+  as FAIL, per failing sub-claim where a bounded edit exists.
+- **N/A** — explicitly scoped out by a later note or parent constraint. Cite the exclusion.
+- **UNVERIFIABLE** — cannot be checked from static code alone (e.g., "works at runtime").
+  Say so; suggest a runtime check (`npm test`, Chrome MCP, `tsc --noEmit`).
 
 ---
 
@@ -374,17 +360,36 @@ nothing was aggregated.
 
 ---
 
+## The finding ledger
+
+Before `## Output`, rebuild — never recompute — a fingerprint ledger from `04_verify.md` /
+`04_verify.history.md`, so a finding seen in a prior round is recognized here by lookup, not
+reinvented, and one that stops recurring is retired rather than dropped. Field set, status
+vocabulary, the rebuild algorithm, and round-number derivation live in `finding-ledger.md`
+(`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`,
+`ref: finding-ledger.md`, never a raw `Read`) — followed in-context here, the role
+`verify-template.md` plays at `## Output` below.
+
+**Outcomes:** a fingerprint both the ledger and this run's aggregated findings name is
+**matched** — `first-seen` survives, only `status`/`contributing lenses` update. One only this
+run reports is **inserted**, `first-seen` = the round just derived. One the ledger holds but
+this run no longer names is **retired** as `status: fixed`, kept, never dropped.
+
+The round number derived here is what `## Output` and the chat summary both surface.
+
+---
+
 ## Output
 
 Two outputs, always both:
 
-1. **Full report** — written to the task folder's `04_verify.md`, which always holds the
-   latest run. Before overwriting, rotate the prior `04_verify.md` into
-   `04_verify.history.md` per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`,
-   `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`".
-   Each archived entry is self-identifying via its own header (`**Commit:** <SHA>`,
-   `**Audited at:** <timestamp>`). When the `<path-to-00_reqs.md>` override form is used,
-   write both files as siblings of that file instead.
+1. **Full report** — written to `04_verify.md`, which always holds the latest run. Before
+   overwriting, rotate the prior copy into `04_verify.history.md` per the shared pipeline
+   conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`,
+   `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`". Each archived
+   entry self-identifies via its own header (`**Commit:** <SHA>`, `**Audited at:**
+   <timestamp>`). On the `<path-to-00_reqs.md>` override form, write both files as siblings
+   of that file instead.
 2. **Chat summary** — concise overview printed inline so the user can triage pass/fail
    without opening the file.
 
@@ -432,46 +437,41 @@ End with the final-output block (see below).
 
 ## What this skill will NOT do
 
-- Will NOT modify any source file outside `_local/` — verification is read-only, and the
-  only write is the task folder's `04_verify.md`. Fixes to source are asked for separately.
-- Will NOT mark something PASS without concrete evidence. "Looks correct" is not a verdict.
+- Will NOT modify any source file outside `_local/` — the only write is `04_verify.md`; fixes to source are asked for separately.
+- Will NOT mark something PASS without concrete evidence — "looks correct" is not a verdict.
 - Will NOT use a derived artifact (an LLM-authored plan) as the source of truth.
-- Will NOT invent requirements not present in the spec. A capability's invariants surface
-  as capability `finding`s at the `verify` phase, not as fabricated requirement-list rows.
-- Will NOT name, require, or assume any capability — including when reconciling the two
-  adversarial sources or classifying a finding into the blocking set.
+- Will NOT invent requirements not present in the spec — a capability's invariants surface as `verify` `finding`s, not fabricated requirement-list rows.
+- Will NOT name, require, or assume any capability, including when reconciling the two adversarial
+  sources or classifying the blocking set.
 
 ---
 
 ## Edge Cases
 
-- **Spec is stale**: run the staleness check per the shared pipeline conventions doc
-  (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`)
-  §"Report/spec staleness check", comparing `last-commit-timestamp-query` (see "Direct
-  provider resolution") against the spec header's fetch/author date. If the branch has moved
-  since, warn the user and continue anyway, but flag it.
-- **Requirements reference files that no longer exist**: the file may have moved or been
-  renamed. `Glob` for the basename before giving up. If truly missing, mark the
-  dependent requirements UNVERIFIABLE and say why.
-- **Branch has commits from multiple tasks**: inspecting the commit history between the
-  base and HEAD (the same content-gathering approach as the Implementation scope above)
-  will show this. Only verify the files touched for this task; list the unrelated
-  commits separately.
-- **Uncommitted changes**: the working-tree inspection above shows a dirty tree. Verify
-  against `HEAD`, not the working tree — and note the dirty files so the user knows they
-  weren't included.
-- **Change carries neither adversarial defect class**: the lean pass reports nothing, and the
-  `## Adversarial findings` section is omitted **only when** the run withdrew no candidate and every
-  contributor delivered. Never synthesize a "no issues found" entry or relax the citation rule.
-- **Empty registry**: the lean adversarial pass still runs — it is a core default, not a
-  contribution — while the phase below produces nothing. The generic verdict stands alone; the
-  two non-blocking sections still render empty, and no capability term surfaces.
-- **A contributor fails or returns nothing**: an unregistered `subagent:` agent, an errored
-  dispatch, or an unparseable block contributes no findings — never a STOP, and the generic
-  audit still stands. It contributed nothing *and is not clean*: state it with its provenance
-  and mark the adversarial coverage **incomplete**. Reporting only — no verdict change.
-- **Re-run after fixes**: `04_verify.md` is overwritten and the prior report rotated into
-  `04_verify.history.md`, giving a trail across iterations. It grows unbounded; prune manually.
+- **Spec is stale**: staleness check per the shared pipeline conventions doc
+  (`resolve_content`, `class: shared`, `ref: pipeline-conventions.md`) §"Report/spec staleness
+  check" — compares `last-commit-timestamp-query` against the spec header's date; warn and
+  continue if the branch moved since.
+- **Requirements reference files that no longer exist**: `Glob` for the basename before
+  giving up; if truly missing, mark the dependent requirements UNVERIFIABLE and say why.
+- **Branch has commits from multiple tasks**: inspect the commit history between base and
+  HEAD; verify only this task's files, list unrelated commits separately.
+- **Uncommitted changes**: verify against `HEAD`, not the working tree — note the dirty
+  files as excluded.
+- **Change carries neither adversarial defect class**: the lean pass reports nothing; omit
+  `## Adversarial findings` only when nothing was withdrawn and every contributor delivered —
+  never synthesize a "no issues found" entry or relax the citation rule.
+- **Empty registry**: the lean pass still runs (a core default, not a contribution); the phase
+  below produces nothing, the two non-blocking sections render empty, no capability term
+  surfaces.
+- **A contributor fails or returns nothing**: no STOP, the generic audit still stands — state
+  its provenance and mark adversarial coverage **incomplete**; reporting only, no verdict
+  change.
+- **Re-run after fixes**: `04_verify.md` is overwritten, the prior report rotated into
+  `04_verify.history.md` — an unbounded trail; prune manually.
+- **`04_verify.history.md` absent, empty, or pre-fingerprint only**: never an error — the
+  ledger rebuild treats a missing/empty trail as round 1, empty ledger, and a pre-fingerprint
+  history as entirely outside the loop (`finding-ledger.md` §"Round-number derivation").
 
 ---
 

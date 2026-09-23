@@ -1,6 +1,6 @@
 # `04_verify.md` full output shape
 
-The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path); when routing leaves it with no entry, it renders the single line `- none`. The `## Pre-existing` and `## Accepted warnings` sections are **unconditional — always rendered, even empty**, so the ledger shape is stable across runs. The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — which subordinates the omission rule: omit the whole section on a clean change only, meaning a run that produced no surviving finding, withdrew no candidate, and had every contributor deliver.
+The verbatim structure `/wf:verify-spec` writes to the task folder's `04_verify.md`. Keep quoted snippets short — one or two lines max; the reader clicks `file:line` for the rest. The `## Capability findings` section is present only when one or more capabilities contributed `finding`s at the `verify` phase (omit it on the no-op path); when routing leaves it with no entry, it renders the single line `- none`. The `## Pre-existing`, `## Accepted warnings`, and `## Ledger` sections are **unconditional — always rendered, even empty**, so the report shape is stable across runs. The `## Adversarial findings` section is present whenever the run has anything to record — a surviving finding, a Withdrawn line, or a Coverage record — which subordinates the omission rule: omit the whole section on a clean change only, meaning a run that produced no surviving finding, withdrew no candidate, and had every contributor deliver.
 
 ## Contents
 
@@ -123,6 +123,22 @@ contributor exactly as `## Capability findings` does:
 
 - **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:
   - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
+
+## Ledger
+
+**Always rendered, even when empty**, on the same unconditional rule as `## Pre-existing` and
+`## Accepted warnings` above — a stable ledger shape across runs is the point. One row per
+fingerprint the rebuild (`verify-spec/SKILL.md` §"The finding ledger") carries after this run's
+match/insert/retire pass — every fingerprint ever seen in the current loop, not only this run's:
+an entry a prior round saw but this run doesn't stays here as `fixed`, never dropped.
+
+| Fingerprint | Defect | First-seen round | Status | Contributing lenses |
+|---|---|---|---|---|
+| `path/to/file:<section>\|<defect>` | `<defect>` | `<N>` | `<open \| fixed \| refuted \| warn \| pre-existing \| accepted>` | `<lens>/<check>, <lens>/<check>` |
+| none | | | | |
+
+`none` renders as the single row above only when the ledger is empty (round 1 with no
+fingerprints yet inserted); otherwise every ledger entry gets its own row, in any stable order.
 
 ## Adversarial findings
 
