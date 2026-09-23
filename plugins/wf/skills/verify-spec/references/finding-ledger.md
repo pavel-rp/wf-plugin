@@ -20,9 +20,11 @@ key); **defect** (the `defect` half of the fingerprint, its own field); **first-
 (the round number, below, of the **earliest** round, in the fold under "Rebuild algorithm",
 whose findings name this fingerprint — never recomputed once set, §"Match / insert /
 retire"); **status** (one of the six values below); **contributing lenses** (the
-`<lens>/<check>` or bare `<lens>` provenance tags the most recent matching round reported,
+`<lens>/<check>` or bare `<lens>` provenance tags from the fingerprint's most recent **match**,
 exactly as aggregation, `verify-spec/SKILL.md` §"Fire the `verify` phase", already collapsed
-them — replaced wholesale on every match, never merged).
+them — replaced wholesale on every match, never merged; a **retired** fingerprint has no match
+in the current round, so this field is not updated — it holds the last-known contributors from
+before retirement, not cleared, per §"Match / insert / retire").
 
 ## Status vocabulary
 
