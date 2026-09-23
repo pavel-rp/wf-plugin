@@ -239,12 +239,7 @@ present whenever the run has anything to record. Rationale and worked examples l
 
 ## Fire the `verify` phase (aggregate capability findings)
 
-After the generic per-requirement audit, fire the **`verify`** phase and aggregate any
-**`finding`** contributions the registered capabilities attach to it.
-
-Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — do
-**not** read `## Capabilities` or any `manifest.md` yourself — referencing the taxonomy
-by **phase name / contribution-kind name**, never by heading:
+After the generic per-requirement audit, fire the **`verify`** phase and aggregate any **`finding`** contribution the registered capabilities attach to it. Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — never `## Capabilities`/`manifest.md` directly — referencing the taxonomy by phase name / contribution-kind name, never heading:
 
 1. **Call `resolve_registry({ workspaceRoot, ... })`.** It returns the ordered active `capabilities[]` (in
    registry order), each already resolved from the registry and its `manifest.md`:
@@ -290,12 +285,11 @@ by **phase name / contribution-kind name**, never by heading:
    separately from report attribution. A `status: stop`, diagnostic, malformed derived
    role, or non-`isolated` shape is a hard stop before Task; otherwise invoke one Task
    with `subagent_type: <agent>`, passing the artifact under audit **and the following
-   finding contract inline in the dispatch prompt** (the same bytes enter every enabled
-   lens context; no per-agent resolver fetch and no payload-reduction claim):
+   finding contract inline in the dispatch prompt** (identical bytes to every enabled
+   lens; no per-agent resolver fetch):
 
    ```text
-   Return only this block, with one item per concrete, evidenced issue and an empty
-   `findings:` list when clean:
+   Return only this block — one item per evidenced issue, `findings:` empty when clean:
 
    AUDIT-<LENS> — <clean | findings>
 
@@ -303,12 +297,13 @@ by **phase name / contribution-kind name**, never by heading:
    findings:
    - severity: <fail | warn>
      location: <file:line, or unit identifier>
+     check: <this lens's own rubric item number>
      issue: <the concrete defect, one line>
      evidence: <what proves it — a quoted line or grep result>
      recommendation: <the concrete bounded change, or "escalate">
 
-   `fail` blocks shipment; `warn` is non-blocking. Report no speculation, style nits,
-   or restated generic requirements.
+   `fail` is a candidate for the core-computed blocking set, not an unconditional gate;
+   `warn` is non-blocking; no speculation, style nits, or restated requirements.
    ```
 
    Pass `model.value` only when non-null (effort is unsupported), and forward only the
@@ -316,16 +311,22 @@ by **phase name / contribution-kind name**, never by heading:
    and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the
    child never self-replaces. If the Task target itself is unavailable, preserve the
    existing optional-contributor no-op.
-4. **Aggregate provenance-tagged** — render every contributor's findings, each tagged
-   with its **source capability** (the `name` field); registry order is cosmetic.
+4. **Aggregate and collapse** — group by `file:section` (the location derivation
+   `## Pre-existing` reuses); assign a lens-independent `defect` key per distinct defect
+   there, collapsing same-defect findings into one listing every contributing lens, its
+   evidence, `<lens>/<check>` provenance (bare `<lens>` absent a `check:`), and its own
+   `location` — additive only, never dropping, editing, or re-tagging a contribution; every
+   rendered contributor keeps that `file:line` beside the fingerprint. Distinct defects
+   stay distinct keys; on doubt, keep findings separate (judgment, not string match). A
+   collapsed finding takes the highest severity (any `fail` wins) and is
+   anchored if any contributor anchors it. Its identity is the fingerprint `file:section|defect`;
+   its **cited lines** (every contributor's `location` and evidence lines) are what every
+   identity test below matches. Tag each by every contributing **source capability**; order is cosmetic.
 
-**No-op:** if `resolve_registry({ workspaceRoot, ... })` returns an empty `capabilities[]` or no fragment
-matches `verify` under the `finding` kind, the whole phase produces **nothing** and the
-generic verdict stands alone (no capability findings section, no capability/stack/domain
-term surfaced, no broken subagent reference, no STOP). A malformed `dispatch` is that
-contributor's own no-op — never a STOP — and is reported as incomplete coverage below. Whether
-an aggregated finding gates the verdict is decided by §"The blocking set" below, never by its
-mere existence.
+**No-op:** an empty `capabilities[]`, or no fragment matching `verify`/`finding`, means the
+phase produces **nothing** — no capability/stack/domain term, no STOP. A malformed
+`dispatch` is that contributor's own no-op, reported as incomplete coverage below. Gating
+is decided by §"The blocking set" alone, never by mere existence.
 
 ### The blocking set
 
@@ -336,9 +337,8 @@ What gates the verdict is a **blocking set**, assembled once here:
 - **Every aggregated `finding` whose `severity` is `fail` *and* that is anchored.**
   **Requirement-anchored:** it names the extracted requirement it contradicts and quotes the
   contradicting evidence — a nonexistent requirement number or mere topical overlap does not
-  qualify. **Change-anchored:** its `location` **or any cited evidence line** falls inside the
-  branch-vs-`main` diff gathered under "Implementation scope" — location alone is not the test,
-  so a finding citing one changed line and one unchanged line it breaks still qualifies.
+  qualify. **Change-anchored:** any of its **cited lines** (step 4) falls inside the branch-vs-`main`
+  diff gathered under "Implementation scope" — one changed line suffices beside unchanged ones.
 
 Anchoring is a per-finding judgment call, not a string match, and it classifies only the
 findings aggregated at step 4 — never a requirement verdict, and never a lean-pass candidate
@@ -365,12 +365,12 @@ nothing was aggregated.
 - **One-directional.** Only a `core` candidate may be withdrawn or annotated. An
   aggregated `finding` is never dropped, edited, re-tagged, merged, reordered, or withheld
   here, and a contributor that failed or returned nothing can never cause a withdrawal.
-- **Overlap** is a `finding` whose `location` cites the same `file:line` as a candidate's
-  **changed-side** citation; with none, the candidate renders unchanged. An overlapping
-  `finding` that rests on the candidate's *existing-side* evidence too leaves the candidate
-  adding nothing → **withdraw** it, recorded as a `Withdrawn` line naming its cover. One
-  resting on *different* evidence is a single defect seen twice → **retain both**, each
-  keeping its own provenance and naming the other, never silently collapsed or doubled.
+- **Overlap** is a `finding` with a **cited line** (step 4) at the same `file:line` as a
+  candidate's **changed-side** citation; with none, the candidate renders unchanged. If any
+  contributor of that `finding` rests on the candidate's *existing-side* evidence too, the
+  candidate adds nothing → **withdraw** it, as a `Withdrawn` line naming its cover's fingerprint.
+  Otherwise it is a single defect seen twice → **retain both**, each keeping its own
+  provenance and naming the other, never silently collapsed or doubled.
 
 ---
 

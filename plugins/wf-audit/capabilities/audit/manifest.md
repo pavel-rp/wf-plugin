@@ -1,6 +1,6 @@
 # Audit capability manifest
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.contract.md` (manifest schema v2)
 **Executed by:** `plugins/wf/skills/_contracts/invocation-runtime.contract.md`
 **Capability:** audit (registered in the downstream `_local/config.md` `## Capabilities` table)

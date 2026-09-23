@@ -49,10 +49,37 @@ assertion row carries no severity, is not a finding, and is never routed — it 
 The section's presence rule, its grouping, and its bullet shape are unchanged by that routing;
 when the routing leaves it with no entry at all, render the single line `- none`.
 
-- **<source capability>** — [FAIL] <finding> at `path/to/file:L` — <evidence> — Remedy: <bounded edit>
-- **<source capability>** — [FAIL] <finding> at `path/to/file:L` — <evidence>
+Every finding bullet in this report — here, under `## Pre-existing`, and under
+`## Accepted warnings`, collapsed or not — is keyed by its fingerprint
+`path/to/file:<section>|<defect>` — never a bare `file:L` in its place — and names its
+`<lens>/<check>` provenance (bare `<lens>` when the contributor carries no `check:`) **with
+that contributor's cited `file:L` beside it**: `` `<lens>/<check>` at `path/to/file:L` ``.
+The fingerprint is the finding's identity; the cited `file:L` is where `/wf:verify-fix`
+applies the remedy, so a contributor line never drops it. A single-lens finding is a collapse
+of one:
+
+- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence> — Remedy: <bounded edit>
+- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence>
 - **<source capability>** — [PASS] <rule asserted, no divergence found>
 - none
+
+A finding collapsed from multiple lenses (the same `defect` at one `file:section`, per the
+aggregation step) renders as one bullet naming every contributing lens, with each lens's own
+evidence, `<lens>/<check>` provenance, cited `file:L`, and remedy nested beneath it — never
+one bullet per lens, and never a single evidence field standing in for all of them:
+
+- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:
+  - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
+  - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence>
+
+The headline takes the fingerprint, not any one lens's line, because the contributing lenses
+may cite different lines within the shared `file:section`; no single lens's line is
+privileged. Each nested contributor line keeps its own cited `file:L`, and every one stays a
+**cited line** of the finding, so `/wf:verify-fix`, anchoring
+and lean-pass overlap match on any of them. When the contributors span more than one source
+capability, the headline tag lists every one (`**<capability>, <capability>**`) and each
+nested line prefixes its lens with its own capability (`<capability>:<lens>/<check>`), so no
+contribution loses its provenance.
 
 ## Pre-existing
 
@@ -64,12 +91,22 @@ an empty render with a "none found" placeholder beyond the single `- none` line.
 One entry per aggregated `fail`-severity finding that is anchored to neither a contradicted
 requirement nor a line in the branch diff, and that the dirty-file / empty-diff carve-out does
 not claim — non-blocking, tagged with its source capability.
-Entries are keyed by `file:section`, where `section` is the enclosing markdown heading for
-prose, the enclosing symbol or declaration for source, and the file itself when neither exists.
-A pre-existing entry never dismisses a requirement `FAIL`/`PARTIAL`.
+Entries are keyed by the full fingerprint `file:section|defect`, where `section` is the
+enclosing markdown heading for prose, the enclosing symbol or declaration for source, and the
+file itself when neither exists, and `defect` is the aggregator-assigned key naming the
+specific defect at that location. A pre-existing entry never dismisses a requirement
+`FAIL`/`PARTIAL`.
 
-- **<source capability>** — `path/to/file:<section>` — <finding> — <evidence>
+- **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — `<lens>/<check>` at `path/to/file:L` — <evidence>
 - none
+
+A pre-existing entry collapsed from multiple lenses uses the same nested shape as
+`## Capability findings` above — one bullet naming every contributing lens beneath it, each
+with its own evidence, `<lens>/<check>` provenance, and cited `file:L`:
+
+- **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — collapsed from <N> lenses:
+  - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
+  - `<lens>` at `path/to/file:L` — <evidence from a contributor that carries no `check:`>
 
 ## Accepted warnings
 
@@ -78,8 +115,14 @@ A pre-existing entry never dismisses a requirement `FAIL`/`PARTIAL`.
 One entry per aggregated `warn`-severity finding, whatever its anchor — a `warn` is
 non-blocking by severity alone and needs no anchor check — tagged with its source capability.
 
-- **<source capability>** — <finding> at `path/to/file:L` — <evidence>
+- **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` at `path/to/file:L` — <evidence>
 - none
+
+A `warn` collapsed from multiple lenses is keyed by its fingerprint and nests every
+contributor exactly as `## Capability findings` does:
+
+- **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:
+  - `<lens>/<check>` at `path/to/file:L` — <that lens's own evidence> — Remedy: <that lens's recommendation>
 
 ## Adversarial findings
 
@@ -104,7 +147,8 @@ Withdrawn — present only when reconciliation withdrew at least one core candid
 each, so a suppressed candidate is visible rather than silently absent:
 
 - **core** — [bound] <the candidate> at `path/to/file:L` — withdrawn: covered by
-  `<source capability>`'s finding at the same line on the same evidence
+  `<source capability>`'s finding `path/to/file:<section>|<defect>`, one of whose cited lines
+  is the same line, on the same evidence
 
 Coverage — present only when a contributor failed, was unavailable, or returned an
 unparseable block. Omit entirely when every contributor delivered (an empty `findings:` list
