@@ -32,6 +32,28 @@ if ! grep -q 'finding contract inline in the dispatch prompt' "$VERIFY"; then
   report_fail "verify-spec must inline the finding contract in enabled dispatch prompts"
 fi
 
+for marker in 'round: <N>' 'open_fingerprints:' 'changed_sections:'; do
+  if ! grep -qF "$marker" "$VERIFY"; then
+    report_fail "verify-spec must carry the round-aware dispatch field '$marker'"
+  fi
+done
+
+# The round-aware fields are caller input: they must live in a separate Round context
+# fence above the return template, never inside the "Return only this block" fence.
+round_ctx_line="$(grep -n 'Round context (input only' "$VERIFY" | head -n1 | cut -d: -f1)"
+return_line="$(grep -n 'Return only this block' "$VERIFY" | head -n1 | cut -d: -f1)"
+if [ -z "$round_ctx_line" ] || [ -z "$return_line" ] || [ "$round_ctx_line" -ge "$return_line" ]; then
+  report_fail "verify-spec must send the Round context block above the return template"
+fi
+leaked="$(awk '
+  /^[[:space:]]*```/ { in_ret = 0; next }
+  /Return only this block/ { if (!in_ret) in_ret = 1 }
+  in_ret && /^[[:space:]]*(round|open_fingerprints|changed_sections):/ { print NR }
+' "$VERIFY")"
+if [ -n "$leaked" ]; then
+  report_fail "round-aware fields leaked into the return template (line(s): $leaked)"
+fi
+
 agent_count=0
 for agent in "$AUDIT_ROOT"/agents/{correctness,security,convention,consistency,operational}-auditor.md; do
   agent_count=$((agent_count + 1))
@@ -40,6 +62,9 @@ for agent in "$AUDIT_ROOT"/agents/{correctness,security,convention,consistency,o
   fi
   if grep -Eq 'resolve_content.*finding-contract|ref: fragments/finding-contract.md' "$agent"; then
     report_fail "$(basename "$agent") still fetches the finding contract"
+  fi
+  if ! grep -q 'dispatch prompt carries `round >= 2`' "$agent"; then
+    report_fail "$(basename "$agent") is missing the round-aware mandate step"
   fi
   lens="$(basename "$agent" -auditor.md)"
   upper="$(printf '%s' "$lens" | tr '[:lower:]' '[:upper:]')"
@@ -62,5 +87,7 @@ if [ "$fail" -ne 0 ]; then
 fi
 
 printf 'PASS: caller-side lens gate precedes Task dispatch\n'
+printf 'PASS: round-aware dispatch fields and lens mandates are present\n'
+printf 'PASS: Round context block precedes and stays outside the return template\n'
 printf 'PASS: five lens agents perform zero finding-contract/profile fetches\n'
 printf 'PASS: five manifest rows and final-output shapes remain intact\n'

@@ -15,6 +15,7 @@ here in full.
 - [Round-number derivation](#round-number-derivation)
 - [Rebuild algorithm](#rebuild-algorithm)
 - [Match / insert / retire (one round's step)](#match--insert--retire-one-rounds-step)
+- [Pre-dispatch derivation (changed sections, round ≥2)](#pre-dispatch-derivation-changed-sections-round-2)
 - [Worked example](#worked-example)
 
 ## Ledger field set
@@ -213,6 +214,35 @@ and **that round's own reported findings** — against the ledger-so-far:
   the render.
 
 `refuted` is never assigned by any rule above; see §"Status vocabulary".
+
+## Pre-dispatch derivation (changed sections, round ≥2)
+
+`verify-spec/SKILL.md` derives round `N` (above) under §"Inputs to load" item 3, and at the start
+of §"Fire the `verify` phase" runs the prior-rounds fold **before** dispatch — "Rebuild algorithm"
+step 1 and step 2's loop over rounds `1 .. N-1`; step 2's final "once more" pass over the current
+run's findings runs after aggregation. At round ≥2 it also derives a second diff, distinct from `SKILL.md`'s branch-vs-`main` diff gathered
+under "Implementation scope", between the **prior round's `**Commit:**`** (parsed off the same
+most-recent trail entry the round-derivation boundary walk reads) and the **current working
+tree**, dirty files included, never `HEAD`. Map every changed hunk's location through the same
+`section` derivation the aggregator already uses for fingerprints (`verify-template.md`
+§"Pre-existing" — the enclosing markdown heading for prose, the enclosing symbol/declaration for
+source, the file itself when neither exists), and dedupe into a `file:section` list —
+`changed_sections`. This runs the section-key function forward (from a diff, to build a list)
+rather than backward (from a finding's citation, to key it); no new section-key rule is
+authored. Round 1 skips this entirely — there is no prior round to diff against.
+
+**`open_fingerprints` derivation.** Also at round ≥2: read `open_fingerprints` off the same
+ledger-so-far the fold above just produced — every entry whose `status` field (§"Status
+vocabulary") is `open`, and only those; `fixed`/`pre-existing`/`accepted` entries are not
+carried into the dispatch prompt. For each, render its `fingerprint`, its `defect` field, and
+`last seen: <lens>/<check>` read verbatim off that entry's `contributing lenses` field (the
+provenance already recorded there, unchanged by this read). No new field or status is
+introduced — this is a read of the ledger-so-far the fold already built.
+
+**Working-tree narrowing.** At round 1, `SKILL.md`'s "Uncommitted changes" edge case still
+applies — verify against `HEAD`. At round ≥2 the working tree *is* the audited change
+(`verify-fix` never commits between rounds), so both the report header's `**Tree:**` dirty-file
+list and the `changed_sections` diff above read the working tree, not `HEAD`.
 
 ## Worked example
 
