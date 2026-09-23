@@ -44,28 +44,30 @@ required on every entry:
   it was first seen or since it was last reopened.
 - **fixed** — the fingerprint was in the ledger but no current-run finding names it; retired,
   never dropped.
-- **refuted** — reserved. Nothing in this rebuild assigns it — no current rule in this file
-  produces a `refuted` transition. It exists in the vocabulary because a later capability
-  (an isolated critic verdict) is expected to assign it; a reader of this file looking for
-  the assignment rule will not find one here, by design.
-- **warn** — reserved, like `refuted`: nothing in this rebuild's bucket-mapping rule (below)
-  assigns it. `## Capability findings` is **fail-only** under the blocking-set model
-  (`verify-spec/SKILL.md` §"The blocking set" — a `warn` never makes that bucket), and every
-  actual `warn`-severity match already has a distinct, unambiguous home (`accepted`, below) —
-  so no rule here has a `warn`-shaped gap to fill today. Kept in the vocabulary as a
-  forward-compatible slot (e.g. a future need to distinguish a `warn` that is *also*
-  change-anchored from one accepted outright); a reader looking for its assignment rule will
-  not find one here, exactly as with `refuted`.
+- **refuted** — the fingerprint's most recent match landed in the report's `## Refuted by
+  critic` bucket — a candidate the isolated critic (`verify-spec/SKILL.md` §"Confirm candidate
+  blocking findings") returned `DISAGREE` on, cited code and all. Assigned only when a critic
+  dispatch actually ran and returned that verdict for this fingerprint; a candidate the critic
+  never saw (empty candidate set) or a dispatch that failed/was malformed never reaches this
+  status — it stays `open` instead (fail-closed).
+- **warn** — the fingerprint's most recent match landed in `## Accepted warnings` **and** that
+  match carries the critic's `UNVERIFIABLE` demotion tag (`verify-spec/SKILL.md` §"Confirm
+  candidate blocking findings") — a candidate that was `fail`-severity and anchored until the
+  critic could not confirm or refute it. Distinct from `accepted` (below): both bucket-match in
+  `## Accepted warnings`, but only a critic-demoted entry carries the tag this status reads.
 - **pre-existing** — the fingerprint's most recent match landed in the report's
   `## Pre-existing` bucket (a `fail` anchored to neither a requirement nor the diff).
-- **accepted** — the fingerprint's most recent match landed in `## Accepted warnings` (every
-  `warn`-severity finding, whatever its anchor — the bucket's only occupant).
+- **accepted** — the fingerprint's most recent match landed in `## Accepted warnings` **without**
+  the critic's `UNVERIFIABLE` demotion tag — every originally-`warn`-severity finding, whatever
+  its anchor.
 
 A fingerprint's status is set from **where its most recent match rendered** — the bucket
-alone decides it, with no severity branch inside any bucket: `## Capability findings` →
-`open` (always; that bucket never holds anything but a blocking-set `fail`), `## Pre-existing` →
-`pre-existing`, `## Accepted warnings` → `accepted` — then overridden to `fixed` when a
-round's own findings name the fingerprint nowhere at all. **Single-valued, not layered** — an
+decides it, with one severity-adjacent branch inside a single bucket (`## Accepted warnings`,
+`warn` vs `accepted`, above) and none elsewhere: `## Capability findings` → `open` (always;
+that bucket never holds anything but a critic-confirmed or fail-closed blocking `fail`),
+`## Pre-existing` → `pre-existing`, `## Refuted by critic` → `refuted`, `## Accepted warnings`
+→ `warn` or `accepted` per the tag test above — then overridden to `fixed` when a round's own
+findings name the fingerprint nowhere at all. **Single-valued, not layered** — an
 entry carries exactly one status field, so retiring a `pre-existing`/`accepted` fingerprint to
 `fixed` deliberately discards which bucket it last matched: once nothing reports it, which
 bucket it used to render in has no further consequence for anything this rebuild does, so
