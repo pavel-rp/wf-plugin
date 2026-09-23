@@ -23,7 +23,7 @@ For a single-pass small task, `/wf:lite` is still the right tool — `wf:run` wi
 ## Command Syntax
 
 ```
-/wf:run [<id>] [--auto | --step] [--from <phase>] [--to <phase>] [--no-triage]
+/wf:run [<id>] [--auto | --step] [--from <phase>] [--to <phase>] [--no-triage] [--headless] [--gate <extend|accept|stop>]
 ```
 
 ### Arguments
