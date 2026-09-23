@@ -327,32 +327,27 @@ is decided by §"The blocking set" alone, never by mere existence.
 
 ### Confirm candidate blocking findings (the critic pass)
 
-No aggregated `finding` blocks on assertion alone. A **candidate** is an aggregated
-`fail`-severity finding that is anchored (requirement- or change-anchored, per §"The blocking
-set" below); requirement verdicts never enter the critic — they already block unconditionally.
-
-- **Empty candidate set** → no dispatch; continue to §"The blocking set".
-- **Otherwise**, immediately before dispatch, call `resolve_routing` with `workspaceRoot:
-  <absolute pwd -P workspace root>`, `role: "critic"`, `unitIds: ["verify:critic"]`,
-  `supportsModelSelector: true`, `supportsEffortSelector: false`, `shapeEvidence: {
-  workSurface: "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false,
-  ambiguity: "bounded", risk: "elevated", toolWork: "material", validation: "mechanical",
-  contextIsolation: "required", independentReview: false, returnContract:
-  "mechanically-judgeable", requestedParallelism: 1 }`. Include `actualModel` only when exposed
-  and emit the compact operational record separately from report attribution. `status: stop`,
-  non-null `diagnostic`, or an `executionShape` other than `isolated` halts before Task;
-  otherwise obey `executionShape` exactly and invoke exactly **one** Task with `subagent_type:
-  wf:critic` — the whole candidate set in one dispatch, per `critic-verdict.md`'s dispatch
-  contract (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill:
-  verify-spec`, `ref: critic-verdict.md`). Pass `model.value` only when non-null. The parent
-  validates the block and exclusively owns any `postAttempt`; the child never self-replaces.
-- **Apply the result** per `critic-verdict.md` §"Malformed or failed dispatch" and §"Verdict
-  block": a malformed or failed dispatch fail-closes the whole batch (every candidate stays
-  blocking, unconfirmed, the report names the failure); a well-formed one applies each
-  candidate's own verdict — `AGREE` confirms blocking; `DISAGREE` refutes it, moving it into
-  `## Accepted warnings` tagged `critic: DISAGREE` with the citation (ledger `refuted`);
-  `UNVERIFIABLE` also moves it into `## Accepted warnings`, tagged `critic: UNVERIFIABLE`
-  (ledger `warn`, distinct from an originally-`warn` finding's `accepted`).
+A **candidate** is an aggregated `fail`-severity finding anchored per §"The blocking set"
+below; requirement verdicts never enter the critic — they block unconditionally already.
+**Empty candidate set** → no dispatch, continue to §"The blocking set". **Otherwise**,
+immediately before dispatch, call `resolve_routing` with `workspaceRoot: <absolute pwd -P
+workspace root>`, `role: "critic"`, `unitIds: ["verify:critic"]`,
+`supportsModelSelector: true`, `supportsEffortSelector: false`, `shapeEvidence: {
+workSurface: "external-context",
+atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "bounded", risk:
+"elevated", toolWork: "material", validation: "mechanical", contextIsolation: "required",
+independentReview: false, returnContract: "mechanically-judgeable", requestedParallelism: 1
+}`, `actualModel` when exposed, emitting the compact operational record separately. `status:
+stop`, non-null `diagnostic`, or an `executionShape` other than `isolated` halts before Task;
+otherwise obey `executionShape` and invoke exactly **one** Task, `subagent_type: wf:critic` —
+the whole candidate set in one dispatch, per `critic-verdict.md` (`resolve_content({
+workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref:
+critic-verdict.md`) — `model.value` only when non-null. The parent validates and exclusively
+owns any `postAttempt`; the child never self-replaces. **Apply per `critic-verdict.md`**:
+malformed/failed dispatch fail-closes the batch (every candidate stays blocking, unconfirmed,
+failure named in the report); well-formed dispatch applies each verdict — `AGREE` blocks;
+`DISAGREE`/`UNVERIFIABLE` move into `## Accepted warnings`, tagged `critic:
+DISAGREE`/`UNVERIFIABLE` (ledger `refuted`/`warn`).
 
 ### The blocking set
 
@@ -372,15 +367,13 @@ topical overlap does not qualify. **Change-anchored:** any of its **cited lines*
 falls inside the branch-vs-`main` diff gathered under "Implementation scope" — one changed
 line suffices beside unchanged ones.
 
-A `fail` anchored to neither is **pre-existing**; a `DISAGREE`d candidate is **refuted**, and a
-`warn` — including an `UNVERIFIABLE` demotion — is non-blocking, whatever its anchor. Both are
-recorded — a refuted or demoted candidate under `## Accepted warnings` (tagged `critic:
-DISAGREE`/`UNVERIFIABLE` with the citation), a `pre-existing` fail under `## Pre-existing` —
-never dropped, and neither ever dismisses a requirement `FAIL`/`PARTIAL`. **Never pre-existing
-— blocking-candidate instead, routed to the critic above**: a `fail` citing a file the header
-flags dirty, or any `fail` judged when the branch-vs-`main` diff is empty, since the audited
-window does not cover that work and absence of an anchor there proves nothing. The three
-buckets (blocking, pre-existing, accepted-non-blocking) are exhaustive.
+A `fail` anchored to neither is **pre-existing** (`## Pre-existing`); a `DISAGREE`d or
+`UNVERIFIABLE` candidate is non-blocking under `## Accepted warnings`, tagged with the citation
+— neither is ever dropped, and neither dismisses a requirement `FAIL`/`PARTIAL`. **Never
+pre-existing — blocking-candidate instead, routed to the critic above**: a `fail` citing a
+dirty-flagged file, or any `fail` judged against an empty branch-vs-`main` diff, since the
+audited window does not cover that work. The three buckets (blocking, pre-existing,
+accepted-non-blocking) are exhaustive.
 
 `**Verdict:** PASS` **iff the blocking set is empty**; otherwise `FAIL`, or `PARTIAL` when the
 set holds only `PARTIAL` requirements. The report's `**Verdict:**`, the chat summary's verdict
@@ -504,12 +497,9 @@ End with the final-output block (see below).
 - **`04_verify.history.md` absent, empty, or pre-fingerprint only**: never an error — the
   ledger rebuild treats a missing/empty trail as round 1, empty ledger, and a pre-fingerprint
   history as entirely outside the loop (`finding-ledger.md` §"Round-number derivation").
-- **No candidate blocking findings**: the critic pass dispatches nothing — `## Refuted by
-  critic` renders `- none`, and the ledger gains no `refuted`/critic-`warn` entries this round.
-- **Critic dispatch fails or returns malformed output**: fail closed — every candidate in the
-  batch stays blocking, unconfirmed; the report names the failure (`critic-verdict.md`
-  §"Malformed or failed dispatch"). This is distinct from a per-finding `UNVERIFIABLE` verdict,
-  which demotes only that one candidate to `warn`.
+- **No candidate blocking findings**: the critic pass dispatches nothing this round.
+- **Critic dispatch fails or returns malformed output**: fail closed, distinct from a
+  per-finding `UNVERIFIABLE` (`critic-verdict.md` §"Malformed or failed dispatch").
 
 ---
 

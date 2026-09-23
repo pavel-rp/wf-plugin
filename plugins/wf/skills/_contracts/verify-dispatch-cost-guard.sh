@@ -96,21 +96,29 @@ if [ -z "$critic_section_line" ] || [ -z "$aggregate_line" ] || [ -z "$blocking_
   report_fail "verify-spec must place the critic pass after aggregation and before the blocking set"
 fi
 
-if ! grep -q 'the whole candidate set in one dispatch' "$VERIFY"; then
-  report_fail "verify-spec must dispatch the critic exactly once per round over the whole candidate set"
-fi
+# Phrase checks below tolerate the prose wrapping across lines (a defect this guard itself
+# hit once already): compare against a whitespace-squished copy, never the raw line-based file.
+verify_normalized="$(tr '\n' ' ' < "$VERIFY" | tr -s '[:space:]' ' ')"
 
-if ! grep -q 'Empty candidate set.*no dispatch' "$VERIFY"; then
-  report_fail "verify-spec must skip the critic dispatch on an empty candidate set"
-fi
+case "$verify_normalized" in
+  *"the whole candidate set in one dispatch"*) ;;
+  *) report_fail "verify-spec must dispatch the critic exactly once per round over the whole candidate set" ;;
+esac
 
-if ! grep -q 'fail-closes the whole batch' "$VERIFY"; then
-  report_fail "verify-spec must fail-close every candidate on a malformed or failed critic dispatch"
-fi
+case "$verify_normalized" in
+  *"Empty candidate set"*"no dispatch"*) ;;
+  *) report_fail "verify-spec must skip the critic dispatch on an empty candidate set" ;;
+esac
 
-if ! grep -q 'requirement verdicts never enter the critic' "$VERIFY"; then
-  report_fail "verify-spec must keep requirement verdicts out of the critic dispatch"
-fi
+case "$verify_normalized" in
+  *"fail-closes the batch"*) ;;
+  *) report_fail "verify-spec must fail-close every candidate on a malformed or failed critic dispatch" ;;
+esac
+
+case "$verify_normalized" in
+  *"requirement verdicts never enter the critic"*) ;;
+  *) report_fail "verify-spec must keep requirement verdicts out of the critic dispatch" ;;
+esac
 
 if [ ! -f "$CRITIC_AGENT" ]; then
   report_fail "missing critic agent at plugins/wf/agents/critic.md"
