@@ -58,6 +58,10 @@ Use verbatim as `{task-id}` — no normalization. Then load `04_verify.md` from 
 
 Treat as an explicit override. Useful when the report lives outside `{task-root}/` (e.g., `/wf:verify-spec` was run with a `<path-to-00_reqs.md>` override and wrote the report as a sibling). Write the fix log as a sibling of the override path too.
 
+### `--attempt <k>` (optional — composes with any form above)
+
+May appear anywhere in the argument list alongside the empty / `<id>` / `<path-to-04_verify.md>` forms above — it selects the **attempt scope**, never the task or report identity. When present, `k` is the resolved scope outright. When absent, the scope is resolved in Phase 1.5 below. `--attempt` never changes which task or report this invocation targets.
+
 ---
 
 ## Direct provider resolution (how `current-branch-query` and `last-commit-timestamp-query` are reached)
@@ -97,13 +101,25 @@ Rationale: the audit's evidence lines (`file:line`) are only meaningful on the b
 
 ---
 
+## Phase 1.5: Resolve Attempt Scope
+
+Resolve the attempt scope `k` this invocation runs under — the key every attempt record below is scoped to. Never infer a resume from branch state, report content, or any signal other than the two named here:
+
+1. **Explicit `--attempt <k>` flag** — wins outright. Use it verbatim as `k`.
+2. **Otherwise, scan for the highest already-recorded scope.** Read `{task-root}/{task-id}/05_verify-fix.md` (if present) and every entry in `{task-root}/{task-id}/05_verify-fix.history.md` (if present) for `**Attempt:** <k>` header lines; take the highest `k` found across both.
+3. **Otherwise** (no flag, nothing recorded yet) — default `k = 1`.
+
+Hold the resolved `k` for the ledger rebuild (below) and the Phase 7 write.
+
+---
+
 ## Phase 2: Load and Parse the Report
 
 Read `04_verify.md` in full. Extract the header metadata and four lists, preserving order and each finding's identifier (the numbered requirement, or the capability finding's own id — e.g. `MIG-<n>` for a migration-capability finding).
 
 1. **Header metadata** — capture `Branch:`, `Commit:` (HEAD SHA the audit ran against), base SHA, `Tree:` (clean or dirty), and `**Audited at:**` (the timestamp the staleness check below compares against). These may be absent on reports produced before the header was extended — treat as unknown and skip the staleness check below.
-2. **Requirements list** — each numbered `[PASS | FAIL | PARTIAL | N/A | UNVERIFIABLE]` item. Capture verdict, requirement text, `Expected`, `Found`, `Location` / `Evidence`, and a `Remedy` line (the concrete bounded edit) when the report carries one.
-3. **Capability-finding audit** — each `[PASS | FAIL]` line a capability's `verify` `finding` fragment contributed. Capture the rule, file:line, the snippet, and a trailing `— Remedy: <text>` clause when present. (A capability that produces mechanical-remedy findings — e.g. the migration capability — carries the concrete edit in the finding's `remedy`; this skill applies it, it doesn't know the recipe.)
+2. **Requirements list** — each numbered `[PASS | FAIL | PARTIAL | N/A | UNVERIFIABLE]` item. Capture verdict, requirement text, `Expected`, `Found`, `Location` / `Evidence`, and a `Remedy` line (the concrete bounded edit) when the report carries one. Mint its fingerprint as `path/to/file:L|R<n>` — its own `Location` plus this item's own list number (stable for the life of one loop: the Safety Rules already forbid touching `00_reqs.md`/`01_spec.md`, so the spec never shifts mid-loop).
+3. **Capability-finding audit** — each `[PASS | FAIL]` line a capability's `verify` `finding` fragment contributed. Capture the rule, file:line, the snippet, and a trailing `— Remedy: <text>` clause when present. (A capability that produces mechanical-remedy findings — e.g. the migration capability — carries the concrete edit in the finding's `remedy`; this skill applies it, it doesn't know the recipe.) Its fingerprint is the finding's own `file:section|defect` marker, carried verbatim — never re-minted.
 4. **Deviations from `01_spec.md`** — informational only; do not act on these.
 5. **Adversarial findings**, when the report carries that section — informational only; do
    not act on these. They are non-gating by contract and never change a verdict, so this
@@ -125,9 +141,23 @@ The dirty-tree flag in the header is informational; uncommitted changes since th
 
 ---
 
+## The attempt ledger
+
+Before Phase 3 classification, on every invocation, rebuild — never recompute — a per-fingerprint attempt ledger from `{task-root}/{task-id}/05_verify-fix.md` (if present) and `05_verify-fix.history.md` (if present), keyed on `(fingerprint, scope)`. Field set and the rebuild algorithm live in `attempt-ledger.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-fix`, `ref: attempt-ledger.md`), never a raw `Read` of the plugin-cache path — followed in-context here, the role `verify-fix-template.md` plays at Phase 7.
+
+Simpler than verify-spec's own finding ledger: the attempt scope `k` is always an explicit input (Phase 1.5), never derived from a round boundary — no `PASS`/pre-fingerprint-boundary walk is needed. Every trail entry is read and grouped by its own recorded `**Attempt:** <k>` header.
+
+A blocking fingerprint already carrying an outcome for the **current** scope `k` is routed to `## Awaiting user` at the top of Phase 3 below — no verify-first re-check, no edit. One with no record for scope `k` proceeds through Phase 3/5 exactly as before; whatever it produces becomes that fingerprint's record for scope `k`.
+
+---
+
 ## Phase 3: Classify Findings
 
-Walk the extracted lists and sort each finding into **AUTO**, **ASK**, or **SKIP**.
+First, check every blocking item's fingerprint (Phase 2) against the attempt ledger rebuilt above for the resolved scope `k` (Phase 1.5). A match routes straight to **ROUTED** — skip the rest of this phase and Phase 5 entirely for that item. Everything else is walked and sorted into **AUTO**, **ASK**, or **SKIP** exactly as before.
+
+### ROUTED — already attempted this scope
+
+A blocking fingerprint (a requirement `FAIL`/`PARTIAL`, or a capability finding's own fingerprint) that the attempt ledger already carries an outcome for, in the current scope `k`. Route it straight to `## Awaiting user` carrying its prior outcome and scope — no verify-first re-check (Phase 5 step 2), no edit. This is not a fresh AUTO/ASK/SKIP decision; the fingerprint's outcome for this scope was already decided in an earlier invocation.
 
 ### SKIP
 
@@ -178,6 +208,10 @@ Before editing anything, print the classified plan to chat so the user sees what
 ```
 Verify-fix plan for {task-id} — <N findings total>
 
+Routed (already attempted) (<r>):
+  <id>  <one-line summary>  <file:line>  — prior: <outcome> (scope <k>)
+  ...
+
 Auto-fix (<a>):
   <id>  <one-line summary>  <file:line>
   ...
@@ -198,7 +232,7 @@ Do not wait for approval — proceed to Phase 5 immediately. The plan exists so 
 For each AUTO finding, in report order:
 
 1. Read the cited file around the target line.
-2. Confirm the `Found` state matches what's on disk. If it doesn't (the code has changed since the audit, or the citation is off by more than one or two lines), reclassify the finding as ASK and record the reason. Do not guess a new location.
+2. Confirm the `Found` state matches what's on disk. If it doesn't (the code has changed since the audit, or the citation is off by more than one or two lines), reclassify the finding as ASK and record the reason. Do not guess a new location. This check's outcome is keyed to the finding's fingerprint and becomes that fingerprint's attempt record for scope `k` (Phase 7) — not only a one-run log line; a later invocation in the same scope reads it back via the attempt ledger instead of repeating this check.
 3. Make the minimal edit the finding names. When the finding carries a `remedy`, apply that concrete bounded edit verbatim; otherwise make the minimal edit that produces the `Expected` state. No adjacent cleanup either way.
 4. Re-read the file to confirm the edit applied as intended.
 5. Record the result in the fix log: `[FIXED]` with a one-line diff summary, or `[SKIPPED]` with the reason if Phase 5 step 2 reclassified it.
@@ -211,7 +245,10 @@ Do not batch edits from different findings into one tool call — per-finding ed
 
 ## Phase 6: Present Open Questions
 
-For each ASK finding, emit a numbered question block. Format:
+For each ASK finding, emit a numbered question block. ROUTED entries print differently — see
+below — since no edit is proposed and no reply is solicited.
+
+Format (ASK):
 
 ```
 Q<n>. <requirement text>  (<id>, <verdict>)
@@ -231,6 +268,19 @@ Q<n>. <requirement text>  (<id>, <verdict>)
 
 If the skill has nothing to recommend (truly UNVERIFIABLE or needs a design call), say so explicitly rather than inventing a suggestion.
 
+Format (ROUTED):
+
+```
+Q<n>. <requirement text>  (<id>, <verdict> — routed)
+
+  Prior attempt (scope <k>):
+    Outcome:  <FIXED | FAILED | SKIPPED>
+    Location: <file:line>
+
+  Already attempted in this scope — no edit proposed, no reply needed. Open a new attempt
+  scope (`--attempt <k+1>`) to retry.
+```
+
 After printing all questions, **stop**. Do not proceed to further edits in the same turn — the user replies, then re-invokes the skill or responds inline so a follow-up turn can apply their answers.
 
 ---
@@ -240,6 +290,8 @@ After printing all questions, **stop**. Do not proceed to further edits in the s
 Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
 
 The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at `verify-fix-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-fix`, `ref: verify-fix-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 7), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
+
+Populate the `**Attempt:** <k>` header with the scope resolved in Phase 1.5, and each entry's `- Fingerprint:` line with the fingerprint minted in Phase 2 — these become the attempt ledger's own source data for the next invocation's rebuild.
 
 If the write fails (permissions, path missing), stop and report. Do not fall back to printing the log inline instead of to disk — the durable artifact matters for later re-runs.
 
