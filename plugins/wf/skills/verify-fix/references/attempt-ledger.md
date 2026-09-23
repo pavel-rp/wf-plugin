@@ -34,6 +34,12 @@ fields, each required on every entry:
   that recorded it. A verify-first reclassification (Phase 5 step 2) is recorded as
   `[SKIPPED]` with its existing reason — same check, now remembered per fingerprint and scope
   instead of only logged for that one run.
+- **detail** — the free-text explanation the entry carried alongside its outcome, when it
+  carried one: the `- Reason:` line for `[SKIPPED]`, the `- Error:` line for `[FAILED]`.
+  Absent for `[FIXED]` (its `- Before:`/`- After:` pair is a diff, not an explanation, and
+  Phase 6's ROUTED format has no use for it). Carried so a later routed presentation of the
+  same fingerprint in the same scope can show *why*, not only *that* — Journey 2's "routes to
+  `## Awaiting user` with that reason" depends on this field.
 
 Unlike the finding ledger, there is no `first-seen` field and no status transition — an
 attempt record is a flat fact ("this fingerprint got this outcome in this scope"), not a
@@ -63,10 +69,13 @@ never held in memory across runs:
 2. **Parse each entry.** Read its `**Attempt:** <k>` header (entries written before this
    capability shipped carry no such header — skip them; they predate scoped attempts and
    contribute no ledger rows). For each `[FIXED]`/`[FAILED]`/`[SKIPPED]` line under
-   `## Auto-fixed`, read its `- Fingerprint:` line and its requirement/finding id. For each
-   routed line under `## Awaiting user` that already carries a fingerprint and prior outcome
-   (written by a previous rebuild's own ROUTED classification), read those back too — they are
-   still attempts of record for their scope, not fresh candidates.
+   `## Auto-fixed`, read its `- Fingerprint:` line, its requirement/finding id, and — for
+   `[SKIPPED]`/`[FAILED]` — its `- Reason:`/`- Error:` line as the entry's `detail`. A
+   fingerprint ROUTED in some later round is **not** re-recorded under `## Auto-fixed` that
+   round (Phase 3's routing skips Phase 5 for it entirely) — its one ledger row is the
+   original entry from whichever earlier-round trail file first attempted it, which the gather
+   step (1) already reaches via rotation; `## Awaiting user`'s own routed traceability line
+   carries no fingerprint and is never a parse source for this rebuild.
 3. **Insert.** For each `(fingerprint, scope)` pair found, insert one ledger entry with that
    scope, outcome, and requirement/finding id. A `(fingerprint, scope)` pair encountered more
    than once (should not occur under normal operation, since Phase 3 routes a second attempt

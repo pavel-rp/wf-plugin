@@ -276,6 +276,7 @@ Q<n>. <requirement text>  (<id>, <verdict> — routed)
   Prior attempt (scope <k>):
     Outcome:  <FIXED | FAILED | SKIPPED>
     Location: <file:line>
+    Detail:   <the prior Reason:/Error: text, when the outcome carried one — omit for FIXED>
 
   Already attempted in this scope — no edit proposed, no reply needed. Open a new attempt
   scope (`--attempt <k+1>`) to retry.
