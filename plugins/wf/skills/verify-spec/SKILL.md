@@ -375,7 +375,7 @@ vocabulary, the rebuild algorithm, and round-number derivation live in `finding-
 run reports is **inserted**, `first-seen` = the round just derived. One the ledger holds but
 this run no longer names is **retired** as `status: fixed`, kept, never dropped.
 
-The round number derived here is what `## Output` and the chat summary both surface.
+The round number derived here renders only as the `## Ledger` section's `**Round:**` line.
 
 ---
 
@@ -404,7 +404,7 @@ count (omit zero-count categories — e.g. `12 PASS · 1 FAIL`). Skip this step 
 ### Full report shape (`04_verify.md`)
 
 The verbatim `04_verify.md` output shape — the report header, `## Requirements`,
-`## Capability findings`, `## Pre-existing`, `## Accepted warnings`, `## Adversarial findings`,
+`## Capability findings`, `## Pre-existing`, `## Accepted warnings`, `## Ledger`, `## Adversarial findings`,
 `## Deviations`, and `## Recommended next actions` — lives at `verify-template.md`, obtained via
 `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-spec`,
 `ref: verify-template.md`), never a raw `Read` of the plugin-cache path. Read only on this write
@@ -464,9 +464,9 @@ End with the final-output block (see below).
 - **Empty registry**: the lean pass still runs (a core default, not a contribution); the phase
   below produces nothing, the two non-blocking sections render empty, no capability term
   surfaces.
-- **A contributor fails or returns nothing**: no STOP, the generic audit still stands — state
-  its provenance and mark adversarial coverage **incomplete**; reporting only, no verdict
-  change.
+- **A contributor fails or returns nothing**: no STOP, the generic audit still stands. It
+  contributed nothing *and is not clean*: state it with its provenance and
+  mark the adversarial coverage **incomplete**. Reporting only — no verdict change.
 - **Re-run after fixes**: `04_verify.md` is overwritten, the prior report rotated into
   `04_verify.history.md` — an unbounded trail; prune manually.
 - **`04_verify.history.md` absent, empty, or pre-fingerprint only**: never an error — the

@@ -62,7 +62,7 @@ required on every entry:
 
 A fingerprint's status is set from **where its most recent match rendered** — the bucket
 alone decides it, with no severity branch inside any bucket: `## Capability findings` →
-`open` (always; that bucket never holds anything but an anchored `fail`), `## Pre-existing` →
+`open` (always; that bucket never holds anything but a blocking-set `fail`), `## Pre-existing` →
 `pre-existing`, `## Accepted warnings` → `accepted` — then overridden to `fixed` when a
 round's own findings name the fingerprint nowhere at all. **Single-valued, not layered** — an
 entry carries exactly one status field, so retiring a `pre-existing`/`accepted` fingerprint to
@@ -143,8 +143,8 @@ the gathered trail — the current not-yet-rotated `04_verify.md` and `.history.
 entry, **and** any adjacent pair *within* `.history.md` itself — that carries an **identical**
 `**Commit:**` **and** `**Audited at:**` pair, treating each such pair as **one** entry (the
 more recent of the two). `## Output`'s rotate-then-overwrite is two separate writes
-(`_shared/pipeline-conventions.md` §"Artifact rotation into `.history.md`", unchanged by this
-task, and never touched to fix this); a run resumed between the rotation and the overwrite
+(the shared pipeline conventions doc, `resolve_content` `class: shared`,
+`ref: pipeline-conventions.md`, §"Artifact rotation into `.history.md`" — left unchanged); a run resumed between the rotation and the overwrite
 duplicates that one report into the trail permanently — not only in the resumed run's own
 read, but as two adjacent, identical-header entries thereafter sitting in
 `04_verify.history.md` for every later run to re-encounter. Scoping the collapse to *any*
@@ -166,10 +166,10 @@ never held in memory across runs:
    unbounded tail of an ever-growing `.history.md` beyond that point. The one exception is
    "Round-number derivation" rule 3's **no-boundary** fallback (no `PASS`, no
    pre-fingerprint-capable entry anywhere in the trail): that path genuinely walks the whole
-   trail, with no cap of its own. In practice this is the caller's own responsibility to
-   bound, not this algorithm's: `/wf:run`'s verify⇄fix cap (2 cycles) stops a non-converging
-   loop long before the trail could grow large enough for this to matter, so no separate cap
-   is added here — adding one would duplicate a bound the caller already enforces.
+   trail, with no cap of its own. Under `/wf:run` its verify⇄fix cap (2 cycles) bounds the
+   trail; a direct `/wf:verify-spec` or `/wf:verify-fix` invocation outside `/wf:run` has no
+   such bound, and this path then walks every current-shape entry back to the start of the
+   history. That cost is accepted — the walk reads headers and finding bullets only.
 
 2. **Fold the ledger forward, oldest-first, one round at a time — this is what establishes a
    correct `first-seen`.** A ledger is not re-derived from a single snapshot; it is built by
@@ -189,8 +189,8 @@ never held in memory across runs:
    earliest round (from 1 through N) whose own findings name it — recovered correctly because
    every intermediate round was actually replayed, not merely referenced.
 
-3. **Render** the `## Ledger` section per `verify-template.md`, and surface the round number
-   wherever the report/chat summary already reference it.
+3. **Render** the `## Ledger` section per `verify-template.md`, including its `**Round:**`
+   line — the only place the report carries round `N`; the chat summary does not.
 
 ## Match / insert / retire (one round's step)
 

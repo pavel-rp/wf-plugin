@@ -130,15 +130,20 @@ contributor exactly as `## Capability findings` does:
 `## Accepted warnings` above — a stable ledger shape across runs is the point. One row per
 fingerprint the rebuild (`verify-spec/SKILL.md` §"The finding ledger") carries after this run's
 match/insert/retire pass — every fingerprint ever seen in the current loop, not only this run's:
-an entry a prior round saw but this run doesn't stays here as `fixed`, never dropped.
+an entry a prior round saw but this run doesn't stays here as `fixed`, never dropped. The
+`**Round:**` line always renders first, even when the table is empty — it is the one place the
+report carries the round number this run derived.
+
+**Round:** <N> of the current loop
 
 | Fingerprint | Defect | First-seen round | Status | Contributing lenses |
 |---|---|---|---|---|
 | `path/to/file:<section>\|<defect>` | `<defect>` | `<N>` | `<open \| fixed \| refuted \| warn \| pre-existing \| accepted>` | `<lens>/<check>, <lens>/<check>` |
 | none | | | | |
 
-`none` renders as the single row above only when the ledger is empty (round 1 with no
-fingerprints yet inserted); otherwise every ledger entry gets its own row, in any stable order.
+`none` renders as the single row above only when the ledger is empty (no round of the current
+loop has inserted a fingerprint yet); otherwise every ledger entry gets its own row, in any
+stable order.
 
 ## Adversarial findings
 
