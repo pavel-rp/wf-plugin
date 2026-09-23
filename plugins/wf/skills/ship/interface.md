@@ -9,7 +9,7 @@ keys, safety rules).
 
 ## Invocation
 
-`/wf:ship [<id>] [--status <name>]`
+`/wf:ship [<id>] [--status <name>] [--gate extend]`
 
 ## Terminal block
 
