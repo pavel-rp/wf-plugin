@@ -32,7 +32,7 @@
 #   * the shipper's own prohibition is asserted as a whole sentence INSIDE the
 #     dispatch template, not anywhere in the document.
 #
-# --selftest runs the same evaluator over nineteen seeded synthetic contracts,
+# --selftest runs the same evaluator over twenty-one seeded synthetic contracts,
 # including the exact pre-fix shape (no persistence step at all) and the mirror
 # pair (a deleted failure clause AND a deleted success clause), and requires the
 # evaluator to reject every defective one and accept the sound one. A lint that
@@ -81,7 +81,8 @@ if [ "${1:-}" = "--selftest" ]; then
               shipper-writes unreported row-written-directly single-index-call \
               no-artifacts-as-failure unstaged-write delivery-outcome-only \
               no-denominator unmarked-attempt unbounded-write-scope \
-              undeclared-prefix-write-path; do
+              undeclared-prefix-write-path no-attempt-trigger \
+              attempt-trigger-collides; do
     evaluate "$tmp/$name.md" >/dev/null 2>&1
     rc=$?
     if [ "$rc" -ne 1 ]; then
@@ -100,7 +101,7 @@ if [ "${1:-}" = "--selftest" ]; then
     err "self-test FAILED ($selftest_fail case(s))"
     exit 1
   fi
-  echo "task-artifact-persistence-guard: self-test passed — eighteen seeded defects rejected (no persistence step, a copied index row, a silent failure, a silent success, a failure that stops the other items, a committed-lifecycle declaration, a committed-lifecycle write path behind an honest declaration, a relaxed shipper prohibition, an unreported outcome, a directly-written row, one index call for a whole folder, a never-had-a-worktree item counted as a failure, an unstaged write, capture on the delivery outcome alone, a tally with no terminal denominator, an unmarked in-flight attempt, a destination untied from the write-scope boundary, and an undeclared third write path sharing only the {task-root} prefix with the declared tokens) and the sound contract accepted."
+  echo "task-artifact-persistence-guard: self-test passed — twenty seeded defects rejected (no persistence step, a copied index row, a silent failure, a silent success, a failure that stops the other items, a committed-lifecycle declaration, a committed-lifecycle write path behind an honest declaration, a relaxed shipper prohibition, an unreported outcome, a directly-written row, one index call for a whole folder, a never-had-a-worktree item counted as a failure, an unstaged write, capture on the delivery outcome alone, a tally with no terminal denominator, an unmarked in-flight attempt, a destination untied from the write-scope boundary, an undeclared third write path sharing only the {task-root} prefix with the declared tokens, a missing attempt-qualified trigger for a verify-loop-halt retry, and an attempt-qualified trigger that lets a second halt collide with the first) and the sound contract accepted."
   exit 0
 fi
 

@@ -118,6 +118,12 @@ def derive(raw):
     c["destination_no_committed_class"] = ".wf/" not in dest and ".wf/" not in step
     c["destination_sibling_not_share"] = "sibling" in dest and "never a share of it" in dest
     c["destination_no_new_exception"] = "adds no skill to the write-scope exception list" in dest
+
+    # --- the attempt-qualified trigger (additive to the terminal-row one) ---
+    c["attempt_trigger_declared"] = "second, additive" in dest and "attempt-qualified" in dest
+    c["attempt_trigger_keyed_on_halt"] = "verify-loop-halt" in dest
+    c["attempt_trigger_before_spawn"] = "before a replacement is spawned" in dest
+    c["attempt_trigger_not_skipped"] = "skipped as already-persisted" in dest
     c["destination_same_article"] = "same write-scope article" in dest
 
     # The declaration must describe the path the step ACTUALLY writes. Without
@@ -380,6 +386,28 @@ def evaluate(path):
             "class rather than a share of it"
         )
 
+    # 8.5. The attempt-qualified trigger is additive to, never a replacement for,
+    # the terminal-row trigger, fires before a replacement spawn, is keyed to a
+    # verify-loop-halt outcome, and never lets a second halt read as already-persisted.
+    if not c["attempt_trigger_declared"]:
+        problems.append(
+            "no attempt-qualified persistence trigger, additive to the terminal-row one, "
+            "is declared"
+        )
+    if not c["attempt_trigger_keyed_on_halt"]:
+        problems.append(
+            "the attempt-qualified trigger is not keyed to a verify-loop-halt terminal outcome"
+        )
+    if not c["attempt_trigger_before_spawn"]:
+        problems.append(
+            "the attempt-qualified trigger does not fire before the replacement spawn"
+        )
+    if not c["attempt_trigger_not_skipped"]:
+        problems.append(
+            "a second halt under a later attempt is not guaranteed to persist again beside "
+            "the first rather than being skipped as already-persisted"
+        )
+
     # 9. Non-destructive, row-sourced location.
     if not c["locate_nondestructive"] or not c["locate_archive_candidate"]:
         problems.append(
@@ -419,6 +447,10 @@ SOUND = """# fixture
 The destination is `{task-root}/<id>/` in this orchestrator's own workspace, one folder per in-scope item, named by that item's own id — or, for an item whose source was archived, the matching `{task-root}/_archive/<id>/`.
 
 It answers to the **same write-scope article** as every other write here — it resolves inside `_local/`, so the Forbidden rule is satisfied rather than excepted — and adds **no** skill to the write-scope exception list. It is a **sibling** of the machine-emitted run-evidence class, never a share of it.
+
+### The attempt-qualified persistence trigger
+
+This is a **second, additive** trigger, distinct from the terminal-row trigger below: it fires **before a replacement is spawned**, for exactly the mapped items whose terminal outcome is `verify-loop-halt`. It writes to `{task-root}/<id>/attempt-<k>/`, keyed to the routing attempt the replacement is entering, so a second halt under a later attempt persists again beside the first rather than being **skipped as already-persisted**.
 
 ## The tick loop
 
@@ -535,6 +567,20 @@ DEFECTS = {
         "Write into the matching `{task-root}/<id>/` or `{task-root}/_archive/<id>/`.",
         "Write into the matching `{task-root}/<id>/` or `{task-root}/_archive/<id>/`, "
         "or `{task-root}/_scratch/<id>/` when staging.",
+    ),
+    # The pre-fix shape for the new trigger: no attempt-qualified persistence step
+    # at all, so a verify-loop-halt retry has nothing persisting its ledger before
+    # the replacement spawn.
+    "no-attempt-trigger": lambda s: re.sub(
+        r"\n### The attempt-qualified persistence trigger\n.*?(?=\n## The tick loop)",
+        "", s, flags=re.S,
+    ),
+    # The trigger exists but a second halt under a later attempt is not guaranteed
+    # distinct from the first — it can read as already-persisted and be skipped.
+    "attempt-trigger-collides": lambda s: s.replace(
+        "so a second halt under a later attempt persists again beside the first "
+        "rather than being **skipped as already-persisted**.",
+        "so a second halt under a later attempt reuses the same destination as the first.",
     ),
 }
 
