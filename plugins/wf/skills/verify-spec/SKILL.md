@@ -320,7 +320,7 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    collapsed finding takes the highest severity (any `fail` wins) and is
    anchored if any contributor anchors it. Its identity is the fingerprint `file:section|defect`;
    its **cited lines** (every contributor's `location` and evidence lines) are what every
-   identity test below matches. Tag findings by **source capability**; registry order is cosmetic.
+   identity test below matches. Tag each by every contributing **source capability**; order is cosmetic.
 
 **No-op:** an empty `capabilities[]`, or no fragment matching `verify`/`finding`, means the
 phase produces **nothing** — no capability/stack/domain term, no STOP. A malformed

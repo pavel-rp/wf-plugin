@@ -559,6 +559,19 @@ need "$TEMPLATE" "the Capability findings collapsed headline must use the same f
   '[FAIL] <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:'
 need "$TEMPLATE" "the Pre-existing collapsed entry must render its own fingerprint-keyed shape" \
   '— `path/to/file:<section>|<defect>` — <finding> — collapsed from <N> lenses:'
+need "$TEMPLATE" "an uncollapsed Capability findings bullet must be keyed by the fingerprint with provenance" \
+  '[FAIL] <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` — <evidence>'
+need "$TEMPLATE" "an uncollapsed Accepted warnings bullet must be keyed by the fingerprint with provenance" \
+  '**<source capability>** — <finding> at `path/to/file:<section>|<defect>` — `<lens>/<check>` — <evidence>'
+need "$TEMPLATE" "an uncollapsed Pre-existing entry must carry its provenance" \
+  '— <finding> — `<lens>/<check>` — <evidence>'
+need "$TEMPLATE" "a collapsed contributor line must keep that lens's own remedy" \
+  "— Remedy: <that lens's recommendation>"
+need "$TEMPLATE" "a collapse spanning capabilities must keep each contributor's capability" \
+  '`<capability>:<lens>/<check>`'
+if grep -qF '<finding> at `path/to/file:L`' "$TEMPLATE"; then
+  report_fail "no finding bullet may be keyed by a bare file:L — every finding carries its fingerprint"
+fi
 need "$TEMPLATE" "a collapsed warn must render keyed by its fingerprint" \
   'A `warn` collapsed from multiple lenses is keyed by its fingerprint'
 need "$TEMPLATE" "the Withdrawn line must name a collapsed cover by fingerprint" \
@@ -586,6 +599,10 @@ else
     'EXPECT: collapsed-severity=fail'
   need "$COLLAPSE" "the collapse fixture must assert the collapsed finding is anchored if any contributor anchors it" \
     'EXPECT: anchor-if-any=true'
+  need "$COLLAPSE" "the collapse fixture must assert the collapsed finding's fingerprint" \
+    'EXPECT: fingerprint=changed/validate-unit.txt:validate|missing-null-guard'
+  need "$COLLAPSE" "the collapse fixture must assert every contributor's lens/check provenance" \
+    'EXPECT: provenance=correctness/2,security/6,convention/2,consistency/3'
   need "$COLLAPSE" "the collapse fixture must assert identity is the fingerprint" \
     'EXPECT: identity=fingerprint'
   need "$COLLAPSE" "the collapse fixture must assert identity tests match any cited line" \
@@ -605,6 +622,14 @@ else
     'EXPECT: findings=2'
   need "$NO_COLLAPSE" "the no-collapse fixture must assert the never-merge-on-doubt policy" \
     'EXPECT: doubt-policy=keep-separate'
+  need "$NO_COLLAPSE" "the no-collapse fixture must assert each finding's own provenance" \
+    'EXPECT: provenance=correctness/2,security/3'
+  need "$NO_COLLAPSE" "the no-collapse fixture must exercise an ambiguous pair" \
+    'EXPECT: ambiguous-case=same-line-different-checks'
+  need "$NO_COLLAPSE" "an ambiguous pair must stay two findings with distinct keys" \
+    'EXPECT: ambiguous-defect-keys=2'
+  need "$NO_COLLAPSE" "an ambiguous pair must never lose a finding" \
+    'EXPECT: ambiguous-findings=2'
   need "$NO_COLLAPSE" "the no-collapse fixture must assert it is not gated by mere existence" \
     'EXPECT: gating=none'
 fi

@@ -12,20 +12,22 @@ rule groups by defect, not merely by location.
 ## The change under review
 
 ```text
-changed/preflight-check.txt
+changed/validate-unit.txt
   1 | function validate(unit):
   2 |   if unit.owner == null: return unit   # early return, no guard below this line
   3 |   log(unit.owner.id)                    # dereferences owner with no null check
   4 |   audit_key = "sk_live_4242424242424242"  # hardcoded secret, unrelated to line 2-3
+  5 |   return lookup(unit.owner.id, audit_key) # second dereference, feeds the secret onward
 ```
 
-Same `validate` enclosing symbol — `changed/preflight-check.txt:validate` — as
-`cross-lens-collapse.md`, plus one extra line (4) carrying a second, unrelated defect.
+Same `validate` enclosing symbol — `changed/validate-unit.txt:validate` — as
+`cross-lens-collapse.md`, plus two extra lines: line 4 carries a second, unrelated defect, and
+line 5 is where the ambiguous pair below meets.
 
 ## No collapse
 
 EXPECT: case=no-collapse
-EXPECT: location=changed/preflight-check.txt:validate
+EXPECT: location=changed/validate-unit.txt:validate
 EXPECT: defect-keys=2
 EXPECT: findings=2
 
@@ -39,14 +41,20 @@ EXPECT: provenance=correctness/2,security/3
 ## On doubt, never merge
 
 EXPECT: doubt-policy=keep-separate
+EXPECT: ambiguous-case=same-line-different-checks
+EXPECT: ambiguous-defect-keys=2
+EXPECT: ambiguous-findings=2
 
-Where the aggregator cannot tell whether two findings at one location name the same
-defect, it keeps them separate rather than merge by guess — the same rule this fixture's
-two genuinely distinct defects exercise at its clearest.
+An ambiguous pair: correctness reports line 5's second unguarded dereference of
+`unit.owner.id` (check 2, absent-value handling), and security reports line 5 passing
+`audit_key` onward to `lookup` (check 3, secrets exposure). Both cite the same line in the
+same section, and both issue lines mention `unit.owner.id`. Whether they name one defect or
+two cannot be told from the blocks alone. The aggregator keeps them separate, as two findings
+with distinct `defect` keys, and drops neither. It never merges by guess.
 
 ## Still not gated by mere existence
 
 EXPECT: gating=none
 
-Keeping the two findings separate changes nothing about how either is classified: each is
-still judged for the blocking set by its own anchoring (§"The blocking set").
+Keeping the findings separate changes nothing about how either is classified: each is still
+judged for the blocking set by its own anchoring (§"The blocking set").

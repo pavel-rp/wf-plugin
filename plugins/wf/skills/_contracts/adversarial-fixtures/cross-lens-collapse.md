@@ -15,32 +15,38 @@ rubric `check:` number. The fifth lens (operational) is clean.
 ## The change under review
 
 ```text
-changed/preflight-check.txt
+changed/validate-unit.txt
   1 | function validate(unit):
   2 |   if unit.owner == null: return unit   # early return, no guard below this line
   3 |   log(unit.owner.id)                    # dereferences owner with no null check
 ```
 
-The enclosing symbol is `validate` (a function declaration), so `file:section` resolves to
-`changed/preflight-check.txt:validate` per the existing location derivation (enclosing
+The path is this fixture's own — `changed/preflight-check.txt` already names different
+content in `defective-change.md`, so one path never names two files across the set. The
+enclosing symbol is `validate` (a function declaration), so `file:section` resolves to
+`changed/validate-unit.txt:validate` per the existing location derivation (enclosing
 symbol/declaration for source).
 
 ## The collapse
 
 EXPECT: case=collapse
-EXPECT: fingerprint=changed/preflight-check.txt:validate|missing-null-guard
+EXPECT: fingerprint=changed/validate-unit.txt:validate|missing-null-guard
 EXPECT: lenses=correctness,security,convention,consistency
 EXPECT: defect-keys=1
 
 Four lens findings at one location, naming the same defect (line 3's dereference of
 `unit.owner.id` is unguarded on the path where `unit.owner` is not the early-returned
 `null` case but some other falsy/absent shape the guard misses), collapse into **one**
-finding. The collapsed finding lists all four contributing lenses, each lens's own
+finding. Each lens reaches it through its own rubric item: correctness through absent-value
+handling (2), security through error leakage (6), because the thrown dereference error
+carries the unit's internals to the caller, convention through behavioral parity (2),
+because the file's sibling validators guard `owner` before use, and consistency through
+guard completeness (3). The collapsed finding lists all four contributing lenses, each lens's own
 `evidence` string, and each lens's own `<lens>/<check>` provenance — none dropped, edited,
 or re-tagged. The fifth lens (operational) delivered a clean result and contributes
 nothing at this location.
 
-EXPECT: provenance=correctness/2,security/2,convention/1,consistency/3
+EXPECT: provenance=correctness/2,security/6,convention/2,consistency/3
 EXPECT: evidence=preserved-per-lens
 
 ## Severity disagreement
@@ -59,7 +65,7 @@ happened to report first.
 ## Identity is the fingerprint, matched on any cited line
 
 EXPECT: identity=fingerprint
-EXPECT: cited-lines=changed/preflight-check.txt:2,changed/preflight-check.txt:3
+EXPECT: cited-lines=changed/validate-unit.txt:2,changed/validate-unit.txt:3
 EXPECT: identity-match=any-cited-line
 
 The contributors cite different lines (2 and 3) inside the shared `validate` section, so the
