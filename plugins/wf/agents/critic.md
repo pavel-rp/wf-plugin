@@ -64,10 +64,13 @@ that pass's own reasoning — only its citations and the frozen artifact. Your j
      establishes that the resolved path is inside the workspace root, since the literal path
      is by construction. If the resolution call itself fails or exits non-zero (nonexistent
      path, permission error, `realpath` unavailable), treat that identically to a failed check.
-  4. The resolved real path is not a secret-bearing or machine-state location — `.git/`, `.wf/`
-     (the resolver's committed lifecycle tree), `_local/` (the resolved task root), or any
-     path with a dot-prefixed component (the conventional home of credential and configuration
-     files such as `.env`).
+  4. The path does not land in a secret-bearing or machine-state location. Test only the
+     components **below** the workspace root — the normalized cited path, which step 3's
+     equality makes identical to the resolved path's in-root suffix — never the workspace
+     root's own components, which may legitimately be dot-prefixed (a linked worktree under a
+     dot-directory). Reject when that in-root path is under `.git/`, `.wf/` (the resolver's
+     committed lifecycle tree), or `_local/` (the resolved task root), or has any dot-prefixed
+     component (the conventional home of credential and configuration files such as `.env`).
 
   A failing citation is rejected with exactly one of four reasons, one per way the bound can
   reject: `not a bounded relative path` (steps 1–2: a disallowed character, an absolute path,
