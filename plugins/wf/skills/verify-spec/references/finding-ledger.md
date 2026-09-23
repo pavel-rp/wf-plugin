@@ -47,24 +47,30 @@ required on every entry:
   produces a `refuted` transition. It exists in the vocabulary because a later capability
   (an isolated critic verdict) is expected to assign it; a reader of this file looking for
   the assignment rule will not find one here, by design.
-- **warn** — the fingerprint's most recent contributing severity is `warn` rather than
-  `fail`. Independent of `open`/`fixed` **while a round still reports it**: a `warn`
-  fingerprint can be `open` (still reported this round) or, on the round after it stops
-  recurring, `fixed` — exactly as a `fail` one can.
+- **warn** — reserved, like `refuted`: nothing in this rebuild's bucket-mapping rule (below)
+  assigns it. `## Capability findings` is **fail-only** under the blocking-set model
+  (`verify-spec/SKILL.md` §"The blocking set" — a `warn` never makes that bucket), and every
+  actual `warn`-severity match already has a distinct, unambiguous home (`accepted`, below) —
+  so no rule here has a `warn`-shaped gap to fill today. Kept in the vocabulary as a
+  forward-compatible slot (e.g. a future need to distinguish a `warn` that is *also*
+  change-anchored from one accepted outright); a reader looking for its assignment rule will
+  not find one here, exactly as with `refuted`.
 - **pre-existing** — the fingerprint's most recent match landed in the report's
-  `## Pre-existing` bucket (anchored to neither a requirement nor the diff).
-- **accepted** — the fingerprint's most recent match landed in `## Accepted warnings`.
+  `## Pre-existing` bucket (a `fail` anchored to neither a requirement nor the diff).
+- **accepted** — the fingerprint's most recent match landed in `## Accepted warnings` (every
+  `warn`-severity finding, whatever its anchor — the bucket's only occupant).
 
-A fingerprint's status is set from **where its most recent match rendered** (`## Capability
-findings` → `open`/`warn` per severity, `## Pre-existing` → `pre-existing`, `## Accepted
-warnings` → `accepted`), then overridden to `fixed` when a round's own findings name it
-nowhere at all. **Single-valued, not layered** — an entry carries exactly one status field,
-so retiring a `warn` (or `pre-existing`/`accepted`) fingerprint to `fixed` deliberately
-discards which non-`open` bucket it last matched: once nothing reports it, which bucket it
-used to render in has no further consequence for anything this rebuild does, so there is no
-second field to preserve it in. This is a stated simplification, not an oversight — if a
-future consumer needs the pre-retirement bucket, that is a new field to add then, not a gap
-in the rule as written today.
+A fingerprint's status is set from **where its most recent match rendered** — the bucket
+alone decides it, with no severity branch inside any bucket: `## Capability findings` →
+`open` (always; that bucket never holds anything but an anchored `fail`), `## Pre-existing` →
+`pre-existing`, `## Accepted warnings` → `accepted` — then overridden to `fixed` when a
+round's own findings name the fingerprint nowhere at all. **Single-valued, not layered** — an
+entry carries exactly one status field, so retiring a `pre-existing`/`accepted` fingerprint to
+`fixed` deliberately discards which bucket it last matched: once nothing reports it, which
+bucket it used to render in has no further consequence for anything this rebuild does, so
+there is no second field to preserve it in. This is a stated simplification, not an
+oversight — if a future consumer needs the pre-retirement bucket, that is a new field to add
+then, not a gap in the rule as written today.
 
 ## Round-number derivation
 
@@ -76,17 +82,32 @@ in `04_verify.history.md` in its existing, already-newest-first order (the rotat
 convention prepends each newly-rotated entry, so file order already **is** recency order; do
 not re-sort) — **most-recent-first**:
 
+**Both tests below are scoped to the report's own structural lines only** — its top-of-file
+metadata block and its own `##`-level section headings — **never** to an occurrence inside a
+quoted snippet, evidence citation, or nested code block elsewhere in the same report. A
+lens's own evidence can legitimately quote source text containing `**Verdict:** PASS` or
+`## Accepted warnings` verbatim (this repo's own corpus fixture does exactly that — see
+Worked example); matching such a substring anywhere in the document body would misidentify
+the boundary. Concretely: the `**Verdict:**` test matches only the single such line in the
+report's header block, before its first `##` heading; the heading test matches only an actual
+`##`-level heading line (one starting the line with `## `), never text inside backticks, a
+fenced code block, or a quoted bullet.
+
 1. Find the **loop boundary** — the most recent entry, scanning most-recent-first, that is
    **either**:
-   - carries `**Verdict:** PASS`, **or**
+   - its header's `**Verdict:**` line reads `PASS`, **or**
    - is a **pre-fingerprint-capable entry** — one whose report carries **neither** a
-     `## Pre-existing` **nor** an `## Accepted warnings` heading, present or absent as a
-     *structural* fact, independent of whether either section has any rows. Those two
-     headings are unconditionally rendered — even empty, as a lone `- none` line — by every
-     report the current `verify-template.md` shape produces, so their total *absence* is
-     what marks an entry written under an older report shape (e.g. this repo's own
+     `## Pre-existing` **nor** an `## Accepted warnings` heading (allowing an optional
+     trailing qualifier on the latter, e.g. `## Accepted warnings (non-blocking)` — the
+     qualifier is decoration, not a shape change), present or absent as a *structural* fact,
+     independent of whether either section has any rows. Those two headings are
+     unconditionally rendered — even empty, as a lone `- none` line — by every report the
+     current `verify-template.md` shape produces, so their total *absence* is what marks an
+     entry written under an older report shape (e.g. this repo's own
      `corpus-archive/verify-replay-wf554/rounds/*.md` fixture, confirmed to carry neither
-     heading). **Do not** test for the fingerprint marker shape (`file:section|defect`)
+     heading — and to carry a quoted, non-heading occurrence of the string `` `## Accepted
+     warnings` `` inside one evidence bullet, which the structural scoping above correctly
+     ignores). **Do not** test for the fingerprint marker shape (`file:section|defect`)
      itself here — a current-shape entry that simply reported zero fingerprinted findings
      this round renders both headings anyway, each holding only `- none`, and would be
      wrongly mistaken for a pre-fingerprint entry by a marker-presence test, silently
@@ -109,20 +130,28 @@ not re-sort) — **most-recent-first**:
 
 3. **No boundary found** (the trail holds only current-shape, non-`PASS` entries all the way
    back, or the trail is empty) — round = 1 + the count of such entries in the whole trail
-   (empty trail → round 1).
+   (empty trail → round 1). This is the one path whose walk is **not** bounded by a boundary
+   entry — see the note on "Rebuild algorithm" step 1 below for how far it can actually reach
+   in practice.
 
 A fresh loop always restarts at round 1 immediately after a `PASS` — rule 1's first test
 guarantees this, since a `PASS` entry is always eligible as a boundary regardless of its own
 heading shape.
 
-**De-duplicating a resumed rotation.** Before this walk, if the current, not-yet-rotated
-`04_verify.md` and `04_verify.history.md`'s topmost entry carry an **identical** `**Commit:**`
-**and** `**Audited at:**` pair, treat them as **one** entry (the not-yet-rotated
-`04_verify.md`), not two. `## Output`'s rotate-then-overwrite is two separate writes
+**De-duplicating a resumed rotation.** Before this walk, collapse **every** adjacent pair in
+the gathered trail — the current not-yet-rotated `04_verify.md` and `.history.md`'s topmost
+entry, **and** any adjacent pair *within* `.history.md` itself — that carries an **identical**
+`**Commit:**` **and** `**Audited at:**` pair, treating each such pair as **one** entry (the
+more recent of the two). `## Output`'s rotate-then-overwrite is two separate writes
 (`_shared/pipeline-conventions.md` §"Artifact rotation into `.history.md`", unchanged by this
-task); a run resumed between the rotation and the overwrite would otherwise see the same
-report counted twice in the trail, inflating the round tally and corrupting every
-`first-seen` the fold below derives from it.
+task, and never touched to fix this); a run resumed between the rotation and the overwrite
+duplicates that one report into the trail permanently — not only in the resumed run's own
+read, but as two adjacent, identical-header entries thereafter sitting in
+`04_verify.history.md` for every later run to re-encounter. Scoping the collapse to *any*
+adjacent duplicate pair, not only "current vs. history's topmost", is what makes this durable:
+every later run's own gather step re-applies the same rule and re-collapses the same stray
+pair again, so the one-time non-atomic write is permanently absorbed on the read side and
+never corrupts a `first-seen` or a round tally, on this run or any future one.
 
 ## Rebuild algorithm
 
@@ -132,9 +161,15 @@ never held in memory across runs:
 1. **Derive the round number** and the **loop boundary** per "Round-number derivation" above
    — this also identifies exactly which trail entries are strictly more recent than the
    boundary: call these, oldest-first, **prior rounds 1 .. N-1**, where **N** is the round
-   number just derived for the current run. The fold below never reads at or past the
-   boundary, so it is bounded by construction — it does not re-parse the unbounded tail of an
-   ever-growing `.history.md` beyond that point.
+   number just derived for the current run. The fold below never reads at or past a *found*
+   boundary, so on that path it is bounded by construction — it does not re-parse the
+   unbounded tail of an ever-growing `.history.md` beyond that point. The one exception is
+   "Round-number derivation" rule 3's **no-boundary** fallback (no `PASS`, no
+   pre-fingerprint-capable entry anywhere in the trail): that path genuinely walks the whole
+   trail, with no cap of its own. In practice this is the caller's own responsibility to
+   bound, not this algorithm's: `/wf:run`'s verify⇄fix cap (2 cycles) stops a non-converging
+   loop long before the trail could grow large enough for this to matter, so no separate cap
+   is added here — adding one would duplicate a bound the caller already enforces.
 
 2. **Fold the ledger forward, oldest-first, one round at a time — this is what establishes a
    correct `first-seen`.** A ledger is not re-derived from a single snapshot; it is built by
