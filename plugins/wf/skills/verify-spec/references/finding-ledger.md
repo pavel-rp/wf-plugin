@@ -214,7 +214,10 @@ and **that round's own reported findings** — against the ledger-so-far:
   exactly as last recorded (the last-known contributors, not cleared) — never drop it from
   the render.
 
-`refuted` is never assigned by any rule above; see §"Status vocabulary".
+A matched or inserted fingerprint's `status` is whatever this round's bucket assigns
+(§"Status vocabulary") — including `refuted` and `warn`, when the round's own report tags the
+match `critic: DISAGREE` / `critic: UNVERIFIABLE` respectively. This rule does not special-case
+those two statuses; it derives every status the same way, from the bucket the fold above reads.
 
 ## Pre-dispatch derivation (changed sections, round ≥2)
 

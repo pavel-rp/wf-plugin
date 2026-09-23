@@ -138,9 +138,11 @@ requirement `FAIL`/`PARTIAL` (which never reaches the critic at all):
   `` - **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — critic: DISAGREE at `path/to/file:L` — "<cited code>"``
 - a candidate the critic returned `UNVERIFIABLE` on — it was `fail`-severity and anchored until
   the critic could not confirm or refute it — tagged `critic: UNVERIFIABLE` with the critic's
-  one-line reason (ledger status `warn`, distinct from an originally-`warn` finding's
-  `accepted`):
-  `` - **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — critic: UNVERIFIABLE at `path/to/file:L```
+  own one-line reason (ledger status `warn`, distinct from an originally-`warn` finding's
+  `accepted`). The critic's contract (`critic-verdict.md` §"Verdict block") gives an
+  `UNVERIFIABLE` verdict a reason, not a `file:L` citation — render the reason and never
+  require a location this verdict does not carry:
+  `` - **<source capability>** — <finding> at `path/to/file:<section>|<defect>` — critic: UNVERIFIABLE — "<critic's one-line reason>"``
 
 ## Ledger
 
