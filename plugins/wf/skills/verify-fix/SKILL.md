@@ -6,7 +6,7 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash, Task]
 
 # /wf:verify-fix — Apply fixes from a verify-spec audit
 
-Read the audit report at `{task-root}/{task-id}/04_verify.md`, sort FAIL/PARTIAL/UNVERIFIABLE findings into **auto-fix** (mechanical, one or two unambiguous edits) and **ask-user** (structural, ambiguous, or design-laden), apply the auto-fixes, and present the open questions so the user can resolve them. Writes a fix log to `{task-root}/{task-id}/05_verify-fix.md` and tells the user to re-run `/wf:verify-spec` afterward to confirm.
+Read the audit report at `{task-root}/{task-id}/04_verify.md`, sort FAIL/PARTIAL/UNVERIFIABLE findings into **auto-fix** (mechanical, one or two unambiguous edits) and **ask-user** (structural, ambiguous, or design-laden), apply the auto-fixes, and present the open questions so the user can resolve them. Writes a fix log to `{task-root}/{task-id}/05_verify-fix.md` (or, under the override form, beside the override report — see "The fix-log location") and tells the user to re-run `/wf:verify-spec` afterward to confirm.
 
 **This skill writes to source files** — one of three with that permission, alongside `/wf:implement` and `/wf:qa-followup`. The input `04_verify.md` is treated as the plan; no edits are made beyond what the report cites.
 
@@ -58,6 +58,10 @@ Use verbatim as `{task-id}` — no normalization. Then load `04_verify.md` from 
 
 Treat as an explicit override. Useful when the report lives outside `{task-root}/` (e.g., `/wf:verify-spec` was run with a `<path-to-00_reqs.md>` override and wrote the report as a sibling). Write the fix log as a sibling of the override path too.
 
+### The fix-log location (one rule, every reader and writer)
+
+`{fix-log-dir}` is `{task-root}/{task-id}/` under the empty and `<id>` forms, and the directory containing the override `04_verify.md` (the sibling of the override path) under the `<path-to-04_verify.md>` form. The fix log is always `{fix-log-dir}05_verify-fix.md` and its trail `{fix-log-dir}05_verify-fix.history.md`. Phase 1.5's scope scan, the attempt-ledger rebuild, and the Phase 7 write all use this one location, so a scope recorded under the override form is read back from where it was written.
+
 ### `--attempt <k>` (optional — composes with any form above)
 
 May appear anywhere in the argument list alongside the empty / `<id>` / `<path-to-04_verify.md>` forms above — it selects the **attempt scope**, never the task or report identity. When present, `k` is the resolved scope outright. When absent, the scope is resolved in Phase 1.5 below. `--attempt` never changes which task or report this invocation targets.
@@ -76,7 +80,7 @@ Every delivery operation this file invokes — `current-branch-query` (the empty
 
 - Read any file in the repo.
 - **Edit source files, but only** at `file:line` locations cited in the loaded `04_verify.md`.
-- Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path).
+- Write `{fix-log-dir}05_verify-fix.md` and rotate into `{fix-log-dir}05_verify-fix.history.md` (see "The fix-log location" — `{task-root}/{task-id}/`, or the sibling of the override path).
 - Read-only resolution via `current-branch-query` and `last-commit-timestamp-query` (the `wf-resolver` `resolve_provider({ workspaceRoot, surface: "delivery" })` query) for branch gating, id inference, and the staleness check. Working-tree/diff dirty-file inspection is a content-gathering read with no delivery operation of its own — described by outcome, never as a literal command.
 - Invoke the **Task** tool with `subagent_type: wf:branch` for the Phase 1 branch gate. The wf:branch subagent performs only non-destructive delivery actions — creating or switching to the task branch, fetching the base, and publishing the branch upstream; it never resets, force-pushes, deletes branches, or commits.
 
@@ -106,7 +110,7 @@ Rationale: the audit's evidence lines (`file:line`) are only meaningful on the b
 Resolve the attempt scope `k` this invocation runs under — the key every attempt record below is scoped to. Never infer a resume from branch state, report content, or any signal other than the two named here:
 
 1. **Explicit `--attempt <k>` flag** — wins outright. Use it verbatim as `k`.
-2. **Otherwise, scan for the highest already-recorded scope.** Read `{task-root}/{task-id}/05_verify-fix.md` (if present) and every entry in `{task-root}/{task-id}/05_verify-fix.history.md` (if present) for `**Attempt:** <k>` header lines; take the highest `k` found across both.
+2. **Otherwise, scan for the highest already-recorded scope.** Read `{fix-log-dir}05_verify-fix.md` (if present) and every entry in `{fix-log-dir}05_verify-fix.history.md` (if present) — the location "The fix-log location" defines, so the override form scans the sibling of the override path — for `**Attempt:** <k>` header lines; take the highest `k` found across both.
 3. **Otherwise** (no flag, nothing recorded yet) — default `k = 1`.
 
 Hold the resolved `k` for the ledger rebuild (below) and the Phase 7 write.
@@ -143,7 +147,7 @@ The dirty-tree flag in the header is informational; uncommitted changes since th
 
 ## The attempt ledger
 
-Before Phase 3 classification, on every invocation, rebuild — never recompute — a per-fingerprint attempt ledger from `{task-root}/{task-id}/05_verify-fix.md` (if present) and `05_verify-fix.history.md` (if present), keyed on `(fingerprint, scope)`. Field set and the rebuild algorithm live in `attempt-ledger.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-fix`, `ref: attempt-ledger.md`), never a raw `Read` of the plugin-cache path — followed in-context here, the role `verify-fix-template.md` plays at Phase 7.
+Before Phase 3 classification, on every invocation, rebuild — never recompute — a per-fingerprint attempt ledger from `{fix-log-dir}05_verify-fix.md` (if present) and `{fix-log-dir}05_verify-fix.history.md` (if present) — the same location Phase 1.5 scans and Phase 7 writes (see "The fix-log location") — keyed on `(fingerprint, scope)`. Field set and the rebuild algorithm live in `attempt-ledger.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-fix`, `ref: attempt-ledger.md`), never a raw `Read` of the plugin-cache path — followed in-context here, the role `verify-fix-template.md` plays at Phase 7.
 
 Simpler than verify-spec's own finding ledger: the attempt scope `k` is always an explicit input (Phase 1.5), never derived from a round boundary — no `PASS`/pre-fingerprint-boundary walk is needed. Every trail entry is read and grouped by its own recorded `**Attempt:** <k>` header.
 
@@ -290,7 +294,7 @@ After printing all questions, **stop**. Do not proceed to further edits in the s
 
 ## Phase 7: Write the Fix Log
 
-Write `{task-root}/{task-id}/05_verify-fix.md` (or sibling of the override path). Rotate the prior `05_verify-fix.md` into `05_verify-fix.history.md` before overwriting, per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
+Write `{fix-log-dir}05_verify-fix.md` (see "The fix-log location" — `{task-root}/{task-id}/`, or the sibling of the override path). Rotate the prior `{fix-log-dir}05_verify-fix.md` into `{fix-log-dir}05_verify-fix.history.md` before overwriting, per the shared pipeline conventions doc (`resolve_content({ workspaceRoot, ... })`, `class: shared`, `ref: pipeline-conventions.md`) §"Artifact rotation into `.history.md`". This keeps a trail of every fix run alongside the audit trail, so the user can see which fixes were attempted across iterations.
 
 The verbatim `05_verify-fix.md` fix-log template — the metadata block, `## Auto-fixed`, `## Awaiting user`, and `## Next` — lives at `verify-fix-template.md`, obtained via the resolver's `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `skill: verify-fix`, `ref: verify-fix-template.md`), never a raw `Read` of the plugin-cache path. It is read only on this write path (Phase 7), so it stays out of the boot body. Follow it, then emit it with placeholders substituted.
 
@@ -306,7 +310,7 @@ If the write fails (permissions, path missing), stop and report. Do not fall bac
 
 Two outputs, always both:
 
-1. **Fix log** at `{task-root}/{task-id}/05_verify-fix.md`.
+1. **Fix log** at `{fix-log-dir}05_verify-fix.md` (see "The fix-log location").
 2. **Chat summary** with the plan from Phase 4, the open questions from Phase 6, and the final-output block below.
 
 Target ~25 lines of chat for the summary (not counting the open-question blocks — those are whatever length they need to be).
@@ -334,7 +338,7 @@ End the chat reply with this fenced block:
 VERIFY-FIX — <CLEAN | PARTIAL | PENDING | NOOP>
 
 {task-id}: <a> auto-fixed, <b> awaiting user, <c> skipped
-Log: {task-root}/{task-id}/05_verify-fix.md
+Log: {fix-log-dir}05_verify-fix.md
 Next: re-run `/wf:verify-spec {task-id}` to confirm
 ```
 

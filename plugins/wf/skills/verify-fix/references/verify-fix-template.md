@@ -1,6 +1,6 @@
 # `05_verify-fix.md` fix-log template
 
-The verbatim template `/wf:verify-fix` writes to the task folder (Phase 7). Rotate any existing file into `05_verify-fix.history.md` first (prepend the old contents above a `---` separator, newest first). Substitute the placeholders; keep the `## Auto-fixed`, `## Awaiting user`, and `## Next` shape.
+The verbatim template `/wf:verify-fix` writes to `{fix-log-dir}05_verify-fix.md` (Phase 7; `{fix-log-dir}` per `SKILL.md` §"The fix-log location" — the task folder, or the sibling of the override path). Rotate any existing file into `{fix-log-dir}05_verify-fix.history.md` first (prepend the old contents above a `---` separator, newest first). Substitute the placeholders; keep the `## Auto-fixed`, `## Awaiting user`, and `## Next` shape.
 
 ## Contents
 
@@ -11,7 +11,7 @@ The verbatim template `/wf:verify-fix` writes to the task folder (Phase 7). Rota
 ```markdown
 # verify-fix: {task-id}
 
-**Source report:** `{task-root}/{task-id}/04_verify.md`
+**Source report:** `{fix-log-dir}04_verify.md`
 **Branch:** <current branch>
 **Attempt:** <k>
 **Implemented by:** <model identifier>

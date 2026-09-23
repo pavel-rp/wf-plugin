@@ -62,8 +62,11 @@ Two shapes, exactly as `verify-fix/SKILL.md` Phase 2 mints them:
 Run this **on every invocation**, before Phase 3's routing check, entirely from artifacts —
 never held in memory across runs:
 
-1. **Gather the trail.** The current, not-yet-rotated `05_verify-fix.md` (if it exists), then
-   every entry in `05_verify-fix.history.md` (if it exists) in its existing order. Order
+1. **Gather the trail.** The current, not-yet-rotated `{fix-log-dir}05_verify-fix.md` (if it
+   exists), then every entry in `{fix-log-dir}05_verify-fix.history.md` (if it exists) in its
+   existing order. `{fix-log-dir}` is the one location `verify-fix/SKILL.md` §"The fix-log
+   location" defines — `{task-root}/{task-id}/`, or the sibling of the override path under the
+   `<path-to-04_verify.md>` form — the same location Phase 1.5 scans and Phase 7 writes. Order
    doesn't matter here — unlike the finding ledger's fold, there is no `first-seen` to recover
    and no boundary to find, so every entry contributes independently.
 2. **Parse each entry.** Read its `**Attempt:** <k>` header (entries written before this
