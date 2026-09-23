@@ -224,7 +224,7 @@ present whenever the run has anything to record. Rationale and worked examples l
 
 ## Fire the `verify` phase (aggregate capability findings)
 
-**Before dispatch** (moved here, not after as before): using round `N` already derived under §"Inputs to load" item 3, fold prior rounds into a ledger-so-far, and (round ≥2) derive `open_fingerprints` (the ledger-so-far's `open`-status entries) and `changed_sections` — algorithm unchanged, only *when* it runs moved; both new derivations are specified in full at `finding-ledger.md` §"Pre-dispatch derivation (changed sections, round ≥2)" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`). Hold all four for the dispatch below and §"The finding ledger".
+**Before dispatch:** using round `N` already derived under §"Inputs to load" item 3, fold prior rounds into a ledger-so-far, and (round ≥2) derive `open_fingerprints` (the ledger-so-far's `open`-status entries) and `changed_sections`; both derivations are specified in full at `finding-ledger.md` §"Pre-dispatch derivation (changed sections, round ≥2)" (`resolve_content({ workspaceRoot, ... })`, `class: references-template`, `skill: verify-spec`, `ref: finding-ledger.md`). Hold all four for the dispatch below and §"The finding ledger".
 
 After the generic per-requirement audit, fire the **`verify`** phase and aggregate any **`finding`** contribution the registered capabilities attach to it. Obtain the ordered active registry as metadata from the `wf-resolver` MCP service — never `## Capabilities`/`manifest.md` directly — referencing the taxonomy by phase name / contribution-kind name, never heading:
 
@@ -274,7 +274,11 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    with `subagent_type: <agent>`, passing the artifact under audit, the **Round context**
    block below when `N >= 2`, **and the following
    finding contract inline in the dispatch prompt** (identical bytes to every enabled
-   lens; no per-agent resolver fetch).
+   lens; no per-agent resolver fetch). Pass `model.value` only when non-null (effort is
+   unsupported), and forward only the final block. The parent validates that block against
+   the generic finding contract below and exclusively owns any `postAttempt`, retaining the
+   same unit id and evidence; the child never self-replaces. If the Task target itself is
+   unavailable, preserve the existing optional-contributor no-op.
 
    **Round context** — caller-supplied input the lens reads, never part of its return
    shape: at `N >= 2` send it as its own block *above* the return template, identical bytes
@@ -304,12 +308,6 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    `fail` is a candidate for the core-computed blocking set, not an unconditional gate;
    `warn` is non-blocking; no speculation, style nits, or restated requirements.
    ```
-
-   Pass `model.value` only when non-null (effort is unsupported), and forward only the
-   final block. The parent validates that block against this generic finding contract
-   and exclusively owns any `postAttempt`, retaining the same unit id and evidence; the
-   child never self-replaces. If the Task target itself is unavailable, preserve the
-   existing optional-contributor no-op.
 4. **Aggregate and collapse** — group by `file:section` (the location derivation
    `## Pre-existing` reuses); assign a lens-independent `defect` key per distinct defect
    there, collapsing same-defect findings into one listing every contributing lens, its

@@ -217,10 +217,10 @@ and **that round's own reported findings** — against the ledger-so-far:
 
 ## Pre-dispatch derivation (changed sections, round ≥2)
 
-`verify-spec/SKILL.md` §"Fire the `verify` phase" now runs round-number derivation (above) and
-the prior-rounds fold ("Rebuild algorithm" steps 1-2) **before** dispatch, not after — the
-algorithm itself is unchanged, only *when* it runs. At round ≥2 it also derives one more thing,
-new to that split: a second diff, distinct from `SKILL.md`'s branch-vs-`main` diff gathered
+`verify-spec/SKILL.md` derives round `N` (above) under §"Inputs to load" item 3, and at the start
+of §"Fire the `verify` phase" runs the prior-rounds fold **before** dispatch — "Rebuild algorithm"
+step 1 and step 2's loop over rounds `1 .. N-1`; step 2's final "once more" pass over the current
+run's findings runs after aggregation. At round ≥2 it also derives a second diff, distinct from `SKILL.md`'s branch-vs-`main` diff gathered
 under "Implementation scope", between the **prior round's `**Commit:**`** (parsed off the same
 most-recent trail entry the round-derivation boundary walk reads) and the **current working
 tree**, dirty files included, never `HEAD`. Map every changed hunk's location through the same
