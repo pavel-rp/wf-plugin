@@ -223,6 +223,8 @@ Ask user (<b>):
 Skipped (<c>): <verdict counts>
 ```
 
+Here, `<b>` counts only the freshly-classified ASK bucket, disjoint from the separately-printed `<r>` ROUTED bucket — the two downstream consumers below (Phase 7's index summary, the Final Output block) instead report `<b>`/`<m>` as **one combined total**, ASK plus ROUTED together, since both land in the same `## Awaiting user` section of the fix log. This plan's own `<b>` is a narrower, ask-only count printed here only.
+
 Do not wait for approval — proceed to Phase 5 immediately. The plan exists so the user can interrupt if a classification looks wrong.
 
 ---
@@ -296,7 +298,7 @@ Populate the `**Attempt:** <k>` header with the scope resolved in Phase 1.5, and
 
 If the write fails (permissions, path missing), stop and report. Do not fall back to printing the log inline instead of to disk — the durable artifact matters for later re-runs.
 
-**After writing the fix log**, invoke the routed `/wf:index <id> verify-fix "<a> auto-fixed · <b> open questions"` wrapper to record it in the per-task index. The wrapper owns the fixed `index` routing decision; do not inline or bypass it. Substitute the AUTO and ASK counts produced in Phases 5 and 6. Skip this step when the `<path-to-04_verify.md>` override form is used and the log lives outside `{task-root}/`.
+**After writing the fix log**, invoke the routed `/wf:index <id> verify-fix "<a> auto-fixed · <b> open questions"` wrapper to record it in the per-task index. The wrapper owns the fixed `index` routing decision; do not inline or bypass it. Substitute the AUTO count produced in Phase 5, and `<b>` with the **combined** ASK-plus-ROUTED count (Phase 6's `## Awaiting user` entries) — not Phase 4's ask-only plan bucket of the same symbol. Skip this step when the `<path-to-04_verify.md>` override form is used and the log lives outside `{task-root}/`.
 
 ---
 
@@ -335,6 +337,8 @@ VERIFY-FIX — <CLEAN | PARTIAL | PENDING | NOOP>
 Log: {task-root}/{task-id}/05_verify-fix.md
 Next: re-run `/wf:verify-spec {task-id}` to confirm
 ```
+
+`<b>` here is the **combined** ASK-plus-ROUTED count — every entry the fix log's `## Awaiting user` section carries, both freshly-classified ASK findings and fingerprints ROUTED from a prior scope's attempt record — not Phase 4's ask-only plan bucket printed under the same symbol; that plan bucket is a narrower, in-chat-only figure.
 
 State meanings:
 - `CLEAN` — all findings were AUTO and applied successfully.
