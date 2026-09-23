@@ -1,12 +1,26 @@
 # Fixture expectations — two distinct defects at the same location stay two findings
 
-Seventh fixture in the reconciliation set (WF-566). Same registry as `audit-registered.md`
-(`../registry-fixtures/pass-audit-only.md`). Two lenses (correctness, security) report
-**different** defects at the **same** `file:section` — a missing-null-guard defect and an
-unrelated hardcoded-secret defect in the same function — proving the collapse rule groups
-by defect, not merely by location.
+Seventh fixture in the reconciliation set (WF-566), grounded in the same embedded change as
+`cross-lens-collapse.md` (not `defective-change.md` — see that fixture's note). Same registry
+as `audit-registered.md` (`../registry-fixtures/pass-audit-only.md`). Two lenses (correctness,
+security) report **different** defects at the **same** `file:section` — a missing-null-guard
+defect and an unrelated hardcoded-secret defect in the same function — proving the collapse
+rule groups by defect, not merely by location.
 
 ---
+
+## The change under review
+
+```text
+changed/preflight-check.txt
+  1 | function validate(unit):
+  2 |   if unit.owner == null: return unit   # early return, no guard below this line
+  3 |   log(unit.owner.id)                    # dereferences owner with no null check
+  4 |   audit_key = "sk_live_4242424242424242"  # hardcoded secret, unrelated to line 2-3
+```
+
+Same `validate` enclosing symbol — `changed/preflight-check.txt:validate` — as
+`cross-lens-collapse.md`, plus one extra line (4) carrying a second, unrelated defect.
 
 ## No collapse
 
@@ -20,7 +34,7 @@ The two findings share `file:section` but name distinct defects, so the aggregat
 own lens, evidence, and `<lens>/<check>` provenance. Merging them on the shared location
 alone would silently blend one defect's evidence into the other's, or drop one outright.
 
-EXPECT: provenance=correctness/4,security/5
+EXPECT: provenance=correctness/2,security/3
 
 ## On doubt, never merge
 

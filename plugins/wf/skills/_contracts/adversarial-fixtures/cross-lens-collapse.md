@@ -1,14 +1,29 @@
 # Fixture expectations — four lenses report the same defect at one location
 
-Sixth fixture in the reconciliation set (WF-566). Same registry as `audit-registered.md`
-(`../registry-fixtures/pass-audit-only.md`) — the real five lenses, unchanged. Unlike the
-other three fixtures in this set (which cover the lean-pass/lens reconciliation), this one
-tests SUB-2's cross-lens collapse rule in isolation: four of the five lenses (correctness,
-security, convention, consistency) each independently report the **same** real defect at
-the **same** `file:section`, on their own evidence and their own rubric `check:` number.
-The fifth lens (operational) is clean.
+Sixth fixture in the reconciliation set (WF-566), grounded in its own embedded change
+below (not `defective-change.md` — that fixture's `changed/preflight-check.txt` has no
+`validate` symbol; this one names its own backing content, per the sibling-fixture
+convention). Same registry as `audit-registered.md` (`../registry-fixtures/pass-audit-only.md`)
+— the real five lenses, unchanged. Unlike the other three fixtures in this set (which cover
+the lean-pass/lens reconciliation), this one tests SUB-2's cross-lens collapse rule in
+isolation: four of the five lenses (correctness, security, convention, consistency) each
+independently report the **same** real defect at the **same** `file:section`, on their own
+evidence and their own rubric `check:` number. The fifth lens (operational) is clean.
 
 ---
+
+## The change under review
+
+```text
+changed/preflight-check.txt
+  1 | function validate(unit):
+  2 |   if unit.owner == null: return unit   # early return, no guard below this line
+  3 |   log(unit.owner.id)                    # dereferences owner with no null check
+```
+
+The enclosing symbol is `validate` (a function declaration), so `file:section` resolves to
+`changed/preflight-check.txt:validate` per the existing location derivation (enclosing
+symbol/declaration for source).
 
 ## The collapse
 
@@ -17,14 +32,31 @@ EXPECT: fingerprint=changed/preflight-check.txt:validate|missing-null-guard
 EXPECT: lenses=correctness,security,convention,consistency
 EXPECT: defect-keys=1
 
-Four lens findings at one location, naming the same defect, collapse into **one** finding.
-The collapsed finding lists all four contributing lenses, each lens's own `evidence`
-string, and each lens's own `<lens>/<check>` provenance — none dropped, edited, or
-re-tagged. The fifth lens (operational) delivered a clean result and contributes nothing
-at this location.
+Four lens findings at one location, naming the same defect (line 3's dereference of
+`unit.owner.id` is unguarded on the path where `unit.owner` is not the early-returned
+`null` case but some other falsy/absent shape the guard misses), collapse into **one**
+finding. The collapsed finding lists all four contributing lenses, each lens's own
+`evidence` string, and each lens's own `<lens>/<check>` provenance — none dropped, edited,
+or re-tagged. The fifth lens (operational) delivered a clean result and contributes
+nothing at this location.
 
-EXPECT: provenance=correctness/4,security/2,convention/1,consistency/3
+EXPECT: provenance=correctness/2,security/2,convention/1,consistency/3
 EXPECT: evidence=preserved-per-lens
+
+## Severity disagreement
+
+EXPECT: severity-case=disagreement
+EXPECT: contributor-severities=correctness:fail,security:warn
+EXPECT: collapsed-severity=fail
+EXPECT: anchor-if-any=true
+
+Suppose correctness reports this same defect as `fail` (anchored to the changed line 3)
+while security reports it as `warn` (same defect, lower confidence). The collapsed finding
+takes the higher severity — `fail` — and is anchored because at least one contributor
+(correctness) anchors it, per `verify-spec/SKILL.md`'s round-2 reconciliation sentence
+("takes the highest severity ... and is anchored if any contributor anchors it"). A
+collapsed finding's severity is never averaged, downgraded to the weakest contributor, or
+decided by which lens happened to report first.
 
 ## Still not gated by mere existence
 

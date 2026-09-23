@@ -59,9 +59,13 @@ aggregation step) renders as one bullet naming every contributing lens, with eac
 evidence and `<lens>/<check>` provenance nested beneath it — never one bullet per lens, and
 never a single evidence field standing in for all of them:
 
-- **<source capability>** — [FAIL] <finding> at `path/to/file:L` — collapsed from <N> lenses:
+- **<source capability>** — [FAIL] <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:
   - `<lens>/<check>` — <that lens's own evidence>
   - `<lens>/<check>` — <that lens's own evidence>
+
+The collapsed headline is keyed by the same fingerprint `## Pre-existing` uses — never a bare
+`file:L` — because the contributing lenses may cite different lines within the shared
+`file:section`; no single lens's line is privileged.
 
 ## Pre-existing
 

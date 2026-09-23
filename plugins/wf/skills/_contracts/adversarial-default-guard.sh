@@ -527,11 +527,19 @@ need "$VERIFY" "the aggregation step must keep distinct defects at one location 
   'stay distinct keys'
 need "$VERIFY" "the aggregation step must never merge on doubt" \
   'on doubt, keep findings separate'
+need "$VERIFY" "the aggregation step must state a severity-reconciliation rule for a collapsed finding" \
+  'severity (any `fail` wins)'
+need "$VERIFY" "the severity-reconciliation rule must anchor a collapsed finding if any contributor anchors it" \
+  'anchored if any contributor anchors it'
 
 need "$TEMPLATE" "the Pre-existing section must key entries by the full fingerprint" \
   'the full fingerprint `file:section|defect`'
 need "$TEMPLATE" "the Pre-existing bullet shape must show the fingerprint form" \
   'path/to/file:<section>|<defect>'
+need "$TEMPLATE" "the Capability findings collapsed headline must be keyed by the fingerprint, not a bare line" \
+  'collapsed from <N> lenses'
+need "$TEMPLATE" "the Capability findings collapsed headline must use the same fingerprint form as Pre-existing" \
+  '[FAIL] <finding> at `path/to/file:<section>|<defect>` — collapsed from <N> lenses:'
 
 COLLAPSE="$FIX_DIR/cross-lens-collapse.md"
 NO_COLLAPSE="$FIX_DIR/distinct-defects-one-location.md"
@@ -549,6 +557,12 @@ else
     'EXPECT: lenses=correctness,security,convention,consistency'
   need "$COLLAPSE" "the collapse fixture must assert per-lens provenance is preserved" \
     'EXPECT: evidence=preserved-per-lens'
+  need "$COLLAPSE" "the collapse fixture must exercise a severity disagreement between contributors" \
+    'EXPECT: severity-case=disagreement'
+  need "$COLLAPSE" "the collapse fixture must assert the collapsed finding takes the highest severity" \
+    'EXPECT: collapsed-severity=fail'
+  need "$COLLAPSE" "the collapse fixture must assert the collapsed finding is anchored if any contributor anchors it" \
+    'EXPECT: anchor-if-any=true'
 fi
 
 if [ ! -f "$NO_COLLAPSE" ]; then
