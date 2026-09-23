@@ -61,6 +61,7 @@ Disambiguation: the leading non-`--`-prefixed token is the `<id>` argument — p
 - Read-only resolution via `workspace-root-resolve`, `current-branch-query`, and `last-commit-timestamp-query` (the `wf-resolver` `resolve_config({ workspaceRoot, ... })` / `resolve_provider({ workspaceRoot, surface: "delivery" })` queries).
 - Read `index.md` and the `00_…08` artifacts to derive state.
 - In the default walk (`--auto`), never in `--step`: invoke the **Task** tool with `subagent_type: wf:phase-runner` to run an auto-front phase (`triage`/`spec`/`plan`/`verify-spec`/`qa-gen`) in an isolated context. The subagent — not `wf:run` — does the reads and writes; `wf:run` still writes nothing in its own context.
+- Prompt the operator via `AskUserQuestion` at the verify⇄fix stop gate (§"The verify⇄fix stop gate"), interactive mode only.
 
 **Forbidden:**
 
