@@ -134,11 +134,16 @@ a stop-gate subject) and `verify-spec`'s gate-accept demotion (looking one up) �
 ## Gate-accept demotion
 
 Applied by `verify-spec/SKILL.md` §"The blocking set" as its own last step, after its three buckets are assembled
-and before `**Verdict:**` is derived. Using round `N` and loop identity `L`, call `read_run_evidence({
-workspaceRoot, taskId })` for a `matched` entry `kind: gate-approval`, `subject: verify-loop:l<L>:r<N>:accept`.
-**No match** — proceed exactly as `verify-spec/SKILL.md` already specifies. **Matched** — move every fingerprint
-under `## Capability findings` (never a requirement `FAIL`/`PARTIAL`) into `## Accepted warnings`, tagged
-`accepted: gate` alongside its provenance, and update the ledger fold for each to `status: accepted`. Recompute
-`**Verdict:**` from the reduced blocking set: `PASS` when empty, otherwise the requirement-driven `FAIL`/`PARTIAL`
-already carried. Consumes no record and sets no flag of its own — matching the same subject again later reapplies
-the same demotion idempotently; never applies to a different round or loop.
+and before `**Verdict:**` is derived. **Keys on the stopped round, never this invocation's own round `N`** — read
+`N_stop` off the not-yet-rotated `04_verify.md`'s own `**Round:**` line, the identical read `/wf:run`'s stop gate
+performs to mint the record (`run/SKILL.md` §"The verify⇄fix stop gate"); `N` itself is always one round ahead
+here (why: `finding-ledger-rationale.md` §"Gate-accept demotion"). Using `N_stop` and loop identity `L`, call
+`read_run_evidence({ workspaceRoot, taskId })` for a `matched` entry `kind: gate-approval`, `subject:
+verify-loop:l<L>:r<N_stop>:accept`. **No match** — proceed exactly as `verify-spec/SKILL.md` already specifies.
+**Matched** — move every fingerprint under `## Capability findings` (never a requirement `FAIL`/`PARTIAL`) into
+`## Accepted warnings`, tagged `accepted: gate` alongside its provenance, and update the ledger fold for each to
+`status: accepted`. Recompute `**Verdict:**` from the reduced blocking set: `PASS` when empty, otherwise the
+requirement-driven `FAIL`/`PARTIAL` already carried. Consumes no record and sets no flag of its own — matching the
+same subject again later reapplies the same demotion idempotently; never applies to a different round or loop. No
+not-yet-rotated `04_verify.md` (round 1) — nothing to demote against yet; unreachable in practice, since the stop
+gate fires only at round ≥2.
