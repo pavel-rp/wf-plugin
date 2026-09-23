@@ -4,6 +4,14 @@ The paired ops half for `verify-spec/SKILL.md`'s `## The finding ledger` section
 runtime, at the rebuild step that section names. Rationale, the extended walkthrough, and a
 worked example: `finding-ledger-rationale.md` (paired reference, never read at runtime).
 
+## Contents
+
+[Ledger field set](#ledger-field-set) · [Status vocabulary](#status-vocabulary) ·
+[Round-number derivation](#round-number-derivation) · [Rebuild algorithm](#rebuild-algorithm) ·
+[Match / insert / retire](#match--insert--retire-one-rounds-step) ·
+[Pre-dispatch derivation](#pre-dispatch-derivation-changed-sections-round-2) ·
+[Loop identity (L)](#loop-identity-l) · [Gate-accept demotion](#gate-accept-demotion)
+
 ## Ledger field set
 
 One entry per distinct fingerprint ever seen across the current loop. Five required fields:
