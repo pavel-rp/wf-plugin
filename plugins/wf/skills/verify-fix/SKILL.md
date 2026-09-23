@@ -38,7 +38,7 @@ Before the first bundled resolver MCP call in this skill/agent, run `pwd -P` and
 
 ## Dispatch on arguments
 
-Parse the first token.
+First, scan the full argument list for `--attempt <k>` (see below) and strip that flag together with its value out of the list, wherever the pair appears — the dispatch below never sees them. Then parse the first token of what remains.
 
 ### empty → infer from current branch
 
@@ -64,7 +64,7 @@ Treat as an explicit override. Useful when the report lives outside `{task-root}
 
 ### `--attempt <k>` (optional — composes with any form above)
 
-May appear anywhere in the argument list alongside the empty / `<id>` / `<path-to-04_verify.md>` forms above — it selects the **attempt scope**, never the task or report identity. When present, `k` is the resolved scope outright. When absent, the scope is resolved in Phase 1.5 below. `--attempt` never changes which task or report this invocation targets.
+May appear anywhere in the argument list alongside the empty / `<id>` / `<path-to-04_verify.md>` forms above — it selects the **attempt scope**, never the task or report identity. It is stripped out of the argument list before the first-token dispatch above runs, so its position never shifts which token that dispatch sees — `--attempt 2 WF-663` and `WF-663 --attempt 2` resolve to the same `{task-id}`. When present, `k` is the resolved scope outright. When absent, the scope is resolved in Phase 1.5 below. `--attempt` never changes which task or report this invocation targets.
 
 ---
 
