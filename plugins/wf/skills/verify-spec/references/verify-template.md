@@ -54,6 +54,15 @@ when the routing leaves it with no entry at all, render the single line `- none`
 - **<source capability>** — [PASS] <rule asserted, no divergence found>
 - none
 
+A finding collapsed from multiple lenses (the same `defect` at one `file:section`, per the
+aggregation step) renders as one bullet naming every contributing lens, with each lens's own
+evidence and `<lens>/<check>` provenance nested beneath it — never one bullet per lens, and
+never a single evidence field standing in for all of them:
+
+- **<source capability>** — [FAIL] <finding> at `path/to/file:L` — collapsed from <N> lenses:
+  - `<lens>/<check>` — <that lens's own evidence>
+  - `<lens>/<check>` — <that lens's own evidence>
+
 ## Pre-existing
 
 **Always rendered, even when empty** — unlike the conditional `## Adversarial findings` section
@@ -72,6 +81,13 @@ specific defect at that location. A pre-existing entry never dismisses a require
 
 - **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — <evidence>
 - none
+
+A pre-existing entry collapsed from multiple lenses uses the same nested shape as
+`## Capability findings` above — one bullet naming every contributing lens beneath it, each
+with its own evidence and `<lens>/<check>` provenance:
+
+- **<source capability>** — `path/to/file:<section>|<defect>` — <finding> — collapsed from <N> lenses:
+  - `<lens>/<check>` — <that lens's own evidence>
 
 ## Accepted warnings
 

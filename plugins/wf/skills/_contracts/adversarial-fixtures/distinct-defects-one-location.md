@@ -1,6 +1,6 @@
 # Fixture expectations — two distinct defects at the same location stay two findings
 
-Fifth fixture in the reconciliation set (WF-566). Same registry as `audit-registered.md`
+Seventh fixture in the reconciliation set (WF-566). Same registry as `audit-registered.md`
 (`../registry-fixtures/pass-audit-only.md`). Two lenses (correctness, security) report
 **different** defects at the **same** `file:section` — a missing-null-guard defect and an
 unrelated hardcoded-secret defect in the same function — proving the collapse rule groups

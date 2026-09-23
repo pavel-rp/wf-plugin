@@ -317,14 +317,15 @@ After the generic per-requirement audit, fire the **`verify`** phase and aggrega
    at that location, collapsing findings naming the same defect at one location into one
    that lists every contributing lens, its evidence, and `<lens>/<check>` provenance —
    additive only, never dropping, editing, or re-tagging a contribution. Distinct defects
-   stay distinct keys; on doubt, keep findings separate (judgment, not string match).
-   Findings render tagged with their **source capability**; registry order is cosmetic.
+   stay distinct keys; on doubt, keep findings separate (judgment, not string match). When
+   lenses disagree on severity for one collapsed defect, the finding takes the highest
+   severity (any `fail` wins) and is anchored if any contributor anchors it. Findings
+   render tagged with their **source capability**; registry order is cosmetic.
 
 **No-op:** an empty `capabilities[]`, or no fragment matching `verify`/`finding`, means the
-phase produces **nothing** — generic verdict alone, no capability/stack/domain term, no
-broken subagent reference, no STOP. A malformed `dispatch` is that contributor's own
-no-op, reported as incomplete coverage below, never a STOP. Whether a finding gates the
-verdict is decided by §"The blocking set" below, never by its mere existence.
+phase produces **nothing** — no capability/stack/domain term, no STOP. A malformed
+`dispatch` is that contributor's own no-op, reported as incomplete coverage below. Gating
+is decided by §"The blocking set" alone, never by mere existence.
 
 ### The blocking set
 

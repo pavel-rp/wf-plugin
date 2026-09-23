@@ -41,9 +41,9 @@ findings:
   recommendation: <the concrete bounded change, or "escalate">
 ```
 
-`fail` is a candidate for the core-computed blocking set, not an unconditional gate. `warn`
-is a genuine non-blocking concern. Findings require concrete evidence; never report
-speculation, style nits, or requirements already covered by the generic audit.
+`fail` is a candidate for the core-computed blocking set, not an unconditional gate;
+`warn` is non-blocking. Findings require concrete evidence; never report speculation,
+style nits, or requirements already covered by the generic audit.
 
 ## Clean result
 

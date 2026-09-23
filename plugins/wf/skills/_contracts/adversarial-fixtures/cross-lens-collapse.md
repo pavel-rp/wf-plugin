@@ -1,6 +1,6 @@
 # Fixture expectations — four lenses report the same defect at one location
 
-Fourth fixture in the reconciliation set (WF-566). Same registry as `audit-registered.md`
+Sixth fixture in the reconciliation set (WF-566). Same registry as `audit-registered.md`
 (`../registry-fixtures/pass-audit-only.md`) — the real five lenses, unchanged. Unlike the
 other three fixtures in this set (which cover the lean-pass/lens reconciliation), this one
 tests SUB-2's cross-lens collapse rule in isolation: four of the five lenses (correctness,
