@@ -21,7 +21,7 @@ fold bounded by a discovered boundary.
 
 ## Ledger field set
 
-One entry per distinct `(fingerprint, scope)` pair ever recorded across the trail. Four
+One entry per distinct `(fingerprint, scope)` pair ever recorded across the trail. Five
 fields, each required on every entry:
 
 - **fingerprint** — the finding's identity (see "Fingerprint identity" below). Half the
