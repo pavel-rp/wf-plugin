@@ -82,9 +82,11 @@ shape signal), never for what they *say*:
     (§2 — an observed `type` of `mode`, `last-prompt`, `bridge-session` and similar) carry no
     `timestamp`, so counting starts only once the same forward scan §1's `gitBranch` paragraph and §3
     already use for `timestamp` reaches the first line carrying that field — a header-to-header or
-    header-to-first-real-line transition is never itself counted as a turn boundary. From that first
-    timestamped line onward, a turn boundary is a line whose `type` differs from the immediately
-    preceding **counted** line's own `type`.
+    header-to-first-real-line transition is never itself counted as a turn boundary. **That first
+    timestamped line is itself the first counted turn** (the count starts at 1 there, not 0 — it is a
+    real turn with nothing to differ from, not a non-event); from the line immediately after it onward,
+    each further turn boundary is a line whose `type` differs from the immediately preceding **counted**
+    line's own `type`, incrementing the count by one each time.
   - **Tool-invocation line's own tool-name field** — on a line whose top-level `type` is `"assistant"`,
     each entry of the `message.content` array whose own `type` is `"tool_use"` is one tool invocation;
     that entry's `name` field is the tool-name field this seam reads.
@@ -279,8 +281,9 @@ names, never full content):
 - **Iterations** — the count of distinct top-level conversational turns in the record (a mechanical
   count of role-transition boundaries, read from §1's literal top-level `type` field, not an
   interpretation of what happened in a turn) — **excluding header lines**, per §1's turn-role/entry-type
-  paragraph: counting starts only at the first line carrying a `timestamp` field, so a record's opening
-  header lines are never themselves counted as turn boundaries.
+  paragraph: the first line carrying a `timestamp` field is itself counted as turn 1 (a record's opening
+  header lines are never themselves counted), and each subsequent `type` change from the immediately
+  preceding counted line adds one more.
 - **Edits** — the count of tool-invocation entries (§1: an `"assistant"`-type line's `message.content[]`
   entry whose own `type` is `"tool_use"`) whose `name` field matches §1's closed file-mutating allowlist
   (`Write`, `Edit`, `NotebookEdit`) — never by reading the edit's content or the file's own text, and

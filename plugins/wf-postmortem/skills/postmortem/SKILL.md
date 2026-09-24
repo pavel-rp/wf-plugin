@@ -59,9 +59,13 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 
 - Read `_local/config.md` via `resolve_config`.
 - Resolve **and** normalize `--folder`/`--repo` against the local filesystem only, via the single primitive `Bash`:
-  `cd '<path>' && pwd -P`, with every `'` in the value replaced by `'\''` first (Phase 1 step 3) — one command that
-  both distinguishes "resolves" from every non-resolution cause and, on success, already yields the canonical
+  `(cd '<path>' && pwd -P)` — **always in a subshell** (the parentheses), so it can never move this agent's own
+  persistent working directory — with every `'` in the value replaced by `'\''` first (Phase 1 step 3). One command
+  that both distinguishes "resolves" from every non-resolution cause and, on success, already yields the canonical
   absolute path.
+- Resolve each `--session` value with its own existence-check primitive `Bash`: `test -e '<path>'` — a session record
+  is one specific file, never a directory, so it is never resolved via the directory-only `cd`/`pwd -P` primitive
+  above — and size it with `Bash`: `wc -c '<path>'` under the same quoting.
 - Read the report template, redaction reference, `version-resolution.md`, `recommendation.md`, `continuation.md`, and
   `coverage-cross-check.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
   wf-postmortem`).
@@ -84,16 +88,15 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
   .md` branches (b)/(c)) and of a candidate task folder's artifacts (`coverage-cross-check.md` Part A step 1); and read
   the `--report` target's device/inode identity for Part E — `Bash`: `git log`, `git show`, `stat -c '%Y'`/`'%d:%i'`
   (BSD: `stat -f '%m'`/`'%d:%i'`), single-quoted the same way. With `test -e`/`test -L`/`wc -c`, metadata only.
-- Canonicalize `{task-root}` and `workspaceRoot` for the Phase 3 step 2.5 containment gate via `Bash`: `cd '<path>' &&
-  pwd -P`, the same primitive and quoting `continuation.md` Part A step 2 uses for a `--report` path — metadata/path
-  resolution only, never a content read.
+- Canonicalize `{task-root}` and `workspaceRoot` for the Phase 3 step 2.5 containment gate via `Bash`: `(cd '<path>' &&
+  pwd -P)` — always in a subshell, so it can never move this agent's own persistent working directory — the same
+  quoting `continuation.md` Part A step 2 uses for a `--report` path; metadata/path resolution only, never a content
+  read.
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id, and ask exactly one interactive question
   (`AskUserQuestion`) when the failure description is missing and a channel is available.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any scratch file inside the
   fixed, literal `_local/scratch/` (deliberately **not** `{task-root}`-relative, so residue lands where the finalize
   sweep covers it) — both only through the redacting write path.
-- Resolve each `--session` value with the same existence-check primitive used for `--folder`/`--repo`, and size it
-  with `Bash`: `wc -c '<path>'` under the same quoting.
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:session-reader`, once per session or per window, to read
   the record in that agent's own isolated context.
 - For the coverage cross-check (Phase 3.5 step 7.5), all in this skill's own context (none of these is a session or
@@ -152,15 +155,19 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
 3. **Folder or repository.** Take at most one of `--folder`/`--repo`. Resolve it against the local filesystem only —
    never against any session store, out of scope for this release.
 
-   **The resolution-and-normalization check is exactly one primitive: `Bash`: `cd '<path>' && pwd -P`**
-   — the same canonicalization primitive Phase 3 step 2.5 and `continuation.md` Part A step 2 use. The
-   value is free-form, caller-controlled text: replace every `'` with `'\''` and wrap the result in
-   single quotes before substitution — never concatenated, and never passed to `Glob` as a pattern (the
-   Safety Rules forbid both). This single command is what distinguishes every cause of non-resolution in
-   one step — non-existence, an existing-but-non-directory match, or an unreadable/permission-denied
-   directory — since `cd` only succeeds into a real, accessible directory; on success it already prints
-   the canonical absolute path in the same call, which is the value in force downstream (`locator.md`
-   §1's store-root derivation requires an already-absolute path). Four outcomes: **both passed** → stop
+   **The resolution-and-normalization check is exactly one primitive, always run in a subshell: `Bash`:
+   `(cd '<path>' && pwd -P)`** — the parentheses are load-bearing: a bare `cd` would move this agent's
+   own persistent shell working directory for the rest of the run, which could then corrupt every later
+   resolution in the same session (including Phase 3 step 2.5's own `{task-root}` containment gate); the
+   subshell confines the directory change to just this one check. This is the same canonicalization
+   primitive Phase 3 step 2.5 and `continuation.md` Part A step 2 use. The value is free-form,
+   caller-controlled text: replace every `'` with `'\''` and wrap the result in single quotes before
+   substitution — never concatenated, and never passed to `Glob` as a pattern (the Safety Rules forbid
+   both). This single command is what distinguishes every cause of non-resolution in one step —
+   non-existence, an existing-but-non-directory match, or an unreadable/permission-denied directory —
+   since `cd` only succeeds into a real, accessible directory; on success it already prints the canonical
+   absolute path in the same call, which is the value in force downstream (`locator.md` §1's store-root
+   derivation requires an already-absolute path). Four outcomes: **both passed** → stop
    ("pass at most one"), write nothing; **neither passed** → scope defaults to the current workspace
    only; **the command succeeds** → echo the printed absolute path, the locator (Phase 3.5 step 0)
    enumerates that project's store; **the command fails, for any reason** (does not exist, exists but is
@@ -175,8 +182,11 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
    report's own recorded value (Phase 0.5), never silently re-defaulted over an explicit prior override. Either way
    this is the **cap in force**, enforced at Phase 3.5 step 2.5: it gates only dispatch count, never the locator's own
    ranking or Coverage listing.
-5. **Named session records.** Collect every `--session` value in the order passed. Resolve each with the **same single
-   primitive** step 3 uses — same quoting, same `Glob`-as-pattern prohibition.
+5. **Named session records.** Collect every `--session` value in the order passed. Resolve each with **its own
+   existence-check primitive: `Bash`: `test -e '<path>'`** — same quoting, same `Glob`-as-pattern prohibition. A
+   `--session` value names one specific `.jsonl` file, never a directory, so it is **never** resolved via step 3's
+   directory-only `(cd '<path>' && pwd -P)` primitive — `cd` fails on every regular file, which would misreport every
+   legitimately-existing session as unresolved.
 
    Each value resolves to one of two outcomes, **both echoed** in the Scope section: **resolves** →
    echo the path verbatim, it joins the hunt set; **does not resolve** → echo it as `"<path> —
@@ -227,12 +237,14 @@ minted this run.
    rejects an absolute path or a `..` segment — so an unchecked root would let the scan below and the folder create
    reach outside the resolved workspace. Reuse the same containment idiom `continuation.md` Part A step 2 uses for a
    `--report` path: canonicalize both sides with the host's own filesystem, never a string comparison of the raw
-   paths — `Bash`: `cd '<task-root>' && pwd -P` (every `'` in the resolved `{task-root}` value replaced by `'\''`
+   paths — `Bash`: `(cd '<task-root>' && pwd -P)` — **always in a subshell**: a bare `cd` would move this agent's own
+   persistent working directory for the rest of the run, so this very check could then resolve a *later* invocation
+   against a drifted cwd instead of `workspaceRoot` (every `'` in the resolved `{task-root}` value replaced by `'\''`
    first, wrapped in single quotes) against the already-resolved absolute `workspaceRoot` (`resolve_config`),
-   canonicalized the same way. Require the canonicalized `{task-root}` to be character-for-character identical to, or
-   a path-component-bounded descendant of, the canonicalized `workspaceRoot` — never a string-prefix match
-   (`<workspaceRoot>evil/...` must not pass). The `cd` itself failing (the directory does not exist yet, or is
-   unreadable) is also **not** contained.
+   canonicalized the same way (also in a subshell). Require the canonicalized `{task-root}` to be
+   character-for-character identical to, or a path-component-bounded descendant of, the canonicalized `workspaceRoot`
+   — never a string-prefix match (`<workspaceRoot>evil/...` must not pass). The `cd` itself failing (the directory
+   does not exist yet, or is unreadable) is also **not** contained.
 
    **Fails this check** (does not resolve, or resolves outside `workspaceRoot`) → stop, write nothing, before step 3's
    `Glob` or step 4's `mkdir` ever runs. Reason: `"task root does not resolve inside the workspace — <the resolved
@@ -246,8 +258,9 @@ minted this run.
    create is a check-then-act race, so the create itself must be what fails.
 
    **Immediately before the `mkdir` below, re-run step 2.5's canonicalization comparison** of `{task-root}` against
-   `workspaceRoot` — the same two values, the same `cd '<path>' && pwd -P` primitive, the same character-for-character
-   (never string-prefix) comparison, not a new check. Fails → stop, write nothing, same reason step 2.5 states. This
+   `workspaceRoot` — the same two values, the same `(cd '<path>' && pwd -P)` subshell primitive, the same
+   character-for-character (never string-prefix) comparison, not a new check. Fails → stop, write nothing, same
+   reason step 2.5 states. This
    closes the gap between step 2.5's first pass (before the `Glob`) and this `mkdir`, across which the id-mint scan is
    not instantaneous. **Build the `mkdir` target from this re-check's own output** — join the canonicalized
    `{task-root}` string this `pwd -P` call just printed with the minted folder name — never a separately-held copy of

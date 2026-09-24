@@ -64,17 +64,27 @@ If no session path is given, or the prompt names no failure description, return 
 
 ## Procedure
 
-1. **Re-confirm each path is still not a symlink, immediately before reading it, then read the assigned
-   material.** For the top-level session path and each named subagent-record path, in that order:
-   `Bash`: `test -L '<path>'` (every `'` replaced by `'\''` first, wrapped in single quotes) must
-   **fail** (exit non-zero) — the caller validated these paths at locate time, but time has passed
-   since (this dispatch), so a path that has become a symlink in the interval is a live risk, not a
-   theoretical one. A path that now tests as a symlink is **never read**: treat that one path as
-   `error: symlink detected at read time — <path>` and skip it (a subagent-record path failing this way
-   is simply omitted from what you read; the top-level path failing this way is this dispatch's own
-   verdict). Every path that passes reads its assigned material (the session record, or the named
-   window of it, and every named subagent record) with `Read`/`Grep`. This is the only bulk you open,
-   and it stays in your context.
+1. **Re-confirm each path is still fully non-symlinked, immediately before reading it, then read the
+   assigned material.** For the top-level session path and each named subagent-record path, in that
+   order, run **both** of the following — the caller validated these paths at locate time, but time has
+   passed since (this dispatch), so a path that has changed in the interval is a live risk, not a
+   theoretical one:
+   - **Leaf check.** `Bash`: `test -L '<path>'` (every `'` replaced by `'\''` first, wrapped in single
+     quotes) must **fail** (exit non-zero) — the path's own final component must not itself be a symlink.
+   - **Ancestor-containment check.** `Bash`: `(cd "$(dirname '<path>')" && pwd -P)` — always in a
+     subshell, so it never moves this agent's own persistent working directory — then join the printed
+     result with the path's own basename; this reconstructed form must be **character-for-character
+     identical** to `<path>` as given, never a prefix match. A mismatch means some *ancestor* directory
+     component (not the leaf, which the check above already covers) has become a symlink or otherwise
+     resolves elsewhere since locate time — the leaf check alone cannot catch this, since it never
+     inspects anything above the final component.
+
+   A path failing **either** check is **never read**: treat that one path as `error: symlink detected at
+   read time — <path>` and skip it (a subagent-record path failing this way is simply omitted from what
+   you read; the top-level path failing this way is this dispatch's own verdict). Every path that passes
+   both checks reads its assigned material (the session record, or the named window of it, and every
+   named subagent record) with `Read`/`Grep`. This is the only bulk you open, and it stays in your
+   context.
 2. **Hunt both ways, deliberately.** Collect observations that **support** the described failure
    *and* observations that count **against** it. The second is not a courtesy pass: a hunt that only
    confirms is the failure mode this agent exists to prevent, so spend real effort on the
