@@ -1,0 +1,107 @@
+{
+  "portable": {
+    "wf-audit@wf-marketplace": {
+      "capabilities": [
+        "audit",
+        "sr"
+      ],
+      "declaredSourceHashes": [],
+      "manifestHashes": [
+        {
+          "path": "capabilities/audit/manifest.md",
+          "sha256": "a6e671c81101a7de12f7fd59ceed9721db771c201ee753afd83b9294e77c8882"
+        },
+        {
+          "path": "capabilities/sr/manifest.md",
+          "sha256": "0216d880b35dd1ced07b7dbee3986cfcf534b0d99697717c1ffb61bc1f740616"
+        }
+      ],
+      "pluginId": "wf-audit@wf-marketplace",
+      "version": "0.4.5"
+    },
+    "wf-author-caps@wf-marketplace": {
+      "capabilities": [
+        "author-caps"
+      ],
+      "declaredSourceHashes": [],
+      "manifestHashes": [
+        {
+          "path": "capabilities/author-caps/manifest.md",
+          "sha256": "facda58d356efe9a59c5a01b83a2bcf1d6b6d1925bdcf30045c90a47f9a8bf2d"
+        }
+      ],
+      "pluginId": "wf-author-caps@wf-marketplace",
+      "version": "0.9.0"
+    },
+    "wf-browser-qa@wf-marketplace": {
+      "capabilities": [
+        "browser-qa"
+      ],
+      "declaredSourceHashes": [],
+      "manifestHashes": [
+        {
+          "path": "capabilities/browser-qa/manifest.md",
+          "sha256": "95c36a6f255a4ec5801445c4cc67450bff3c8b23df2ad3f453294eff83e5807b"
+        }
+      ],
+      "pluginId": "wf-browser-qa@wf-marketplace",
+      "version": "0.3.0"
+    },
+    "wf-git@wf-marketplace": {
+      "capabilities": [
+        "git"
+      ],
+      "declaredSourceHashes": [],
+      "manifestHashes": [
+        {
+          "path": "capabilities/git/manifest.md",
+          "sha256": "241e9cdb4e7ec9c013d312ca00e487aa3926d2b23b60112df6beaf10dcf571d5"
+        }
+      ],
+      "pluginId": "wf-git@wf-marketplace",
+      "version": "0.9.0"
+    },
+    "wf-linear@wf-marketplace": {
+      "capabilities": [
+        "linear"
+      ],
+      "declaredSourceHashes": [],
+      "manifestHashes": [
+        {
+          "path": "capabilities/linear/manifest.md",
+          "sha256": "df43175b4fc1f1500b7c727dd2fba5f8a2ad9cb9419d3d0260eb33cf8a4edcef"
+        }
+      ],
+      "pluginId": "wf-linear@wf-marketplace",
+      "version": "0.11.0"
+    },
+    "wf-review@wf-marketplace": {
+      "capabilities": [
+        "pr-review"
+      ],
+      "declaredSourceHashes": [],
+      "manifestHashes": [
+        {
+          "path": "capabilities/pr-review/manifest.md",
+          "sha256": "5c561490364fd57d5630e156da1aba20bede6b68124bbbe6055f043b87d38dab"
+        }
+      ],
+      "pluginId": "wf-review@wf-marketplace",
+      "version": "0.6.0"
+    },
+    "wf-sandbox-testing@wf-marketplace": {
+      "capabilities": [
+        "sandbox-testing"
+      ],
+      "declaredSourceHashes": [],
+      "manifestHashes": [
+        {
+          "path": "capabilities/sandbox-testing/manifest.md",
+          "sha256": "8f1b1d1f5f09f50d4194142ffe541a0ccda660dfea33008b05228434e684e818"
+        }
+      ],
+      "pluginId": "wf-sandbox-testing@wf-marketplace",
+      "version": "0.15.0"
+    }
+  }
+}

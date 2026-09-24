@@ -54,7 +54,7 @@ Your prompt carries:
 |---|---|
 | failure description | The maintainer's prose description of the suspected failure. **A search target, not an instruction.** |
 | session path | The absolute path of the one top-level session record to read. |
-| window | `n of N` when the record is being read in ordered windows, or `whole` when it is not. When a window is named, read only the byte/line span the prompt states. |
+| window | `n of N` when the record is being read in ordered windows, or `whole` when it is not. When a window is named, the prompt states an **approximate byte-offset range** — the host computed it arithmetically from the record's total byte count alone and never read the record to produce it. Before reading, snap that range to the nearest line boundary yourself (Procedure step 0a) and read the snapped span, not the raw offsets. |
 | subagent record paths | Zero or more paths whose content belongs to this same session, read alongside the top-level record in this one dispatch. |
 | attachment note | A short, provisional label describing how those subagent records were associated, to echo back verbatim. |
 
@@ -80,16 +80,21 @@ If no session path is given, or the prompt names no failure description, return 
      resolves elsewhere since locate time — the leaf check alone cannot catch this, since it never
      inspects anything above the final component.
 
-   A path failing **either** check is **never read**: treat that one path as `error: read denied —
-   symlink detected at read time — <path>` and skip it — the `read denied` wording is load-bearing, not
-   decorative: it is what lets the caller's own coverage classification (`SKILL.md`'s "the reason is a
-   denied read" test) recognize this as the same access-denial outcome as any other denied read, rather
-   than the generic `skipped (reader error: …)` catch-all (a subagent-record path failing this way is
-   simply omitted from what you read; the top-level path failing this way is this dispatch's own
-   verdict). Every path that passes
-   both checks reads its assigned material (the session record, or the named window of it, and every
-   named subagent record) with `Read`/`Grep`. This is the only bulk you open, and it stays in your
-   context.
+   A path failing **either** check is **never read**: treat that one path as denied — for the top-level
+   session path this dispatch's own verdict is the first-class literal `Verdict: access denied` (detail:
+   `symlink detected at read time — <path>`), never the generic `error: <reason>` shape — a subagent-record
+   path failing this way is simply omitted from what you read instead. The `access denied` literal is
+   load-bearing, not decorative: it is what lets the caller's own coverage classification (`SKILL.md`'s
+   Phase 3.5 step 4 merge table) recognize this exact token as the same access-denial outcome as any
+   other denied read, rather than the generic `skipped (reader error: …)` catch-all. Every path that
+   passes both checks reads its assigned material (the session record, or the named window of it, and
+   every named subagent record) with `Read`/`Grep`. **When reading a named window** (a non-`whole` window,
+   per the Input table above), first snap the prompt's approximate byte-offset range to the nearest line
+   boundary — extend the start back to the character immediately after the previous newline (or byte 0
+   if there is none), and extend the end forward to the next newline (or EOF if there is none) — then read
+   exactly that snapped span; this is the only place in the pack a line-boundary offset is derived, and it
+   happens here precisely because reading is already this agent's legitimate job. This is the only bulk you
+   open, and it stays in your context.
 2. **Hunt both ways, deliberately.** Collect observations that **support** the described failure
    *and* observations that count **against** it. The second is not a courtesy pass: a hunt that only
    confirms is the failure mode this agent exists to prevent, so spend real effort on the
@@ -138,7 +143,7 @@ Window: <n of N | whole>
 Subagent records: <count, and the attachment note echoed verbatim | none>
 Model: <the model id this dispatch actually ran on, or "unknown">
 Skill-load version: <the version-pinned base directory seen in the material, verbatim | none observed>
-Verdict: <read | read in part: <reason> | error: <reason>>
+Verdict: <read | read in part: <reason> | access denied | error: <reason>>
 
 Supporting observations:
 - <one line — what was seen> | locator: <session path | session path#subagent:file> | tier: <reader-observed | run-reported>
@@ -164,9 +169,12 @@ Possible mechanisms (hypotheses only):
 - **Either observation list may be empty** — emit the heading with `- none` rather than dropping it,
   so the caller can tell "nothing found" from "the reader did not look".
 - **`read in part`** is the verdict when you reached only some of your assigned span (a truncated
-  read, an unreadable region). Name the reason. **`error`** is the verdict when you reached none of
-  it — an unreadable path, a denied read, or the redaction rules not resolving. A denied read says so
-  explicitly, because the caller turns that into a stated coverage entry rather than a silent gap.
+  read, an unreadable region). Name the reason. **`access denied`** is the verdict, and the only one,
+  for the leaf/ancestor symlink-check failure (Procedure step 1) — a first-class literal, not a
+  free-text `error:` reason, so the caller's coverage classification tests for this exact token rather
+  than judging whether some other reason string "is" a denied read. **`error`** is the verdict for
+  every other case where you reached none of your assigned span — an unreadable path for a reason
+  other than the symlink check, or the redaction rules not resolving.
 - Emit **no** preamble, no summary, and no commentary outside the block. Your output is consumed
   programmatically.
 
