@@ -266,7 +266,7 @@ compact, already-redacted or already-structural block comes back.
    exemption applies here** (`continuation.md` Part C): a session that already holds a Coverage entry is never
    *demoted* to `skipped (budget)` by this split — it keeps that entry unchanged, and only a never-before-covered
    session is freshly assigned the verdict past the cap. Likewise, a session already `skipped (access denied)`
-   (step 2) never reaches this split — straight to step 4, no cap slot, no dispatch.
+   (step 2) never reaches this split — straight to step 4, never counted against the cap, never dispatched.
 
 3. **Route and dispatch one reader per session or per window** that step 2.5 carried into this step (never a
    capped-out or already-denied entry). **UnitId slug** = first 16 hex chars of SHA-256(resolved absolute
