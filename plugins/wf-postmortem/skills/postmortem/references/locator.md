@@ -123,18 +123,22 @@ of it is that it complete its pair (below). Testing it for a `.jsonl` extension,
 `sessionId`, or a `timestamp` would reject every session that has subagent records at all.
 
 **Recognized** — all of the following hold for a record:
-- **the candidate is a real regular file, never a symlink** (`test -L` on it fails) — this half applies
-  in **both** modes, since a symlink is never a native store member regardless of how the candidate's
-  path was supplied. **In locate mode only**, its canonicalized resolved path must additionally be
-  contained under the derived store root (§1) — by path-component-boundary comparison, never a
-  string-prefix match (`<store-root>evil/...` must not pass); the same two checks (non-symlink, plus
-  store-root containment) apply to a sibling subagent-record directory when one exists, and to each
-  entry directly inside its `subagents/` folder. **In attach-only mode** (§7 — the caller passed already-
+- **the candidate is a real regular file, never a symlink** — both `test -f` (must succeed — a
+  directory, device, or other non-regular entry fails this even though it too fails `test -L`) **and**
+  `test -L` (must fail) on it. This half applies in **both** modes, since neither a symlink nor a
+  non-regular entry is ever a native store member regardless of how the candidate's path was supplied.
+  A **sibling subagent-record directory**, and the `subagents/` folder itself, are instead required to
+  pass `test -d` (must succeed) and `test -L` (must fail) — the directory-shaped counterpart of the
+  same two-part discipline, never the file-shaped `test -f`. **In locate mode only**, its canonicalized
+  resolved path must additionally be contained under the derived store root (§1) — by
+  path-component-boundary comparison, never a string-prefix match (`<store-root>evil/...` must not
+  pass); the same containment check applies to the sibling subagent-record directory and to each entry
+  directly inside its `subagents/` folder. **In attach-only mode** (§7 — the caller passed already-
   resolved `--session` paths, not a scope), there is no store root to derive at all — no `workspace path`
   or `--folder`/`--repo` value is given to this mode — so the store-root-containment half is **n/a —
   named session**, the same carve-out `Date`/`Scope-match`/`Hunt session` already state for this mode
-  (`agents/locator.md`'s attach-only-mode procedure); only the non-symlink half applies to a named path
-  and its attached subagent records;
+  (`agents/locator.md`'s attach-only-mode procedure); only the regular-file/non-symlink half applies to
+  a named path and its attached subagent records;
 - the file's name ends `.jsonl`;
 - its first line is well-formed JSON and carries a `sessionId` field. **A `timestamp` is not required
   on this line and must not be demanded of it:** a record opens with one or more header lines (an
@@ -157,8 +161,10 @@ sibling directory
 exists but holds no `subagents/` folder at all where the top-level record's own first line implies
 subagent activity occurred (a stated, conservative signal — this release does not attempt to name
 every implying field, only to fail loudly rather than guess when the layout looks inconsistent with
-itself). **A candidate, a sibling subagent-record directory, or a `subagents/` entry that is a symlink
-is Unrecognized for that candidate/pair, in both modes; in locate mode only, one whose resolved path is
+itself). **A candidate, a sibling subagent-record directory, or a `subagents/` entry that is a symlink, or that
+fails its required shape test (`test -f` for a candidate record or a `subagents/` entry, `test -d` for
+the sibling directory or `subagents/` itself), is Unrecognized for that candidate/pair, in both modes;
+in locate mode only, one whose resolved path is
 not canonically contained under the store root is Unrecognized too** (attach-only mode has no store root
 to compare against — the containment half is `n/a — named session` there, per the Recognized list above)
 — the same stop-the-whole-dispatch discipline as any other unrecognized shape below, never a per-record
