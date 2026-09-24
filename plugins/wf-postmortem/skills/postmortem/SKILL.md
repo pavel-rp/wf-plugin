@@ -58,9 +58,10 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 **Allowed:**
 
 - Read `_local/config.md` via `resolve_config`.
-- Resolve `--folder`/`--repo` against the local filesystem only, via the single existence-check primitive `Bash`:
-  `test -e '<path>'`, with every `'` in the value replaced by `'\''` first (Phase 1 step 3) — then, once it resolves,
-  normalize it to an absolute path via `Bash`: `cd '<path>' && pwd -P`, same quoting.
+- Resolve **and** normalize `--folder`/`--repo` against the local filesystem only, via the single primitive `Bash`:
+  `cd '<path>' && pwd -P`, with every `'` in the value replaced by `'\''` first (Phase 1 step 3) — one command that
+  both distinguishes "resolves" from every non-resolution cause and, on success, already yields the canonical
+  absolute path.
 - Read the report template, redaction reference, `version-resolution.md`, `recommendation.md`, `continuation.md`, and
   `coverage-cross-check.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
   wf-postmortem`).
@@ -151,26 +152,21 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
 3. **Folder or repository.** Take at most one of `--folder`/`--repo`. Resolve it against the local filesystem only —
    never against any session store, out of scope for this release.
 
-   **The existence check is exactly one primitive: `Bash`: `test -e '<path>'`.** The value is
-   free-form, caller-controlled text: replace every `'` with `'\''` and wrap the result in single
-   quotes before substitution — never concatenated, and never passed to `Glob` as a pattern (the
-   Safety Rules forbid both). **A `--folder`/`--repo` value additionally requires `Bash`: `test -d
-   '<path>'` (same quoting) — this is a project root the locator will enumerate as a directory, so an
-   existing-but-non-directory match (a plain file) is treated exactly like a non-existent path, never
-   passed on to the absolute-path normalization below.** Four outcomes: **both passed** → stop ("pass at
-   most one"), write nothing; **neither passed** → scope defaults to the current workspace only;
-   **resolves** (exists **and** is a directory) → normalize it to an absolute path (below), then echo
-   that absolute path, the locator (Phase 3.5 step 0) enumerates that project's store; **does not
-   resolve** (does not exist, or exists but is not a directory) → echo it unresolved (`"<name> —
-   unresolved (no matching filesystem path)"`), `session-scope` still states `"current workspace only"`
-   — an unresolved name never widens it.
-
-   **Once it resolves, normalize it to an absolute path before it is echoed or handed to the locator
-   dispatch** (Phase 3.5 step 0's `workspace path` field) — `Bash`: `cd '<path>' && pwd -P`, the same
-   canonicalization primitive Phase 3 step 2.5 and `continuation.md` Part A step 2 use, same quoting.
-   `locator.md` §1's store-root derivation requires an already-absolute path, so a relative value that
-   resolves keeps resolving, but the value in force downstream — echoed, and dispatched — is always this
-   absolute one, never the raw relative form.
+   **The resolution-and-normalization check is exactly one primitive: `Bash`: `cd '<path>' && pwd -P`**
+   — the same canonicalization primitive Phase 3 step 2.5 and `continuation.md` Part A step 2 use. The
+   value is free-form, caller-controlled text: replace every `'` with `'\''` and wrap the result in
+   single quotes before substitution — never concatenated, and never passed to `Glob` as a pattern (the
+   Safety Rules forbid both). This single command is what distinguishes every cause of non-resolution in
+   one step — non-existence, an existing-but-non-directory match, or an unreadable/permission-denied
+   directory — since `cd` only succeeds into a real, accessible directory; on success it already prints
+   the canonical absolute path in the same call, which is the value in force downstream (`locator.md`
+   §1's store-root derivation requires an already-absolute path). Four outcomes: **both passed** → stop
+   ("pass at most one"), write nothing; **neither passed** → scope defaults to the current workspace
+   only; **the command succeeds** → echo the printed absolute path, the locator (Phase 3.5 step 0)
+   enumerates that project's store; **the command fails, for any reason** (does not exist, exists but is
+   not a directory, or is unreadable) → echo it unresolved (`"<name> — unresolved (no matching filesystem
+   path)"`), `session-scope` still states `"current workspace only"` — an unresolved name never widens
+   it, and this outcome draws no further distinction among the failure's causes.
 4. **Read cap.** When `--cap` is passed, **validate it before anything uses it**: the value must match `^[1-9][0-9]*$`
    — a positive integer, no sign, no decimal, no unit, no leading zero. It fails → stop, reason `"--cap <value> is not
    a positive integer"`, write nothing; never coerced, truncated, or silently replaced by the default. Valid → take it
@@ -253,7 +249,10 @@ minted this run.
    `workspaceRoot` — the same two values, the same `cd '<path>' && pwd -P` primitive, the same character-for-character
    (never string-prefix) comparison, not a new check. Fails → stop, write nothing, same reason step 2.5 states. This
    closes the gap between step 2.5's first pass (before the `Glob`) and this `mkdir`, across which the id-mint scan is
-   not instantaneous.
+   not instantaneous. **Build the `mkdir` target from this re-check's own output** — join the canonicalized
+   `{task-root}` string this `pwd -P` call just printed with the minted folder name — never a separately-held copy of
+   the raw, pre-check `{task-root}` config value, so the create targets exactly the directory identity the re-check
+   just verified, not a value that could have changed between the two.
 
    **Use `Bash`: `LC_ALL=C mkdir '<path>'` — without `-p`.** `LC_ALL=C` is load-bearing: under another
    locale a genuine collision's translated stderr could be misread as a hard failure. Exit 0 → folder
@@ -263,6 +262,9 @@ minted this run.
    path does **not** exist (permission/missing/full-disk/read-only) → **not** a collision; stop with
    that reason verbatim, never retried — re-minting repairs nothing about an unwritable, missing, or
    full `{task-root}`. This release records no per-task index row for it (charter assumption #9).
+   **"Retry" means re-running this step's full sequence** — the canonicalization re-check above, then the `mkdir` —
+   on every one of the 3 attempts, never only the bare `mkdir` on attempts 2-3; skipping the re-check on a retry would
+   reopen across that retry's own id-mint re-scan exactly the gap this step exists to close.
 
 ---
 

@@ -131,7 +131,8 @@ of it is that it complete its pair (below). Testing it for a `.jsonl` extension,
   resolved `--session` paths, not a scope), there is no store root to derive at all — no `workspace path`
   or `--folder`/`--repo` value is given to this mode — so the store-root-containment half is **n/a —
   named session**, the same carve-out `Date`/`Scope-match`/`Hunt session` already state for this mode
-  (§8); only the non-symlink half applies to a named path and its attached subagent records;
+  (`agents/locator.md`'s attach-only-mode procedure); only the non-symlink half applies to a named path
+  and its attached subagent records;
 - the file's name ends `.jsonl`;
 - its first line is well-formed JSON and carries a `sessionId` field. **A `timestamp` is not required
   on this line and must not be demanded of it:** a record opens with one or more header lines (an

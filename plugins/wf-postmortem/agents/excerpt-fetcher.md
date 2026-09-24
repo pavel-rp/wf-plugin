@@ -64,8 +64,13 @@ there is nothing to bound the fetch by.
 
 ## Procedure
 
-1. **Confirm the target exists.** `Bash`: `test -e '<path>'`, single-quoted with every `'` in the
-   path replaced by `'\''` first. Does not exist → **`not found`**.
+1. **Confirm the target exists and is still not a symlink, immediately before fetching.** `Bash`:
+   `test -e '<path>'`, single-quoted with every `'` in the path replaced by `'\''` first. Does not
+   exist → **`not found`**. Otherwise, `Bash`: `test -L '<path>'` (same escaping) must **fail** (exit
+   non-zero) — the caller validated this path at locate time, but time has passed since (this
+   dispatch), so a path that has become a symlink in the interval is a live risk: → **`read denied`**
+   (the same outcome as any other denied read, since trusting a swapped symlink target is exactly the
+   risk this check exists to close).
 2. **Fetch the bounded excerpt.**
    - **`window` given:** `Bash`: `sed -n '<start>,<end>p' '<path>'`. Clamp the window to 200 lines
      before the fetch (a window naming a wider span is truncated to its own first 200 lines, not
