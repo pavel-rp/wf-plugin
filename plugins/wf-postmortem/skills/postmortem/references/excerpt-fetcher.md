@@ -120,7 +120,11 @@ context, and only there:
    - **`window` given** — `Bash`: `sed -n '<start>,<end>p' '<path>' | head -c 16000; exit
      "${PIPESTATUS[0]}"`, clamped to **200 lines** before the fetch runs — a window naming a wider span
      is clamped to its own first 200 lines, not refused, since both the byte ceiling above and the
-     excerpt ceiling below still bound what the fetcher returns.
+     excerpt ceiling below still bound what the fetcher returns. **Separately**, `Bash`: `sed -n
+     '<start>,<end>p' '<path>' | wc -c` probes the raw length — only the small integer count reaches
+     the agent, never the content beyond byte 16,000 — giving step 3's boundary guard a definitive
+     ceiling-engaged signal (count > 16,000) instead of inferring it from the truncated output's own
+     length.
    - **No window, a search anchor given** — `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' |
      head -c 16000; exit "${PIPESTATUS[0]}"`, the anchor single-quoted the same way. `-F` treats it as a
      literal string, never a regular expression. `0` or `141` (a match found, context possibly cut by
@@ -128,7 +132,8 @@ context, and only there:
      "no match" code) within that bounded search → **not found** — never a wider retry. **A redacted
      anchor (one containing `[REDACTED]`) can never match raw text** — a stated, accepted limitation of
      this interim fetcher, not a silent misclassification: the resulting `not found` is the honest
-     outcome, since the anchor genuinely cannot appear literally in unredacted material.
+     outcome, since the anchor genuinely cannot appear literally in unredacted material. The same
+     `| wc -c` length probe runs on this command too.
    - A denied read is any exit code that is nonzero and **neither `141` (the ceiling's own SIGPIPE)
      nor `grep`'s own `1` ("no match")** → **read denied**. `141` is never treated as a denied read.
 3. **Redact first, before any truncation.** The agent obtains `redaction.md` itself (the same
@@ -141,13 +146,14 @@ context, and only there:
    — never repeated here.)
 
    **Boundary-truncation guard, scoped to when the ceiling actually engaged.** Because the byte ceiling
-   in step 2 can itself cut a token/hex/base64/JWT run mid-pattern, the agent first checks the fetched
-   excerpt's raw, pre-redaction byte length: only when it is **exactly 16,000 bytes** (the ceiling
-   engaged) does it additionally redact any trailing run of 16+ characters from `[A-Za-z0-9+/=_.-]`
-   (rules 3-4's own classes, plus `.` for rule 2's JWT segment-joining character) reaching the exact
-   final character of the excerpt, even below the matching rule's own length threshold — a shorter,
-   un-truncated fetch never triggers this guard, which is what stops it from over-redacting an
-   ordinary excerpt's incidental trailing hash-shaped identifier or filename. This closes the boundary
+   in step 2 can itself cut a token/hex/base64/JWT run mid-pattern, the agent first consults step 2's
+   separate `wc -c` length probe — never the truncated output's own length: only when the probed count
+   is **greater than 16,000** (the ceiling engaged) does it additionally redact any trailing run of 16+
+   characters from `[A-Za-z0-9+/=_.-]` (rules 3-4's own classes, plus `.` for rule 2's JWT
+   segment-joining character) reaching the exact final character of the excerpt, even below the
+   matching rule's own length threshold — a probed count of 16,000 or less never triggers this guard,
+   including a fetch that naturally lands at exactly 16,000 bytes, which the probe (unlike the output's
+   own length) correctly tells apart from a genuinely clipped one. This closes the boundary
    gap for rules 2-4; **rule 1 (Bearer tokens) is a stated, accepted residual risk at this boundary**,
    the same category `redaction.md` already accepts for shapes outside its own list — widening the
    guard to Bearer's unrestricted-non-whitespace alphabet would trade a narrow truncation-boundary gap
@@ -179,10 +185,10 @@ session-side failure, never a silent pass.
 
 **One stated exception to `Path` redaction.** The agent's own Prerequisites step obtains the shape
 list before doing anything else; if that resolution fails, the agent stops and returns the `error`
-outcome with no shape list ever in hand — so that one branch echoes `Path` **unredacted**, since there
-is nothing to run it through. This is an accepted, narrow gap on the Prerequisites-failure path only,
-never on `fetched`/`not found`/`read denied`, all of which reach step 5 with the shape list already
-held.
+outcome with no shape list ever in hand, so that one branch never reaches step 5 — it emits the fixed
+marker `[REDACTED]` in `Path`'s place instead, **never the raw path**. This is the only verdict where
+`Path` is a fixed value rather than redaction-pass output; `fetched`/`not found`/`read denied` all
+reach step 5 with the shape list already held and redact `Path` through it normally.
 
 ## Outcomes, as the confirmation step sees them
 

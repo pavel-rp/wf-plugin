@@ -41,50 +41,32 @@ convenient one:
 
 **a. Versioned plugin-cache install path.** The validated `<version>` folder exists and is readable
 on this host → derive the absolute path to compare against, then re-validate it, before any
-comparison proceeds:
+comparison proceeds. Rationale for this branch's design (the `$CLAUDE_PLUGIN_ROOT` shape, the
+containment primitive's provenance, and what each of the three re-validation checks defeats):
+obtained via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
+wf-postmortem`, `skill: postmortem`, `ref: version-resolution-rationale.md`) — authoring-only,
+never read at runtime.
 
-1. **Derive the absolute plugin-cache root.** **Guard first:** if `$CLAUDE_PLUGIN_ROOT` is unset or
-   empty, this branch does not resolve at all — fall through to branch (b) exactly like the existing
-   absent/denied case, never assuming a value. Otherwise, this run's own `$CLAUDE_PLUGIN_ROOT` is
-   shaped `<cache-root>/<marketplace>/<plugin>/<version>` — the same shape every skill dispatch's own
-   tool-preamble line carries, per this pack's own `Skill-load version:` convention
-   (`session-reader.md`, `locator.md`) — so apply `dirname` three times to strip `<version>`,
-   `<plugin>`, and `<marketplace>` in turn, yielding the shared `<cache-root>` ancestor every
-   installed pack's cache entry sits under, regardless of which specific pack is being audited.
-   (`pack-onboarding.ops.md` confirms `$CLAUDE_PLUGIN_ROOT` is populated when a skill runs under the
-   plugin runtime and stops when it is not — it does not itself state the 4-segment shape; that shape
-   is this pack's own observed convention, cross-confirmed by the tool-preamble form documented
-   elsewhere in this pack.)
+1. **Derive the absolute plugin-cache root.** Guard: if `$CLAUDE_PLUGIN_ROOT` is unset or empty,
+   this branch does not resolve — fall through to branch (b). Otherwise apply `dirname` three times
+   to `$CLAUDE_PLUGIN_ROOT` (shaped `<cache-root>/<marketplace>/<plugin>/<version>`) to yield
+   `<cache-root>`.
 2. **Canonicalize and join.** `Bash`: `(cd '<cache-root>' && pwd -P)` — single-quoted, every `'`
-   replaced by `'\''` first, always in a subshell so it never moves this run's own persistent working
-   directory (the same literal `(cd '<dir>' && pwd -P)` directory-containment primitive
-   `task-root-containment.md` already establishes — distinct from `excerpt-fetcher.md`'s/
-   `session-reader.md`'s leaf-plus-basename-join variant, which re-validates a single *file* path
-   rather than canonicalizing a directory outright) — to get the canonicalized cache root. **Either
-   `cd` failing (the directory does not exist, or is unreadable) means this branch does not resolve at
-   all** — fall through to branch (b) immediately, the same fall-through the header's own precondition
-   ("the `<version>` folder exists and is readable") already implies, and the same disposition step 4
-   below gives every other failure in this branch; this is expected to fire routinely, since `<version>`
-   is a reader-reported *historical* string that may well not match anything on this host. Only once
-   the cache root canonicalizes successfully: join the validated `<marketplace>/<plugin>/<version>`
-   segments onto it to form the candidate absolute path, then canonicalize the candidate the same way:
-   `Bash`: `(cd '<candidate>' && pwd -P)` — this second `cd` failing falls through to branch (b)
-   identically.
+   replaced by `'\''` first, always in a subshell. Either `cd` failing (directory absent or
+   unreadable) → fall through to branch (b) — expected and routine, since `<version>` is a
+   reader-reported historical string. Join the validated `<marketplace>/<plugin>/<version>` segments
+   onto the canonicalized root to form the candidate, then canonicalize the candidate the same way:
+   `Bash`: `(cd '<candidate>' && pwd -P)` — this `cd` failing falls through to branch (b) identically.
 3. **Re-validate the canonicalized candidate**, all three checks required before the comparison
    proceeds:
-   - **Containment.** The candidate's own ancestor three levels up (`dirname` applied three times to
-     the canonicalized candidate) must be character-for-character identical to the canonicalized
-     cache root from step 2 — never a prefix match. This defeats a symlinked `<marketplace>`,
-     `<plugin>`, or `<version>` segment that resolves outside the cache root.
-   - **Version identity.** The canonicalized candidate's own basename must be character-for-character
-     identical to the reported `<version>`. This defeats a `<version>` segment that is itself a
-     symlink to a *different* version's directory, which containment alone would not catch.
-   - **Segment identity.** The canonicalized candidate's own `<plugin>` and `<marketplace>` path
+   - **Containment** — the candidate's own ancestor three levels up (`dirname` ×3) must be
+     character-for-character identical to the canonicalized cache root from step 2 — never a prefix
+     match.
+   - **Version identity** — the canonicalized candidate's own basename must be character-for-character
+     identical to the reported `<version>`.
+   - **Segment identity** — the canonicalized candidate's own `<plugin>` and `<marketplace>` path
      segments (the basename's parent, and that parent's own parent) must each be character-for-character
-     identical to the originally reported `<plugin>` and `<marketplace>` strings. This defeats a
-     symlinked `<marketplace>` or `<plugin>` segment that still resolves inside the cache root and
-     still carries a matching `<version>` basename — passing containment and version identity alike —
-     while silently pointing at a *different* pack's directory.
+     identical to the originally reported `<plugin>` and `<marketplace>` strings.
 4. **Any check failing — step 2's canonicalization, or any of step 3's three re-validations** → this
    branch does not resolve; continue to branch (b) exactly like the existing absent/denied case below
    — never a silent fall-through under an unrelated version.
