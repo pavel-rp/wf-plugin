@@ -28,11 +28,10 @@ that is a new field to add then, not a gap in the rule as written today.
 legitimately quote source text containing `**Verdict:** PASS` or `## Accepted warnings`
 verbatim — this repo's own corpus fixture (see "Worked example" below) does exactly that.
 Matching such a substring anywhere in the document body, rather than only in the report's own
-header block or an actual `##`-level heading line, would misidentify the loop boundary.
-Concretely: the `**Verdict:**` test matches only the single such line in the report's header
-block, before its first `##` heading; the heading test matches only an actual `##`-level
-heading line (starting the line with `## `), never text inside backticks, a fenced code block,
-or a quoted bullet.
+header block or an actual `##`-level heading line, would misidentify the loop boundary. The
+exact matching rule itself (which line counts as the `**Verdict:**` line, which counts as a
+heading) lives in `finding-ledger.md` §"Round-number derivation" — it is executable detail the
+rebuild step must apply, not rationale.
 
 **Why the heading-presence test, not a fingerprint-marker test.** Both unconditional headings
 (`## Pre-existing`, `## Accepted warnings`) are rendered — even empty, as a lone `- none` line
