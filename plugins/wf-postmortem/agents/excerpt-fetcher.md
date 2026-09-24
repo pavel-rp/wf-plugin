@@ -104,36 +104,33 @@ there is nothing to bound the fetch by.
    - **`window` given:** `Bash`: `sed -n '<start>,<end>p' '<path>' | head -c 16000; exit
      "${PIPESTATUS[0]}"`. Clamp the window to 200 lines before the fetch (a window naming a wider span
      is truncated to its own first 200 lines, not refused) — the byte ceiling above applies in
-     addition to this line-count clamp, not instead of it. **Separately, probe the raw length without
-     ever bringing the excess into context:** `Bash`: `sed -n '<start>,<end>p' '<path>' | wc -c` —
-     only the small integer byte count reaches you, never the content beyond byte 16,000. A count
-     greater than 16,000 means the ceiling engaged on this fetch (the content pipeline above truncated
-     something); a count of 16,000 or less means it did not — this is the **definitive** ceiling-engaged
-     signal step 3's boundary-truncation guard keys on, never an inference from the truncated output's
-     own length. **End the content command by exiting with `sed`'s
+     addition to this line-count clamp, not instead of it. **End the command by exiting with `sed`'s
      own captured status (`${PIPESTATUS[0]}`), never `head`'s** — `head` exits 0 on empty input
      regardless of the upstream command's own status, so piping alone would silently collapse a
      denied/failed `sed` read into what looks like an empty successful fetch. Because each fetch runs
      as its own process, `exit "${PIPESTATUS[0]}"` makes that captured status the dispatch's own
      observed exit code — not merely an unread variable. **Interpret the observed exit code as
-     follows, and no other way:** `0` (the fetch completed without the ceiling ever engaging) — the
-     fetch succeeded, proceed to step 3. `141` (`SIGPIPE` — `head` had already read its 16,000 bytes
-     and closed the pipe, which killed the still-writing `sed` mid-output) — **this is the ceiling
-     doing exactly its intended job on a large fetch, not a failure**; the fetch still succeeded,
-     proceed to step 3 with whatever `head` captured. Step 1's own readability check already rules
-     out "can't be opened" before the fetch ever runs, so **any other nonzero exit code** here is a
-     genuine, unexpected `sed` failure → **`read denied`**.
+     follows, and no other way:** `0` (`sed` reached its own end of output before `head`'s 16,000-byte
+     quota ever forced a close — the total was 16,000 bytes or fewer) — the fetch succeeded, the
+     ceiling did **not** engage, proceed to step 3. `141` (`SIGPIPE` — `head` had already read its
+     16,000 bytes and closed the pipe while `sed` was still trying to write more, so the kernel killed
+     `sed` on its next write) — **this is the ceiling doing exactly its intended job on a fetch whose
+     raw output exceeded 16,000 bytes, not a failure**; the fetch still succeeded, the ceiling **did**
+     engage, proceed to step 3 with whatever `head` captured. This exit code is the **definitive**,
+     single-execution ceiling-engaged signal step 3's boundary-truncation guard keys on — it comes from
+     the same producer run that generated the returned bytes, never a separate re-read that could
+     observe a changed file. Step 1's own readability check already rules out "can't be opened" before
+     the fetch ever runs, so **any other nonzero exit code** here is a genuine, unexpected `sed`
+     failure → **`read denied`**.
    - **No `window`, a search anchor given:** `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' |
      head -c 16000; exit "${PIPESTATUS[0]}"`, with the anchor single-quoted the same way (`-F` —
-     literal string, never a regular expression). **Same length probe as above, on the same command:**
-     `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' | wc -c` — a count greater than 16,000
-     means the ceiling engaged. Same discipline, `grep`'s own status: `0` (a match
-     was found and its full bounded context was written) or `141` (`SIGPIPE` — a match was found and
-     the ceiling closed the pipe while `grep` was still writing its `-B20 -A20` context; the match
-     itself still stands) both mean the fetch succeeded — proceed to step 3. An observed exit code of
-     `1` (`grep`'s own "no match" code) within that bounded search → **`not found`**. Never a wider
-     retry. Step 1's readability check again rules out "can't be opened," so any other nonzero exit
-     code is a genuine failure.
+     literal string, never a regular expression). Same discipline, `grep`'s own status: `0` (a match
+     was found and its full bounded context was written without the ceiling ever engaging) or `141`
+     (`SIGPIPE` — a match was found and the ceiling closed the pipe while `grep` was still writing its
+     `-B20 -A20` context, so the ceiling engaged; the match itself still stands) both mean the fetch
+     succeeded — proceed to step 3. An observed exit code of `1` (`grep`'s own "no match" code) within
+     that bounded search → **`not found`**. Never a wider retry. Step 1's readability check again
+     rules out "can't be opened," so any other nonzero exit code is a genuine failure.
    - A denied read is **any exit code that is nonzero and neither `141` (the ceiling's own SIGPIPE)
      nor `grep`'s own `1` ("no match")** → **`read denied`**. `141` is never, under any
      circumstance, treated as a denied read — a large fetch hitting the byte ceiling is the normal,
@@ -149,14 +146,18 @@ there is nothing to bound the fetch by.
 
    **Boundary-truncation guard, scoped to when the ceiling actually engaged.** Step 2's `head -c
    16000` cut can end mid-run through a token/hex/base64/JWT shape — but only when the raw fetch
-   actually reached the ceiling. Before this guard fires, consult step 2's separate length probe (the
-   `wc -c` count, never the truncated output's own length): a probed count **greater than 16,000**
-   means the ceiling engaged and may have cut something mid-pattern; a probed count of 16,000 or less
-   means the ceiling never touched this fetch and the guard does **not** apply — this is what stops
-   the guard from over-redacting an ordinary, un-truncated excerpt's incidental trailing hash-shaped
-   identifier or filename, including one that happens to land at exactly 16,000 bytes naturally (the
-   probe distinguishes that case from a genuinely clipped one; the truncated output's length alone
-   could not). When (and only when) the ceiling did engage,
+   actually reached the ceiling. Before this guard fires, consult step 2's own observed exit code —
+   the same one already used to classify the fetch as successful, from the same single execution that
+   produced the returned bytes, never a separate re-read: exit code **`141`** means the ceiling
+   engaged (SIGPIPE fired because `sed`/`grep` had more to write than `head`'s 16,000-byte quota
+   allowed) and may have cut something mid-pattern; exit code **`0`** means the ceiling never touched
+   this fetch (the producer finished writing 16,000 bytes or fewer on its own, before `head` ever
+   needed to force a close) and the guard does **not** apply — this is what stops the guard from
+   over-redacting an ordinary, un-truncated excerpt's incidental trailing hash-shaped identifier or
+   filename, including one that happens to land at exactly 16,000 bytes naturally (which also exits
+   `0`, never `141`, so the exit code — unlike the truncated output's own length, which is always
+   16,000 bytes or fewer either way — correctly tells the two cases apart). When (and only when) the
+   ceiling did engage,
    additionally redact any trailing run of 16 or more characters drawn from `[A-Za-z0-9+/=_.-]` (rules
    3's and 4's own character classes, plus `.` for rule 2's JWT segment-joining character) that reaches
    the **exact final character** of the fetched excerpt — even when that run alone does not reach the

@@ -41,16 +41,21 @@ convenient one:
 
 **a. Versioned plugin-cache install path.** The validated `<version>` folder exists and is readable
 on this host → derive the absolute path to compare against, then re-validate it, before any
-comparison proceeds. Rationale for this branch's design (the `$CLAUDE_PLUGIN_ROOT` shape, the
-containment primitive's provenance, and what each of the three re-validation checks defeats):
-obtained via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
-wf-postmortem`, `skill: postmortem`, `ref: version-resolution-rationale.md`) — authoring-only,
-never read at runtime.
+comparison proceeds. (Rationale for this branch's design — the `$CLAUDE_PLUGIN_ROOT` shape, the
+containment primitive's provenance, and what each re-validation check defeats — is authoring-only
+material for whoever next edits this branch; it is never consulted at runtime and this procedure
+never fetches it.)
 
-1. **Derive the absolute plugin-cache root.** Guard: if `$CLAUDE_PLUGIN_ROOT` is unset or empty,
-   this branch does not resolve — fall through to branch (b). Otherwise apply `dirname` three times
-   to `$CLAUDE_PLUGIN_ROOT` (shaped `<cache-root>/<marketplace>/<plugin>/<version>`) to yield
-   `<cache-root>`.
+1. **Derive the absolute plugin-cache root, validating the shape assumption before trusting it.**
+   Guard: if `$CLAUDE_PLUGIN_ROOT` is unset or empty, this branch does not resolve — fall through to
+   branch (b). Otherwise apply `dirname` three times to `$CLAUDE_PLUGIN_ROOT` (assumed shaped
+   `<cache-root>/<marketplace>/<plugin>/<version>`) to yield a candidate `<cache-root>`, then
+   **reconstruct** `<cache-root>/<marketplace>/<plugin>/<version>` from that candidate plus the three
+   validated segments and compare it, character-for-character, against `$CLAUDE_PLUGIN_ROOT`'s own
+   original (uncanonicalized) value. **Any mismatch means the assumed 4-segment shape did not hold for
+   this run's actual value** (a checkout/dev root, or any other malformed value) — this branch does
+   not resolve; fall through to branch (b) exactly like the unset/empty case, never proceeding on an
+   unverified `<cache-root>`.
 2. **Canonicalize and join.** `Bash`: `(cd '<cache-root>' && pwd -P)` — single-quoted, every `'`
    replaced by `'\''` first, always in a subshell. Either `cd` failing (directory absent or
    unreadable) → fall through to branch (b) — expected and routine, since `<version>` is a
@@ -67,13 +72,14 @@ never read at runtime.
    - **Segment identity** — the canonicalized candidate's own `<plugin>` and `<marketplace>` path
      segments (the basename's parent, and that parent's own parent) must each be character-for-character
      identical to the originally reported `<plugin>` and `<marketplace>` strings.
-4. **Any check failing — step 2's canonicalization, or any of step 3's three re-validations** → this
-   branch does not resolve; continue to branch (b) exactly like the existing absent/denied case below
-   — never a silent fall-through under an unrelated version.
+4. **Any check failing — step 1's shape-reconstruction check, step 2's canonicalization, or any of
+   step 3's three re-validations** → this branch does not resolve; continue to branch (b) exactly like
+   the existing absent/denied case below — never a silent fall-through under an unrelated version.
 
-All three checks passing → compare the skill/contract/manifest text at that canonicalized candidate
-path directly (`Read`/`Grep`, Safety Rules Allowed) — no separate read primitive is needed, unlike
-(b)/(c). Label: `<version>` (install path).
+Step 1's reconstruction check plus all three of step 3's re-validations passing → compare the
+skill/contract/manifest text at that canonicalized candidate path directly (`Read`/`Grep`, Safety
+Rules Allowed) — no separate read primitive is needed, unlike (b)/(c). Label: `<version>` (install
+path).
 
 **b. No readable cache folder for that version.** The `<version>` folder is absent or the read is
 denied (the cache sits outside the workspace, exactly like the session store) → resolve the commit
