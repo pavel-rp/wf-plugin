@@ -71,17 +71,22 @@ If no session path is given, or the prompt names no failure description, return 
    theoretical one:
    - **Leaf check.** `Bash`: `test -L '<path>'` (every `'` replaced by `'\''` first, wrapped in single
      quotes) must **fail** (exit non-zero) — the path's own final component must not itself be a symlink.
-   - **Ancestor-containment check.** `Bash`: `(cd "$(dirname '<path>')" && pwd -P)` — always in a
-     subshell, so it never moves this agent's own persistent working directory — then join the printed
+   - **Ancestor-containment check.** `Bash`: `(cd "$(dirname '<path>')" && pwd -P)` (same escaping as
+     the leaf check) — always in a subshell, so it never moves this agent's own persistent working
+     directory — then join the printed
      result with the path's own basename; this reconstructed form must be **character-for-character
      identical** to `<path>` as given, never a prefix match. A mismatch means some *ancestor* directory
      component (not the leaf, which the check above already covers) has become a symlink or otherwise
      resolves elsewhere since locate time — the leaf check alone cannot catch this, since it never
      inspects anything above the final component.
 
-   A path failing **either** check is **never read**: treat that one path as `error: symlink detected at
-   read time — <path>` and skip it (a subagent-record path failing this way is simply omitted from what
-   you read; the top-level path failing this way is this dispatch's own verdict). Every path that passes
+   A path failing **either** check is **never read**: treat that one path as `error: read denied —
+   symlink detected at read time — <path>` and skip it — the `read denied` wording is load-bearing, not
+   decorative: it is what lets the caller's own coverage classification (`SKILL.md`'s "the reason is a
+   denied read" test) recognize this as the same access-denial outcome as any other denied read, rather
+   than the generic `skipped (reader error: …)` catch-all (a subagent-record path failing this way is
+   simply omitted from what you read; the top-level path failing this way is this dispatch's own
+   verdict). Every path that passes
    both checks reads its assigned material (the session record, or the named window of it, and every
    named subagent record) with `Read`/`Grep`. This is the only bulk you open, and it stays in your
    context.

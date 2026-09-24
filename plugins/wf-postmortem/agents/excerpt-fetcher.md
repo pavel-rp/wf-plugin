@@ -71,12 +71,12 @@ there is nothing to bound the fetch by.
    live risk:
    - **Leaf check.** `Bash`: `test -L '<path>'` (same escaping) must **fail** (exit non-zero) — the
      path's own final component must not itself be a symlink.
-   - **Ancestor-containment check.** `Bash`: `(cd "$(dirname '<path>')" && pwd -P)` — always in a
-     subshell, so it never moves this agent's own persistent working directory — then join the printed
-     result with the path's own basename; this reconstructed form must be **character-for-character
-     identical** to `<path>` as given, never a prefix match. A mismatch means some *ancestor* directory
-     component has become a symlink or otherwise resolves elsewhere since locate time — the leaf check
-     alone cannot catch this.
+   - **Ancestor-containment check.** `Bash`: `(cd "$(dirname '<path>')" && pwd -P)` (same escaping as
+     the leaf check) — always in a subshell, so it never moves this agent's own persistent working
+     directory — then join the printed result with the path's own basename; this reconstructed form must
+     be **character-for-character identical** to `<path>` as given, never a prefix match. A mismatch
+     means some *ancestor* directory component has become a symlink or otherwise resolves elsewhere
+     since locate time — the leaf check alone cannot catch this.
 
    Either check failing → **`read denied`** (the same outcome as any other denied read, since trusting a
    swapped symlink target — leaf or ancestor — is exactly the risk this check exists to close).

@@ -87,8 +87,14 @@ dispatch per hypothesis locator — passing the **resolved real path**, the pars
 present), and, only when there is no window, the search anchor. Inside that agent's own isolated
 context, and only there:
 
-1. **Confirm the target exists** — `Bash`: `test -e '<path>'`, single-quoted with every `'` in the
-   value replaced by `'\''` first. Does not exist → **not found**.
+1. **Confirm the target exists and is still fully non-symlinked** — `Bash`: `test -e '<path>'`,
+   single-quoted with every `'` in the value replaced by `'\''` first. Does not exist → **not found**.
+   Otherwise, two re-checks against the time that has passed since the caller validated this path at
+   locate time: a **leaf check** (`Bash`: `test -L '<path>'` must fail) and an **ancestor-containment
+   check** (`Bash`: `(cd "$(dirname '<path>')" && pwd -P)`, same escaping, joined with the path's own
+   basename and compared character-for-character against `<path>` as given — a mismatch means an
+   ancestor directory became a symlink since locate time, which the leaf check alone cannot catch).
+   Either failing → **read denied**, the same outcome as any other denied read.
 2. **Fetch the excerpt:**
    - **`window` given** — `Bash`: `sed -n '<start>,<end>p' '<path>'`, clamped to **200 lines** before
      the fetch runs — a window naming a wider span is clamped to its own first 200 lines, not refused,

@@ -454,16 +454,25 @@ compact, already-redacted or already-structural block comes back.
    delivery entry id>` identifier as well as its key-attempted string — closing the same report-forgery
    class the CLI-prompt channel already closes, for a delivery-entry or task-folder source exactly as
    for a session-sourced one.
-2.5. **On a follow-up, re-verify the write target — the last action before step 3's `Write`.** Phase 0.5's confinement
-   check is stale by now: all of Phase 1-3.5 ran since. Re-run `continuation.md` **Part E** in full (the whole
+2.5. **Re-verify the write target — the last action before step 3's `Write`, on every run, not only a follow-up.**
+   Phase 3 step 2.5's containment check is stale by now: all of Phase 3.5 ran since — potentially many isolated
+   `session-reader`/`excerpt-fetcher` dispatches, a far larger elapsed-time window than the id-mint `Glob` gap that
+   check was first built to close. **On a follow-up**, re-run `continuation.md` **Part E** in full (the whole
    confinement check again from scratch, plus the recorded device/inode identity comparison) and stop with nothing
-   written if any part of it fails or the identity differs.
+   written if any part of it fails or the identity differs. **On a fresh mint** (no `--report` this run), re-run
+   Phase 3 step 2.5's own canonicalization comparison of `{task-root}` against `workspaceRoot` — the same
+   `(cd '<path>' && pwd -P)` subshell primitive, the same character-for-character (never string-prefix) comparison —
+   immediately before the write; fails → stop, write nothing, same reason step 2.5 states.
 3. **Write** `{task-root}/PM<NNN>__<slug>/report.md` per the template shape, including the `**Model:**` attribution
    line (the runtime model id — `unknown` rather than guessed) and the fenced `POSTMORTEM — written` final-output
-   block, matching this skill's own Final Output shape verbatim. **On a follow-up**, write to the prior report's own
-   folder (Phase 0.5) instead — overwriting the same `report.md`, never minting a new id — and append the dated
-   Continuation entry `continuation.md` Part D composes, after Recommendation, before the final-output block. Any
-   scratch file is written under the fixed, literal `_local/scratch/`, through the same redacting write path.
+   block, matching this skill's own Final Output shape verbatim. **On a fresh mint, build the write path from step
+   2.5's own re-check output** — join the canonicalized `{task-root}` string that `pwd -P` call just printed with the
+   already-minted `PM<NNN>__<slug>/report.md` suffix, never a separately-held copy of the raw, pre-check `{task-root}`
+   config value — the same discipline Phase 3 step 4 already applies to the `mkdir` target. **On a follow-up**, write
+   to the prior report's own folder (Phase 0.5) instead — overwriting the same `report.md`, never minting a new id —
+   and append the dated Continuation entry `continuation.md` Part D composes, after Recommendation, before the
+   final-output block. Any scratch file is written under the fixed, literal `_local/scratch/`, through the same
+   redacting write path.
 
 ---
 
