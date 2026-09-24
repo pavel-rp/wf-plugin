@@ -154,9 +154,11 @@ Located sessions (in ranked order — attach-only mode: in the order given):
   structural read of the branch scope/identity field (`locator.md` §1, which names it; this file
   deliberately does not) already happens for every candidate regardless of mode, and this just
   returns it. Unlike `Date:`/`Scope-match:`/`Hunt session:`, it carries no named-session exemption.
-  `none observed` is written **only** on the outcome §1 defines as a real absence — its forward scan
-  reaching end-of-file with no line carrying the field — never because a record's opening header
-  lines omit it, which is the ordinary shape.
+  `none observed` is written **only** on the outcomes §1 defines as a real absence — its forward scan
+  reaching end-of-file with no line carrying a `gitBranch` field whose value is a non-empty string,
+  which covers both a scan that finds no such field at all and one that finds only an empty or
+  whitespace-only value — never because a record's opening header lines omit it, which is the
+  ordinary shape.
 - **`LOCATE OK` with an empty "Located sessions" list** (locate mode only) is a valid, complete
   outcome — the "not found" case — never treated by the caller as an error.
 - **`LOCATE ERROR: <cause>`** ends the block there — no "Located sessions" section follows, and the

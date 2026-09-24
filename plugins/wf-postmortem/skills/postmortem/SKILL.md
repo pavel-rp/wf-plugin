@@ -60,7 +60,10 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 
 **Allowed:**
 
-- Read `_local/config.md` via `resolve_config`.
+- Read `_local/config.md` via `resolve_config`. Read this pack's own `Eval Log Path` value via
+  `resolve_profile({ workspaceRoot, capability: "postmortem" })` (`coverage-cross-check.md`'s
+  sourcing step) — falling back to a hand-read of `_local/config.md`'s `## Postmortem` section only
+  when no profile value is set, per that same reference's documented read-through fallback.
 - Resolve/normalize `--folder`/`--repo` (step 3) and canonicalize `{task-root}`/`workspaceRoot` for the containment
   gate (`task-root-containment.md`) — both via subshelled `Bash`: `(cd '<path>' && pwd -P)`, never bare.
 - Resolve each `--session` value with `Bash`: `test -e '<path>'` (a file, not the `--folder`/`--repo` primitive above), and size it with `Bash`: `wc -c '<path>'`.

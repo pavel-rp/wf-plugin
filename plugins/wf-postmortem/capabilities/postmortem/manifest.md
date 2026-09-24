@@ -1,6 +1,6 @@
 # postmortem capability manifest
 
-**Version:** 0.5.0
+**Version:** 0.6.0
 **Conforms to:** `plugins/wf/skills/_contracts/capability-registry.ops.md` §"Manifest schema v2"
 **Capability:** postmortem (a native feature capability; **registration is required**)
 **Kind:** feature (ships the guided `/wf-postmortem:postmortem` skill and `/wf-postmortem:init`; attaches **no** SDD phase fragment)
@@ -31,6 +31,19 @@ fragment rows (the `sandbox-testing`/`pr-review`-before-its-slot precedent).
 | phase | contribution-kind | dispatch | scope |
 |-------|-------------------|----------|-------|
 | —     | —                 | —        | —     |
+
+## Profile seed template
+
+profile-template: profile.template.json
+
+Carries the one capability-owned config value this pack reads today: `eval-log-path` (surfaced to
+maintainers as `Eval Log Path`) — an optional, project-configured absolute path to an eval log the
+`coverage-cross-check.md` fallback-evidence sourcing step reads, confined to the resolved
+`workspaceRoot` and windowed exactly as every other untrusted source this pack reads. Unset by
+default (`null`); a project sets it via its own `_local/profiles/postmortem.profile.json` override.
+A project that configured the value under the pre-existing `_local/config.md` `## Postmortem`
+`**Eval Log Path:**` heading is still read through a documented fallback (`coverage-cross-check.md`)
+so it is not broken by this move — a one-time Coverage note recommends migrating it here.
 
 ## Scope of this release
 
