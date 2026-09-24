@@ -40,10 +40,36 @@ follow this order, labelling which branch resolved it — never skip a branch to
 convenient one:
 
 **a. Versioned plugin-cache install path.** The validated `<version>` folder exists and is readable
-on this host → compare the skill/contract/manifest text at that install path directly (`Read`/`Grep`,
-Safety Rules Allowed) — no separate read primitive is needed, unlike (b)/(c): the validated path
-already names the on-disk directory to compare against, with nothing further to resolve. Label:
-`<version>` (install path).
+on this host → derive the absolute path to compare against, then re-validate it, before any
+comparison proceeds:
+
+1. **Derive the absolute plugin-cache root.** This run's own `$CLAUDE_PLUGIN_ROOT` env var is always
+   set when a skill runs, shaped `<cache-root>/<marketplace>/<plugin>/<version>`
+   (`pack-onboarding.ops.md` confirms this shape). Apply `dirname` three times to strip `<version>`,
+   `<plugin>`, and `<marketplace>` in turn, yielding the shared `<cache-root>` ancestor every
+   installed pack's cache entry sits under, regardless of which specific pack is being audited.
+2. **Canonicalize and join.** `Bash`: `(cd '<cache-root>' && pwd -P)` — single-quoted, every `'`
+   replaced by `'\''` first, always in a subshell so it never moves this run's own persistent working
+   directory (the same literal `(cd '<dir>' && pwd -P)` directory-containment primitive
+   `task-root-containment.md` already establishes — distinct from `excerpt-fetcher.md`'s/
+   `session-reader.md`'s leaf-plus-basename-join variant, which re-validates a single *file* path
+   rather than canonicalizing a directory outright) — to get the canonicalized cache root. Join the
+   validated `<marketplace>/<plugin>/<version>` segments onto it to form the candidate absolute path,
+   then canonicalize the candidate the same way: `Bash`: `(cd '<candidate>' && pwd -P)`.
+3. **Re-validate the canonicalized candidate**, both checks required before the comparison proceeds:
+   - **Containment.** The candidate's own ancestor three levels up (`dirname` applied three times to
+     the canonicalized candidate) must be character-for-character identical to the canonicalized
+     cache root from step 2 — never a prefix match. This defeats a symlinked `<marketplace>`,
+     `<plugin>`, or `<version>` segment that resolves outside the cache root.
+   - **Version identity.** The canonicalized candidate's own basename must be character-for-character
+     identical to the reported `<version>`. This defeats a `<version>` segment that is itself a
+     symlink to a *different* version's directory, which containment alone would not catch.
+4. **Either check failing** → this branch does not resolve; continue to branch (b) exactly like the
+   existing absent/denied case below — never a silent fall-through under an unrelated version.
+
+Both checks passing → compare the skill/contract/manifest text at that canonicalized candidate path
+directly (`Read`/`Grep`, Safety Rules Allowed) — no separate read primitive is needed, unlike (b)/(c).
+Label: `<version>` (install path).
 
 **b. No readable cache folder for that version.** The `<version>` folder is absent or the read is
 denied (the cache sits outside the workspace, exactly like the session store) → resolve the commit

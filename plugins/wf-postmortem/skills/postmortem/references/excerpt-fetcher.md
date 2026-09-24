@@ -95,30 +95,72 @@ context, and only there:
    basename and compared character-for-character against `<path>` as given — a mismatch means an
    ancestor directory became a symlink since locate time, which the leaf check alone cannot catch).
    Either failing → **read denied**, the same outcome as any other denied read.
-2. **Fetch the excerpt:**
-   - **`window` given** — `Bash`: `sed -n '<start>,<end>p' '<path>'`, clamped to **200 lines** before
-     the fetch runs — a window naming a wider span is clamped to its own first 200 lines, not refused,
-     since the excerpt ceiling below still bounds what the fetcher returns.
-   - **No window, a search anchor given** — `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>'`,
-     the anchor single-quoted the same way. `-F` treats it as a literal string, never a regular
-     expression. No match within that bounded search → **not found** — never a wider retry. **A
-     redacted anchor (one containing `[REDACTED]`) can never match raw text** — a stated, accepted
-     limitation of this interim fetcher, not a silent misclassification: the resulting `not found` is
-     the honest outcome, since the anchor genuinely cannot appear literally in unredacted material.
-   - A denied read at either step → **read denied**.
+2. **Fetch the excerpt, bounded by both lines and raw bytes.** Every fetch command is piped through
+   `head -c 16000` before its output is used for anything else — a raw, pre-redaction byte ceiling on
+   the byte stream as a whole (4x the 4,000-character post-redaction ceiling in step 4), independent of
+   and applied strictly before both step 3's redaction pass and step 4's truncation. This bounds a
+   single pathologically oversized line (e.g. a JSONL tool-result payload) long before it fully enters
+   context — it is **not** a guarantee that an ordinary 200-line window or ~41-line `grep` context
+   always fits under it (200 lines at 100-120 chars/line alone can run 20,000-24,000 bytes), and a
+   legitimate window may itself be bytewise-clipped by this ceiling too; that is an accepted,
+   non-harmful side effect, since steps 3-4 still apply to whatever survives either way. Piping through
+   `head` collapses the upstream command's own exit status to `head`'s (always ~0 on empty input), so
+   each fetch command ends by exiting with the upstream command's own captured status
+   (`exit "${PIPESTATUS[0]}"`) rather than trusting the piped exit code — because each fetch runs as its
+   own process, this makes that captured status the dispatch's own observed exit code, which is what
+   keeps the `not found`/`read denied` distinction below meaningful once a `head` sits in the pipeline.
+   - **`window` given** — `Bash`: `sed -n '<start>,<end>p' '<path>' | head -c 16000; exit
+     "${PIPESTATUS[0]}"`, clamped to **200 lines** before the fetch runs — a window naming a wider span
+     is clamped to its own first 200 lines, not refused, since both the byte ceiling above and the
+     excerpt ceiling below still bound what the fetcher returns.
+   - **No window, a search anchor given** — `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' |
+     head -c 16000; exit "${PIPESTATUS[0]}"`, the anchor single-quoted the same way. `-F` treats it as a
+     literal string, never a regular expression. An observed exit code of `1` (`grep`'s own "no match"
+     code) within that bounded search → **not found** — never a wider retry. **A redacted anchor (one
+     containing `[REDACTED]`) can never match raw text** — a stated, accepted limitation of this interim
+     fetcher, not a silent misclassification: the resulting `not found` is the honest outcome, since the
+     anchor genuinely cannot appear literally in unredacted material.
+   - A denied read at either step (an observed exit code that is nonzero and not `grep`'s own `1`
+     "no match") → **read denied**.
 3. **Redact first, before any truncation.** The agent obtains `redaction.md` itself (the same
    reference the skill's own write path uses) and runs the **entire fetched excerpt** through every
    recognized shape, substituting `[REDACTED]` for each match — **before** truncation (step 4), and
    before it returns anything. This order matters: a credential- or token-shaped run straddling a
    later truncation cut would have its second half removed before the shape list ever saw it, letting
    the truncated first half of a real secret survive unredacted — redacting the whole excerpt first
-   closes that gap. The skill's own write path (Phase 4) still applies the same redaction again as the
-   disk backstop, but the excerpt is never unredacted at any point the skill's own context can see it.
+   closes that gap. (`Path` redaction is a separate, unconditional step — step 5 below, its sole owner
+   — never repeated here.)
+
+   **Boundary-truncation guard, scoped to when the ceiling actually engaged.** Because the byte ceiling
+   in step 2 can itself cut a token/hex/base64/JWT run mid-pattern, the agent first checks the fetched
+   excerpt's raw, pre-redaction byte length: only when it is **exactly 16,000 bytes** (the ceiling
+   engaged) does it additionally redact any trailing run of 16+ characters from `[A-Za-z0-9+/=_.-]`
+   (rules 3-4's own classes, plus `.` for rule 2's JWT segment-joining character) reaching the exact
+   final character of the excerpt, even below the matching rule's own length threshold — a shorter,
+   un-truncated fetch never triggers this guard, which is what stops it from over-redacting an
+   ordinary excerpt's incidental trailing hash-shaped identifier or filename. This closes the boundary
+   gap for rules 2-4; **rule 1 (Bearer tokens) is a stated, accepted residual risk at this boundary**,
+   the same category `redaction.md` already accepts for shapes outside its own list — widening the
+   guard to Bearer's unrestricted-non-whitespace alphabet would trade a narrow truncation-boundary gap
+   for routine over-redaction of ordinary trailing text.
 4. **Truncate the already-redacted text to the excerpt ceiling.** Cut it to **4,000 characters**, with
    a trailing `… [truncated]` marker when truncation occurred — deliberately smaller than the
    200,000-character session-windowing budget (Phase 3.5 step 2), since this is a targeted excerpt
    around one locator, not a session-sized read. Truncating after redaction can only ever cut
    `[REDACTED]` markers or ordinary text, never a live secret shape.
+5. **Redact `Path` — the sole place this ever runs, on every verdict — then emit the Output block.**
+   Whatever outcome the dispatch reached — `fetched` after step 4, or `not found`/`read denied` from
+   steps 1-2's short-circuits, which never reach step 3 — the agent runs the `Path` value (the exact
+   `path` field its prompt carried) through the same shape list, before the Output block is emitted.
+   The Output block always echoes `Path` on every verdict, so this is independent of whether the
+   excerpt itself was ever fetched. `Path` keeps rule 4's resolved-path exemption: the comparison is
+   over the entire `Path` value against the entire `path` field, verbatim — never a substring scan —
+   so an exact, whole-value match against rule 4's long-hex/base64 shape stays exempt and echoes
+   unredacted, while rules 1-3 carry no such exemption and still redact a genuine match inside the
+   path. Step 3's boundary-truncation guard never applies here, since step 2's byte ceiling never
+   touches the `path` field itself. The skill's own write path (Phase 4) still applies the same
+   redaction again as the disk backstop, but the excerpt and the path are never unredacted at any point
+   the skill's own context can see them.
 
 The agent returns one compact `EXCERPT FETCH` block (`agents/excerpt-fetcher.md`'s Output section) —
 `Path`, `Model`, `Verdict` (`fetched | not found | read denied | error: <reason>`), and the redacted
