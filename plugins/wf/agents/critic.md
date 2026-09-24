@@ -79,7 +79,7 @@ that pass's own reasoning — only its citations and the frozen artifact. Your j
      equality makes identical to the resolved path's in-root suffix — never the workspace
      root's own components, which may legitimately be dot-prefixed (a linked worktree under a
      dot-directory). Reject when that in-root path is under `.git/`, `.wf/` (the resolver's
-     committed lifecycle tree), or the **Task root** value carried in the dispatch (## Inputs)
+     committed lifecycle tree), or the task root value carried in the dispatch (see `## Inputs`)
      — the caller's actually-resolved task root, never a hardcoded literal — or has any
      dot-prefixed component (the conventional home of credential and configuration files such
      as `.env`).
