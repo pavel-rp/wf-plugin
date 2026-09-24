@@ -143,7 +143,7 @@ Window: <n of N | whole>
 Subagent records: <count, and the attachment note echoed verbatim | none>
 Model: <the model id this dispatch actually ran on, or "unknown">
 Skill-load version: <the version-pinned base directory seen in the material, verbatim | none observed>
-Verdict: <read | read in part: <reason> | access denied: <reason> | error: <reason>>
+Verdict: <read | read in part: <reason> | access denied | error: <reason>>
 
 Supporting observations:
 - <one line — what was seen> | locator: <session path | session path#subagent:file> | tier: <reader-observed | run-reported>
