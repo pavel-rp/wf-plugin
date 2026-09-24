@@ -59,7 +59,8 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 
 - Read `_local/config.md` via `resolve_config`.
 - Resolve `--folder`/`--repo` against the local filesystem only, via the single existence-check primitive `Bash`:
-  `test -e '<path>'`, with every `'` in the value replaced by `'\''` first (Phase 1 step 3).
+  `test -e '<path>'`, with every `'` in the value replaced by `'\''` first (Phase 1 step 3) — then, once it resolves,
+  normalize it to an absolute path via `Bash`: `cd '<path>' && pwd -P`, same quoting.
 - Read the report template, redaction reference, `version-resolution.md`, `recommendation.md`, `continuation.md`, and
   `coverage-cross-check.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
   wf-postmortem`).
@@ -82,6 +83,9 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
   .md` branches (b)/(c)) and of a candidate task folder's artifacts (`coverage-cross-check.md` Part A step 1); and read
   the `--report` target's device/inode identity for Part E — `Bash`: `git log`, `git show`, `stat -c '%Y'`/`'%d:%i'`
   (BSD: `stat -f '%m'`/`'%d:%i'`), single-quoted the same way. With `test -e`/`test -L`/`wc -c`, metadata only.
+- Canonicalize `{task-root}` and `workspaceRoot` for the Phase 3 step 2.5 containment gate via `Bash`: `cd '<path>' &&
+  pwd -P`, the same primitive and quoting `continuation.md` Part A step 2 uses for a `--report` path — metadata/path
+  resolution only, never a content read.
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id, and ask exactly one interactive question
   (`AskUserQuestion`) when the failure description is missing and a channel is available.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any scratch file inside the
@@ -151,10 +155,18 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
    free-form, caller-controlled text: replace every `'` with `'\''` and wrap the result in single
    quotes before substitution — never concatenated, and never passed to `Glob` as a pattern (the
    Safety Rules forbid both). Four outcomes: **both passed** → stop ("pass at most one"), write
-   nothing; **neither passed** → scope defaults to the current workspace only; **resolves** → echo it
-   verbatim, the locator (Phase 3.5 step 0) enumerates that project's store; **does not resolve** →
-   echo it unresolved (`"<name> — unresolved (no matching filesystem path)"`), `session-scope` still
-   states `"current workspace only"` — an unresolved name never widens it.
+   nothing; **neither passed** → scope defaults to the current workspace only; **resolves** → normalize
+   it to an absolute path (below), then echo that absolute path, the locator (Phase 3.5 step 0)
+   enumerates that project's store; **does not resolve** → echo it unresolved (`"<name> — unresolved (no
+   matching filesystem path)"`), `session-scope` still states `"current workspace only"` — an unresolved
+   name never widens it.
+
+   **Once it resolves, normalize it to an absolute path before it is echoed or handed to the locator
+   dispatch** (Phase 3.5 step 0's `workspace path` field) — `Bash`: `cd '<path>' && pwd -P`, the same
+   canonicalization primitive Phase 3 step 2.5 and `continuation.md` Part A step 2 use, same quoting.
+   `locator.md` §1's store-root derivation requires an already-absolute path, so a relative value that
+   resolves keeps resolving, but the value in force downstream — echoed, and dispatched — is always this
+   absolute one, never the raw relative form.
 4. **Read cap.** When `--cap` is passed, **validate it before anything uses it**: the value must match `^[1-9][0-9]*$`
    — a positive integer, no sign, no decimal, no unit, no leading zero. It fails → stop, reason `"--cap <value> is not
    a positive integer"`, write nothing; never coerced, truncated, or silently replaced by the default. Valid → take it
@@ -210,6 +222,21 @@ minted this run.
    Then neutralize markdown structure: collapse newlines and backticks to single spaces, strip the **entire** leading
    run of `#` characters (not a single one — `## forged heading` still forms a heading after stripping only one), so a
    description can forge neither a heading nor a fenced `POSTMORTEM — written` block.
+2.5. **Canonicalize and contain `{task-root}` — once per run, before both step 3's `Glob` and step 4's `mkdir`.**
+   `{task-root}` (`coreConfig.taskRoot`) is editable project config, and the resolver's own value normalization never
+   rejects an absolute path or a `..` segment — so an unchecked root would let the scan below and the folder create
+   reach outside the resolved workspace. Reuse the same containment idiom `continuation.md` Part A step 2 uses for a
+   `--report` path: canonicalize both sides with the host's own filesystem, never a string comparison of the raw
+   paths — `Bash`: `cd '<task-root>' && pwd -P` (every `'` in the resolved `{task-root}` value replaced by `'\''`
+   first, wrapped in single quotes) against the already-resolved absolute `workspaceRoot` (`resolve_config`),
+   canonicalized the same way. Require the canonicalized `{task-root}` to be character-for-character identical to, or
+   a path-component-bounded descendant of, the canonicalized `workspaceRoot` — never a string-prefix match
+   (`<workspaceRoot>evil/...` must not pass). The `cd` itself failing (the directory does not exist yet, or is
+   unreadable) is also **not** contained.
+
+   **Fails this check** (does not resolve, or resolves outside `workspaceRoot`) → stop, write nothing, before step 3's
+   `Glob` or step 4's `mkdir` ever runs. Reason: `"task root does not resolve inside the workspace — <the resolved
+   {task-root} value>"`. This check runs exactly once per run; neither step 3 nor step 4 repeats it.
 3. **Mint the id.** Scan `{task-root}` (including any `_archive/` subfolder) for `PM<digits>__` folders, take the
    highest number, increment, zero-pad to 3 digits, starting at `PM001`. Slug the **redacted** description (step 2's
    output): lowercase it; collapse every character outside `a-z0-9` to a single `-` (removing `/`, `\`, `.`, and any
@@ -234,7 +261,11 @@ Runs after the report folder exists and before anything is written into it. **No
 this context** — every read happens inside a dispatched `session-reader` (or, first, the `locator`), and only its
 compact, already-redacted or already-structural block comes back.
 
-0. **Locate and/or attach, via the seam.** **On a `--report` follow-up**, this step runs under `continuation.md` Part
+0. **Locate and/or attach, via the seam.** **Compute the window cutoff exactly once per run, here** — this run's own
+   current time minus the 30-day horizon — before anything below uses it. This skill is the single named owner of that
+   computation: the value computed here is passed to the locator verbatim and is never independently recomputed by
+   the locator or the seam (`locator.md` §3 and `agents/locator.md`'s Input table both state the value as
+   caller-supplied, not self-derived). **On a `--report` follow-up**, this step runs under `continuation.md` Part
    B instead of the two branches below (re-locate, fold in named retries — the one exception to "exactly once per run"
    for a retry the fresh return doesn't surface); step 2.5's cap-split then applies under Part C. Otherwise route with
    `role: "locator"`, `unitIds: ["locator:hunt"]`, `shapeEvidence` identical in shape to step 3 below except
@@ -449,6 +480,9 @@ compact, already-redacted or already-structural block comes back.
   disk, read-only. Stop with that reason; never retried. Three consecutive collisions hits the same bound. **A seeded
   folder left with no `report.md`** by an interrupted run — the id stays taken. **The pack installed but not
   registered** — no core phase behaves differently.
+- **`{task-root}` does not canonicalize inside `workspaceRoot`** (an absolute or `..`-carrying config value, or one that
+  does not resolve at all) — Phase 3 step 2.5 stops before either the id-mint `Glob` or the folder `mkdir` ever runs;
+  write nothing.
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than the cap.** Read in
   ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never dropped, retrievable by a further
   `--report` follow-up unless it ages out or is removed first. On a follow-up, a session already holding a Coverage
@@ -492,7 +526,7 @@ Stopped:
 ```
 POSTMORTEM — stopped
 
-Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "_local/config.md absent — run /wf:init first">
+Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "task root does not resolve inside the workspace — <value>", "_local/config.md absent — run /wf:init first">
 Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", "re-run with a failure description", "re-run --report <path> without the conflicting flag", "re-run with a positive integer --cap", or "re-run without --report to start a fresh hunt" (the too-large-report remedy)>
 ```
 
