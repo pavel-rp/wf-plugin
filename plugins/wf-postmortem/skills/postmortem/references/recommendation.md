@@ -19,7 +19,7 @@ new field, just a fresh pass over a larger input.
 states plainly "No factor confirmed this run — a fix direction follows a confirmed contributing
 factor; none exists this run," and its marker is the literal `— (no confirmed factor)` — not
 `stated`, and not `resting on an open choice`. This is the only marker value this branch may take,
-and it is what makes rule 2 below fire on "no confirmed factor" without a separate check.
+and it is what makes rule 3 below fire on "no confirmed factor" without a separate check.
 
 **When at least one factor was confirmed this run:** compose one short paragraph naming the concrete
 change the confirmed mechanism (its Component and Version, `file:line`) points at — grounded in that
@@ -59,21 +59,28 @@ Stop at the first rule that matches:
    — and the coverage cross-check's trigger (b) enters one for **every** in-scope run that left no
    session record (`coverage-cross-check.md`). Any actively-developed project usually has at least
    one such run, so on a default-scoped hunt Hypotheses is rarely empty and **rule 1 usually does not
-   fire even when the described failure genuinely matched nothing**; rule 2 (research) fires instead,
+   fire even when the described failure genuinely matched nothing**; rule 3 (research) fires instead,
    carrying those hypotheses as its topic. Rule 1 remains reachable — a narrowly scoped hunt, or one
    whose every in-scope run did leave a matching session, still reaches it — but a "not found"
    Summary and a terminus recommendation are **not** the same claim and do not imply each other. The
    Summary is what states "not found"; this rule states only whether there is anywhere left to route.
-2. **No confirmed factor, or Part A's marker is `resting on an open choice`.** Recommendation:
-   research — `/wf:research`, with this report's Summary and Contributing Factors going in as the
-   free-text topic argument. This rule fires even when one or more hypotheses exist (the "only
-   hypotheses" case) and even when a factor *was* confirmed but its fix direction could not be stated
-   outright.
-3. **Two or more confirmed factors, or the Localisation list names files in more than one distinct
+2. **Two or more confirmed factors, or the Localisation list names files in more than one distinct
    skill or contract.** Recommendation: charter — `/wf:charter`, with this report's Summary and
    Contributing Factors going in as the free-text feature-idea argument. Counting rule: reduce every
    confirmed factor's `file:line` to its owning skill folder or contract file, dedupe, and count the
    distinct set — one skill plus one contract is two; two files inside the same skill is one.
+
+   **Checked before rule 3's open-choice clause, deliberately** — a multi-factor or multi-surface case
+   is routed to charter even when one of its confirmed factors leaves Part A's marker at `resting on an
+   open choice`. A single open choice among several factors would otherwise make rule 3 fire first and
+   preempt the charter route rule 2's own structural condition already calls for; checking the
+   structural condition first closes that precedence gap.
+3. **No confirmed factor, or Part A's marker is `resting on an open choice`.** Recommendation:
+   research — `/wf:research`, with this report's Summary and Contributing Factors going in as the
+   free-text topic argument. This rule fires even when one or more hypotheses exist (the "only
+   hypotheses" case) and even when a factor *was* confirmed but its fix direction could not be stated
+   outright — **provided rule 2's structural condition does not already hold**; a multi-factor or
+   multi-surface case with an open choice on one factor is rule 2's, never rule 3's.
 4. **Otherwise** — exactly one confirmed factor, its Localisation within one skill or contract, and
    Part A's marker is `stated`. Recommendation: spec. `/wf:spec` takes only a task id, never this
    report, so the hand-off is two-part: file a work item from this report (a tracker issue when a
@@ -84,7 +91,7 @@ A hypothesis listed beside a confirmed factor stays in the report exactly as com
 never changes which rule fires — only the confirmed-factor count, the Localisation list, and Part A's
 marker are load-bearing for rule selection. Rule 1 is the only rule the hypothesis count actually
 gates (its presence is what distinguishes "not found" from a hunt that surfaced only hypotheses,
-which is rule 2's territory).
+which is rule 3's territory).
 
 **Reproducibility.** Given only the confirmed-factor count, the hypothesis count, the Localisation
 file/contract list, and the Fix Direction marker, the fired rule and its hand-off are fully
@@ -97,8 +104,8 @@ recommendation checkable independently of the prose that explains it.
 exactly as the Recommendation section states it:
 
 - Rule 1 → `Next:     none — terminus`
-- Rule 2 → `Next:     /wf:research — <the one-line framing from Recommendation>`
-- Rule 3 → `Next:     /wf:charter — <the one-line framing from Recommendation>`
+- Rule 2 → `Next:     /wf:charter — <the one-line framing from Recommendation>`
+- Rule 3 → `Next:     /wf:research — <the one-line framing from Recommendation>`
 - Rule 4 → `Next:     file a work item from this report, then /wf:spec <id>`
 
 Never dispatch, invoke, or pre-fill any of these commands — naming the exact next step is the whole
