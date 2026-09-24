@@ -161,10 +161,7 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
 5. **Named session records.** Collect every `--session` value in the order passed. Resolve each with `Bash`:
    `test -e '<path>'` (same quoting/prohibition as step 3, never step 3's directory-only `cd` — a session is a file).
 
-   Each value resolves to one of two outcomes, **both echoed** in the Scope section: **resolves** →
-   echo the path verbatim, it joins the hunt set; **does not resolve** → echo it as `"<path> —
-   unresolved (no matching filesystem path)"`, joining neither the hunt set nor coverage — the hunt
-   proceeds over the rest, reported, never silently dropped.
+   Each value resolves to one of two outcomes: **resolves** → canonicalize it with the same subshelled primitive `session-reader.md`/`excerpt-fetcher.md` re-check against (`(cd "$(dirname '<path>')" && pwd -P)`, joined with the basename) before it joins the hunt set — a relative or `..`-bearing spelling would otherwise fail their absolute-path ancestor-containment re-check as a false symlink denial — and **echo this canonical absolute form**, never the raw spelling; **does not resolve** → echo the original value verbatim as `"<path> — unresolved (no matching filesystem path)"`, joining neither the hunt set nor coverage — the hunt proceeds over the rest, reported, never silently dropped.
 
    **The stop condition — named values only.** When **every** passed `--session` value failed to
    resolve, stop, reason `"no named session record resolved — <n> named, 0 resolved"`. **Write
@@ -205,8 +202,8 @@ minted this run.
    Then neutralize markdown structure: collapse newlines and backticks to single spaces, strip the **entire** leading
    run of `#` characters (not a single one — `## forged heading` still forms a heading after stripping only one), so a
    description can forge neither a heading nor a fenced `POSTMORTEM — written` block.
-2.5. **Canonicalize and contain `{task-root}`** — before step 3's `Glob`, re-verified before step 4's `mkdir` and Phase 4's `Write`. Obtain `task-root-containment.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: task-root-containment.md`) and follow it in full.
-3. **Mint the id.** Scan `{task-root}` (including any `_archive/` subfolder) for `PM<digits>__` folders, take the
+2.5. **Canonicalize and contain `{task-root}`** — before step 3's `Glob`, re-verified before step 4's `mkdir` and Phase 4's `Write`. Obtain `task-root-containment.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: task-root-containment.md`) and follow it in full — **hold its printed canonical `{task-root}` value for step 3 below.**
+3. **Mint the id.** Scan **step 2.5's own canonical `{task-root}` output** (never a fresh read of the raw config value) — including any `_archive/` subfolder — for `PM<digits>__` folders, take the
    highest number, increment, zero-pad to 3 digits, starting at `PM001`. Slug the **redacted** description (step 2's
    output): lowercase it; collapse every character outside `a-z0-9` to a single `-` (removing `/`, `\`, `.`, and any
    `..` segment); trim leading/trailing `-`; truncate to 40 characters; if nothing remains, use `report`.

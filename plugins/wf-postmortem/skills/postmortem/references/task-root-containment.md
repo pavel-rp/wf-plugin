@@ -37,7 +37,7 @@ does not exist yet, or is unreadable) is also **not** contained.
 
 ## Where this runs — three call sites, one procedure, re-run fresh each time
 
-1. **Phase 3 step 2.5** — before step 3's id-mint `Glob`. The first pass.
+1. **Phase 3 step 2.5** — before step 3's id-mint `Glob`. The first pass. **Step 3's `Glob` scans this check's own printed canonical output, never a fresh read of the raw `{task-root}` config value** — the same discipline steps 4 and Phase 4 step 2.5 below already apply to the `mkdir`/`Write` targets, closing the same gap for the scan that precedes them.
 2. **Phase 3 step 4** — immediately before the folder `mkdir`, re-running the identical comparison from
    scratch (not reusing step 2.5's canonicalized value), since the id-mint scan between the two is not
    instantaneous. **Build the `mkdir` target from this re-check's own output** — join the canonicalized
