@@ -49,8 +49,9 @@ boundary found. Extended walkthrough: `finding-ledger-rationale.md` §"Round-num
 
 Walk the trail — the current, not-yet-rotated `04_verify.md` if it exists, then every entry in
 `04_verify.history.md` in its existing newest-first order (do not re-sort) — **most-recent-first**. Both tests
-below scope to a report's own structural lines only (its metadata block and its own `##`-level headings) — never a
-quoted snippet or nested code block.
+below scope to a report's own structural lines only: the `**Verdict:**` test matches only the single such line in
+the report's header block, before its first `##` heading; the heading test matches only an actual line-start `## `
+heading, never text inside backticks, a fenced code block, or a quoted bullet.
 
 1. Find the **loop boundary** — the most recent entry, scanning most-recent-first, whose header `**Verdict:**`
    reads `PASS`, **or** that is a **pre-fingerprint-capable entry** — one whose report carries **neither** a `##
