@@ -34,7 +34,25 @@ STEP_KEYS = {
     "gated": 'unitIds: ["ship:phase"]',
     "pr": 'unitIds: ["ship:pr"]',
     "finalize": 'unitIds: ["ship:finalize"]',
+    "run-initial": 'unitIds: ["ship:run-initial"]',
 }
+
+# A conditioning phrase — the evaluator asserts co-occurrence, never exact wording.
+# Deliberately excludes "unless": "X unless Y" inverts the polarity depending on
+# sentence structure ("--gate extend unless <RESUME-BRIEF> is filled" would read
+# this check as satisfied while actually describing the wrong-polarity behavior —
+# appending the flag when the brief is ABSENT), so it cannot reliably stand in for
+# the positive "append the flag when/only when the brief is filled" condition this
+# check exists to assert. Only unambiguous positive-conditioning words are accepted.
+CONDITION_RE = re.compile(r"\b(when|only when)\b", re.I)
+
+# How far before the earlier of the two tokens the conditioning word may sit. The
+# live phrasing puts it directly ahead of `<RESUME-BRIEF>` ("or, when <RESUME-BRIEF>
+# is filled, with --gate extend ..."), so the window must reach a little before
+# the first token, not just between the two. This anchors the check to the local
+# neighborhood of both tokens instead of accepting bare co-occurrence anywhere in
+# the (much longer) step text.
+CONDITION_LOOKBEHIND = 30
 
 BLOCK_START = "use the project-pipeline fallback"
 BLOCK_END = "Each fallback edge gets its own decision"
@@ -129,6 +147,43 @@ def find_halt_clause(clauses):
     return None
 
 
+def check_run_initial_conditioning(steps):
+    """The `ship:run-initial` dispatch's `--gate extend` must be conditioned on
+    `<RESUME-BRIEF>`, never appended unconditionally.
+
+    A regression that drops the flag, or that appends it regardless of whether the
+    dispatch brief's resume brief was filled, would silently lose (or wrongly grant)
+    the one-shot verify-fix-loop extension a replacement's resume hand-off carries.
+    This asserts co-occurrence plus a conditioning phrase — never exact wording,
+    consistent with the rest of this evaluator's routing-token/outcome-token
+    discipline.
+    """
+    step = resolve_step(steps, "run-initial")
+    problems = []
+    if "--gate extend" not in step:
+        problems.append("the routed ship:run-initial step no longer names --gate extend")
+    if "<RESUME-BRIEF>" not in step:
+        problems.append(
+            "the routed ship:run-initial step's --gate extend is not conditioned "
+            "on <RESUME-BRIEF>"
+        )
+    if problems:
+        # Directionality can't be assessed without both tokens present.
+        return problems
+
+    gate_idx = step.index("--gate extend")
+    brief_idx = step.index("<RESUME-BRIEF>")
+    window_start = max(0, min(gate_idx, brief_idx) - CONDITION_LOOKBEHIND)
+    window_end = max(gate_idx + len("--gate extend"), brief_idx + len("<RESUME-BRIEF>"))
+    if not CONDITION_RE.search(step[window_start:window_end]):
+        problems.append(
+            "the routed ship:run-initial step names --gate extend and <RESUME-BRIEF> "
+            "but with no when/only-when-style positive conditioning language anchored "
+            "near both tokens"
+        )
+    return problems
+
+
 def check_row_recording(text: str):
     """A halted item's outcome must be readable from its own scoreboard row.
 
@@ -172,6 +227,7 @@ def evaluate(path: str):
     finalize = resolve_step(steps, "finalize")
 
     problems = []
+    problems.extend(check_run_initial_conditioning(steps))
 
     # The handoff step is the chain's one pre-existing conditional step and must
     # keep naming the handoff token it branches on.
@@ -250,7 +306,7 @@ def evaluate(path: str):
 
 SOUND_CHAIN = """> Only if that Skill is genuinely unavailable or its checks loop cannot run, use the project-pipeline fallback. Route and execute each edge independently in this exact order:
 >
-> 1. Route with `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke the initial run.
+> 1. Route with `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke the initial run — or, when `<RESUME-BRIEF>` is filled, with `--gate extend` also appended in its place.
 > 2. On every resume, route with `role: "phase-runner"` and `unitIds: ["ship:run-resume"]`, then invoke it again.
 > 3. On each `RUN — gated` handoff, route with `role: "phase-runner"` and `unitIds: ["ship:phase"]`, then invoke the exact named phase.
 > 4. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with `role: "pr"` and `unitIds: ["ship:pr"]`, then open the pull request.
@@ -261,29 +317,49 @@ SOUND_CHAIN = """> Only if that Skill is genuinely unavailable or its checks loo
 > Each fallback edge gets its own decision and compact record immediately before execution.
 """
 
-PRE_FIX_CHAIN = """> Only if that Skill is genuinely unavailable or its checks loop cannot run, use the project-pipeline fallback. Route and execute each edge independently in this exact order:
->
-> 1. Route with `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke the initial run.
-> 2. On every resume, route with `role: "phase-runner"` and `unitIds: ["ship:run-resume"]`, then invoke it again.
-> 3. On each `RUN — gated` handoff, route with `role: "phase-runner"` and `unitIds: ["ship:phase"]`, then invoke the exact named phase.
-> 4. Route with `role: "pr"` and `unitIds: ["ship:pr"]`, then open the pull request.
-> 5. Route with `role: "finalize"` and `unitIds: ["ship:finalize"]`, then finalize the item.
->
-> Each fallback edge gets its own decision and compact record immediately before execution.
-"""
+# The pre-fix shape: both trailing steps unconditional and no halt clause at all.
+# Derived from SOUND_CHAIN (rather than a standalone literal) so this fixture's
+# step 1 never drifts out of sync with the sound chain's own wording — isolating
+# this fixture to its one intended defect, matching GATED_STEP_DAMAGED_CHAIN's
+# and HALT_CLAUSE_MASKS_STEP_CHAIN's own derivation pattern.
+PRE_FIX_CHAIN = (
+    SOUND_CHAIN.replace(
+        '> 4. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with',
+        '> 4. Route with',
+    )
+    .replace(
+        '> 5. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with',
+        '> 5. Route with',
+    )
+    .replace(
+        "\n>\n"
+        "> **Halt branch.** If the pipeline driver returns `RUN — blocked` or `RUN — error`, "
+        "steps 4 and 5 do **not** run: stop where you stand and report the item with its "
+        "blocking reason. **No pull request is opened and no finalize runs.**\n",
+        "\n",
+    )
+)
 
-HALT_CLAUSE_INCOMPLETE_CHAIN = """> Only if that Skill is genuinely unavailable or its checks loop cannot run, use the project-pipeline fallback. Route and execute each edge independently in this exact order:
->
-> 1. Route with `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke the initial run.
-> 2. On every resume, route with `role: "phase-runner"` and `unitIds: ["ship:run-resume"]`, then invoke it again.
-> 3. On each `RUN — gated` handoff, route with `role: "phase-runner"` and `unitIds: ["ship:phase"]`, then invoke the exact named phase.
-> 4. **Only on a `RUN — complete` outcome:** Route with `role: "pr"` and `unitIds: ["ship:pr"]`, then open the pull request.
-> 5. **Only on a `RUN — complete` outcome:** Route with `role: "finalize"` and `unitIds: ["ship:finalize"]`, then finalize the item.
->
-> **Halt branch.** If the pipeline driver returns `RUN — blocked`, stop where you stand. **No pull request is opened and no finalize runs.**
->
-> Each fallback edge gets its own decision and compact record immediately before execution.
-"""
+# The halt clause exists but names only one of the two failure tokens (`RUN —
+# blocked`, missing `RUN — error`) — an incomplete clause, not an absent one.
+# Derived from SOUND_CHAIN for the same isolation reason as PRE_FIX_CHAIN above.
+HALT_CLAUSE_INCOMPLETE_CHAIN = (
+    SOUND_CHAIN.replace(
+        '> 4. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with',
+        '> 4. **Only on a `RUN — complete` outcome:** Route with',
+    )
+    .replace(
+        '> 5. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with',
+        '> 5. **Only on a `RUN — complete` outcome:** Route with',
+    )
+    .replace(
+        "> **Halt branch.** If the pipeline driver returns `RUN — blocked` or `RUN — error`, "
+        "steps 4 and 5 do **not** run: stop where you stand and report the item with its "
+        "blocking reason. **No pull request is opened and no finalize runs.**",
+        "> **Halt branch.** If the pipeline driver returns `RUN — blocked`, stop where you "
+        "stand. **No pull request is opened and no finalize runs.**",
+    )
+)
 
 # The row-recording half: the two facts that make a halt readable from the
 # item's own row rather than inferable from its absence.
@@ -305,12 +381,24 @@ HALT_CLAUSE_MASKS_STEP_CHAIN = SOUND_CHAIN.replace(
     "> 4. On a `RUN — complete` outcome, and also after a `RUN — blocked` outcome, Route with",
 )
 
+# Sound chain, but step 1's conditioning *phrase* is dropped while both tokens
+# (--gate extend, <RESUME-BRIEF>) stay present — the regression the CONDITION_RE
+# check exists to catch, distinct from the flag/placeholder-absence checks above
+# it in evaluation order. Dropping the tokens outright (as an earlier draft of
+# this fixture did) only ever exercised those two presence checks and never
+# reached CONDITION_RE at all.
+RUN_INITIAL_UNCONDITIONED_CHAIN = SOUND_CHAIN.replace(
+    "> 1. Route with `role: \"phase-runner\"` and `unitIds: [\"ship:run-initial\"]`, then invoke the initial run — or, when `<RESUME-BRIEF>` is filled, with `--gate extend` also appended in its place.",
+    "> 1. Route with `role: \"phase-runner\"` and `unitIds: [\"ship:run-initial\"]`, then invoke the initial run — or, with `<RESUME-BRIEF>`, with `--gate extend` also appended in its place.",
+)
+
 FIXTURES = {
     "sound": SOUND_CHAIN + ROW_RECORDING,
     "pre-fix": PRE_FIX_CHAIN + ROW_RECORDING,
     "halt-clause-incomplete": HALT_CLAUSE_INCOMPLETE_CHAIN + ROW_RECORDING,
     "gated-step-damaged": GATED_STEP_DAMAGED_CHAIN + ROW_RECORDING,
     "halt-clause-masks-step": HALT_CLAUSE_MASKS_STEP_CHAIN + ROW_RECORDING,
+    "run-initial-unconditioned": RUN_INITIAL_UNCONDITIONED_CHAIN + ROW_RECORDING,
     # Sound chain, but the halt is never written anywhere a reader can see it.
     "row-recording-absent": SOUND_CHAIN,
 }
