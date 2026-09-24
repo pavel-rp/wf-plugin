@@ -209,16 +209,19 @@ confirmed-factor count, the hypothesis count, the Localisation file/contract lis
 Direction marker above — first match wins (full rule text: `recommendation.md`).>
 
 **Rule fired:** <1 | 2 | 3 | 4> — <one line naming the trigger, e.g. "no confirmed factor and no
-hypothesis", "fix direction resting on an open choice", "two confirmed factors", "localisation names
-two distinct skills/contracts", "one confirmed factor, one skill or contract, fix direction stated">
+hypothesis", "two confirmed factors", "localisation names two distinct skills/contracts", "fix
+direction resting on an open choice", "one confirmed factor, one skill or contract, fix direction
+stated">
 
 <One of, matching the fired rule, verbatim:>
 
 - **Rule 1:** No route recommended — this report is a terminus.
-- **Rule 2:** Research recommended — `/wf:research` — pass this report's Summary and Contributing
+- **Rule 2:** Charter recommended — `/wf:charter` — pass this report's Summary and Contributing
+  Factors in as the free-text feature-idea argument. Checked before Rule 3's open-choice clause, so a
+  multi-factor or multi-surface case fires this rule even when one factor's fix direction rests on an
+  open choice.
+- **Rule 3:** Research recommended — `/wf:research` — pass this report's Summary and Contributing
   Factors in as the free-text topic argument.
-- **Rule 3:** Charter recommended — `/wf:charter` — pass this report's Summary and Contributing
-  Factors in as the free-text feature-idea argument.
 - **Rule 4:** Spec recommended — file a work item from this report (a tracker issue, or a local task
   when no tracker is registered), then run `/wf:spec <id>` against it — never `/wf:spec` taking this
   report directly.
@@ -293,8 +296,9 @@ Next:     <none — terminus | /wf:research — <framing> | /wf:charter — <fra
   factor. Saying so explicitly is the point: a reader must be able to tell "nothing this run" from
   "produced and empty."
 - **Fix Direction is composed only from a confirmed contributing factor**, kept apart from the
-  Evidence Record, and marked `stated` or `resting on an open choice` — that marker is one of
-  Recommendation's four load-bearing inputs. **Recommendation states the rule that fired and the
+  Evidence Record, and marked `stated`, `resting on an open choice`, or — when no factor was confirmed
+  this run — `— (no confirmed factor)` — that marker is one of Recommendation's four load-bearing
+  inputs. **Recommendation states the rule that fired and the
   hand-off**, computed strictly from the confirmed-factor count, the hypothesis count, the
   Localisation file/contract list (each distinct skill or contract counted once), and the Fix
   Direction marker — reproducible from those four alone, first match wins, and mirrored onto the

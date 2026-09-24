@@ -1,6 +1,6 @@
 ---
 name: postmortem
-description: Hunts a described failure through prior agent sessions — named explicitly with --session, or located automatically under a resolved scope behind one replaceable seam — reading each session record in its own isolated reader agent on a cheaper model tier, then checks every reader-suggested mechanism two-sided, against the audited pack's text at the run's resolved executed version and against a bounded, redacted excerpt at the reader's own locator, promoting only what verifies on both sides to a confirmed contributing factor, and closes with a rule-based recommendation naming the next workflow — dispatching and filing nothing itself. Hunts evidence against the described failure as deliberately as evidence for it, says "not found" rather than fabricating a match, and stops with no report when no session is named or located. Use when a maintainer suspects a process defect and wants it looked for, checked, and routed across prior sessions without raw session content entering the host context.
+description: Hunts a described failure through prior agent sessions — named explicitly with --session, or located automatically under a resolved scope behind one replaceable seam (an unnamed hunt, with the seam locating zero or more sessions, is a valid run, not an error) — reading each session record in its own isolated reader agent on a cheaper model tier, then checks every reader-suggested mechanism two-sided, against the audited pack's text at the run's resolved executed version and against a bounded, redacted excerpt at the reader's own locator, promoting only what verifies on both sides to a confirmed contributing factor, and closes with a rule-based recommendation naming the next workflow — dispatching and filing nothing itself. Hunts evidence against the described failure as deliberately as evidence for it, and says "not found" rather than fabricating a match — including when a resolved scope locates no session at all, which still produces a full "not found" report rather than a stop. Stops with no report only when every named --session record fails to resolve, the locate seam itself fails, or no failure description can be obtained. Use when a maintainer suspects a process defect and wants it looked for, checked, and routed across prior sessions without raw session content entering the host context.
 allowed-tools: [Task, Write, Read, Grep, Glob, Bash, AskUserQuestion]
 ---
 
@@ -27,6 +27,17 @@ workspaceRoot, registryPath, coreConfig{ taskRoot, … } }`, already resolved fr
 `{task-root}` below come from `coreConfig.taskRoot`. If the resolver reports the project is uninitialized (no resolved
 config / absent `_local/config.md`), stop and instruct the user to run `/wf:init` first. If the `wf-resolver` service
 is unavailable, stop and report that the resolver runtime is not loaded — do not hand-parse config as a fallback.
+
+**This skill also depends on the `wf-postmortem` pack itself being registered.** Every pack-owned reference this
+skill reads — the report template, the redaction reference, `version-resolution.md`, `recommendation.md`,
+`continuation.md`, `coverage-cross-check.md`, `task-root-containment.md` — and every pack-owned agent it dispatches
+(`locator`, `session-reader`, `excerpt-fetcher`) resolves only through the `## Plugin Roots` mapping that
+`/wf-postmortem:init` (or `/wf:init` with `wf-postmortem` selected) writes on registration. Unlike an ordinary adapter
+capability, whose absence leaves unrelated core phases inert, this skill cannot complete at all before that
+registration exists. If any pack-owned `resolve_content` call returns `{status: unresolved}`, or a pack-owned agent
+dispatch cannot be reached, for this reason, stop immediately — write nothing: reason `"wf-postmortem pack not
+registered — pack-owned references cannot resolve"`, `Next: /wf-postmortem:init` (or `/wf:init` with `wf-postmortem`
+selected), then re-run.
 
 ---
 
@@ -61,9 +72,10 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 - Resolve/normalize `--folder`/`--repo` (step 3) and canonicalize `{task-root}`/`workspaceRoot` for the containment
   gate (`task-root-containment.md`) — both via subshelled `Bash`: `(cd '<path>' && pwd -P)`, never bare.
 - Resolve each `--session` value with `Bash`: `test -e '<path>'` (a file, not the `--folder`/`--repo` primitive above), and size it with `Bash`: `wc -c '<path>'`.
-- Read the report template, redaction reference, `version-resolution.md`, `recommendation.md`, `continuation.md`, and
-  `coverage-cross-check.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
-  wf-postmortem`).
+- Read the report template (`ref: report-template.md`), the redaction reference (`ref: redaction.md`),
+  `version-resolution.md`, `recommendation.md`, `continuation.md`, and `coverage-cross-check.md` — each via
+  `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill:
+  postmortem`, `ref:` that file's own name) — per each reference's complete call at its point of use below.
 - Resolve `--report`'s path with the same existence-check primitive as `--folder`/`--repo`/`--session`, then confirm
   it is confined under `{task-root}`'s own `PM<digits>__.../report.md` shape (canonicalized both sides, never a
   string-prefix match or a symlinked file) — **twice: before the `Read` (Phase 0.5, `continuation.md` Part A) and
@@ -140,8 +152,11 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
 
 ## Phase 1: Resolve inputs and defaults
 
-1. **Failure description.** Take `<description>` verbatim when passed. When absent, proceed to Phase 2 before
-   resolving anything else — handled there, never defaulted here.
+1. **Failure description.** Take `<description>` verbatim when passed **and non-empty after trimming leading/trailing
+   whitespace** — the trim is used only to test for emptiness; a non-empty value is carried forward exactly as
+   passed, untrimmed. A value that is empty or whitespace-only after that test is treated as absent, identically to
+   no `<description>` at all. When absent (not passed, or empty-after-trim), proceed to Phase 2 before resolving
+   anything else — handled there, never defaulted here.
 2. **Skill.** Take `--skill` verbatim when passed. Absent → the scope is unscoped ("skill: unscoped" in the echo).
 3. **Folder or repository.** Take at most one of `--folder`/`--repo`. Resolve it against the local filesystem only —
    never against any session store, out of scope for this release.
@@ -172,15 +187,18 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
 
 ## Phase 2: Missing-description handling
 
-Only when Phase 1 step 1 found no `<description>`.
+Only when Phase 1 step 1 found no `<description>` (absent, or empty/whitespace-only after Phase 1 step 1's trim-check).
 
 1. **Establish interactive-channel availability from the tool catalog itself** — whether `AskUserQuestion` is present.
    Never guess from context; a headless dispatch has it absent from its own catalog, the only signal this step reads.
-2. **Available (interactive run).** Ask exactly one free-text question, no preset options. Use the answer as the
-   resolved description, then **return to Phase 1 steps 2-5**, resolving
+2. **Available (interactive run).** Ask exactly one free-text question, no preset options. **Trim-check the answer the
+   same way Phase 1 step 1 checks `<description>`** — empty or whitespace-only after trimming is treated as no
+   description obtained and goes straight to step 3's stop below, **without asking a second question**. A non-empty
+   answer is used, untrimmed, as the resolved description; then **return to Phase 1 steps 2-5**, resolving
    `--skill`/`--folder`/`--repo`/`--cap`/`--session` as any run would, and continue to Phase 3.
-3. **Unavailable (headless run).** Stop. Write nothing. Reason: "no failure description given and no interactive
-   channel available to ask for one."
+3. **Unavailable (headless run), or an available run whose answer was empty after trimming.** Stop. Write nothing.
+   Reason: "no failure description given and no interactive channel available to ask for one" (no channel), or "no
+   failure description given — the interactive answer was empty after trimming" (empty answer).
 
 ---
 
@@ -365,8 +383,9 @@ compact, already-redacted or already-structural block comes back.
 8. **State the fix direction, then compute the rule-based recommendation.** Obtain `recommendation.md` via
    `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill:
    postmortem`, `ref: recommendation.md`) — never a raw `Read` of the plugin-cache path — and follow it in full: it
-   composes Fix Direction from a confirmed factor (`stated` or `resting on an open choice`), then evaluates the four
-   routing rules, first match, over the confirmed-factor count, hypothesis count, Localisation list, and that marker.
+   composes Fix Direction from a confirmed factor (`stated` or `resting on an open choice`) — or states `— (no
+   confirmed factor)` when none was confirmed this run — then evaluates the four routing rules, first match, over
+   the confirmed-factor count, hypothesis count, Localisation list, and that marker.
 
 ---
 
@@ -406,6 +425,11 @@ compact, already-redacted or already-structural block comes back.
 ## Edge Cases
 
 - **`_local/config.md` absent.** Stop and point to `/wf:init`; write nothing.
+- **`wf-postmortem` installed but not registered.** Unlike an ordinary adapter capability, this skill's own
+  pack-owned references and agents cannot resolve at all before registration — a pack-owned `resolve_content` call
+  returns `{status: unresolved}`, or a pack-owned agent dispatch cannot be reached. Stop, write nothing: reason
+  "wf-postmortem pack not registered — pack-owned references cannot resolve", `Next: /wf-postmortem:init` (or
+  `/wf:init` with `wf-postmortem` selected).
 - **A named folder or repository that does not resolve to a filesystem path.** Report it unresolved in Scope (Phase 1
   step 3); no session-store lookup is attempted; the run proceeds.
 - **Every named `--session` record unresolved.** Stop (Phase 1 step 5); write nothing — never a fall-back to locating.
@@ -428,9 +452,10 @@ compact, already-redacted or already-structural block comes back.
   Summary never by itself implies a terminus (`recommendation.md` rule 1).
 - **Any two-sided-check failure mode** — `present-day-only`, a non-matching excerpt, a malformed or absent locator, or
   no `Skill-load version:` — leaves the hypothesis `unverified`, never a wider retry (`version-resolution.md`). **The
-  rule-based recommendation** (`recommendation.md`) fires on the report's own fields: rule 2 — no confirmed factor, or
-  an open-choice fix direction — research; rule 3 — two or more confirmed factors, or Localisation spanning more than
-  one skill/contract — charter. Nothing is dispatched.
+  rule-based recommendation** (`recommendation.md`) fires on the report's own fields — the confirmed-factor count, the
+  hypothesis count, the Localisation list, and the Fix Direction marker — first match wins across all four rules (see
+  `recommendation.md` Part B for the full table and the stated precedence between the multi-factor/multi-surface rule
+  and the open-choice rule). Nothing is dispatched.
 - **The guided live hunt's hand-diagnosed defect aged out of the window.** Recorded not-runnable; acceptance rests on
   synthetic fixtures instead. **A dispatch edge that cannot honour a model selector, or a host on the lowest tier**,
   runs on the host's own tier and states that.
@@ -440,8 +465,7 @@ compact, already-redacted or already-structural block comes back.
   forges neither a heading nor a second final-output block.
 - **A report-folder create failing for a reason other than a collision** — unwritable/missing `{task-root}`, a full
   disk, read-only. Stop with that reason; never retried. Three consecutive collisions hits the same bound. **A seeded
-  folder left with no `report.md`** by an interrupted run — the id stays taken. **The pack installed but not
-  registered** — no core phase behaves differently.
+  folder left with no `report.md`** by an interrupted run — the id stays taken.
 - **`{task-root}` fails the containment gate** (`task-root-containment.md`) — stops before the `Glob`/`mkdir`/`Write`; write nothing.
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than the cap.** Read in
   ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never dropped, retrievable by a further
@@ -486,8 +510,8 @@ Stopped:
 ```
 POSTMORTEM — stopped
 
-Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "task root does not resolve inside the workspace — <value>", "_local/config.md absent — run /wf:init first">
-Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", "re-run with a failure description", "re-run --report <path> without the conflicting flag", "re-run with a positive integer --cap", or "re-run without --report to start a fresh hunt" (the too-large-report remedy)>
+Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "no failure description given — the interactive answer was empty after trimming", "wf-postmortem pack not registered — pack-owned references cannot resolve", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "task root does not resolve inside the workspace — <value>", "_local/config.md absent — run /wf:init first">
+Next:   <the command that clears the block, e.g. "/wf:init", "/wf-postmortem:init", "re-run with --session <path>", "re-run with a failure description", "re-run --report <path> without the conflicting flag", "re-run with a positive integer --cap", or "re-run without --report to start a fresh hunt" (the too-large-report remedy)>
 ```
 
 **The final-output block must always be the very last thing output to chat.**
