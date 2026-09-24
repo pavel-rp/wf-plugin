@@ -58,14 +58,9 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 **Allowed:**
 
 - Read `_local/config.md` via `resolve_config`.
-- Resolve **and** normalize `--folder`/`--repo` against the local filesystem only, via the single primitive `Bash`:
-  `(cd '<path>' && pwd -P)` — **always in a subshell** (the parentheses), so it can never move this agent's own
-  persistent working directory — with every `'` in the value replaced by `'\''` first (Phase 1 step 3). One command
-  that both distinguishes "resolves" from every non-resolution cause and, on success, already yields the canonical
-  absolute path.
-- Resolve each `--session` value with its own existence-check primitive `Bash`: `test -e '<path>'` — a session record
-  is one specific file, never a directory, so it is never resolved via the directory-only `cd`/`pwd -P` primitive
-  above — and size it with `Bash`: `wc -c '<path>'` under the same quoting.
+- Resolve/normalize `--folder`/`--repo` (step 3) and canonicalize `{task-root}`/`workspaceRoot` for the containment
+  gate (`task-root-containment.md`) — both via subshelled `Bash`: `(cd '<path>' && pwd -P)`, never bare.
+- Resolve each `--session` value with `Bash`: `test -e '<path>'` (a file, not the `--folder`/`--repo` primitive above), and size it with `Bash`: `wc -c '<path>'`.
 - Read the report template, redaction reference, `version-resolution.md`, `recommendation.md`, `continuation.md`, and
   `coverage-cross-check.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
   wf-postmortem`).
@@ -88,10 +83,6 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
   .md` branches (b)/(c)) and of a candidate task folder's artifacts (`coverage-cross-check.md` Part A step 1); and read
   the `--report` target's device/inode identity for Part E — `Bash`: `git log`, `git show`, `stat -c '%Y'`/`'%d:%i'`
   (BSD: `stat -f '%m'`/`'%d:%i'`), single-quoted the same way. With `test -e`/`test -L`/`wc -c`, metadata only.
-- Canonicalize `{task-root}` and `workspaceRoot` for the Phase 3 step 2.5 containment gate via `Bash`: `(cd '<path>' &&
-  pwd -P)` — always in a subshell, so it can never move this agent's own persistent working directory — the same
-  quoting `continuation.md` Part A step 2 uses for a `--report` path; metadata/path resolution only, never a content
-  read.
 - Scan `{task-root}` (`Glob`) to mint the next `PM<NNN>__<slug>` id, and ask exactly one interactive question
   (`AskUserQuestion`) when the failure description is missing and a channel is available.
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any scratch file inside the
@@ -155,25 +146,10 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
 3. **Folder or repository.** Take at most one of `--folder`/`--repo`. Resolve it against the local filesystem only —
    never against any session store, out of scope for this release.
 
-   **The resolution-and-normalization check is exactly one primitive, always run in a subshell: `Bash`:
-   `(cd '<path>' && pwd -P)`** — the parentheses are load-bearing: a bare `cd` would move this agent's
-   own persistent shell working directory for the rest of the run, which could then corrupt every later
-   resolution in the same session (including Phase 3 step 2.5's own `{task-root}` containment gate); the
-   subshell confines the directory change to just this one check. This is the same canonicalization
-   primitive Phase 3 step 2.5 and `continuation.md` Part A step 2 use. The value is free-form,
-   caller-controlled text: replace every `'` with `'\''` and wrap the result in single quotes before
-   substitution — never concatenated, and never passed to `Glob` as a pattern (the Safety Rules forbid
-   both). This single command is what distinguishes every cause of non-resolution in one step —
-   non-existence, an existing-but-non-directory match, or an unreadable/permission-denied directory —
-   since `cd` only succeeds into a real, accessible directory; on success it already prints the canonical
-   absolute path in the same call, which is the value in force downstream (`locator.md` §1's store-root
-   derivation requires an already-absolute path). Four outcomes: **both passed** → stop
-   ("pass at most one"), write nothing; **neither passed** → scope defaults to the current workspace
-   only; **the command succeeds** → echo the printed absolute path, the locator (Phase 3.5 step 0)
-   enumerates that project's store; **the command fails, for any reason** (does not exist, exists but is
-   not a directory, or is unreadable) → echo it unresolved (`"<name> — unresolved (no matching filesystem
-   path)"`), `session-scope` still states `"current workspace only"` — an unresolved name never widens
-   it, and this outcome draws no further distinction among the failure's causes.
+   **One primitive, always subshelled** (same rationale as `task-root-containment.md`): `Bash`: `(cd '<path>' && pwd
+   -P)`, `'`→`'\''` quoted, never concatenated/`Glob`-passed. Four outcomes: **both passed** → stop; **neither** →
+   current workspace; **succeeds** → echo the printed absolute path (`locator.md` §1 requires one); **fails** (any
+   cause) → echo `"<name> — unresolved (no matching filesystem path)"`, `session-scope` stays current-workspace-only.
 4. **Read cap.** When `--cap` is passed, **validate it before anything uses it**: the value must match `^[1-9][0-9]*$`
    — a positive integer, no sign, no decimal, no unit, no leading zero. It fails → stop, reason `"--cap <value> is not
    a positive integer"`, write nothing; never coerced, truncated, or silently replaced by the default. Valid → take it
@@ -182,11 +158,8 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
    report's own recorded value (Phase 0.5), never silently re-defaulted over an explicit prior override. Either way
    this is the **cap in force**, enforced at Phase 3.5 step 2.5: it gates only dispatch count, never the locator's own
    ranking or Coverage listing.
-5. **Named session records.** Collect every `--session` value in the order passed. Resolve each with **its own
-   existence-check primitive: `Bash`: `test -e '<path>'`** — same quoting, same `Glob`-as-pattern prohibition. A
-   `--session` value names one specific `.jsonl` file, never a directory, so it is **never** resolved via step 3's
-   directory-only `(cd '<path>' && pwd -P)` primitive — `cd` fails on every regular file, which would misreport every
-   legitimately-existing session as unresolved.
+5. **Named session records.** Collect every `--session` value in the order passed. Resolve each with `Bash`:
+   `test -e '<path>'` (same quoting/prohibition as step 3, never step 3's directory-only `cd` — a session is a file).
 
    Each value resolves to one of two outcomes, **both echoed** in the Scope section: **resolves** →
    echo the path verbatim, it joins the hunt set; **does not resolve** → echo it as `"<path> —
@@ -232,40 +205,12 @@ minted this run.
    Then neutralize markdown structure: collapse newlines and backticks to single spaces, strip the **entire** leading
    run of `#` characters (not a single one — `## forged heading` still forms a heading after stripping only one), so a
    description can forge neither a heading nor a fenced `POSTMORTEM — written` block.
-2.5. **Canonicalize and contain `{task-root}` — before step 3's `Glob`, re-verified immediately before step 4's `mkdir`.**
-   `{task-root}` (`coreConfig.taskRoot`) is editable project config, and the resolver's own value normalization never
-   rejects an absolute path or a `..` segment — so an unchecked root would let the scan below and the folder create
-   reach outside the resolved workspace. Reuse the same containment idiom `continuation.md` Part A step 2 uses for a
-   `--report` path: canonicalize both sides with the host's own filesystem, never a string comparison of the raw
-   paths — `Bash`: `(cd '<task-root>' && pwd -P)` — **always in a subshell**: a bare `cd` would move this agent's own
-   persistent working directory for the rest of the run, so this very check could then resolve a *later* invocation
-   against a drifted cwd instead of `workspaceRoot` (every `'` in the resolved `{task-root}` value replaced by `'\''`
-   first, wrapped in single quotes) against the already-resolved absolute `workspaceRoot` (`resolve_config`),
-   canonicalized the same way (also in a subshell). Require the canonicalized `{task-root}` to be
-   character-for-character identical to, or a path-component-bounded descendant of, the canonicalized `workspaceRoot`
-   — never a string-prefix match (`<workspaceRoot>evil/...` must not pass). The `cd` itself failing (the directory
-   does not exist yet, or is unreadable) is also **not** contained.
-
-   **Fails this check** (does not resolve, or resolves outside `workspaceRoot`) → stop, write nothing, before step 3's
-   `Glob` or step 4's `mkdir` ever runs. Reason: `"task root does not resolve inside the workspace — <the resolved
-   {task-root} value>"`. This first pass runs before step 3's `Glob`; step 4 re-runs the same comparison immediately
-   before its own `mkdir` (below), since the id-mint scan between the two is not instantaneous.
+2.5. **Canonicalize and contain `{task-root}`** — before step 3's `Glob`, re-verified before step 4's `mkdir` and Phase 4's `Write`. Obtain `task-root-containment.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: task-root-containment.md`) and follow it in full.
 3. **Mint the id.** Scan `{task-root}` (including any `_archive/` subfolder) for `PM<digits>__` folders, take the
    highest number, increment, zero-pad to 3 digits, starting at `PM001`. Slug the **redacted** description (step 2's
    output): lowercase it; collapse every character outside `a-z0-9` to a single `-` (removing `/`, `\`, `.`, and any
    `..` segment); trim leading/trailing `-`; truncate to 40 characters; if nothing remains, use `report`.
-4. **Create the folder with one exclusive fail-if-exists create** — a plain existence check followed by a separate
-   create is a check-then-act race, so the create itself must be what fails.
-
-   **Immediately before the `mkdir` below, re-run step 2.5's canonicalization comparison** of `{task-root}` against
-   `workspaceRoot` — the same two values, the same `(cd '<path>' && pwd -P)` subshell primitive, the same
-   character-for-character (never string-prefix) comparison, not a new check. Fails → stop, write nothing, same
-   reason step 2.5 states. This
-   closes the gap between step 2.5's first pass (before the `Glob`) and this `mkdir`, across which the id-mint scan is
-   not instantaneous. **Build the `mkdir` target from this re-check's own output** — join the canonicalized
-   `{task-root}` string this `pwd -P` call just printed with the minted folder name — never a separately-held copy of
-   the raw, pre-check `{task-root}` config value, so the create targets exactly the directory identity the re-check
-   just verified, not a value that could have changed between the two.
+4. **Create the folder with one exclusive fail-if-exists create** — a plain existence check followed by a separate create is a check-then-act race, so the create itself must be what fails. **Immediately before `mkdir`, re-run the containment gate** per `task-root-containment.md`, building the target from the re-check's own output, never the raw config value; fails → stop, write nothing, same reason as step 2.5. A "retry" below means re-running this full re-check-then-`mkdir` sequence, never only the bare `mkdir`.
 
    **Use `Bash`: `LC_ALL=C mkdir '<path>'` — without `-p`.** `LC_ALL=C` is load-bearing: under another
    locale a genuine collision's translated stderr could be misread as a hard failure. Exit 0 → folder
@@ -275,9 +220,6 @@ minted this run.
    path does **not** exist (permission/missing/full-disk/read-only) → **not** a collision; stop with
    that reason verbatim, never retried — re-minting repairs nothing about an unwritable, missing, or
    full `{task-root}`. This release records no per-task index row for it (charter assumption #9).
-   **"Retry" means re-running this step's full sequence** — the canonicalization re-check above, then the `mkdir` —
-   on every one of the 3 attempts, never only the bare `mkdir` on attempts 2-3; skipping the re-check on a retry would
-   reopen across that retry's own id-mint re-scan exactly the gap this step exists to close.
 
 ---
 
@@ -287,11 +229,9 @@ Runs after the report folder exists and before anything is written into it. **No
 this context** — every read happens inside a dispatched `session-reader` (or, first, the `locator`), and only its
 compact, already-redacted or already-structural block comes back.
 
-0. **Locate and/or attach, via the seam.** **Compute the window cutoff exactly once per run, here** — this run's own
-   current time minus the 30-day horizon — before anything below uses it. This skill is the single named owner of that
-   computation: the value computed here is passed to the locator verbatim and is never independently recomputed by
-   the locator or the seam (`locator.md` §3 and `agents/locator.md`'s Input table both state the value as
-   caller-supplied, not self-derived). **On a `--report` follow-up**, this step runs under `continuation.md` Part
+0. **Locate and/or attach, via the seam.** **Compute the window cutoff exactly once per run, here** (current time minus
+   the 30-day horizon) — this skill is the single owner; the locator/seam never independently recompute it
+   (`locator.md` §3, `agents/locator.md`'s Input table). **On a `--report` follow-up**, this step runs under `continuation.md` Part
    B instead of the two branches below (re-locate, fold in named retries — the one exception to "exactly once per run"
    for a retry the fresh return doesn't surface); step 2.5's cap-split then applies under Part C. Otherwise route with
    `role: "locator"`, `unitIds: ["locator:hunt"]`, `shapeEvidence` identical in shape to step 3 below except
@@ -454,23 +394,13 @@ compact, already-redacted or already-structural block comes back.
    delivery entry id>` identifier as well as its key-attempted string — closing the same report-forgery
    class the CLI-prompt channel already closes, for a delivery-entry or task-folder source exactly as
    for a session-sourced one.
-2.5. **Re-verify the write target — the last action before step 3's `Write`, on every run, not only a follow-up.**
-   Phase 3 step 2.5's containment check is stale by now: all of Phase 3.5 ran since — potentially many isolated
-   `session-reader`/`excerpt-fetcher` dispatches, a far larger elapsed-time window than the id-mint `Glob` gap that
-   check was first built to close. **On a follow-up**, re-run `continuation.md` **Part E** in full (the whole
-   confinement check again from scratch, plus the recorded device/inode identity comparison) and stop with nothing
-   written if any part of it fails or the identity differs. **On a fresh mint** (no `--report` this run), re-run
-   Phase 3 step 2.5's own canonicalization comparison of `{task-root}` against `workspaceRoot` — the same
-   `(cd '<path>' && pwd -P)` subshell primitive, the same character-for-character (never string-prefix) comparison —
-   immediately before the write; fails → stop, write nothing, same reason step 2.5 states.
+2.5. **Re-verify the write target — the last action before step 3's `Write`, every run, not only a follow-up.** On a follow-up, re-run `continuation.md` **Part E** in full (the confinement check plus the device/inode identity comparison); stop with nothing written on any failure or identity mismatch. On a fresh mint, re-run the containment gate per `task-root-containment.md`; fails → stop, write nothing, same reason as step 2.5.
 3. **Write** `{task-root}/PM<NNN>__<slug>/report.md` per the template shape, including the `**Model:**` attribution
    line (the runtime model id — `unknown` rather than guessed) and the fenced `POSTMORTEM — written` final-output
-   block, matching this skill's own Final Output shape verbatim. **On a fresh mint, build the write path from step
-   2.5's own re-check output** — join the canonicalized `{task-root}` string that `pwd -P` call just printed with the
-   already-minted `PM<NNN>__<slug>/report.md` suffix, never a separately-held copy of the raw, pre-check `{task-root}`
-   config value — the same discipline Phase 3 step 4 already applies to the `mkdir` target. **On a follow-up**, write
-   to the prior report's own folder (Phase 0.5) instead — overwriting the same `report.md`, never minting a new id —
-   and append the dated Continuation entry `continuation.md` Part D composes, after Recommendation, before the
+   block, matching this skill's own Final Output shape verbatim. **On a fresh mint**, build the write path from step
+   2.5's re-check output per `task-root-containment.md` (same discipline as the `mkdir` target). **On a follow-up**,
+   write to the prior report's own folder (Phase 0.5) instead — overwriting the same `report.md`, never minting a new
+   id — and append the dated Continuation entry `continuation.md` Part D composes, after Recommendation, before the
    final-output block. Any scratch file is written under the fixed, literal `_local/scratch/`, through the same
    redacting write path.
 
@@ -515,9 +445,7 @@ compact, already-redacted or already-structural block comes back.
   disk, read-only. Stop with that reason; never retried. Three consecutive collisions hits the same bound. **A seeded
   folder left with no `report.md`** by an interrupted run — the id stays taken. **The pack installed but not
   registered** — no core phase behaves differently.
-- **`{task-root}` does not canonicalize inside `workspaceRoot`** (an absolute or `..`-carrying config value, or one that
-  does not resolve at all) — Phase 3 step 2.5 stops before either the id-mint `Glob` or the folder `mkdir` ever runs;
-  write nothing.
+- **`{task-root}` fails the containment gate** (`task-root-containment.md`) — stops before the `Glob`/`mkdir`/`Write`; write nothing.
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than the cap.** Read in
   ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never dropped, retrievable by a further
   `--report` follow-up unless it ages out or is removed first. On a follow-up, a session already holding a Coverage
