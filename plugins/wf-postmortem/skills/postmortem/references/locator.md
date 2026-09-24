@@ -78,8 +78,13 @@ shape signal), never for what they *say*:
   against, host-observed on this project's own installed host (same disclosure as this file's opening
   paragraph):
   - **Turn-role/entry-type marker** — the line's own top-level `type` field (observed values include
-    `"user"` and `"assistant"`; a turn boundary is a line whose `type` differs from the immediately
-    preceding line's own `type`).
+    `"user"` and `"assistant"`). **Counting excludes header lines**: a record's opening header lines
+    (§2 — an observed `type` of `mode`, `last-prompt`, `bridge-session` and similar) carry no
+    `timestamp`, so counting starts only once the same forward scan §1's `gitBranch` paragraph and §3
+    already use for `timestamp` reaches the first line carrying that field — a header-to-header or
+    header-to-first-real-line transition is never itself counted as a turn boundary. From that first
+    timestamped line onward, a turn boundary is a line whose `type` differs from the immediately
+    preceding **counted** line's own `type`.
   - **Tool-invocation line's own tool-name field** — on a line whose top-level `type` is `"assistant"`,
     each entry of the `message.content` array whose own `type` is `"tool_use"` is one tool invocation;
     that entry's `name` field is the tool-name field this seam reads.
@@ -116,13 +121,17 @@ of it is that it complete its pair (below). Testing it for a `.jsonl` extension,
 `sessionId`, or a `timestamp` would reject every session that has subagent records at all.
 
 **Recognized** — all of the following hold for a record:
-- the candidate is a **real regular file, never a symlink** (`test -L` on it fails), and its
-  canonicalized resolved path is contained under the derived store root (§1) — by path-component-
-  boundary comparison, never a string-prefix match (`<store-root>evil/...` must not pass). The same two
-  checks apply to a sibling subagent-record directory when one exists (a real directory, never a
-  symlink, canonically contained under the store root), and to each entry directly inside its
-  `subagents/` folder (each `.jsonl`/`.meta.json` half must itself be a real regular file, never a
-  symlink, canonically contained under that same store root);
+- **the candidate is a real regular file, never a symlink** (`test -L` on it fails) — this half applies
+  in **both** modes, since a symlink is never a native store member regardless of how the candidate's
+  path was supplied. **In locate mode only**, its canonicalized resolved path must additionally be
+  contained under the derived store root (§1) — by path-component-boundary comparison, never a
+  string-prefix match (`<store-root>evil/...` must not pass); the same two checks (non-symlink, plus
+  store-root containment) apply to a sibling subagent-record directory when one exists, and to each
+  entry directly inside its `subagents/` folder. **In attach-only mode** (§7 — the caller passed already-
+  resolved `--session` paths, not a scope), there is no store root to derive at all — no `workspace path`
+  or `--folder`/`--repo` value is given to this mode — so the store-root-containment half is **n/a —
+  named session**, the same carve-out `Date`/`Scope-match`/`Hunt session` already state for this mode
+  (§8); only the non-symlink half applies to a named path and its attached subagent records;
 - the file's name ends `.jsonl`;
 - its first line is well-formed JSON and carries a `sessionId` field. **A `timestamp` is not required
   on this line and must not be demanded of it:** a record opens with one or more header lines (an
@@ -145,10 +154,12 @@ sibling directory
 exists but holds no `subagents/` folder at all where the top-level record's own first line implies
 subagent activity occurred (a stated, conservative signal — this release does not attempt to name
 every implying field, only to fail loudly rather than guess when the layout looks inconsistent with
-itself). **A candidate, a sibling subagent-record directory, or a `subagents/` entry that is a symlink,
-or whose resolved path is not canonically contained under the store root, is Unrecognized for that
-candidate/pair** — the same stop-the-whole-dispatch discipline as any other unrecognized shape below,
-never a per-record skip. This is distinct from `skipped (access denied)` (§8), which stays for a denied
+itself). **A candidate, a sibling subagent-record directory, or a `subagents/` entry that is a symlink
+is Unrecognized for that candidate/pair, in both modes; in locate mode only, one whose resolved path is
+not canonically contained under the store root is Unrecognized too** (attach-only mode has no store root
+to compare against — the containment half is `n/a — named session` there, per the Recognized list above)
+— the same stop-the-whole-dispatch discipline as any other unrecognized shape below, never a per-record
+skip. This is distinct from `skipped (access denied)` (§8), which stays for a denied
 read of an otherwise native, contained candidate.
 
 **On unrecognized, at the whole-store or per-record enumeration level:** the locate operation fails
@@ -266,7 +277,9 @@ names, never full content):
 
 - **Iterations** — the count of distinct top-level conversational turns in the record (a mechanical
   count of role-transition boundaries, read from §1's literal top-level `type` field, not an
-  interpretation of what happened in a turn).
+  interpretation of what happened in a turn) — **excluding header lines**, per §1's turn-role/entry-type
+  paragraph: counting starts only at the first line carrying a `timestamp` field, so a record's opening
+  header lines are never themselves counted as turn boundaries.
 - **Edits** — the count of tool-invocation entries (§1: an `"assistant"`-type line's `message.content[]`
   entry whose own `type` is `"tool_use"`) whose `name` field matches §1's closed file-mutating allowlist
   (`Write`, `Edit`, `NotebookEdit`) — never by reading the edit's content or the file's own text, and

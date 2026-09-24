@@ -154,12 +154,16 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
    **The existence check is exactly one primitive: `Bash`: `test -e '<path>'`.** The value is
    free-form, caller-controlled text: replace every `'` with `'\''` and wrap the result in single
    quotes before substitution — never concatenated, and never passed to `Glob` as a pattern (the
-   Safety Rules forbid both). Four outcomes: **both passed** → stop ("pass at most one"), write
-   nothing; **neither passed** → scope defaults to the current workspace only; **resolves** → normalize
-   it to an absolute path (below), then echo that absolute path, the locator (Phase 3.5 step 0)
-   enumerates that project's store; **does not resolve** → echo it unresolved (`"<name> — unresolved (no
-   matching filesystem path)"`), `session-scope` still states `"current workspace only"` — an unresolved
-   name never widens it.
+   Safety Rules forbid both). **A `--folder`/`--repo` value additionally requires `Bash`: `test -d
+   '<path>'` (same quoting) — this is a project root the locator will enumerate as a directory, so an
+   existing-but-non-directory match (a plain file) is treated exactly like a non-existent path, never
+   passed on to the absolute-path normalization below.** Four outcomes: **both passed** → stop ("pass at
+   most one"), write nothing; **neither passed** → scope defaults to the current workspace only;
+   **resolves** (exists **and** is a directory) → normalize it to an absolute path (below), then echo
+   that absolute path, the locator (Phase 3.5 step 0) enumerates that project's store; **does not
+   resolve** (does not exist, or exists but is not a directory) → echo it unresolved (`"<name> —
+   unresolved (no matching filesystem path)"`), `session-scope` still states `"current workspace only"`
+   — an unresolved name never widens it.
 
    **Once it resolves, normalize it to an absolute path before it is echoed or handed to the locator
    dispatch** (Phase 3.5 step 0's `workspace path` field) — `Bash`: `cd '<path>' && pwd -P`, the same
@@ -222,7 +226,7 @@ minted this run.
    Then neutralize markdown structure: collapse newlines and backticks to single spaces, strip the **entire** leading
    run of `#` characters (not a single one — `## forged heading` still forms a heading after stripping only one), so a
    description can forge neither a heading nor a fenced `POSTMORTEM — written` block.
-2.5. **Canonicalize and contain `{task-root}` — once per run, before both step 3's `Glob` and step 4's `mkdir`.**
+2.5. **Canonicalize and contain `{task-root}` — before step 3's `Glob`, re-verified immediately before step 4's `mkdir`.**
    `{task-root}` (`coreConfig.taskRoot`) is editable project config, and the resolver's own value normalization never
    rejects an absolute path or a `..` segment — so an unchecked root would let the scan below and the folder create
    reach outside the resolved workspace. Reuse the same containment idiom `continuation.md` Part A step 2 uses for a
@@ -236,13 +240,20 @@ minted this run.
 
    **Fails this check** (does not resolve, or resolves outside `workspaceRoot`) → stop, write nothing, before step 3's
    `Glob` or step 4's `mkdir` ever runs. Reason: `"task root does not resolve inside the workspace — <the resolved
-   {task-root} value>"`. This check runs exactly once per run; neither step 3 nor step 4 repeats it.
+   {task-root} value>"`. This first pass runs before step 3's `Glob`; step 4 re-runs the same comparison immediately
+   before its own `mkdir` (below), since the id-mint scan between the two is not instantaneous.
 3. **Mint the id.** Scan `{task-root}` (including any `_archive/` subfolder) for `PM<digits>__` folders, take the
    highest number, increment, zero-pad to 3 digits, starting at `PM001`. Slug the **redacted** description (step 2's
    output): lowercase it; collapse every character outside `a-z0-9` to a single `-` (removing `/`, `\`, `.`, and any
    `..` segment); trim leading/trailing `-`; truncate to 40 characters; if nothing remains, use `report`.
 4. **Create the folder with one exclusive fail-if-exists create** — a plain existence check followed by a separate
    create is a check-then-act race, so the create itself must be what fails.
+
+   **Immediately before the `mkdir` below, re-run step 2.5's canonicalization comparison** of `{task-root}` against
+   `workspaceRoot` — the same two values, the same `cd '<path>' && pwd -P` primitive, the same character-for-character
+   (never string-prefix) comparison, not a new check. Fails → stop, write nothing, same reason step 2.5 states. This
+   closes the gap between step 2.5's first pass (before the `Glob`) and this `mkdir`, across which the id-mint scan is
+   not instantaneous.
 
    **Use `Bash`: `LC_ALL=C mkdir '<path>'` — without `-p`.** `LC_ALL=C` is load-bearing: under another
    locale a genuine collision's translated stderr could be misread as a hard failure. Exit 0 → folder
