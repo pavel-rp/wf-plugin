@@ -60,10 +60,18 @@ comparison proceeds:
    directory (the same literal `(cd '<dir>' && pwd -P)` directory-containment primitive
    `task-root-containment.md` already establishes — distinct from `excerpt-fetcher.md`'s/
    `session-reader.md`'s leaf-plus-basename-join variant, which re-validates a single *file* path
-   rather than canonicalizing a directory outright) — to get the canonicalized cache root. Join the
-   validated `<marketplace>/<plugin>/<version>` segments onto it to form the candidate absolute path,
-   then canonicalize the candidate the same way: `Bash`: `(cd '<candidate>' && pwd -P)`.
-3. **Re-validate the canonicalized candidate**, both checks required before the comparison proceeds:
+   rather than canonicalizing a directory outright) — to get the canonicalized cache root. **Either
+   `cd` failing (the directory does not exist, or is unreadable) means this branch does not resolve at
+   all** — fall through to branch (b) immediately, the same fall-through the header's own precondition
+   ("the `<version>` folder exists and is readable") already implies, and the same disposition step 4
+   below gives every other failure in this branch; this is expected to fire routinely, since `<version>`
+   is a reader-reported *historical* string that may well not match anything on this host. Only once
+   the cache root canonicalizes successfully: join the validated `<marketplace>/<plugin>/<version>`
+   segments onto it to form the candidate absolute path, then canonicalize the candidate the same way:
+   `Bash`: `(cd '<candidate>' && pwd -P)` — this second `cd` failing falls through to branch (b)
+   identically.
+3. **Re-validate the canonicalized candidate**, all three checks required before the comparison
+   proceeds:
    - **Containment.** The candidate's own ancestor three levels up (`dirname` applied three times to
      the canonicalized candidate) must be character-for-character identical to the canonicalized
      cache root from step 2 — never a prefix match. This defeats a symlinked `<marketplace>`,
@@ -77,12 +85,13 @@ comparison proceeds:
      symlinked `<marketplace>` or `<plugin>` segment that still resolves inside the cache root and
      still carries a matching `<version>` basename — passing containment and version identity alike —
      while silently pointing at a *different* pack's directory.
-4. **Any check failing** → this branch does not resolve; continue to branch (b) exactly like the
-   existing absent/denied case below — never a silent fall-through under an unrelated version.
+4. **Any check failing — step 2's canonicalization, or any of step 3's three re-validations** → this
+   branch does not resolve; continue to branch (b) exactly like the existing absent/denied case below
+   — never a silent fall-through under an unrelated version.
 
-Both checks passing → compare the skill/contract/manifest text at that canonicalized candidate path
-directly (`Read`/`Grep`, Safety Rules Allowed) — no separate read primitive is needed, unlike (b)/(c).
-Label: `<version>` (install path).
+All three checks passing → compare the skill/contract/manifest text at that canonicalized candidate
+path directly (`Read`/`Grep`, Safety Rules Allowed) — no separate read primitive is needed, unlike
+(b)/(c). Label: `<version>` (install path).
 
 **b. No readable cache folder for that version.** The `<version>` folder is absent or the read is
 denied (the cache sits outside the workspace, exactly like the session store) → resolve the commit

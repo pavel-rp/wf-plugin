@@ -188,7 +188,7 @@ Emit exactly one block per dispatch:
 
 ```
 EXCERPT FETCH
-Path: <the path you were given, redacted per step 5 (every verdict; rule 4's resolved-path exemption still applies), then echoed>
+Path: <the path you were given, redacted per step 5 on every verdict except the Prerequisites-failure `error` outcome (echoed unredacted there — see Prerequisites); rule 4's resolved-path exemption still applies, then echoed>
 Model: <the model id this dispatch actually ran on, or "unknown">
 Verdict: <fetched | not found | read denied | error: <reason>>
 
