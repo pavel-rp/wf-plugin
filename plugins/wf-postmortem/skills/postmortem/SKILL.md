@@ -58,8 +58,9 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 **Allowed:**
 
 - Read `_local/config.md` via `resolve_config`.
-- Resolve `--folder`/`--repo` against the local filesystem only, via the single existence-check primitive `Bash`:
-  `test -e '<path>'`, with every `'` in the value replaced by `'\''` first (Phase 1 step 3).
+- Resolve/normalize `--folder`/`--repo` (step 3) and canonicalize `{task-root}`/`workspaceRoot` for the containment
+  gate (`task-root-containment.md`) — both via subshelled `Bash`: `(cd '<path>' && pwd -P)`, never bare.
+- Resolve each `--session` value with `Bash`: `test -e '<path>'` (a file, not the `--folder`/`--repo` primitive above), and size it with `Bash`: `wc -c '<path>'`.
 - Read the report template, redaction reference, `version-resolution.md`, `recommendation.md`, `continuation.md`, and
   `coverage-cross-check.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin:
   wf-postmortem`).
@@ -87,8 +88,6 @@ stops; omitting it entirely locates instead (`locator.md`) — never a fallback 
 - Write the report file inside its own seeded `{task-root}/PM<NNN>__<slug>/` folder, and any scratch file inside the
   fixed, literal `_local/scratch/` (deliberately **not** `{task-root}`-relative, so residue lands where the finalize
   sweep covers it) — both only through the redacting write path.
-- Resolve each `--session` value with the same existence-check primitive used for `--folder`/`--repo`, and size it
-  with `Bash`: `wc -c '<path>'` under the same quoting.
 - Invoke the **Task** tool with `subagent_type: wf-postmortem:session-reader`, once per session or per window, to read
   the record in that agent's own isolated context.
 - For the coverage cross-check (Phase 3.5 step 7.5), all in this skill's own context (none of these is a session or
@@ -147,14 +146,10 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
 3. **Folder or repository.** Take at most one of `--folder`/`--repo`. Resolve it against the local filesystem only —
    never against any session store, out of scope for this release.
 
-   **The existence check is exactly one primitive: `Bash`: `test -e '<path>'`.** The value is
-   free-form, caller-controlled text: replace every `'` with `'\''` and wrap the result in single
-   quotes before substitution — never concatenated, and never passed to `Glob` as a pattern (the
-   Safety Rules forbid both). Four outcomes: **both passed** → stop ("pass at most one"), write
-   nothing; **neither passed** → scope defaults to the current workspace only; **resolves** → echo it
-   verbatim, the locator (Phase 3.5 step 0) enumerates that project's store; **does not resolve** →
-   echo it unresolved (`"<name> — unresolved (no matching filesystem path)"`), `session-scope` still
-   states `"current workspace only"` — an unresolved name never widens it.
+   **One primitive, always subshelled** (same rationale as `task-root-containment.md`): `Bash`: `(cd '<path>' && pwd
+   -P)`, `'`→`'\''` quoted, never concatenated/`Glob`-passed. Four outcomes: **both passed** → stop; **neither** →
+   current workspace; **succeeds** → echo the printed absolute path (`locator.md` §1 requires one); **fails** (any
+   cause) → echo `"<name> — unresolved (no matching filesystem path)"`, `session-scope` stays current-workspace-only.
 4. **Read cap.** When `--cap` is passed, **validate it before anything uses it**: the value must match `^[1-9][0-9]*$`
    — a positive integer, no sign, no decimal, no unit, no leading zero. It fails → stop, reason `"--cap <value> is not
    a positive integer"`, write nothing; never coerced, truncated, or silently replaced by the default. Valid → take it
@@ -163,13 +158,10 @@ cap, the merge, the recompute, the Continuation entry and the pre-overwrite re-v
    report's own recorded value (Phase 0.5), never silently re-defaulted over an explicit prior override. Either way
    this is the **cap in force**, enforced at Phase 3.5 step 2.5: it gates only dispatch count, never the locator's own
    ranking or Coverage listing.
-5. **Named session records.** Collect every `--session` value in the order passed. Resolve each with the **same single
-   primitive** step 3 uses — same quoting, same `Glob`-as-pattern prohibition.
+5. **Named session records.** Collect every `--session` value in the order passed. Resolve each with `Bash`:
+   `test -e '<path>'` (same quoting/prohibition as step 3, never step 3's directory-only `cd` — a session is a file).
 
-   Each value resolves to one of two outcomes, **both echoed** in the Scope section: **resolves** →
-   echo the path verbatim, it joins the hunt set; **does not resolve** → echo it as `"<path> —
-   unresolved (no matching filesystem path)"`, joining neither the hunt set nor coverage — the hunt
-   proceeds over the rest, reported, never silently dropped.
+   Each value resolves to one of two outcomes: **resolves** → canonicalize it with the same subshelled primitive `session-reader.md`/`excerpt-fetcher.md` re-check against (`(cd "$(dirname '<path>')" && pwd -P)`, joined with the basename) before it joins the hunt set — a relative or `..`-bearing spelling would otherwise fail their absolute-path ancestor-containment re-check as a false symlink denial — and **echo this canonical absolute form**, never the raw spelling; **does not resolve** → echo the original value verbatim as `"<path> — unresolved (no matching filesystem path)"`, joining neither the hunt set nor coverage — the hunt proceeds over the rest, reported, never silently dropped.
 
    **The stop condition — named values only.** When **every** passed `--session` value failed to
    resolve, stop, reason `"no named session record resolved — <n> named, 0 resolved"`. **Write
@@ -210,12 +202,12 @@ minted this run.
    Then neutralize markdown structure: collapse newlines and backticks to single spaces, strip the **entire** leading
    run of `#` characters (not a single one — `## forged heading` still forms a heading after stripping only one), so a
    description can forge neither a heading nor a fenced `POSTMORTEM — written` block.
-3. **Mint the id.** Scan `{task-root}` (including any `_archive/` subfolder) for `PM<digits>__` folders, take the
+2.5. **Canonicalize and contain `{task-root}`** — before step 3's `Glob`, re-verified before step 4's `mkdir` and Phase 4's `Write`. Obtain `task-root-containment.md` via `resolve_content({ workspaceRoot, ... })` (`class: references-template`, `plugin: wf-postmortem`, `skill: postmortem`, `ref: task-root-containment.md`) and follow it in full — **hold its printed canonical `{task-root}` value for step 3 below.**
+3. **Mint the id.** Scan **step 2.5's own canonical `{task-root}` output** (never a fresh read of the raw config value) — including any `_archive/` subfolder — for `PM<digits>__` folders, take the
    highest number, increment, zero-pad to 3 digits, starting at `PM001`. Slug the **redacted** description (step 2's
    output): lowercase it; collapse every character outside `a-z0-9` to a single `-` (removing `/`, `\`, `.`, and any
    `..` segment); trim leading/trailing `-`; truncate to 40 characters; if nothing remains, use `report`.
-4. **Create the folder with one exclusive fail-if-exists create** — a plain existence check followed by a separate
-   create is a check-then-act race, so the create itself must be what fails.
+4. **Create the folder with one exclusive fail-if-exists create** — a plain existence check followed by a separate create is a check-then-act race, so the create itself must be what fails. **Immediately before `mkdir`, re-run the containment gate** per `task-root-containment.md`, building the target from the re-check's own output, never the raw config value; fails → stop, write nothing, same reason as step 2.5. A "retry" below means re-running this full re-check-then-`mkdir` sequence, never only the bare `mkdir`.
 
    **Use `Bash`: `LC_ALL=C mkdir '<path>'` — without `-p`.** `LC_ALL=C` is load-bearing: under another
    locale a genuine collision's translated stderr could be misread as a hard failure. Exit 0 → folder
@@ -234,7 +226,9 @@ Runs after the report folder exists and before anything is written into it. **No
 this context** — every read happens inside a dispatched `session-reader` (or, first, the `locator`), and only its
 compact, already-redacted or already-structural block comes back.
 
-0. **Locate and/or attach, via the seam.** **On a `--report` follow-up**, this step runs under `continuation.md` Part
+0. **Locate and/or attach, via the seam.** **Compute the window cutoff exactly once per run, here** (current time minus
+   the 30-day horizon) — this skill is the single owner; the locator/seam never independently recompute it
+   (`locator.md` §3, `agents/locator.md`'s Input table). **On a `--report` follow-up**, this step runs under `continuation.md` Part
    B instead of the two branches below (re-locate, fold in named retries — the one exception to "exactly once per run"
    for a retry the fresh return doesn't surface); step 2.5's cap-split then applies under Part C. Otherwise route with
    `role: "locator"`, `unitIds: ["locator:hunt"]`, `shapeEvidence` identical in shape to step 3 below except
@@ -397,16 +391,15 @@ compact, already-redacted or already-structural block comes back.
    delivery entry id>` identifier as well as its key-attempted string — closing the same report-forgery
    class the CLI-prompt channel already closes, for a delivery-entry or task-folder source exactly as
    for a session-sourced one.
-2.5. **On a follow-up, re-verify the write target — the last action before step 3's `Write`.** Phase 0.5's confinement
-   check is stale by now: all of Phase 1-3.5 ran since. Re-run `continuation.md` **Part E** in full (the whole
-   confinement check again from scratch, plus the recorded device/inode identity comparison) and stop with nothing
-   written if any part of it fails or the identity differs.
+2.5. **Re-verify the write target — the last action before step 3's `Write`, every run, not only a follow-up.** On a follow-up, re-run `continuation.md` **Part E** in full (the confinement check plus the device/inode identity comparison); stop with nothing written on any failure or identity mismatch. On a fresh mint, re-run the containment gate per `task-root-containment.md`; fails → stop, write nothing, same reason as step 2.5.
 3. **Write** `{task-root}/PM<NNN>__<slug>/report.md` per the template shape, including the `**Model:**` attribution
    line (the runtime model id — `unknown` rather than guessed) and the fenced `POSTMORTEM — written` final-output
-   block, matching this skill's own Final Output shape verbatim. **On a follow-up**, write to the prior report's own
-   folder (Phase 0.5) instead — overwriting the same `report.md`, never minting a new id — and append the dated
-   Continuation entry `continuation.md` Part D composes, after Recommendation, before the final-output block. Any
-   scratch file is written under the fixed, literal `_local/scratch/`, through the same redacting write path.
+   block, matching this skill's own Final Output shape verbatim. **On a fresh mint**, build the write path from step
+   2.5's re-check output per `task-root-containment.md` (same discipline as the `mkdir` target). **On a follow-up**,
+   write to the prior report's own folder (Phase 0.5) instead — overwriting the same `report.md`, never minting a new
+   id — and append the dated Continuation entry `continuation.md` Part D composes, after Recommendation, before the
+   final-output block. Any scratch file is written under the fixed, literal `_local/scratch/`, through the same
+   redacting write path.
 
 ---
 
@@ -449,6 +442,7 @@ compact, already-redacted or already-structural block comes back.
   disk, read-only. Stop with that reason; never retried. Three consecutive collisions hits the same bound. **A seeded
   folder left with no `report.md`** by an interrupted run — the id stays taken. **The pack installed but not
   registered** — no core phase behaves differently.
+- **`{task-root}` fails the containment gate** (`task-root-containment.md`) — stops before the `Glob`/`mkdir`/`Write`; write nothing.
 - **A located or named set larger than the cap in force, or a follow-up remainder still larger than the cap.** Read in
   ranked order up to the cap; the rest is `skipped (budget)` in Coverage — never dropped, retrievable by a further
   `--report` follow-up unless it ages out or is removed first. On a follow-up, a session already holding a Coverage
@@ -492,7 +486,7 @@ Stopped:
 ```
 POSTMORTEM — stopped
 
-Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "_local/config.md absent — run /wf:init first">
+Reason: <one sentence — e.g. "no named session record resolved — <n> named, 0 resolved", "session store unreadable — <cause>", "unrecognized record shape — <path> — <what did not match>", "no failure description given and no interactive channel available to ask for one", "--report <path> does not resolve to an existing file", "--report <path> is not inside a postmortem report folder", "--report <path> is not a postmortem report", "--report <path> is too large to continue — <n> characters, ceiling 200000", "--report conflicts with the prior report's own scope — <field> differs", "--report <path> changed between validation and write — nothing written", "--cap <value> is not a positive integer", "task root does not resolve inside the workspace — <value>", "_local/config.md absent — run /wf:init first">
 Next:   <the command that clears the block, e.g. "/wf:init", "re-run with --session <path>", "re-run with a failure description", "re-run --report <path> without the conflicting flag", "re-run with a positive integer --cap", or "re-run without --report to start a fresh hunt" (the too-large-report remedy)>
 ```
 

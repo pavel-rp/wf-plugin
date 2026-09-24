@@ -74,11 +74,29 @@ shape signal), never for what they *say*:
   counting already perform, not a further traversal, and it carries no size cap of its own (§6's
   "Scan bound").
 - **Count-only shape fields** (§6 alone reads these, and only to count line shapes, never to inspect
-  the substance behind them): the line's own turn-role/entry-type marker (to count turn boundaries);
-  a tool-invocation line's own tool-name field (to test whether it names a file-mutating tool); and,
-  only on a line already identified as a file-mutating tool-invocation by its tool-name field, the
-  single argument field that names the target file path (to dedupe by path) — never any other
-  argument, and never the tool's result.
+  the substance behind them). The literal JSON field path for each, and the fixed allowlist §6 counts
+  against, host-observed on this project's own installed host (same disclosure as this file's opening
+  paragraph):
+  - **Turn-role/entry-type marker** — the line's own top-level `type` field (observed values include
+    `"user"` and `"assistant"`). **Counting excludes header lines**: a record's opening header lines
+    (§2 — an observed `type` of `mode`, `last-prompt`, `bridge-session` and similar) carry no
+    `timestamp`, so counting starts only once the same forward scan §1's `gitBranch` paragraph and §3
+    already use for `timestamp` reaches the first line carrying that field — a header-to-header or
+    header-to-first-real-line transition is never itself counted as a turn boundary. **That first
+    timestamped line is itself the first counted turn** (the count starts at 1 there, not 0 — it is a
+    real turn with nothing to differ from, not a non-event); from the line immediately after it onward,
+    each further turn boundary is a line whose `type` differs from the immediately preceding **counted**
+    line's own `type`, incrementing the count by one each time.
+  - **Tool-invocation line's own tool-name field** — on a line whose top-level `type` is `"assistant"`,
+    each entry of the `message.content` array whose own `type` is `"tool_use"` is one tool invocation;
+    that entry's `name` field is the tool-name field this seam reads.
+  - **File-mutating tool-name allowlist (closed, no others counted):** `Write`, `Edit`, `NotebookEdit`.
+    A tool-invocation entry whose `name` is not one of these three is never counted as an edit and never
+    contributes to files-touched, however the entry's own arguments are shaped.
+  - **Target-file argument field** — read only on an entry already identified as file-mutating by the
+    allowlist above, never on any other entry: `input.file_path` for `Write` and `Edit`;
+    `input.notebook_path` for `NotebookEdit`. Never any other argument on that entry, and never the
+    tool's own result (a later line).
 
 Every other field in the line, and the entire substance of any message, tool-call argument, or
 tool-result content the line carries, is never read, never inspected, and never returned by this seam
@@ -105,6 +123,22 @@ of it is that it complete its pair (below). Testing it for a `.jsonl` extension,
 `sessionId`, or a `timestamp` would reject every session that has subagent records at all.
 
 **Recognized** — all of the following hold for a record:
+- **the candidate is a real regular file, never a symlink** — both `test -f` (must succeed — a
+  directory, device, or other non-regular entry fails this even though it too fails `test -L`) **and**
+  `test -L` (must fail) on it. This half applies in **both** modes, since neither a symlink nor a
+  non-regular entry is ever a native store member regardless of how the candidate's path was supplied.
+  A **sibling subagent-record directory**, and the `subagents/` folder itself, are instead required to
+  pass `test -d` (must succeed) and `test -L` (must fail) — the directory-shaped counterpart of the
+  same two-part discipline, never the file-shaped `test -f`. **In locate mode only**, its canonicalized
+  resolved path must additionally be contained under the derived store root (§1) — by
+  path-component-boundary comparison, never a string-prefix match (`<store-root>evil/...` must not
+  pass); the same containment check applies to the sibling subagent-record directory and to each entry
+  directly inside its `subagents/` folder. **In attach-only mode** (§7 — the caller passed already-
+  resolved `--session` paths, not a scope), there is no store root to derive at all — no `workspace path`
+  or `--folder`/`--repo` value is given to this mode — so the store-root-containment half is **n/a —
+  named session**, the same carve-out `Date`/`Scope-match`/`Hunt session` already state for this mode
+  (`agents/locator.md`'s attach-only-mode procedure); only the regular-file/non-symlink half applies to
+  a named path and its attached subagent records;
 - the file's name ends `.jsonl`;
 - its first line is well-formed JSON and carries a `sessionId` field. **A `timestamp` is not required
   on this line and must not be demanded of it:** a record opens with one or more header lines (an
@@ -127,7 +161,15 @@ sibling directory
 exists but holds no `subagents/` folder at all where the top-level record's own first line implies
 subagent activity occurred (a stated, conservative signal — this release does not attempt to name
 every implying field, only to fail loudly rather than guess when the layout looks inconsistent with
-itself).
+itself). **A candidate, a sibling subagent-record directory, or a `subagents/` entry that is a symlink, or that
+fails its required shape test (`test -f` for a candidate record or a `subagents/` entry, `test -d` for
+the sibling directory or `subagents/` itself), is Unrecognized for that candidate/pair, in both modes;
+in locate mode only, one whose resolved path is
+not canonically contained under the store root is Unrecognized too** (attach-only mode has no store root
+to compare against — the containment half is `n/a — named session` there, per the Recognized list above)
+— the same stop-the-whole-dispatch discipline as any other unrecognized shape below, never a per-record
+skip. This is distinct from `skipped (access denied)` (§8), which stays for a denied
+read of an otherwise native, contained candidate.
 
 **On unrecognized, at the whole-store or per-record enumeration level:** the locate operation fails
 loudly for the whole hunt — return `LOCATE ERROR: unrecognized record shape — <path> — <what did not
@@ -160,18 +202,29 @@ whose read the host denies, preserved unchanged now that the read moves behind t
 same store-root derivation (§1) applied to that path is the store root to enumerate — widening the
 located set to that project's sessions, never any other unnamed project's.
 
-**`--skill`.** A candidate matches the skill dimension when a Skill-load line (§1) naming that skill —
-`.../skills/<the named skill>` — appears anywhere in its top-level record or in any of its attached
-subagent records. Absent `--skill`, every candidate matches this dimension trivially (unscoped).
+**`--skill`.** A candidate matches the skill dimension when a Skill-load line (§1), in its top-level
+record or in any of its attached subagent records, carries a path value whose segment immediately
+following `.../skills/` equals the named `--skill` value **exactly** — a full final-path-segment match,
+never the substring/"appears anywhere" test this file used before this task. Reuse
+`version-resolution.md`'s own anchored-segment shape and character class as the "exact" precedent: the
+skill-load path matches `plugins/cache/<seg>/<seg>/<seg>/skills/<seg>` where each `<seg>` matches
+`^[A-Za-z0-9._-]+$` and is not exactly `.` or `..`, and it is that final `<seg>` — never an earlier one,
+and never a longer value merely sharing the named skill's characters as a prefix — that must equal
+`--skill` character-for-character. A skill-load line naming a *longer* skill sharing the named value as
+a prefix (e.g. a line naming `postmortem-extended` against `--skill postmortem`) does **not** match.
+Absent `--skill`, every candidate matches this dimension trivially (unscoped).
 
 **Date — the 30-day window.** A candidate's date is the **earliest `timestamp` value in file order** —
 found by scanning forward from the first line until a line carrying one is reached, then stopping.
 It is **not** read from a fixed line: the opening header lines (§2) carry `sessionId` and no
-`timestamp`, so the first timestamped line is typically a few lines in. A candidate whose date falls
-outside the trailing 30 days from the locate
-operation's own run time is **not located and not read** — it receives no coverage entry of any kind
-(not even a "skipped" one), and the caller states the window itself in coverage regardless of whether
-any candidate was excluded by it. This is a hard filter applied before ranking, not a ranking penalty.
+`timestamp`, so the first timestamped line is typically a few lines in. The **window cutoff itself is
+supplied by the caller** (`SKILL.md` Phase 3.5 step 0 computes it once, as that run's own current time
+minus the 30-day horizon, and passes the same value to every use of it this run) — the locate operation
+never independently computes or recomputes it. A candidate whose date falls outside the trailing 30
+days from that supplied cutoff is **not located and not read** — it receives no coverage entry of any
+kind (not even a "skipped" one), and the caller states the window itself in coverage regardless of
+whether any candidate was excluded by it. This is a hard filter applied before ranking, not a ranking
+penalty.
 
 **No explicit repository-relative or per-machine path appears in this scope logic** — every mapping
 above is a formula applied to a resolved absolute path, so it holds for any project on any host running
@@ -232,12 +285,18 @@ runs as part of the same structural pass §1 describes, over exactly the count-o
 names, never full content):
 
 - **Iterations** — the count of distinct top-level conversational turns in the record (a mechanical
-  count of role-transition boundaries, read from §1's turn-role/entry-type marker, not an
-  interpretation of what happened in a turn).
-- **Edits** — the count of tool-invocation lines whose tool-name field (§1) is a file-mutating one (an
-  editing or writing tool call) — never by reading the edit's content or the file's own text.
-- **Files touched** — the count of **distinct** file-path values named by those same lines' own
-  target-file argument (§1), deduplicated by exact path string.
+  count of role-transition boundaries, read from §1's literal top-level `type` field, not an
+  interpretation of what happened in a turn) — **excluding header lines**, per §1's turn-role/entry-type
+  paragraph: the first line carrying a `timestamp` field is itself counted as turn 1 (a record's opening
+  header lines are never themselves counted), and each subsequent `type` change from the immediately
+  preceding counted line adds one more.
+- **Edits** — the count of tool-invocation entries (§1: an `"assistant"`-type line's `message.content[]`
+  entry whose own `type` is `"tool_use"`) whose `name` field matches §1's closed file-mutating allowlist
+  (`Write`, `Edit`, `NotebookEdit`) — never by reading the edit's content or the file's own text, and
+  never a tool name outside that fixed list, however edit-shaped its own arguments look.
+- **Files touched** — the count of **distinct** values named by those same entries' own §1 target-file
+  argument field (`input.file_path` for `Write`/`Edit`, `input.notebook_path` for `NotebookEdit`),
+  deduplicated by exact path string.
 
 Each of these three counts, when the seam can extract it from the structural fields with **no model
 judgment**, carries the `mechanically-observed` tier and replaces a reader-reported figure for the same

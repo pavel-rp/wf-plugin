@@ -13,8 +13,10 @@ through Phase 4 — Part E is not a second fetch, but it *is* a second, independ
 Runs before Phase 1, only when `--report <path>` was passed on this invocation. Absent → `SKILL.md`
 skips straight to Phase 1, unchanged by anything below.
 
-1. **Existence check.** The same single primitive `SKILL.md` Phase 1 step 3 already uses: `Bash`:
-   `test -e '<path>'`, with every `'` in the value replaced by `'\''` first, wrapped in single quotes.
+1. **Existence check.** The same single primitive `SKILL.md` Phase 1 step 5 already uses for `--session`
+   (a `--report` value, like `--session`, names one specific file, never a directory — distinct from
+   step 3's directory-resolving `--folder`/`--repo` primitive): `Bash`: `test -e '<path>'`, with every
+   `'` in the value replaced by `'\''` first, wrapped in single quotes.
    Fails → stop with `POSTMORTEM — stopped`, reason `"--report <path> does not resolve to an existing
    file"`. Write nothing.
 2. **Path-confinement check — required before any `Read` of the file.** A resolved `--report` value
