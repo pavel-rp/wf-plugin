@@ -185,13 +185,20 @@ cutoff and labels a hunt session. A named `--session` entry has no locator-suppl
 entry beyond it is `skipped (budget)` above, never dropped, retrievable by a later `--report`
 follow-up unless it ages out or is removed first (see "sessions this hunt cannot see" below).
 
-**Under-evidenced trigger suppressed (budget):** <n> in-scope session(s) still skipped — read them
-before drawing fallback evidence | "none — no in-scope session remains skipped (budget)" | "n/a —
-named-session run: no located scope to suppress against". Filled only when trigger (a)'s capped-hunt
-suppression applies this run — at least one in-scope session is still `skipped (budget)` and at least
-one finding remains under-evidenced — naming the count of still-skipped in-scope sessions and stating
-the same follow-up-should-read-first recommendation `coverage-cross-check.md`'s
-capped-hunt-suppression rule requires.
+**Under-evidenced trigger suppressed (budget):** rendered on **every** hunt, one of three forms
+depending on which branch of `coverage-cross-check.md`'s capped-hunt-suppression rule applies this
+run:
+- **the populated form** — `<n> in-scope session(s) still skipped — read them before drawing fallback
+  evidence` — when trigger (a)'s capped-hunt suppression actually applies this run: at least one
+  in-scope session is still `skipped (budget)` **and** at least one finding remains under-evidenced,
+  naming the count of still-skipped in-scope sessions and stating the same
+  follow-up-should-read-first recommendation the suppression rule requires;
+- **`none — no in-scope session remains skipped (budget)`** — a located (non-named-session) hunt
+  where the suppression condition's first half fails: no in-scope session is `skipped (budget)`, so
+  trigger (a) is free to fire on its own merits this run, suppressed by nothing;
+- **`n/a — named-session run: no located scope to suppress against`** — an attach-only (`--session`)
+  hunt, which has no resolved located scope for the capped-hunt rule to evaluate against at all
+  (`coverage-cross-check.md` Part A step 0).
 
 **Sessions this hunt cannot see** (follow-up runs only): <a prior `skipped (budget)` session absent
 from this run's fresh locate-mode return, with the reason — "aged out of the 30-day window" or
@@ -204,9 +211,15 @@ history): <one line per in-scope, in-window task folder or delivery entry matche
 found for both | `<task id>` alone — a task id was found but no branch string was (every delivery
 entry, and any task folder with no `**Branch:**` line) | "date only" — the candidate supplied no
 identity at all>` plus, when
-relevant, the delivery-history reason (`no reachable delivery history`, or `delivery history is not
-readable for a named --folder/--repo target`) and `eval log unreadable — <reason>` each as their own
-line, or "- none" when every in-scope, in-window candidate matched a session. When the enumeration
+relevant, the delivery-history reason (`no delivery provider registered`, the read's own failure
+reason, or `delivery history is not readable for a named --folder/--repo target`) as its own line —
+the same literal set `coverage-cross-check.md` Part A step 2 produces, mirroring `wf:standup`'s own
+`no delivery provider registered` wording exactly — or "- none" when every in-scope,
+in-window candidate matched a session. **Eval-log and scoreboard source state** (`coverage-cross-check.md`),
+each on its own Coverage line whenever that source was consulted this run: `eval log refused —
+outside the workspace` | `eval log refused — symlinked` | `eval log unreadable — <reason>` | `eval
+log truncated — read <n> of <total> characters` | `scoreboard truncated — read <n> of <total>
+characters`. When the enumeration
 was narrowed, state the root it ran against — or, on a named-session hunt, `- none — named-session
 run: no resolved scope, so no in-scope run could be cross-checked` — so a narrowed cross-check is
 never read as an exhaustive one.

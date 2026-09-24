@@ -294,6 +294,11 @@ Recommendation and before the fenced final-output block) stating:
   from sessions alone after previously carrying fallback evidence, a dated note beside that finding's
   existing fallback-evidence entries recording the confirmation — the fallback entries stay in the
   report, still labelled, and no further fallback evidence is drawn for that finding afterward;
+- **fallback evidence suppressed this run** (`coverage-cross-check.md`'s dedup-key guard): one
+  `Fallback evidence suppressed (duplicate key): <key>` line per dedup hit this run, or "none" —
+  without this a maintainer reading the Continuation trail cannot tell "no draw was attempted" from
+  "a draw was attempted and discarded", exactly the distinction `coverage-cross-check.md`'s own
+  "Follow-up behaviour" section requires this entry to preserve;
 - which sections changed relative to the version this run overwrote — Summary, Contributing Factors,
   Component and Version, Localisation, and Measured Effect are compared by content, Recommendation by
   its **fired rule**: if the rule number is unchanged from the version overwritten, state

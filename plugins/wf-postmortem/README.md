@@ -114,3 +114,6 @@ contributes nothing and every core phase behaves exactly as before.
   parse-and-validate gate that resolves a locator to a real path before dispatching the fetcher agent.
 - `skills/postmortem/references/version-resolution.md` — the runtime-read executed-version
   resolution and two-sided confirmation procedure the skill body points to.
+- `skills/postmortem/references/recommendation.md` — the fix-direction statement and the rule-based
+  routing recommendation naming the next workflow, run over the full accumulated Contributing
+  Factors and Coverage state on every hunt (first run and every `--report` follow-up alike).
