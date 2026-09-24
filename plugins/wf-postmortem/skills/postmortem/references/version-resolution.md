@@ -43,11 +43,18 @@ convenient one:
 on this host → derive the absolute path to compare against, then re-validate it, before any
 comparison proceeds:
 
-1. **Derive the absolute plugin-cache root.** This run's own `$CLAUDE_PLUGIN_ROOT` env var is always
-   set when a skill runs, shaped `<cache-root>/<marketplace>/<plugin>/<version>`
-   (`pack-onboarding.ops.md` confirms this shape). Apply `dirname` three times to strip `<version>`,
+1. **Derive the absolute plugin-cache root.** **Guard first:** if `$CLAUDE_PLUGIN_ROOT` is unset or
+   empty, this branch does not resolve at all — fall through to branch (b) exactly like the existing
+   absent/denied case, never assuming a value. Otherwise, this run's own `$CLAUDE_PLUGIN_ROOT` is
+   shaped `<cache-root>/<marketplace>/<plugin>/<version>` — the same shape every skill dispatch's own
+   tool-preamble line carries, per this pack's own `Skill-load version:` convention
+   (`session-reader.md`, `locator.md`) — so apply `dirname` three times to strip `<version>`,
    `<plugin>`, and `<marketplace>` in turn, yielding the shared `<cache-root>` ancestor every
    installed pack's cache entry sits under, regardless of which specific pack is being audited.
+   (`pack-onboarding.ops.md` confirms `$CLAUDE_PLUGIN_ROOT` is populated when a skill runs under the
+   plugin runtime and stops when it is not — it does not itself state the 4-segment shape; that shape
+   is this pack's own observed convention, cross-confirmed by the tool-preamble form documented
+   elsewhere in this pack.)
 2. **Canonicalize and join.** `Bash`: `(cd '<cache-root>' && pwd -P)` — single-quoted, every `'`
    replaced by `'\''` first, always in a subshell so it never moves this run's own persistent working
    directory (the same literal `(cd '<dir>' && pwd -P)` directory-containment primitive
@@ -64,7 +71,13 @@ comparison proceeds:
    - **Version identity.** The canonicalized candidate's own basename must be character-for-character
      identical to the reported `<version>`. This defeats a `<version>` segment that is itself a
      symlink to a *different* version's directory, which containment alone would not catch.
-4. **Either check failing** → this branch does not resolve; continue to branch (b) exactly like the
+   - **Segment identity.** The canonicalized candidate's own `<plugin>` and `<marketplace>` path
+     segments (the basename's parent, and that parent's own parent) must each be character-for-character
+     identical to the originally reported `<plugin>` and `<marketplace>` strings. This defeats a
+     symlinked `<marketplace>` or `<plugin>` segment that still resolves inside the cache root and
+     still carries a matching `<version>` basename — passing containment and version identity alike —
+     while silently pointing at a *different* pack's directory.
+4. **Any check failing** → this branch does not resolve; continue to branch (b) exactly like the
    existing absent/denied case below — never a silent fall-through under an unrelated version.
 
 Both checks passing → compare the skill/contract/manifest text at that canonicalized candidate path

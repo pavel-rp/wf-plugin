@@ -87,14 +87,17 @@ dispatch per hypothesis locator — passing the **resolved real path**, the pars
 present), and, only when there is no window, the search anchor. Inside that agent's own isolated
 context, and only there:
 
-1. **Confirm the target exists and is still fully non-symlinked** — `Bash`: `test -e '<path>'`,
-   single-quoted with every `'` in the value replaced by `'\''` first. Does not exist → **not found**.
-   Otherwise, two re-checks against the time that has passed since the caller validated this path at
-   locate time: a **leaf check** (`Bash`: `test -L '<path>'` must fail) and an **ancestor-containment
-   check** (`Bash`: `(cd "$(dirname '<path>')" && pwd -P)`, same escaping, joined with the path's own
-   basename and compared character-for-character against `<path>` as given — a mismatch means an
-   ancestor directory became a symlink since locate time, which the leaf check alone cannot catch).
-   Either failing → **read denied**, the same outcome as any other denied read.
+1. **Confirm the target exists, is readable, and is still fully non-symlinked** — `Bash`: `test -e
+   '<path>'`, single-quoted with every `'` in the value replaced by `'\''` first. Does not exist →
+   **not found**. Otherwise, three re-checks against the time that has passed since the caller
+   validated this path at locate time: a **readability check** (`Bash`: `test -r '<path>'` must
+   succeed — this is what makes a later nonzero fetch-command exit code trustworthy as a genuine,
+   unexpected failure rather than an ordinary permissions gap this check should have caught first), a
+   **leaf check** (`Bash`: `test -L '<path>'` must fail), and an **ancestor-containment check**
+   (`Bash`: `(cd "$(dirname '<path>')" && pwd -P)`, same escaping, joined with the path's own basename
+   and compared character-for-character against `<path>` as given — a mismatch means an ancestor
+   directory became a symlink since locate time, which the leaf check alone cannot catch). Any failing
+   → **read denied**, the same outcome as any other denied read.
 2. **Fetch the excerpt, bounded by both lines and raw bytes.** Every fetch command is piped through
    `head -c 16000` before its output is used for anything else — a raw, pre-redaction byte ceiling on
    the byte stream as a whole (4x the 4,000-character post-redaction ceiling in step 4), independent of
@@ -107,21 +110,27 @@ context, and only there:
    `head` collapses the upstream command's own exit status to `head`'s (always ~0 on empty input), so
    each fetch command ends by exiting with the upstream command's own captured status
    (`exit "${PIPESTATUS[0]}"`) rather than trusting the piped exit code — because each fetch runs as its
-   own process, this makes that captured status the dispatch's own observed exit code, which is what
-   keeps the `not found`/`read denied` distinction below meaningful once a `head` sits in the pipeline.
+   own process, this makes that captured status the dispatch's own observed exit code. **The observed
+   code is interpreted, never treated as a bare pass/fail:** `0` (completed without the ceiling
+   engaging) and `141` (`SIGPIPE` — `head` had already read its 16,000 bytes and closed the pipe,
+   killing the still-writing upstream command mid-output) **both mean the fetch succeeded** — `141` is
+   the ceiling doing exactly its intended job on a large fetch, never a failure. Step 1's readability
+   check already rules out "can't be opened," so any other nonzero code is a genuine, unexpected
+   failure.
    - **`window` given** — `Bash`: `sed -n '<start>,<end>p' '<path>' | head -c 16000; exit
      "${PIPESTATUS[0]}"`, clamped to **200 lines** before the fetch runs — a window naming a wider span
      is clamped to its own first 200 lines, not refused, since both the byte ceiling above and the
      excerpt ceiling below still bound what the fetcher returns.
    - **No window, a search anchor given** — `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' |
      head -c 16000; exit "${PIPESTATUS[0]}"`, the anchor single-quoted the same way. `-F` treats it as a
-     literal string, never a regular expression. An observed exit code of `1` (`grep`'s own "no match"
-     code) within that bounded search → **not found** — never a wider retry. **A redacted anchor (one
-     containing `[REDACTED]`) can never match raw text** — a stated, accepted limitation of this interim
-     fetcher, not a silent misclassification: the resulting `not found` is the honest outcome, since the
-     anchor genuinely cannot appear literally in unredacted material.
-   - A denied read at either step (an observed exit code that is nonzero and not `grep`'s own `1`
-     "no match") → **read denied**.
+     literal string, never a regular expression. `0` or `141` (a match found, context possibly cut by
+     the ceiling — the match itself still stands) → fetched. An observed exit code of `1` (`grep`'s own
+     "no match" code) within that bounded search → **not found** — never a wider retry. **A redacted
+     anchor (one containing `[REDACTED]`) can never match raw text** — a stated, accepted limitation of
+     this interim fetcher, not a silent misclassification: the resulting `not found` is the honest
+     outcome, since the anchor genuinely cannot appear literally in unredacted material.
+   - A denied read is any exit code that is nonzero and **neither `141` (the ceiling's own SIGPIPE)
+     nor `grep`'s own `1` ("no match")** → **read denied**. `141` is never treated as a denied read.
 3. **Redact first, before any truncation.** The agent obtains `redaction.md` itself (the same
    reference the skill's own write path uses) and runs the **entire fetched excerpt** through every
    recognized shape, substituting `[REDACTED]` for each match — **before** truncation (step 4), and
@@ -163,9 +172,17 @@ context, and only there:
    the skill's own context can see them.
 
 The agent returns one compact `EXCERPT FETCH` block (`agents/excerpt-fetcher.md`'s Output section) —
-`Path`, `Model`, `Verdict` (`fetched | not found | read denied | error: <reason>`), and the redacted
-`Excerpt` text. Read this result defensively exactly as Phase 3.5 step 3 reads a reader's result: no
-parseable block back is a session-side failure, never a silent pass.
+the redacted `Path` (step 5, every verdict — with one stated exception below), `Model`, `Verdict`
+(`fetched | not found | read denied | error: <reason>`), and the redacted `Excerpt` text. Read this
+result defensively exactly as Phase 3.5 step 3 reads a reader's result: no parseable block back is a
+session-side failure, never a silent pass.
+
+**One stated exception to `Path` redaction.** The agent's own Prerequisites step obtains the shape
+list before doing anything else; if that resolution fails, the agent stops and returns the `error`
+outcome with no shape list ever in hand — so that one branch echoes `Path` **unredacted**, since there
+is nothing to run it through. This is an accepted, narrow gap on the Prerequisites-failure path only,
+never on `fetched`/`not found`/`read denied`, all of which reach step 5 with the shape list already
+held.
 
 ## Outcomes, as the confirmation step sees them
 

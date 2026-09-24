@@ -43,7 +43,10 @@ or fallback root.
 workspaceRoot, class: "references-template", plugin: "wf-postmortem", skill: "postmortem", ref:
 "redaction.md" })` and hold the served shape list. If the resolver is unavailable or the ref does not
 resolve, **stop** and return the `error` outcome below with that reason — never fetch an excerpt you
-cannot redact.
+cannot redact. **This is the one stated exception to step 5's unconditional `Path` redaction:** with
+no shape list ever obtained, there is nothing to run `Path` through, so this `error` outcome echoes
+`Path` unredacted — an accepted, narrow gap (this branch never reaches step 5, which requires the
+shape list this Prerequisites failure means was never obtained), not an oversight.
 
 ---
 
@@ -64,11 +67,15 @@ there is nothing to bound the fetch by.
 
 ## Procedure
 
-1. **Confirm the target exists and is still fully non-symlinked, immediately before fetching.** `Bash`:
-   `test -e '<path>'`, single-quoted with every `'` in the path replaced by `'\''` first. Does not
-   exist → **`not found`**. Otherwise, the caller validated this path at locate time, but time has passed
-   since (this dispatch), so run **both** of the following — a path that has changed in the interval is a
-   live risk:
+1. **Confirm the target exists, is readable, and is still fully non-symlinked, immediately before
+   fetching.** `Bash`: `test -e '<path>'`, single-quoted with every `'` in the path replaced by `'\''`
+   first. Does not exist → **`not found`**. Otherwise, the caller validated this path at locate time,
+   but time has passed since (this dispatch), so run **all three** of the following — a path that has
+   changed in the interval is a live risk:
+   - **Readability check.** `Bash`: `test -r '<path>'` (same escaping) must **succeed** (exit zero) —
+     this is what makes a later nonzero exit from the actual fetch command (step 2) trustworthy as a
+     genuine, unexpected read failure rather than an ordinary permissions gap this check should have
+     caught first.
    - **Leaf check.** `Bash`: `test -L '<path>'` (same escaping) must **fail** (exit non-zero) — the
      path's own final component must not itself be a symlink.
    - **Ancestor-containment check.** `Bash`: `(cd "$(dirname '<path>')" && pwd -P)` (same escaping as
@@ -78,8 +85,9 @@ there is nothing to bound the fetch by.
      means some *ancestor* directory component has become a symlink or otherwise resolves elsewhere
      since locate time — the leaf check alone cannot catch this.
 
-   Either check failing → **`read denied`** (the same outcome as any other denied read, since trusting a
-   swapped symlink target — leaf or ancestor — is exactly the risk this check exists to close).
+   Any check failing → **`read denied`** (the same outcome as any other denied read, since trusting a
+   swapped symlink target — leaf or ancestor — or an unreadable file is exactly the risk this check
+   exists to close).
 2. **Fetch the bounded excerpt.** Every fetch command below is piped through `head -c 16000` before
    its output is used for anything else — a raw, pre-redaction byte ceiling on the byte stream as a
    whole, independent of and applied strictly before the existing 4,000-character post-redaction
@@ -101,15 +109,27 @@ there is nothing to bound the fetch by.
      regardless of the upstream command's own status, so piping alone would silently collapse a
      denied/failed `sed` read into what looks like an empty successful fetch. Because each fetch runs
      as its own process, `exit "${PIPESTATUS[0]}"` makes that captured status the dispatch's own
-     observed exit code — not merely an unread variable — so a non-zero status is directly observable
-     as a denied read (below), never mistaken for an empty match.
+     observed exit code — not merely an unread variable. **Interpret the observed exit code as
+     follows, and no other way:** `0` (the fetch completed without the ceiling ever engaging) — the
+     fetch succeeded, proceed to step 3. `141` (`SIGPIPE` — `head` had already read its 16,000 bytes
+     and closed the pipe, which killed the still-writing `sed` mid-output) — **this is the ceiling
+     doing exactly its intended job on a large fetch, not a failure**; the fetch still succeeded,
+     proceed to step 3 with whatever `head` captured. Step 1's own readability check already rules
+     out "can't be opened" before the fetch ever runs, so **any other nonzero exit code** here is a
+     genuine, unexpected `sed` failure → **`read denied`**.
    - **No `window`, a search anchor given:** `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' |
      head -c 16000; exit "${PIPESTATUS[0]}"`, with the anchor single-quoted the same way (`-F` —
-     literal string, never a regular expression). Same discipline: the observed exit code is `grep`'s
-     own status, not `head`'s. An observed exit code of `1` (`grep`'s own "no match" code) within that
-     bounded search → **`not found`**. Never a wider retry.
-   - A denied read at either step (an observed exit code that is nonzero and not `grep`'s own `1`
-     "no match") → **`read denied`**.
+     literal string, never a regular expression). Same discipline, `grep`'s own status: `0` (a match
+     was found and its full bounded context was written) or `141` (`SIGPIPE` — a match was found and
+     the ceiling closed the pipe while `grep` was still writing its `-B20 -A20` context; the match
+     itself still stands) both mean the fetch succeeded — proceed to step 3. An observed exit code of
+     `1` (`grep`'s own "no match" code) within that bounded search → **`not found`**. Never a wider
+     retry. Step 1's readability check again rules out "can't be opened," so any other nonzero exit
+     code is a genuine failure.
+   - A denied read is **any exit code that is nonzero and neither `141` (the ceiling's own SIGPIPE)
+     nor `grep`'s own `1` ("no match")** → **`read denied`**. `141` is never, under any
+     circumstance, treated as a denied read — a large fetch hitting the byte ceiling is the normal,
+     intended case this ceiling exists to handle, not an error.
 3. **Redact first, before any truncation.** Run the **entire fetched excerpt** through the shape list
    you obtained in Prerequisites, replacing every recognized match with the literal marker
    `[REDACTED]`. This must happen **before** truncation (step 4) — a credential- or token-shaped run
