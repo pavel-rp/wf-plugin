@@ -76,8 +76,13 @@ skips straight to Phase 1, unchanged by anything below.
    - **Evidence Record** — every Supporting and Disconfirming observation, each with its locator and
      tier.
    - **Contributing Factors** — both the confirmed half (mechanism, version, `file:line`, locator,
-     tier) and the Hypotheses half (mechanism, locator or "no locator", the reason it was not
-     promoted).
+     tier) and the Hypotheses half (its `H<n>` id, mechanism, locator or "no locator", the reason it
+     was not promoted — **including, when present, its `fallback evidence` label and the Continuation
+     draw-key material that produced it**: the resolved source/locator pairing
+     `coverage-cross-check.md`'s dedup table describes for whichever disposition produced that entry).
+     Parsing the `H<n>` id, the label, and the draw-key material is what lets a re-parsed report
+     support the same dedup guard a same-run in-memory state does — the guard reads them from here on
+     every follow-up, never only on a first run.
    - **Measured Effect** — each session's counts and their tiers.
    - **The report's own folder path** — the parent directory of the resolved `report.md`, already
      confirmed by step 2 above — for Phase 3's reuse (Part C below).
@@ -254,6 +259,14 @@ Coverage, Fix Direction, and Recommendation are therefore restated fresh from th
 set every time a follow-up runs — a hypothesis or a confirmed factor from an earlier run is never
 dropped simply because this run read nothing new about it, and a session this run re-read replaces its
 own prior contribution rather than duplicating it.
+
+**A Hypotheses entry's `H<n>` id is never recomputed here.** Every entry carried over from the parse
+(step 4 above) keeps the id it already had — restating a section fresh means restating its content,
+not reassigning its identity. Only a genuinely new entry, introduced for the first time this run (a
+newly-checked mechanism with no prior entry, or a fresh trigger-(b) draw for a candidate this report
+has never listed before), mints the next unused `H<n>` per `report-template.md`'s minting rule. This
+is what keeps `coverage-cross-check.md`'s trigger-(a) draw key stable across follow-ups even when the
+Hypotheses list's own merge order shifts run to run.
 
 ## Part D: Write in place and log the Continuation entry
 
