@@ -42,8 +42,11 @@ or fallback root.
 **Obtain the redaction rules first, before fetching any excerpt.** Call `resolve_content({
 workspaceRoot, class: "references-template", plugin: "wf-postmortem", skill: "postmortem", ref:
 "redaction.md" })` and hold the served shape list. If the resolver is unavailable or the ref does not
-resolve, **stop** and return the `error` outcome below with that reason — never fetch an excerpt you
-cannot redact.
+resolve, **stop** and return the `error` outcome below with that reason. **`Path` is never echoed on
+this outcome:** with no shape list ever obtained, there is nothing to run it through, so this branch
+never reaches step 5 (which requires that shape list) — emit the literal marker `[REDACTED]` in
+`Path`'s place instead of the real value, never the raw input path. This is the one verdict where
+`Path`'s value is fixed rather than redaction-pass output, because no redaction pass ever ran.
 
 ---
 
@@ -64,11 +67,15 @@ there is nothing to bound the fetch by.
 
 ## Procedure
 
-1. **Confirm the target exists and is still fully non-symlinked, immediately before fetching.** `Bash`:
-   `test -e '<path>'`, single-quoted with every `'` in the path replaced by `'\''` first. Does not
-   exist → **`not found`**. Otherwise, the caller validated this path at locate time, but time has passed
-   since (this dispatch), so run **both** of the following — a path that has changed in the interval is a
-   live risk:
+1. **Confirm the target exists, is readable, and is still fully non-symlinked, immediately before
+   fetching.** `Bash`: `test -e '<path>'`, single-quoted with every `'` in the path replaced by `'\''`
+   first. Does not exist → **`not found`**. Otherwise, the caller validated this path at locate time,
+   but time has passed since (this dispatch), so run **all three** of the following — a path that has
+   changed in the interval is a live risk:
+   - **Readability check.** `Bash`: `test -r '<path>'` (same escaping) must **succeed** (exit zero) —
+     this is what makes a later nonzero exit from the actual fetch command (step 2) trustworthy as a
+     genuine, unexpected read failure rather than an ordinary permissions gap this check should have
+     caught first.
    - **Leaf check.** `Bash`: `test -L '<path>'` (same escaping) must **fail** (exit non-zero) — the
      path's own final component must not itself be a symlink.
    - **Ancestor-containment check.** `Bash`: `(cd "$(dirname '<path>')" && pwd -P)` (same escaping as
@@ -78,27 +85,112 @@ there is nothing to bound the fetch by.
      means some *ancestor* directory component has become a symlink or otherwise resolves elsewhere
      since locate time — the leaf check alone cannot catch this.
 
-   Either check failing → **`read denied`** (the same outcome as any other denied read, since trusting a
-   swapped symlink target — leaf or ancestor — is exactly the risk this check exists to close).
-2. **Fetch the bounded excerpt.**
-   - **`window` given:** `Bash`: `sed -n '<start>,<end>p' '<path>'`. Clamp the window to 200 lines
-     before the fetch (a window naming a wider span is truncated to its own first 200 lines, not
-     refused).
-   - **No `window`, a search anchor given:** `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>'`,
-     with the anchor single-quoted the same way (`-F` — literal string, never a regular expression).
-     No match within that bounded search → **`not found`**. Never a wider retry.
-   - A denied read at either step → **`read denied`**.
+   Any check failing → **`read denied`** (the same outcome as any other denied read, since trusting a
+   swapped symlink target — leaf or ancestor — or an unreadable file is exactly the risk this check
+   exists to close).
+2. **Fetch the bounded excerpt.** Every fetch command below is piped through `head -c 16000` before
+   its output is used for anything else — a raw, pre-redaction byte ceiling on the byte stream as a
+   whole, independent of and applied strictly before the existing 4,000-character post-redaction
+   excerpt ceiling (step 4). **16,000 bytes is chosen as 4x that existing 4,000-character ceiling** —
+   it bounds a single pathologically oversized line (e.g. a JSONL tool-result payload) long before it
+   fully enters context. It is **not** a guarantee that an ordinary 200-line window or ~41-line `grep`
+   context always fits under it — at typical widths of 100-120 characters/line, 200 lines alone can
+   already run 20,000-24,000 bytes, so a legitimate window may itself be bytewise-clipped by this
+   ceiling too. That is an accepted, non-harmful side effect: whatever survives the cut still goes
+   through step 3's redaction and step 4's 4,000-character truncation exactly the same either way. The
+   ceiling's actual, load-bearing job is narrower than "every ordinary case fits": no single fetch, of
+   any width, ever places more than 16,000 raw bytes into this agent's own context before redaction
+   runs.
+   - **`window` given:** `Bash`: `sed -n '<start>,<end>p' '<path>' | head -c 16000; exit
+     "${PIPESTATUS[0]}"`. Clamp the window to 200 lines before the fetch (a window naming a wider span
+     is truncated to its own first 200 lines, not refused) — the byte ceiling above applies in
+     addition to this line-count clamp, not instead of it. **End the command by exiting with `sed`'s
+     own captured status (`${PIPESTATUS[0]}`), never `head`'s** — `head` exits 0 on empty input
+     regardless of the upstream command's own status, so piping alone would silently collapse a
+     denied/failed `sed` read into what looks like an empty successful fetch. Because each fetch runs
+     as its own process, `exit "${PIPESTATUS[0]}"` makes that captured status the dispatch's own
+     observed exit code — not merely an unread variable. **Interpret the observed exit code as
+     follows, and no other way:** `0` (`sed` reached its own end of output before `head`'s 16,000-byte
+     quota ever forced a close — the total was 16,000 bytes or fewer) — the fetch succeeded, the
+     ceiling did **not** engage, proceed to step 3. `141` (`SIGPIPE` — `head` had already read its
+     16,000 bytes and closed the pipe while `sed` was still trying to write more, so the kernel killed
+     `sed` on its next write) — **this is the ceiling doing exactly its intended job on a fetch whose
+     raw output exceeded 16,000 bytes, not a failure**; the fetch still succeeded, the ceiling **did**
+     engage, proceed to step 3 with whatever `head` captured. This exit code is the **definitive**,
+     single-execution ceiling-engaged signal step 3's boundary-truncation guard keys on — it comes from
+     the same producer run that generated the returned bytes, never a separate re-read that could
+     observe a changed file. Step 1's own readability check already rules out "can't be opened" before
+     the fetch ever runs, so **any other nonzero exit code** here is a genuine, unexpected `sed`
+     failure → **`read denied`**.
+   - **No `window`, a search anchor given:** `Bash`: `grep -n -F -m1 -B20 -A20 -- '<anchor>' '<path>' |
+     head -c 16000; exit "${PIPESTATUS[0]}"`, with the anchor single-quoted the same way (`-F` —
+     literal string, never a regular expression). Same discipline, `grep`'s own status: `0` (a match
+     was found and its full bounded context was written without the ceiling ever engaging) or `141`
+     (`SIGPIPE` — a match was found and the ceiling closed the pipe while `grep` was still writing its
+     `-B20 -A20` context, so the ceiling engaged; the match itself still stands) both mean the fetch
+     succeeded — proceed to step 3. An observed exit code of `1` (`grep`'s own "no match" code) within
+     that bounded search → **`not found`**. Never a wider retry. Step 1's readability check again
+     rules out "can't be opened," so any other nonzero exit code is a genuine failure.
+   - A denied read is **any exit code that is nonzero and neither `141` (the ceiling's own SIGPIPE)
+     nor `grep`'s own `1` ("no match")** → **`read denied`**. `141` is never, under any
+     circumstance, treated as a denied read — a large fetch hitting the byte ceiling is the normal,
+     intended case this ceiling exists to handle, not an error.
 3. **Redact first, before any truncation.** Run the **entire fetched excerpt** through the shape list
    you obtained in Prerequisites, replacing every recognized match with the literal marker
    `[REDACTED]`. This must happen **before** truncation (step 4) — a credential- or token-shaped run
    straddling a later truncation cut would have its second half removed before the shape list ever
    sees it, letting the truncated first half of a real secret survive unredacted. Redacting the whole
    excerpt first closes that gap. Do this before the block leaves your context — you are the only
-   place this text is ever read, so there is no backstop after you.
+   place this text is ever read, so there is no backstop after you. (`Path` redaction is a separate,
+   unconditional step — step 5 below, its **sole** owner — never repeated or re-described here.)
+
+   **Boundary-truncation guard, scoped to when the ceiling actually engaged.** Step 2's `head -c
+   16000` cut can end mid-run through a token/hex/base64/JWT shape — but only when the raw fetch
+   actually reached the ceiling. Before this guard fires, consult step 2's own observed exit code —
+   the same one already used to classify the fetch as successful, from the same single execution that
+   produced the returned bytes, never a separate re-read: exit code **`141`** means the ceiling
+   engaged (SIGPIPE fired because `sed`/`grep` had more to write than `head`'s 16,000-byte quota
+   allowed) and may have cut something mid-pattern; exit code **`0`** means the ceiling never touched
+   this fetch (the producer finished writing 16,000 bytes or fewer on its own, before `head` ever
+   needed to force a close) and the guard does **not** apply — this is what stops the guard from
+   over-redacting an ordinary, un-truncated excerpt's incidental trailing hash-shaped identifier or
+   filename, including one that happens to land at exactly 16,000 bytes naturally (which also exits
+   `0`, never `141`, so the exit code — unlike the truncated output's own length, which is always
+   16,000 bytes or fewer either way — correctly tells the two cases apart). When (and only when) the
+   ceiling did engage,
+   additionally redact any trailing run of 16 or more characters drawn from `[A-Za-z0-9+/=_.-]` (rules
+   3's and 4's own character classes, plus `.` for rule 2's JWT segment-joining character) that reaches
+   the **exact final character** of the fetched excerpt — even when that run alone does not reach the
+   matching rule's own full length threshold. This closes the boundary gap for rules 2-4. **Rule 1
+   (Bearer tokens) is a stated, accepted residual risk at this boundary**: a Bearer token's own alphabet
+   is unrestricted non-whitespace, and widening the guard's character class to match would redact
+   essentially any ordinary trailing text, trading a narrow truncation-boundary gap for routine
+   over-redaction of legitimate content. `redaction.md`'s own "what this does and does not guarantee"
+   section already accepts an analogous residual risk for shapes outside its own list — this is the
+   same category of accepted gap, now stated explicitly rather than left silent.
 4. **Truncate the already-redacted text to the excerpt ceiling.** Cut it to **4,000 characters**,
    appending `… [truncated]` when truncation occurred. Truncating after redaction can only ever cut
    `[REDACTED]` markers or ordinary text, never a live secret shape.
-5. **Emit the block below and nothing else.**
+5. **Redact `Path` — the sole place this ever runs, on every verdict — then emit the block below and
+   nothing else.** Whatever outcome this dispatch reached — `fetched` after step 4, or
+   `not found`/`read denied` from steps 1-2's short-circuits, which never reach step 3 — run the `Path`
+   value (the exact `path` field your prompt carried) through the same shape list you obtained in
+   Prerequisites **before** the Output block below is emitted. The Output block always echoes `Path` on
+   every verdict, so this is independent of whether the excerpt itself was ever fetched: a
+   `not found`/`read denied` dispatch still redacts `Path` here, since it never ran step 3 at all.
+
+   **The `Path` value keeps `redaction.md` rule 4's resolved-path exemption**: by this agent's own Input
+   contract it is exactly the path the caller already resolved this run (the session's own resolved
+   path, or a discovered subagent-record path) — one of rule 4's named exemption categories — so an
+   exact, whole-value match against rule 4's long-hex/base64 shape stays exempt and echoes unredacted.
+   **The comparison is over the entire `Path` value against the entire `path` field your prompt carried,
+   verbatim** — never a substring scan for a hex/base64-shaped portion within it — so a mixed-charset
+   absolute path (letters, digits, hyphens, slashes) that happens to contain a 32+ character
+   hex/base64-valid stretch is compared and exempted as one whole unit, never partially redacted
+   mid-string. Rules 1-3 (Bearer tokens, JWTs, cloud-key prefixes) carry no such exemption and still
+   redact a genuine match inside the path the same as anywhere else. **Step 3's boundary-truncation
+   guard never applies here** — step 2's byte ceiling only ever truncates the excerpt fetch, never the
+   `path` field itself, so there is no truncation boundary on `Path` for that guard to catch.
 
 ---
 
@@ -108,7 +200,7 @@ Emit exactly one block per dispatch:
 
 ```
 EXCERPT FETCH
-Path: <the path you were given, echoed>
+Path: <the path you were given, redacted per step 5 on every verdict (rule 4's resolved-path exemption still applies) — except the Prerequisites-failure `error` outcome, which emits the fixed marker `[REDACTED]` in this field's place instead, never the raw path>
 Model: <the model id this dispatch actually ran on, or "unknown">
 Verdict: <fetched | not found | read denied | error: <reason>>
 
