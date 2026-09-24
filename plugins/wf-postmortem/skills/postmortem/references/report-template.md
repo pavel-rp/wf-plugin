@@ -68,25 +68,37 @@ passed both sides.">
 ### Hypotheses
 
 <One entry per mechanism any reader suggested that was not promoted above, merged across sessions.
-Each states the mechanism in one line, names the session locator(s) that prompted it when it carries
-one, and states **why** it was not promoted — one of: "not checked — no locator"; "not checked —
-malformed locator"; "checked — source side failed" (the mechanism text was not present at the
-resolved version); "checked — session side failed" (the excerpt did not show the observation, was not
-found, or was denied); or "not eligible — version resolved to `present-day-only`". A promoted
-mechanism moves to the confirmed half and is not duplicated here; every reason above still leaves the
-hypothesis at the `unverified` tier — checking it and not confirming it is not a defect of this
-report. A mechanism supported only by `fallback evidence` (`coverage-cross-check.md`) also lists
-here, its "why not promoted" naming the gating trigger that drew it — "fallback evidence only —
-trigger (a): no factor confirmed from sessions alone" or "fallback evidence only — trigger (b):
-matched run left no session record" — and it stays a Hypothesis regardless of how corroborating that
-evidence is; confirmation reaches only through the two-sided check. **Trigger (b)** most often
-introduces its own new entry here rather than augmenting an existing one — an unmatched run has no
-session, so no existing hypothesis is already tied to it — in which case "suggested from" names the
-candidate's own task-folder path or delivery-entry id (never a session locator, since none exists for
-this candidate) and the mechanism text is drawn from that candidate's own fallback-sourced artifacts.>
+Each carries a stable **`H<n>`** id, names the session locator(s) that prompted it when it carries
+one, states the mechanism in one line, and states **why** it was not promoted — one of: "not checked
+— no locator"; "not checked — malformed locator"; "checked — source side failed" (the mechanism text
+was not present at the resolved version); "checked — session side failed" (the excerpt did not show
+the observation, was not found, or was denied); or "not eligible — version resolved to
+`present-day-only`". A promoted mechanism moves to the confirmed half and is not duplicated here;
+every reason above still leaves the hypothesis at the `unverified` tier — checking it and not
+confirming it is not a defect of this report. A mechanism supported only by `fallback evidence`
+(`coverage-cross-check.md`) also lists here, its "why not promoted" naming the gating trigger that
+drew it — "fallback evidence only — trigger (a): no factor confirmed from sessions alone" or
+"fallback evidence only — trigger (b): matched run left no session record" — and it stays a
+Hypothesis regardless of how corroborating that evidence is; confirmation reaches only through the
+two-sided check. **Trigger (b)** most often introduces its own new entry here rather than augmenting
+an existing one — an unmatched run has no session, so no existing hypothesis is already tied to it —
+in which case "suggested from" names the candidate's own task-folder path or delivery-entry id (never
+a session locator, since none exists for this candidate) and the mechanism text is drawn from that
+candidate's own fallback-sourced artifacts.
 
-- <mechanism, one line> — suggested from `<session locator | task-folder path | delivery-entry id |
-  "no locator">` — <reason it was not promoted>
+**`H<n>` id — minted once, never reused or renumbered.** Assigned the first time an entry is created
+(first run, or a later run that introduces a genuinely new mechanism/candidate not already present).
+The next id is one past the **highest `H<n>` this report has ever carried**, not one past the count
+currently present — the same monotonic-id discipline this repo's own constitution record uses for
+`proj.N` clauses (never reused after a hypothesis is promoted or otherwise leaves this list). A
+continuation follow-up parsing a prior report (`continuation.md` Part A step 4) reads each entry's
+existing `H<n>` id back and carries it forward unchanged; only a newly-introduced entry mints a fresh
+one. This id — never the mechanism text, never a merge-order position — is what
+`coverage-cross-check.md`'s trigger-(a) draw key uses to stay identical across runs regardless of
+merge order.>
+
+- **H<n>** <mechanism, one line> — suggested from `<session locator | task-folder path |
+  delivery-entry id | "no locator">` — <reason it was not promoted>
 
 ## Evidence Record
 
