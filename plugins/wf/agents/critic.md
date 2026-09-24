@@ -64,28 +64,38 @@ that pass's own reasoning — only its citations and the frozen artifact. Your j
      establishes that the resolved path is inside the workspace root, since the literal path
      is by construction. If the resolution call itself fails or exits non-zero (nonexistent
      path, permission error, `realpath` unavailable), treat that identically to a failed check.
-  4. The path does not land in a secret-bearing or machine-state location. Test only the
+  4. The resolved path names a **regular file**, not a directory (including `.`) or anything
+     else. Stat the path step 3 resolved (e.g. `test -f -- <resolved path>`) — this check is
+     necessarily filesystem-dependent and only reachable once step 3 has produced a resolved,
+     symlink-verified path to stat. A directory citation is never opened or searched: reject it
+     here, before any `Grep`/`Glob` can run against it and read its descendants' content.
+  5. The path does not land in a secret-bearing or machine-state location. Test only the
      components **below** the workspace root — the normalized cited path, which step 3's
      equality makes identical to the resolved path's in-root suffix — never the workspace
      root's own components, which may legitimately be dot-prefixed (a linked worktree under a
      dot-directory). Reject when that in-root path is under `.git/`, `.wf/` (the resolver's
-     committed lifecycle tree), or `_local/` (the resolved task root), or has any dot-prefixed
-     component (the conventional home of credential and configuration files such as `.env`).
+     committed lifecycle tree), or the **Task root** value carried in the dispatch (## Inputs)
+     — the caller's actually-resolved task root, never a hardcoded literal — or has any
+     dot-prefixed component (the conventional home of credential and configuration files such
+     as `.env`).
 
-  A failing citation is rejected with exactly one of four reasons, one per way the bound can
+  A failing citation is rejected with exactly one of five reasons, one per way the bound can
   reject: `not a bounded relative path` (steps 1–2: a disallowed character, an absolute path,
   or a `..` segment — all rejected on the string alone), `traverses a symlink` (step 3, the
-  comparison differs), `real-path resolution failed` (step 3, the call failed), or `resolves
-  into a secret-bearing location` (step 4).
+  comparison differs), `real-path resolution failed` (step 3, the call failed), `does not
+  resolve to a regular file` (step 4, a directory — including `.` — or any other non-file), or
+  `resolves into a secret-bearing location` (step 5).
 
-  A citation failing any of these is never opened — see `## Mandate` step 1 for the
-  check-before-open enforcement and the `UNVERIFIABLE` fallback. This bound applies to every
-  path you open for a candidate, not only the literally-cited ones — a follow-on open (e.g. a
-  caller found via `Grep`) is checked against it before it is opened, exactly like a cited
-  path. The real-path check (step 3) and the eventual open (`Read`/`Grep`/`Glob`) are separate
-  calls with no atomicity between them; this agent runs against a single-writer workspace
-  snapshot for the duration of one dispatch, so a change between the two is not separately
-  defended against.
+  A citation failing any of these is never opened or searched — see `## Mandate` step 1 for
+  the check-before-open enforcement and the `UNVERIFIABLE` fallback. This bound applies to
+  every path you open or search for a candidate, not only the literally-cited ones — a
+  follow-on open (e.g. a caller found via `Grep`) is checked against it before it is opened,
+  exactly like a cited path, and **every `Grep`/`Glob` invocation this bound gates is scoped
+  to that one already-validated file path — never a directory, and never a glob pattern
+  spanning multiple files** — so no search can read unvalidated descendant content. The
+  real-path check (step 3) and the eventual open (`Read`/`Grep`/`Glob`) are separate calls with
+  no atomicity between them; this agent runs against a single-writer workspace snapshot for the
+  duration of one dispatch, so a change between the two is not separately defended against.
 - Judge only the candidates you were given. A defect you notice outside the candidate list is
   not yours to report here — say nothing about it; noticing it is not part of this dispatch's
   contract, and adding it would make your response malformed (`critic-verdict.md` §"Malformed
@@ -106,9 +116,11 @@ For each candidate, in the order given:
    citation's trailing `:L`, per the bound's own statement. A citation that fails the bound —
    including a failed real-path resolution call — is never read: resolve that candidate
    `UNVERIFIABLE` with the bound's own rejection reason as the one-line reason, per step 2
-   below; move on to the next candidate. Otherwise, read the file(s) the candidate's `cited
-   lines` name, and enough of the surrounding code to judge the claim — a declaration, a guard,
-   a caller, a type.
+   below; move on to the next candidate. Otherwise, read the single validated file each `file:L`
+   names, and enough of the surrounding code to judge the claim — a declaration, a guard, a
+   caller, a type. Any `Grep`/`Glob` used to judge a candidate is scoped to that one
+   already-validated file path — never a directory and never a glob pattern spanning multiple
+   files — per `## Boundaries`' containment bound.
 2. **Decide.**
    - **AGREE** — the cited evidence, read against the real source, establishes the defect as
      claimed. Quote the `file:L` and the line (or the smallest snippet) that establishes it —
