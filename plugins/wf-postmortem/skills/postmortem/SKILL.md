@@ -249,10 +249,12 @@ compact, already-redacted or already-structural block comes back.
    report. `LOCATE OK` with an empty list is **not** a stop — proceed as "not found." The block's own
    `Model:` is this dispatch's diagnostic only; Coverage's per-session `model:`/`tier:` comes from step 3.
 
-2. **Decide windowing.** Measure each resolved record with `Bash`: `wc -c '<path>'` (metadata, not content). A record
-   exceeding **200,000 characters** is read in ordered windows cut on **line boundaries only**, as close to the budget
-   as a line boundary allows, numbered from 1 in file order — a conservative, model-agnostic proxy, no token-counting
-   dependency. At or below the budget the session is one window, dispatched as `whole`.
+2. **Decide windowing.** A session already `skipped (access denied)` (step 0) skips this step — never
+   measured, carried unchanged to step 4. Otherwise measure with `Bash`: `wc -c '<path>'` (metadata, not
+   content) — a **byte** count, so the threshold is **200,000 bytes** (not characters), split into ordered,
+   numbered-from-1 windows. The host computes only **approximate byte-offset** windows (equal splits, last
+   takes the remainder) — the dispatched reader snaps each to the nearest line boundary before reading
+   (`session-reader.md`; rationale: `reader-dispatch-consistency.md`). At or below budget: one window, `whole`.
 
 2.5. **Split the list at the cap in force, before dispatch.** Take the list step 2 just measured — the ranked list, the
    named `--session` list, or (a follow-up) `continuation.md` Part B's retry set — and split it at the **cap in
@@ -263,31 +265,26 @@ compact, already-redacted or already-structural block comes back.
    entry, retrievable by a later `--report` follow-up unless it ages out or is removed first. **On a follow-up, one
    exemption applies here** (`continuation.md` Part C): a session that already holds a Coverage entry is never
    *demoted* to `skipped (budget)` by this split — it keeps that entry unchanged, and only a never-before-covered
-   session is freshly assigned the verdict past the cap.
+   session is freshly assigned the verdict past the cap. Likewise, a session already `skipped (access denied)`
+   (step 2) never reaches this split — straight to step 4, no cap slot, no dispatch.
 
 3. **Route and dispatch one reader per session or per window** that step 2.5 carried into this step (never a
-   capped-out entry). Immediately before **each** dispatch call `resolve_routing` with `workspaceRoot`, `role:
-   "session-reader"`, one stable `unitIds` entry (`session-reader:<slug of the resolved path>`, plus `:window-<n>`
-   when windowed), `shapeEvidence: { workSurface: "external-context", atomicity: "atomic", unitCount: 1,
-   unitsIndependent: false, ambiguity: "none", risk: "low", toolWork: "material", validation: "judgment",
-   contextIsolation: "required", independentReview: false, returnContract: "judgment", requestedParallelism: 1 }`,
-   `supportsModelSelector: true`, `supportsEffortSelector: false`, and `hostModel` set to the model this invocation
-   itself reports from its own identity disclosure — never a guess. Emit the compact operational record. On `status:
-   stop` or a non-null `diagnostic`, do not dispatch that unit; record it as `skipped (reader error: <reason>)` with
-   the diagnostic as its reason. One decision binds one dispatch — route afresh every time.
+   capped-out or already-denied entry). **UnitId slug** = first 16 hex chars of SHA-256(resolved absolute
+   session path) — deterministic, grammar-safe, length-bound with the `session-reader:` prefix and optional
+   `:window-<n>` suffix (rationale: `reader-dispatch-consistency.md`). Immediately before **each** dispatch
+   call `resolve_routing` with `workspaceRoot`, `role: "session-reader"`, `unitIds:
+   ["session-reader:<16-hex-digest>"]` (+ `:window-<n>` when windowed), `shapeEvidence: { workSurface:
+   "external-context", atomicity: "atomic", unitCount: 1, unitsIndependent: false, ambiguity: "none", risk:
+   "low", toolWork: "material", validation: "judgment", contextIsolation: "required", independentReview: false,
+   returnContract: "judgment", requestedParallelism: 1 }`, `supportsModelSelector: true`,
+   `supportsEffortSelector: false`, `invocationModel: "haiku"` (rationale: `reader-dispatch-consistency.md`),
+   and `hostModel` set to the model this invocation itself reports — never a guess. Emit the compact
+   operational record. On `status: stop` or a non-null `diagnostic`, do not dispatch that unit; record
+   `skipped (reader error: <reason>)` with the diagnostic as its reason. One decision binds one dispatch —
+   route afresh every time.
 
-   Take the returned `model.value`: non-null and **cheaper** than `hostModel` on the shipped
-   `haiku → sonnet → opus` ordering → dispatch at that model, record `tier: requested`; otherwise
-   (null, same tier, or the edge can't honour the selector) → dispatch at the host's own tier, record
-   `tier: host-fallback (<stated reason>)` — never presented as the requested tier. Invoke one
-   **Task** with `subagent_type: wf-postmortem:session-reader`, passing the failure description, the
-   session path, the window (`n of N` or `whole`) with its span, the attached subagent-record paths
-   step 0 resolved, and the **attachment note** `"attached by the locate seam"` — required as an
-   input and echoed verbatim by `session-reader.md`, redacted by `redaction.md`, and never omitted
-   (`none` when nothing is attached).
-
-   **Read the result defensively.** No `SESSION READ` block, or one that can't be parsed → that unit's
-   `error` verdict, reason `"reader returned no parseable block"`. Never infer from a missing block.
+   Take the returned `model.value`: non-null and **cheaper** than `hostModel` on the shipped `haiku → sonnet → opus` ordering → dispatch at that model, record `tier: requested`; otherwise dispatch at the host's own tier, record `tier: host-fallback (<stated reason>)` — never presented as requested. Invoke one **Task** with `subagent_type: wf-postmortem:session-reader`, passing the failure description, session path, and window (`n of N` or `whole`) with its span. **Attach step 0's subagent-record paths only to the first window's dispatch per session** (or the sole `whole` dispatch), note `"attached by the locate seam"`; every other window passes none/`none` (rationale: `reader-dispatch-consistency.md`) — required and echoed verbatim by `session-reader.md`, redacted by `redaction.md`.
+   **Read the result defensively.** No `SESSION READ` block, or one that can't be parsed → that unit's `error` verdict, reason `"reader returned no parseable block"`. Never infer from a missing block.
 
 4. **Merge each session's blocks into one result.** Concatenate a session's window blocks in window order into one
    observation set (supporting/disconfirming kept apart), union the hypotheses — carrying forward each hypothesis's
@@ -299,16 +296,11 @@ compact, already-redacted or already-structural block comes back.
    | Windows | Session verdict |
    |---|---|
    | every window `read` | `read` |
-   | at least one `read`, and at least one `read in part` or `error` | `read in part (<first failing window's reason>)` |
-   | every window `error`, and the reason is a denied read | `skipped (access denied)` |
-   | every window `error` (any other reason) | `skipped (reader error: <first reason>)` |
-   | otherwise — at least one window not `read` | `read in part (<first non-read window's reason>)` |
+   | every window carries the literal `access denied` verdict | `skipped (access denied)` |
+   | every window is `error` or `access denied` (not every one `access denied`) | `skipped (reader error: <first `error` window's reason>)` |
+   | otherwise — at least one window `read`, and at least one `read in part`, `access denied`, or `error` | `read in part (<first failing window's reason>)` |
 
-   Exhaustive by construction — no window-verdict mix leaves a session without one; `read in part` is
-   never rounded up, and a failing session never stops the run. A session step 0 marked `skipped
-   (access denied)` is never dispatched — its verdict is that status, unchanged. **A session step 2.5
-   assigned `skipped (budget)` never reaches this step** — no observation, hypothesis, or count from
-   it flows into steps 5-7 below.
+   The host tests each window's `Verdict:` for the exact literal `access denied` (rationale: `reader-dispatch-consistency.md`). Exhaustive by construction — no mix leaves a session without a verdict; `read in part` is never rounded up, and a failing session never stops the run. A session step 0 marked `skipped (access denied)` is never dispatched — status unchanged. A session step 2.5 assigned `skipped (budget)` never reaches this step — nothing flows into steps 5-7 below.
 
    **Carry forward step 0's own per-session facts**: date, rank (located only), the hunt-session flag,
    the `Branch:` fact (raw value or `none observed` — carried for Coverage/Evidence Record **display**;

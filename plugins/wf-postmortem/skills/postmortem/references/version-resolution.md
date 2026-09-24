@@ -160,11 +160,15 @@ For each hypothesis a reader returned that carries a `locator:` field other than
   locator string itself.
 - **Session side.** Route and dispatch the `excerpt-fetcher` agent the same way Phase 3.5 step 3
   routes `session-reader` — `resolve_routing` with `role: "excerpt-fetcher"`, a stable `unitIds` entry
-  (`excerpt-fetcher:<slug of the hypothesis's locator>`), `shapeEvidence` identical to step 3's
+  (`excerpt-fetcher:<16-hex-digest>` — the same SHA-256-prefix slugging rule SKILL.md Phase 3.5 step 3
+  defines, applied here to the **one resolved real path** below, never the compound locator string),
+  `shapeEvidence` identical to step 3's
   **except** `ambiguity: "none"`, `toolWork: "bounded"`, `validation: "mechanical"`, and
   `returnContract: "mechanically-judgeable"` (a single bounded `test`/`sed`/`grep` call and a
   redaction pass, not the open-ended hunt `session-reader` performs), `supportsModelSelector: true`,
-  `supportsEffortSelector: false`, and the same `hostModel` fact — then invoke one **Task** with
+  `supportsEffortSelector: false`, `invocationModel: "haiku"` (the same cheap-tier preference and the
+  same rationale as SKILL.md Phase 3.5 step 3 — an ordinary invocation-override parameter, not a
+  core-side `excerpt-fetcher`-named special case), and the same `hostModel` fact — then invoke one **Task** with
   `subagent_type: wf-postmortem:excerpt-fetcher`, passing **the one resolved real path** above (never
   the compound locator string), the parsed window (when present), and, for a locator with no window,
   **the search anchor chosen as follows** — **never the mechanism's own text as the first choice**,
