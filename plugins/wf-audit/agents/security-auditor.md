@@ -31,8 +31,10 @@ write, mutate, or reach any other provider/tracker/network/MCP surface.
    the two scopes below. Confirm each `open_fingerprints` entry you can still evidence — an
    entry you can no longer evidence is simply omitted, retired by the caller's fold — then
    inspect only the `changed_sections` entries named in that block, tracing any untrusted data
-   introduced there to its sinks. Report a genuinely new `fail` only within those two scopes —
-   cap anything else at `warn`.
+   introduced there to its sinks. When a `changed_sections` entry introduces untrusted data
+   whose sink lies outside these two scopes, open exactly that one sink to complete the trace;
+   open nothing else outside the two scopes. Report a genuinely new `fail` only within those two
+   scopes plus any sink opened this way — cap anything else at `warn`.
 5. Emit **only** the inlined contract's finding block, tagged `lens: security`, as the very last
    thing — no narrative around it. The caller greps
    `AUDIT-SECURITY — <clean | findings>` and aggregates the findings provenance-tagged to

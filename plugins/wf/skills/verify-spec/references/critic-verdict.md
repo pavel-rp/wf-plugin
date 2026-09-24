@@ -44,6 +44,10 @@ Workspace root: {absolute workspace root} — a cross-check against the root you
 yourself; bound every cited path against your own root before opening it, per your own
 containment bound.
 
+Task root: {task-root} — the dispatcher's already-resolved task-folder location
+(`coreConfig.taskRoot`). Trusted the same way as the workspace root above; check every cited
+path's secret-bearing/task-root rejection against this value, never a hardcoded literal.
+
 The artifact is frozen: do not re-run the audit, re-read the diff for new defects, or
 report a candidate not listed here.
 
