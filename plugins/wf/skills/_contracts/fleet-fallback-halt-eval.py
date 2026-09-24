@@ -34,7 +34,11 @@ STEP_KEYS = {
     "gated": 'unitIds: ["ship:phase"]',
     "pr": 'unitIds: ["ship:pr"]',
     "finalize": 'unitIds: ["ship:finalize"]',
+    "run-initial": 'unitIds: ["ship:run-initial"]',
 }
+
+# A conditioning phrase — the evaluator asserts co-occurrence, never exact wording.
+CONDITION_RE = re.compile(r"\b(when|only when|unless)\b", re.I)
 
 BLOCK_START = "use the project-pipeline fallback"
 BLOCK_END = "Each fallback edge gets its own decision"
@@ -129,6 +133,34 @@ def find_halt_clause(clauses):
     return None
 
 
+def check_run_initial_conditioning(steps):
+    """The `ship:run-initial` dispatch's `--gate extend` must be conditioned on
+    `<RESUME-BRIEF>`, never appended unconditionally.
+
+    A regression that drops the flag, or that appends it regardless of whether the
+    dispatch brief's resume brief was filled, would silently lose (or wrongly grant)
+    the one-shot verify-fix-loop extension a replacement's resume hand-off carries.
+    This asserts co-occurrence plus a conditioning phrase — never exact wording,
+    consistent with the rest of this evaluator's routing-token/outcome-token
+    discipline.
+    """
+    step = resolve_step(steps, "run-initial")
+    problems = []
+    if "--gate extend" not in step:
+        problems.append("the routed ship:run-initial step no longer names --gate extend")
+    if "<RESUME-BRIEF>" not in step:
+        problems.append(
+            "the routed ship:run-initial step's --gate extend is not conditioned "
+            "on <RESUME-BRIEF>"
+        )
+    if not problems and not CONDITION_RE.search(step):
+        problems.append(
+            "the routed ship:run-initial step names --gate extend and <RESUME-BRIEF> "
+            "but with no when/only when/unless-style conditioning language between them"
+        )
+    return problems
+
+
 def check_row_recording(text: str):
     """A halted item's outcome must be readable from its own scoreboard row.
 
@@ -172,6 +204,7 @@ def evaluate(path: str):
     finalize = resolve_step(steps, "finalize")
 
     problems = []
+    problems.extend(check_run_initial_conditioning(steps))
 
     # The handoff step is the chain's one pre-existing conditional step and must
     # keep naming the handoff token it branches on.
@@ -250,7 +283,7 @@ def evaluate(path: str):
 
 SOUND_CHAIN = """> Only if that Skill is genuinely unavailable or its checks loop cannot run, use the project-pipeline fallback. Route and execute each edge independently in this exact order:
 >
-> 1. Route with `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke the initial run.
+> 1. Route with `role: "phase-runner"` and `unitIds: ["ship:run-initial"]`, then invoke the initial run — or, when `<RESUME-BRIEF>` is filled, with `--gate extend` also appended in its place.
 > 2. On every resume, route with `role: "phase-runner"` and `unitIds: ["ship:run-resume"]`, then invoke it again.
 > 3. On each `RUN — gated` handoff, route with `role: "phase-runner"` and `unitIds: ["ship:phase"]`, then invoke the exact named phase.
 > 4. **Only on a `RUN — complete` outcome** (see the halt branch below): Route with `role: "pr"` and `unitIds: ["ship:pr"]`, then open the pull request.
@@ -305,12 +338,20 @@ HALT_CLAUSE_MASKS_STEP_CHAIN = SOUND_CHAIN.replace(
     "> 4. On a `RUN — complete` outcome, and also after a `RUN — blocked` outcome, Route with",
 )
 
+# Sound chain, but step 1's --gate extend conditioning on <RESUME-BRIEF> is dropped —
+# the regression this evaluator's run-initial-conditioning check exists to catch.
+RUN_INITIAL_UNCONDITIONED_CHAIN = SOUND_CHAIN.replace(
+    "> 1. Route with `role: \"phase-runner\"` and `unitIds: [\"ship:run-initial\"]`, then invoke the initial run — or, when `<RESUME-BRIEF>` is filled, with `--gate extend` also appended in its place.",
+    "> 1. Route with `role: \"phase-runner\"` and `unitIds: [\"ship:run-initial\"]`, then invoke the initial run.",
+)
+
 FIXTURES = {
     "sound": SOUND_CHAIN + ROW_RECORDING,
     "pre-fix": PRE_FIX_CHAIN + ROW_RECORDING,
     "halt-clause-incomplete": HALT_CLAUSE_INCOMPLETE_CHAIN + ROW_RECORDING,
     "gated-step-damaged": GATED_STEP_DAMAGED_CHAIN + ROW_RECORDING,
     "halt-clause-masks-step": HALT_CLAUSE_MASKS_STEP_CHAIN + ROW_RECORDING,
+    "run-initial-unconditioned": RUN_INITIAL_UNCONDITIONED_CHAIN + ROW_RECORDING,
     # Sound chain, but the halt is never written anywhere a reader can see it.
     "row-recording-absent": SOUND_CHAIN,
 }
