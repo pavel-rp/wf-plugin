@@ -13,11 +13,11 @@ Branch (a) derives the absolute plugin-cache root by applying `dirname` three ti
 `$CLAUDE_PLUGIN_ROOT`, on the premise that it is shaped `<cache-root>/<marketplace>/<plugin>/
 <version>`. This is the same shape every skill dispatch's own tool-preamble line carries, per this
 pack's own `Skill-load version:` convention (`session-reader.md`, `locator.md`) — the two are
-cross-confirmed, not independently asserted. `plugins/wf/skills/_contracts/pack-onboarding.ops.md`
-confirms `$CLAUDE_PLUGIN_ROOT` is populated when a skill runs under the plugin runtime and stops
-explicitly when it is not — it does **not** itself state the 4-segment shape; that shape is this
-pack's own observed convention. Branch (a)'s guard (fall through to branch (b) when the variable is
-unset or empty) exists precisely because this shape is an observed convention, not a contract
+cross-confirmed, not independently asserted. The pack-onboarding contract doc confirms
+`$CLAUDE_PLUGIN_ROOT` is populated when a skill runs under the plugin runtime and stops explicitly
+when it is not — it does **not** itself state the 4-segment shape; that shape is this pack's own
+observed convention. Branch (a)'s guard (fall through to branch (b) when the variable is unset or
+empty) exists precisely because this shape is an observed convention, not a contract
 `pack-onboarding.ops.md` itself guarantees.
 
 ## Which containment primitive, and why it differs from the sibling agents' variant
