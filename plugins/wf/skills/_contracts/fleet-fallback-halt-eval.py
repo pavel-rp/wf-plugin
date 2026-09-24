@@ -38,7 +38,13 @@ STEP_KEYS = {
 }
 
 # A conditioning phrase — the evaluator asserts co-occurrence, never exact wording.
-CONDITION_RE = re.compile(r"\b(when|only when|unless)\b", re.I)
+# Deliberately excludes "unless": "X unless Y" inverts the polarity depending on
+# sentence structure ("--gate extend unless <RESUME-BRIEF> is filled" would read
+# this check as satisfied while actually describing the wrong-polarity behavior —
+# appending the flag when the brief is ABSENT), so it cannot reliably stand in for
+# the positive "append the flag when/only when the brief is filled" condition this
+# check exists to assert. Only unambiguous positive-conditioning words are accepted.
+CONDITION_RE = re.compile(r"\b(when|only when)\b", re.I)
 
 # How far before the earlier of the two tokens the conditioning word may sit. The
 # live phrasing puts it directly ahead of `<RESUME-BRIEF>` ("or, when <RESUME-BRIEF>
@@ -172,7 +178,7 @@ def check_run_initial_conditioning(steps):
     if not CONDITION_RE.search(step[window_start:window_end]):
         problems.append(
             "the routed ship:run-initial step names --gate extend and <RESUME-BRIEF> "
-            "but with no when/only when/unless-style conditioning language anchored "
+            "but with no when/only-when-style positive conditioning language anchored "
             "near both tokens"
         )
     return problems
