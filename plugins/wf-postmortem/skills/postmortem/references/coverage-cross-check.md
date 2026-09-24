@@ -220,9 +220,9 @@ Draw additional Evidence Record / Contributing Factors → Hypotheses entries fr
   project configured before this mechanism existed:** when `resolve_profile` reports the value absent
   or unset, fall back to reading `_local/config.md`'s own `## Postmortem` section for the **verbatim**
   heading `**Eval Log Path:**` (that exact spelling — any other heading is simply not this key); when
-  that fallback finds a value, use it and state once in Coverage that the value should move to the
-  capability's profile (`plugins/wf-postmortem/capabilities/postmortem/profile.template.json`) — never
-  a stop, never a silent migration. Neither source configured → resolves to "not configured", exactly
+  that fallback finds a value, use it and state once in Coverage that the value should move onto the
+  postmortem capability's own profile (resolved via `resolve_profile`, not this heading) — never a
+  stop, never a silent migration. Neither source configured → resolves to "not configured", exactly
   as before; never an error, never a placeholder path. **Whichever source produced it, the value is an
   arbitrary untrusted string and is gated exactly as `--report`/`--folder`/`--repo`/`--session` are
   (`SKILL.md` Phase 1), never less:** canonicalize it to an absolute real path, resolving every
