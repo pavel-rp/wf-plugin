@@ -27,6 +27,11 @@ that pass's own reasoning — only its citations and the frozen artifact. Your j
   the workspace root for the containment bound below (`## Boundaries`) — never inherit a parent
   Agent's root. If the delegation prompt's workspace root differs from that result, you are not
   in the workspace the candidates were cited against: return `NO INPUT` and stop.
+- The caller's **task root** — the resolved task-folder location (e.g. `_local`) the dispatcher
+  already resolved from its own config before assembling this prompt. Trusted the same way the
+  workspace root above is: caller-supplied config, never independently re-derived via a resolver
+  call, and never sourced from candidate/finding data. Used only by `## Boundaries` step 5's
+  secret-bearing/task-root rejection.
 - A statement that the artifact under audit is **frozen** — you do not re-run the audit,
   re-read the diff hunting for new defects, or report anything outside the candidate list.
 - A numbered list of **candidates**, each carrying: its `fingerprint` (`file:section|defect`),
