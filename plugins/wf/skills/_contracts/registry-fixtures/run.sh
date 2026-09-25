@@ -527,6 +527,35 @@ else
   fail=$((fail + 1))
 fi
 
+# --- Gate-eligibility maps (WF-704) -------------------------------------------
+# Every review layer's gate map (gate-map.contract.md) must be well formed and must agree with
+# the output grammar its labels come from. Maps are found through the core gate-maps/ folder and
+# every installed capability manifest's `gate-map:` key — never by naming a capability. The
+# self-test runs the committed fixtures in gate-map-fixtures/: a grammar that gained a label
+# without a map entry, a stale label, a duplicate, an eligibility outside the closed pair, a
+# missing metadata line, a no-labels map carrying rows, and a manifest-declared map that must be
+# found, one that drifted, and one that is absent — each rejected naming its cause — while the
+# sound, no-grammar-source and emits-no-labels maps are accepted.
+echo ""
+echo "=== Gate-map guard — fixture self-test ==="
+if bash "$DIR/../gate-map-guard.sh" --selftest; then
+  printf 'PASS: %s\n' "gate-map guard self-test"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "gate-map guard self-test"
+  fail=$((fail + 1))
+fi
+
+echo ""
+echo "=== Gate-map guard — real-tree scan ==="
+if bash "$DIR/../gate-map-guard.sh"; then
+  printf 'PASS: %s\n' "gate-map guard real-tree scan"
+  pass=$((pass + 1))
+else
+  printf 'FAIL: %s\n' "gate-map guard real-tree scan"
+  fail=$((fail + 1))
+fi
+
 echo ""
 printf 'Results: %s passed, %s failed.\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
